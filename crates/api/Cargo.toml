@@ -1,0 +1,14 @@
+[package]
+name = "api"
+edition = "2024"
+publish = false
+
+[features]
+sqll = ["dep:sqll"]
+
+[dependencies]
+jiff = "0.2"
+musli-core = { version = "0.1.4", default-features = false, features = ["alloc", "std"] }
+musli-web = { version = "0.4.2", features = ["api"] }
+serde = { version = "1", features = ["derive"] }
+sqll = { version = "0.13.2", optional = true }

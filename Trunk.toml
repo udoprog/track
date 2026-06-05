@@ -1,0 +1,12 @@
+[build]
+target = "crates/frontend/index.html"
+
+[[proxy]]
+rewrite = "/ws"
+backend = "ws://127.0.0.1:3000/ws"
+ws = true
+
+[[proxy]]
+rewrite = "/api/"
+backend = "http://127.0.0.1:3000/api/"
+no_redirect = true

@@ -1,0 +1,1145 @@
+use std::path::Path;
+use std::sync::Arc;
+
+use anyhow::{Context as _, Result, ensure};
+use api::{
+    Config, Date, EpisodeId, Image, MovieId, RemoteId, SeasonId, SeasonNumber, SeriesId, ThemeType,
+    Timestamp, WatchedId, WatchedKind,
+};
+use rust_embed::RustEmbed;
+use sqll::{OpenOptions, Row, SendStatement};
+use tokio::sync::Mutex;
+use tokio::task::spawn_blocking;
+
+const MIGRATIONS_INIT: &str = r#"
+CREATE TABLE IF NOT EXISTS migrations (
+    id         TEXT PRIMARY KEY,
+    applied_at TEXT NOT NULL
+);
+"#;
+
+#[derive(RustEmbed)]
+#[folder = "migrations"]
+struct Migrations;
+
+// ── Row types ────────────────────────────────────────────────────────────────
+
+#[derive(Row)]
+struct SeriesRow {
+    id: SeriesId,
+    title: String,
+    first_air: Option<Date>,
+    overview: String,
+    poster: Option<Image>,
+    banner: Option<Image>,
+    fanart: Option<Image>,
+    tracked: bool,
+    remote_id: Option<RemoteId>,
+}
+
+#[derive(Row)]
+struct SeasonRow {
+    id: SeasonId,
+    series_id: SeriesId,
+    number: i64,
+    air_date: Option<Date>,
+    name: Option<String>,
+    overview: String,
+    poster: Option<Image>,
+}
+
+#[derive(Row)]
+struct EpisodeRow {
+    id: EpisodeId,
+    series_id: SeriesId,
+    season: i64,
+    number: i64,
+    absolute_number: Option<i64>,
+    name: Option<String>,
+    overview: String,
+    aired: Option<Date>,
+    filename: Option<Image>,
+    remote_id: Option<RemoteId>,
+    watched: bool,
+    watched_count: i64,
+}
+
+#[derive(Row)]
+struct MovieRow {
+    id: MovieId,
+    title: String,
+    release_date: Option<Date>,
+    overview: String,
+    poster: Option<Image>,
+    banner: Option<Image>,
+    fanart: Option<Image>,
+    remote_id: Option<RemoteId>,
+    watched: bool,
+    watched_count: i64,
+}
+
+#[derive(Row)]
+struct WatchedRow {
+    id: WatchedId,
+    timestamp: Timestamp,
+    kind: String,
+    series_id: Option<SeriesId>,
+    episode_id: Option<EpisodeId>,
+    movie_id: Option<MovieId>,
+}
+
+#[derive(Row)]
+struct PendingEpisodeRow {
+    series_id: SeriesId,
+    episode_id: EpisodeId,
+    aired: Option<Date>,
+    series_title: String,
+    episode_name: Option<String>,
+    season: i64,
+    number: i64,
+    poster: Option<Image>,
+}
+
+#[derive(Row)]
+struct PendingMovieRow {
+    movie_id: MovieId,
+    title: String,
+    release_date: Option<Date>,
+    poster: Option<Image>,
+}
+
+#[derive(Row)]
+struct ScheduleRow {
+    series_id: SeriesId,
+    series_title: String,
+    episode_id: EpisodeId,
+    season: i64,
+    number: i64,
+    absolute_number: Option<i64>,
+    name: Option<String>,
+    overview: String,
+    aired: Option<Date>,
+    filename: Option<Image>,
+    remote_id: Option<RemoteId>,
+}
+
+#[derive(Row)]
+struct ConfigRow {
+    value: String,
+}
+
+// ── Statements ───────────────────────────────────────────────────────────────
+
+macro_rules! statements {
+    (
+        $vis:vis struct $struct_name:ident {
+            $($name:ident: $sql:expr),* $(,)?
+        }
+    ) => {
+        $vis struct $struct_name {
+            $($name: SendStatement,)*
+        }
+
+        impl $struct_name {
+            fn new(c: &sqll::Connection) -> Result<Self> {
+                unsafe {
+                    Ok(Self {
+                        $(
+                            $name: c
+                                .prepare_with($sql)
+                                .persistent()
+                                .build()
+                                .context(concat!("preparing statement ", stringify!($name)))?
+                                .into_send()?,
+                        )*
+                    })
+                }
+            }
+        }
+    }
+}
+
+statements! {
+    struct Inner {
+        // series
+        insert_series: r#"
+            INSERT INTO series (title, first_air, overview, poster, banner, fanart, tracked, remote_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            RETURNING id, title, first_air, overview, poster, banner, fanart, tracked, remote_id
+        "#,
+        list_series: r#"
+            SELECT id, title, first_air, overview, poster, banner, fanart, tracked, remote_id
+            FROM series ORDER BY title
+        "#,
+        series_by_id: r#"
+            SELECT id, title, first_air, overview, poster, banner, fanart, tracked, remote_id
+            FROM series WHERE id = ?
+        "#,
+        update_series: r#"
+            UPDATE series
+            SET title = ?, first_air = ?, overview = ?, poster = ?, banner = ?, fanart = ?, tracked = ?, remote_id = ?
+            WHERE id = ?
+        "#,
+        delete_series: r#"
+            DELETE FROM series WHERE id = ?
+        "#,
+        set_series_tracked: r#"
+            UPDATE series SET tracked = ? WHERE id = ?
+        "#,
+
+        // seasons
+        upsert_season: r#"
+            INSERT INTO seasons (series_id, number, air_date, name, overview, poster)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(series_id, number) DO UPDATE SET
+                air_date  = excluded.air_date,
+                name      = excluded.name,
+                overview  = excluded.overview,
+                poster    = excluded.poster
+            RETURNING id, series_id, number, air_date, name, overview, poster
+        "#,
+        list_seasons: r#"
+            SELECT id, series_id, number, air_date, name, overview, poster
+            FROM seasons WHERE series_id = ? ORDER BY number
+        "#,
+
+        // episodes
+        upsert_episode: r#"
+            INSERT INTO episodes (series_id, season, number, absolute_number, name, overview, aired, filename, remote_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(series_id, season, number) DO UPDATE SET
+                absolute_number = excluded.absolute_number,
+                name            = excluded.name,
+                overview        = excluded.overview,
+                aired           = excluded.aired,
+                filename        = excluded.filename,
+                remote_id       = excluded.remote_id
+            RETURNING id, series_id, season, number, absolute_number, name, overview, aired, filename, remote_id,
+                      0 AS watched, 0 AS watched_count
+        "#,
+        list_episodes: r#"
+            SELECT e.id, e.series_id, e.season, e.number, e.absolute_number, e.name, e.overview,
+                   e.aired, e.filename, e.remote_id,
+                   (SELECT COUNT(*) FROM watched w WHERE w.episode_id = e.id) > 0 AS watched,
+                   (SELECT COUNT(*) FROM watched w WHERE w.episode_id = e.id) AS watched_count
+            FROM episodes e
+            WHERE e.series_id = ? AND e.season = ?
+            ORDER BY e.number
+        "#,
+        episode_by_id: r#"
+            SELECT e.id, e.series_id, e.season, e.number, e.absolute_number, e.name, e.overview,
+                   e.aired, e.filename, e.remote_id,
+                   (SELECT COUNT(*) FROM watched w WHERE w.episode_id = e.id) > 0 AS watched,
+                   (SELECT COUNT(*) FROM watched w WHERE w.episode_id = e.id) AS watched_count
+            FROM episodes e WHERE e.id = ?
+        "#,
+
+        // movies
+        insert_movie: r#"
+            INSERT INTO movies (title, release_date, overview, poster, banner, fanart, remote_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            RETURNING id, title, release_date, overview, poster, banner, fanart, remote_id,
+                      0 AS watched, 0 AS watched_count
+        "#,
+        list_movies: r#"
+            SELECT m.id, m.title, m.release_date, m.overview, m.poster, m.banner, m.fanart, m.remote_id,
+                   (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) > 0 AS watched,
+                   (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) AS watched_count
+            FROM movies m ORDER BY m.title
+        "#,
+        movie_by_id: r#"
+            SELECT m.id, m.title, m.release_date, m.overview, m.poster, m.banner, m.fanart, m.remote_id,
+                   (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) > 0 AS watched,
+                   (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) AS watched_count
+            FROM movies m WHERE m.id = ?
+        "#,
+        delete_movie: r#"
+            DELETE FROM movies WHERE id = ?
+        "#,
+
+        // watched
+        insert_watched: r#"
+            INSERT INTO watched (timestamp, kind, series_id, episode_id, movie_id)
+            VALUES (?, ?, ?, ?, ?)
+            RETURNING id, timestamp, kind, series_id, episode_id, movie_id
+        "#,
+        delete_watched: r#"
+            DELETE FROM watched WHERE id = ?
+        "#,
+        list_watched_episode: r#"
+            SELECT id, timestamp, kind, series_id, episode_id, movie_id
+            FROM watched WHERE episode_id = ? ORDER BY timestamp DESC
+        "#,
+        list_watched_movie: r#"
+            SELECT id, timestamp, kind, series_id, episode_id, movie_id
+            FROM watched WHERE movie_id = ? ORDER BY timestamp DESC
+        "#,
+
+        // pending (unwatched aired episodes + unwatched movies)
+        list_pending_episodes: r#"
+            SELECT e.series_id, e.id AS episode_id, e.aired,
+                   s.title AS series_title,
+                   e.name AS episode_name,
+                   e.season, e.number,
+                   s.poster
+            FROM episodes e
+            JOIN series s ON s.id = e.series_id
+            WHERE s.tracked = 1
+              AND e.aired IS NOT NULL
+              AND e.aired <= ?
+              AND NOT EXISTS (SELECT 1 FROM watched w WHERE w.episode_id = e.id)
+            ORDER BY e.aired DESC, s.title, e.season, e.number
+        "#,
+        list_pending_movies: r#"
+            SELECT m.id AS movie_id, m.title, m.release_date, m.poster
+            FROM movies m
+            WHERE m.release_date IS NOT NULL
+              AND m.release_date <= ?
+              AND NOT EXISTS (SELECT 1 FROM watched w WHERE w.movie_id = m.id)
+            ORDER BY m.release_date DESC, m.title
+        "#,
+
+        // schedule: episodes airing in the next N days
+        list_schedule: r#"
+            SELECT e.series_id, s.title AS series_title,
+                   e.id AS episode_id, e.season, e.number, e.absolute_number,
+                   e.name, e.overview, e.aired, e.filename, e.remote_id
+            FROM episodes e
+            JOIN series s ON s.id = e.series_id
+            WHERE s.tracked = 1
+              AND e.aired > ?
+              AND e.aired <= ?
+            ORDER BY e.aired, s.title, e.season, e.number
+        "#,
+
+        // all watched (for import dedup)
+        list_all_watched: r#"
+            SELECT id, timestamp, kind, series_id, episode_id, movie_id
+            FROM watched
+        "#,
+
+        // config
+        get_config: r#"
+            SELECT value FROM config WHERE key = ?
+        "#,
+        set_config: r#"
+            INSERT INTO config (key, value) VALUES (?, ?)
+            ON CONFLICT (key) DO UPDATE SET value = excluded.value
+        "#,
+    }
+}
+
+// ── Database ─────────────────────────────────────────────────────────────────
+
+pub enum OpenMode {
+    /// Full synchronization — safe for the server.
+    Normal,
+    /// No journaling or fsync — fast for bulk import; not crash-safe.
+    Bulk,
+}
+
+pub struct Database {
+    inner: Arc<Mutex<Inner>>,
+}
+
+impl Clone for Database {
+    fn clone(&self) -> Self {
+        Self {
+            inner: Arc::clone(&self.inner),
+        }
+    }
+}
+
+impl Database {
+    pub fn open(path: impl AsRef<Path>, mode: OpenMode) -> Result<Self> {
+        let path = path.as_ref();
+
+        let c = OpenOptions::new()
+            .extended_result_codes()
+            .read_write()
+            .create()
+            .no_mutex()
+            .open(path.as_os_str())
+            .with_context(|| path.display().to_string())?;
+
+        do_migrations(&c).context("running migrations")?;
+        ensure_mode(&c, mode).context("setting database mode")?;
+
+        let inner = Inner::new(&c).context("preparing statements")?;
+
+        Ok(Self {
+            inner: Arc::new(Mutex::new(inner)),
+        })
+    }
+
+    // ── Series ──
+
+    pub async fn create_series(
+        &self,
+        title: &str,
+        first_air: Option<&Date>,
+        overview: &str,
+        poster: Option<&Image>,
+        banner: Option<&Image>,
+        fanart: Option<&Image>,
+        remote_id: Option<&RemoteId>,
+    ) -> Result<api::Series> {
+        let title = title.to_owned();
+        let first_air = first_air.cloned();
+        let overview = overview.to_owned();
+        let poster = poster.cloned();
+        let banner = banner.cloned();
+        let fanart = fanart.cloned();
+        let remote_id = remote_id.cloned();
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.insert_series.bind((
+                &title[..],
+                first_air.as_ref(),
+                &overview[..],
+                poster.as_ref(),
+                banner.as_ref(),
+                fanart.as_ref(),
+                true,
+                remote_id.as_ref(),
+            ))?;
+
+            let r = s
+                .insert_series
+                .next::<SeriesRow>()?
+                .context("insert_series returned no row")?;
+
+            ensure!(s.insert_series.step()?.is_done(), "insert_series");
+            Ok(series_from_row(r))
+        })
+        .await?
+    }
+
+    pub async fn series(&self) -> Result<Vec<api::Series>> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.list_series.reset()?;
+            let mut out = Vec::new();
+            while let Some(r) = s.list_series.next::<SeriesRow>()? {
+                out.push(series_from_row(r));
+            }
+            Ok(out)
+        })
+        .await?
+    }
+
+    pub async fn series_by_id(&self, id: SeriesId) -> Result<Option<api::Series>> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.series_by_id.bind((id,))?;
+            Ok(s.series_by_id.next::<SeriesRow>()?.map(series_from_row))
+        })
+        .await?
+    }
+
+    pub async fn update_series(
+        &self,
+        id: SeriesId,
+        title: &str,
+        first_air: Option<&Date>,
+        overview: &str,
+        poster: Option<&Image>,
+        banner: Option<&Image>,
+        fanart: Option<&Image>,
+        tracked: bool,
+        remote_id: Option<&RemoteId>,
+    ) -> Result<()> {
+        let title = title.to_owned();
+        let first_air = first_air.cloned();
+        let overview = overview.to_owned();
+        let poster = poster.cloned();
+        let banner = banner.cloned();
+        let fanart = fanart.cloned();
+        let remote_id = remote_id.cloned();
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.update_series.bind((
+                &title[..],
+                first_air.as_ref(),
+                &overview[..],
+                poster.as_ref(),
+                banner.as_ref(),
+                fanart.as_ref(),
+                tracked,
+                remote_id.as_ref(),
+                id,
+            ))?;
+            ensure!(s.update_series.step()?.is_done(), "update_series");
+            Ok(())
+        })
+        .await?
+    }
+
+    pub async fn delete_series(&self, id: SeriesId) -> Result<()> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.delete_series.bind((id,))?;
+            ensure!(s.delete_series.step()?.is_done(), "delete_series");
+            Ok(())
+        })
+        .await?
+    }
+
+    pub async fn set_series_tracked(&self, id: SeriesId, tracked: bool) -> Result<()> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.set_series_tracked.bind((tracked, id))?;
+            ensure!(s.set_series_tracked.step()?.is_done(), "set_series_tracked");
+            Ok(())
+        })
+        .await?
+    }
+
+    // ── Seasons ──
+
+    pub async fn upsert_season(
+        &self,
+        series_id: SeriesId,
+        number: SeasonNumber,
+        air_date: Option<&Date>,
+        name: Option<&str>,
+        overview: &str,
+        poster: Option<&Image>,
+    ) -> Result<api::Season> {
+        let air_date = air_date.cloned();
+        let name = name.map(str::to_owned);
+        let overview = overview.to_owned();
+        let poster = poster.cloned();
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.upsert_season.bind((
+                series_id,
+                number.to_i64(),
+                air_date.as_ref(),
+                name.as_deref(),
+                &overview[..],
+                poster.as_ref(),
+            ))?;
+            let r = s
+                .upsert_season
+                .next::<SeasonRow>()?
+                .context("upsert_season returned no row")?;
+            ensure!(s.upsert_season.step()?.is_done(), "upsert_season");
+            Ok(season_from_row(r))
+        })
+        .await?
+    }
+
+    pub async fn seasons(&self, series_id: SeriesId) -> Result<Vec<api::Season>> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.list_seasons.bind((series_id,))?;
+            let mut out = Vec::new();
+            while let Some(r) = s.list_seasons.next::<SeasonRow>()? {
+                out.push(season_from_row(r));
+            }
+            Ok(out)
+        })
+        .await?
+    }
+
+    // ── Episodes ──
+
+    pub async fn upsert_episode(
+        &self,
+        series_id: SeriesId,
+        season: SeasonNumber,
+        number: u32,
+        absolute_number: Option<u32>,
+        name: Option<&str>,
+        overview: &str,
+        aired: Option<&Date>,
+        filename: Option<&Image>,
+        remote_id: Option<&RemoteId>,
+    ) -> Result<api::Episode> {
+        let name = name.map(str::to_owned);
+        let overview = overview.to_owned();
+        let aired = aired.cloned();
+        let filename = filename.cloned();
+        let remote_id = remote_id.cloned();
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.upsert_episode.bind((
+                series_id,
+                season.to_i64(),
+                number as i64,
+                absolute_number.map(|n| n as i64),
+                name.as_deref(),
+                &overview[..],
+                aired.as_ref(),
+                filename.as_ref(),
+                remote_id.as_ref(),
+            ))?;
+            let r = s
+                .upsert_episode
+                .next::<EpisodeRow>()?
+                .context("upsert_episode returned no row")?;
+            ensure!(s.upsert_episode.step()?.is_done(), "upsert_episode");
+            Ok(episode_from_row(r))
+        })
+        .await?
+    }
+
+    pub async fn episodes(
+        &self,
+        series_id: SeriesId,
+        season: SeasonNumber,
+    ) -> Result<Vec<api::Episode>> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.list_episodes.bind((series_id, season.to_i64()))?;
+            let mut out = Vec::new();
+            while let Some(r) = s.list_episodes.next::<EpisodeRow>()? {
+                out.push(episode_from_row(r));
+            }
+            Ok(out)
+        })
+        .await?
+    }
+
+    pub async fn episode_by_id(&self, id: EpisodeId) -> Result<Option<api::Episode>> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.episode_by_id.bind((id,))?;
+            Ok(s.episode_by_id.next::<EpisodeRow>()?.map(episode_from_row))
+        })
+        .await?
+    }
+
+    // ── Movies ──
+
+    pub async fn create_movie(
+        &self,
+        title: &str,
+        release_date: Option<&Date>,
+        overview: &str,
+        poster: Option<&Image>,
+        banner: Option<&Image>,
+        fanart: Option<&Image>,
+        remote_id: Option<&RemoteId>,
+    ) -> Result<api::Movie> {
+        let title = title.to_owned();
+        let release_date = release_date.cloned();
+        let overview = overview.to_owned();
+        let poster = poster.cloned();
+        let banner = banner.cloned();
+        let fanart = fanart.cloned();
+        let remote_id = remote_id.cloned();
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.insert_movie.bind((
+                &title[..],
+                release_date.as_ref(),
+                &overview[..],
+                poster.as_ref(),
+                banner.as_ref(),
+                fanart.as_ref(),
+                remote_id.as_ref(),
+            ))?;
+            let r = s
+                .insert_movie
+                .next::<MovieRow>()?
+                .context("insert_movie returned no row")?;
+            ensure!(s.insert_movie.step()?.is_done(), "insert_movie");
+            Ok(movie_from_row(r))
+        })
+        .await?
+    }
+
+    pub async fn movies(&self) -> Result<Vec<api::Movie>> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.list_movies.reset()?;
+            let mut out = Vec::new();
+            while let Some(r) = s.list_movies.next::<MovieRow>()? {
+                out.push(movie_from_row(r));
+            }
+            Ok(out)
+        })
+        .await?
+    }
+
+    pub async fn movie_by_id(&self, id: MovieId) -> Result<Option<api::Movie>> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.movie_by_id.bind((id,))?;
+            Ok(s.movie_by_id.next::<MovieRow>()?.map(movie_from_row))
+        })
+        .await?
+    }
+
+    pub async fn delete_movie(&self, id: MovieId) -> Result<()> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.delete_movie.bind((id,))?;
+            ensure!(s.delete_movie.step()?.is_done(), "delete_movie");
+            Ok(())
+        })
+        .await?
+    }
+
+    // ── Watched ──
+
+    pub async fn mark_watched(
+        &self,
+        kind: WatchedKind,
+        timestamp: Timestamp,
+    ) -> Result<api::Watched> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            let (kind_str, series_id, episode_id, movie_id) = match kind {
+                WatchedKind::Episode { series, episode } => {
+                    ("episode", Some(series), Some(episode), None)
+                }
+                WatchedKind::Movie { movie } => ("movie", None, None, Some(movie)),
+            };
+
+            s.insert_watched
+                .bind((timestamp, kind_str, series_id, episode_id, movie_id))?;
+            let r = s
+                .insert_watched
+                .next::<WatchedRow>()?
+                .context("insert_watched returned no row")?;
+            ensure!(s.insert_watched.step()?.is_done(), "insert_watched");
+            Ok(watched_from_row(r)?)
+        })
+        .await?
+    }
+
+    pub async fn remove_watched(&self, id: WatchedId) -> Result<()> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.delete_watched.bind((id,))?;
+            ensure!(s.delete_watched.step()?.is_done(), "delete_watched");
+            Ok(())
+        })
+        .await?
+    }
+
+    pub async fn all_watched(&self) -> Result<Vec<api::Watched>> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.list_all_watched.reset()?;
+            let mut out = Vec::new();
+            while let Some(r) = s.list_all_watched.next::<WatchedRow>()? {
+                out.push(watched_from_row(r)?);
+            }
+            Ok(out)
+        })
+        .await?
+    }
+
+    pub async fn watched_for_episode(&self, episode_id: EpisodeId) -> Result<Vec<api::Watched>> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.list_watched_episode.bind((episode_id,))?;
+            let mut out = Vec::new();
+            while let Some(r) = s.list_watched_episode.next::<WatchedRow>()? {
+                out.push(watched_from_row(r)?);
+            }
+            Ok(out)
+        })
+        .await?
+    }
+
+    pub async fn watched_for_movie(&self, movie_id: MovieId) -> Result<Vec<api::Watched>> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.list_watched_movie.bind((movie_id,))?;
+            let mut out = Vec::new();
+            while let Some(r) = s.list_watched_movie.next::<WatchedRow>()? {
+                out.push(watched_from_row(r)?);
+            }
+            Ok(out)
+        })
+        .await?
+    }
+
+    // ── Dashboard queries ──
+
+    pub async fn pending_episodes(&self, limit: u32) -> Result<Vec<api::Pending>> {
+        let today = api::Date::today();
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.list_pending_episodes.bind((today,))?;
+            let mut out = Vec::new();
+
+            while let Some(r) = s.list_pending_episodes.next::<PendingEpisodeRow>()? {
+                if out.len() >= limit as usize {
+                    break;
+                }
+                let label = match r.episode_name {
+                    Some(ref name) => format!("S{:02}E{:02} – {}", r.season, r.number, name),
+                    None => format!("S{:02}E{:02}", r.season, r.number),
+                };
+                out.push(api::Pending {
+                    kind: api::PendingKind::Episode {
+                        series: r.series_id,
+                        episode: r.episode_id,
+                    },
+                    aired: r.aired,
+                    series_title: Some(r.series_title),
+                    label,
+                    poster: r.poster,
+                });
+            }
+
+            s.list_pending_episodes.reset()?;
+            Ok(out)
+        })
+        .await?
+    }
+
+    pub async fn pending_movies(&self) -> Result<Vec<api::Pending>> {
+        let today = api::Date::today();
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.list_pending_movies.bind((today,))?;
+            let mut out = Vec::new();
+            while let Some(r) = s.list_pending_movies.next::<PendingMovieRow>()? {
+                out.push(api::Pending {
+                    kind: api::PendingKind::Movie { movie: r.movie_id },
+                    aired: r.release_date,
+                    series_title: None,
+                    label: r.title,
+                    poster: r.poster,
+                });
+            }
+            Ok(out)
+        })
+        .await?
+    }
+
+    pub async fn schedule(&self, days: u32) -> Result<Vec<api::ScheduledDay>> {
+        let today = api::Date::today();
+        let end = today.checked_add_days(days as i32);
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.list_schedule.bind((today, end))?;
+
+            let mut days_map: Vec<(Date, Vec<(SeriesId, String, Vec<api::Episode>)>)> = Vec::new();
+
+            while let Some(r) = s.list_schedule.next::<ScheduleRow>()? {
+                let Some(day) = r.aired else { continue };
+
+                let ep = api::Episode {
+                    id: r.episode_id,
+                    series_id: r.series_id,
+                    season: SeasonNumber::from_i64(r.season),
+                    number: r.number as u32,
+                    absolute_number: r.absolute_number.map(|n| n as u32),
+                    name: r.name,
+                    overview: r.overview,
+                    aired: r.aired,
+                    filename: r.filename,
+                    remote_id: r.remote_id,
+                    watched: false,
+                    watched_count: 0,
+                };
+
+                if let Some(day_entry) = days_map.iter_mut().find(|(d, _)| d == &day) {
+                    if let Some(series_entry) =
+                        day_entry.1.iter_mut().find(|(id, _, _)| *id == r.series_id)
+                    {
+                        series_entry.2.push(ep);
+                    } else {
+                        day_entry.1.push((r.series_id, r.series_title, vec![ep]));
+                    }
+                } else {
+                    days_map.push((day, vec![(r.series_id, r.series_title, vec![ep])]));
+                }
+            }
+
+            let out = days_map
+                .into_iter()
+                .map(|(date, series)| api::ScheduledDay {
+                    date,
+                    entries: series
+                        .into_iter()
+                        .map(|(series_id, series_title, episodes)| api::ScheduledEntry {
+                            series_id,
+                            series_title,
+                            episodes,
+                        })
+                        .collect(),
+                })
+                .collect();
+
+            Ok(out)
+        })
+        .await?
+    }
+
+    // ── Config ──
+
+    pub async fn get_config(&self, key: &str) -> Result<Option<String>> {
+        let key = key.to_owned();
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.get_config.bind((key.as_str(),))?;
+            Ok(s.get_config.next::<ConfigRow>()?.map(|r| r.value))
+        })
+        .await?
+    }
+
+    pub async fn set_config(&self, key: &str, value: &str) -> Result<()> {
+        let key = key.to_owned();
+        let value = value.to_owned();
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.set_config.bind((key.as_str(), value.as_str()))?;
+            ensure!(s.set_config.step()?.is_done(), "set_config");
+            Ok(())
+        })
+        .await?
+    }
+
+    pub async fn load_config(&self) -> Result<Config> {
+        let theme = self
+            .get_config("theme")
+            .await?
+            .and_then(|v| match v.as_str() {
+                "dark" => Some(ThemeType::Dark),
+                "light" => Some(ThemeType::Light),
+                _ => None,
+            })
+            .unwrap_or_default();
+
+        let tvdb_legacy_apikey = self
+            .get_config("tvdb_legacy_apikey")
+            .await?
+            .unwrap_or_default();
+
+        let tmdb_api_key = self.get_config("tmdb_api_key").await?.unwrap_or_default();
+
+        let schedule_duration_days = self
+            .get_config("schedule_duration_days")
+            .await?
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(7);
+
+        let dashboard_limit = self
+            .get_config("dashboard_limit")
+            .await?
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(6);
+
+        let dashboard_page = self
+            .get_config("dashboard_page")
+            .await?
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(6);
+
+        Ok(Config {
+            theme,
+            tvdb_legacy_apikey,
+            tmdb_api_key,
+            schedule_duration_days,
+            dashboard_limit,
+            dashboard_page,
+        })
+    }
+
+    pub async fn save_config(&self, config: &Config) -> Result<()> {
+        self.set_config("theme", config.theme.to_string().as_str())
+            .await?;
+        self.set_config("tvdb_legacy_apikey", &config.tvdb_legacy_apikey)
+            .await?;
+        self.set_config("tmdb_api_key", &config.tmdb_api_key)
+            .await?;
+        self.set_config(
+            "schedule_duration_days",
+            &config.schedule_duration_days.to_string(),
+        )
+        .await?;
+        self.set_config("dashboard_limit", &config.dashboard_limit.to_string())
+            .await?;
+        self.set_config("dashboard_page", &config.dashboard_page.to_string())
+            .await?;
+        Ok(())
+    }
+}
+
+// ── Row converters ───────────────────────────────────────────────────────────
+
+fn series_from_row(r: SeriesRow) -> api::Series {
+    api::Series {
+        id: r.id,
+        title: r.title,
+        first_air_date: r.first_air,
+        overview: r.overview,
+        poster: r.poster,
+        banner: r.banner,
+        fanart: r.fanart,
+        tracked: r.tracked,
+        remote_id: r.remote_id,
+    }
+}
+
+fn season_from_row(r: SeasonRow) -> api::Season {
+    api::Season {
+        id: r.id,
+        series_id: r.series_id,
+        number: SeasonNumber::from_i64(r.number),
+        air_date: r.air_date,
+        name: r.name,
+        overview: r.overview,
+        poster: r.poster,
+    }
+}
+
+fn episode_from_row(r: EpisodeRow) -> api::Episode {
+    api::Episode {
+        id: r.id,
+        series_id: r.series_id,
+        season: SeasonNumber::from_i64(r.season),
+        number: r.number as u32,
+        absolute_number: r.absolute_number.map(|n| n as u32),
+        name: r.name,
+        overview: r.overview,
+        aired: r.aired,
+        filename: r.filename,
+        remote_id: r.remote_id,
+        watched: r.watched,
+        watched_count: r.watched_count as u32,
+    }
+}
+
+fn movie_from_row(r: MovieRow) -> api::Movie {
+    api::Movie {
+        id: r.id,
+        title: r.title,
+        release_date: r.release_date,
+        overview: r.overview,
+        poster: r.poster,
+        banner: r.banner,
+        fanart: r.fanart,
+        remote_id: r.remote_id,
+        watched: r.watched,
+        watched_count: r.watched_count as u32,
+    }
+}
+
+fn watched_from_row(r: WatchedRow) -> Result<api::Watched> {
+    let kind = match r.kind.as_str() {
+        "episode" => {
+            let series = r.series_id.context("watched episode missing series_id")?;
+            let episode = r.episode_id.context("watched episode missing episode_id")?;
+            WatchedKind::Episode { series, episode }
+        }
+        "movie" => {
+            let movie = r.movie_id.context("watched movie missing movie_id")?;
+            WatchedKind::Movie { movie }
+        }
+        other => anyhow::bail!("unknown watched kind: {other}"),
+    };
+
+    Ok(api::Watched {
+        id: r.id,
+        timestamp: r.timestamp,
+        kind,
+    })
+}
+
+// ── Migrations ───────────────────────────────────────────────────────────────
+
+fn do_migrations(c: &sqll::Connection) -> Result<()> {
+    c.execute(MIGRATIONS_INIT)?;
+
+    let mut select = c.prepare("SELECT applied_at FROM migrations WHERE id = ?")?;
+    let mut insert = c.prepare("INSERT INTO migrations (id, applied_at) VALUES (?, ?)")?;
+
+    for file in Migrations::iter() {
+        let id = file.as_ref();
+
+        let result = (|| {
+            select.bind(id)?;
+
+            if let Some(applied_at) = select.next::<String>()? {
+                tracing::debug!(id, applied_at, "migration already applied");
+                return Ok(());
+            }
+
+            let Some(asset) = Migrations::get(id) else {
+                anyhow::bail!("migration file not found: {id}");
+            };
+
+            let sql = std::str::from_utf8(asset.data.as_ref())
+                .with_context(|| format!("migration {id} is not valid UTF-8"))?;
+
+            c.execute(sql)
+                .with_context(|| format!("executing migration {id}"))?;
+
+            let now = Timestamp::now().to_string();
+            insert.bind((id, now.as_str()))?;
+            ensure!(insert.step()?.is_done(), "stepping migration insert");
+            tracing::info!(id, "migration applied");
+            Ok(())
+        })();
+
+        result.with_context(|| format!("migration {id}"))?;
+    }
+
+    Ok(())
+}
+
+fn ensure_mode(c: &sqll::Connection, mode: OpenMode) -> Result<()> {
+    match mode {
+        OpenMode::Normal => {
+            let journal = c
+                .prepare("PRAGMA journal_mode")?
+                .into_iter::<String>()
+                .next()
+                .transpose()?;
+            if journal.as_deref() != Some("delete") {
+                tracing::warn!(?journal, "switching journal mode to delete");
+                c.execute("PRAGMA journal_mode = delete;")?;
+            }
+
+            let synchronous = c
+                .prepare("PRAGMA synchronous")?
+                .into_iter::<i64>()
+                .next()
+                .transpose()?;
+            if synchronous != Some(2) {
+                tracing::warn!(?synchronous, "switching synchronous to full");
+                c.execute("PRAGMA synchronous = full;")?;
+            }
+        }
+        OpenMode::Bulk => {
+            c.execute("PRAGMA journal_mode = off; PRAGMA synchronous = off;")?;
+        }
+    }
+
+    Ok(())
+}

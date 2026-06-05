@@ -1,0 +1,34 @@
+[package]
+name = "frontend"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+api = { path = "../api" }
+derive_more = { version = "2.1.1", features = ["display"] }
+
+gloo = "0.12"
+js-sys = "0.3"
+musli-web = { version = "0.4.2", default-features = false, features = ["web03", "yew023"] }
+tracing = "0.1"
+tracing-wasm = "0.2"
+wasm-bindgen = "0.2"
+yew = { version = "0.23.0", features = ["csr"] }
+
+[dependencies.web-sys]
+version = "0.3"
+features = [
+    "Document",
+    "Element",
+    "EventTarget",
+    "History",
+    "HtmlElement",
+    "HtmlInputElement",
+    "KeyboardEvent",
+    "Location",
+    "MouseEvent",
+    "Window",
+]

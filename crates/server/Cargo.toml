@@ -1,0 +1,28 @@
+[package]
+name = "server"
+edition = "2024"
+publish = false
+
+[features]
+default = ["bundle"]
+bundle = ["dep:rust-embed", "dep:mime_guess"]
+
+[dependencies]
+api = { path = "../api" }
+db = { path = "../db" }
+
+anyhow = "1"
+axum = "0.8"
+bytes = "1"
+clap = { version = "4", features = ["derive", "env"] }
+lru = "0.12"
+mime_guess = { version = "2", default-features = false, optional = true }
+musli-web = { version = "0.4.2", default-features = false, features = ["axum08"] }
+parking_lot = "0.12"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+rust-embed = { version = "8", optional = true }
+tempfile = "3"
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.6", features = ["cors"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

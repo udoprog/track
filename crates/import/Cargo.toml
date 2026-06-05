@@ -1,0 +1,22 @@
+[package]
+name = "import"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "import"
+path = "src/main.rs"
+
+[dependencies]
+api = { path = "../api" }
+db = { path = "../db" }
+
+anyhow = "1"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["serde"] }

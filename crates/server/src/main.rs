@@ -1,0 +1,104 @@
+mod cache;
+mod proxy;
+#[cfg(feature = "bundle")]
+mod static_assets;
+mod ws;
+
+use std::net::SocketAddr;
+use std::path::PathBuf;
+
+use anyhow::{Context as _, Result};
+use api::AppEvent;
+use axum::Router;
+use axum::routing::get;
+use cache::ImageCache;
+use clap::Parser;
+use db::Database;
+use musli_web::ws::Channels;
+use tokio::sync::broadcast;
+use tower_http::cors::CorsLayer;
+
+#[derive(Clone)]
+struct AppState {
+    db: Database,
+    broadcast: broadcast::Sender<AppEvent>,
+    channels: Channels,
+    http: reqwest::Client,
+    cache: ImageCache,
+}
+
+#[derive(Parser)]
+#[command(version, about = "OnTV web server")]
+struct Args {
+    /// Path to the SQLite database file.
+    #[arg(long, default_value = "ontv.db")]
+    db_path: PathBuf,
+
+    /// Directory for the image proxy disk cache.
+    #[arg(long, default_value = "image-cache")]
+    cache_dir: PathBuf,
+
+    /// Address to listen on.
+    #[arg(long, default_value = "127.0.0.1:3000")]
+    bind: SocketAddr,
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive("info".parse().context("invalid tracing directive")?),
+        )
+        .init();
+
+    let args = Args::parse();
+
+    let db =
+        Database::open(&args.db_path, db::OpenMode::Normal).context("failed to open database")?;
+
+    let http = reqwest::Client::builder()
+        .user_agent("ontv-musli-web/0.1")
+        .build()
+        .context("building HTTP client")?;
+
+    let cache = ImageCache::new(&args.cache_dir);
+
+    let (broadcast, _) = broadcast::channel(64);
+
+    let state = AppState {
+        db,
+        broadcast,
+        channels: Channels::default(),
+        http,
+        cache,
+    };
+
+    let app = Router::new();
+    let app = app.route("/ws", get(ws::ws_handler));
+    let app = app.route("/api/image/{source}/{*path}", get(proxy::image_handler));
+
+    #[cfg(feature = "bundle")]
+    let app = app.fallback(get(static_assets::handler));
+
+    let app = app.layer(CorsLayer::permissive()).with_state(state);
+
+    tracing::info!("listening on {}", args.bind);
+
+    let listener = tokio::net::TcpListener::bind(args.bind)
+        .await
+        .context("failed to bind")?;
+
+    let server = axum::serve(listener, app);
+
+    tokio::select! {
+        result = server => {
+            result.context("server error")?;
+        }
+        _ = tokio::signal::ctrl_c() => {
+            tracing::info!("received ctrl-c, shutting down");
+        }
+    }
+
+    Ok(())
+}

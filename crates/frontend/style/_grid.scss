@@ -1,0 +1,64 @@
+// 12-column responsive grid
+// $bp-md: outline moves beside map
+// $bp-lg: admin page switches to three columns
+
+$bp-md: 768px;
+$bp-lg: 1100px;
+
+@mixin until-mobile {
+    @media (max-width: #{$bp-md - 1px}) {
+        @content;
+    }
+}
+
+@mixin from-desktop {
+    @media (min-width: $bp-md) {
+        @content;
+    }
+}
+
+@mixin from-large {
+    @media (min-width: $bp-lg) {
+        @content;
+    }
+}
+
+.page-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+}
+
+// Mobile-first column spans (default)
+@for $i from 1 through 12 {
+    .col-#{$i} {
+        grid-column: span #{$i};
+    }
+}
+
+@include from-desktop {
+    @for $i from 1 through 12 {
+        .col-md-#{$i} {
+            grid-column: span #{$i};
+        }
+    }
+}
+
+@include from-large {
+    @for $i from 1 through 12 {
+        .col-lg-#{$i} {
+            grid-column: span #{$i};
+        }
+    }
+}
+
+.hide-mobile {
+    @include until-mobile {
+        display: none !important;
+    }
+}
+
+.show-mobile {
+    @include from-desktop {
+        display: none !important;
+    }
+}

@@ -1,0 +1,398 @@
+@use 'grid' as g;
+@use 'icons';
+
+$monospace-font: 'SF Mono', Consolas, 'SF Mono Regular', monospace;
+$sans-serif-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+
+// Palette
+$bg-dark: #222;
+$bg-panel: #2a2a2a;
+$bg-surface: #333;
+$text-primary: #eee;
+$text-muted: #aaa;
+$border-subtle: #444;
+$border-input: #555;
+$color-primary: #46a;
+$color-danger: #c26969;
+$color-danger-bg: #5a1a1a;
+$color-success: #73b173;
+
+// Dimensions
+$font-lg: 18px;
+$font-base: 16px;
+$font-sm: 14px;
+$font-xs: 12px;
+$radius-sm: 3px;
+$radius: 4px;
+$padding: 4px;
+$padding-row: 8px;
+$gap-sm: 12px;
+$gap: 16px;
+$input-height: 32px;
+$input-height-touch: 44px;
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+    background: $bg-dark;
+    color: $text-primary;
+    font-family: $sans-serif-font;
+    font-size: $font-base;
+    --icon-color: #{$text-primary};
+    --icon-color-invert: #{$bg-dark};
+}
+
+#app {
+    height: 100%;
+    overflow: hidden;
+}
+
+// Layout
+.app {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.app-body {
+    flex: 1;
+    overflow: auto;
+    padding: $gap;
+
+    @include g.until-mobile {
+        padding: $padding-row;
+    }
+}
+
+.toolbar {
+    display: flex;
+    align-items: center;
+    background: $bg-panel;
+    border-bottom: 1px solid $border-subtle;
+    padding: $padding-row $gap;
+    gap: $gap-sm;
+
+    @include g.until-mobile {
+        padding: $padding-row;
+        gap: $padding;
+    }
+}
+
+.row {
+    display: flex;
+    align-items: center;
+    gap: $gap-sm;
+}
+
+.row-fill {
+    display: flex;
+    align-items: center;
+    gap: $gap-sm;
+}
+
+.row.start {
+    justify-content: flex-start;
+}
+
+.row.end {
+    justify-content: flex-end;
+}
+
+.fill {
+    flex: 1;
+}
+
+.app-title {
+    font-size: $font-lg;
+    font-weight: 600;
+    color: $text-primary;
+}
+
+// Buttons
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: $padding-row;
+    background: $bg-surface;
+    color: $text-primary;
+    border: 1px solid $border-input;
+    border-radius: $radius-sm;
+    padding: 0 $gap-sm;
+    height: $input-height;
+    cursor: pointer;
+    font-size: $font-sm;
+
+    &:hover {
+        border-color: $color-primary;
+    }
+
+    @include g.until-mobile {
+        height: $input-height-touch;
+        padding: 0 $padding-row;
+    }
+}
+
+.btn-icon {
+    @extend .btn;
+    width: $input-height;
+    padding: 0;
+    justify-content: center;
+
+    @include g.until-mobile {
+        width: $input-height-touch;
+    }
+}
+
+.btn-icon-success {
+    @extend .btn-icon;
+    border-color: $color-success;
+    color: $color-success;
+
+    &:hover {
+        background: rgba($color-success, 0.15);
+    }
+}
+
+.hide-mobile {
+    @include g.until-mobile {
+        display: none;
+    }
+}
+
+// Section
+.section {
+    margin-bottom: $gap * 2;
+
+    h2 {
+        margin: 0 0 $gap-sm;
+        font-size: $font-lg;
+        font-weight: 600;
+    }
+}
+
+.text-muted {
+    color: $text-muted;
+    font-size: $font-sm;
+}
+
+// Dashboard
+.dashboard {
+    max-width: 960px;
+}
+
+.pending-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: $gap;
+
+    @include g.until-mobile {
+        grid-template-columns: 1fr;
+    }
+}
+
+.pending-item {
+    display: flex;
+    gap: $gap-sm;
+    background: $bg-panel;
+    border: 1px solid $border-subtle;
+    border-radius: $radius;
+    padding: $padding-row;
+}
+
+.pending-poster {
+    width: 64px;
+    height: 96px;
+    object-fit: cover;
+    border-radius: $radius-sm;
+    flex-shrink: 0;
+}
+
+.pending-poster-placeholder {
+    background: $bg-surface;
+}
+
+.pending-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
+}
+
+.pending-series {
+    font-size: $font-sm;
+    font-weight: 600;
+    color: $text-primary;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pending-label {
+    font-size: $font-sm;
+    color: $text-muted;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pending-date {
+    font-size: 12px;
+    color: $text-muted;
+}
+
+// Schedule
+.schedule-day {
+    margin-bottom: $gap;
+}
+
+.schedule-date {
+    margin: 0 0 $gap-sm;
+    font-size: $font-base;
+    color: $text-muted;
+    font-weight: normal;
+}
+
+.schedule-entry {
+    display: flex;
+    align-items: baseline;
+    gap: $gap-sm;
+    padding: $padding 0;
+    border-bottom: 1px solid $border-subtle;
+}
+
+.schedule-series {
+    font-weight: 600;
+    min-width: 180px;
+    flex-shrink: 0;
+
+    @include g.until-mobile {
+        min-width: 0;
+        flex-shrink: 1;
+    }
+}
+
+.schedule-episodes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: $gap-sm;
+    color: $text-muted;
+    font-size: $font-sm;
+}
+
+.schedule-ep {
+    white-space: nowrap;
+}
+
+// Utility
+.fill {
+    flex: 1;
+    min-width: 0;
+}
+
+// Media thumbnails
+.poster-sm {
+    width: 40px;
+    height: 60px;
+    object-fit: cover;
+    border-radius: $radius-sm;
+    flex-shrink: 0;
+    background: $bg-surface;
+}
+
+// Series detail two-panel layout
+.detail-layout {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+
+    @include g.until-mobile {
+        flex-direction: column;
+    }
+}
+
+.detail-sidebar {
+    width: 190px;
+    flex-shrink: 0;
+    border-right: 1px solid $border-subtle;
+    overflow-y: auto;
+
+    .group {
+        font-size: $font-sm;
+
+        &.active {
+            background: $bg-surface;
+            color: $color-primary;
+            font-weight: 600;
+        }
+    }
+
+    @include g.until-mobile {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid $border-subtle;
+        max-height: 160px;
+    }
+}
+
+.detail-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 $gap;
+
+    @include g.until-mobile {
+        padding: 0;
+    }
+}
+
+// Episode list
+.ep-code {
+    font-family: $monospace-font;
+    font-size: $font-xs;
+    color: $text-muted;
+    flex-shrink: 0;
+    width: 68px;
+}
+
+.ep-watched {
+    opacity: 0.5;
+}
+
+// Error
+.error-page {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+}
+
+.error-box {
+    background: $color-danger-bg;
+    border: 1px solid $color-danger;
+    border-radius: $radius;
+    color: $color-danger;
+    padding: $gap;
+    max-width: 480px;
+    width: 100%;
+
+    p {
+        margin: 0 0 $gap-sm;
+    }
+}
+
+.loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: $text-muted;
+}
