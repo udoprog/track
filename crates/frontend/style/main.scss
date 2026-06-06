@@ -231,9 +231,11 @@ body {
     }
 }
 
-// Section
+// Section / list row
 .section {
-    margin-bottom: $gap * 2;
+    display: flex;
+    flex-direction: column;
+    padding: $gap-sm;
 
     h2 {
         margin: 0 0 $gap-sm;
@@ -358,23 +360,6 @@ body {
     min-width: 0;
 }
 
-// List group rows
-.group {
-    padding: $padding-row $gap-sm;
-    border-bottom: 1px solid $border-subtle;
-
-    &:first-child {
-        border-top-left-radius: $radius;
-        border-top-right-radius: $radius;
-    }
-
-    &:last-child {
-        border-bottom: none;
-        border-bottom-left-radius: $radius;
-        border-bottom-right-radius: $radius;
-    }
-}
-
 // Empty state
 .empty {
     color: $text-muted;
@@ -419,7 +404,7 @@ body {
     border-right: 1px solid $border-subtle;
     overflow-y: auto;
 
-    .group {
+    .section {
         font-size: $font-sm;
 
         &.active {
@@ -468,10 +453,6 @@ body {
     color: $text-muted;
     flex-shrink: 0;
     width: 68px;
-}
-
-.watched {
-    opacity: 0.5;
 }
 
 // Error

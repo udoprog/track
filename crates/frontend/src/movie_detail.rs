@@ -355,7 +355,7 @@ impl MovieDetail {
                 </div>
                 <div class="detail-content">
                     if let Some(date) = movie.release_date {
-                        <div class="group text-muted">{date.to_string()}</div>
+                        <div class="section text-muted">{date.to_string()}</div>
                     }
 
                     if !movie.overview.is_empty() {
@@ -402,9 +402,9 @@ impl MovieDetail {
                     </div>
                     if !self.watched.is_empty() {
                         <div class="section">
-                            <div class="group text-muted">{"Watch history"}</div>
+                            <div class="section text-muted">{"Watch history"}</div>
                             { for self.watched.iter().map(|w| html! {
-                                <div class="group text-muted">{w.timestamp.to_string()}</div>
+                                <div class="section text-muted">{w.timestamp.to_string()}</div>
                             }) }
                         </div>
                     }

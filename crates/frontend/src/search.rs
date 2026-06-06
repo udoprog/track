@@ -113,7 +113,7 @@ impl Component for Search {
         html! {
             <div class="page">
                 <div class="page-title">{"Search"}</div>
-                <div class="group row">
+                <div class="section row">
                     <select class="input-select" onchange={on_kind} value={kind_val}>
                         <option value="series" selected={matches!(self.kind, api::SearchKind::Series)}>
                             {"Series"}
@@ -267,7 +267,7 @@ impl Search {
         let series_id = r.already_tracked;
 
         html! {
-            <div class="group row">
+            <div class="section row">
                 if let Some(ref poster) = r.poster {
                     <img class="poster-sm" src={poster.proxy_url()} alt="" />
                 } else {
@@ -313,7 +313,7 @@ impl Search {
         let movie_id = r.already_tracked;
 
         html! {
-            <div class="group row">
+            <div class="section row">
                 if let Some(ref poster) = r.poster {
                     <img class="poster-sm" src={poster.proxy_url()} alt="" />
                 } else {

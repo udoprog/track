@@ -540,7 +540,7 @@ impl SeriesDetail {
         };
 
         html! {
-            <div class={classes!("group", "row", "clickable", active.then_some("active"))} {onclick}>
+            <div class={classes!("section", "row", "clickable", active.then_some("active"))} {onclick}>
                 <span class="fill">{label}</span>
                 if let Some(date) = season.air_date {
                     <span class="text-muted">{date.year().to_string()}</span>
@@ -598,7 +598,7 @@ impl SeriesDetail {
                     };
 
                     html! {
-                        <div class={classes!("group", watched.then_some("ep-watched"))}>
+                        <div class={classes!("section", watched.then_some("watched"))}>
                             <div class="row">
                                 <span class="ep-code">
                                     { format!("S{:02}E{:02}", ep.season.to_i64(), ep.number) }
@@ -644,13 +644,15 @@ impl SeriesDetail {
                             </div>
 
                             if !ep.overview.is_empty() {
-                                <p class="ep-overview">{&ep.overview}</p>
+                                <p class="overview">{&ep.overview}</p>
                             }
 
                             if expanded {
-                                <div class="section">
+                                <div class="table">
                                     { for self.episode_history.iter().map(|w| html! {
-                                        <div class="group text-muted">{w.timestamp.to_string()}</div>
+                                        <div class="table-entry text-muted">
+                                            <span>{w.timestamp.to_string()}</span>
+                                        </div>
                                     }) }
                                 </div>
                             }
