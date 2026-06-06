@@ -20,6 +20,8 @@ mime_guess = { version = "2", default-features = false, optional = true }
 musli-web = { version = "0.4.2", default-features = false, features = ["axum08"] }
 parking_lot = "0.12"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 rust-embed = { version = "8", optional = true }
 tempfile = "3"
 tokio = { version = "1", features = ["full"] }

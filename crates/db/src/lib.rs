@@ -176,6 +176,10 @@ statements! {
             SELECT id, title, first_air, overview, poster, banner, fanart, tracked, remote_id
             FROM series WHERE id = ?
         "#,
+        series_by_remote: r#"
+            SELECT id, title, first_air, overview, poster, banner, fanart, tracked, remote_id
+            FROM series WHERE remote_id = ?
+        "#,
         update_series: r#"
             UPDATE series
             SET title = ?, first_air = ?, overview = ?, poster = ?, banner = ?, fanart = ?, tracked = ?, remote_id = ?
@@ -255,6 +259,17 @@ statements! {
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) > 0 AS watched,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) AS watched_count
             FROM movies m WHERE m.id = ?
+        "#,
+        movie_by_remote: r#"
+            SELECT m.id, m.title, m.release_date, m.overview, m.poster, m.banner, m.fanart, m.remote_id,
+                   (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) > 0 AS watched,
+                   (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) AS watched_count
+            FROM movies m WHERE m.remote_id = ?
+        "#,
+        update_movie: r#"
+            UPDATE movies
+            SET title = ?, release_date = ?, overview = ?, poster = ?, banner = ?, fanart = ?, remote_id = ?
+            WHERE id = ?
         "#,
         delete_movie: r#"
             DELETE FROM movies WHERE id = ?
@@ -686,6 +701,65 @@ impl Database {
         spawn_blocking(move || {
             s.movie_by_id.bind((id,))?;
             Ok(s.movie_by_id.next::<MovieRow>()?.map(movie_from_row))
+        })
+        .await?
+    }
+
+    pub async fn series_by_remote_id(&self, remote_id: &RemoteId) -> Result<Option<api::Series>> {
+        let remote_id = remote_id.clone();
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.series_by_remote.bind((remote_id,))?;
+            Ok(s.series_by_remote.next::<SeriesRow>()?.map(series_from_row))
+        })
+        .await?
+    }
+
+    pub async fn movie_by_remote_id(&self, remote_id: &RemoteId) -> Result<Option<api::Movie>> {
+        let remote_id = remote_id.clone();
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.movie_by_remote.bind((remote_id,))?;
+            Ok(s.movie_by_remote.next::<MovieRow>()?.map(movie_from_row))
+        })
+        .await?
+    }
+
+    pub async fn update_movie(
+        &self,
+        id: MovieId,
+        title: &str,
+        release_date: Option<&Date>,
+        overview: &str,
+        poster: Option<&Image>,
+        banner: Option<&Image>,
+        fanart: Option<&Image>,
+        remote_id: Option<&RemoteId>,
+    ) -> Result<()> {
+        let title = title.to_owned();
+        let release_date = release_date.cloned();
+        let overview = overview.to_owned();
+        let poster = poster.cloned();
+        let banner = banner.cloned();
+        let fanart = fanart.cloned();
+        let remote_id = remote_id.cloned();
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.update_movie.bind((
+                &title[..],
+                release_date.as_ref(),
+                &overview[..],
+                poster.as_ref(),
+                banner.as_ref(),
+                fanart.as_ref(),
+                remote_id.as_ref(),
+                id,
+            ))?;
+            ensure!(s.update_movie.step()?.is_done(), "update_movie");
+            Ok(())
         })
         .await?
     }

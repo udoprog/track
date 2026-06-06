@@ -1,5 +1,9 @@
 mod cache;
 mod proxy;
+mod remote;
+mod sync;
+mod tmdb;
+mod tvdb;
 #[cfg(feature = "bundle")]
 mod static_assets;
 mod ws;
@@ -15,6 +19,8 @@ use cache::ImageCache;
 use clap::Parser;
 use db::Database;
 use musli_web::ws::Channels;
+use remote::RemoteClients;
+use sync::SyncHandle;
 use tokio::sync::broadcast;
 use tower_http::cors::CorsLayer;
 
@@ -25,6 +31,8 @@ struct AppState {
     channels: Channels,
     http: reqwest::Client,
     cache: ImageCache,
+    sync: SyncHandle,
+    remote: RemoteClients,
 }
 
 #[derive(Parser)]
@@ -66,12 +74,21 @@ async fn main() -> Result<()> {
 
     let (broadcast, _) = broadcast::channel(64);
 
+    let sync = sync::new_sync_handle();
+
+    let remote = RemoteClients::new(http.clone());
+    if let Ok(config) = db.load_config().await {
+        remote.configure(&config);
+    }
+
     let state = AppState {
         db,
         broadcast,
         channels: Channels::default(),
         http,
         cache,
+        sync,
+        remote,
     };
 
     let app = Router::new();
