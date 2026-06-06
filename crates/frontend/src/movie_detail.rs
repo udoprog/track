@@ -25,7 +25,7 @@ pub(super) enum Msg {
     WatchedLoaded(Result<ws::Packet<api::ListWatched>, ws::Error>),
     MarkWatched,
     MarkWatchedDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
-    RemoveWatched(api::WatchedId),
+    RemoveWatched(api::WatchedId, api::WatchedKind),
     RemoveWatchedDone(Result<ws::Packet<api::RemoveWatched>, ws::Error>),
     ConfirmRemove,
     CancelRemove,
@@ -180,19 +180,23 @@ impl MovieDetail {
             }
             Msg::MarkWatchedDone(result) => {
                 result.context(Message::MarkingWatched)?;
+                self.load_movie(ctx);
+                self.load_watched(ctx);
                 Ok(false)
             }
-            Msg::RemoveWatched(id) => {
+            Msg::RemoveWatched(id, kind) => {
                 self._remove_watch_req = self
                     .channel
                     .request()
-                    .body(api::RemoveWatchedRequest { id })
+                    .body(api::RemoveWatchedRequest { id, kind })
                     .on_packet(ctx.link().callback(Msg::RemoveWatchedDone))
                     .send();
                 Ok(false)
             }
             Msg::RemoveWatchedDone(result) => {
                 result.context(Message::RemovingWatched)?;
+                self.load_movie(ctx);
+                self.load_watched(ctx);
                 Ok(false)
             }
             Msg::ConfirmRemove => {
@@ -284,6 +288,7 @@ impl MovieDetail {
         };
 
         let last_watched_id = self.watched.first().map(|w| w.id);
+        let movie_id = ctx.props().movie_id;
         let link = ctx.link();
 
         html! {
@@ -317,7 +322,7 @@ impl MovieDetail {
                                 {"Watch again"}
                             </button>
                             if let Some(wid) = last_watched_id {
-                                <button class="btn btn-danger" onclick={link.callback(move |_| Msg::RemoveWatched(wid))} title="Remove last watch">
+                                <button class="btn btn-danger" onclick={link.callback(move |_| Msg::RemoveWatched(wid, api::WatchedKind::Movie { movie: movie_id }))} title="Remove last watch">
                                     <span class="icon-inline"><span class="icon x-mark" /></span>
                                     {"Remove watch"}
                                 </button>

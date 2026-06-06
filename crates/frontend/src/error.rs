@@ -92,6 +92,8 @@ pub(crate) enum Message {
     RemovingSeries,
     #[display("syncing series")]
     SyncingSeries,
+    #[display("loading tasks")]
+    LoadingTasks,
     #[display("searching")]
     Searching,
     #[display("tracking series")]

@@ -1,19 +1,12 @@
 use std::collections::HashSet;
-use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
 use api::SeasonNumber;
 use db::Database;
 use musli_web::api::ChannelId;
-use tokio::sync::{Mutex, broadcast};
+use tokio::sync::broadcast;
 
 use crate::remote::RemoteClients;
-
-pub(crate) type SyncHandle = Arc<Mutex<HashSet<api::SeriesId>>>;
-
-pub(crate) fn new_sync_handle() -> SyncHandle {
-    Arc::new(Mutex::new(HashSet::new()))
-}
 
 fn broadcast_event(tx: &broadcast::Sender<api::AppEvent>, kind: api::AppEventKind) {
     let _ = tx.send(api::AppEvent {
@@ -23,42 +16,6 @@ fn broadcast_event(tx: &broadcast::Sender<api::AppEvent>, kind: api::AppEventKin
 }
 
 pub(crate) async fn sync_series(
-    series_id: api::SeriesId,
-    db: Database,
-    remote: RemoteClients,
-    broadcast: broadcast::Sender<api::AppEvent>,
-    handle: SyncHandle,
-) {
-    {
-        let mut set = handle.lock().await;
-        if !set.insert(series_id) {
-            return;
-        }
-    }
-
-    broadcast_event(
-        &broadcast,
-        api::AppEventKind::SyncStarted {
-            series_id: Some(series_id),
-        },
-    );
-
-    if let Err(e) = do_sync_series(series_id, &db, &remote, &broadcast).await {
-        tracing::error!(?series_id, error = %e, "sync_series failed");
-    }
-
-    broadcast_event(
-        &broadcast,
-        api::AppEventKind::SyncFinished {
-            series_id: Some(series_id),
-        },
-    );
-    broadcast_event(&broadcast, api::AppEventKind::PendingChanged);
-
-    handle.lock().await.remove(&series_id);
-}
-
-async fn do_sync_series(
     series_id: api::SeriesId,
     db: &Database,
     remote: &RemoteClients,
@@ -85,6 +42,7 @@ async fn do_sync_series(
         other => anyhow::bail!("unknown remote source: {other}"),
     }
 
+    broadcast_event(broadcast, api::AppEventKind::PendingChanged);
     Ok(())
 }
 
@@ -248,17 +206,6 @@ async fn sync_series_tvdb(
 }
 
 pub(crate) async fn sync_movie(
-    movie_id: api::MovieId,
-    db: Database,
-    remote: RemoteClients,
-    broadcast: broadcast::Sender<api::AppEvent>,
-) {
-    if let Err(e) = do_sync_movie(movie_id, &db, &remote, &broadcast).await {
-        tracing::error!(?movie_id, error = %e, "sync_movie failed");
-    }
-}
-
-async fn do_sync_movie(
     movie_id: api::MovieId,
     db: &Database,
     remote: &RemoteClients,

@@ -4,6 +4,7 @@ mod remote;
 #[cfg(feature = "bundle")]
 mod static_assets;
 mod sync;
+mod task_queue;
 mod tmdb;
 mod tvdb;
 mod ws;
@@ -20,7 +21,7 @@ use clap::Parser;
 use db::Database;
 use musli_web::ws::Channels;
 use remote::RemoteClients;
-use sync::SyncHandle;
+use task_queue::TaskQueue;
 use tokio::sync::broadcast;
 use tower_http::cors::CorsLayer;
 
@@ -31,7 +32,7 @@ struct AppState {
     channels: Channels,
     http: reqwest::Client,
     cache: ImageCache,
-    sync: SyncHandle,
+    queue: TaskQueue,
     remote: RemoteClients,
 }
 
@@ -74,12 +75,19 @@ async fn main() -> Result<()> {
 
     let (broadcast, _) = broadcast::channel(64);
 
-    let sync = sync::new_sync_handle();
+    let queue = TaskQueue::new();
 
     let remote = RemoteClients::new(http.clone());
     if let Ok(config) = db.load_config().await {
         remote.configure(&config);
     }
+
+    // Spawn the task queue worker.
+    tokio::spawn(
+        queue
+            .clone()
+            .run(db.clone(), remote.clone(), broadcast.clone()),
+    );
 
     let state = AppState {
         db,
@@ -87,7 +95,7 @@ async fn main() -> Result<()> {
         channels: Channels::default(),
         http,
         cache,
-        sync,
+        queue,
         remote,
     };
 

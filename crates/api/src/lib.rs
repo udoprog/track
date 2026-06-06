@@ -76,6 +76,7 @@ define_id!(SeasonId);
 define_id!(EpisodeId);
 define_id!(MovieId);
 define_id!(WatchedId);
+define_id!(TaskId);
 
 /// RFC 3339 UTC-normalised timestamp stored as TEXT.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -679,6 +680,45 @@ pub struct SearchMovie {
     pub already_tracked: Option<MovieId>,
 }
 
+// ── Task queue ────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub enum TaskKind {
+    SyncSeries { series_id: SeriesId, title: String },
+    SyncMovie { movie_id: MovieId, title: String },
+}
+
+impl TaskKind {
+    pub fn title(&self) -> &str {
+        match self {
+            TaskKind::SyncSeries { title, .. } | TaskKind::SyncMovie { title, .. } => title,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub enum TaskStatus {
+    Pending,
+    Running,
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct Task {
+    pub id: TaskId,
+    pub kind: TaskKind,
+    pub status: TaskStatus,
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct CompletedTask {
+    pub id: TaskId,
+    pub kind: TaskKind,
+}
+
 // ── Request / Response structs ───────────────────────────────────────────────
 
 #[derive(Debug, Encode, Decode)]
@@ -785,6 +825,7 @@ pub struct MarkWatchedResponse {
 #[musli(crate = musli_core)]
 pub struct RemoveWatchedRequest {
     pub id: WatchedId,
+    pub kind: WatchedKind,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -857,6 +898,18 @@ pub struct SyncAllRequest;
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
+pub struct ListTasksRequest;
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct ListTasksResponse {
+    pub pending: Vec<Task>,
+    pub running: Vec<Task>,
+    pub completed: Vec<CompletedTask>,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
 pub struct GetConfigRequest;
 
 #[derive(Debug, Encode, Decode)]
@@ -919,11 +972,14 @@ pub enum AppEventKind {
     ConfigChanged {
         config: Config,
     },
-    SyncStarted {
-        series_id: Option<SeriesId>,
+    TaskAdded {
+        task: Task,
     },
-    SyncFinished {
-        series_id: Option<SeriesId>,
+    TaskStarted {
+        task: Task,
+    },
+    TaskCompleted {
+        task: CompletedTask,
     },
 }
 
@@ -1048,6 +1104,12 @@ api::define! {
     impl Endpoint for SyncAll {
         impl Request for SyncAllRequest;
         type Response<'de> = Empty;
+    }
+
+    pub type ListTasks;
+    impl Endpoint for ListTasks {
+        impl Request for ListTasksRequest;
+        type Response<'de> = ListTasksResponse;
     }
 
     pub type GetConfig;

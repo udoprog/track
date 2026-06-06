@@ -7,14 +7,14 @@ use musli_web::ws;
 use tokio::sync::broadcast;
 
 use crate::remote::RemoteClients;
-use crate::sync::{self, SyncHandle};
+use crate::task_queue::TaskQueue;
 
 #[derive(Clone)]
 pub(super) struct WsHandler {
     pub(super) db: Database,
     pub(super) broadcast: broadcast::Sender<api::AppEvent>,
     pub(super) remote: RemoteClients,
-    pub(super) sync: SyncHandle,
+    pub(super) queue: TaskQueue,
 }
 
 impl ws::Handler for WsHandler {
@@ -107,14 +107,16 @@ impl WsHandler {
                     channel: musli_web::api::ChannelId::NONE,
                     kind: api::AppEventKind::PendingChanged,
                 });
-                // Kick off initial metadata sync
-                tokio::spawn(sync::sync_series(
-                    series.id,
-                    self.db.clone(),
-                    self.remote.clone(),
-                    self.broadcast.clone(),
-                    self.sync.clone(),
-                ));
+                self.queue
+                    .push(
+                        api::TaskKind::SyncSeries {
+                            series_id: series.id,
+                            title: series.title.clone(),
+                        },
+                        true,
+                        &self.broadcast,
+                    )
+                    .await;
                 outgoing.write(series);
             }
             api::Request::UntrackSeries => {
@@ -209,12 +211,16 @@ impl WsHandler {
                     channel: musli_web::api::ChannelId::NONE,
                     kind: api::AppEventKind::PendingChanged,
                 });
-                tokio::spawn(sync::sync_movie(
-                    movie.id,
-                    self.db.clone(),
-                    self.remote.clone(),
-                    self.broadcast.clone(),
-                ));
+                self.queue
+                    .push(
+                        api::TaskKind::SyncMovie {
+                            movie_id: movie.id,
+                            title: movie.title.clone(),
+                        },
+                        true,
+                        &self.broadcast,
+                    )
+                    .await;
                 outgoing.write(movie);
             }
             api::Request::RemoveMovie => {
@@ -253,6 +259,14 @@ impl WsHandler {
                     .read::<api::RemoveWatchedRequest>()
                     .context("missing request")?;
                 self.db.remove_watched(req.id).await?;
+                let _ = self.broadcast.send(api::AppEvent {
+                    channel: incoming.channel(),
+                    kind: api::AppEventKind::WatchedChanged { kind: req.kind },
+                });
+                let _ = self.broadcast.send(api::AppEvent {
+                    channel: musli_web::api::ChannelId::NONE,
+                    kind: api::AppEventKind::PendingChanged,
+                });
                 outgoing.write(api::Empty);
             }
             api::Request::ListWatched => {
@@ -351,13 +365,21 @@ impl WsHandler {
                 let req = incoming
                     .read::<api::SyncSeriesRequest>()
                     .context("missing request")?;
-                tokio::spawn(sync::sync_series(
-                    req.id,
-                    self.db.clone(),
-                    self.remote.clone(),
-                    self.broadcast.clone(),
-                    self.sync.clone(),
-                ));
+                let series = self
+                    .db
+                    .series_by_id(req.id)
+                    .await?
+                    .context("series not found")?;
+                self.queue
+                    .push(
+                        api::TaskKind::SyncSeries {
+                            series_id: series.id,
+                            title: series.title,
+                        },
+                        true,
+                        &self.broadcast,
+                    )
+                    .await;
                 outgoing.write(api::Empty);
             }
             api::Request::SyncAll => {
@@ -366,15 +388,25 @@ impl WsHandler {
                     .context("missing request")?;
                 let series = self.db.series().await?;
                 for s in series {
-                    tokio::spawn(sync::sync_series(
-                        s.id,
-                        self.db.clone(),
-                        self.remote.clone(),
-                        self.broadcast.clone(),
-                        self.sync.clone(),
-                    ));
+                    self.queue
+                        .push(
+                            api::TaskKind::SyncSeries {
+                                series_id: s.id,
+                                title: s.title,
+                            },
+                            false,
+                            &self.broadcast,
+                        )
+                        .await;
                 }
                 outgoing.write(api::Empty);
+            }
+            api::Request::ListTasks => {
+                let _req = incoming
+                    .read::<api::ListTasksRequest>()
+                    .context("missing request")?;
+                let tasks = self.queue.list().await;
+                outgoing.write(tasks);
             }
             api::Request::GetConfig => {
                 let _req = incoming
@@ -415,7 +447,7 @@ pub(super) async fn ws_handler(
             db: state.db.clone(),
             broadcast: state.broadcast.clone(),
             remote: state.remote.clone(),
-            sync: state.sync.clone(),
+            queue: state.queue.clone(),
         };
 
         let mut subscribe = state.broadcast.subscribe();

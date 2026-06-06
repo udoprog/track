@@ -361,12 +361,14 @@ body {
     border-bottom: 1px solid $border-subtle;
 
     &:first-child {
-        border-radius: $radius $radius 0 0;
+        border-top-left-radius: $radius;
+        border-top-right-radius: $radius;
     }
 
     &:last-child {
         border-bottom: none;
-        border-radius: 0 0 $radius $radius;
+        border-bottom-left-radius: $radius;
+        border-bottom-right-radius: $radius;
     }
 }
 

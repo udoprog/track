@@ -33,7 +33,7 @@ pub(super) enum Msg {
     EpisodesLoaded(Result<ws::Packet<api::ListEpisodes>, ws::Error>),
     MarkWatched(api::SeriesId, api::EpisodeId),
     MarkWatchedDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
-    RemoveWatched(api::WatchedId),
+    RemoveWatched(api::WatchedId, api::WatchedKind),
     RemoveWatchedDone(Result<ws::Packet<api::RemoveWatched>, ws::Error>),
     WatchRemaining(api::SeasonNumber),
     WatchRemainingDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
@@ -245,19 +245,25 @@ impl SeriesDetail {
             }
             Msg::MarkWatchedDone(result) => {
                 result.context(Message::MarkingWatched)?;
+                if let Some(season) = self.selected {
+                    self.load_episodes(ctx, season);
+                }
                 Ok(false)
             }
-            Msg::RemoveWatched(id) => {
+            Msg::RemoveWatched(id, kind) => {
                 self._remove_watch_req = self
                     .channel
                     .request()
-                    .body(api::RemoveWatchedRequest { id })
+                    .body(api::RemoveWatchedRequest { id, kind })
                     .on_packet(ctx.link().callback(Msg::RemoveWatchedDone))
                     .send();
                 Ok(false)
             }
             Msg::RemoveWatchedDone(result) => {
                 result.context(Message::RemovingWatched)?;
+                if let Some(season) = self.selected {
+                    self.load_episodes(ctx, season);
+                }
                 Ok(false)
             }
             Msg::WatchRemaining(season) => {
@@ -286,6 +292,9 @@ impl SeriesDetail {
             }
             Msg::WatchRemainingDone(result) => {
                 result.context(Message::MarkingWatched)?;
+                if let Some(season) = self.selected {
+                    self.load_episodes(ctx, season);
+                }
                 Ok(false)
             }
             Msg::UntrackSeries => {
@@ -300,7 +309,10 @@ impl SeriesDetail {
             }
             Msg::UntrackDone(result) => {
                 result.context(Message::UntrackingSeries)?;
-                Ok(false)
+                if let Some(ref mut series) = self.series {
+                    series.tracked = false;
+                }
+                Ok(true)
             }
             Msg::ConfirmRemove => {
                 self.confirm_remove = true;
@@ -490,7 +502,8 @@ impl SeriesDetail {
                     let last_watched_id = ep.last_watched_id;
                     let on_mark = link.callback(move |_| Msg::MarkWatched(series_id, episode_id));
                     let on_remove = last_watched_id.map(|wid| {
-                        link.callback(move |_| Msg::RemoveWatched(wid))
+                        let kind = api::WatchedKind::Episode { series: series_id, episode: episode_id };
+                        link.callback(move |_| Msg::RemoveWatched(wid, kind))
                     });
 
                     html! {
