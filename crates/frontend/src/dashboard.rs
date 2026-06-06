@@ -194,7 +194,9 @@ impl Dashboard {
         };
         let route_poster = route.clone();
         let on_navigate = ctx.link().callback(move |_| Msg::Navigate(route.clone()));
-        let on_navigate_poster = ctx.link().callback(move |_| Msg::Navigate(route_poster.clone()));
+        let on_navigate_poster = ctx
+            .link()
+            .callback(move |_| Msg::Navigate(route_poster.clone()));
         let on_mark = ctx.link().callback(move |_| {
             Msg::MarkWatched(match kind {
                 api::PendingKind::Episode { series, episode } => {

@@ -1,11 +1,11 @@
 mod cache;
 mod proxy;
 mod remote;
+#[cfg(feature = "bundle")]
+mod static_assets;
 mod sync;
 mod tmdb;
 mod tvdb;
-#[cfg(feature = "bundle")]
-mod static_assets;
 mod ws;
 
 use std::net::SocketAddr;

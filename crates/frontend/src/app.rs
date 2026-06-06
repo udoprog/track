@@ -4,9 +4,12 @@ use yew::prelude::*;
 use crate::Dashboard;
 use crate::MovieDetail;
 use crate::MoviesList;
+use crate::Queue;
+use crate::Search;
 use crate::SeriesDetail;
 use crate::SeriesList;
 use crate::Settings;
+use crate::WatchNext;
 use crate::error::Error;
 use crate::router::Route;
 use crate::setup_channel::SetupChannel;
@@ -93,6 +96,14 @@ impl Component for App {
                             <span class="icon-inline"><span class="icon rectangle-stack" /></span>
                             <span class="hide-mobile">{"Dashboard"}</span>
                         </button>
+                        <button onclick={on_nav(Route::Queue)} class="btn" title="Queue">
+                            <span class="icon-inline"><span class="icon queue-list" /></span>
+                            <span class="hide-mobile">{"Queue"}</span>
+                        </button>
+                        <button onclick={on_nav(Route::WatchNext)} class="btn" title="Watch Next">
+                            <span class="icon-inline"><span class="icon play" /></span>
+                            <span class="hide-mobile">{"Watch Next"}</span>
+                        </button>
                         <button onclick={on_nav(Route::Series)} class="btn" title="Series">
                             <span class="icon-inline"><span class="icon tv" /></span>
                             <span class="hide-mobile">{"Series"}</span>
@@ -100,6 +111,10 @@ impl Component for App {
                         <button onclick={on_nav(Route::Movies)} class="btn" title="Movies">
                             <span class="icon-inline"><span class="icon film" /></span>
                             <span class="hide-mobile">{"Movies"}</span>
+                        </button>
+                        <button onclick={on_nav(Route::Search)} class="btn" title="Search">
+                            <span class="icon-inline"><span class="icon magnifying-glass" /></span>
+                            <span class="hide-mobile">{"Search"}</span>
                         </button>
                         <button onclick={on_nav(Route::Settings)} class="btn" title="Settings">
                             <span class="icon-inline"><span class="icon cog-6-tooth" /></span>
@@ -122,6 +137,8 @@ impl App {
         let on_navigate = ctx.link().callback(Msg::Navigate);
         match &ctx.props().route {
             Route::Dashboard => html! { <Dashboard {onerror} {on_navigate} /> },
+            Route::Queue => html! { <Queue {onerror} {on_navigate} /> },
+            Route::WatchNext => html! { <WatchNext {onerror} {on_navigate} /> },
             Route::Series => html! {
                 <SeriesList {onerror} {on_navigate} />
             },
@@ -136,6 +153,7 @@ impl App {
                 let movie_id = *movie_id;
                 html! { <MovieDetail {movie_id} {onerror} {on_navigate} /> }
             }
+            Route::Search => html! { <Search {onerror} {on_navigate} /> },
             Route::Settings => html! { <Settings {onerror} /> },
         }
     }

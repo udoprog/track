@@ -9,10 +9,13 @@ use crate::error::{CustomContext, Error, Message};
 #[derive(Debug, Clone, PartialEq)]
 pub(super) enum Route {
     Dashboard,
+    Queue,
+    WatchNext,
     Series,
     SeriesDetail(api::SeriesId),
     Movies,
     MovieDetail(api::MovieId),
+    Search,
     Settings,
 }
 
@@ -26,10 +29,13 @@ impl fmt::Display for Route {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Route::Dashboard => f.write_str("/"),
+            Route::Queue => f.write_str("/queue"),
+            Route::WatchNext => f.write_str("/watch-next"),
             Route::Series => f.write_str("/series"),
             Route::SeriesDetail(id) => write!(f, "/series/{id}"),
             Route::Movies => f.write_str("/movies"),
             Route::MovieDetail(id) => write!(f, "/movies/{id}"),
+            Route::Search => f.write_str("/search"),
             Route::Settings => f.write_str("/settings"),
         }
     }
@@ -39,6 +45,8 @@ impl Route {
     fn from_path(path: &str) -> Self {
         let mut parts = path.split('/').filter(|s| !s.is_empty());
         match parts.next() {
+            Some("queue") => Route::Queue,
+            Some("watch-next") => Route::WatchNext,
             Some("series") => match parts.next() {
                 Some(id) => u64::from_str_radix(id, 16)
                     .map(|n| Route::SeriesDetail(api::SeriesId::new(n)))
@@ -51,6 +59,7 @@ impl Route {
                     .unwrap_or(Route::Movies),
                 None => Route::Movies,
             },
+            Some("search") => Route::Search,
             Some("settings") => Route::Settings,
             _ => Route::Dashboard,
         }

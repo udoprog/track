@@ -27,9 +27,8 @@ impl RemoteClients {
 
     pub(crate) fn configure(&self, config: &api::Config) {
         let mut inner = self.inner.lock();
-        inner.tmdb = (!config.tmdb_api_key.is_empty()).then(|| {
-            crate::tmdb::Client::new(self.http.clone(), config.tmdb_api_key.clone())
-        });
+        inner.tmdb = (!config.tmdb_api_key.is_empty())
+            .then(|| crate::tmdb::Client::new(self.http.clone(), config.tmdb_api_key.clone()));
         inner.tvdb = (!config.tvdb_legacy_apikey.is_empty()).then(|| {
             crate::tvdb::Client::new(self.http.clone(), config.tvdb_legacy_apikey.clone())
         });
@@ -99,10 +98,7 @@ impl RemoteClients {
 
     // ── Sync fetch helpers ────────────────────────────────────────────────────
 
-    pub(crate) async fn fetch_tmdb_series(
-        &self,
-        id: u32,
-    ) -> Result<crate::tmdb::SeriesInfo> {
+    pub(crate) async fn fetch_tmdb_series(&self, id: u32) -> Result<crate::tmdb::SeriesInfo> {
         self.tmdb()
             .context("no TMDB client configured")?
             .fetch_series(id)
@@ -127,10 +123,7 @@ impl RemoteClients {
             .await
     }
 
-    pub(crate) async fn fetch_tvdb_series(
-        &self,
-        id: u32,
-    ) -> Result<crate::tvdb::SeriesInfo> {
+    pub(crate) async fn fetch_tvdb_series(&self, id: u32) -> Result<crate::tvdb::SeriesInfo> {
         self.tvdb()
             .context("no TVDB client configured")?
             .fetch_series(id)

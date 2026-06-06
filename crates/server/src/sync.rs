@@ -68,7 +68,10 @@ async fn do_sync_series(
         .series_by_id(series_id)
         .await?
         .context("series not found")?;
-    let remote_id = series.remote_id.as_ref().context("series has no remote_id")?;
+    let remote_id = series
+        .remote_id
+        .as_ref()
+        .context("series has no remote_id")?;
 
     match remote_id.source() {
         "tmdb" => {
@@ -115,7 +118,10 @@ async fn sync_series_tmdb(
         .series_by_id(series_id)
         .await?
         .context("series not found after update")?;
-    broadcast_event(broadcast, api::AppEventKind::SeriesChanged { series: updated });
+    broadcast_event(
+        broadcast,
+        api::AppEventKind::SeriesChanged { series: updated },
+    );
 
     for season_info in &info.seasons {
         db.upsert_season(
@@ -133,7 +139,10 @@ async fn sync_series_tmdb(
             SeasonNumber::Number(n) => n,
         };
 
-        for ep in remote.fetch_tmdb_season_episodes(tmdb_id, season_num).await? {
+        for ep in remote
+            .fetch_tmdb_season_episodes(tmdb_id, season_num)
+            .await?
+        {
             db.upsert_episode(
                 series_id,
                 ep.season,
@@ -158,7 +167,10 @@ async fn sync_series_tmdb(
     }
 
     let seasons = db.seasons(series_id).await?;
-    broadcast_event(broadcast, api::AppEventKind::SeasonsChanged { series_id, seasons });
+    broadcast_event(
+        broadcast,
+        api::AppEventKind::SeasonsChanged { series_id, seasons },
+    );
 
     Ok(())
 }
@@ -193,7 +205,10 @@ async fn sync_series_tvdb(
         .series_by_id(series_id)
         .await?
         .context("series not found after update")?;
-    broadcast_event(broadcast, api::AppEventKind::SeriesChanged { series: updated });
+    broadcast_event(
+        broadcast,
+        api::AppEventKind::SeriesChanged { series: updated },
+    );
 
     let episodes = remote.fetch_tvdb_episodes(tvdb_id).await?;
 
@@ -215,12 +230,19 @@ async fn sync_series_tvdb(
     }
 
     for &season in &seasons_seen {
-        db.upsert_season(series_id, season, None, None, "", None).await?;
-        broadcast_event(broadcast, api::AppEventKind::EpisodesChanged { series_id, season });
+        db.upsert_season(series_id, season, None, None, "", None)
+            .await?;
+        broadcast_event(
+            broadcast,
+            api::AppEventKind::EpisodesChanged { series_id, season },
+        );
     }
 
     let seasons = db.seasons(series_id).await?;
-    broadcast_event(broadcast, api::AppEventKind::SeasonsChanged { series_id, seasons });
+    broadcast_event(
+        broadcast,
+        api::AppEventKind::SeasonsChanged { series_id, seasons },
+    );
 
     Ok(())
 }
@@ -266,7 +288,10 @@ async fn do_sync_movie(
                 .movie_by_id(movie_id)
                 .await?
                 .context("movie not found after update")?;
-            broadcast_event(broadcast, api::AppEventKind::MovieChanged { movie: updated });
+            broadcast_event(
+                broadcast,
+                api::AppEventKind::MovieChanged { movie: updated },
+            );
         }
         other => anyhow::bail!("unsupported movie remote source: {other}"),
     }

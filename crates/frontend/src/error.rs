@@ -92,6 +92,12 @@ pub(crate) enum Message {
     RemovingSeries,
     #[display("syncing series")]
     SyncingSeries,
+    #[display("searching")]
+    Searching,
+    #[display("tracking series")]
+    TrackingSeries,
+    #[display("tracking movie")]
+    TrackingMovie,
 }
 
 pub(crate) trait CustomContext<T> {

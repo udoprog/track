@@ -25,8 +25,10 @@ impl Client {
             token: String,
         }
 
-        let body =
-            serde_json::to_vec(&Body { apikey: &self.api_key }).context("serializing login body")?;
+        let body = serde_json::to_vec(&Body {
+            apikey: &self.api_key,
+        })
+        .context("serializing login body")?;
         let bytes = self
             .http
             .post(format!("{BASE}/login"))
