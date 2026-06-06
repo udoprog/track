@@ -76,6 +76,18 @@ pub(crate) enum Message {
     LoadingEpisodes,
     #[display("marking watched")]
     MarkingWatched,
+    #[display("loading movies")]
+    LoadingMovies,
+    #[display("saving config")]
+    SavingConfig,
+    #[display("removing watch")]
+    RemovingWatched,
+    #[display("untracking series")]
+    UntrackingSeries,
+    #[display("removing series")]
+    RemovingSeries,
+    #[display("syncing series")]
+    SyncingSeries,
 }
 
 pub(crate) trait CustomContext<T> {

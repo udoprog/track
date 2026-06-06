@@ -2,8 +2,10 @@ use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
 use crate::Dashboard;
+use crate::MoviesList;
 use crate::SeriesDetail;
 use crate::SeriesList;
+use crate::Settings;
 use crate::error::Error;
 use crate::router::Route;
 use crate::setup_channel::SetupChannel;
@@ -128,8 +130,8 @@ impl App {
                     <SeriesDetail {series_id} {onerror} {on_navigate} />
                 }
             }
-            Route::Movies => html! { <div class="page">{"Movies (coming soon)"}</div> },
-            Route::Settings => html! { <div class="page">{"Settings (coming soon)"}</div> },
+            Route::Movies => html! { <MoviesList {onerror} /> },
+            Route::Settings => html! { <Settings {onerror} /> },
         }
     }
 }

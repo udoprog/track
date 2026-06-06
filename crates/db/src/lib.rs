@@ -62,6 +62,7 @@ struct EpisodeRow {
     remote_id: Option<RemoteId>,
     watched: bool,
     watched_count: i64,
+    last_watched_id: Option<WatchedId>,
 }
 
 #[derive(Row)]
@@ -215,13 +216,14 @@ statements! {
                 filename        = excluded.filename,
                 remote_id       = excluded.remote_id
             RETURNING id, series_id, season, number, absolute_number, name, overview, aired, filename, remote_id,
-                      0 AS watched, 0 AS watched_count
+                      0 AS watched, 0 AS watched_count, NULL AS last_watched_id
         "#,
         list_episodes: r#"
             SELECT e.id, e.series_id, e.season, e.number, e.absolute_number, e.name, e.overview,
                    e.aired, e.filename, e.remote_id,
                    (SELECT COUNT(*) FROM watched w WHERE w.episode_id = e.id) > 0 AS watched,
-                   (SELECT COUNT(*) FROM watched w WHERE w.episode_id = e.id) AS watched_count
+                   (SELECT COUNT(*) FROM watched w WHERE w.episode_id = e.id) AS watched_count,
+                   (SELECT w.id FROM watched w WHERE w.episode_id = e.id ORDER BY w.id DESC LIMIT 1) AS last_watched_id
             FROM episodes e
             WHERE e.series_id = ? AND e.season = ?
             ORDER BY e.number
@@ -230,7 +232,8 @@ statements! {
             SELECT e.id, e.series_id, e.season, e.number, e.absolute_number, e.name, e.overview,
                    e.aired, e.filename, e.remote_id,
                    (SELECT COUNT(*) FROM watched w WHERE w.episode_id = e.id) > 0 AS watched,
-                   (SELECT COUNT(*) FROM watched w WHERE w.episode_id = e.id) AS watched_count
+                   (SELECT COUNT(*) FROM watched w WHERE w.episode_id = e.id) AS watched_count,
+                   (SELECT w.id FROM watched w WHERE w.episode_id = e.id ORDER BY w.id DESC LIMIT 1) AS last_watched_id
             FROM episodes e WHERE e.id = ?
         "#,
 
@@ -863,6 +866,7 @@ impl Database {
                     remote_id: r.remote_id,
                     watched: false,
                     watched_count: 0,
+                    last_watched_id: None,
                 };
 
                 if let Some(day_entry) = days_map.iter_mut().find(|(d, _)| d == &day) {
@@ -1032,6 +1036,7 @@ fn episode_from_row(r: EpisodeRow) -> api::Episode {
         remote_id: r.remote_id,
         watched: r.watched,
         watched_count: r.watched_count as u32,
+        last_watched_id: r.last_watched_id,
     }
 }
 

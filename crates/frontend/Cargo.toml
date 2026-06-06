@@ -27,6 +27,7 @@ features = [
     "History",
     "HtmlElement",
     "HtmlInputElement",
+    "HtmlSelectElement",
     "KeyboardEvent",
     "Location",
     "MouseEvent",

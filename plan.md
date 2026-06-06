@@ -1,5 +1,33 @@
 # ontv-musli-web — Implementation Plan
 
+## 0. Current Implementation Status (as of 2026-06-06)
+
+### Completed
+- **`api` crate** — all types, endpoints, broadcasts (`Encode`/`Decode`, sqll traits). Dates stored as `INTEGER` (YYYYMMDD), timestamps as `INTEGER` (ms epoch).
+- **`db` crate** — full schema, migrations, `statements!` block, all async methods. `pending_episodes` uses Rust-side LIMIT (SQLITE_MISUSE workaround for `LIMIT ?` binding).
+- **`server` crate** — `ws.rs` (all read/mutation endpoints), `cache.rs` (LRU + disk image cache, 64-shard), `proxy.rs` (`/api/image/{source}/{*path}`), `main.rs` (routing, clap args), `static_assets.rs`.
+- **`frontend` crate**:
+  - `root.rs`, `app.rs` (toolbar with icon-inline pattern), `router.rs`
+  - `setup_channel.rs`, `error.rs`
+  - `dashboard.rs` (pending grid + schedule)
+  - `series.rs` (SeriesList)
+  - `series_detail.rs` (seasons sidebar + episode list with mark-watched)
+  - `movies.rs` (MoviesList with mark-watched) ← **just added**
+  - `settings.rs` (Config form: theme, api keys, dashboard params) ← **just added**
+  - `style/main.scss` — all CSS classes: icon-inline, outline, group, empty, license, input-text, input-select, input-number, field, settings-* variants
+  - `Cargo.toml` — HtmlSelectElement added to web-sys features
+
+### Not yet built
+- `sync.rs` / `tmdb.rs` / `tvdb.rs` — TMDB/TVDB sync background tasks and search
+- `Search` page (`search.rs`) — live TMDB/TVDB search + track
+- `Queue` page (`queue.rs`) — ordered pending list  
+- `WatchNext` page (`watch_next.rs`) — next unwatched episodes
+
+### Known workarounds
+- `SQLITE_MISUSE` on `LIMIT ?` binding: removed `LIMIT ?` from `list_pending_episodes` SQL; Rust-side truncation used instead. Root cause: unknown SQLite C library behavior.
+
+---
+
 ## 1. Objective
 
 Convert the existing **ontv** desktop application (an [Iced](https://iced.rs)

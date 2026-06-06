@@ -544,6 +544,7 @@ pub struct Episode {
     pub remote_id: Option<RemoteId>,
     pub watched: bool,
     pub watched_count: u32,
+    pub last_watched_id: Option<WatchedId>,
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
