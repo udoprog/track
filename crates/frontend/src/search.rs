@@ -192,7 +192,7 @@ impl Search {
                     .channel
                     .request()
                     .body(api::SearchRequest {
-                        kind: self.kind.clone(),
+                        kind: self.kind,
                         query: self.query.clone(),
                     })
                     .on_packet(ctx.link().callback(Msg::SearchDone))

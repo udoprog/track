@@ -6,8 +6,9 @@ use yew::prelude::*;
 
 use crate::error::{CustomContext, Error, Message};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Default, Debug, Clone, PartialEq)]
 pub(super) enum Route {
+    #[default]
     Dashboard,
     Queue,
     WatchNext,
@@ -17,12 +18,6 @@ pub(super) enum Route {
     MovieDetail(api::MovieId),
     Search,
     Settings,
-}
-
-impl Default for Route {
-    fn default() -> Self {
-        Route::Dashboard
-    }
 }
 
 impl fmt::Display for Route {

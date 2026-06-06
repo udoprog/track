@@ -43,19 +43,21 @@ impl Component for Root {
     fn update(&mut self, _ctx: &Context<Self>, msg: Self::Message) -> bool {
         match msg {
             Msg::Navigate(route) => {
-                if let Some(ref mut r) = self.router {
-                    if let Err(e) = r.navigate(&route) {
-                        self.error = Some(RcError::from(e));
-                    }
+                if let Some(ref mut r) = self.router
+                    && let Err(e) = r.navigate(&route)
+                {
+                    self.error = Some(RcError::from(e));
                 }
+
                 true
             }
             Msg::PopState => {
-                if let Some(ref mut r) = self.router {
-                    if let Err(e) = r.on_pop() {
-                        self.error = Some(RcError::from(e));
-                    }
+                if let Some(ref mut r) = self.router
+                    && let Err(e) = r.on_pop()
+                {
+                    self.error = Some(RcError::from(e));
                 }
+
                 true
             }
             Msg::Error(e) => {

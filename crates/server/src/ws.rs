@@ -84,10 +84,10 @@ impl WsHandler {
                 let series = self
                     .db
                     .create_series(
-                        &req.remote_id
+                        req.remote_id
                             .as_str()
                             .split(':')
-                            .last()
+                            .next_back()
                             .unwrap_or("Unknown"),
                         None,
                         "",
@@ -191,7 +191,7 @@ impl WsHandler {
                         req.remote_id
                             .as_str()
                             .split(':')
-                            .last()
+                            .next_back()
                             .unwrap_or("Unknown"),
                         None,
                         "",

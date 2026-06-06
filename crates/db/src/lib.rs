@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use std::path::Path;
 use std::sync::Arc;
 
@@ -859,7 +861,7 @@ impl Database {
                 .next::<WatchedRow>()?
                 .context("insert_watched returned no row")?;
             ensure!(s.insert_watched.step()?.is_done(), "insert_watched");
-            Ok(watched_from_row(r)?)
+            watched_from_row(r)
         })
         .await?
     }
@@ -982,7 +984,7 @@ impl Database {
         spawn_blocking(move || {
             s.list_schedule.bind((today, end))?;
 
-            let mut days_map: Vec<(Date, Vec<(SeriesId, String, Vec<api::Episode>)>)> = Vec::new();
+            let mut days_map = Vec::<(Date, Vec<(SeriesId, String, Vec<api::Episode>)>)>::new();
 
             while let Some(r) = s.list_schedule.next::<ScheduleRow>()? {
                 let Some(day) = r.aired else { continue };

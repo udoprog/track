@@ -392,6 +392,7 @@ impl ::sqll::BindValue for Image {
 
 /// Season number: Specials (stored as 0) or a regular numbered season.
 #[derive(
+    Default,
     Debug,
     Clone,
     Copy,
@@ -408,6 +409,7 @@ impl ::sqll::BindValue for Image {
 #[musli(crate = musli_core)]
 #[serde(untagged)]
 pub enum SeasonNumber {
+    #[default]
     Specials,
     Number(u32),
 }
@@ -437,12 +439,6 @@ impl SeasonNumber {
             SeasonNumber::Specials => "S".to_string(),
             SeasonNumber::Number(n) => n.to_string(),
         }
-    }
-}
-
-impl Default for SeasonNumber {
-    fn default() -> Self {
-        SeasonNumber::Specials
     }
 }
 

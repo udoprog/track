@@ -119,7 +119,7 @@ impl Component for SeriesDetail {
         html! {
             <div class="page">
                 { self.view_header(ctx) }
-                if let Some(ref banner) = self.series.as_ref().and_then(|s| s.banner.as_ref()) {
+                if let Some(banner) = self.series.as_ref().and_then(|s| s.banner.as_ref()) {
                     <img class="banner" src={banner.proxy_url()} alt="" />
                 }
                 <div class="detail-layout">
@@ -198,11 +198,11 @@ impl SeriesDetail {
                             }
                             api::WatchedKind::Movie { .. } => false,
                         };
-                        if relevant {
-                            if let Some(season) = self.selected {
-                                self.load_episodes(ctx, season);
-                            }
+
+                        if relevant && let Some(season) = self.selected {
+                            self.load_episodes(ctx, season);
                         }
+
                         Ok(false)
                     }
                     _ => Ok(false),
