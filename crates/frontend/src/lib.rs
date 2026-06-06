@@ -11,6 +11,7 @@ mod series;
 mod series_detail;
 mod settings;
 mod setup_channel;
+mod ui;
 mod watch_next;
 
 use self::app::App;

@@ -516,6 +516,7 @@ pub struct Series {
     pub fanart: Option<Image>,
     pub tracked: bool,
     pub remote_id: Option<RemoteId>,
+    pub pending_episode_id: Option<EpisodeId>,
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
@@ -561,6 +562,7 @@ pub struct Movie {
     pub remote_id: Option<RemoteId>,
     pub watched: bool,
     pub watched_count: u32,
+    pub pending: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
@@ -630,6 +632,8 @@ pub struct Config {
     pub schedule_duration_days: u32,
     pub dashboard_limit: u32,
     pub dashboard_page: u32,
+    pub auto_sync_enabled: bool,
+    pub auto_sync_interval_hours: u32,
 }
 
 impl Default for Config {
@@ -641,6 +645,8 @@ impl Default for Config {
             schedule_duration_days: 7,
             dashboard_limit: 6,
             dashboard_page: 6,
+            auto_sync_enabled: false,
+            auto_sync_interval_hours: 24,
         }
     }
 }
@@ -931,6 +937,20 @@ pub struct SetConfigRequest {
     pub config: Config,
 }
 
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct SetNextEpisodeRequest {
+    pub series_id: SeriesId,
+    pub episode_id: Option<EpisodeId>,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct SetMoviePendingRequest {
+    pub id: MovieId,
+    pub pending: bool,
+}
+
 // ── Broadcast events ─────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Encode, Decode)]
@@ -1134,6 +1154,18 @@ api::define! {
     pub type SetConfig;
     impl Endpoint for SetConfig {
         impl Request for SetConfigRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type SetNextEpisode;
+    impl Endpoint for SetNextEpisode {
+        impl Request for SetNextEpisodeRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type SetMoviePending;
+    impl Endpoint for SetMoviePending {
+        impl Request for SetMoviePendingRequest;
         type Response<'de> = Empty;
     }
 

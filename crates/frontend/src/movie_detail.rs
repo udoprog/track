@@ -3,6 +3,7 @@ use yew::prelude::*;
 
 use crate::error::{CustomContext, Error, Message};
 use crate::router::Route;
+use crate::ui::ConfirmDanger;
 
 pub(super) struct MovieDetail {
     channel: ws::Channel,
@@ -17,6 +18,7 @@ pub(super) struct MovieDetail {
     _remove_watch_req: ws::Request,
     _remove_req: ws::Request,
     _sync_req: ws::Request,
+    _pending_req: ws::Request,
 }
 
 pub(super) enum Msg {
@@ -34,6 +36,8 @@ pub(super) enum Msg {
     RemoveDone(Result<ws::Packet<api::RemoveMovie>, ws::Error>),
     SyncMovie,
     SyncDone(Result<ws::Packet<api::SyncMovie>, ws::Error>),
+    SetPending(bool),
+    SetPendingDone(bool, Result<ws::Packet<api::SetMoviePending>, ws::Error>),
     Back,
 }
 
@@ -70,6 +74,7 @@ impl Component for MovieDetail {
             _remove_watch_req: ws::Request::default(),
             _remove_req: ws::Request::default(),
             _sync_req: ws::Request::default(),
+            _pending_req: ws::Request::default(),
         }
     }
 
@@ -240,6 +245,26 @@ impl MovieDetail {
                 result.context(Message::SyncingSeries)?;
                 Ok(false)
             }
+            Msg::SetPending(pending) => {
+                let id = ctx.props().movie_id;
+                self._pending_req = self
+                    .channel
+                    .request()
+                    .body(api::SetMoviePendingRequest { id, pending })
+                    .on_packet(
+                        ctx.link()
+                            .callback(move |r| Msg::SetPendingDone(pending, r)),
+                    )
+                    .send();
+                Ok(false)
+            }
+            Msg::SetPendingDone(pending, result) => {
+                result.context(Message::SyncingSeries)?;
+                if let Some(ref mut movie) = self.movie {
+                    movie.pending = pending;
+                }
+                Ok(true)
+            }
             Msg::Back => {
                 ctx.props().on_navigate.emit(Route::Movies);
                 Ok(false)
@@ -287,12 +312,12 @@ impl MovieDetail {
                         </button>
                     }
                     if self.confirm_remove {
-                        <button class="btn btn-danger" onclick={link.callback(|_| Msg::RemoveMovie)}>
-                            {"Confirm remove"}
-                        </button>
-                        <button class="btn" onclick={link.callback(|_| Msg::CancelRemove)}>
-                            {"Cancel"}
-                        </button>
+                        <ConfirmDanger
+                            prompt="Remove movie"
+                            label={m.title.clone()}
+                            on_confirm={link.callback(|_| Msg::RemoveMovie)}
+                            on_cancel={link.callback(|_| Msg::CancelRemove)}
+                        />
                     } else {
                         <button class="btn btn-danger" onclick={link.callback(|_| Msg::ConfirmRemove)} title="Remove movie">
                             <span class="icon-inline"><span class="icon trash" /></span>
@@ -316,6 +341,10 @@ impl MovieDetail {
         let link = ctx.link();
 
         html! {
+            <>
+            if let Some(ref banner) = movie.banner {
+                <img class="banner" src={banner.proxy_url()} alt="" />
+            }
             <div class="detail-layout">
                 <div class="detail-sidebar">
                     if let Some(ref poster) = movie.poster {
@@ -353,6 +382,17 @@ impl MovieDetail {
                                     {"Remove watch"}
                                 </button>
                             }
+                            if movie.pending {
+                                <button class="btn btn-primary" onclick={link.callback(|_| Msg::SetPending(false))} title="Clear pending">
+                                    <span class="icon-inline"><span class="icon bookmark" /></span>
+                                    {"Clear pending"}
+                                </button>
+                            } else {
+                                <button class="btn" onclick={link.callback(|_| Msg::SetPending(true))} title="Mark as pending">
+                                    <span class="icon-inline"><span class="icon bookmark" /></span>
+                                    {"Mark pending"}
+                                </button>
+                            }
                         } else {
                             <button class="btn btn-success" onclick={link.callback(|_| Msg::MarkWatched)} title="Mark watched">
                                 <span class="icon-inline"><span class="icon check" /></span>
@@ -370,6 +410,7 @@ impl MovieDetail {
                     }
                 </div>
             </div>
+            </>
         }
     }
 }

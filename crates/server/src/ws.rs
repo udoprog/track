@@ -463,6 +463,52 @@ impl WsHandler {
                 });
                 outgoing.write(api::Empty);
             }
+            api::Request::SetNextEpisode => {
+                let req = incoming
+                    .read::<api::SetNextEpisodeRequest>()
+                    .context("missing request")?;
+                self.db
+                    .set_series_next_episode(req.series_id, req.episode_id)
+                    .await?;
+                let series = self
+                    .db
+                    .series_by_id(req.series_id)
+                    .await?
+                    .context("series not found")?;
+                let _ = self.broadcast.send(api::AppEvent {
+                    channel: incoming.channel(),
+                    kind: api::AppEventKind::SeriesChanged {
+                        series: series.clone(),
+                    },
+                });
+                let _ = self.broadcast.send(api::AppEvent {
+                    channel: musli_web::api::ChannelId::NONE,
+                    kind: api::AppEventKind::PendingChanged,
+                });
+                outgoing.write(api::Empty);
+            }
+            api::Request::SetMoviePending => {
+                let req = incoming
+                    .read::<api::SetMoviePendingRequest>()
+                    .context("missing request")?;
+                self.db.set_movie_pending(req.id, req.pending).await?;
+                let movie = self
+                    .db
+                    .movie_by_id(req.id)
+                    .await?
+                    .context("movie not found")?;
+                let _ = self.broadcast.send(api::AppEvent {
+                    channel: incoming.channel(),
+                    kind: api::AppEventKind::MovieChanged {
+                        movie: movie.clone(),
+                    },
+                });
+                let _ = self.broadcast.send(api::AppEvent {
+                    channel: musli_web::api::ChannelId::NONE,
+                    kind: api::AppEventKind::PendingChanged,
+                });
+                outgoing.write(api::Empty);
+            }
             api::Request::Unknown(id) => {
                 anyhow::bail!("unknown request id: {id:?}");
             }

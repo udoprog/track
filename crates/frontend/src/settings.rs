@@ -22,6 +22,8 @@ pub(super) enum Msg {
     ScheduleDaysChanged(String),
     DashboardLimitChanged(String),
     DashboardPageChanged(String),
+    AutoSyncEnabledChanged(bool),
+    AutoSyncIntervalChanged(String),
     Save,
     SaveDone(Result<ws::Packet<api::SetConfig>, ws::Error>),
 }
@@ -99,6 +101,16 @@ impl Component for Settings {
         let on_dashboard_page = link.callback(|e: InputEvent| {
             let input: web_sys::HtmlInputElement = e.target_unchecked_into();
             Msg::DashboardPageChanged(input.value())
+        });
+
+        let on_auto_sync_enabled = link.callback(|e: Event| {
+            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+            Msg::AutoSyncEnabledChanged(input.checked())
+        });
+
+        let on_auto_sync_interval = link.callback(|e: InputEvent| {
+            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+            Msg::AutoSyncIntervalChanged(input.value())
         });
 
         let on_save = link.callback(|e: SubmitEvent| {
@@ -191,6 +203,31 @@ impl Component for Settings {
                     </div>
                 </div>
 
+                <div class="settings-section">
+                    <h2>{"Sync"}</h2>
+                    <div class="settings-fields">
+                        <div class="field">
+                            <label>{"Auto-sync enabled"}</label>
+                            <input
+                                type="checkbox"
+                                checked={self.config.auto_sync_enabled}
+                                onchange={on_auto_sync_enabled}
+                            />
+                        </div>
+                        <div class="field">
+                            <label>{"Sync interval (hours)"}</label>
+                            <input
+                                type="number"
+                                class="input-number"
+                                min="1"
+                                max="168"
+                                value={self.config.auto_sync_interval_hours.to_string()}
+                                oninput={on_auto_sync_interval}
+                            />
+                        </div>
+                    </div>
+                </div>
+
                 <button type="submit" class="btn">{"Save"}</button>
             </form>
         }
@@ -255,6 +292,16 @@ impl Settings {
             Msg::DashboardPageChanged(val) => {
                 if let Ok(n) = val.parse::<u32>() {
                     self.config.dashboard_page = n;
+                }
+                Ok(false)
+            }
+            Msg::AutoSyncEnabledChanged(val) => {
+                self.config.auto_sync_enabled = val;
+                Ok(true)
+            }
+            Msg::AutoSyncIntervalChanged(val) => {
+                if let Ok(n) = val.parse::<u32>() {
+                    self.config.auto_sync_interval_hours = n;
                 }
                 Ok(false)
             }

@@ -101,7 +101,8 @@ impl Dashboard {
                     | api::AppEventKind::SeriesCreated { .. }
                     | api::AppEventKind::SeriesDeleted { .. }
                     | api::AppEventKind::MovieCreated { .. }
-                    | api::AppEventKind::MovieDeleted { .. } => {
+                    | api::AppEventKind::MovieDeleted { .. }
+                    | api::AppEventKind::TaskCompleted { .. } => {
                         if self.channel.id() != ws::ChannelId::NONE {
                             self.load_pending(ctx);
                             self.load_schedule(ctx);

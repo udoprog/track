@@ -641,6 +641,17 @@ body {
     flex-wrap: wrap;
 }
 
+// Wide banner image (series/movie header)
+.banner {
+    width: 100%;
+    max-height: 220px;
+    object-fit: cover;
+    border-radius: $radius-sm;
+    background: $bg-surface;
+    display: block;
+    margin-bottom: $gap-sm;
+}
+
 // Movie detail poster (fills the detail-sidebar panel)
 .movie-poster {
     width: 100%;

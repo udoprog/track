@@ -89,6 +89,50 @@ async fn main() -> Result<()> {
             .run(db.clone(), remote.clone(), broadcast.clone()),
     );
 
+    // Spawn the automatic background sync loop.
+    tokio::spawn({
+        let db = db.clone();
+        let queue = queue.clone();
+        let broadcast = broadcast.clone();
+        async move {
+            loop {
+                let config = db.load_config().await.unwrap_or_default();
+                let hours = config.auto_sync_interval_hours.max(1) as u64;
+                tokio::time::sleep(std::time::Duration::from_secs(hours * 3600)).await;
+
+                let config = db.load_config().await.unwrap_or_default();
+                if !config.auto_sync_enabled {
+                    continue;
+                }
+
+                for s in db.series().await.unwrap_or_default() {
+                    queue
+                        .push(
+                            api::TaskKind::SyncSeries {
+                                series_id: s.id,
+                                title: s.title,
+                            },
+                            false,
+                            &broadcast,
+                        )
+                        .await;
+                }
+                for m in db.movies().await.unwrap_or_default() {
+                    queue
+                        .push(
+                            api::TaskKind::SyncMovie {
+                                movie_id: m.id,
+                                title: m.title,
+                            },
+                            false,
+                            &broadcast,
+                        )
+                        .await;
+                }
+            }
+        }
+    });
+
     let state = AppState {
         db,
         broadcast,

@@ -313,6 +313,8 @@ async fn main() -> Result<()> {
             schedule_duration_days: cfg.schedule_duration_days,
             dashboard_limit: cfg.dashboard_limit,
             dashboard_page: cfg.dashboard_page,
+            auto_sync_enabled: false,
+            auto_sync_interval_hours: 24,
         })
         .await
         .context("saving config")?;

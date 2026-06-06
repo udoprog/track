@@ -35,6 +35,7 @@ struct SeriesRow {
     fanart: Option<Image>,
     tracked: bool,
     remote_id: Option<RemoteId>,
+    pending_episode_id: Option<EpisodeId>,
 }
 
 #[derive(Row)]
@@ -77,6 +78,7 @@ struct MovieRow {
     remote_id: Option<RemoteId>,
     watched: bool,
     watched_count: i64,
+    pending: bool,
 }
 
 #[derive(Row)]
@@ -166,19 +168,26 @@ statements! {
         insert_series: r#"
             INSERT INTO series (title, first_air, overview, poster, banner, fanart, tracked, remote_id)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            RETURNING id, title, first_air, overview, poster, banner, fanart, tracked, remote_id
+            RETURNING id, title, first_air, overview, poster, banner, fanart, tracked, remote_id,
+                      NULL AS pending_episode_id
         "#,
         list_series: r#"
-            SELECT id, title, first_air, overview, poster, banner, fanart, tracked, remote_id
+            SELECT id, title, first_air, overview, poster, banner, fanart, tracked, remote_id,
+                   pending_episode_id
             FROM series ORDER BY title
         "#,
         series_by_id: r#"
-            SELECT id, title, first_air, overview, poster, banner, fanart, tracked, remote_id
+            SELECT id, title, first_air, overview, poster, banner, fanart, tracked, remote_id,
+                   pending_episode_id
             FROM series WHERE id = ?
         "#,
         series_by_remote: r#"
-            SELECT id, title, first_air, overview, poster, banner, fanart, tracked, remote_id
+            SELECT id, title, first_air, overview, poster, banner, fanart, tracked, remote_id,
+                   pending_episode_id
             FROM series WHERE remote_id = ?
+        "#,
+        set_series_next_episode: r#"
+            UPDATE series SET pending_episode_id = ? WHERE id = ?
         "#,
         update_series: r#"
             UPDATE series
@@ -246,25 +255,31 @@ statements! {
             INSERT INTO movies (title, release_date, overview, poster, banner, fanart, remote_id)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             RETURNING id, title, release_date, overview, poster, banner, fanart, remote_id,
-                      0 AS watched, 0 AS watched_count
+                      0 AS watched, 0 AS watched_count, 0 AS pending
         "#,
         list_movies: r#"
             SELECT m.id, m.title, m.release_date, m.overview, m.poster, m.banner, m.fanart, m.remote_id,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) > 0 AS watched,
-                   (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) AS watched_count
+                   (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) AS watched_count,
+                   m.pending
             FROM movies m ORDER BY m.title
         "#,
         movie_by_id: r#"
             SELECT m.id, m.title, m.release_date, m.overview, m.poster, m.banner, m.fanart, m.remote_id,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) > 0 AS watched,
-                   (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) AS watched_count
+                   (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) AS watched_count,
+                   m.pending
             FROM movies m WHERE m.id = ?
         "#,
         movie_by_remote: r#"
             SELECT m.id, m.title, m.release_date, m.overview, m.poster, m.banner, m.fanart, m.remote_id,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) > 0 AS watched,
-                   (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) AS watched_count
+                   (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) AS watched_count,
+                   m.pending
             FROM movies m WHERE m.remote_id = ?
+        "#,
+        set_movie_pending: r#"
+            UPDATE movies SET pending = ? WHERE id = ?
         "#,
         update_movie: r#"
             UPDATE movies
@@ -300,20 +315,36 @@ statements! {
                    e.name AS episode_name,
                    e.season, e.number,
                    s.poster
+            FROM series s
+            JOIN episodes e ON e.id = s.pending_episode_id
+            WHERE s.tracked = 1
+              AND s.pending_episode_id IS NOT NULL
+
+            UNION ALL
+
+            SELECT e.series_id, e.id AS episode_id, e.aired,
+                   s.title AS series_title,
+                   e.name AS episode_name,
+                   e.season, e.number,
+                   s.poster
             FROM episodes e
             JOIN series s ON s.id = e.series_id
             WHERE s.tracked = 1
+              AND s.pending_episode_id IS NULL
               AND e.aired IS NOT NULL
               AND e.aired <= ?
               AND NOT EXISTS (SELECT 1 FROM watched w WHERE w.episode_id = e.id)
-            ORDER BY e.aired DESC, s.title, e.season, e.number
+
+            ORDER BY aired DESC, series_title, season, number
         "#,
         list_pending_movies: r#"
             SELECT m.id AS movie_id, m.title, m.release_date, m.poster
             FROM movies m
-            WHERE m.release_date IS NOT NULL
-              AND m.release_date <= ?
-              AND NOT EXISTS (SELECT 1 FROM watched w WHERE w.movie_id = m.id)
+            WHERE (
+                m.release_date IS NOT NULL
+                AND m.release_date <= ?
+                AND NOT EXISTS (SELECT 1 FROM watched w WHERE w.movie_id = m.id)
+            ) OR m.pending = 1
             ORDER BY m.release_date DESC, m.title
         "#,
 
@@ -514,6 +545,24 @@ impl Database {
         spawn_blocking(move || {
             s.set_series_tracked.bind((tracked, id))?;
             ensure!(s.set_series_tracked.step()?.is_done(), "set_series_tracked");
+            Ok(())
+        })
+        .await?
+    }
+
+    pub async fn set_series_next_episode(
+        &self,
+        series_id: SeriesId,
+        episode_id: Option<EpisodeId>,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.set_series_next_episode.bind((episode_id, series_id))?;
+            ensure!(
+                s.set_series_next_episode.step()?.is_done(),
+                "set_series_next_episode"
+            );
             Ok(())
         })
         .await?
@@ -770,6 +819,17 @@ impl Database {
         spawn_blocking(move || {
             s.delete_movie.bind((id,))?;
             ensure!(s.delete_movie.step()?.is_done(), "delete_movie");
+            Ok(())
+        })
+        .await?
+    }
+
+    pub async fn set_movie_pending(&self, id: MovieId, pending: bool) -> Result<()> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.set_movie_pending.bind((pending, id))?;
+            ensure!(s.set_movie_pending.step()?.is_done(), "set_movie_pending");
             Ok(())
         })
         .await?
@@ -1038,6 +1098,18 @@ impl Database {
             .and_then(|v| v.parse().ok())
             .unwrap_or(6);
 
+        let auto_sync_enabled = self
+            .get_config("auto_sync_enabled")
+            .await?
+            .map(|v| v == "true")
+            .unwrap_or(false);
+
+        let auto_sync_interval_hours = self
+            .get_config("auto_sync_interval_hours")
+            .await?
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(24);
+
         Ok(Config {
             theme,
             tvdb_legacy_apikey,
@@ -1045,6 +1117,8 @@ impl Database {
             schedule_duration_days,
             dashboard_limit,
             dashboard_page,
+            auto_sync_enabled,
+            auto_sync_interval_hours,
         })
     }
 
@@ -1064,6 +1138,20 @@ impl Database {
             .await?;
         self.set_config("dashboard_page", &config.dashboard_page.to_string())
             .await?;
+        self.set_config(
+            "auto_sync_enabled",
+            if config.auto_sync_enabled {
+                "true"
+            } else {
+                "false"
+            },
+        )
+        .await?;
+        self.set_config(
+            "auto_sync_interval_hours",
+            &config.auto_sync_interval_hours.to_string(),
+        )
+        .await?;
         Ok(())
     }
 }
@@ -1081,6 +1169,7 @@ fn series_from_row(r: SeriesRow) -> api::Series {
         fanart: r.fanart,
         tracked: r.tracked,
         remote_id: r.remote_id,
+        pending_episode_id: r.pending_episode_id,
     }
 }
 
@@ -1126,6 +1215,7 @@ fn movie_from_row(r: MovieRow) -> api::Movie {
         remote_id: r.remote_id,
         watched: r.watched,
         watched_count: r.watched_count as u32,
+        pending: r.pending,
     }
 }
 
