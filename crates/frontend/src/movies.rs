@@ -2,6 +2,7 @@ use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
 use crate::error::{CustomContext, Error, Message};
+use crate::router::Route;
 
 pub(super) struct MoviesList {
     channel: ws::Channel,
@@ -18,11 +19,13 @@ pub(super) enum Msg {
     MoviesLoaded(Result<ws::Packet<api::ListMovies>, ws::Error>),
     MarkWatched(api::MovieId),
     MarkWatchedDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
+    Navigate(Route),
 }
 
 #[derive(Properties, PartialEq)]
 pub(super) struct Props {
     pub(super) onerror: Callback<Error>,
+    pub(super) on_navigate: Callback<Route>,
 }
 
 impl Component for MoviesList {
@@ -126,6 +129,10 @@ impl MoviesList {
                 result.context(Message::MarkingWatched)?;
                 Ok(false)
             }
+            Msg::Navigate(route) => {
+                ctx.props().on_navigate.emit(route);
+                Ok(false)
+            }
         }
     }
 
@@ -140,15 +147,19 @@ impl MoviesList {
 
     fn view_row(&self, ctx: &Context<Self>, m: &api::Movie) -> Html {
         let movie_id = m.id;
+        let on_click = ctx
+            .link()
+            .callback(move |_| Msg::Navigate(Route::MovieDetail(movie_id)));
 
         html! {
             <div class="group row">
                 if let Some(ref poster) = m.poster {
-                    <img class="poster-sm" src={poster.proxy_url()} alt="" />
+                    <img class="poster-sm clickable" src={poster.proxy_url()} alt=""
+                        onclick={on_click.clone()} />
                 } else {
-                    <div class="poster-sm" />
+                    <div class="poster-sm clickable" onclick={on_click.clone()} />
                 }
-                <span class="fill">{&m.title}</span>
+                <span class="fill clickable" onclick={on_click}>{&m.title}</span>
                 if let Some(date) = m.release_date {
                     <span class="text-muted">{date.year().to_string()}</span>
                 }

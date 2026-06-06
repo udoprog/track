@@ -9,12 +9,12 @@
 - **`frontend` crate**:
   - `root.rs`, `app.rs` (toolbar with icon-inline pattern), `router.rs`
   - `setup_channel.rs`, `error.rs`
-  - `dashboard.rs` (pending grid + schedule)
+  - `dashboard.rs` (pending grid + schedule, pending items and schedule entries link to SeriesDetail/Movies)
   - `series.rs` (SeriesList)
-  - `series_detail.rs` (seasons sidebar + episode list with mark-watched)
-  - `movies.rs` (MoviesList with mark-watched) ← **just added**
-  - `settings.rs` (Config form: theme, api keys, dashboard params) ← **just added**
-  - `style/main.scss` — all CSS classes: icon-inline, outline, group, empty, license, input-text, input-select, input-number, field, settings-* variants
+  - `series_detail.rs` (seasons sidebar + episode list with mark-watched, track/untrack, sync, remove, watch-remaining, remove-last-watch)
+  - `movies.rs` (MoviesList with mark-watched)
+  - `settings.rs` (Config form: theme, api keys, dashboard params)
+  - `style/main.scss` — all CSS classes: icon-inline, btn-base/btn-icon-base mixins, outline, group, empty, license, input-text, input-select, input-number, field, settings-* variants
   - `Cargo.toml` — HtmlSelectElement added to web-sys features
 
 ### Not yet built

@@ -78,10 +78,14 @@ pub(crate) enum Message {
     MarkingWatched,
     #[display("loading movies")]
     LoadingMovies,
+    #[display("loading watch history")]
+    LoadingWatched,
     #[display("saving config")]
     SavingConfig,
     #[display("removing watch")]
     RemovingWatched,
+    #[display("removing movie")]
+    RemovingMovie,
     #[display("untracking series")]
     UntrackingSeries,
     #[display("removing series")]

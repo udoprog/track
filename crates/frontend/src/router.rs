@@ -12,6 +12,7 @@ pub(super) enum Route {
     Series,
     SeriesDetail(api::SeriesId),
     Movies,
+    MovieDetail(api::MovieId),
     Settings,
 }
 
@@ -28,6 +29,7 @@ impl fmt::Display for Route {
             Route::Series => f.write_str("/series"),
             Route::SeriesDetail(id) => write!(f, "/series/{id}"),
             Route::Movies => f.write_str("/movies"),
+            Route::MovieDetail(id) => write!(f, "/movies/{id}"),
             Route::Settings => f.write_str("/settings"),
         }
     }
@@ -43,7 +45,12 @@ impl Route {
                     .unwrap_or(Route::Series),
                 None => Route::Series,
             },
-            Some("movies") => Route::Movies,
+            Some("movies") => match parts.next() {
+                Some(id) => u64::from_str_radix(id, 16)
+                    .map(|n| Route::MovieDetail(api::MovieId::new(n)))
+                    .unwrap_or(Route::Movies),
+                None => Route::Movies,
+            },
             Some("settings") => Route::Settings,
             _ => Route::Dashboard,
         }

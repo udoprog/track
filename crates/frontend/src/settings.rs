@@ -151,34 +151,37 @@ impl Component for Settings {
 
                 <div class="settings-section">
                     <h2>{"Dashboard"}</h2>
-                    <div class="settings-row">
-                        <div class="field">
+                    <div class="section">
+                        <div class="field fill">
                             <label>{"Pending limit"}</label>
                             <input
                                 type="number"
-                                class="input-number"
+                                class="input-number fill"
                                 min="1"
                                 max="100"
                                 value={self.config.dashboard_limit.to_string()}
                                 oninput={on_dashboard_limit}
                             />
                         </div>
-                        <div class="field">
+
+                        <div class="field fill">
                             <label>{"Schedule days"}</label>
                             <input
                                 type="number"
-                                class="input-number"
+                                class="input-number fill"
                                 min="1"
                                 max="90"
                                 value={self.config.schedule_duration_days.to_string()}
                                 oninput={on_schedule_days}
                             />
                         </div>
-                        <div class="field">
+
+                        <div class="field fill">
                             <label>{"Page size"}</label>
+
                             <input
                                 type="number"
-                                class="input-number"
+                                class="input-number fill"
                                 min="1"
                                 max="100"
                                 value={self.config.dashboard_page.to_string()}

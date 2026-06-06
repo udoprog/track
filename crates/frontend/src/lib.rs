@@ -1,6 +1,7 @@
 mod app;
 mod dashboard;
 mod error;
+mod movie_detail;
 mod movies;
 mod root;
 mod router;
@@ -11,6 +12,7 @@ mod setup_channel;
 
 use self::app::App;
 use self::dashboard::Dashboard;
+use self::movie_detail::MovieDetail;
 use self::movies::MoviesList;
 use self::series::SeriesList;
 use self::series_detail::SeriesDetail;

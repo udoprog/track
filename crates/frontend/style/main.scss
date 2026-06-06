@@ -541,8 +541,6 @@ body {
 
 .input-number {
     @extend .input-text;
-    width: 80px;
-    text-align: right;
 }
 
 // Form field (label + input stacked)
@@ -584,4 +582,13 @@ body {
     display: flex;
     gap: $gap;
     flex-wrap: wrap;
+}
+
+// Movie detail poster (fills the detail-sidebar panel)
+.movie-poster {
+    width: 100%;
+    object-fit: cover;
+    border-radius: $radius-sm;
+    background: $bg-surface;
+    min-height: 240px;
 }

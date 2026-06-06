@@ -2,6 +2,7 @@ use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
 use crate::Dashboard;
+use crate::MovieDetail;
 use crate::MoviesList;
 use crate::SeriesDetail;
 use crate::SeriesList;
@@ -120,7 +121,7 @@ impl App {
         let onerror = ctx.props().onerror.clone();
         let on_navigate = ctx.link().callback(Msg::Navigate);
         match &ctx.props().route {
-            Route::Dashboard => html! { <Dashboard {onerror} /> },
+            Route::Dashboard => html! { <Dashboard {onerror} {on_navigate} /> },
             Route::Series => html! {
                 <SeriesList {onerror} {on_navigate} />
             },
@@ -130,7 +131,11 @@ impl App {
                     <SeriesDetail {series_id} {onerror} {on_navigate} />
                 }
             }
-            Route::Movies => html! { <MoviesList {onerror} /> },
+            Route::Movies => html! { <MoviesList {onerror} {on_navigate} /> },
+            Route::MovieDetail(movie_id) => {
+                let movie_id = *movie_id;
+                html! { <MovieDetail {movie_id} {onerror} {on_navigate} /> }
+            }
             Route::Settings => html! { <Settings {onerror} /> },
         }
     }
