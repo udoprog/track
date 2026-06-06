@@ -16,6 +16,7 @@ pub(super) struct MovieDetail {
     _mark_req: ws::Request,
     _remove_watch_req: ws::Request,
     _remove_req: ws::Request,
+    _sync_req: ws::Request,
 }
 
 pub(super) enum Msg {
@@ -31,6 +32,8 @@ pub(super) enum Msg {
     CancelRemove,
     RemoveMovie,
     RemoveDone(Result<ws::Packet<api::RemoveMovie>, ws::Error>),
+    SyncMovie,
+    SyncDone(Result<ws::Packet<api::SyncMovie>, ws::Error>),
     Back,
 }
 
@@ -66,6 +69,7 @@ impl Component for MovieDetail {
             _mark_req: ws::Request::default(),
             _remove_watch_req: ws::Request::default(),
             _remove_req: ws::Request::default(),
+            _sync_req: ws::Request::default(),
         }
     }
 
@@ -81,7 +85,7 @@ impl Component for MovieDetail {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         html! {
-            <div class="outline">
+            <div class="page">
                 { self.view_header(ctx) }
                 { self.view_body(ctx) }
             </div>
@@ -222,6 +226,20 @@ impl MovieDetail {
                 ctx.props().on_navigate.emit(Route::Movies);
                 Ok(false)
             }
+            Msg::SyncMovie => {
+                let id = ctx.props().movie_id;
+                self._sync_req = self
+                    .channel
+                    .request()
+                    .body(api::SyncMovieRequest { id })
+                    .on_packet(ctx.link().callback(Msg::SyncDone))
+                    .send();
+                Ok(false)
+            }
+            Msg::SyncDone(result) => {
+                result.context(Message::SyncingSeries)?;
+                Ok(false)
+            }
             Msg::Back => {
                 ctx.props().on_navigate.emit(Route::Movies);
                 Ok(false)
@@ -255,13 +273,19 @@ impl MovieDetail {
     fn view_header(&self, ctx: &Context<Self>) -> Html {
         let link = ctx.link();
         html! {
-            <div class="row outline-title">
+            <div class="row page-title">
                 <button class="btn" onclick={link.callback(|_| Msg::Back)}>
                     <span class="icon-inline"><span class="icon arrow-left" /></span>
                     {"Movies"}
                 </button>
                 if let Some(ref m) = self.movie {
                     <span class="fill">{&m.title}</span>
+                    if m.remote_id.is_some() {
+                        <button class="btn" onclick={link.callback(|_| Msg::SyncMovie)} title="Sync from remote">
+                            <span class="icon-inline"><span class="icon arrow-path" /></span>
+                            <span class="hide-mobile">{"Sync"}</span>
+                        </button>
+                    }
                     if self.confirm_remove {
                         <button class="btn btn-danger" onclick={link.callback(|_| Msg::RemoveMovie)}>
                             {"Confirm remove"}
@@ -304,9 +328,11 @@ impl MovieDetail {
                     if let Some(date) = movie.release_date {
                         <div class="group text-muted">{date.to_string()}</div>
                     }
+
                     if !movie.overview.is_empty() {
-                        <p class="ep-overview">{&movie.overview}</p>
+                        <p class="overview">{&movie.overview}</p>
                     }
+
                     <div class="row season-actions">
                         if movie.watched {
                             <span class="icon-inline" title="Watched"><span class="icon check-circle" /></span>

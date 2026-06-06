@@ -759,6 +759,7 @@ pub struct TrackSeriesRequest {
 #[musli(crate = musli_core)]
 pub struct UntrackSeriesRequest {
     pub id: SeriesId,
+    pub tracked: bool,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -890,6 +891,12 @@ pub struct SearchResponse {
 #[musli(crate = musli_core)]
 pub struct SyncSeriesRequest {
     pub id: SeriesId,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct SyncMovieRequest {
+    pub id: MovieId,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -1097,6 +1104,12 @@ api::define! {
     pub type SyncSeries;
     impl Endpoint for SyncSeries {
         impl Request for SyncSeriesRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type SyncMovie;
+    impl Endpoint for SyncMovie {
+        impl Request for SyncMovieRequest;
         type Response<'de> = Empty;
     }
 

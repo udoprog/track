@@ -78,20 +78,20 @@ body {
 .app-body {
     flex: 1;
     overflow: auto;
-    padding: $gap;
-
-    @include g.until-mobile {
-        padding: $padding-row;
-    }
 }
 
 .toolbar {
-    display: flex;
-    align-items: center;
     background: $bg-panel;
     border-bottom: 1px solid $border-subtle;
-    padding: $padding-row $gap;
+}
+
+.toolbar-inner {
+    max-width: 960px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
     gap: $gap-sm;
+    padding: $padding-row $gap;
 
     @include g.until-mobile {
         padding: $padding-row;
@@ -103,12 +103,31 @@ body {
     display: flex;
     align-items: center;
     gap: $gap-sm;
+
+    &.center {
+        justify-content: center;
+    }
 }
 
 .row-fill {
     display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: space-between;
     align-items: center;
-    gap: $gap-sm;
+    gap: $gap-xs;
+
+    &.reverse {
+        flex-direction: row-reverse;
+    }
+
+    .start {
+        margin-right: auto;
+    }
+
+    .end {
+        margin-left: auto;
+    }
 }
 
 .row.start {
@@ -160,12 +179,6 @@ body {
         background: $color-selected;
     }
 
-    &.btn-sm {
-        height: $input-height-sm;
-        min-width: $input-height-sm;
-        padding: $padding-sm $padding-row-sm;
-    }
-
     box-sizing: border-box;
     display: inline-flex;
     gap: $gap-xs;
@@ -194,12 +207,6 @@ body {
     width: $input-height;
     height: $input-height;
     justify-content: center;
-
-    &.btn-sm {
-        padding: $padding-sm;
-        width: $input-height-sm;
-        height: $input-height-sm;
-    }
 
     @include g.until-mobile {
         width: $input-height-touch;
@@ -241,10 +248,6 @@ body {
 }
 
 // Dashboard
-.dashboard {
-    max-width: 960px;
-}
-
 .pending-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -451,7 +454,7 @@ body {
     gap: $gap-sm;
 }
 
-.ep-overview {
+.overview {
     margin: $padding $gap-sm 0;
     font-size: $font-sm;
     color: $text-muted;
@@ -459,7 +462,7 @@ body {
 }
 
 // Episode list
-.ep-code {
+.episode-code {
     font-family: $monospace-font;
     font-size: $font-xs;
     color: $text-muted;
@@ -467,7 +470,7 @@ body {
     width: 68px;
 }
 
-.ep-watched {
+.watched {
     opacity: 0.5;
 }
 
@@ -501,17 +504,73 @@ body {
     color: $text-muted;
 }
 
-// Outline list (series, movies)
-.outline {
+// Page container — centers content, responsive padding
+.page {
+    display: flex;
+    flex-direction: column;
     max-width: 960px;
+    margin: 0 auto;
+    padding: $gap;
+    gap: $gap;
+
+    @include g.until-mobile {
+        padding: $padding-row;
+    }
 }
 
-.outline-title {
+.page-title {
     font-size: $font-lg;
     font-weight: 600;
-    padding-bottom: $gap-sm;
-    margin-bottom: $gap-sm;
-    border-bottom: 1px solid $border-subtle;
+}
+
+// Input group (merges adjacent inputs/buttons into one pill)
+.input-group {
+    display: inline-flex !important;
+    gap: 0 !important;
+
+    &.fill {
+        flex: 1;
+    }
+
+    > * {
+        border-radius: 0 !important;
+
+        &:first-child {
+            border-radius: $radius-sm 0 0 $radius-sm !important;
+        }
+
+        &:last-child {
+            border-radius: 0 $radius-sm $radius-sm 0 !important;
+        }
+
+        &:only-child {
+            border-radius: $radius-sm !important;
+        }
+    }
+}
+
+// Table list
+.table {
+    font-size: $font-sm;
+}
+
+.table-entry {
+    display: flex;
+    flex-direction: column;
+    gap: $gap-sm;
+    padding: $gap-sm;
+    border-style: solid;
+    border-color: $border-subtle;
+    border-width: 0 0 1px 0;
+    background: $bg-panel;
+
+    &:first-child {
+        border-top-width: 1px;
+    }
+
+    &:hover {
+        background: $bg-surface;
+    }
 }
 
 // Form inputs
@@ -560,10 +619,6 @@ body {
 }
 
 // Settings page
-.settings-page {
-    max-width: 640px;
-}
-
 .settings-section {
     margin-bottom: $gap * 2;
 

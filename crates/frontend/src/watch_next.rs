@@ -63,12 +63,15 @@ impl Component for WatchNext {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         html! {
-            <div class="outline">
-                <div class="outline-title">{"Watch Next"}</div>
+            <div class="page">
+                <div class="page-title">{"Watch Next"}</div>
+
                 if self.pending.is_empty() {
                     <div class="empty text-muted">{"Nothing to watch next."}</div>
                 } else {
-                    { for self.pending.iter().map(|p| self.view_row(ctx, p)) }
+                    <div class="table">
+                        { for self.pending.iter().map(|p| self.view_row(ctx, p)) }
+                    </div>
                 }
             </div>
         }
@@ -149,11 +152,14 @@ impl WatchNext {
 
     fn view_row(&self, ctx: &Context<Self>, p: &api::Pending) -> Html {
         let kind = p.kind.clone();
+
         let route = match p.kind {
             api::PendingKind::Episode { series, .. } => Route::SeriesDetail(series),
             api::PendingKind::Movie { movie } => Route::MovieDetail(movie),
         };
+
         let on_navigate = ctx.link().callback(move |_| Msg::Navigate(route.clone()));
+
         let on_mark = ctx.link().callback(move |_| {
             Msg::MarkWatched(match kind {
                 api::PendingKind::Episode { series, episode } => {
@@ -164,28 +170,34 @@ impl WatchNext {
         });
 
         html! {
-            <div class="group row">
-                if let Some(ref poster) = p.poster {
-                    <img class="poster-sm" src={poster.proxy_url()} alt="" />
-                } else {
-                    <div class="poster-sm" />
-                }
-                <div class="fill">
-                    <div class="row clickable" onclick={on_navigate}>
-                        <span class="fill">
-                            if let Some(ref title) = p.series_title {
-                                <span class="text-muted">{title}{" — "}</span>
+            <div class="table-entry">
+                <div class="row">
+                    if let Some(ref poster) = p.poster {
+                        <img class="poster-sm" src={poster.proxy_url()} alt="" />
+                    } else {
+                        <div class="poster-sm" />
+                    }
+
+                    <div class="fill">
+                        <div class="row clickable" onclick={on_navigate}>
+                            <span class="fill">
+                                if let Some(ref title) = p.series_title {
+                                    <span class="text-muted">{title}{" — "}</span>
+                                }
+
+                                {&p.label}
+                            </span>
+
+                            if let Some(date) = p.aired {
+                                <span class="text-muted">{date.to_string()}</span>
                             }
-                            {&p.label}
-                        </span>
-                        if let Some(date) = p.aired {
-                            <span class="text-muted">{date.to_string()}</span>
-                        }
+                        </div>
                     </div>
+
+                    <button class="btn-icon-success" onclick={on_mark} title="Mark watched">
+                        <span class="icon check" />
+                    </button>
                 </div>
-                <button class="btn-icon-success" onclick={on_mark} title="Mark watched">
-                    <span class="icon check" />
-                </button>
             </div>
         }
     }

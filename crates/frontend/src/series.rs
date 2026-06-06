@@ -4,9 +4,13 @@ use yew::prelude::*;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::Route;
 
+const PAGE_SIZE: usize = 20;
+
 pub(super) struct SeriesList {
     channel: ws::Channel,
     series: Vec<api::Series>,
+    filter: String,
+    page: usize,
     _setup: crate::SetupChannel,
     _broadcast: ws::Listener,
     _list_req: ws::Request,
@@ -16,6 +20,8 @@ pub(super) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     SeriesLoaded(Result<ws::Packet<api::ListSeries>, ws::Error>),
+    Filter(String),
+    SetPage(usize),
     Navigate(Route),
 }
 
@@ -41,6 +47,8 @@ impl Component for SeriesList {
         Self {
             channel: ws::Channel::default(),
             series: Vec::new(),
+            filter: String::new(),
+            page: 0,
             _setup,
             _broadcast,
             _list_req: ws::Request::default(),
@@ -58,13 +66,74 @@ impl Component for SeriesList {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
+        let link = ctx.link();
+
+        let filter = self.filter.to_lowercase();
+        let filtered: Vec<&api::Series> = self
+            .series
+            .iter()
+            .filter(|s| filter.is_empty() || s.title.to_lowercase().contains(&filter))
+            .collect();
+
+        let total = filtered.len();
+        let total_pages = total.div_ceil(PAGE_SIZE).max(1);
+        let page = self.page.min(total_pages - 1);
+        let prev_page = page.checked_sub(1);
+        let next_page = (page + 1 < total_pages).then_some(page + 1);
+
+        let page_items: Vec<&api::Series> = filtered
+            .into_iter()
+            .skip(page * PAGE_SIZE)
+            .take(PAGE_SIZE)
+            .collect();
+
+        let on_filter = link.callback(|e: InputEvent| {
+            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+            Msg::Filter(input.value())
+        });
+
         html! {
-            <div class="outline">
-                <div class="outline-title">{"Series"}</div>
-                if self.series.is_empty() {
+            <div class="page">
+                <div class="page-title row">
+                    <span class="fill">{"Series"}</span>
+                    <span class="text-muted">{total}</span>
+                </div>
+                <div class="row">
+                    <div class="input-group fill">
+                        <input
+                            type="text"
+                            placeholder="Filter"
+                            value={self.filter.clone()}
+                            oninput={on_filter}
+                            class="input-text fill"
+                        />
+                        if !self.filter.is_empty() {
+                            <button class="btn-icon" title="Clear filter"
+                                onclick={link.callback(|_| Msg::Filter(String::new()))}>
+                                <span class="icon backspace" />
+                            </button>
+                        }
+                    </div>
+                </div>
+                if page_items.is_empty() {
                     <div class="empty text-muted">{"No series tracked."}</div>
                 } else {
-                    { for self.series.iter().map(|s| self.view_row(ctx, s)) }
+                    <div class="table">
+                    { for page_items.into_iter().map(|s| self.view_row(ctx, s)) }
+                    </div>
+                    if total_pages > 1 {
+                        <div class="row center">
+                            <button class="btn-icon" disabled={prev_page.is_none()}
+                                onclick={link.callback(move |_| Msg::SetPage(prev_page.unwrap_or(0)))}>
+                                <span class="icon arrow-left" />
+                            </button>
+                            <span class="text-muted">{format!("{} / {}", page + 1, total_pages)}</span>
+                            <button class="btn-icon" disabled={next_page.is_none()}
+                                onclick={link.callback(move |_| Msg::SetPage(next_page.unwrap_or(page)))}>
+                                <span class="icon arrow-right" />
+                            </button>
+                        </div>
+                    }
                 }
             </div>
         }
@@ -108,6 +177,15 @@ impl SeriesList {
                     .series;
                 Ok(true)
             }
+            Msg::Filter(s) => {
+                self.filter = s;
+                self.page = 0;
+                Ok(true)
+            }
+            Msg::SetPage(p) => {
+                self.page = p;
+                Ok(true)
+            }
             Msg::Navigate(route) => {
                 ctx.props().on_navigate.emit(route);
                 Ok(false)
@@ -131,20 +209,22 @@ impl SeriesList {
             .callback(move |_| Msg::Navigate(Route::SeriesDetail(id)));
 
         html! {
-            <div class="group row clickable" {onclick}>
-                if let Some(ref poster) = s.poster {
-                    <img class="poster-sm" src={poster.proxy_url()} alt="" />
-                } else {
-                    <div class="poster-sm" />
-                }
-                <span class="fill">{&s.title}</span>
-                if let Some(date) = s.first_air_date {
-                    <span class="text-muted">{date.year().to_string()}</span>
-                }
-                if !s.tracked {
-                    <span class="license">{"Untracked"}</span>
-                }
-                <span class="icon-inline"><span class="icon chevron-right" /></span>
+            <div class="table-entry clickable" {onclick}>
+                <div class="row">
+                    if let Some(ref poster) = s.poster {
+                        <img class="poster-sm" src={poster.proxy_url()} alt="" />
+                    } else {
+                        <div class="poster-sm" />
+                    }
+                    <span class="fill">{&s.title}</span>
+                    if let Some(date) = s.first_air_date {
+                        <span class="text-muted">{date.year().to_string()}</span>
+                    }
+                    if !s.tracked {
+                        <span class="license">{"Untracked"}</span>
+                    }
+                    <span class="icon-inline"><span class="icon chevron-right" /></span>
+                </div>
             </div>
         }
     }

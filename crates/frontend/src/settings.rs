@@ -109,7 +109,7 @@ impl Component for Settings {
         let theme_val = self.config.theme.to_string();
 
         html! {
-            <form class="settings-page" onsubmit={on_save}>
+            <form class="page" onsubmit={on_save}>
                 <div class="settings-section">
                     <h2>{"Appearance"}</h2>
                     <div class="settings-fields">

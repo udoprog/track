@@ -37,8 +37,8 @@ pub(super) enum Msg {
     RemoveWatchedDone(Result<ws::Packet<api::RemoveWatched>, ws::Error>),
     WatchRemaining(api::SeasonNumber),
     WatchRemainingDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
-    UntrackSeries,
-    UntrackDone(Result<ws::Packet<api::UntrackSeries>, ws::Error>),
+    SetTracked(bool),
+    SetTrackedDone(bool, Result<ws::Packet<api::UntrackSeries>, ws::Error>),
     ConfirmRemove,
     CancelRemove,
     RemoveSeries,
@@ -101,7 +101,7 @@ impl Component for SeriesDetail {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         html! {
-            <div class="outline">
+            <div class="page">
                 { self.view_header(ctx) }
                 <div class="detail-layout">
                     { self.view_sidebar(ctx) }
@@ -297,20 +297,23 @@ impl SeriesDetail {
                 }
                 Ok(false)
             }
-            Msg::UntrackSeries => {
+            Msg::SetTracked(tracked) => {
                 let id = ctx.props().series_id;
                 self._untrack_req = self
                     .channel
                     .request()
-                    .body(api::UntrackSeriesRequest { id })
-                    .on_packet(ctx.link().callback(Msg::UntrackDone))
+                    .body(api::UntrackSeriesRequest { id, tracked })
+                    .on_packet(
+                        ctx.link()
+                            .callback(move |r| Msg::SetTrackedDone(tracked, r)),
+                    )
                     .send();
                 Ok(false)
             }
-            Msg::UntrackDone(result) => {
+            Msg::SetTrackedDone(tracked, result) => {
                 result.context(Message::UntrackingSeries)?;
                 if let Some(ref mut series) = self.series {
-                    series.tracked = false;
+                    series.tracked = tracked;
                 }
                 Ok(true)
             }
@@ -395,7 +398,7 @@ impl SeriesDetail {
     fn view_header(&self, ctx: &Context<Self>) -> Html {
         let link = ctx.link();
         html! {
-            <div class="row outline-title">
+            <div class="row page-title">
                 <button class="btn" onclick={link.callback(|_| Msg::Back)}>
                     <span class="icon-inline"><span class="icon arrow-left" /></span>
                     {"Series"}
@@ -406,12 +409,12 @@ impl SeriesDetail {
                         <span class="license">{"Untracked"}</span>
                     }
                     if s.tracked {
-                        <button class="btn" onclick={link.callback(|_| Msg::UntrackSeries)} title="Untrack series">
+                        <button class="btn" onclick={link.callback(|_| Msg::SetTracked(false))} title="Untrack series">
                             <span class="icon-inline"><span class="icon eye-slash" /></span>
                             <span class="hide-mobile">{"Untrack"}</span>
                         </button>
                     } else {
-                        <button class="btn" onclick={link.callback(|_| Msg::UntrackSeries)} title="Track series">
+                        <button class="btn" onclick={link.callback(|_| Msg::SetTracked(true))} title="Track series">
                             <span class="icon-inline"><span class="icon eye" /></span>
                             <span class="hide-mobile">{"Track"}</span>
                         </button>
@@ -507,14 +510,16 @@ impl SeriesDetail {
                     });
 
                     html! {
-                        <div class={classes!("group", watched.then_some("ep-watched"))}>
+                        <div class={classes!("group", watched.then_some("watched"))}>
                             <div class="row">
-                                <span class="ep-code">
+                                <span class="episode-code">
                                     { format!("S{:02}E{:02}", ep.season.to_i64(), ep.number) }
                                 </span>
+
                                 <span class="fill">
                                     { ep.name.as_deref().unwrap_or("—") }
                                 </span>
+
                                 if let Some(date) = ep.aired {
                                     <span class="text-muted">{date.to_string()}</span>
                                 }
@@ -535,8 +540,9 @@ impl SeriesDetail {
                                     </button>
                                 }
                             </div>
+
                             if !ep.overview.is_empty() {
-                                <p class="ep-overview">{&ep.overview}</p>
+                                <p class="overview">{&ep.overview}</p>
                             }
                         </div>
                     }

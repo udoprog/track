@@ -68,7 +68,7 @@ impl Component for Dashboard {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         html! {
-            <div class="dashboard">
+            <div class="page">
                 { self.view_pending(ctx) }
                 { self.view_schedule(ctx) }
             </div>

@@ -123,7 +123,7 @@ impl WsHandler {
                 let req = incoming
                     .read::<api::UntrackSeriesRequest>()
                     .context("missing request")?;
-                self.db.set_series_tracked(req.id, false).await?;
+                self.db.set_series_tracked(req.id, req.tracked).await?;
                 let series = self
                     .db
                     .series_by_id(req.id)
@@ -382,6 +382,27 @@ impl WsHandler {
                     .await;
                 outgoing.write(api::Empty);
             }
+            api::Request::SyncMovie => {
+                let req = incoming
+                    .read::<api::SyncMovieRequest>()
+                    .context("missing request")?;
+                let movie = self
+                    .db
+                    .movie_by_id(req.id)
+                    .await?
+                    .context("movie not found")?;
+                self.queue
+                    .push(
+                        api::TaskKind::SyncMovie {
+                            movie_id: movie.id,
+                            title: movie.title,
+                        },
+                        true,
+                        &self.broadcast,
+                    )
+                    .await;
+                outgoing.write(api::Empty);
+            }
             api::Request::SyncAll => {
                 let _req = incoming
                     .read::<api::SyncAllRequest>()
@@ -393,6 +414,19 @@ impl WsHandler {
                             api::TaskKind::SyncSeries {
                                 series_id: s.id,
                                 title: s.title,
+                            },
+                            false,
+                            &self.broadcast,
+                        )
+                        .await;
+                }
+                let movies = self.db.movies().await?;
+                for m in movies {
+                    self.queue
+                        .push(
+                            api::TaskKind::SyncMovie {
+                                movie_id: m.id,
+                                title: m.title,
                             },
                             false,
                             &self.broadcast,

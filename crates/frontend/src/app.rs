@@ -66,9 +66,17 @@ impl Component for App {
                     Ok(ch) => self.channel = ch,
                     Err(e) => ctx.props().onerror.emit(e.into()),
                 }
+
                 true
             }
-            Msg::AppBroadcast(_) => false,
+            Msg::AppBroadcast(result) => {
+                if let Err(e) = result {
+                    ctx.props().onerror.emit(e.into());
+                    return false;
+                }
+
+                true
+            }
             Msg::WsError(e) => {
                 ctx.props().onerror.emit(e.into());
                 false
@@ -87,39 +95,41 @@ impl Component for App {
         html! {
             <ContextProvider<ws::Handle> context={self.ws.handle()}>
             <div class="app">
-                <div class="toolbar row-fill">
-                    <div class="row start">
-                        <span class="app-title">{"OnTV"}</span>
-                    </div>
-                    <div class="row end">
-                        <button onclick={on_nav(Route::Dashboard)} class="btn" title="Dashboard">
-                            <span class="icon-inline"><span class="icon rectangle-stack" /></span>
-                            <span class="hide-mobile">{"Dashboard"}</span>
-                        </button>
-                        <button onclick={on_nav(Route::Queue)} class="btn" title="Queue">
-                            <span class="icon-inline"><span class="icon queue-list" /></span>
-                            <span class="hide-mobile">{"Queue"}</span>
-                        </button>
-                        <button onclick={on_nav(Route::WatchNext)} class="btn" title="Watch Next">
-                            <span class="icon-inline"><span class="icon play" /></span>
-                            <span class="hide-mobile">{"Watch Next"}</span>
-                        </button>
-                        <button onclick={on_nav(Route::Series)} class="btn" title="Series">
-                            <span class="icon-inline"><span class="icon tv" /></span>
-                            <span class="hide-mobile">{"Series"}</span>
-                        </button>
-                        <button onclick={on_nav(Route::Movies)} class="btn" title="Movies">
-                            <span class="icon-inline"><span class="icon film" /></span>
-                            <span class="hide-mobile">{"Movies"}</span>
-                        </button>
-                        <button onclick={on_nav(Route::Search)} class="btn" title="Search">
-                            <span class="icon-inline"><span class="icon magnifying-glass" /></span>
-                            <span class="hide-mobile">{"Search"}</span>
-                        </button>
-                        <button onclick={on_nav(Route::Settings)} class="btn" title="Settings">
-                            <span class="icon-inline"><span class="icon cog-6-tooth" /></span>
-                            <span class="hide-mobile">{"Settings"}</span>
-                        </button>
+                <div class="toolbar">
+                    <div class="toolbar-inner row-fill">
+                        <div class="row start">
+                            <span class="app-title">{"OnTV"}</span>
+                        </div>
+                        <div class="row end">
+                            <button onclick={on_nav(Route::Dashboard)} class="btn" title="Dashboard">
+                                <span class="icon-inline"><span class="icon rectangle-stack" /></span>
+                                <span class="hide-mobile">{"Dashboard"}</span>
+                            </button>
+                            <button onclick={on_nav(Route::Queue)} class="btn" title="Queue">
+                                <span class="icon-inline"><span class="icon queue-list" /></span>
+                                <span class="hide-mobile">{"Queue"}</span>
+                            </button>
+                            <button onclick={on_nav(Route::WatchNext)} class="btn" title="Watch Next">
+                                <span class="icon-inline"><span class="icon play" /></span>
+                                <span class="hide-mobile">{"Watch Next"}</span>
+                            </button>
+                            <button onclick={on_nav(Route::Series)} class="btn" title="Series">
+                                <span class="icon-inline"><span class="icon tv" /></span>
+                                <span class="hide-mobile">{"Series"}</span>
+                            </button>
+                            <button onclick={on_nav(Route::Movies)} class="btn" title="Movies">
+                                <span class="icon-inline"><span class="icon film" /></span>
+                                <span class="hide-mobile">{"Movies"}</span>
+                            </button>
+                            <button onclick={on_nav(Route::Search)} class="btn" title="Search">
+                                <span class="icon-inline"><span class="icon magnifying-glass" /></span>
+                                <span class="hide-mobile">{"Search"}</span>
+                            </button>
+                            <button onclick={on_nav(Route::Settings)} class="btn" title="Settings">
+                                <span class="icon-inline"><span class="icon cog-6-tooth" /></span>
+                                <span class="hide-mobile">{"Settings"}</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
                 <div class="app-body">

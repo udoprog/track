@@ -54,12 +54,8 @@ pub(crate) enum Message {
     MissingWindow,
     #[display("missing history API")]
     MissingHistory,
-    #[display("reading location origin")]
-    ReadingOrigin,
     #[display("reading location pathname")]
     ReadingPathname,
-    #[display("reading location search")]
-    ReadingSearch,
     #[display("pushing browser history state")]
     PushState,
     #[display("loading pending")]

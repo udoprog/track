@@ -4,11 +4,14 @@ use yew::prelude::*;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::Route;
 
+const PAGE_SIZE: usize = 20;
+
 pub(super) struct Queue {
     channel: ws::Channel,
     pending: Vec<api::Task>,
     running: Vec<api::Task>,
     completed: Vec<api::CompletedTask>,
+    page: usize,
     _setup: crate::SetupChannel,
     _broadcast: ws::Listener,
     _list_req: ws::Request,
@@ -21,6 +24,7 @@ pub(super) enum Msg {
     TasksLoaded(Result<ws::Packet<api::ListTasks>, ws::Error>),
     SyncAll,
     SyncAllDone(Result<ws::Packet<api::SyncAll>, ws::Error>),
+    SetPage(usize),
     Navigate(Route),
 }
 
@@ -48,6 +52,7 @@ impl Component for Queue {
             pending: Vec::new(),
             running: Vec::new(),
             completed: Vec::new(),
+            page: 0,
             _setup,
             _broadcast,
             _list_req: ws::Request::default(),
@@ -66,18 +71,54 @@ impl Component for Queue {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
+        let link = ctx.link();
+
+        let total_pending = self.pending.len();
+        let total_pages = total_pending.div_ceil(PAGE_SIZE).max(1);
+        let page = self.page.min(total_pages - 1);
+        let prev_page = page.checked_sub(1);
+        let next_page = (page + 1 < total_pages).then_some(page + 1);
+
+        let page_pending: Vec<&api::Task> = self
+            .pending
+            .iter()
+            .skip(page * PAGE_SIZE)
+            .take(PAGE_SIZE)
+            .collect();
+
         html! {
-            <div class="outline">
-                <div class="outline-title row">
+            <div class="page">
+                <div class="page-title row">
                     <span class="fill">{"Sync Queue"}</span>
-                    <button class="btn" onclick={ctx.link().callback(|_| Msg::SyncAll)}
-                        title="Queue sync for all series">
+                    if total_pending > 0 {
+                        <span class="text-muted">{format!("{} pending", total_pending)}</span>
+                    }
+                    <button class="btn" onclick={link.callback(|_| Msg::SyncAll)}
+                        title="Queue sync for all series and movies">
                         <span class="icon-inline"><span class="icon arrow-path" /></span>
                         <span class="hide-mobile">{"Sync All"}</span>
                     </button>
                 </div>
                 { self.view_section(ctx, "Running", &self.running, true) }
-                { self.view_section(ctx, "Pending", &self.pending, false) }
+                if !page_pending.is_empty() {
+                    <div class="section">
+                        <div class="row"><h3>{"Pending"}</h3></div>
+                        { for page_pending.iter().map(|t| self.view_task_row(ctx, t, false)) }
+                        if total_pages > 1 {
+                            <div class="row center">
+                                <button class="btn-icon" disabled={prev_page.is_none()}
+                                    onclick={link.callback(move |_| Msg::SetPage(prev_page.unwrap_or(0)))}>
+                                    <span class="icon arrow-left" />
+                                </button>
+                                <span class="text-muted">{format!("{} / {}", page + 1, total_pages)}</span>
+                                <button class="btn-icon" disabled={next_page.is_none()}
+                                    onclick={link.callback(move |_| Msg::SetPage(next_page.unwrap_or(page)))}>
+                                    <span class="icon arrow-right" />
+                                </button>
+                            </div>
+                        }
+                    </div>
+                }
                 { self.view_completed(ctx) }
             </div>
         }
@@ -142,6 +183,10 @@ impl Queue {
                 result.context(Message::SyncingSeries)?;
                 Ok(false)
             }
+            Msg::SetPage(p) => {
+                self.page = p;
+                Ok(true)
+            }
             Msg::Navigate(route) => {
                 ctx.props().on_navigate.emit(route);
                 Ok(false)
@@ -171,7 +216,9 @@ impl Queue {
         html! {
             <div class="section">
                 <div class="row"><h3>{title}</h3></div>
-                { for tasks.iter().map(|t| self.view_task_row(ctx, t, spinning)) }
+                <div class="table">
+                    { for tasks.iter().map(|t| self.view_task_row(ctx, t, spinning)) }
+                </div>
             </div>
         }
     }
@@ -184,18 +231,20 @@ impl Queue {
         let on_navigate = route.map(|r| ctx.link().callback(move |_| Msg::Navigate(r.clone())));
 
         html! {
-            <div class="group row">
-                <span class="icon-inline">
-                    <span class={if spinning { "icon arrow-path" } else { "icon clock" }} />
-                </span>
-                <span class="fill">
-                    { self.view_task_label(task) }
-                </span>
-                if let Some(onclick) = on_navigate {
-                    <button class="btn-icon" {onclick} title="Go to detail">
-                        <span class="icon chevron-right" />
-                    </button>
-                }
+            <div class="table-entry">
+                <div class="row">
+                    <span class="icon-inline">
+                        <span class={if spinning { "icon arrow-path" } else { "icon clock" }} />
+                    </span>
+                    <span class="fill">
+                        { self.view_task_label(task) }
+                    </span>
+                    if let Some(onclick) = on_navigate {
+                        <button class="btn-icon" {onclick} title="Go to detail">
+                            <span class="icon chevron-right" />
+                        </button>
+                    }
+                </div>
             </div>
         }
     }
@@ -220,7 +269,9 @@ impl Queue {
         html! {
             <div class="section">
                 <div class="row"><h3>{"Completed"}</h3></div>
-                { for self.completed.iter().map(|t| self.view_completed_row(ctx, t)) }
+                <div class="table">
+                    { for self.completed.iter().map(|t| self.view_completed_row(ctx, t)) }
+                </div>
             </div>
         }
     }
@@ -233,16 +284,18 @@ impl Queue {
         let on_navigate = route.map(|r| ctx.link().callback(move |_| Msg::Navigate(r.clone())));
 
         html! {
-            <div class="group row">
-                <span class="icon-inline"><span class="icon check" /></span>
-                <span class="fill">
-                    { self.view_completed_label(task) }
-                </span>
-                if let Some(onclick) = on_navigate {
-                    <button class="btn-icon" {onclick} title="Go to detail">
-                        <span class="icon chevron-right" />
-                    </button>
-                }
+            <div class="table-entry">
+                <div class="row">
+                    <span class="icon-inline"><span class="icon check" /></span>
+                    <span class="fill">
+                        { self.view_completed_label(task) }
+                    </span>
+                    if let Some(onclick) = on_navigate {
+                        <button class="btn-icon" {onclick} title="Go to detail">
+                            <span class="icon chevron-right" />
+                        </button>
+                    }
+                </div>
             </div>
         }
     }

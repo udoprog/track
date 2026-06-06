@@ -111,8 +111,8 @@ impl Component for Search {
         };
 
         html! {
-            <div class="outline">
-                <div class="outline-title">{"Search"}</div>
+            <div class="page">
+                <div class="page-title">{"Search"}</div>
                 <div class="group row">
                     <select class="input-select" onchange={on_kind} value={kind_val}>
                         <option value="series" selected={matches!(self.kind, api::SearchKind::Series)}>
@@ -280,8 +280,9 @@ impl Search {
                             <span class="text-muted">{date.year().to_string()}</span>
                         }
                     </div>
+
                     if !r.overview.is_empty() {
-                        <p class="ep-overview text-muted">{&r.overview}</p>
+                        <p class="overview text-muted">{&r.overview}</p>
                     }
                 </div>
                 {
@@ -325,8 +326,9 @@ impl Search {
                             <span class="text-muted">{date.year().to_string()}</span>
                         }
                     </div>
+
                     if !r.overview.is_empty() {
-                        <p class="ep-overview text-muted">{&r.overview}</p>
+                        <p class="overview text-muted">{&r.overview}</p>
                     }
                 </div>
                 {
