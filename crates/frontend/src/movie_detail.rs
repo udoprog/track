@@ -576,7 +576,7 @@ impl MovieDetail {
                 if let Some(ts) = movie.last_synced_at {
                     <span class="text-muted">
                         {"Synced "}
-                        {ts.inner().to_zoned(tz).strftime("%Y-%m-%d %H:%M").to_string()}
+                        {ts.display(&tz)}
                     </span>
                 }
             </div>
@@ -604,7 +604,7 @@ impl MovieDetail {
                             <div class="section text-muted">{"Watch history"}</div>
                             {
                                 for self.watched.iter().map(|w| html! {
-                                    <div class="section text-muted">{w.timestamp.to_string()}</div>
+                                    <div class="section text-muted">{w.timestamp.display(&tz)}</div>
                                 })
                             }
                         </div>

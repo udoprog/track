@@ -96,6 +96,16 @@ impl Timestamp {
     pub fn from_jiff(ts: JiffTimestamp) -> Self {
         Self(ts)
     }
+
+    /// Format this timestamp in the given timezone as `"YYYY-MM-DD HH:MM TZ"`.
+    /// The timezone suffix is the IANA abbreviation (e.g. `CEST`, `EST`) when
+    /// available, or the numeric offset (e.g. `+05:30`) for fixed-offset zones.
+    pub fn display(&self, tz: &jiff::tz::TimeZone) -> String {
+        self.0
+            .to_zoned(tz.clone())
+            .strftime("%Y-%m-%d %H:%M %Z")
+            .to_string()
+    }
 }
 
 impl std::str::FromStr for Timestamp {
@@ -981,8 +991,7 @@ pub trait HasAired {
 
     fn display_at(&self, tz: &jiff::tz::TimeZone) -> Option<String> {
         if let Some(ts) = self.aired_at() {
-            let zdt = ts.inner().to_zoned(tz.clone());
-            Some(zdt.strftime("%Y-%m-%d %H:%M").to_string())
+            Some(ts.display(tz))
         } else {
             self.aired().map(|d| d.to_string())
         }

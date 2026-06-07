@@ -188,7 +188,7 @@ impl Component for SeriesDetail {
                         if let Some(ts) = series.last_synced_at {
                             <span class="text-muted">
                                 {"Synced "}
-                                {ts.inner().to_zoned(tz).strftime("%Y-%m-%d %H:%M").to_string()}
+                                {ts.display(&tz)}
                             </span>
                         }
                     </div>
@@ -758,7 +758,7 @@ impl SeriesDetail {
                 }
 
                 <span class="icon-inline">
-                    <span class={classes!("icon", if active { "x-circle" } else { "chevron-right" })} />
+                    <span class={classes!("icon", if active { "chevron-right" } else { "ellipsis-horizontal" })} />
                 </span>
             </div>
         }
@@ -898,7 +898,7 @@ impl SeriesDetail {
                                                 <div class="table-entry">
                                                     <ConfirmDanger
                                                         prompt="Remove watch"
-                                                        label={w.timestamp.to_string()}
+                                                        label={w.timestamp.display(&tz)}
                                                         on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, wkind))}
                                                         on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
                                                     />
@@ -907,7 +907,7 @@ impl SeriesDetail {
                                         } else {
                                             html! {
                                                 <div class="table-entry text-muted">
-                                                    <span class="fill">{w.timestamp.to_string()}</span>
+                                                    <span class="fill">{w.timestamp.display(&tz)}</span>
                                                     <button class="btn-icon" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
                                                         <span class="icon x-mark" />
                                                     </button>
