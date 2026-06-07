@@ -258,6 +258,10 @@ api::AppEventKind::PendingChanged
 There is no `SyncFinished` event — use `TaskCompleted`. `TaskAdded`/`TaskStarted`
 need no dashboard reaction (no data has changed yet).
 
+### 6. Pending table refactor
+
+Full plan in `plan-pending.md`.
+
 ---
 
 ## Notes / gotchas (still in force)
