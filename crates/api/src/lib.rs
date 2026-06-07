@@ -92,6 +92,10 @@ impl Timestamp {
     pub fn inner(self) -> JiffTimestamp {
         self.0
     }
+
+    pub fn from_jiff(ts: JiffTimestamp) -> Self {
+        Self(ts)
+    }
 }
 
 impl std::str::FromStr for Timestamp {
@@ -747,6 +751,53 @@ impl ::sqll::BindValue for ThemeType {
 
 // ── Core data types ──────────────────────────────────────────────────────────
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize,
+)]
+#[musli(crate = musli_core)]
+#[serde(rename_all = "snake_case")]
+pub enum ReleaseType {
+    Premiere,
+    TheatricalLimited,
+    Theatrical,
+    Digital,
+    Physical,
+    Tv,
+}
+
+impl ReleaseType {
+    pub fn from_tmdb(n: u8) -> Option<Self> {
+        Some(match n {
+            1 => Self::Premiere,
+            2 => Self::TheatricalLimited,
+            3 => Self::Theatrical,
+            4 => Self::Digital,
+            5 => Self::Physical,
+            6 => Self::Tv,
+            _ => return None,
+        })
+    }
+
+    pub fn to_tmdb(self) -> u8 {
+        match self {
+            Self::Premiere => 1,
+            Self::TheatricalLimited => 2,
+            Self::Theatrical => 3,
+            Self::Digital => 4,
+            Self::Physical => 5,
+            Self::Tv => 6,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize)]
+#[musli(crate = musli_core)]
+pub struct MovieRelease {
+    pub country: String,
+    pub release_type: ReleaseType,
+    pub date: Date,
+}
+
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct MediaImage {
@@ -768,6 +819,7 @@ pub struct Series {
     pub sync_source: Option<SyncSource>,
     pub remotes: Vec<RemoteId>,
     pub images: Vec<MediaImage>,
+    pub last_synced_at: Option<Timestamp>,
 }
 
 impl Series {
@@ -845,6 +897,8 @@ pub struct Movie {
     pub watched_count: u32,
     pub tracked: bool,
     pub images: Vec<MediaImage>,
+    pub last_synced_at: Option<Timestamp>,
+    pub releases: Vec<MovieRelease>,
 }
 
 impl Movie {

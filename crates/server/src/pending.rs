@@ -27,10 +27,4 @@ impl PendingSystem {
         self.db.remove_pending_episode(episode_id).await?;
         self.db.fill_pending_for_series(series_id).await
     }
-
-    /// Auto-discover movies past release date that aren't pending yet.
-    /// Called after movie sync and once at startup.
-    pub(crate) async fn discover_movies(&self) -> Result<()> {
-        self.db.discover_pending_movies().await
-    }
 }

@@ -6,6 +6,8 @@ use musli_web::axum08;
 use musli_web::ws;
 use tokio::sync::broadcast;
 
+use std::sync::Arc;
+
 use crate::app_broadcast::Broadcaster;
 use crate::pending::PendingSystem;
 use crate::remote::RemoteClients;
@@ -18,6 +20,7 @@ pub(super) struct WsHandler {
     pub(super) remote: RemoteClients,
     pub(super) queue: TaskQueue,
     pub(super) pending: PendingSystem,
+    pub(super) config_changed: Arc<tokio::sync::Notify>,
 }
 
 impl ws::Handler for WsHandler {
@@ -553,6 +556,7 @@ impl WsHandler {
                     .context("missing request")?;
                 self.db.save_config(&req.config).await?;
                 self.remote.configure(&req.config);
+                self.config_changed.notify_one();
                 self.broadcast.emit(
                     incoming.channel(),
                     api::AppEventKind::ConfigChanged {
@@ -658,6 +662,7 @@ pub(super) async fn ws_handler(
             remote: state.remote.clone(),
             queue: state.queue.clone(),
             pending: state.pending.clone(),
+            config_changed: state.config_changed.clone(),
         };
 
         let mut subscribe = state.broadcast.subscribe();

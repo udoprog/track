@@ -12,6 +12,24 @@ crate-by-crate blueprint is complete and is not repeated here — read the sourc
 
 ## Current state (compiles cleanly, all four crates)
 
+### TVMaze exact airtimes — DONE
+- `episodes` table has `aired_at INTEGER` (epoch ms).
+- `api::Episode.aired_at: Option<Timestamp>` carried on wire.
+- `crates/server/src/tvmaze.rs` — keyless client: lookup by tvdb/imdb, fetch episodes with `airstamp`.
+- `sync_series` calls `enrich_with_tvmaze` (best-effort) after primary sync; logs structured fields.
+- `series_detail.rs` prefers `aired_at` over `aired` for episode display.
+
+### Background sync + movie release tracking — DONE
+- `series` and `movies` tables have `last_synced_at INTEGER` (epoch ms, NULL = never).
+- New `movie_releases` table: `(movie_id, country, release_type, date)` with `UNIQUE(movie_id, country, release_type)`.
+- `api`: `last_synced_at: Option<Timestamp>` on `Series` and `Movie`; `ReleaseType` enum; `MovieRelease` struct; `Movie.releases: Vec<MovieRelease>` (filled only by `movie_by_id`); `Timestamp::from_jiff`.
+- `db`: `set_series_synced_at`, `set_movie_synced_at`, `upsert_movie_release`, `series_needing_sync(hours)`, `movies_needing_sync(hours)`, `movies_needing_pending_digital`; `cutoff_timestamp` helper; `discover_pending_movies` now runs two passes (theatrical + digital).
+- `tmdb.rs`: `fetch_movie_releases` + `parse_release_date`.
+- `sync_series` stamps `last_synced_at` at completion; `sync_movie` fetches+upserts releases then stamps.
+- Background loop replaced: 15-minute poll, only queues items stale relative to configured interval (never-synced always queued). TaskQueue dedup prevents double-queueing.
+
+
+
 ### `crates/api`
 All shared types, request/response structs, the `api::define!` endpoint block,
 and broadcasts. Notable:
@@ -136,64 +154,7 @@ already exist — no new CSS.
 - The per-episode and per-movie **watch-removal** controls are not "danger"
   confirmations and can be left as-is (single-click remove of a watch entry).
 
-### 2. Automatic background sync
-
-Add an opt-in periodic task that re-syncs every tracked series and movie.
-
-**`api` (`Config`):** add two fields (update `Default`, the `Encode`/`Decode`
-derive handles the wire):
-```rust
-pub auto_sync_enabled: bool,        // default false
-pub auto_sync_interval_hours: u32,  // default 24, min clamp 1 server-side
-```
-
-**`db`:** persist the two new keys in `load_config`/`save_config` (the config
-table is key/value; add `auto_sync_enabled` and `auto_sync_interval_hours` to
-the read/write set, defaulting like `Config::default`).
-
-**`server`:** spawn a background loop in `main.rs` next to the queue worker. It
-owns clones of `db`, `queue`, and `broadcast` and re-reads config each tick so a
-settings change takes effect without restart:
-
-```rust
-tokio::spawn({
-    let db = db.clone();
-    let queue = queue.clone();
-    let broadcast = broadcast.clone();
-    async move {
-        loop {
-            let config = db.load_config().await.unwrap_or_default();
-            let hours = config.auto_sync_interval_hours.max(1) as u64;
-            tokio::time::sleep(Duration::from_secs(hours * 3600)).await;
-
-            let config = db.load_config().await.unwrap_or_default();
-            if !config.auto_sync_enabled { continue; }
-
-            for s in db.series().await.unwrap_or_default() {
-                queue.push(api::TaskKind::SyncSeries { series_id: s.id, title: s.title },
-                           false, &broadcast).await;
-            }
-            for m in db.movies().await.unwrap_or_default() {
-                queue.push(api::TaskKind::SyncMovie { movie_id: m.id, title: m.title },
-                           false, &broadcast).await;
-            }
-        }
-    }
-});
-```
-
-Reuse the existing `TaskQueue` (its dedup prevents piling duplicate syncs, its
-`TASK_DELAY` spacing avoids hammering the remotes). Do **not** invent a parallel
-sync path. `Duration` is already imported in `task_queue.rs`; import it in
-`main.rs` if needed.
-
-**`frontend` (`settings.rs`):** add a settings section with a checkbox
-(`input-checkbox` if present, else a plain `<input type="checkbox">`) bound to
-`auto_sync_enabled` and an `input-number` (`field` layout, like the existing
-dashboard-limit field) bound to `auto_sync_interval_hours`. Wire both into the
-existing `SetConfig` save path.
-
-### 3. Banner graphic on detail pages
+### 2. Banner graphic on detail pages
 
 `api::Series` and `api::Movie` both already carry `banner: Option<Image>`. It is
 never rendered. Show the wide banner at the top of each detail page's content.

@@ -46,14 +46,17 @@ pub(crate) async fn sync_series(
         None => anyhow::bail!("series has no syncable remote (tmdb or tvdb)"),
     }
 
-    // Best-effort TVMaze enrichment for exact airtimes. Re-fetch so remotes are current.
+    // Best-effort tvmaze enrichment for exact airtimes. Re-fetch so remotes are
+    // current.
     if let Some(series) = db.series_by_id(series_id).await? {
         if let Err(e) = enrich_with_tvmaze(series_id, &series, remote, db, broadcast).await {
-            warn!("TVMaze enrichment skipped for series {series_id}: {e:#}");
+            warn!("tvmaze enrichment skipped for series {series_id}: {e:#}");
         }
     }
 
     pending.fill_for_series(series_id).await?;
+    db.set_series_synced_at(series_id, api::Timestamp::now())
+        .await?;
     broadcast_event(broadcast, api::AppEventKind::PendingChanged);
     info!(series_id = %series_id, "sync complete");
     Ok(())
@@ -70,7 +73,7 @@ async fn sync_series_tmdb(
         .series_by_id(series_id)
         .await?
         .context("series not found")?;
-    info!(tmdb_id, "fetching TMDB series");
+    info!(tmdb_id, "fetching tmdb series");
     let info = remote.fetch_tmdb_series(tmdb_id).await?;
 
     db.update_series(
@@ -118,16 +121,14 @@ async fn sync_series_tmdb(
         )
         .await?;
 
-        let season_num = match season_info.number {
+        let season = match season_info.number {
             SeasonNumber::Specials => 0,
             SeasonNumber::Number(n) => n,
         };
 
-        info!(tmdb_id, season_num, "fetching TMDB season episodes");
-        for ep in remote
-            .fetch_tmdb_season_episodes(tmdb_id, season_num)
-            .await?
-        {
+        info!(tmdb_id, season, "fetching tmdb season episodes");
+
+        for ep in remote.fetch_tmdb_season_episodes(tmdb_id, season).await? {
             db.upsert_episode(
                 series_id,
                 ep.season,
@@ -249,7 +250,6 @@ pub(crate) async fn sync_movie(
     db: &Database,
     remote: &RemoteClients,
     broadcast: &Broadcaster,
-    pending: &crate::pending::PendingSystem,
 ) -> Result<()> {
     let movie = db.movie_by_id(movie_id).await?.context("movie not found")?;
 
@@ -262,7 +262,7 @@ pub(crate) async fn sync_movie(
                 .remote_by_source("tmdb")
                 .context("movie has no tmdb remote")?;
             let tmdb_id: u32 = remote_id.value().parse().context("invalid tmdb id")?;
-            info!(tmdb_id, "fetching TMDB movie");
+            info!(tmdb_id, "fetching tmdb movie");
             let info = remote.fetch_tmdb_movie(tmdb_id).await?;
 
             db.update_movie(
@@ -282,6 +282,18 @@ pub(crate) async fn sync_movie(
                     .await?;
             }
 
+            match remote.fetch_tmdb_movie_releases(tmdb_id).await {
+                Ok(releases) => {
+                    info!(count = releases.len(), "fetched tmdb movie releases");
+
+                    for r in releases {
+                        db.upsert_movie_release(movie_id, &r.country, r.release_type, &r.date)
+                            .await?;
+                    }
+                }
+                Err(e) => warn!(movie_id = %movie_id, "movie release dates skipped: {e:#}"),
+            }
+
             let updated = db
                 .movie_by_id(movie_id)
                 .await?
@@ -295,7 +307,9 @@ pub(crate) async fn sync_movie(
         None => anyhow::bail!("movie has no syncable remote (tmdb)"),
     }
 
-    pending.discover_movies().await?;
+    crate::background::discover_pending_movies(db).await?;
+    db.set_movie_synced_at(movie_id, api::Timestamp::now())
+        .await?;
     broadcast_event(broadcast, api::AppEventKind::PendingChanged);
     info!(movie_id = %movie_id, "sync complete");
     Ok(())
@@ -311,22 +325,22 @@ async fn enrich_with_tvmaze(
 ) -> Result<()> {
     let tvmaze_id = if let Some(r) = series.remote_by_source("tvdb") {
         let id: u32 = r.value().parse().context("invalid tvdb id")?;
-        info!(tvdb_id = id, "looking up TVMaze id via TVDB");
+        info!(tvdb_id = id, "looking up tvmaze id via TVDB");
         remote.lookup_tvmaze_by_tvdb(id).await?
     } else if let Some(r) = series.remote_by_source("imdb") {
-        info!(imdb_id = r.value(), "looking up TVMaze id via IMDB");
+        info!(imdb_id = r.value(), "looking up tvmaze id via IMDB");
         remote.lookup_tvmaze_by_imdb(r.value()).await?
     } else {
-        info!(series_id = %series_id, "skipping TVMaze enrichment: no TVDB or IMDB remote");
+        info!(series_id = %series_id, "skipping tvmaze enrichment: no TVDB or IMDB remote");
         return Ok(());
     };
 
     let Some(tvmaze_id) = tvmaze_id else {
-        info!(series_id = %series_id, "skipping TVMaze enrichment: not found on TVMaze");
+        info!(series_id = %series_id, "skipping tvmaze enrichment: not found on tvmaze");
         return Ok(());
     };
 
-    info!(tvmaze_id, "fetching TVMaze episodes");
+    info!(tvmaze_id, "fetching tvmaze episodes");
 
     let tvmaze_eps = remote.fetch_tvmaze_episodes(tvmaze_id).await?;
 

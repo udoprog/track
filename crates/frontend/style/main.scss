@@ -307,8 +307,14 @@ body {
     }
 
     h2 {
-        margin: 0 0 $gap-sm;
+        margin: $gap-sm 0;
         font-size: $font-lg;
+        font-weight: 600;
+    }
+
+    h3 {
+        margin: $gap-sm 0;
+        font-size: $font-base;
         font-weight: 600;
     }
 }

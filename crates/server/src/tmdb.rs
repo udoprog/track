@@ -228,6 +228,48 @@ impl Client {
             .collect())
     }
 
+    pub(crate) async fn fetch_movie_releases(&self, id: u32) -> Result<Vec<MovieReleaseInfo>> {
+        #[derive(Deserialize)]
+        struct Entry {
+            #[serde(rename = "type")]
+            type_: u8,
+            #[serde(default)]
+            release_date: Option<String>,
+        }
+        #[derive(Deserialize)]
+        struct CountryBlock {
+            iso_3166_1: String,
+            #[serde(default)]
+            release_dates: Vec<Entry>,
+        }
+        #[derive(Deserialize)]
+        struct Resp {
+            #[serde(default)]
+            results: Vec<CountryBlock>,
+        }
+
+        let d: Resp = self
+            .get_json(&format!("{BASE}/movie/{id}/release_dates"))
+            .await?;
+
+        let mut out = Vec::new();
+        for block in d.results {
+            for e in block.release_dates {
+                if !(1..=6).contains(&e.type_) {
+                    continue;
+                }
+                if let Some(date) = parse_release_date(e.release_date.as_deref()) {
+                    out.push(MovieReleaseInfo {
+                        country: block.iso_3166_1.clone(),
+                        release_type: e.type_,
+                        date,
+                    });
+                }
+            }
+        }
+        Ok(out)
+    }
+
     pub(crate) async fn fetch_movie(&self, id: u32) -> Result<MovieInfo> {
         #[derive(Deserialize)]
         struct Details {
@@ -310,10 +352,26 @@ pub(crate) struct SearchMovieResult {
     pub poster: Option<Image>,
 }
 
+pub(crate) struct MovieReleaseInfo {
+    pub country: String,
+    pub release_type: u8,
+    pub date: Date,
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn opt_date(s: Option<&str>) -> Option<Date> {
     s.filter(|s| !s.is_empty()).and_then(|s| s.parse().ok())
+}
+
+fn parse_release_date(s: Option<&str>) -> Option<Date> {
+    let s = s?.trim();
+    if s.is_empty() {
+        return None;
+    }
+    // TMDB returns e.g. "2024-02-20T00:00:00.000Z"; take the date prefix.
+    let date_part = s.get(..10).unwrap_or(s);
+    date_part.parse().ok()
 }
 
 fn opt_image(s: Option<&str>) -> Option<Image> {

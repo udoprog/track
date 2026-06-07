@@ -1,4 +1,5 @@
 mod app_broadcast;
+mod background;
 mod cache;
 mod pending;
 mod proxy;
@@ -10,36 +11,26 @@ mod task_queue;
 mod tmdb;
 mod tvdb;
 mod tvmaze;
+mod web;
 mod ws;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
-use crate::app_broadcast::Broadcaster;
-use crate::pending::PendingSystem;
+use std::sync::Arc;
+
 use anyhow::{Context as _, Result};
-use axum::Router;
-use axum::routing::get;
-use cache::ImageCache;
 use clap::Parser;
 use db::Database;
 use musli_web::ws::Channels;
-use remote::RemoteClients;
-use task_queue::TaskQueue;
-use tokio::sync::broadcast;
-use tower_http::cors::CorsLayer;
+use tokio::sync::{Notify, broadcast};
 
-#[derive(Clone)]
-struct AppState {
-    db: Database,
-    broadcast: Broadcaster,
-    channels: Channels,
-    http: reqwest::Client,
-    cache: ImageCache,
-    queue: TaskQueue,
-    remote: RemoteClients,
-    pending: PendingSystem,
-}
+use crate::app_broadcast::Broadcaster;
+use crate::cache::ImageCache;
+use crate::pending::PendingSystem;
+use crate::remote::RemoteClients;
+use crate::task_queue::TaskQueue;
+use crate::web::AppState;
 
 #[derive(Parser)]
 #[command(version, about = "OnTV web server")]
@@ -89,59 +80,22 @@ async fn main() -> Result<()> {
     }
 
     let pending = PendingSystem::new(db.clone());
-    pending.discover_movies().await.ok();
+    let config_changed = Arc::new(Notify::new());
 
-    // Spawn the task queue worker.
-    tokio::spawn(queue.clone().run(
+    let queue_worker = tokio::spawn(queue.clone().run(
         db.clone(),
         remote.clone(),
         broadcast.clone(),
         pending.clone(),
     ));
 
-    // Spawn the automatic background sync loop.
-    tokio::spawn({
-        let db = db.clone();
-        let queue = queue.clone();
-        let broadcast = broadcast.clone();
-        async move {
-            loop {
-                let config = db.load_config().await.unwrap_or_default();
-                let hours = config.auto_sync_interval_hours.max(1) as u64;
-                tokio::time::sleep(std::time::Duration::from_secs(hours * 3600)).await;
-
-                let config = db.load_config().await.unwrap_or_default();
-                if !config.auto_sync_enabled {
-                    continue;
-                }
-
-                for s in db.series().await.unwrap_or_default() {
-                    queue
-                        .push(
-                            api::TaskKind::SyncSeries {
-                                series_id: s.id,
-                                title: s.title,
-                            },
-                            false,
-                            &broadcast,
-                        )
-                        .await;
-                }
-                for m in db.movies().await.unwrap_or_default() {
-                    queue
-                        .push(
-                            api::TaskKind::SyncMovie {
-                                movie_id: m.id,
-                                title: m.title,
-                            },
-                            false,
-                            &broadcast,
-                        )
-                        .await;
-                }
-            }
-        }
-    });
+    let bg = tokio::spawn(background::run(
+        db.clone(),
+        queue.clone(),
+        broadcast.clone(),
+        remote.clone(),
+        config_changed.clone(),
+    ));
 
     let state = AppState {
         db,
@@ -152,16 +106,8 @@ async fn main() -> Result<()> {
         queue,
         remote,
         pending,
+        config_changed,
     };
-
-    let app = Router::new();
-    let app = app.route("/ws", get(ws::ws_handler));
-    let app = app.route("/api/image/{source}/{*path}", get(proxy::image_handler));
-
-    #[cfg(feature = "bundle")]
-    let app = app.fallback(get(static_assets::handler));
-
-    let app = app.layer(CorsLayer::permissive()).with_state(state);
 
     tracing::info!("listening on {}", args.bind);
 
@@ -169,11 +115,18 @@ async fn main() -> Result<()> {
         .await
         .context("failed to bind")?;
 
-    let server = axum::serve(listener, app);
+    let server = axum::serve(listener, web::router(state));
 
     tokio::select! {
         result = server => {
             result.context("server error")?;
+        }
+        result = bg => {
+            result.context("background task panicked")?
+                .context("background task error")?;
+        }
+        result = queue_worker => {
+            result.context("task queue panicked")?;
         }
         _ = tokio::signal::ctrl_c() => {
             tracing::info!("received ctrl-c, shutting down");

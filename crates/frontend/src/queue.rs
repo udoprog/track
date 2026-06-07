@@ -103,7 +103,11 @@ impl Component for Queue {
                 if !page_pending.is_empty() {
                     <div class="section">
                         <div class="row"><h3>{"Pending"}</h3></div>
-                        { for page_pending.iter().map(|t| self.view_task_row(ctx, t, false)) }
+
+                        <div class="table">
+                            { for page_pending.iter().map(|t| self.view_task_row(ctx, t, false)) }
+                        </div>
+
                         if total_pages > 1 {
                             <div class="row center">
                                 <button class="btn-icon" disabled={prev_page.is_none()}
@@ -216,6 +220,7 @@ impl Queue {
         html! {
             <div class="section">
                 <div class="row"><h3>{title}</h3></div>
+
                 <div class="table">
                     { for tasks.iter().map(|t| self.view_task_row(ctx, t, spinning)) }
                 </div>
@@ -239,27 +244,27 @@ impl Queue {
                         <span class={if spinning { "icon arrow-path" } else { "icon clock" }} />
                     </span>
                     <span class="fill">
-                        { self.view_task_label(task) }
+                        { self.view_task_label(task, on_navigate) }
                     </span>
-                    if let Some(onclick) = on_navigate {
-                        <button class="btn-icon" {onclick} title="Go to detail">
-                            <span class="icon chevron-right" />
-                        </button>
-                    }
                 </div>
             </div>
         }
     }
 
-    fn view_task_label(&self, task: &api::Task) -> Html {
+    fn view_task_label(&self, task: &api::Task, on_navigate: Option<Callback<MouseEvent>>) -> Html {
         let verb = match &task.kind {
             api::TaskKind::SyncSeries { .. } => "Updating series",
             api::TaskKind::SyncMovie { .. } => "Updating movie",
         };
+        let title = task.kind.title().to_owned();
         html! {
             <>
                 <span class="text-muted">{verb}{" — "}</span>
-                {task.kind.title()}
+                if let Some(onclick) = on_navigate {
+                    <span class="clickable" {onclick}>{title}</span>
+                } else {
+                    {title}
+                }
             </>
         }
     }
@@ -271,6 +276,7 @@ impl Queue {
         html! {
             <div class="section">
                 <div class="row"><h3>{"Completed"}</h3></div>
+
                 <div class="table">
                     { for self.completed.iter().map(|t| self.view_completed_row(ctx, t)) }
                 </div>
@@ -292,27 +298,31 @@ impl Queue {
                 <div class="row">
                     <span class="icon-inline"><span class="icon check" /></span>
                     <span class="fill">
-                        { self.view_completed_label(task) }
+                        { self.view_completed_label(task, on_navigate) }
                     </span>
-                    if let Some(onclick) = on_navigate {
-                        <button class="btn-icon" {onclick} title="Go to detail">
-                            <span class="icon chevron-right" />
-                        </button>
-                    }
                 </div>
             </div>
         }
     }
 
-    fn view_completed_label(&self, task: &api::CompletedTask) -> Html {
+    fn view_completed_label(
+        &self,
+        task: &api::CompletedTask,
+        on_navigate: Option<Callback<MouseEvent>>,
+    ) -> Html {
         let verb = match &task.kind {
             api::TaskKind::SyncSeries { .. } => "Updated series",
             api::TaskKind::SyncMovie { .. } => "Updated movie",
         };
+        let title = task.kind.title().to_owned();
         html! {
             <>
                 <span class="text-muted">{verb}{" — "}</span>
-                {task.kind.title()}
+                if let Some(onclick) = on_navigate {
+                    <span class="clickable" {onclick}>{title}</span>
+                } else {
+                    {title}
+                }
             </>
         }
     }

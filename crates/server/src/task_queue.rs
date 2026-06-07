@@ -11,6 +11,7 @@ use crate::app_broadcast::Broadcaster;
 use crate::remote::RemoteClients;
 use crate::sync;
 use db::Database;
+use tracing::{error, info};
 
 const TASK_DELAY: Duration = Duration::from_secs(5);
 const MAX_COMPLETED: usize = 20;
@@ -82,6 +83,7 @@ impl TaskQueue {
         if already_queued {
             return false;
         }
+        info!(task_kind = ?kind, "task queued");
 
         let run_at = if immediate {
             Instant::now()
@@ -177,6 +179,8 @@ impl TaskQueue {
                 "task queue task started",
             );
 
+            info!(task_id = ?task.id, task_kind = ?task.kind, "task started");
+            let start = Instant::now();
             let result = execute(&task, &db, &remote, &broadcast, &pending).await;
 
             if result.is_ok() {
@@ -212,8 +216,11 @@ impl TaskQueue {
                 }
             }
 
-            if let Err(e) = result {
-                tracing::error!(task_id = ?task.id, error = %e, "task failed");
+            match result {
+                Ok(()) => {
+                    info!(task_id = ?task.id, elapsed_ms = start.elapsed().as_millis(), "task completed")
+                }
+                Err(e) => error!(task_id = ?task.id, "task failed: {e:#}"),
             }
 
             let completed = api::CompletedTask {
@@ -257,7 +264,7 @@ async fn execute(
             sync::sync_series(*series_id, db, remote, broadcast, pending).await
         }
         api::TaskKind::SyncMovie { movie_id, .. } => {
-            sync::sync_movie(*movie_id, db, remote, broadcast, pending).await
+            sync::sync_movie(*movie_id, db, remote, broadcast).await
         }
     }
 }

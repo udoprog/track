@@ -36,6 +36,7 @@ struct SeriesRow {
     overview: String,
     tracked: bool,
     sync_source: Option<SyncSource>,
+    last_synced_at: Option<Timestamp>,
 }
 
 #[derive(Row)]
@@ -95,6 +96,14 @@ struct MovieRow {
     watched_count: i64,
     tracked: bool,
     sync_source: Option<SyncSource>,
+    last_synced_at: Option<Timestamp>,
+}
+
+#[derive(Row)]
+struct MovieReleaseRow {
+    country: String,
+    release_type: i64,
+    date: Date,
 }
 
 #[derive(Row)]
@@ -210,18 +219,18 @@ statements! {
         insert_series: r#"
             INSERT INTO series (title, first_air, overview, tracked)
             VALUES (?, ?, ?, ?)
-            RETURNING id, title, first_air, overview, tracked, sync_source
+            RETURNING id, title, first_air, overview, tracked, sync_source, last_synced_at
         "#,
         list_series: r#"
-            SELECT id, title, first_air, overview, tracked, sync_source
+            SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at
             FROM series ORDER BY title
         "#,
         series_by_id: r#"
-            SELECT id, title, first_air, overview, tracked, sync_source
+            SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at
             FROM series WHERE id = ?
         "#,
         series_by_remote: r#"
-            SELECT s.id, s.title, s.first_air, s.overview, s.tracked, s.sync_source
+            SELECT s.id, s.title, s.first_air, s.overview, s.tracked, s.sync_source, s.last_synced_at
             FROM series s
             JOIN remotes r ON r.series_id = s.id
             WHERE r.remote_id = ?
@@ -346,27 +355,27 @@ statements! {
         insert_movie: r#"
             INSERT INTO movies (title, release_date, overview, tracked)
             VALUES (?, ?, ?, ?)
-            RETURNING id, title, release_date, overview, 0 AS watched, 0 AS watched_count, tracked, sync_source
+            RETURNING id, title, release_date, overview, 0 AS watched, 0 AS watched_count, tracked, sync_source, last_synced_at
         "#,
         list_movies: r#"
             SELECT m.id, m.title, m.release_date, m.overview,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) > 0 AS watched,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) AS watched_count,
-                   m.tracked, m.sync_source
+                   m.tracked, m.sync_source, m.last_synced_at
             FROM movies m ORDER BY m.title
         "#,
         movie_by_id: r#"
             SELECT m.id, m.title, m.release_date, m.overview,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) > 0 AS watched,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) AS watched_count,
-                   m.tracked, m.sync_source
+                   m.tracked, m.sync_source, m.last_synced_at
             FROM movies m WHERE m.id = ?
         "#,
         movie_by_remote: r#"
             SELECT m.id, m.title, m.release_date, m.overview,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) > 0 AS watched,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) AS watched_count,
-                   m.tracked, m.sync_source
+                   m.tracked, m.sync_source, m.last_synced_at
             FROM movies m
             JOIN remotes r ON r.movie_id = m.id
             WHERE r.remote_id = ?
@@ -504,6 +513,59 @@ statements! {
         set_config: r#"
             INSERT INTO config (key, value) VALUES (?, ?)
             ON CONFLICT (key) DO UPDATE SET value = excluded.value
+        "#,
+
+        // last_synced_at stamping
+        set_series_synced_at: r#"
+            UPDATE series SET last_synced_at = ? WHERE id = ?
+        "#,
+        set_movie_synced_at: r#"
+            UPDATE movies SET last_synced_at = ? WHERE id = ?
+        "#,
+
+        // stale-item queries
+        series_needing_sync: r#"
+            SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at
+            FROM series
+            WHERE tracked = 1
+              AND (last_synced_at IS NULL OR last_synced_at < ?)
+            ORDER BY last_synced_at IS NOT NULL, last_synced_at
+        "#,
+        movies_needing_sync: r#"
+            SELECT m.id, m.title, m.release_date, m.overview,
+                   (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) > 0 AS watched,
+                   (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) AS watched_count,
+                   m.tracked, m.sync_source, m.last_synced_at
+            FROM movies m
+            WHERE m.tracked = 1
+              AND (m.last_synced_at IS NULL OR m.last_synced_at < ?)
+            ORDER BY m.last_synced_at IS NOT NULL, m.last_synced_at
+        "#,
+
+        // movie releases
+        upsert_movie_release: r#"
+            INSERT INTO movie_releases (movie_id, country, release_type, date)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(movie_id, country, release_type)
+                DO UPDATE SET date = excluded.date
+        "#,
+        list_movie_releases: r#"
+            SELECT country, release_type, date
+            FROM movie_releases
+            WHERE movie_id = ?
+            ORDER BY date, country, release_type
+        "#,
+
+        // digital-release pending discovery
+        movies_needing_pending_digital: r#"
+            SELECT m.id, MIN(mr.date) AS release_date
+            FROM movies m
+            JOIN movie_releases mr ON mr.movie_id = m.id AND mr.release_type = 4
+            WHERE m.tracked = 1
+              AND mr.date <= ?
+              AND NOT EXISTS (SELECT 1 FROM watched w WHERE w.movie_id = m.id)
+              AND NOT EXISTS (SELECT 1 FROM pending p WHERE p.movie_id = m.id)
+            GROUP BY m.id
         "#,
     }
 }
@@ -949,6 +1011,16 @@ impl Database {
             while let Some(r) = s.list_movie_images.next::<ImageRow>()? {
                 movie.images.push(image_from_row(r));
             }
+            s.list_movie_releases.bind((movie_id,))?;
+            while let Some(r) = s.list_movie_releases.next::<MovieReleaseRow>()? {
+                if let Some(release_type) = api::ReleaseType::from_tmdb(r.release_type as u8) {
+                    movie.releases.push(api::MovieRelease {
+                        country: r.country,
+                        release_type,
+                        date: r.date,
+                    });
+                }
+            }
             Ok(Some(movie))
         })
         .await?
@@ -1325,6 +1397,7 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         spawn_blocking(move || {
+            // 1. Check if there is already a pending episode for this series
             s.has_pending_episode_for_series.bind((series_id,))?;
             let already_has = s.has_pending_episode_for_series.next::<(i64,)>()?.is_some();
 
@@ -1332,8 +1405,8 @@ impl Database {
                 return Ok(());
             }
 
+            // 2. Find the next unwatched aired episode
             let today = api::Date::today();
-
             s.next_pending_episode_for_series.bind((series_id, today))?;
             let next = s.next_pending_episode_for_series.next::<NextEpisodeRow>()?;
 
@@ -1342,7 +1415,6 @@ impl Database {
                     .aired
                     .map(|d| d.to_timestamp())
                     .unwrap_or_else(api::Timestamp::now);
-
                 s.upsert_pending_episode.bind((ts, r.id))?;
                 ensure!(
                     s.upsert_pending_episode.step()?.is_done(),
@@ -1355,32 +1427,118 @@ impl Database {
         .await?
     }
 
-    /// Auto-discover movies past their release date that are not yet pending or watched.
-    /// Called after movie sync and once at startup.
-    pub async fn discover_pending_movies(&self) -> Result<()> {
+    /// Tracked movies with a passed theatrical release date that are not yet pending or watched.
+    pub async fn theatrical_movie_candidates(
+        &self,
+        today: Date,
+    ) -> Result<Vec<(MovieId, Option<Date>)>> {
         let mut s = self.inner.clone().lock_owned().await;
-
         spawn_blocking(move || {
-            let today = api::Date::today();
             s.movies_needing_pending.bind((today,))?;
-
+            let mut out = Vec::new();
             while let Some(r) = s
                 .movies_needing_pending
                 .next::<PendingMovieCandidateRow>()?
             {
-                let ts = r
-                    .release_date
-                    .map(|d| d.to_timestamp())
-                    .unwrap_or_else(api::Timestamp::now);
-
-                s.upsert_pending_movie.bind((ts, r.id))?;
-                ensure!(
-                    s.upsert_pending_movie.step()?.is_done(),
-                    "upsert_pending_movie"
-                );
+                out.push((r.id, r.release_date));
             }
+            Ok(out)
+        })
+        .await?
+    }
 
+    /// Tracked movies with a passed digital release date (type 4) that are not yet pending or watched.
+    pub async fn digital_movie_candidates(
+        &self,
+        today: Date,
+    ) -> Result<Vec<(MovieId, Option<Date>)>> {
+        let mut s = self.inner.clone().lock_owned().await;
+        spawn_blocking(move || {
+            s.movies_needing_pending_digital.bind((today,))?;
+            let mut out = Vec::new();
+            while let Some(r) = s
+                .movies_needing_pending_digital
+                .next::<PendingMovieCandidateRow>()?
+            {
+                out.push((r.id, r.release_date));
+            }
+            Ok(out)
+        })
+        .await?
+    }
+
+    pub async fn set_series_synced_at(&self, id: SeriesId, at: Timestamp) -> Result<()> {
+        let mut s = self.inner.clone().lock_owned().await;
+        spawn_blocking(move || {
+            s.set_series_synced_at.bind((at, id))?;
+            ensure!(
+                s.set_series_synced_at.step()?.is_done(),
+                "set_series_synced_at"
+            );
             Ok(())
+        })
+        .await?
+    }
+
+    pub async fn set_movie_synced_at(&self, id: MovieId, at: Timestamp) -> Result<()> {
+        let mut s = self.inner.clone().lock_owned().await;
+        spawn_blocking(move || {
+            s.set_movie_synced_at.bind((at, id))?;
+            ensure!(
+                s.set_movie_synced_at.step()?.is_done(),
+                "set_movie_synced_at"
+            );
+            Ok(())
+        })
+        .await?
+    }
+
+    pub async fn upsert_movie_release(
+        &self,
+        movie_id: MovieId,
+        country: &str,
+        release_type: u8,
+        date: &Date,
+    ) -> Result<()> {
+        let country = country.to_owned();
+        let date = *date;
+        let mut s = self.inner.clone().lock_owned().await;
+        spawn_blocking(move || {
+            s.upsert_movie_release
+                .bind((movie_id, country.as_str(), release_type as i64, date))?;
+            ensure!(
+                s.upsert_movie_release.step()?.is_done(),
+                "upsert_movie_release"
+            );
+            Ok(())
+        })
+        .await?
+    }
+
+    pub async fn series_needing_sync(&self, interval_hours: u32) -> Result<Vec<api::Series>> {
+        let cutoff = cutoff_timestamp(interval_hours);
+        let mut s = self.inner.clone().lock_owned().await;
+        spawn_blocking(move || {
+            s.series_needing_sync.bind((cutoff,))?;
+            let mut out = Vec::new();
+            while let Some(r) = s.series_needing_sync.next::<SeriesRow>()? {
+                out.push(series_from_row(r));
+            }
+            Ok(out)
+        })
+        .await?
+    }
+
+    pub async fn movies_needing_sync(&self, interval_hours: u32) -> Result<Vec<api::Movie>> {
+        let cutoff = cutoff_timestamp(interval_hours);
+        let mut s = self.inner.clone().lock_owned().await;
+        spawn_blocking(move || {
+            s.movies_needing_sync.bind((cutoff,))?;
+            let mut out = Vec::new();
+            while let Some(r) = s.movies_needing_sync.next::<MovieRow>()? {
+                out.push(movie_from_row(r));
+            }
+            Ok(out)
         })
         .await?
     }
@@ -1390,71 +1548,64 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         spawn_blocking(move || {
+            // 1. Collect the ordered list of pending entries.
             s.list_pending.reset()?;
+            let mut base: Vec<PendingBaseRow> = Vec::new();
+            while let Some(r) = s.list_pending.next::<PendingBaseRow>()? {
+                base.push(r);
+            }
 
             let mut out = Vec::new();
 
-            'outer: while let Some(r) = s.list_pending.next::<PendingBaseRow>()? {
-                let pending = 'pending: {
-                    if let Some(episode_id) = r.episode_id {
-                        s.pending_episode_detail.bind((episode_id,))?;
-                        let detail = s.pending_episode_detail.next::<PendingEpisodeDetailRow>()?;
+            for r in base {
+                // 2. Fetch detail and poster for each entry via targeted queries.
+                let pending = if let Some(episode_id) = r.episode_id {
+                    s.pending_episode_detail.bind((episode_id,))?;
+                    let detail = s.pending_episode_detail.next::<PendingEpisodeDetailRow>()?;
+                    let Some(d) = detail else { continue };
 
-                        let Some(d) = detail else {
-                            continue 'outer;
-                        };
+                    s.pending_series_poster.bind((d.series_id,))?;
+                    let poster_row = s.pending_series_poster.next::<PosterRow>()?;
+                    let poster = poster_row
+                        .map(|p| api::Image::from_raw(format!("{}:{}", p.source, p.path)));
 
-                        s.pending_series_poster.bind((d.series_id,))?;
-                        let poster_row = s.pending_series_poster.next::<PosterRow>()?;
-
-                        let poster = poster_row
-                            .map(|p| api::Image::from_raw(format!("{}:{}", p.source, p.path)));
-
-                        let label = match d.episode_name {
-                            Some(ref name) => {
-                                format!("S{:02}E{:02} \u{2013} {name}", d.season, d.number)
-                            }
-                            None => format!("S{:02}E{:02}", d.season, d.number),
-                        };
-
-                        break 'pending api::Pending {
-                            kind: api::PendingKind::Episode {
-                                series: d.series_id,
-                                episode: episode_id,
-                            },
-                            aired: d.aired,
-                            aired_at: d.aired_at,
-                            series_title: Some(d.series_title),
-                            label,
-                            poster,
-                        };
-                    }
-
-                    if let Some(movie_id) = r.movie_id {
-                        s.pending_movie_detail.bind((movie_id,))?;
-                        let detail = s.pending_movie_detail.next::<PendingMovieDetailRow>()?;
-
-                        let Some(d) = detail else {
-                            continue 'outer;
-                        };
-
-                        s.pending_movie_poster.bind((movie_id,))?;
-                        let poster_row = s.pending_movie_poster.next::<PosterRow>()?;
-
-                        let poster = poster_row
-                            .map(|p| api::Image::from_raw(format!("{}:{}", p.source, p.path)));
-
-                        break 'pending api::Pending {
-                            kind: api::PendingKind::Movie { movie: movie_id },
-                            aired: d.release_date,
-                            aired_at: None,
-                            series_title: None,
-                            label: d.title,
-                            poster,
-                        };
+                    let label = match d.episode_name {
+                        Some(ref name) => {
+                            format!("S{:02}E{:02} \u{2013} {name}", d.season, d.number)
+                        }
+                        None => format!("S{:02}E{:02}", d.season, d.number),
                     };
 
-                    continue 'outer;
+                    api::Pending {
+                        kind: api::PendingKind::Episode {
+                            series: d.series_id,
+                            episode: episode_id,
+                        },
+                        aired: d.aired,
+                        aired_at: d.aired_at,
+                        series_title: Some(d.series_title),
+                        label,
+                        poster,
+                    }
+                } else {
+                    let movie_id = r.movie_id.unwrap();
+                    s.pending_movie_detail.bind((movie_id,))?;
+                    let detail = s.pending_movie_detail.next::<PendingMovieDetailRow>()?;
+                    let Some(d) = detail else { continue };
+
+                    s.pending_movie_poster.bind((movie_id,))?;
+                    let poster_row = s.pending_movie_poster.next::<PosterRow>()?;
+                    let poster = poster_row
+                        .map(|p| api::Image::from_raw(format!("{}:{}", p.source, p.path)));
+
+                    api::Pending {
+                        kind: api::PendingKind::Movie { movie: movie_id },
+                        aired: d.release_date,
+                        aired_at: None,
+                        series_title: None,
+                        label: d.title,
+                        poster,
+                    }
                 };
 
                 out.push(pending);
@@ -1650,6 +1801,17 @@ impl Database {
     }
 }
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+fn cutoff_timestamp(interval_hours: u32) -> Timestamp {
+    let hours = interval_hours.max(1) as i64;
+    let inner = Timestamp::now().inner();
+    let ts = inner
+        .checked_sub(jiff::Span::new().hours(hours))
+        .unwrap_or(inner);
+    Timestamp::from_jiff(ts)
+}
+
 // ── Row converters ───────────────────────────────────────────────────────────
 
 fn series_from_row(r: SeriesRow) -> api::Series {
@@ -1662,6 +1824,7 @@ fn series_from_row(r: SeriesRow) -> api::Series {
         sync_source: r.sync_source,
         remotes: Vec::new(),
         images: Vec::new(),
+        last_synced_at: r.last_synced_at,
     }
 }
 
@@ -1718,6 +1881,8 @@ fn movie_from_row(r: MovieRow) -> api::Movie {
         tracked: r.tracked,
         watched_count: r.watched_count as u32,
         images: Vec::new(),
+        last_synced_at: r.last_synced_at,
+        releases: Vec::new(),
     }
 }
 
