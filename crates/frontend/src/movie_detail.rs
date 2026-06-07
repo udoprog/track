@@ -10,6 +10,7 @@ pub(super) struct MovieDetail {
     movie: Option<api::Movie>,
     watched: Vec<api::Watched>,
     confirm_remove: bool,
+    confirm_remove_watch: bool,
     _setup: crate::SetupChannel,
     _broadcast: ws::Listener,
     _movie_req: ws::Request,
@@ -30,6 +31,8 @@ pub(super) enum Msg {
     MarkWatchedDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
     RemoveWatched(api::WatchedId, api::WatchedKind),
     RemoveWatchedDone(Result<ws::Packet<api::RemoveWatched>, ws::Error>),
+    ConfirmRemoveWatch,
+    CancelRemoveWatch,
     ConfirmRemove,
     CancelRemove,
     RemoveMovie,
@@ -66,6 +69,7 @@ impl Component for MovieDetail {
             movie: None,
             watched: Vec::new(),
             confirm_remove: false,
+            confirm_remove_watch: false,
             _setup,
             _broadcast,
             _movie_req: ws::Request::default(),
@@ -102,6 +106,7 @@ impl Component for MovieDetail {
             self.movie = None;
             self.watched.clear();
             self.confirm_remove = false;
+            self.confirm_remove_watch = false;
             if self.channel.id() != ws::ChannelId::NONE {
                 self.load_movie(ctx);
                 self.load_watched(ctx);
@@ -204,9 +209,18 @@ impl MovieDetail {
             }
             Msg::RemoveWatchedDone(result) => {
                 result.context(Message::RemovingWatched)?;
+                self.confirm_remove_watch = false;
                 self.load_movie(ctx);
                 self.load_watched(ctx);
                 Ok(false)
+            }
+            Msg::ConfirmRemoveWatch => {
+                self.confirm_remove_watch = true;
+                Ok(true)
+            }
+            Msg::CancelRemoveWatch => {
+                self.confirm_remove_watch = false;
+                Ok(true)
             }
             Msg::ConfirmRemove => {
                 self.confirm_remove = true;
@@ -303,6 +317,7 @@ impl MovieDetail {
                     <span class="icon-inline"><span class="icon arrow-left" /></span>
                     {"Movies"}
                 </button>
+
                 if let Some(ref m) = self.movie {
                     <span class="fill">{&m.title}</span>
                     if m.remote_id.is_some() {
@@ -340,20 +355,81 @@ impl MovieDetail {
         let movie_id = ctx.props().movie_id;
         let link = ctx.link();
 
+        let actions = 'actions: {
+            if let Some(wid) = last_watched_id
+                && self.confirm_remove_watch
+            {
+                break 'actions html! {
+                    <div class="row actions">
+                        <ConfirmDanger
+                            prompt="Remove watch for"
+                            label={movie.title.clone()}
+                            on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, api::WatchedKind::Movie { movie: movie_id }))}
+                            on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
+                        />
+                    </div>
+                };
+            }
+
+            html! {
+                <div class="row actions">
+                    if movie.watched {
+                        <span class="icon-inline" title="Watched"><span class="icon check-circle" /></span>
+
+                        <span class="text-muted">
+                            if movie.watched_count == 1 {
+                                {"Watched once"}
+                            } else {
+                                {format!("Watched {} times", movie.watched_count)}
+                            }
+                        </span>
+
+                        <button class="btn" onclick={link.callback(|_| Msg::MarkWatched)} title="Watch again">
+                            <span class="icon-inline"><span class="icon check" /></span>
+                            {"Watch again"}
+                        </button>
+
+                        <button class="btn btn-danger" onclick={link.callback(|_| Msg::ConfirmRemoveWatch)} title="Remove last watch">
+                            <span class="icon-inline"><span class="icon x-mark" /></span>
+                            {"Remove watch"}
+                        </button>
+
+                        if movie.pending {
+                            <button class="btn btn-primary" onclick={link.callback(|_| Msg::SetPending(false))} title="Clear pending">
+                                <span class="icon-inline"><span class="icon bookmark" /></span>
+                                {"Clear pending"}
+                            </button>
+                        } else {
+                            <button class="btn" onclick={link.callback(|_| Msg::SetPending(true))} title="Mark as pending">
+                                <span class="icon-inline"><span class="icon bookmark" /></span>
+                                {"Mark pending"}
+                            </button>
+                        }
+                    } else {
+                        <button class="btn btn-success" onclick={link.callback(|_| Msg::MarkWatched)} title="Mark watched">
+                            <span class="icon-inline"><span class="icon check" /></span>
+                            {"Mark watched"}
+                        </button>
+                    }
+                </div>
+            }
+        };
+
         html! {
             <>
             if let Some(ref banner) = movie.banner {
                 <img class="banner" src={banner.proxy_url()} alt="" />
             }
             <div class="detail-layout">
-                <div class="detail-sidebar">
+                <div class="detail-sidebar section">
                     if let Some(ref poster) = movie.poster {
                         <img class="movie-poster" src={poster.proxy_url()} alt="" />
                     } else {
                         <div class="movie-poster" />
                     }
                 </div>
-                <div class="detail-content">
+
+                <div class="detail-content section">
                     if let Some(date) = movie.release_date {
                         <div class="section text-muted">{date.to_string()}</div>
                     }
@@ -362,50 +438,16 @@ impl MovieDetail {
                         <p class="overview">{&movie.overview}</p>
                     }
 
-                    <div class="row season-actions">
-                        if movie.watched {
-                            <span class="icon-inline" title="Watched"><span class="icon check-circle" /></span>
-                            <span class="text-muted">
-                                if movie.watched_count == 1 {
-                                    {"Watched once"}
-                                } else {
-                                    {format!("Watched {} times", movie.watched_count)}
-                                }
-                            </span>
-                            <button class="btn" onclick={link.callback(|_| Msg::MarkWatched)} title="Watch again">
-                                <span class="icon-inline"><span class="icon check" /></span>
-                                {"Watch again"}
-                            </button>
-                            if let Some(wid) = last_watched_id {
-                                <button class="btn btn-danger" onclick={link.callback(move |_| Msg::RemoveWatched(wid, api::WatchedKind::Movie { movie: movie_id }))} title="Remove last watch">
-                                    <span class="icon-inline"><span class="icon x-mark" /></span>
-                                    {"Remove watch"}
-                                </button>
-                            }
-                            if movie.pending {
-                                <button class="btn btn-primary" onclick={link.callback(|_| Msg::SetPending(false))} title="Clear pending">
-                                    <span class="icon-inline"><span class="icon bookmark" /></span>
-                                    {"Clear pending"}
-                                </button>
-                            } else {
-                                <button class="btn" onclick={link.callback(|_| Msg::SetPending(true))} title="Mark as pending">
-                                    <span class="icon-inline"><span class="icon bookmark" /></span>
-                                    {"Mark pending"}
-                                </button>
-                            }
-                        } else {
-                            <button class="btn btn-success" onclick={link.callback(|_| Msg::MarkWatched)} title="Mark watched">
-                                <span class="icon-inline"><span class="icon check" /></span>
-                                {"Mark watched"}
-                            </button>
-                        }
-                    </div>
+                    {actions}
+
                     if !self.watched.is_empty() {
                         <div class="section">
                             <div class="section text-muted">{"Watch history"}</div>
-                            { for self.watched.iter().map(|w| html! {
-                                <div class="section text-muted">{w.timestamp.to_string()}</div>
-                            }) }
+                            {
+                                for self.watched.iter().map(|w| html! {
+                                    <div class="section text-muted">{w.timestamp.to_string()}</div>
+                                })
+                            }
                         </div>
                     }
                 </div>

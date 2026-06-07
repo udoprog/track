@@ -1,23 +1,21 @@
 @use 'grid' as g;
 @use 'icons';
-@use 'calendar' with (
-    $bg-surface:    #333,
+@use 'calendar' with ($bg-surface: #333,
     $color-primary: #46a,
-    $text-primary:  #eee,
-    $text-muted:    #aaa,
+    $text-primary: #eee,
+    $text-muted: #aaa,
     $border-subtle: #444,
-    $radius-sm:     3px,
-    $padding:       4px,
-    $gap-xs:        8px,
-    $gap-sm:        12px,
-    $font-xs:       12px,
-    $font-sm:       14px,
+    $radius-sm: 3px,
+    $padding: 4px,
+    $gap-xs: 8px,
+    $gap-sm: 12px,
+    $font-xs: 12px,
+    $font-sm: 14px,
 );
 
 $monospace-font: 'SF Mono', Consolas, 'SF Mono Regular', monospace;
 $sans-serif-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 
-// Palette
 $bg-dark: #222;
 $bg-panel: #2a2a2a;
 $bg-surface: #333;
@@ -32,7 +30,6 @@ $color-danger: #c26969;
 $color-danger-bg: #5a1a1a;
 $color-success: #73b173;
 
-// Dimensions
 $font-lg: 18px;
 $font-base: 16px;
 $font-sm: 14px;
@@ -79,9 +76,9 @@ body {
 
 .clickable {
     cursor: pointer;
+    user-select: none;
 }
 
-// Layout
 .app {
     display: flex;
     flex-direction: column;
@@ -161,12 +158,12 @@ body {
     color: $text-primary;
 }
 
-// Icon wrapper (inside btn or standalone)
 .icon-inline {
     display: inline-flex;
     width: $input-height;
     height: $input-height;
     padding: $inline-icon-padding;
+    margin: -$inline-icon-padding;
     vertical-align: middle;
 
     @include g.until-mobile {
@@ -175,7 +172,6 @@ body {
     }
 }
 
-// Button mixins (territory pattern)
 @mixin btn-base($color, $color-selected) {
     background: $color;
 
@@ -227,16 +223,37 @@ body {
     }
 }
 
-// Buttons
-.btn          { @include btn-base($color-secondary, $color-primary); }
-.btn-primary  { @include btn-base($color-primary,   $color-primary); }
-.btn-success  { @include btn-base($color-success,   $color-primary); }
-.btn-danger   { @include btn-base($color-danger,    $color-primary); }
+.btn {
+    @include btn-base($color-secondary, $color-primary);
+}
 
-.btn-icon         { @include btn-icon-base($color-secondary, $color-primary); }
-.btn-icon-primary { @include btn-icon-base($color-primary,   $color-primary); }
-.btn-icon-success { @include btn-icon-base($color-success,   $color-primary); }
-.btn-icon-danger  { @include btn-icon-base($color-danger,    $color-primary); }
+.btn-primary {
+    @include btn-base($color-primary, $color-primary);
+}
+
+.btn-success {
+    @include btn-base($color-success, $color-primary);
+}
+
+.btn-danger {
+    @include btn-base($color-danger, $color-primary);
+}
+
+.btn-icon {
+    @include btn-icon-base($color-secondary, $color-primary);
+}
+
+.btn-icon-primary {
+    @include btn-icon-base($color-primary, $color-primary);
+}
+
+.btn-icon-success {
+    @include btn-icon-base($color-success, $color-primary);
+}
+
+.btn-icon-danger {
+    @include btn-icon-base($color-danger, $color-primary);
+}
 
 .hide-mobile {
     @include g.until-mobile {
@@ -244,11 +261,33 @@ body {
     }
 }
 
-// Section / list row
+.form {
+    display: flex;
+    flex-direction: column;
+    gap: $gap-sm;
+
+    label {
+        font-size: $font-xs;
+        color: $text-muted;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .field {
+        display: flex;
+        flex-direction: column;
+        gap: $padding;
+    }
+}
+
 .section {
     display: flex;
     flex-direction: column;
     padding: $gap-sm;
+
+    &.row {
+        flex-direction: row;
+    }
 
     h2 {
         margin: 0 0 $gap-sm;
@@ -262,7 +301,6 @@ body {
     font-size: $font-sm;
 }
 
-// Dashboard
 .pending-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -324,7 +362,6 @@ body {
     color: $text-muted;
 }
 
-// Schedule
 .schedule-day {
     margin-bottom: $gap;
 }
@@ -367,19 +404,16 @@ body {
     white-space: nowrap;
 }
 
-// Utility
 .fill {
     flex: 1;
     min-width: 0;
 }
 
-// Empty state
 .empty {
     color: $text-muted;
     padding: $gap;
 }
 
-// Tag / badge
 .license {
     font-size: $font-xs;
     background: $bg-surface;
@@ -390,7 +424,6 @@ body {
     white-space: nowrap;
 }
 
-// Media thumbnails
 .poster-sm {
     width: 40px;
     height: 60px;
@@ -400,7 +433,6 @@ body {
     background: $bg-surface;
 }
 
-// Series detail two-panel layout
 .detail-layout {
     display: flex;
     flex: 1;
@@ -416,16 +448,6 @@ body {
     flex-shrink: 0;
     border-right: 1px solid $border-subtle;
     overflow-y: auto;
-
-    .section {
-        font-size: $font-sm;
-
-        &.active {
-            background: $bg-surface;
-            color: $color-primary;
-            font-weight: 600;
-        }
-    }
 
     @include g.until-mobile {
         width: 100%;
@@ -445,7 +467,6 @@ body {
     }
 }
 
-// Season episode content
 .season-actions {
     padding: $padding-row $gap-sm;
     border-bottom: 1px solid $border-subtle;
@@ -459,7 +480,6 @@ body {
     line-height: 1.4;
 }
 
-// Episode list
 .episode-code {
     font-family: $monospace-font;
     font-size: $font-xs;
@@ -468,7 +488,6 @@ body {
     width: 68px;
 }
 
-// Error
 .error-page {
     display: flex;
     align-items: center;
@@ -498,7 +517,6 @@ body {
     color: $text-muted;
 }
 
-// Page container — centers content, responsive padding
 .page {
     display: flex;
     flex-direction: column;
@@ -517,7 +535,6 @@ body {
     font-weight: 600;
 }
 
-// Input group (merges adjacent inputs/buttons into one pill)
 .input-group {
     display: inline-flex !important;
     gap: 0 !important;
@@ -526,7 +543,7 @@ body {
         flex: 1;
     }
 
-    > * {
+    >* {
         border-radius: 0 !important;
 
         &:first-child {
@@ -543,7 +560,6 @@ body {
     }
 }
 
-// Table list
 .table {
     font-size: $font-sm;
 }
@@ -567,8 +583,7 @@ body {
     }
 }
 
-// Form inputs
-.input-text {
+@mixin input-base {
     background: $bg-surface;
     color: $text-primary;
     border: 1px solid $border-input;
@@ -589,53 +604,63 @@ body {
     }
 }
 
+.input-number {
+    @include input-base;
+}
+
+.input-text {
+    @include input-base;
+}
+
 .input-select {
-    @extend .input-text;
+    @include input-base;
     cursor: pointer;
 }
 
 .input-number {
-    @extend .input-text;
+    @include input-base;
 }
 
-// Form field (label + input stacked)
-.field {
-    display: flex;
-    flex-direction: column;
-    gap: $padding;
+.input-checkbox {
+    color: $text-primary;
+    border: 1px solid $border-input;
+    border-radius: $radius-sm;
+    height: $input-height;
+    width: $input-height;
 
-    > label {
-        font-size: $font-xs;
-        color: $text-muted;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
+    border: 1px solid $border-input;
+    background: $bg-surface;
+    padding: $gap-xs;
+
+    cursor: pointer;
+
+    >.mark {
+        display: flex;
+        width: 100%;
+        height: 100%;
+    }
+
+    &.checked>.mark {
+        mask-image: url('/static/icons/check.svg');
+        background-color: black;
+    }
+
+    &:not(.checked)>.mark {
+        mask-image: url('/static/icons/x-mark.svg');
+        background-color: black;
+    }
+
+    &:focus {
+        outline: none;
+        border-color: $color-primary;
+    }
+
+    @include g.until-mobile {
+        width: $input-height-touch;
+        height: $input-height-touch;
     }
 }
 
-// Settings page
-.settings-section {
-    margin-bottom: $gap * 2;
-
-    h2 {
-        margin: 0 0 $gap-sm;
-        font-size: $font-lg;
-        font-weight: 600;
-    }
-}
-
-.settings-fields {
-    display: flex;
-    flex-direction: column;
-    gap: $gap;
-}
-
-.settings-row {
-    display: flex;
-    gap: $gap;
-    flex-wrap: wrap;
-}
-
-// Wide banner image (series/movie header)
 .banner {
     width: 100%;
     max-height: 220px;
@@ -646,7 +671,6 @@ body {
     margin-bottom: $gap-sm;
 }
 
-// Movie detail poster (fills the detail-sidebar panel)
 .movie-poster {
     width: 100%;
     object-fit: cover;

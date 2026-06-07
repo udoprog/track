@@ -22,7 +22,7 @@ pub(super) enum Msg {
     ScheduleDaysChanged(String),
     DashboardLimitChanged(String),
     DashboardPageChanged(String),
-    AutoSyncEnabledChanged(bool),
+    AutoSyncEnabledToggle,
     AutoSyncIntervalChanged(String),
     Save,
     SaveDone(Result<ws::Packet<api::SetConfig>, ws::Error>),
@@ -103,10 +103,7 @@ impl Component for Settings {
             Msg::DashboardPageChanged(input.value())
         });
 
-        let on_auto_sync_enabled = link.callback(|e: Event| {
-            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
-            Msg::AutoSyncEnabledChanged(input.checked())
-        });
+        let on_auto_sync_toggle = link.callback(|_| Msg::AutoSyncEnabledToggle);
 
         let on_auto_sync_interval = link.callback(|e: InputEvent| {
             let input: web_sys::HtmlInputElement = e.target_unchecked_into();
@@ -122,9 +119,10 @@ impl Component for Settings {
 
         html! {
             <form class="page" onsubmit={on_save}>
-                <div class="settings-section">
+                <div class="section">
                     <h2>{"Appearance"}</h2>
-                    <div class="settings-fields">
+
+                    <div class="form">
                         <div class="field">
                             <label>{"Theme"}</label>
                             <select class="input-select" onchange={on_theme} value={theme_val}>
@@ -135,11 +133,13 @@ impl Component for Settings {
                     </div>
                 </div>
 
-                <div class="settings-section">
+                <div class="section">
                     <h2>{"API Keys"}</h2>
-                    <div class="settings-fields">
+
+                    <div class="form">
                         <div class="field">
                             <label>{"TheTVDB Legacy API Key"}</label>
+
                             <input
                                 type="text"
                                 class="input-text"
@@ -150,6 +150,7 @@ impl Component for Settings {
                         </div>
                         <div class="field">
                             <label>{"TheMovieDB API Key"}</label>
+
                             <input
                                 type="text"
                                 class="input-text"
@@ -161,14 +162,16 @@ impl Component for Settings {
                     </div>
                 </div>
 
-                <div class="settings-section">
+                <div class="section">
                     <h2>{"Dashboard"}</h2>
-                    <div class="section">
+
+                    <div class="form">
                         <div class="field fill">
                             <label>{"Pending limit"}</label>
+
                             <input
                                 type="number"
-                                class="input-number fill"
+                                class="input-number"
                                 min="1"
                                 max="100"
                                 value={self.config.dashboard_limit.to_string()}
@@ -178,9 +181,10 @@ impl Component for Settings {
 
                         <div class="field fill">
                             <label>{"Schedule days"}</label>
+
                             <input
                                 type="number"
-                                class="input-number fill"
+                                class="input-number"
                                 min="1"
                                 max="90"
                                 value={self.config.schedule_duration_days.to_string()}
@@ -193,7 +197,7 @@ impl Component for Settings {
 
                             <input
                                 type="number"
-                                class="input-number fill"
+                                class="input-number"
                                 min="1"
                                 max="100"
                                 value={self.config.dashboard_page.to_string()}
@@ -203,17 +207,22 @@ impl Component for Settings {
                     </div>
                 </div>
 
-                <div class="settings-section">
+                <div class="section">
                     <h2>{"Sync"}</h2>
-                    <div class="settings-fields">
+
+                    <div class="form">
                         <div class="field">
-                            <label>{"Auto-sync enabled"}</label>
-                            <input
-                                type="checkbox"
-                                checked={self.config.auto_sync_enabled}
-                                onchange={on_auto_sync_enabled}
-                            />
+                            <label class="clickable" onclick={&on_auto_sync_toggle}>{"Auto-sync enabled"}</label>
+
+                            <span
+                                class={classes!("input-checkbox", self.config.auto_sync_enabled.then_some("checked"))}
+                                id="auto-sync-enabled"
+                                onclick={on_auto_sync_toggle}
+                            >
+                                <span class="mark" />
+                            </span>
                         </div>
+
                         <div class="field">
                             <label>{"Sync interval (hours)"}</label>
                             <input
@@ -295,8 +304,8 @@ impl Settings {
                 }
                 Ok(false)
             }
-            Msg::AutoSyncEnabledChanged(val) => {
-                self.config.auto_sync_enabled = val;
+            Msg::AutoSyncEnabledToggle => {
+                self.config.auto_sync_enabled = !self.config.auto_sync_enabled;
                 Ok(true)
             }
             Msg::AutoSyncIntervalChanged(val) => {

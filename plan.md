@@ -77,7 +77,7 @@ pending/schedule/watch-next queries, key/value config table. Done.
 - CSS conventions: pages own padding via `.page` / `.page-title` (the old
   `outline`/`outline-title` names are **not** used). `table`/`table-entry`,
   `input-group`, `toolbar-inner`, `detail-layout`/`detail-sidebar`/
-  `detail-content`, `season-actions`, `group`, `empty` are all in use.
+  `detail-content`, `actions`, `group`, `empty` are all in use.
 - There is **no `ui.rs` module** yet — no shared `ConfirmDanger`/`ErrorBanner`.
 
 ### CSS rule (still binding)

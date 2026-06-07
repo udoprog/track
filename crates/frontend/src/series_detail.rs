@@ -12,6 +12,7 @@ pub(super) struct SeriesDetail {
     selected: Option<api::SeasonNumber>,
     episodes: Vec<api::Episode>,
     confirm_remove: bool,
+    confirm_remove_watch: Option<api::EpisodeId>,
     expanded_episode: Option<api::EpisodeId>,
     episode_history: Vec<api::Watched>,
     _setup: crate::SetupChannel,
@@ -40,6 +41,8 @@ pub(super) enum Msg {
     MarkWatchedDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
     RemoveWatched(api::WatchedId, api::WatchedKind),
     RemoveWatchedDone(Result<ws::Packet<api::RemoveWatched>, ws::Error>),
+    ConfirmRemoveWatch(api::EpisodeId),
+    CancelRemoveWatch,
     WatchRemaining(api::SeasonNumber),
     WatchRemainingDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
     SetTracked(bool),
@@ -89,6 +92,7 @@ impl Component for SeriesDetail {
             selected: None,
             episodes: Vec::new(),
             confirm_remove: false,
+            confirm_remove_watch: None,
             expanded_episode: None,
             episode_history: Vec::new(),
             _setup,
@@ -139,6 +143,7 @@ impl Component for SeriesDetail {
             self.selected = None;
             self.episodes.clear();
             self.confirm_remove = false;
+            self.confirm_remove_watch = None;
             self.expanded_episode = None;
             self.episode_history.clear();
             if self.channel.id() != ws::ChannelId::NONE {
@@ -244,6 +249,7 @@ impl SeriesDetail {
                 if self.selected != Some(season) {
                     self.selected = Some(season);
                     self.episodes.clear();
+                    self.confirm_remove_watch = None;
                     self.expanded_episode = None;
                     self.episode_history.clear();
                     self.load_episodes(ctx, season);
@@ -288,10 +294,19 @@ impl SeriesDetail {
             }
             Msg::RemoveWatchedDone(result) => {
                 result.context(Message::RemovingWatched)?;
+                self.confirm_remove_watch = None;
                 if let Some(season) = self.selected {
                     self.load_episodes(ctx, season);
                 }
                 Ok(false)
+            }
+            Msg::ConfirmRemoveWatch(episode_id) => {
+                self.confirm_remove_watch = Some(episode_id);
+                Ok(true)
+            }
+            Msg::CancelRemoveWatch => {
+                self.confirm_remove_watch = None;
+                Ok(true)
             }
             Msg::WatchRemaining(season) => {
                 let series_id = ctx.props().series_id;
@@ -527,7 +542,7 @@ impl SeriesDetail {
 
     fn view_sidebar(&self, ctx: &Context<Self>) -> Html {
         html! {
-            <div class="detail-sidebar">
+            <div class="detail-sidebar section">
                 { for self.seasons.iter().map(|s| self.view_season_item(ctx, s)) }
             </div>
         }
@@ -561,14 +576,15 @@ impl SeriesDetail {
         let total = self.episodes.len();
 
         html! {
-            <div class="detail-content">
+            <div class="detail-content section">
                 if let Some(season) = self.selected {
-                    <div class="row season-actions">
+                    <div class="row actions">
                         if total > 0 {
                             <span class="text-muted">
                                 {format!("{watched_count} / {total} watched")}
                             </span>
                         }
+
                         if watched_count < total {
                             <button class="btn" onclick={link.callback(move |_| Msg::WatchRemaining(season))}>
                                 {"Watch remaining"}
@@ -576,9 +592,11 @@ impl SeriesDetail {
                         }
                     </div>
                 }
+
                 if self.episodes.is_empty() && self.selected.is_some() {
                     <div class="empty text-muted">{"No episodes."}</div>
                 }
+
                 { for self.episodes.iter().map(|ep| {
                     let episode_id = ep.id;
                     let watched = ep.watched;
@@ -588,10 +606,13 @@ impl SeriesDetail {
                         .and_then(|s| s.pending_episode_id)
                         == Some(episode_id);
                     let on_mark = link.callback(move |_| Msg::MarkWatched(series_id, episode_id));
-                    let on_remove = last_watched_id.map(|wid| {
-                        let kind = api::WatchedKind::Episode { series: series_id, episode: episode_id };
-                        link.callback(move |_| Msg::RemoveWatched(wid, kind))
+                    let on_remove_confirm = last_watched_id.map(|_| {
+                        link.callback(move |_| Msg::ConfirmRemoveWatch(episode_id))
                     });
+                    let confirming_remove_watch = self.confirm_remove_watch == Some(episode_id);
+                    let series_title: AttrValue = self.series.as_ref()
+                        .map(|s| AttrValue::from(s.title.clone()))
+                        .unwrap_or_default();
                     let on_toggle_history = watched.then(|| {
                         link.callback(move |_| Msg::ToggleHistory(episode_id))
                     });
@@ -601,9 +622,20 @@ impl SeriesDetail {
                         link.callback(move |_| Msg::SetNextEpisode(Some(episode_id)))
                     };
 
-                    html! {
-                        <div class={classes!("section", watched.then_some("watched"))}>
-                            <div class="row">
+                    let actions = 'actions: {
+                        if let Some(wid) = last_watched_id && confirming_remove_watch {
+                            break 'actions html! {
+                                <ConfirmDanger
+                                    prompt="Remove watch for"
+                                    label={series_title}
+                                    on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, api::WatchedKind::Episode { series: series_id, episode: episode_id }))}
+                                    on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
+                                />
+                            };
+                        }
+
+                        html! {
+                            <div class="actions row">
                                 <span class="episode-code">
                                     { format!("S{:02}E{:02}", ep.season.to_i64(), ep.number) }
                                 </span>
@@ -615,9 +647,11 @@ impl SeriesDetail {
                                 if is_next {
                                     <span class="license">{"Next"}</span>
                                 }
+
                                 if let Some(date) = ep.aired {
                                     <span class="text-muted">{date.to_string()}</span>
                                 }
+
                                 if watched {
                                     if let Some(on_toggle) = on_toggle_history {
                                         <button class="btn-icon" onclick={on_toggle}
@@ -625,10 +659,12 @@ impl SeriesDetail {
                                             <span class={if expanded { "icon chevron-up" } else { "icon clock" }} />
                                         </button>
                                     }
+
                                     <button class="btn-icon-success" onclick={on_mark.clone()} title="Watch again">
                                         <span class="icon check" />
                                     </button>
-                                    if let Some(on_remove) = on_remove {
+
+                                    if let Some(on_remove) = on_remove_confirm {
                                         <button class="btn-icon" onclick={on_remove} title="Remove last watch">
                                             <span class="icon check-circle" />
                                         </button>
@@ -640,12 +676,19 @@ impl SeriesDetail {
                                         <span class="icon check" />
                                     </button>
                                 }
+
                                 <button class={if is_next { "btn-icon-primary" } else { "btn-icon" }}
                                     onclick={on_set_next}
                                     title={if is_next { "Clear next episode" } else { "Set as next episode" }}>
                                     <span class="icon bookmark" />
                                 </button>
                             </div>
+                        }
+                    };
+
+                    html! {
+                        <div class={classes!("section", watched.then_some("watched"))}>
+                            {actions}
 
                             if !ep.overview.is_empty() {
                                 <p class="overview">{&ep.overview}</p>
