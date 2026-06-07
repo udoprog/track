@@ -702,6 +702,7 @@ pub struct Series {
     pub first_air_date: Option<Date>,
     pub overview: String,
     pub tracked: bool,
+    pub sync_source: Option<String>,
     pub remotes: Vec<RemoteId>,
     pub pending_episode_id: Option<EpisodeId>,
     pub images: Vec<MediaImage>,
@@ -717,6 +718,14 @@ impl Series {
 
     pub fn remote_by_source(&self, source: &str) -> Option<&RemoteId> {
         self.remotes.iter().find(|r| r.source() == source)
+    }
+
+    pub fn effective_sync_source(&self) -> Option<&str> {
+        self.sync_source
+            .as_deref()
+            .filter(|source| self.remote_by_source(source).is_some())
+            .or_else(|| self.remote_by_source("tmdb").map(|_| "tmdb"))
+            .or_else(|| self.remote_by_source("tvdb").map(|_| "tvdb"))
     }
 }
 
@@ -758,6 +767,7 @@ pub struct Movie {
     pub release_date: Option<Date>,
     pub overview: String,
     pub remotes: Vec<RemoteId>,
+    pub sync_source: Option<String>,
     pub watched: bool,
     pub watched_count: u32,
     pub tracked: bool,
@@ -775,6 +785,14 @@ impl Movie {
 
     pub fn remote_by_source(&self, source: &str) -> Option<&RemoteId> {
         self.remotes.iter().find(|r| r.source() == source)
+    }
+
+    pub fn effective_sync_source(&self) -> Option<&str> {
+        self.sync_source
+            .as_deref()
+            .filter(|source| self.remote_by_source(source).is_some())
+            .or_else(|| self.remote_by_source("tmdb").map(|_| "tmdb"))
+            .or_else(|| self.remote_by_source("tvdb").map(|_| "tvdb"))
     }
 }
 
@@ -1133,6 +1151,20 @@ pub struct SyncMovieRequest {
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
+pub struct SetSeriesSyncSourceRequest {
+    pub id: SeriesId,
+    pub source: String,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct SetMovieSyncSourceRequest {
+    pub id: MovieId,
+    pub source: String,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
 pub struct SyncAllRequest;
 
 #[derive(Debug, Encode, Decode)]
@@ -1368,6 +1400,18 @@ api::define! {
     pub type SyncMovie;
     impl Endpoint for SyncMovie {
         impl Request for SyncMovieRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type SetSeriesSyncSource;
+    impl Endpoint for SetSeriesSyncSource {
+        impl Request for SetSeriesSyncSourceRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type SetMovieSyncSource;
+    impl Endpoint for SetMovieSyncSource {
+        impl Request for SetMovieSyncSourceRequest;
         type Response<'de> = Empty;
     }
 

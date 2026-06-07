@@ -94,6 +94,14 @@ impl WsHandler {
                     )
                     .await?;
                 self.db.add_series_remote(series.id, &req.remote_id).await?;
+                self.db
+                    .set_series_sync_source(series.id, req.remote_id.source())
+                    .await?;
+                let series = self
+                    .db
+                    .series_by_id(series.id)
+                    .await?
+                    .context("series not found")?;
                 let _ = self.broadcast.send(api::AppEvent {
                     channel: incoming.channel(),
                     kind: api::AppEventKind::SeriesCreated {
@@ -198,6 +206,14 @@ impl WsHandler {
                     .await?;
 
                 self.db.add_movie_remote(movie.id, &req.remote_id).await?;
+                self.db
+                    .set_movie_sync_source(movie.id, req.remote_id.source())
+                    .await?;
+                let movie = self
+                    .db
+                    .movie_by_id(movie.id)
+                    .await?
+                    .context("movie not found")?;
                 let _ = self.broadcast.send(api::AppEvent {
                     channel: incoming.channel(),
                     kind: api::AppEventKind::MovieCreated {
@@ -422,6 +438,114 @@ impl WsHandler {
                         &self.broadcast,
                     )
                     .await;
+                outgoing.write(api::Empty);
+            }
+            api::Request::SetSeriesSyncSource => {
+                let req = incoming
+                    .read::<api::SetSeriesSyncSourceRequest>()
+                    .context("missing request")?;
+
+                let series = self
+                    .db
+                    .series_by_id(req.id)
+                    .await?
+                    .context("series not found")?;
+
+                let source = req.source.as_str();
+
+                if !matches!(source, "tmdb" | "tvdb") {
+                    anyhow::bail!("unsupported series sync source: {source}");
+                }
+
+                if series.remote_by_source(source).is_none() {
+                    anyhow::bail!("series does not have remote for source: {source}");
+                }
+
+                self.db.set_series_sync_source(req.id, source).await?;
+
+                let series = self
+                    .db
+                    .series_by_id(req.id)
+                    .await?
+                    .context("series not found")?;
+
+                let _ = self.broadcast.send(api::AppEvent {
+                    channel: incoming.channel(),
+                    kind: api::AppEventKind::SeriesChanged {
+                        series: series.clone(),
+                    },
+                });
+
+                let _ = self.broadcast.send(api::AppEvent {
+                    channel: musli_web::api::ChannelId::NONE,
+                    kind: api::AppEventKind::PendingChanged,
+                });
+
+                self.queue
+                    .push(
+                        api::TaskKind::SyncSeries {
+                            series_id: series.id,
+                            title: series.title,
+                        },
+                        true,
+                        &self.broadcast,
+                    )
+                    .await;
+
+                outgoing.write(api::Empty);
+            }
+            api::Request::SetMovieSyncSource => {
+                let req = incoming
+                    .read::<api::SetMovieSyncSourceRequest>()
+                    .context("missing request")?;
+
+                let movie = self
+                    .db
+                    .movie_by_id(req.id)
+                    .await?
+                    .context("movie not found")?;
+
+                let source = req.source.as_str();
+
+                if source != "tmdb" {
+                    anyhow::bail!("unsupported movie sync source: {source}");
+                }
+
+                if movie.remote_by_source(source).is_none() {
+                    anyhow::bail!("movie does not have remote for source: {source}");
+                }
+
+                self.db.set_movie_sync_source(req.id, source).await?;
+
+                let movie = self
+                    .db
+                    .movie_by_id(req.id)
+                    .await?
+                    .context("movie not found")?;
+
+                let _ = self.broadcast.send(api::AppEvent {
+                    channel: incoming.channel(),
+                    kind: api::AppEventKind::MovieChanged {
+                        movie: movie.clone(),
+                    },
+                });
+
+                let _ = self.broadcast.send(api::AppEvent {
+                    channel: musli_web::api::ChannelId::NONE,
+                    kind: api::AppEventKind::PendingChanged,
+                });
+
+                self.queue
+                    .push(
+                        api::TaskKind::SyncMovie {
+                            movie_id: movie.id,
+                            title: movie.title,
+                        },
+                        true,
+                        &self.broadcast,
+                    )
+                    .await;
+
                 outgoing.write(api::Empty);
             }
             api::Request::SyncAll => {

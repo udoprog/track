@@ -26,15 +26,27 @@ pub(crate) async fn sync_series(
         .await?
         .context("series not found")?;
 
-    // Prefer tmdb, fall back to tvdb.
-    if let Some(r) = series.remote_by_source("tmdb") {
-        let tmdb_id: u32 = r.value().parse().context("invalid tmdb id")?;
-        sync_series_tmdb(series_id, tmdb_id, remote, db, broadcast).await?;
-    } else if let Some(r) = series.remote_by_source("tvdb") {
-        let tvdb_id: u32 = r.value().parse().context("invalid tvdb id")?;
-        sync_series_tvdb(series_id, tvdb_id, remote, db, broadcast).await?;
-    } else {
-        anyhow::bail!("series has no syncable remote (tmdb or tvdb)");
+    let source = series.effective_sync_source();
+
+    match source {
+        Some("tmdb") => {
+            let remote_id = series
+                .remote_by_source("tmdb")
+                .context("series has no tmdb remote")?;
+            let tmdb_id: u32 = remote_id.value().parse().context("invalid tmdb id")?;
+            sync_series_tmdb(series_id, tmdb_id, remote, db, broadcast).await?;
+        }
+        Some("tvdb") => {
+            let remote_id = series
+                .remote_by_source("tvdb")
+                .context("series has no tvdb remote")?;
+            let tvdb_id: u32 = remote_id.value().parse().context("invalid tvdb id")?;
+            sync_series_tvdb(series_id, tvdb_id, remote, db, broadcast).await?;
+        }
+        Some(other) => {
+            anyhow::bail!("unsupported series sync source: {other}");
+        }
+        None => anyhow::bail!("series has no syncable remote (tmdb or tvdb)"),
     }
 
     broadcast_event(broadcast, api::AppEventKind::PendingChanged);
@@ -229,37 +241,44 @@ pub(crate) async fn sync_movie(
 ) -> Result<()> {
     let movie = db.movie_by_id(movie_id).await?.context("movie not found")?;
 
-    if let Some(r) = movie.remote_by_source("tmdb") {
-        let tmdb_id: u32 = r.value().parse().context("invalid tmdb id")?;
-        let info = remote.fetch_tmdb_movie(tmdb_id).await?;
+    let source = movie.effective_sync_source();
 
-        db.update_movie(
-            movie_id,
-            &info.title,
-            info.release_date.as_ref().or(movie.release_date.as_ref()),
-            &info.overview,
-        )
-        .await?;
+    match source {
+        Some("tmdb") => {
+            let remote_id = movie
+                .remote_by_source("tmdb")
+                .context("movie has no tmdb remote")?;
+            let tmdb_id: u32 = remote_id.value().parse().context("invalid tmdb id")?;
+            let info = remote.fetch_tmdb_movie(tmdb_id).await?;
 
-        if let Some(ref img) = info.poster {
-            db.upsert_movie_image(movie_id, ImageKind::Poster, ImageSource::Tmdb, img.path())
-                .await?;
+            db.update_movie(
+                movie_id,
+                &info.title,
+                info.release_date.as_ref().or(movie.release_date.as_ref()),
+                &info.overview,
+            )
+            .await?;
+
+            if let Some(ref img) = info.poster {
+                db.upsert_movie_image(movie_id, ImageKind::Poster, ImageSource::Tmdb, img.path())
+                    .await?;
+            }
+            if let Some(ref img) = info.fanart {
+                db.upsert_movie_image(movie_id, ImageKind::Backdrop, ImageSource::Tmdb, img.path())
+                    .await?;
+            }
+
+            let updated = db
+                .movie_by_id(movie_id)
+                .await?
+                .context("movie not found after update")?;
+            broadcast_event(
+                broadcast,
+                api::AppEventKind::MovieChanged { movie: updated },
+            );
         }
-        if let Some(ref img) = info.fanart {
-            db.upsert_movie_image(movie_id, ImageKind::Backdrop, ImageSource::Tmdb, img.path())
-                .await?;
-        }
-
-        let updated = db
-            .movie_by_id(movie_id)
-            .await?
-            .context("movie not found after update")?;
-        broadcast_event(
-            broadcast,
-            api::AppEventKind::MovieChanged { movie: updated },
-        );
-    } else {
-        anyhow::bail!("movie has no syncable remote (tmdb)");
+        Some(other) => anyhow::bail!("unsupported movie sync source: {other}"),
+        None => anyhow::bail!("movie has no syncable remote (tmdb)"),
     }
 
     broadcast_event(broadcast, api::AppEventKind::PendingChanged);

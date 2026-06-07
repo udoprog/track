@@ -3,7 +3,7 @@ use yew::prelude::*;
 
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{Route, SeriesQuery};
-use crate::ui::{ConfirmDanger, ImageGallery, ImageItem};
+use crate::ui::{ConfirmDanger, ImageGallery, ImageItem, RemoteSourceKind, RemoteSourceSelect};
 
 pub(super) struct SeriesDetail {
     channel: ws::Channel,
@@ -30,6 +30,7 @@ pub(super) struct SeriesDetail {
     _history_req: ws::Request,
     _set_next_req: ws::Request,
     _select_image_req: ws::Request,
+    _set_sync_source_req: ws::Request,
 }
 
 pub(super) enum Msg {
@@ -64,6 +65,8 @@ pub(super) enum Msg {
     ),
     SelectImage(api::ImageId),
     SelectImageDone(Result<ws::Packet<api::SelectImage>, ws::Error>),
+    SetSyncSource(String),
+    SetSyncSourceDone(String, Result<ws::Packet<api::SetSeriesSyncSource>, ws::Error>),
     OpenImageModal(api::ImageKind),
     CloseImageModal,
     Back,
@@ -116,6 +119,7 @@ impl Component for SeriesDetail {
             _history_req: ws::Request::default(),
             _set_next_req: ws::Request::default(),
             _select_image_req: ws::Request::default(),
+            _set_sync_source_req: ws::Request::default(),
         }
     }
 
@@ -157,6 +161,13 @@ impl Component for SeriesDetail {
                     { self.view_header(ctx) }
 
                     <div class="row actions">
+                        <RemoteSourceSelect
+                            kind={RemoteSourceKind::Series}
+                            remotes={series.remotes.clone()}
+                            current_source={series.effective_sync_source().map(str::to_owned)}
+                            on_change={link.callback(Msg::SetSyncSource)}
+                        />
+
                         if series.images.iter().any(|i| matches!(i.kind, api::ImageKind::Banner | api::ImageKind::Fanart | api::ImageKind::Backdrop)) {
                             <button class="btn" onclick={link.callback(|_| Msg::OpenImageModal(api::ImageKind::Banner))}>
                                 <span class="icon-inline"><span class="icon photo" /></span>
@@ -511,6 +522,29 @@ impl SeriesDetail {
                 result.context(Message::SyncingSeries)?;
                 self.image_modal = None;
                 Ok(false)
+            }
+            Msg::SetSyncSource(source) => {
+                let id = ctx.props().series_id;
+                self._set_sync_source_req = self
+                    .channel
+                    .request()
+                    .body(api::SetSeriesSyncSourceRequest {
+                        id,
+                        source: source.clone(),
+                    })
+                    .on_packet(
+                        ctx.link()
+                            .callback(move |r| Msg::SetSyncSourceDone(source.clone(), r)),
+                    )
+                    .send();
+                Ok(false)
+            }
+            Msg::SetSyncSourceDone(source, result) => {
+                result.context(Message::SettingSyncSource)?;
+                if let Some(ref mut series) = self.series {
+                    series.sync_source = Some(source);
+                }
+                Ok(true)
             }
             Msg::OpenImageModal(kind) => {
                 self.image_modal = Some(kind);

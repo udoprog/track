@@ -4,6 +4,7 @@ CREATE TABLE series (
     first_air           INTEGER,
     overview            TEXT NOT NULL DEFAULT '',
     tracked             INTEGER NOT NULL DEFAULT 1,
+    sync_source         TEXT,
     pending_episode_id  INTEGER REFERENCES episodes(id) ON DELETE SET NULL
 );
 
@@ -40,7 +41,8 @@ CREATE TABLE movies (
     release_date INTEGER,
     overview     TEXT NOT NULL DEFAULT '',
     pending      INTEGER NOT NULL DEFAULT 0,
-    tracked      INTEGER NOT NULL DEFAULT 1
+    tracked      INTEGER NOT NULL DEFAULT 1,
+    sync_source  TEXT
 );
 
 CREATE INDEX idx_movies_release_date ON movies (release_date) WHERE release_date IS NOT NULL;

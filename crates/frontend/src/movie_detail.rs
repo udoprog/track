@@ -3,7 +3,7 @@ use yew::prelude::*;
 
 use crate::error::{CustomContext, Error, Message};
 use crate::router::Route;
-use crate::ui::{ConfirmDanger, ImageGallery, ImageItem};
+use crate::ui::{ConfirmDanger, ImageGallery, ImageItem, RemoteSourceKind, RemoteSourceSelect};
 
 pub(super) struct MovieDetail {
     channel: ws::Channel,
@@ -23,6 +23,7 @@ pub(super) struct MovieDetail {
     _untrack_req: ws::Request,
     _pending_req: ws::Request,
     _select_image_req: ws::Request,
+    _set_sync_source_req: ws::Request,
 }
 
 pub(super) enum Msg {
@@ -46,6 +47,8 @@ pub(super) enum Msg {
     RemoveDone(Result<ws::Packet<api::RemoveMovie>, ws::Error>),
     SyncMovie,
     SyncDone(Result<ws::Packet<api::SyncMovie>, ws::Error>),
+    SetSyncSource(String),
+    SetSyncSourceDone(String, Result<ws::Packet<api::SetMovieSyncSource>, ws::Error>),
     SetTracked(bool),
     SetTrackedDone(bool, Result<ws::Packet<api::UntrackMovie>, ws::Error>),
     SetPending(bool),
@@ -91,6 +94,7 @@ impl Component for MovieDetail {
             _untrack_req: ws::Request::default(),
             _pending_req: ws::Request::default(),
             _select_image_req: ws::Request::default(),
+            _set_sync_source_req: ws::Request::default(),
         }
     }
 
@@ -294,6 +298,29 @@ impl MovieDetail {
             Msg::SyncDone(result) => {
                 result.context(Message::SyncingSeries)?;
                 Ok(false)
+            }
+            Msg::SetSyncSource(source) => {
+                let id = ctx.props().movie_id;
+                self._set_sync_source_req = self
+                    .channel
+                    .request()
+                    .body(api::SetMovieSyncSourceRequest {
+                        id,
+                        source: source.clone(),
+                    })
+                    .on_packet(
+                        ctx.link()
+                            .callback(move |r| Msg::SetSyncSourceDone(source.clone(), r)),
+                    )
+                    .send();
+                Ok(false)
+            }
+            Msg::SetSyncSourceDone(source, result) => {
+                result.context(Message::SettingSyncSource)?;
+                if let Some(ref mut movie) = self.movie {
+                    movie.sync_source = Some(source);
+                }
+                Ok(true)
             }
             Msg::SetTracked(tracked) => {
                 let id = ctx.props().movie_id;
@@ -502,6 +529,13 @@ impl MovieDetail {
         html! {
             <>
             <div class="row actions">
+                <RemoteSourceSelect
+                    kind={RemoteSourceKind::Movie}
+                    remotes={movie.remotes.clone()}
+                    current_source={movie.effective_sync_source().map(str::to_owned)}
+                    on_change={link.callback(Msg::SetSyncSource)}
+                />
+
                 if movie.images.iter().any(|i| matches!(i.kind, api::ImageKind::Banner | api::ImageKind::Fanart | api::ImageKind::Backdrop)) {
                     <button class="btn" onclick={link.callback(|_| Msg::OpenImageModal(api::ImageKind::Banner))}>
                         <span class="icon-inline"><span class="icon photo" /></span>

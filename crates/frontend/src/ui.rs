@@ -46,6 +46,74 @@ pub(super) fn ConfirmDanger(props: &ConfirmDangerProps) -> Html {
     }
 }
 
+// ── RemoteSourceSelect ───────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum RemoteSourceKind {
+    Series,
+    Movie,
+}
+
+#[derive(Properties, PartialEq)]
+pub(super) struct RemoteSourceSelectProps {
+    pub(super) remotes: Vec<api::RemoteId>,
+    pub(super) current_source: Option<String>,
+    pub(super) kind: RemoteSourceKind,
+    pub(super) on_change: Callback<String>,
+}
+
+#[function_component]
+pub(super) fn RemoteSourceSelect(props: &RemoteSourceSelectProps) -> Html {
+    let mut options: Vec<String> = Vec::new();
+
+    for remote in &props.remotes {
+        let source = remote.source();
+
+        if source == "tmdb" || (matches!(props.kind, RemoteSourceKind::Series) && source == "tvdb") {
+            let source = source.to_owned();
+
+            if !options.iter().any(|existing| existing == &source) {
+                options.push(source);
+            }
+        }
+    }
+
+    if options.is_empty() {
+        return Html::default();
+    }
+
+    let selected = props
+        .current_source
+        .as_deref()
+        .filter(|source| options.iter().any(|option| option == source))
+        .map(str::to_owned)
+        .unwrap_or_else(|| options[0].clone());
+
+    let disabled = options.len() <= 1;
+
+    let on_change = {
+        let cb = props.on_change.clone();
+        Callback::from(move |e: Event| {
+            let input: web_sys::HtmlSelectElement = e.target_unchecked_into();
+            cb.emit(input.value());
+        })
+    };
+
+    html! {
+        <select class="input-select" value={selected} onchange={on_change} {disabled} title="Select remote source">
+            {
+                for options.into_iter().map(|source| {
+                    let label = source.to_uppercase();
+
+                    html! {
+                        <option value={source.clone()}>{label}</option>
+                    }
+                })
+            }
+        </select>
+    }
+}
+
 // ── ImageGallery ──────────────────────────────────────────────────────────────
 
 /// A single entry shown in the image gallery.

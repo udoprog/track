@@ -35,6 +35,7 @@ struct SeriesRow {
     first_air: Option<Date>,
     overview: String,
     tracked: bool,
+    sync_source: Option<String>,
     pending_episode_id: Option<EpisodeId>,
 }
 
@@ -94,6 +95,7 @@ struct MovieRow {
     watched_count: i64,
     pending: bool,
     tracked: bool,
+    sync_source: Option<String>,
 }
 
 #[derive(Row)]
@@ -188,18 +190,18 @@ statements! {
         insert_series: r#"
             INSERT INTO series (title, first_air, overview, tracked)
             VALUES (?, ?, ?, ?)
-            RETURNING id, title, first_air, overview, tracked, NULL AS pending_episode_id
+            RETURNING id, title, first_air, overview, tracked, sync_source, NULL AS pending_episode_id
         "#,
         list_series: r#"
-            SELECT id, title, first_air, overview, tracked, pending_episode_id
+            SELECT id, title, first_air, overview, tracked, sync_source, pending_episode_id
             FROM series ORDER BY title
         "#,
         series_by_id: r#"
-            SELECT id, title, first_air, overview, tracked, pending_episode_id
+            SELECT id, title, first_air, overview, tracked, sync_source, pending_episode_id
             FROM series WHERE id = ?
         "#,
         series_by_remote: r#"
-            SELECT s.id, s.title, s.first_air, s.overview, s.tracked, s.pending_episode_id
+            SELECT s.id, s.title, s.first_air, s.overview, s.tracked, s.sync_source, s.pending_episode_id
             FROM series s
             JOIN remotes r ON r.series_id = s.id
             WHERE r.remote_id = ?
@@ -217,6 +219,9 @@ statements! {
         "#,
         set_series_tracked: r#"
             UPDATE series SET tracked = ? WHERE id = ?
+        "#,
+        set_series_sync_source: r#"
+            UPDATE series SET sync_source = ? WHERE id = ?
         "#,
         // remotes (series and movies share one table)
         list_series_remotes: r#"
@@ -321,27 +326,27 @@ statements! {
         insert_movie: r#"
             INSERT INTO movies (title, release_date, overview, tracked)
             VALUES (?, ?, ?, ?)
-            RETURNING id, title, release_date, overview, 0 AS watched, 0 AS watched_count, 0 AS pending, tracked
+            RETURNING id, title, release_date, overview, 0 AS watched, 0 AS watched_count, 0 AS pending, tracked, sync_source
         "#,
         list_movies: r#"
             SELECT m.id, m.title, m.release_date, m.overview,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) > 0 AS watched,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) AS watched_count,
-                   m.pending, m.tracked
+                   m.pending, m.tracked, m.sync_source
             FROM movies m ORDER BY m.title
         "#,
         movie_by_id: r#"
             SELECT m.id, m.title, m.release_date, m.overview,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) > 0 AS watched,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) AS watched_count,
-                   m.pending, m.tracked
+                   m.pending, m.tracked, m.sync_source
             FROM movies m WHERE m.id = ?
         "#,
         movie_by_remote: r#"
             SELECT m.id, m.title, m.release_date, m.overview,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) > 0 AS watched,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) AS watched_count,
-                   m.pending, m.tracked
+                   m.pending, m.tracked, m.sync_source
             FROM movies m
             JOIN remotes r ON r.movie_id = m.id
             WHERE r.remote_id = ?
@@ -351,6 +356,9 @@ statements! {
         "#,
         set_movie_tracked: r#"
             UPDATE movies SET tracked = ? WHERE id = ?
+        "#,
+        set_movie_sync_source: r#"
+            UPDATE movies SET sync_source = ? WHERE id = ?
         "#,
         update_movie: r#"
             UPDATE movies
@@ -651,6 +659,21 @@ impl Database {
         spawn_blocking(move || {
             s.set_series_tracked.bind((tracked, id))?;
             ensure!(s.set_series_tracked.step()?.is_done(), "set_series_tracked");
+            Ok(())
+        })
+        .await?
+    }
+
+    pub async fn set_series_sync_source(&self, id: SeriesId, source: &str) -> Result<()> {
+        let source = source.to_owned();
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.set_series_sync_source.bind((source.as_str(), id))?;
+            ensure!(
+                s.set_series_sync_source.step()?.is_done(),
+                "set_series_sync_source"
+            );
             Ok(())
         })
         .await?
@@ -991,6 +1014,21 @@ impl Database {
         spawn_blocking(move || {
             s.set_movie_tracked.bind((tracked, id))?;
             ensure!(s.set_movie_tracked.step()?.is_done(), "set_movie_tracked");
+            Ok(())
+        })
+        .await?
+    }
+
+    pub async fn set_movie_sync_source(&self, id: MovieId, source: &str) -> Result<()> {
+        let source = source.to_owned();
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.set_movie_sync_source.bind((source.as_str(), id))?;
+            ensure!(
+                s.set_movie_sync_source.step()?.is_done(),
+                "set_movie_sync_source"
+            );
             Ok(())
         })
         .await?
@@ -1438,6 +1476,7 @@ fn series_from_row(r: SeriesRow) -> api::Series {
         first_air_date: r.first_air,
         overview: r.overview,
         tracked: r.tracked,
+        sync_source: r.sync_source,
         remotes: Vec::new(),
         pending_episode_id: r.pending_episode_id,
         images: Vec::new(),
@@ -1491,6 +1530,7 @@ fn movie_from_row(r: MovieRow) -> api::Movie {
         release_date: r.release_date,
         overview: r.overview,
         remotes: Vec::new(),
+        sync_source: r.sync_source,
         watched: r.watched,
         tracked: r.tracked,
         watched_count: r.watched_count as u32,

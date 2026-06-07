@@ -90,6 +90,8 @@ pub(crate) enum Message {
     RemovingSeries,
     #[display("syncing series")]
     SyncingSeries,
+    #[display("setting sync source")]
+    SettingSyncSource,
     #[display("loading tasks")]
     LoadingTasks,
     #[display("searching")]
