@@ -80,6 +80,7 @@ impl Component for Root {
                 <div class="error-page">
                     <div class="error-box">
                         { for msgs.iter().map(|m| html! { <p>{m}</p> }) }
+
                         <button onclick={link.callback(|_| Msg::ClearError)} class="btn">
                             {"Dismiss"}
                         </button>

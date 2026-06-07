@@ -84,6 +84,8 @@ pub(crate) enum Message {
     RemovingMovie,
     #[display("untracking series")]
     UntrackingSeries,
+    #[display("updating movie tracking")]
+    UntrackingMovie,
     #[display("removing series")]
     RemovingSeries,
     #[display("syncing series")]

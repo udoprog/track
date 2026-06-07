@@ -1030,6 +1030,13 @@ pub struct TrackMovieRequest {
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
+pub struct UntrackMovieRequest {
+    pub id: MovieId,
+    pub tracked: bool,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
 pub struct RemoveMovieRequest {
     pub id: MovieId,
 }
@@ -1296,6 +1303,12 @@ api::define! {
     impl Endpoint for TrackMovie {
         impl Request for TrackMovieRequest;
         type Response<'de> = Movie;
+    }
+
+    pub type UntrackMovie;
+    impl Endpoint for UntrackMovie {
+        impl Request for UntrackMovieRequest;
+        type Response<'de> = Empty;
     }
 
     pub type RemoveMovie;

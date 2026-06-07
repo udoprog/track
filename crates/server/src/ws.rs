@@ -222,6 +222,28 @@ impl WsHandler {
                     .await;
                 outgoing.write(movie);
             }
+            api::Request::UntrackMovie => {
+                let req = incoming
+                    .read::<api::UntrackMovieRequest>()
+                    .context("missing request")?;
+                self.db.set_movie_tracked(req.id, req.tracked).await?;
+                let movie = self
+                    .db
+                    .movie_by_id(req.id)
+                    .await?
+                    .context("movie not found")?;
+                let _ = self.broadcast.send(api::AppEvent {
+                    channel: incoming.channel(),
+                    kind: api::AppEventKind::MovieChanged {
+                        movie: movie.clone(),
+                    },
+                });
+                let _ = self.broadcast.send(api::AppEvent {
+                    channel: musli_web::api::ChannelId::NONE,
+                    kind: api::AppEventKind::PendingChanged,
+                });
+                outgoing.write(api::Empty);
+            }
             api::Request::RemoveMovie => {
                 let req = incoming
                     .read::<api::RemoveMovieRequest>()

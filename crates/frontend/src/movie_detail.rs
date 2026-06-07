@@ -20,6 +20,7 @@ pub(super) struct MovieDetail {
     _remove_watch_req: ws::Request,
     _remove_req: ws::Request,
     _sync_req: ws::Request,
+    _untrack_req: ws::Request,
     _pending_req: ws::Request,
     _select_image_req: ws::Request,
 }
@@ -45,6 +46,8 @@ pub(super) enum Msg {
     RemoveDone(Result<ws::Packet<api::RemoveMovie>, ws::Error>),
     SyncMovie,
     SyncDone(Result<ws::Packet<api::SyncMovie>, ws::Error>),
+    SetTracked(bool),
+    SetTrackedDone(bool, Result<ws::Packet<api::UntrackMovie>, ws::Error>),
     SetPending(bool),
     SetPendingDone(bool, Result<ws::Packet<api::SetMoviePending>, ws::Error>),
     Back,
@@ -85,6 +88,7 @@ impl Component for MovieDetail {
             _remove_watch_req: ws::Request::default(),
             _remove_req: ws::Request::default(),
             _sync_req: ws::Request::default(),
+            _untrack_req: ws::Request::default(),
             _pending_req: ws::Request::default(),
             _select_image_req: ws::Request::default(),
         }
@@ -291,6 +295,26 @@ impl MovieDetail {
                 result.context(Message::SyncingSeries)?;
                 Ok(false)
             }
+            Msg::SetTracked(tracked) => {
+                let id = ctx.props().movie_id;
+                self._untrack_req = self
+                    .channel
+                    .request()
+                    .body(api::UntrackMovieRequest { id, tracked })
+                    .on_packet(
+                        ctx.link()
+                            .callback(move |r| Msg::SetTrackedDone(tracked, r)),
+                    )
+                    .send();
+                Ok(false)
+            }
+            Msg::SetTrackedDone(tracked, result) => {
+                result.context(Message::UntrackingMovie)?;
+                if let Some(ref mut movie) = self.movie {
+                    movie.tracked = tracked;
+                }
+                Ok(true)
+            }
             Msg::SetPending(pending) => {
                 let id = ctx.props().movie_id;
                 self._pending_req = self
@@ -375,6 +399,18 @@ impl MovieDetail {
 
                 <span class="fill">{&movie.title}</span>
 
+                if movie.tracked {
+                    <button class="btn" onclick={link.callback(|_| Msg::SetTracked(false))} title="Untrack movie">
+                        <span class="icon-inline"><span class="icon eye-slash" /></span>
+                        <span class="hide-mobile">{"Untrack"}</span>
+                    </button>
+                } else {
+                    <button class="btn" onclick={link.callback(|_| Msg::SetTracked(true))} title="Track movie">
+                        <span class="icon-inline"><span class="icon eye" /></span>
+                        <span class="hide-mobile">{"Track"}</span>
+                    </button>
+                }
+
                 if !movie.remotes.is_empty() {
                     <button class="btn" onclick={link.callback(|_| Msg::SyncMovie)} title="Sync from remote">
                         <span class="icon-inline"><span class="icon arrow-path" /></span>
@@ -454,7 +490,7 @@ impl MovieDetail {
                             </button>
                         }
                     } else {
-                        <button class="btn btn-success" onclick={link.callback(|_| Msg::MarkWatched)} title="Mark watched">
+                        <button class="btn btn-success" onclick={link.callback(|e: MouseEvent| { e.prevent_default(); Msg::MarkWatched })} title="Mark watched">
                             <span class="icon-inline"><span class="icon check" /></span>
                             {"Mark watched"}
                         </button>

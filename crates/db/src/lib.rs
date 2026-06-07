@@ -985,6 +985,17 @@ impl Database {
         .await?
     }
 
+    pub async fn set_movie_tracked(&self, id: MovieId, tracked: bool) -> Result<()> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.set_movie_tracked.bind((tracked, id))?;
+            ensure!(s.set_movie_tracked.step()?.is_done(), "set_movie_tracked");
+            Ok(())
+        })
+        .await?
+    }
+
     // ── Images ──
 
     pub async fn upsert_series_image(
