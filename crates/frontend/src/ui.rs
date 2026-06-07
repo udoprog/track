@@ -1,6 +1,40 @@
 use yew::prelude::*;
 
 #[derive(Properties, PartialEq)]
+pub(super) struct PaginationButtonsProps {
+    pub(super) page: usize,
+    pub(super) total_pages: usize,
+    pub(super) on_page: Callback<usize>,
+}
+
+#[function_component]
+pub(super) fn PaginationButtons(props: &PaginationButtonsProps) -> Html {
+    let page = props.page.min(props.total_pages.saturating_sub(1));
+    let prev = page.checked_sub(1);
+    let next = (page + 1 < props.total_pages).then_some(page + 1);
+    let on_page = props.on_page.clone();
+    let on_page2 = props.on_page.clone();
+
+    if props.total_pages <= 1 {
+        return html! {};
+    }
+
+    html! {
+        <>
+            <button class="btn-icon" disabled={prev.is_none()}
+                onclick={Callback::from(move |_| { if let Some(p) = prev { on_page.emit(p); } })}>
+                <span class="icon arrow-left" />
+            </button>
+            <span class="text-muted">{format!("{} / {}", page + 1, props.total_pages)}</span>
+            <button class="btn-icon" disabled={next.is_none()}
+                onclick={Callback::from(move |_| { if let Some(p) = next { on_page2.emit(p); } })}>
+                <span class="icon arrow-right" />
+            </button>
+        </>
+    }
+}
+
+#[derive(Properties, PartialEq)]
 pub(super) struct ConfirmDangerProps {
     pub(super) label: AttrValue,
     pub(super) on_confirm: Callback<()>,

@@ -538,7 +538,8 @@ impl SeriesDetail {
             Msg::SelectImageDone(result) => {
                 result.context(Message::SyncingSeries)?;
                 self.image_modal = None;
-                Ok(false)
+                self.load_series(ctx);
+                Ok(true)
             }
             Msg::SetSyncSource(source) => {
                 let id = ctx.props().series_id;

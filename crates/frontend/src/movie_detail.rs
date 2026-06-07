@@ -361,7 +361,10 @@ impl MovieDetail {
             }
             Msg::AddPendingDone(result) => {
                 result.context(Message::SyncingSeries)?;
-                Ok(false)
+                if let Some(ref mut movie) = self.movie {
+                    movie.pending = true;
+                }
+                Ok(true)
             }
             Msg::RemovePending => {
                 let movie = ctx.props().movie_id;
@@ -377,7 +380,10 @@ impl MovieDetail {
             }
             Msg::RemovePendingDone(result) => {
                 result.context(Message::SyncingSeries)?;
-                Ok(false)
+                if let Some(ref mut movie) = self.movie {
+                    movie.pending = false;
+                }
+                Ok(true)
             }
             Msg::SelectImage(id) => {
                 self._select_image_req = self
@@ -391,7 +397,8 @@ impl MovieDetail {
             Msg::SelectImageDone(result) => {
                 result.context(Message::SyncingSeries)?;
                 self.image_modal = None;
-                Ok(false)
+                self.load_movie(ctx);
+                Ok(true)
             }
             Msg::OpenImageModal(kind) => {
                 self.image_modal = Some(kind);
@@ -522,14 +529,17 @@ impl MovieDetail {
                             {"Remove watch"}
                         </button>
 
-                        <button class="btn" onclick={link.callback(|_| Msg::AddPending)} title="Mark as pending">
-                            <span class="icon-inline"><span class="icon bookmark" /></span>
-                            {"Mark pending"}
-                        </button>
-                        <button class="btn" onclick={link.callback(|_| Msg::RemovePending)} title="Remove from pending">
-                            <span class="icon-inline"><span class="icon bookmark-slash" /></span>
-                            {"Remove pending"}
-                        </button>
+                        if movie.pending {
+                            <button class="btn" onclick={link.callback(|_| Msg::RemovePending)} title="Remove from pending">
+                                <span class="icon-inline"><span class="icon bookmark-slash" /></span>
+                                {"Remove pending"}
+                            </button>
+                        } else {
+                            <button class="btn" onclick={link.callback(|_| Msg::AddPending)} title="Mark as pending">
+                                <span class="icon-inline"><span class="icon bookmark" /></span>
+                                {"Mark pending"}
+                            </button>
+                        }
                     } else {
                         <button class="btn btn-success" onclick={link.callback(|e: MouseEvent| { e.prevent_default(); Msg::MarkWatched })} title="Mark watched">
                             <span class="icon-inline"><span class="icon check" /></span>

@@ -896,6 +896,7 @@ pub struct Movie {
     pub watched: bool,
     pub watched_count: u32,
     pub tracked: bool,
+    pub pending: bool,
     pub images: Vec<MediaImage>,
     pub last_synced_at: Option<Timestamp>,
     pub releases: Vec<MovieRelease>,

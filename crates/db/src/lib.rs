@@ -436,6 +436,7 @@ statements! {
         "#,
         delete_pending_episode: r#"DELETE FROM pending WHERE episode_id = ?"#,
         delete_pending_movie: r#"DELETE FROM pending WHERE movie_id = ?"#,
+        has_pending_movie: r#"SELECT 1 FROM pending WHERE movie_id = ? LIMIT 1"#,
         has_pending_episode_for_series: r#"
             SELECT 1 FROM pending p
             JOIN episodes e ON e.id = p.episode_id
@@ -1021,6 +1022,8 @@ impl Database {
                     });
                 }
             }
+            s.has_pending_movie.bind((movie_id,))?;
+            movie.pending = s.has_pending_movie.next::<(i64,)>()?.is_some();
             Ok(Some(movie))
         })
         .await?
@@ -1880,6 +1883,7 @@ fn movie_from_row(r: MovieRow) -> api::Movie {
         watched: r.watched,
         tracked: r.tracked,
         watched_count: r.watched_count as u32,
+        pending: false,
         images: Vec::new(),
         last_synced_at: r.last_synced_at,
         releases: Vec::new(),

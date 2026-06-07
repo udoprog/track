@@ -3,6 +3,7 @@ use yew::prelude::*;
 
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{Route, SeriesQuery};
+use crate::ui::PaginationButtons;
 
 const PAGE_SIZE: usize = 20;
 
@@ -76,8 +77,6 @@ impl Component for Queue {
         let total_pending = self.pending.len();
         let total_pages = total_pending.div_ceil(PAGE_SIZE).max(1);
         let page = self.page.min(total_pages - 1);
-        let prev_page = page.checked_sub(1);
-        let next_page = (page + 1 < total_pages).then_some(page + 1);
 
         let page_pending: Vec<&api::Task> = self
             .pending
@@ -108,19 +107,13 @@ impl Component for Queue {
                             { for page_pending.iter().map(|t| self.view_task_row(ctx, t, false)) }
                         </div>
 
-                        if total_pages > 1 {
-                            <div class="row center">
-                                <button class="btn-icon" disabled={prev_page.is_none()}
-                                    onclick={link.callback(move |_| Msg::SetPage(prev_page.unwrap_or(0)))}>
-                                    <span class="icon arrow-left" />
-                                </button>
-                                <span class="text-muted">{format!("{} / {}", page + 1, total_pages)}</span>
-                                <button class="btn-icon" disabled={next_page.is_none()}
-                                    onclick={link.callback(move |_| Msg::SetPage(next_page.unwrap_or(page)))}>
-                                    <span class="icon arrow-right" />
-                                </button>
-                            </div>
-                        }
+                        <div class="row center">
+                            <PaginationButtons
+                                {page}
+                                {total_pages}
+                                on_page={link.callback(Msg::SetPage)}
+                            />
+                        </div>
                     </div>
                 }
                 { self.view_completed(ctx) }

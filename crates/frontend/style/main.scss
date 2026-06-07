@@ -326,7 +326,7 @@ body {
 
 .pending-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-template-columns: repeat(var(--pending-columns, 4), 1fr);
     gap: $gap;
 
     @include g.until-mobile {
@@ -342,6 +342,7 @@ body {
     border: 1px solid $border-subtle;
     border-radius: $radius;
     padding: $padding-row;
+    min-width: 0;
 }
 
 .pending-poster {
@@ -358,9 +359,21 @@ body {
 .pending-info {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: $gap-sm;
     flex: 1;
     min-width: 0;
+}
+
+.pending-content {
+    display: flex;
+    flex-direction: column;
+    gap: $gap-sm;
+    flex: 1;
+}
+
+.pending-actions {
+    display: flex;
+    gap: $gap-sm;
 }
 
 .pending-label {
