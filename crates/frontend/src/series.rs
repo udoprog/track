@@ -95,7 +95,7 @@ impl Component for SeriesList {
         html! {
             <div class="page">
                 <div class="page-title row">
-                    <span class="fill">{"Movies"}</span>
+                    <span class="fill">{"Series"}</span>
                     <span class="text-muted">{total}</span>
                 </div>
 

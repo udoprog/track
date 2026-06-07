@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::{Context as _, Result};
 use api::{ImageKind, ImageSource, SeasonNumber};
@@ -211,8 +211,15 @@ async fn sync_series_tvdb(
     info!(count = episodes.len(), "got episodes from TVDB");
 
     let mut seasons_seen: HashSet<SeasonNumber> = HashSet::new();
+    let mut season_air_dates: HashMap<SeasonNumber, api::Date> = HashMap::new();
     for ep in &episodes {
         seasons_seen.insert(ep.season);
+        if let Some(date) = ep.aired {
+            let entry = season_air_dates.entry(ep.season).or_insert(date);
+            if date < *entry {
+                *entry = date;
+            }
+        }
         db.upsert_episode(
             series_id,
             ep.season,
@@ -228,7 +235,8 @@ async fn sync_series_tvdb(
     }
 
     for &season in &seasons_seen {
-        db.upsert_season(series_id, season, None, None, "", None)
+        let air_date = season_air_dates.get(&season);
+        db.upsert_season(series_id, season, air_date, None, "", None)
             .await?;
         broadcast_event(
             broadcast,

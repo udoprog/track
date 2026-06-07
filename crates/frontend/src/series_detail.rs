@@ -758,7 +758,7 @@ impl SeriesDetail {
                 }
 
                 <span class="icon-inline">
-                    <span class={classes!("icon", if active { "chevron-right" } else { "ellipsis-horizontal" })} />
+                    <span class={classes!("icon", if active { "ellipsis-horizontal" } else { "chevron-right" })} />
                 </span>
             </div>
         }
