@@ -98,8 +98,9 @@ impl Component for App {
                 <div class="toolbar">
                     <div class="toolbar-inner row-fill">
                         <div class="row start">
-                            <span class="app-title">{"OnTV"}</span>
+                            <span class="title">{"OnTV"}</span>
                         </div>
+
                         <div class="row end">
                             <button onclick={on_nav(Route::Dashboard)} class="btn" title="Dashboard">
                                 <span class="icon-inline"><span class="icon rectangle-stack" /></span>

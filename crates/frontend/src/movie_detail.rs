@@ -376,7 +376,7 @@ impl MovieDetail {
                     if movie.watched {
                         <span class="icon-inline" title="Watched"><span class="icon check-circle" /></span>
 
-                        <span class="text-muted">
+                        <span class="text-muted fill">
                             if movie.watched_count == 1 {
                                 {"Watched once"}
                             } else {
@@ -418,14 +418,15 @@ impl MovieDetail {
         html! {
             <>
             if let Some(ref banner) = movie.banner {
-                <img class="banner" src={banner.proxy_url()} alt="" />
+                <img class="banner" src={banner.proxy_url()} />
             }
+
             <div class="detail-layout">
                 <div class="detail-sidebar section">
                     if let Some(ref poster) = movie.poster {
-                        <img class="movie-poster" src={poster.proxy_url()} alt="" />
+                        <img class="poster" src={poster.proxy_url()} />
                     } else {
-                        <div class="movie-poster" />
+                        <div class="poster" />
                     }
                 </div>
 

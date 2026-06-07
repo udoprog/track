@@ -73,16 +73,17 @@ impl Component for Calendar {
 
         html! {
             <div class="calendar-grid">
-                <div class="calendar-weekday-header">
+                <div class="calendar-weekday-header hide-mobile">
                     { for api::Weekday::ALL.iter().map(|wd| html! {
                         <div class="calendar-weekday">{wd.short_name()}</div>
                     }) }
                 </div>
+
                 { for weeks.iter().map(|(month_band, days)| {
                     html! {
                         <>
                         if let Some((month_name, year)) = month_band {
-                            <div class="calendar-month-band">
+                            <div class="calendar-month">
                                 {format!("{month_name} {year}")}
                             </div>
                         }
@@ -97,25 +98,31 @@ impl Component for Calendar {
                                         "calendar-cell",
                                         is_today.then_some("today"),
                                         is_past.then_some("past"),
+                                        is_past.then_some("hide-mobile"),
                                     )}>
-                                        <div class="calendar-day-num">{day.day()}</div>
+                                        <div class="calendar-day-number">
+                                            <span class="bullet">{day.day()}</span>
+                                        </div>
+
                                         if !entries.is_empty() {
-                                            <div class="calendar-episodes">
+                                            <div class="calendar-items">
                                                 { for entries.iter().map(|entry| {
                                                     let series_id = entry.series_id;
                                                     let season = entry.episodes.first().map(|ep| ep.season);
+
                                                     let on_click  = link.callback(move |_|
                                                         Msg::Navigate(Route::SeriesDetail(series_id, SeriesQuery { season }))
                                                     );
+
                                                     let codes = entry.episodes.iter()
                                                         .map(|ep| format!("S{:02}E{:02}", ep.season.to_i64(), ep.number))
                                                         .collect::<Vec<_>>()
                                                         .join(" ");
+
                                                     html! {
-                                                        <div class="calendar-episode clickable"
-                                                            onclick={on_click}>
-                                                            <div class="calendar-episode-title">{&entry.series_title}</div>
-                                                            <div class="calendar-episode-code">{codes}</div>
+                                                        <div class="row-fill calendar-item clickable" onclick={on_click}>
+                                                            <div class="calendar-item-title">{&entry.series_title}</div>
+                                                            <div class="calendar-item-code end">{codes}</div>
                                                         </div>
                                                     }
                                                 }) }

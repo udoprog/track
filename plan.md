@@ -199,13 +199,13 @@ never rendered. Show the wide banner at the top of each detail page's content.
   `detail-layout`, render the banner when present:
   ```rust
   if let Some(banner) = self.series.as_ref().and_then(|s| s.banner.as_ref()) {
-      html! { <img class="banner" src={banner.proxy_url()} alt="" /> }
+      html! { <img class="banner" src={banner.proxy_url()} /> }
   }
   ```
 - **`movie_detail.rs`**: same, placed above `detail-layout` in `view_body` (or
   in `view` before it), guarded on `movie.banner`.
 - CSS: reuse an existing wide-image class if one exists in `main.scss`
-  (`movie-poster` is poster-shaped, so not it). If none fits, add a **single**
+  (`poster` is poster-shaped, so not it). If none fits, add a **single**
   minimal `.banner` rule (`width: 100%; max-height: …; object-fit: cover;
   border-radius: …`) — this is the allowed "one or two classes" exception. Check
   `main.scss` first before adding.

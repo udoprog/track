@@ -212,17 +212,31 @@ impl SeriesList {
             <div class="table-entry clickable" {onclick}>
                 <div class="row">
                     if let Some(ref poster) = s.poster {
-                        <img class="poster-sm" src={poster.proxy_url()} alt="" />
+                        <img class="poster-sm" src={poster.proxy_url()} />
                     } else {
                         <div class="poster-sm" />
                     }
-                    <span class="fill">{&s.title}</span>
-                    if let Some(date) = s.first_air_date {
-                        <span class="text-muted">{date.year().to_string()}</span>
-                    }
-                    if !s.tracked {
-                        <span class="license">{"Untracked"}</span>
-                    }
+
+                    <div class="row-fill fill top">
+                        <div class="column fill">
+                            <span class="item-title">{&s.title}</span>
+
+                            if !s.overview.is_empty() {
+                                <div class="overview">
+                                    {&s.overview}
+                                </div>
+                            }
+                        </div>
+
+                        if let Some(date) = s.first_air_date {
+                            <span class="text-muted end">{date.year().to_string()}</span>
+                        }
+
+                        if !s.tracked {
+                            <span class="status end">{"Untracked"}</span>
+                        }
+                    </div>
+
                     <span class="icon-inline"><span class="icon chevron-right" /></span>
                 </div>
             </div>

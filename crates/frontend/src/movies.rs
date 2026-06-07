@@ -225,34 +225,46 @@ impl MoviesList {
 
     fn view_row(&self, ctx: &Context<Self>, m: &api::Movie) -> Html {
         let movie_id = m.id;
-        let on_click = ctx
+        let onclick = ctx
             .link()
             .callback(move |_| Msg::Navigate(Route::MovieDetail(movie_id)));
 
         html! {
-            <div class="table-entry">
+            <div class="table-entry clickable" {onclick}>
                 <div class="row">
                     if let Some(ref poster) = m.poster {
-                        <img class="poster-sm clickable" src={poster.proxy_url()} alt=""
-                            onclick={on_click.clone()} />
+                        <img class="poster-sm" src={poster.proxy_url()} />
                     } else {
-                        <div class="poster-sm clickable" onclick={on_click.clone()} />
+                        <div class="poster-sm" />
                     }
-                    <span class="fill clickable" onclick={on_click}>{&m.title}</span>
-                    if let Some(date) = m.release_date {
-                        <span class="text-muted">{date.year().to_string()}</span>
-                    }
-                    if m.watched {
-                        <span class="icon-inline" title="Watched"><span class="icon check-circle" /></span>
-                    } else {
-                        <button
-                            class="btn-icon-success"
-                            title="Mark watched"
-                            onclick={ctx.link().callback(move |_| Msg::MarkWatched(movie_id))}
-                        >
-                            <span class="icon check" />
-                        </button>
-                    }
+
+                    <div class="row-fill fill top">
+                        <div class="column fill">
+                            <span class="item-title">{&m.title}</span>
+
+                            if !m.overview.is_empty() {
+                                <div class="overview">
+                                    {&m.overview}
+                                </div>
+                            }
+                        </div>
+
+                        <div class="row end top">
+                            if let Some(date) = m.release_date {
+                                <span class="text-muted">{date.year().to_string()}</span>
+                            }
+
+                            if m.watched {
+                                <span class="icon-inline" title="Watched"><span class="icon check-circle" /></span>
+                            } else {
+                                <button class="btn-icon-success" title="Mark watched" onclick={ctx.link().callback(move |_| Msg::MarkWatched(movie_id))}>
+                                    <span class="icon check" />
+                                </button>
+                            }
+                        </div>
+                    </div>
+
+                    <span class="icon-inline"><span class="icon chevron-right" /></span>
                 </div>
             </div>
         }

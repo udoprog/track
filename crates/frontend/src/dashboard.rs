@@ -193,19 +193,22 @@ impl Dashboard {
         html! {
             <div class="pending-item">
                 if let Some(ref poster) = p.poster {
-                    <img class="pending-poster clickable" src={poster.proxy_url()} alt=""
-                        onclick={on_navigate_poster} />
+                    <img class="pending-poster clickable" src={poster.proxy_url()} onclick={on_navigate_poster} />
                 } else {
                     <div class="pending-poster pending-poster-placeholder" />
                 }
+
                 <div class="pending-info">
                     if let Some(ref title) = p.series_title {
                         <span class="pending-series clickable" onclick={on_navigate}>{title}</span>
                     }
+
                     <span class="pending-label">{&p.label}</span>
+
                     if let Some(date) = p.aired {
                         <span class="pending-date">{date.to_string()}</span>
                     }
+
                     <button class="btn-icon-success" onclick={on_mark} title="Mark watched">
                         <span class="icon check" />
                     </button>

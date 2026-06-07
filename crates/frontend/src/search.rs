@@ -271,7 +271,7 @@ impl Search {
         html! {
             <div class="section row">
                 if let Some(ref poster) = r.poster {
-                    <img class="poster-sm" src={poster.proxy_url()} alt="" />
+                    <img class="poster-sm" src={poster.proxy_url()} />
                 } else {
                     <div class="poster-sm" />
                 }
@@ -317,7 +317,7 @@ impl Search {
         html! {
             <div class="section row">
                 if let Some(ref poster) = r.poster {
-                    <img class="poster-sm" src={poster.proxy_url()} alt="" />
+                    <img class="poster-sm" src={poster.proxy_url()} />
                 } else {
                     <div class="poster-sm" />
                 }

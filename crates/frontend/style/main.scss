@@ -1,17 +1,3 @@
-@use 'grid' as g;
-@use 'icons';
-@use 'calendar' with ($bg-surface: #333,
-    $color-primary: #46a,
-    $text-primary: #eee,
-    $text-muted: #aaa,
-    $border-subtle: #444,
-    $radius-sm: 3px,
-    $padding: 4px,
-    $gap-xs: 8px,
-    $gap-sm: 12px,
-    $font-xs: 12px,
-    $font-sm: 14px,
-);
 
 $monospace-font: 'SF Mono', Consolas, 'SF Mono Regular', monospace;
 $sans-serif-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -40,7 +26,6 @@ $padding: 4px;
 $padding-sm: 6px;
 $padding-row: 8px;
 $padding-row-sm: 4px;
-$gap-xs: 8px;
 $gap-sm: 12px;
 $gap: 16px;
 $input-height: 32px;
@@ -48,6 +33,29 @@ $input-height-sm: 24px;
 $input-height-touch: 44px;
 $icon-padding: 8px;
 $inline-icon-padding: 4px;
+
+$poster-height: 240px;
+$poster-width-sm: 64px;
+$poster-height-sm: 96px;
+
+$sidebar-width: 240px;
+
+@use 'grid' as g;
+@use 'icons';
+@use 'calendar' with (
+    $bg-surface: $bg-surface,
+    $color-primary: $color-primary,
+    $text-primary: $text-primary,
+    $text-muted: $text-muted,
+    $border-subtle: $border-subtle,
+    $radius-sm: $radius-sm,
+    $padding: $padding,
+    $gap-sm: $gap-sm,
+    $font-sm: $font-sm,
+    $font-base: $font-base,
+    $input-height: $input-height,
+    $input-height-touch: $input-height-touch,
+);
 
 *,
 *::before,
@@ -119,13 +127,23 @@ body {
     }
 }
 
+.column {
+    display: flex;
+    flex-direction: column;
+    gap: $gap-sm;
+
+    &.center {
+        justify-content: center;
+    }
+}
+
 .row-fill {
     display: flex;
     flex-direction: row;
     flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
-    gap: $gap-xs;
+    gap: $gap-sm;
 
     &.reverse {
         flex-direction: row-reverse;
@@ -146,16 +164,6 @@ body {
 
 .row.end {
     justify-content: flex-end;
-}
-
-.fill {
-    flex: 1;
-}
-
-.app-title {
-    font-size: $font-lg;
-    font-weight: 600;
-    color: $text-primary;
 }
 
 .icon-inline {
@@ -190,7 +198,7 @@ body {
 
     box-sizing: border-box;
     display: inline-flex;
-    gap: $gap-xs;
+    gap: $gap-sm;
     align-items: center;
     justify-content: start;
     color: #fff;
@@ -284,8 +292,13 @@ body {
     display: flex;
     flex-direction: column;
     padding: $gap-sm;
+    gap: $gap-sm;
 
     &.row {
+        flex-direction: row;
+    }
+
+    &.row-fill {
         flex-direction: row;
     }
 
@@ -409,12 +422,32 @@ body {
     min-width: 0;
 }
 
+.title {
+    font-size: $font-lg;
+    font-weight: 600;
+    color: $text-primary;
+}
+
+.item-title {
+    font-size: $font-lg;
+    color: $text-primary;
+}
+
+.page-title {
+    font-size: $font-lg;
+    font-weight: 600;
+}
+
+.top {
+    align-self: flex-start;
+}
+
 .empty {
     color: $text-muted;
     padding: $gap;
 }
 
-.license {
+.status {
     font-size: $font-xs;
     background: $bg-surface;
     border: 1px solid $border-subtle;
@@ -424,9 +457,17 @@ body {
     white-space: nowrap;
 }
 
+.poster {
+    width: 100%;
+    object-fit: cover;
+    border-radius: $radius-sm;
+    background: $bg-surface;
+    min-height: $poster-height;
+}
+
 .poster-sm {
-    width: 40px;
-    height: 60px;
+    width: $poster-width-sm;
+    height: $poster-height-sm;
     object-fit: cover;
     border-radius: $radius-sm;
     flex-shrink: 0;
@@ -444,9 +485,8 @@ body {
 }
 
 .detail-sidebar {
-    width: 190px;
+    width: $sidebar-width;
     flex-shrink: 0;
-    border-right: 1px solid $border-subtle;
     overflow-y: auto;
 
     @include g.until-mobile {
@@ -467,14 +507,13 @@ body {
     }
 }
 
-.season-actions {
+.actions {
     padding: $padding-row $gap-sm;
     border-bottom: 1px solid $border-subtle;
     gap: $gap-sm;
 }
 
 .overview {
-    margin: $padding $gap-sm 0;
     font-size: $font-sm;
     color: $text-muted;
     line-height: 1.4;
@@ -530,11 +569,6 @@ body {
     }
 }
 
-.page-title {
-    font-size: $font-lg;
-    font-weight: 600;
-}
-
 .input-group {
     display: inline-flex !important;
     gap: 0 !important;
@@ -562,6 +596,10 @@ body {
 
 .table {
     font-size: $font-sm;
+
+    &:not(.table-striped) >.table-entry {
+        background: $bg-panel;
+    }
 }
 
 .table-entry {
@@ -572,7 +610,11 @@ body {
     border-style: solid;
     border-color: $border-subtle;
     border-width: 0 0 1px 0;
-    background: $bg-panel;
+
+    &.row {
+        flex-direction: row;
+        align-items: center;
+    }
 
     &:first-child {
         border-top-width: 1px;
@@ -630,7 +672,7 @@ body {
 
     border: 1px solid $border-input;
     background: $bg-surface;
-    padding: $gap-xs;
+    padding: $gap-sm;
 
     cursor: pointer;
 
@@ -642,12 +684,12 @@ body {
 
     &.checked>.mark {
         mask-image: url('/static/icons/check.svg');
-        background-color: black;
+        background-color: $text-primary;
     }
 
     &:not(.checked)>.mark {
         mask-image: url('/static/icons/x-mark.svg');
-        background-color: black;
+        background-color: $text-primary;
     }
 
     &:focus {
@@ -669,12 +711,4 @@ body {
     background: $bg-surface;
     display: block;
     margin-bottom: $gap-sm;
-}
-
-.movie-poster {
-    width: 100%;
-    object-fit: cover;
-    border-radius: $radius-sm;
-    background: $bg-surface;
-    min-height: 240px;
 }

@@ -1,26 +1,22 @@
 @use 'grid' as g;
 
-// Palette defaults — match main.scss so the file compiles standalone too
-$bg-surface:    #333  !default;
-$color-primary: #46a  !default;
-$text-primary:  #eee  !default;
-$text-muted:    #aaa  !default;
-$border-subtle: #444  !default;
-$radius-sm:     3px   !default;
-$padding:       4px   !default;
-$gap-xs:        8px   !default;
-$gap-sm:        12px  !default;
-$font-xs:       12px  !default;
-$font-sm:       14px  !default;
-
-// ── Calendar container ───────────────────────────────────────────────────────
+$bg-surface: #333 !default;
+$color-primary: #46a !default;
+$text-primary: #eee !default;
+$text-muted: #aaa !default;
+$border-subtle: #444 !default;
+$radius-sm: 3px !default;
+$padding: 4px !default;
+$gap-sm: 12px !default;
+$font-sm: 14px !default;
+$font-base: 16px !default;
+$input-height: 32px !default;
+$input-height-touch: 44px !default;
 
 .calendar-grid {
     width: 100%;
     overflow-x: auto;
 }
-
-// ── Weekday header row ───────────────────────────────────────────────────────
 
 .calendar-weekday-header {
     display: grid;
@@ -31,43 +27,52 @@ $font-sm:       14px  !default;
 
 .calendar-weekday {
     text-align: center;
-    font-size: $font-xs;
     color: $text-muted;
     padding: $padding;
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
 
-// ── Month separator band ─────────────────────────────────────────────────────
-
-.calendar-month-band {
-    font-size: $font-sm;
+.calendar-month {
     font-weight: 600;
     color: $color-primary;
-    padding: $gap-xs $padding $padding;
     border-top: 1px solid $border-subtle;
+    padding: $padding;
 
     &:first-of-type {
         border-top: none;
         padding-top: $padding;
     }
-}
 
-// ── Week row ─────────────────────────────────────────────────────────────────
+    @include g.until-mobile {
+        font-size: $font-base;
+    }
+}
 
 .calendar-week {
-    display: grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
-    min-width: 280px;
+    display: flex;
+    flex-direction: column;
+
+    @include g.from-desktop {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        min-width: 280px;
+    }
 }
 
-// ── Day cell ─────────────────────────────────────────────────────────────────
-
 .calendar-cell {
-    min-height: 72px;
+    display: flex;
+    flex-direction: column;
+
     padding: $padding;
     border-top: 1px solid $border-subtle;
     border-right: 1px solid $border-subtle;
+
+    min-height: $input-height * 3;
+
+    @include g.until-mobile {
+        min-height: $input-height-touch * 3;
+    }
 
     &:last-child {
         border-right: none;
@@ -80,7 +85,7 @@ $font-sm:       14px  !default;
     &.today {
         background: rgba($color-primary, 0.12);
 
-        .calendar-day-num {
+        .calendar-day-number>.bullet {
             background: $color-primary;
             color: #fff;
             border-radius: 50%;
@@ -92,53 +97,49 @@ $font-sm:       14px  !default;
             font-weight: 700;
         }
     }
-
-    @include g.until-mobile {
-        min-height: 48px;
-    }
 }
 
-// ── Day number ───────────────────────────────────────────────────────────────
-
-.calendar-day-num {
-    font-size: $font-xs;
+.calendar-day-number {
     color: $text-muted;
-    margin-bottom: 2px;
-    line-height: 1;
+    padding: $padding;
 }
 
-// ── Episode chips inside a cell ──────────────────────────────────────────────
-
-.calendar-episodes {
+.calendar-items {
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    margin-top: 3px;
+    gap: $gap-sm;
 }
 
-.calendar-episode {
+.calendar-item {
+    display: flex;
+    flex-direction: column;
+    gap: $gap-sm;
+
     background: $bg-surface;
     color: $text-primary;
     border-radius: $radius-sm;
-    padding: 2px 4px;
+    padding: $padding;
+    min-height: $input-height;
+
+    @include g.until-mobile {
+        min-height: $input-height-touch;
+    }
 
     &:hover {
         background: $color-primary;
         color: #fff;
 
-        .calendar-episode-code {
+        .calendar-item-code {
             color: inherit;
         }
     }
 }
 
-.calendar-episode-title {
-    font-size: 11px;
+.calendar-item-title {
     word-break: break-word;
 }
 
-.calendar-episode-code {
-    font-size: 10px;
+.calendar-item-code {
     color: $text-muted;
     font-family: monospace;
 }

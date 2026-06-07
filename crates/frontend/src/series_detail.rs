@@ -2,7 +2,7 @@ use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
 use crate::error::{CustomContext, Error, Message};
-use crate::router::Route;
+use crate::router::{Route, SeriesQuery};
 use crate::ui::ConfirmDanger;
 
 pub(super) struct SeriesDetail {
@@ -12,7 +12,7 @@ pub(super) struct SeriesDetail {
     selected: Option<api::SeasonNumber>,
     episodes: Vec<api::Episode>,
     confirm_remove: bool,
-    confirm_remove_watch: Option<api::EpisodeId>,
+    confirm_remove_watch: Option<api::WatchedId>,
     expanded_episode: Option<api::EpisodeId>,
     episode_history: Vec<api::Watched>,
     _setup: crate::SetupChannel,
@@ -41,7 +41,7 @@ pub(super) enum Msg {
     MarkWatchedDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
     RemoveWatched(api::WatchedId, api::WatchedKind),
     RemoveWatchedDone(Result<ws::Packet<api::RemoveWatched>, ws::Error>),
-    ConfirmRemoveWatch(api::EpisodeId),
+    ConfirmRemoveWatch(api::WatchedId),
     CancelRemoveWatch,
     WatchRemaining(api::SeasonNumber),
     WatchRemainingDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
@@ -125,9 +125,11 @@ impl Component for SeriesDetail {
         html! {
             <div class="page">
                 { self.view_header(ctx) }
+
                 if let Some(banner) = self.series.as_ref().and_then(|s| s.banner.as_ref()) {
-                    <img class="banner" src={banner.proxy_url()} alt="" />
+                    <img class="banner" src={banner.proxy_url()} />
                 }
+
                 <div class="detail-layout">
                     { self.view_sidebar(ctx) }
                     { self.view_episodes(ctx) }
@@ -149,6 +151,19 @@ impl Component for SeriesDetail {
             if self.channel.id() != ws::ChannelId::NONE {
                 self.load_series(ctx);
                 self.load_seasons(ctx);
+            }
+        } else if ctx.props().initial_season != old_props.initial_season {
+            if let Some(season) = ctx.props().initial_season {
+                if self.selected != Some(season) {
+                    self.selected = Some(season);
+                    self.episodes.clear();
+                    self.confirm_remove_watch = None;
+                    self.expanded_episode = None;
+                    self.episode_history.clear();
+                    if self.channel.id() != ws::ChannelId::NONE {
+                        self.load_episodes(ctx, season);
+                    }
+                }
             }
         }
         true
@@ -208,6 +223,7 @@ impl SeriesDetail {
 
                         if relevant && let Some(season) = self.selected {
                             self.load_episodes(ctx, season);
+                            self.load_episode_history(ctx);
                         }
 
                         Ok(false)
@@ -247,14 +263,12 @@ impl SeriesDetail {
             }
             Msg::SelectSeason(season) => {
                 if self.selected != Some(season) {
-                    self.selected = Some(season);
-                    self.episodes.clear();
-                    self.confirm_remove_watch = None;
-                    self.expanded_episode = None;
-                    self.episode_history.clear();
-                    self.load_episodes(ctx, season);
+                    let id = ctx.props().series_id;
+                    ctx.props()
+                        .on_navigate
+                        .emit(Route::SeriesDetail(id, SeriesQuery { season: Some(season) }));
                 }
-                Ok(true)
+                Ok(false)
             }
             Msg::EpisodesLoaded(result) => {
                 self.episodes = result
@@ -281,6 +295,7 @@ impl SeriesDetail {
                 if let Some(season) = self.selected {
                     self.load_episodes(ctx, season);
                 }
+                self.load_episode_history(ctx);
                 Ok(false)
             }
             Msg::RemoveWatched(id, kind) => {
@@ -298,6 +313,7 @@ impl SeriesDetail {
                 if let Some(season) = self.selected {
                     self.load_episodes(ctx, season);
                 }
+                self.load_episode_history(ctx);
                 Ok(false)
             }
             Msg::ConfirmRemoveWatch(episode_id) => {
@@ -337,6 +353,7 @@ impl SeriesDetail {
                 if let Some(season) = self.selected {
                     self.load_episodes(ctx, season);
                 }
+                self.load_episode_history(ctx);
                 Ok(false)
             }
             Msg::SetTracked(tracked) => {
@@ -403,18 +420,7 @@ impl SeriesDetail {
                 } else {
                     self.expanded_episode = Some(id);
                     self.episode_history.clear();
-                    let series = ctx.props().series_id;
-                    self._history_req = self
-                        .channel
-                        .request()
-                        .body(api::ListWatchedRequest {
-                            kind: api::WatchedKind::Episode {
-                                series,
-                                episode: id,
-                            },
-                        })
-                        .on_packet(ctx.link().callback(Msg::HistoryLoaded))
-                        .send();
+                    self.load_episode_history(ctx);
                 }
                 Ok(true)
             }
@@ -490,6 +496,21 @@ impl SeriesDetail {
             .send();
     }
 
+    fn load_episode_history(&mut self, ctx: &Context<Self>) {
+        let Some(episode) = self.expanded_episode else {
+            return;
+        };
+        let series = ctx.props().series_id;
+        self._history_req = self
+            .channel
+            .request()
+            .body(api::ListWatchedRequest {
+                kind: api::WatchedKind::Episode { series, episode },
+            })
+            .on_packet(ctx.link().callback(Msg::HistoryLoaded))
+            .send();
+    }
+
     fn view_header(&self, ctx: &Context<Self>) -> Html {
         let link = ctx.link();
         html! {
@@ -501,7 +522,7 @@ impl SeriesDetail {
                 if let Some(ref s) = self.series {
                     <span class="fill">{&s.title}</span>
                     if !s.tracked {
-                        <span class="license">{"Untracked"}</span>
+                        <span class="status">{"Untracked"}</span>
                     }
                     if s.tracked {
                         <button class="btn" onclick={link.callback(|_| Msg::SetTracked(false))} title="Untrack series">
@@ -543,7 +564,13 @@ impl SeriesDetail {
     fn view_sidebar(&self, ctx: &Context<Self>) -> Html {
         html! {
             <div class="detail-sidebar section">
-                { for self.seasons.iter().map(|s| self.view_season_item(ctx, s)) }
+                if let Some(poster) = self.series.as_ref().and_then(|s| s.poster.as_ref()) {
+                    <img class="poster" src={poster.proxy_url()} />
+                }
+
+                <div class="table table-striped">
+                    { for self.seasons.iter().map(|s| self.view_season_item(ctx, s)) }
+                </div>
             </div>
         }
     }
@@ -559,11 +586,16 @@ impl SeriesDetail {
         };
 
         html! {
-            <div class={classes!("section", "row", "clickable", active.then_some("active"))} {onclick}>
+            <div class={classes!("table-entry", "row", "clickable", active.then_some("active"))} {onclick}>
                 <span class="fill">{label}</span>
+
                 if let Some(date) = season.air_date {
                     <span class="text-muted">{date.year().to_string()}</span>
                 }
+
+                <span class="icon-inline">
+                    <span class={classes!("icon", if active { "x-circle" } else { "chevron-right" })} />
+                </span>
             </div>
         }
     }
@@ -606,10 +638,11 @@ impl SeriesDetail {
                         .and_then(|s| s.pending_episode_id)
                         == Some(episode_id);
                     let on_mark = link.callback(move |_| Msg::MarkWatched(series_id, episode_id));
-                    let on_remove_confirm = last_watched_id.map(|_| {
-                        link.callback(move |_| Msg::ConfirmRemoveWatch(episode_id))
+                    let on_remove_confirm = last_watched_id.map(|wid| {
+                        link.callback(move |_| Msg::ConfirmRemoveWatch(wid))
                     });
-                    let confirming_remove_watch = self.confirm_remove_watch == Some(episode_id);
+                    let confirming_remove_watch = last_watched_id
+                        .map_or(false, |wid| self.confirm_remove_watch == Some(wid));
                     let series_title: AttrValue = self.series.as_ref()
                         .map(|s| AttrValue::from(s.title.clone()))
                         .unwrap_or_default();
@@ -645,7 +678,7 @@ impl SeriesDetail {
                                 </span>
 
                                 if is_next {
-                                    <span class="license">{"Next"}</span>
+                                    <span class="status">{"Next"}</span>
                                 }
 
                                 if let Some(date) = ep.aired {
@@ -695,11 +728,34 @@ impl SeriesDetail {
                             }
 
                             if expanded {
+                                if let Some(ref img) = ep.filename {
+                                    <img class="poster-sm" src={img.proxy_url()} />
+                                }
                                 <div class="table">
-                                    { for self.episode_history.iter().map(|w| html! {
-                                        <div class="table-entry text-muted">
-                                            <span>{w.timestamp.to_string()}</span>
-                                        </div>
+                                    { for self.episode_history.iter().map(|w| {
+                                        let wid = w.id;
+                                        let wkind = api::WatchedKind::Episode { series: series_id, episode: episode_id };
+                                        if self.confirm_remove_watch == Some(wid) {
+                                            html! {
+                                                <div class="table-entry">
+                                                    <ConfirmDanger
+                                                        prompt="Remove watch"
+                                                        label={w.timestamp.to_string()}
+                                                        on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, wkind))}
+                                                        on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
+                                                    />
+                                                </div>
+                                            }
+                                        } else {
+                                            html! {
+                                                <div class="table-entry text-muted">
+                                                    <span class="fill">{w.timestamp.to_string()}</span>
+                                                    <button class="btn-icon" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
+                                                        <span class="icon x-mark" />
+                                                    </button>
+                                                </div>
+                                            }
+                                        }
                                     }) }
                                 </div>
                             }

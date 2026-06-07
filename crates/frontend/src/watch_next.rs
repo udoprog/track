@@ -175,7 +175,7 @@ impl WatchNext {
             <div class="table-entry">
                 <div class="row">
                     if let Some(ref poster) = p.poster {
-                        <img class="poster-sm" src={poster.proxy_url()} alt="" />
+                        <img class="poster-sm" src={poster.proxy_url()} />
                     } else {
                         <div class="poster-sm" />
                     }
