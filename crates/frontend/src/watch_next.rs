@@ -2,7 +2,7 @@ use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
 use crate::error::{CustomContext, Error, Message};
-use crate::router::Route;
+use crate::router::{Route, SeriesQuery};
 
 pub(super) struct WatchNext {
     channel: ws::Channel,
@@ -154,7 +154,9 @@ impl WatchNext {
         let kind = p.kind.clone();
 
         let route = match p.kind {
-            api::PendingKind::Episode { series, .. } => Route::SeriesDetail(series),
+            api::PendingKind::Episode { series, .. } => {
+                Route::SeriesDetail(series, SeriesQuery::default())
+            }
             api::PendingKind::Movie { movie } => Route::MovieDetail(movie),
         };
 

@@ -4,10 +4,11 @@ edition = "2024"
 publish = false
 
 [features]
-sqll = ["dep:sqll"]
+sqll = ["dep:sqll", "js"]
+js = ["jiff/js"]
 
 [dependencies]
-jiff = "0.2"
+jiff = "0.2.28"
 musli-core = { version = "0.1.4", default-features = false, features = ["alloc", "std"] }
 musli-web = { version = "0.4.2", features = ["api"] }
 serde = { version = "1", features = ["derive"] }

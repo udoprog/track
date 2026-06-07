@@ -3,7 +3,7 @@ use wasm_bindgen::JsCast as _;
 use yew::prelude::*;
 
 use crate::error::{CustomContext, Error, Message};
-use crate::router::Route;
+use crate::router::{Route, SeriesQuery};
 
 pub(super) struct Search {
     channel: ws::Channel,
@@ -231,7 +231,9 @@ impl Search {
                     .context(Message::TrackingSeries)?
                     .decode()
                     .context(Message::TrackingSeries)?;
-                ctx.props().on_navigate.emit(Route::SeriesDetail(series.id));
+                ctx.props()
+                    .on_navigate
+                    .emit(Route::SeriesDetail(series.id, SeriesQuery::default()));
                 Ok(false)
             }
             Msg::TrackMovieDone(result) => {
@@ -287,7 +289,7 @@ impl Search {
                 </div>
                 {
                     if let Some(id) = series_id {
-                        let on_nav = ctx.link().callback(move |_| Msg::Navigate(Route::SeriesDetail(id)));
+                        let on_nav = ctx.link().callback(move |_| Msg::Navigate(Route::SeriesDetail(id, SeriesQuery::default())));
                         html! {
                             <button class="btn" onclick={on_nav} title="Already tracked">
                                 <span class="icon-inline"><span class="icon check" /></span>

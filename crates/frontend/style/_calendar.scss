@@ -1,0 +1,144 @@
+@use 'grid' as g;
+
+// Palette defaults — match main.scss so the file compiles standalone too
+$bg-surface:    #333  !default;
+$color-primary: #46a  !default;
+$text-primary:  #eee  !default;
+$text-muted:    #aaa  !default;
+$border-subtle: #444  !default;
+$radius-sm:     3px   !default;
+$padding:       4px   !default;
+$gap-xs:        8px   !default;
+$gap-sm:        12px  !default;
+$font-xs:       12px  !default;
+$font-sm:       14px  !default;
+
+// ── Calendar container ───────────────────────────────────────────────────────
+
+.calendar-grid {
+    width: 100%;
+    overflow-x: auto;
+}
+
+// ── Weekday header row ───────────────────────────────────────────────────────
+
+.calendar-weekday-header {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    border-bottom: 2px solid $border-subtle;
+    min-width: 280px;
+}
+
+.calendar-weekday {
+    text-align: center;
+    font-size: $font-xs;
+    color: $text-muted;
+    padding: $padding;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+// ── Month separator band ─────────────────────────────────────────────────────
+
+.calendar-month-band {
+    font-size: $font-sm;
+    font-weight: 600;
+    color: $color-primary;
+    padding: $gap-xs $padding $padding;
+    border-top: 1px solid $border-subtle;
+
+    &:first-of-type {
+        border-top: none;
+        padding-top: $padding;
+    }
+}
+
+// ── Week row ─────────────────────────────────────────────────────────────────
+
+.calendar-week {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    min-width: 280px;
+}
+
+// ── Day cell ─────────────────────────────────────────────────────────────────
+
+.calendar-cell {
+    min-height: 72px;
+    padding: $padding;
+    border-top: 1px solid $border-subtle;
+    border-right: 1px solid $border-subtle;
+
+    &:last-child {
+        border-right: none;
+    }
+
+    &.past {
+        opacity: 0.45;
+    }
+
+    &.today {
+        background: rgba($color-primary, 0.12);
+
+        .calendar-day-num {
+            background: $color-primary;
+            color: #fff;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+        }
+    }
+
+    @include g.until-mobile {
+        min-height: 48px;
+    }
+}
+
+// ── Day number ───────────────────────────────────────────────────────────────
+
+.calendar-day-num {
+    font-size: $font-xs;
+    color: $text-muted;
+    margin-bottom: 2px;
+    line-height: 1;
+}
+
+// ── Episode chips inside a cell ──────────────────────────────────────────────
+
+.calendar-episodes {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 3px;
+}
+
+.calendar-episode {
+    background: $bg-surface;
+    color: $text-primary;
+    border-radius: $radius-sm;
+    padding: 2px 4px;
+
+    &:hover {
+        background: $color-primary;
+        color: #fff;
+
+        .calendar-episode-code {
+            color: inherit;
+        }
+    }
+}
+
+.calendar-episode-title {
+    font-size: 11px;
+    word-break: break-word;
+}
+
+.calendar-episode-code {
+    font-size: 10px;
+    color: $text-muted;
+    font-family: monospace;
+}

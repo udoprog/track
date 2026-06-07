@@ -1,0 +1,230 @@
+use std::collections::HashMap;
+
+use musli_web::web03::prelude::*;
+use yew::prelude::*;
+
+use crate::error::{CustomContext, Error, Message};
+use crate::router::{Route, SeriesQuery};
+
+pub(super) struct Calendar {
+    channel: ws::Channel,
+    schedule: Vec<api::ScheduledDay>,
+    _setup: crate::SetupChannel,
+    _broadcast: ws::Listener,
+    _schedule_req: ws::Request,
+}
+
+pub(super) enum Msg {
+    Channel(Result<ws::Channel, ws::Error>),
+    AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
+    ScheduleLoaded(Result<ws::Packet<api::ListSchedule>, ws::Error>),
+    Navigate(Route),
+}
+
+#[derive(Properties, PartialEq)]
+pub(super) struct Props {
+    pub(super) on_navigate: Callback<Route>,
+    pub(super) onerror: Callback<Error>,
+}
+
+impl Component for Calendar {
+    type Message = Msg;
+    type Properties = Props;
+
+    fn create(ctx: &Context<Self>) -> Self {
+        let (ws, _) = ctx
+            .link()
+            .context::<ws::Handle>(Callback::noop())
+            .expect("ws::Handle context not found");
+
+        let _setup = crate::SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
+        let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
+
+        Self {
+            channel: ws::Channel::default(),
+            schedule: Vec::new(),
+            _setup,
+            _broadcast,
+            _schedule_req: ws::Request::default(),
+        }
+    }
+
+    fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
+        match self.try_update(ctx, msg) {
+            Ok(render) => render,
+            Err(e) => {
+                ctx.props().onerror.emit(e);
+                false
+            }
+        }
+    }
+
+    fn view(&self, ctx: &Context<Self>) -> Html {
+        let today = api::Date::today();
+        let weeks = build_weeks(&self.schedule, today);
+
+        let schedule_lookup: HashMap<api::Date, &[api::ScheduledEntry]> = self
+            .schedule
+            .iter()
+            .map(|d| (d.date, d.entries.as_slice()))
+            .collect();
+
+        let link = ctx.link();
+
+        html! {
+            <div class="calendar-grid">
+                <div class="calendar-weekday-header">
+                    { for api::Weekday::ALL.iter().map(|wd| html! {
+                        <div class="calendar-weekday">{wd.short_name()}</div>
+                    }) }
+                </div>
+                { for weeks.iter().map(|(month_band, days)| {
+                    html! {
+                        <>
+                        if let Some((month_name, year)) = month_band {
+                            <div class="calendar-month-band">
+                                {format!("{month_name} {year}")}
+                            </div>
+                        }
+                        <div class="calendar-week">
+                            { for days.iter().map(|&day| {
+                                let is_today = day == today;
+                                let is_past  = day < today;
+                                let entries  = schedule_lookup.get(&day).copied().unwrap_or(&[]);
+
+                                html! {
+                                    <div class={classes!(
+                                        "calendar-cell",
+                                        is_today.then_some("today"),
+                                        is_past.then_some("past"),
+                                    )}>
+                                        <div class="calendar-day-num">{day.day()}</div>
+                                        if !entries.is_empty() {
+                                            <div class="calendar-episodes">
+                                                { for entries.iter().map(|entry| {
+                                                    let series_id = entry.series_id;
+                                                    let season = entry.episodes.first().map(|ep| ep.season);
+                                                    let on_click  = link.callback(move |_|
+                                                        Msg::Navigate(Route::SeriesDetail(series_id, SeriesQuery { season }))
+                                                    );
+                                                    let codes = entry.episodes.iter()
+                                                        .map(|ep| format!("S{:02}E{:02}", ep.season.to_i64(), ep.number))
+                                                        .collect::<Vec<_>>()
+                                                        .join(" ");
+                                                    html! {
+                                                        <div class="calendar-episode clickable"
+                                                            onclick={on_click}>
+                                                            <div class="calendar-episode-title">{&entry.series_title}</div>
+                                                            <div class="calendar-episode-code">{codes}</div>
+                                                        </div>
+                                                    }
+                                                }) }
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            }) }
+                        </div>
+                        </>
+                    }
+                }) }
+            </div>
+        }
+    }
+}
+
+impl Calendar {
+    fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
+        match msg {
+            Msg::Channel(result) => {
+                self.channel = result?;
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self.load_schedule(ctx);
+                } else {
+                    self.schedule.clear();
+                }
+                Ok(true)
+            }
+            Msg::AppBroadcast(packet) => {
+                let event = packet?.decode_event()?;
+                if event.channel == self.channel.id() {
+                    return Ok(false);
+                }
+                match event.kind {
+                    api::AppEventKind::EpisodesChanged { .. }
+                    | api::AppEventKind::SeriesCreated { .. }
+                    | api::AppEventKind::SeriesDeleted { .. }
+                    | api::AppEventKind::TaskCompleted { .. } => {
+                        if self.channel.id() != ws::ChannelId::NONE {
+                            self.load_schedule(ctx);
+                        }
+                        Ok(false)
+                    }
+                    _ => Ok(false),
+                }
+            }
+            Msg::ScheduleLoaded(result) => {
+                self.schedule = result
+                    .context(Message::LoadingSchedule)?
+                    .decode()
+                    .context(Message::LoadingSchedule)?
+                    .days;
+                Ok(true)
+            }
+            Msg::Navigate(route) => {
+                ctx.props().on_navigate.emit(route);
+                Ok(false)
+            }
+        }
+    }
+
+    fn load_schedule(&mut self, ctx: &Context<Self>) {
+        self._schedule_req = self
+            .channel
+            .request()
+            .body(api::ListScheduleRequest { days: 28 })
+            .on_packet(ctx.link().callback(Msg::ScheduleLoaded))
+            .send();
+    }
+}
+
+// ── Calendar grid builder ────────────────────────────────────────────────────
+
+fn build_weeks(
+    schedule: &[api::ScheduledDay],
+    today: api::Date,
+) -> Vec<(Option<(&'static str, i16)>, [api::Date; 7])> {
+    // Start on Monday of today's week (may include past days)
+    let start = today.checked_add_days(-today.weekday().from_monday());
+
+    // End on Sunday of the week containing the last scheduled date; always
+    // extend to at least 4 weeks from today so the grid is never empty.
+    let floor = today.checked_add_days(27);
+    let last_date = schedule.last().map(|d| d.date).unwrap_or(today);
+    let last_date = if last_date > floor { last_date } else { floor };
+    let end = last_date.checked_add_days(6 - last_date.weekday().from_monday());
+
+    let mut weeks = Vec::new();
+    let mut d = start;
+    let mut last_shown_month: Option<u8> = None;
+
+    while d <= end {
+        let days: [api::Date; 7] = std::array::from_fn(|i| d.checked_add_days(i as i32));
+
+        // Show a month band when the month changes. A week that CONTAINS a
+        // 1st-of-month triggers the band for that new month, not the Monday.
+        let band_day = days.iter().find(|day| day.day() == 1).unwrap_or(&days[0]);
+
+        let month_band = if last_shown_month != Some(band_day.month()) {
+            last_shown_month = Some(band_day.month());
+            Some((band_day.month_name(), band_day.year()))
+        } else {
+            None
+        };
+
+        weeks.push((month_band, days));
+        d = d.checked_add_days(7);
+    }
+
+    weeks
+}

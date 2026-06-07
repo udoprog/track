@@ -7,15 +7,15 @@ publish = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-api = { path = "../api" }
-derive_more = { version = "2.1.1", features = ["display"] }
+api = { path = "../api", features = ["js"] }
 
-gloo = "0.12"
-js-sys = "0.3"
+derive_more = { version = "2.1.1", features = ["display"] }
+gloo = "0.12.0"
+js-sys = "0.3.99"
 musli-web = { version = "0.4.2", default-features = false, features = ["web03", "yew023"] }
-tracing = "0.1"
-tracing-wasm = "0.2"
-wasm-bindgen = "0.2"
+tracing = "0.1.44"
+tracing-wasm = "0.2.1"
+wasm-bindgen = "0.2.122"
 yew = { version = "0.23.0", features = ["csr"] }
 
 [dependencies.web-sys]

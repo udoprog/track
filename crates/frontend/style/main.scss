@@ -1,5 +1,18 @@
 @use 'grid' as g;
 @use 'icons';
+@use 'calendar' with (
+    $bg-surface:    #333,
+    $color-primary: #46a,
+    $text-primary:  #eee,
+    $text-muted:    #aaa,
+    $border-subtle: #444,
+    $radius-sm:     3px,
+    $padding:       4px,
+    $gap-xs:        8px,
+    $gap-sm:        12px,
+    $font-xs:       12px,
+    $font-sm:       14px,
+);
 
 $monospace-font: 'SF Mono', Consolas, 'SF Mono Regular', monospace;
 $sans-serif-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;

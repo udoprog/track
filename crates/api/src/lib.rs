@@ -157,8 +157,49 @@ impl ::sqll::BindValue for Timestamp {
     }
 }
 
+/// Day of the week, Monday-anchored.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Weekday {
+    Monday,
+    Tuesday,
+    Wednesday,
+    Thursday,
+    Friday,
+    Saturday,
+    Sunday,
+}
+
+impl Weekday {
+    pub const ALL: [Weekday; 7] = [
+        Weekday::Monday,
+        Weekday::Tuesday,
+        Weekday::Wednesday,
+        Weekday::Thursday,
+        Weekday::Friday,
+        Weekday::Saturday,
+        Weekday::Sunday,
+    ];
+
+    /// Days since Monday (0 = Monday … 6 = Sunday).
+    pub fn from_monday(self) -> i32 {
+        self as i32
+    }
+
+    pub fn short_name(self) -> &'static str {
+        match self {
+            Weekday::Monday => "Mon",
+            Weekday::Tuesday => "Tue",
+            Weekday::Wednesday => "Wed",
+            Weekday::Thursday => "Thu",
+            Weekday::Friday => "Fri",
+            Weekday::Saturday => "Sat",
+            Weekday::Sunday => "Sun",
+        }
+    }
+}
+
 /// Calendar date stored as TEXT "YYYY-MM-DD".
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Date(CivilDate);
 
 impl Date {
@@ -172,6 +213,43 @@ impl Date {
 
     pub fn year(self) -> i16 {
         self.0.year()
+    }
+
+    pub fn month(self) -> u8 {
+        self.0.month() as u8
+    }
+
+    pub fn day(self) -> u8 {
+        self.0.day() as u8
+    }
+
+    pub fn weekday(self) -> Weekday {
+        match self.0.weekday().to_monday_zero_offset() {
+            0 => Weekday::Monday,
+            1 => Weekday::Tuesday,
+            2 => Weekday::Wednesday,
+            3 => Weekday::Thursday,
+            4 => Weekday::Friday,
+            5 => Weekday::Saturday,
+            _ => Weekday::Sunday,
+        }
+    }
+
+    pub fn month_name(self) -> &'static str {
+        match self.0.month() {
+            1 => "January",
+            2 => "February",
+            3 => "March",
+            4 => "April",
+            5 => "May",
+            6 => "June",
+            7 => "July",
+            8 => "August",
+            9 => "September",
+            10 => "October",
+            11 => "November",
+            _ => "December",
+        }
     }
 
     pub fn checked_add_days(self, days: i32) -> Self {

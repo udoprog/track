@@ -2,7 +2,7 @@ use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
 use crate::error::{CustomContext, Error, Message};
-use crate::router::Route;
+use crate::router::{Route, SeriesQuery};
 
 const PAGE_SIZE: usize = 20;
 
@@ -206,7 +206,7 @@ impl SeriesList {
         let id = s.id;
         let onclick = ctx
             .link()
-            .callback(move |_| Msg::Navigate(Route::SeriesDetail(id)));
+            .callback(move |_| Msg::Navigate(Route::SeriesDetail(id, SeriesQuery::default())));
 
         html! {
             <div class="table-entry clickable" {onclick}>

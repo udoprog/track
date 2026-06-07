@@ -63,6 +63,8 @@ pub(super) enum Msg {
 #[derive(Properties, PartialEq)]
 pub(super) struct Props {
     pub(super) series_id: api::SeriesId,
+    #[prop_or_default]
+    pub(super) initial_season: Option<api::SeasonNumber>,
     pub(super) onerror: Callback<Error>,
     pub(super) on_navigate: Callback<Route>,
 }
@@ -224,10 +226,12 @@ impl SeriesDetail {
                     .context(Message::LoadingSeasons)?
                     .seasons;
                 if self.selected.is_none() {
-                    self.selected = self
-                        .seasons
-                        .iter()
-                        .find(|s| !s.number.is_special())
+                    let initial = ctx
+                        .props()
+                        .initial_season
+                        .and_then(|n| self.seasons.iter().find(|s| s.number == n));
+                    self.selected = initial
+                        .or_else(|| self.seasons.iter().find(|s| !s.number.is_special()))
                         .or_else(|| self.seasons.first())
                         .map(|s| s.number);
                     if let Some(season) = self.selected {
@@ -600,7 +604,7 @@ impl SeriesDetail {
                     html! {
                         <div class={classes!("section", watched.then_some("watched"))}>
                             <div class="row">
-                                <span class="ep-code">
+                                <span class="episode-code">
                                     { format!("S{:02}E{:02}", ep.season.to_i64(), ep.number) }
                                 </span>
 

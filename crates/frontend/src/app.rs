@@ -152,10 +152,11 @@ impl App {
             Route::Series => html! {
                 <SeriesList {onerror} {on_navigate} />
             },
-            Route::SeriesDetail(series_id) => {
+            Route::SeriesDetail(series_id, query) => {
                 let series_id = *series_id;
+                let initial_season = query.season;
                 html! {
-                    <SeriesDetail {series_id} {onerror} {on_navigate} />
+                    <SeriesDetail {series_id} {initial_season} {onerror} {on_navigate} />
                 }
             }
             Route::Movies => html! { <MoviesList {onerror} {on_navigate} /> },

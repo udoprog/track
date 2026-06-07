@@ -1,4 +1,5 @@
 mod app;
+mod calendar;
 mod dashboard;
 mod error;
 mod movie_detail;
@@ -15,6 +16,7 @@ mod ui;
 mod watch_next;
 
 use self::app::App;
+use self::calendar::Calendar;
 use self::dashboard::Dashboard;
 use self::movie_detail::MovieDetail;
 use self::movies::MoviesList;
