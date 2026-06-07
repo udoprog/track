@@ -77,8 +77,7 @@ define_id!(EpisodeId);
 define_id!(MovieId);
 define_id!(WatchedId);
 define_id!(TaskId);
-define_id!(SeriesImageId);
-define_id!(MovieImageId);
+define_id!(ImageId);
 
 /// RFC 3339 UTC-normalised timestamp stored as TEXT.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -531,7 +530,9 @@ impl fmt::Display for SeasonNumber {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize,
+)]
 #[musli(crate = musli_core)]
 #[serde(rename_all = "lowercase")]
 pub enum ImageKind {
@@ -569,7 +570,9 @@ impl ::sqll::FromColumn<'_> for ImageKind {
             "banner" => Ok(ImageKind::Banner),
             "fanart" => Ok(ImageKind::Fanart),
             "backdrop" => Ok(ImageKind::Backdrop),
-            other => Err(::sqll::Error::custom(format!("unknown image kind: {other}"))),
+            other => Err(::sqll::Error::custom(format!(
+                "unknown image kind: {other}"
+            ))),
         }
     }
 }
@@ -581,7 +584,9 @@ impl ::sqll::BindValue for ImageKind {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize,
+)]
 #[musli(crate = musli_core)]
 #[serde(rename_all = "lowercase")]
 pub enum ImageSource {
@@ -616,7 +621,9 @@ impl ::sqll::FromColumn<'_> for ImageSource {
             "tvdb" => Ok(ImageSource::Tvdb),
             "tmdb" => Ok(ImageSource::Tmdb),
             "local" => Ok(ImageSource::Local),
-            other => Err(::sqll::Error::custom(format!("unknown image source: {other}"))),
+            other => Err(::sqll::Error::custom(format!(
+                "unknown image source: {other}"
+            ))),
         }
     }
 }
@@ -679,20 +686,8 @@ impl ::sqll::BindValue for ThemeType {
 
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
-pub struct SeriesImage {
-    pub id: SeriesImageId,
-    pub series_id: SeriesId,
-    pub kind: ImageKind,
-    pub source: ImageSource,
-    pub image: Image,
-    pub selected: bool,
-}
-
-#[derive(Debug, Clone, Encode, Decode)]
-#[musli(crate = musli_core)]
-pub struct MovieImage {
-    pub id: MovieImageId,
-    pub movie_id: MovieId,
+pub struct MediaImage {
+    pub id: ImageId,
     pub kind: ImageKind,
     pub source: ImageSource,
     pub image: Image,
@@ -709,7 +704,7 @@ pub struct Series {
     pub tracked: bool,
     pub remotes: Vec<RemoteId>,
     pub pending_episode_id: Option<EpisodeId>,
-    pub images: Vec<SeriesImage>,
+    pub images: Vec<MediaImage>,
 }
 
 impl Series {
@@ -765,8 +760,9 @@ pub struct Movie {
     pub remotes: Vec<RemoteId>,
     pub watched: bool,
     pub watched_count: u32,
+    pub tracked: bool,
     pub pending: bool,
-    pub images: Vec<MovieImage>,
+    pub images: Vec<MediaImage>,
 }
 
 impl Movie {
@@ -780,6 +776,12 @@ impl Movie {
     pub fn remote_by_source(&self, source: &str) -> Option<&RemoteId> {
         self.remotes.iter().find(|r| r.source() == source)
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImageOwner {
+    Series(SeriesId),
+    Movie(MovieId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
@@ -1170,14 +1172,8 @@ pub struct SetMoviePendingRequest {
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
-pub struct SelectSeriesImageRequest {
-    pub id: SeriesImageId,
-}
-
-#[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
-pub struct SelectMovieImageRequest {
-    pub id: MovieImageId,
+pub struct SelectImageRequest {
+    pub id: ImageId,
 }
 
 // ── Broadcast events ─────────────────────────────────────────────────────────
@@ -1398,15 +1394,9 @@ api::define! {
         type Response<'de> = Empty;
     }
 
-    pub type SelectSeriesImage;
-    impl Endpoint for SelectSeriesImage {
-        impl Request for SelectSeriesImageRequest;
-        type Response<'de> = Empty;
-    }
-
-    pub type SelectMovieImage;
-    impl Endpoint for SelectMovieImage {
-        impl Request for SelectMovieImageRequest;
+    pub type SelectImage;
+    impl Endpoint for SelectImage {
+        impl Request for SelectImageRequest;
         type Response<'de> = Empty;
     }
 

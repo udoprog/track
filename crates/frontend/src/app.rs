@@ -98,7 +98,7 @@ impl Component for App {
                 <div class="toolbar">
                     <div class="toolbar-inner row-fill">
                         <div class="row start">
-                            <span class="title">{"OnTV"}</span>
+                            <span class="site-title">{"OnTV"}</span>
                         </div>
 
                         <div class="row end">

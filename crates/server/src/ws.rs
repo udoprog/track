@@ -182,6 +182,7 @@ impl WsHandler {
                 let req = incoming
                     .read::<api::TrackMovieRequest>()
                     .context("missing request")?;
+
                 let movie = self
                     .db
                     .create_movie(
@@ -192,8 +193,10 @@ impl WsHandler {
                             .unwrap_or("Unknown"),
                         None,
                         "",
+                        true,
                     )
                     .await?;
+
                 self.db.add_movie_remote(movie.id, &req.remote_id).await?;
                 let _ = self.broadcast.send(api::AppEvent {
                     channel: incoming.channel(),
@@ -201,10 +204,12 @@ impl WsHandler {
                         movie: movie.clone(),
                     },
                 });
+
                 let _ = self.broadcast.send(api::AppEvent {
                     channel: musli_web::api::ChannelId::NONE,
                     kind: api::AppEventKind::PendingChanged,
                 });
+
                 self.queue
                     .push(
                         api::TaskKind::SyncMovie {
@@ -503,45 +508,38 @@ impl WsHandler {
                 });
                 outgoing.write(api::Empty);
             }
-            api::Request::SelectSeriesImage => {
+            api::Request::SelectImage => {
                 let req = incoming
-                    .read::<api::SelectSeriesImageRequest>()
+                    .read::<api::SelectImageRequest>()
                     .context("missing request")?;
-                self.db.select_series_image(req.id).await?;
-                let series_id = self.db.series_id_for_image(req.id).await?;
-                if let Some(series_id) = series_id {
-                    let series = self
-                        .db
-                        .series_by_id(series_id)
-                        .await?
-                        .context("series not found")?;
-                    let _ = self.broadcast.send(api::AppEvent {
-                        channel: incoming.channel(),
-                        kind: api::AppEventKind::SeriesChanged {
-                            series: series.clone(),
-                        },
-                    });
-                }
-                outgoing.write(api::Empty);
-            }
-            api::Request::SelectMovieImage => {
-                let req = incoming
-                    .read::<api::SelectMovieImageRequest>()
-                    .context("missing request")?;
-                self.db.select_movie_image(req.id).await?;
-                let movie_id = self.db.movie_id_for_image(req.id).await?;
-                if let Some(movie_id) = movie_id {
-                    let movie = self
-                        .db
-                        .movie_by_id(movie_id)
-                        .await?
-                        .context("movie not found")?;
-                    let _ = self.broadcast.send(api::AppEvent {
-                        channel: incoming.channel(),
-                        kind: api::AppEventKind::MovieChanged {
-                            movie: movie.clone(),
-                        },
-                    });
+                let owner = self.db.select_image(req.id).await?;
+                match owner {
+                    api::ImageOwner::Series(series_id) => {
+                        let series = self
+                            .db
+                            .series_by_id(series_id)
+                            .await?
+                            .context("series not found")?;
+                        let _ = self.broadcast.send(api::AppEvent {
+                            channel: incoming.channel(),
+                            kind: api::AppEventKind::SeriesChanged {
+                                series: series.clone(),
+                            },
+                        });
+                    }
+                    api::ImageOwner::Movie(movie_id) => {
+                        let movie = self
+                            .db
+                            .movie_by_id(movie_id)
+                            .await?
+                            .context("movie not found")?;
+                        let _ = self.broadcast.send(api::AppEvent {
+                            channel: incoming.channel(),
+                            kind: api::AppEventKind::MovieChanged {
+                                movie: movie.clone(),
+                            },
+                        });
+                    }
                 }
                 outgoing.write(api::Empty);
             }

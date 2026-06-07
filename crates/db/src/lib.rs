@@ -7,8 +7,8 @@ use anyhow::{Context as _, Result, ensure};
 use std::collections::HashMap;
 
 use api::{
-    Config, Date, EpisodeId, Image, ImageKind, ImageSource, MovieId, MovieImageId, RemoteId,
-    SeasonId, SeasonNumber, SeriesId, SeriesImageId, ThemeType, Timestamp, WatchedId, WatchedKind,
+    Config, Date, EpisodeId, Image, ImageId, ImageKind, ImageSource, MovieId, RemoteId, SeasonId,
+    SeasonNumber, SeriesId, ThemeType, Timestamp, WatchedId, WatchedKind,
 };
 use rust_embed::RustEmbed;
 use sqll::{OpenOptions, Row, SendStatement};
@@ -39,19 +39,21 @@ struct SeriesRow {
 }
 
 #[derive(Row)]
-struct SeriesRemoteRow {
-    series_id: SeriesId,
+struct RemoteRow {
+    series_id: Option<SeriesId>,
+    movie_id: Option<MovieId>,
     remote_id: RemoteId,
 }
 
 #[derive(Row)]
-struct SeriesImageRow {
-    id: SeriesImageId,
-    series_id: SeriesId,
+struct ImageRow {
+    id: ImageId,
     kind: ImageKind,
     source: ImageSource,
     path: String,
     selected: bool,
+    series_id: Option<SeriesId>,
+    movie_id: Option<MovieId>,
 }
 
 #[derive(Row)]
@@ -91,32 +93,22 @@ struct MovieRow {
     watched: bool,
     watched_count: i64,
     pending: bool,
-}
-
-#[derive(Row)]
-struct MovieRemoteRow {
-    movie_id: MovieId,
-    remote_id: RemoteId,
-}
-
-#[derive(Row)]
-struct MovieImageRow {
-    id: MovieImageId,
-    movie_id: MovieId,
-    kind: ImageKind,
-    source: ImageSource,
-    path: String,
-    selected: bool,
+    tracked: bool,
 }
 
 #[derive(Row)]
 struct WatchedRow {
     id: WatchedId,
     timestamp: Timestamp,
-    kind: String,
-    series_id: Option<SeriesId>,
     episode_id: Option<EpisodeId>,
     movie_id: Option<MovieId>,
+    series_id: Option<SeriesId>,
+}
+
+#[derive(Row)]
+struct InsertWatchedRow {
+    id: WatchedId,
+    timestamp: Timestamp,
 }
 
 #[derive(Row)]
@@ -209,7 +201,7 @@ statements! {
         series_by_remote: r#"
             SELECT s.id, s.title, s.first_air, s.overview, s.tracked, s.pending_episode_id
             FROM series s
-            JOIN series_remotes r ON r.series_id = s.id
+            JOIN remotes r ON r.series_id = s.id
             WHERE r.remote_id = ?
         "#,
         set_series_next_episode: r#"
@@ -226,38 +218,54 @@ statements! {
         set_series_tracked: r#"
             UPDATE series SET tracked = ? WHERE id = ?
         "#,
-        // series remotes
+        // remotes (series and movies share one table)
         list_series_remotes: r#"
-            SELECT series_id, remote_id FROM series_remotes WHERE series_id = ? ORDER BY id
+            SELECT series_id, movie_id, remote_id FROM remotes WHERE series_id = ? ORDER BY id
         "#,
         list_all_series_remotes: r#"
-            SELECT series_id, remote_id FROM series_remotes ORDER BY series_id, id
+            SELECT series_id, movie_id, remote_id FROM remotes WHERE series_id IS NOT NULL ORDER BY series_id, id
         "#,
         insert_series_remote: r#"
-            INSERT OR IGNORE INTO series_remotes (series_id, remote_id) VALUES (?, ?)
+            INSERT OR IGNORE INTO remotes (series_id, remote_id) VALUES (?, ?)
         "#,
-        // series images
+        // images (series and movies share one table)
         list_series_images: r#"
-            SELECT id, series_id, kind, source, path, selected FROM series_images
+            SELECT id, kind, source, path, selected, series_id, movie_id FROM images
             WHERE series_id = ? ORDER BY kind, selected DESC, id
         "#,
         list_all_series_images: r#"
-            SELECT id, series_id, kind, source, path, selected FROM series_images
-            ORDER BY series_id, kind, selected DESC, id
+            SELECT id, kind, source, path, selected, series_id, movie_id FROM images
+            WHERE series_id IS NOT NULL ORDER BY series_id, kind, selected DESC, id
         "#,
         insert_series_image: r#"
-            INSERT INTO series_images (series_id, kind, source, path, selected) VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(series_id, kind, path) DO UPDATE SET source = excluded.source
-            RETURNING id, series_id, kind, source, path, selected
+            INSERT INTO images (series_id, kind, source, path, selected) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(series_id, kind, path) WHERE series_id IS NOT NULL DO UPDATE SET source = excluded.source
+            RETURNING id, kind, source, path, selected, series_id, movie_id
         "#,
-        series_image_by_id: r#"
-            SELECT id, series_id, kind, source, path, selected FROM series_images WHERE id = ?
+        list_movie_images: r#"
+            SELECT id, kind, source, path, selected, series_id, movie_id FROM images
+            WHERE movie_id = ? ORDER BY kind, selected DESC, id
+        "#,
+        list_all_movie_images: r#"
+            SELECT id, kind, source, path, selected, series_id, movie_id FROM images
+            WHERE movie_id IS NOT NULL ORDER BY movie_id, kind, selected DESC, id
+        "#,
+        insert_movie_image: r#"
+            INSERT INTO images (movie_id, kind, source, path, selected) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(movie_id, kind, path) WHERE movie_id IS NOT NULL DO UPDATE SET source = excluded.source
+            RETURNING id, kind, source, path, selected, series_id, movie_id
+        "#,
+        image_by_id: r#"
+            SELECT id, kind, source, path, selected, series_id, movie_id FROM images WHERE id = ?
         "#,
         deselect_series_images: r#"
-            UPDATE series_images SET selected = 0 WHERE series_id = ? AND kind = ?
+            UPDATE images SET selected = 0 WHERE series_id = ? AND kind = ?
         "#,
-        select_series_image: r#"
-            UPDATE series_images SET selected = 1 WHERE id = ?
+        deselect_movie_images: r#"
+            UPDATE images SET selected = 0 WHERE movie_id = ? AND kind = ?
+        "#,
+        select_image: r#"
+            UPDATE images SET selected = 1 WHERE id = ?
         "#,
 
         // seasons
@@ -311,94 +319,73 @@ statements! {
 
         // movies
         insert_movie: r#"
-            INSERT INTO movies (title, release_date, overview)
-            VALUES (?, ?, ?)
-            RETURNING id, title, release_date, overview,
-                      0 AS watched, 0 AS watched_count, 0 AS pending
+            INSERT INTO movies (title, release_date, overview, tracked)
+            VALUES (?, ?, ?, ?)
+            RETURNING id, title, release_date, overview, 0 AS watched, 0 AS watched_count, 0 AS pending, tracked
         "#,
         list_movies: r#"
             SELECT m.id, m.title, m.release_date, m.overview,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) > 0 AS watched,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) AS watched_count,
-                   m.pending
+                   m.pending, m.tracked
             FROM movies m ORDER BY m.title
         "#,
         movie_by_id: r#"
             SELECT m.id, m.title, m.release_date, m.overview,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) > 0 AS watched,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) AS watched_count,
-                   m.pending
+                   m.pending, m.tracked
             FROM movies m WHERE m.id = ?
         "#,
         movie_by_remote: r#"
             SELECT m.id, m.title, m.release_date, m.overview,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) > 0 AS watched,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) AS watched_count,
-                   m.pending
+                   m.pending, m.tracked
             FROM movies m
-            JOIN movie_remotes r ON r.movie_id = m.id
+            JOIN remotes r ON r.movie_id = m.id
             WHERE r.remote_id = ?
         "#,
         set_movie_pending: r#"
             UPDATE movies SET pending = ? WHERE id = ?
         "#,
+        set_movie_tracked: r#"
+            UPDATE movies SET tracked = ? WHERE id = ?
+        "#,
         update_movie: r#"
             UPDATE movies
-            SET title = ?, release_date = ?, overview = ?
+            SET title = ?, release_date = ?, overview = ?, tracked = ?
             WHERE id = ?
         "#,
         delete_movie: r#"
             DELETE FROM movies WHERE id = ?
         "#,
-        // movie remotes
         list_movie_remotes: r#"
-            SELECT movie_id, remote_id FROM movie_remotes WHERE movie_id = ? ORDER BY id
+            SELECT series_id, movie_id, remote_id FROM remotes WHERE movie_id = ? ORDER BY id
         "#,
         list_all_movie_remotes: r#"
-            SELECT movie_id, remote_id FROM movie_remotes ORDER BY movie_id, id
+            SELECT series_id, movie_id, remote_id FROM remotes WHERE movie_id IS NOT NULL ORDER BY movie_id, id
         "#,
         insert_movie_remote: r#"
-            INSERT OR IGNORE INTO movie_remotes (movie_id, remote_id) VALUES (?, ?)
-        "#,
-        // movie images
-        list_movie_images: r#"
-            SELECT id, movie_id, kind, source, path, selected FROM movie_images
-            WHERE movie_id = ? ORDER BY kind, selected DESC, id
-        "#,
-        list_all_movie_images: r#"
-            SELECT id, movie_id, kind, source, path, selected FROM movie_images
-            ORDER BY movie_id, kind, selected DESC, id
-        "#,
-        insert_movie_image: r#"
-            INSERT INTO movie_images (movie_id, kind, source, path, selected) VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(movie_id, kind, path) DO UPDATE SET source = excluded.source
-            RETURNING id, movie_id, kind, source, path, selected
-        "#,
-        movie_image_by_id: r#"
-            SELECT id, movie_id, kind, source, path, selected FROM movie_images WHERE id = ?
-        "#,
-        deselect_movie_images: r#"
-            UPDATE movie_images SET selected = 0 WHERE movie_id = ? AND kind = ?
-        "#,
-        select_movie_image: r#"
-            UPDATE movie_images SET selected = 1 WHERE id = ?
+            INSERT OR IGNORE INTO remotes (movie_id, remote_id) VALUES (?, ?)
         "#,
 
         // watched
         insert_watched: r#"
-            INSERT INTO watched (timestamp, kind, series_id, episode_id, movie_id)
-            VALUES (?, ?, ?, ?, ?)
-            RETURNING id, timestamp, kind, series_id, episode_id, movie_id
+            INSERT INTO watched (timestamp, episode_id, movie_id)
+            VALUES (?, ?, ?)
+            RETURNING id, timestamp
         "#,
         delete_watched: r#"
             DELETE FROM watched WHERE id = ?
         "#,
         list_watched_episode: r#"
-            SELECT id, timestamp, kind, series_id, episode_id, movie_id
-            FROM watched WHERE episode_id = ? ORDER BY timestamp DESC
+            SELECT w.id, w.timestamp, w.episode_id, w.movie_id, e.series_id
+            FROM watched w JOIN episodes e ON e.id = w.episode_id
+            WHERE w.episode_id = ? ORDER BY w.timestamp DESC
         "#,
         list_watched_movie: r#"
-            SELECT id, timestamp, kind, series_id, episode_id, movie_id
+            SELECT id, timestamp, episode_id, movie_id, NULL AS series_id
             FROM watched WHERE movie_id = ? ORDER BY timestamp DESC
         "#,
 
@@ -408,7 +395,7 @@ statements! {
                    s.title AS series_title,
                    e.name AS episode_name,
                    e.season, e.number,
-                   (SELECT source || ':' || path FROM series_images
+                   (SELECT source || ':' || path FROM images
                     WHERE series_id = s.id AND kind = 'poster' AND selected = 1 LIMIT 1) AS poster
             FROM series s
             JOIN episodes e ON e.id = s.pending_episode_id
@@ -421,7 +408,7 @@ statements! {
                    s.title AS series_title,
                    e.name AS episode_name,
                    e.season, e.number,
-                   (SELECT source || ':' || path FROM series_images
+                   (SELECT source || ':' || path FROM images
                     WHERE series_id = s.id AND kind = 'poster' AND selected = 1 LIMIT 1) AS poster
             FROM episodes e
             JOIN series s ON s.id = e.series_id
@@ -430,12 +417,20 @@ statements! {
               AND e.aired IS NOT NULL
               AND e.aired <= ?
               AND NOT EXISTS (SELECT 1 FROM watched w WHERE w.episode_id = e.id)
+              AND NOT EXISTS (
+                SELECT 1 FROM episodes e2
+                WHERE e2.series_id = e.series_id
+                  AND e2.aired IS NOT NULL
+                  AND e2.aired <= ?
+                  AND NOT EXISTS (SELECT 1 FROM watched w2 WHERE w2.episode_id = e2.id)
+                  AND (e2.season < e.season OR (e2.season = e.season AND e2.number < e.number))
+              )
 
             ORDER BY aired DESC, series_title, season, number
         "#,
         list_pending_movies: r#"
             SELECT m.id AS movie_id, m.title, m.release_date,
-                   (SELECT source || ':' || path FROM movie_images
+                   (SELECT source || ':' || path FROM images
                     WHERE movie_id = m.id AND kind = 'poster' AND selected = 1 LIMIT 1) AS poster
             FROM movies m
             WHERE (
@@ -461,8 +456,8 @@ statements! {
 
         // all watched (for import dedup)
         list_all_watched: r#"
-            SELECT id, timestamp, kind, series_id, episode_id, movie_id
-            FROM watched
+            SELECT w.id, w.timestamp, w.episode_id, w.movie_id, e.series_id
+            FROM watched w LEFT JOIN episodes e ON e.id = w.episode_id
         "#,
 
         // config
@@ -547,11 +542,7 @@ impl Database {
         .await?
     }
 
-    pub async fn add_series_remote(
-        &self,
-        series_id: SeriesId,
-        remote_id: &RemoteId,
-    ) -> Result<()> {
+    pub async fn add_series_remote(&self, series_id: SeriesId, remote_id: &RemoteId) -> Result<()> {
         let remote_id = remote_id.clone();
         let mut s = self.inner.clone().lock_owned().await;
 
@@ -579,15 +570,19 @@ impl Database {
                 out.push(series_from_row(r));
             }
             s.list_all_series_remotes.reset()?;
-            while let Some(r) = s.list_all_series_remotes.next::<SeriesRemoteRow>()? {
-                if let Some(&idx) = id_to_idx.get(&r.series_id) {
+            while let Some(r) = s.list_all_series_remotes.next::<RemoteRow>()? {
+                if let Some(sid) = r.series_id
+                    && let Some(&idx) = id_to_idx.get(&sid)
+                {
                     out[idx].remotes.push(r.remote_id);
                 }
             }
             s.list_all_series_images.reset()?;
-            while let Some(r) = s.list_all_series_images.next::<SeriesImageRow>()? {
-                if let Some(&idx) = id_to_idx.get(&r.series_id) {
-                    out[idx].images.push(series_image_from_row(r));
+            while let Some(r) = s.list_all_series_images.next::<ImageRow>()? {
+                if let Some(sid) = r.series_id
+                    && let Some(&idx) = id_to_idx.get(&sid)
+                {
+                    out[idx].images.push(image_from_row(r));
                 }
             }
             Ok(out)
@@ -605,12 +600,12 @@ impl Database {
             };
             let mut series = series_from_row(r);
             s.list_series_remotes.bind((id,))?;
-            while let Some(r) = s.list_series_remotes.next::<SeriesRemoteRow>()? {
+            while let Some(r) = s.list_series_remotes.next::<RemoteRow>()? {
                 series.remotes.push(r.remote_id);
             }
             s.list_series_images.bind((id,))?;
-            while let Some(r) = s.list_series_images.next::<SeriesImageRow>()? {
-                series.images.push(series_image_from_row(r));
+            while let Some(r) = s.list_series_images.next::<ImageRow>()? {
+                series.images.push(image_from_row(r));
             }
             Ok(Some(series))
         })
@@ -805,21 +800,23 @@ impl Database {
     pub async fn create_movie(
         &self,
         title: &str,
-        release_date: Option<&Date>,
+        release_date: Option<Date>,
         overview: &str,
+        tracked: bool,
     ) -> Result<api::Movie> {
         let title = title.to_owned();
-        let release_date = release_date.cloned();
         let overview = overview.to_owned();
         let mut s = self.inner.clone().lock_owned().await;
 
         spawn_blocking(move || {
             s.insert_movie
-                .bind((&title[..], release_date.as_ref(), &overview[..]))?;
+                .bind((&title[..], release_date, &overview[..], tracked))?;
+
             let r = s
                 .insert_movie
                 .next::<MovieRow>()?
                 .context("insert_movie returned no row")?;
+
             ensure!(s.insert_movie.step()?.is_done(), "insert_movie");
             Ok(movie_from_row(r))
         })
@@ -854,15 +851,19 @@ impl Database {
                 out.push(movie_from_row(r));
             }
             s.list_all_movie_remotes.reset()?;
-            while let Some(r) = s.list_all_movie_remotes.next::<MovieRemoteRow>()? {
-                if let Some(&idx) = id_to_idx.get(&r.movie_id) {
+            while let Some(r) = s.list_all_movie_remotes.next::<RemoteRow>()? {
+                if let Some(mid) = r.movie_id
+                    && let Some(&idx) = id_to_idx.get(&mid)
+                {
                     out[idx].remotes.push(r.remote_id);
                 }
             }
             s.list_all_movie_images.reset()?;
-            while let Some(r) = s.list_all_movie_images.next::<MovieImageRow>()? {
-                if let Some(&idx) = id_to_idx.get(&r.movie_id) {
-                    out[idx].images.push(movie_image_from_row(r));
+            while let Some(r) = s.list_all_movie_images.next::<ImageRow>()? {
+                if let Some(mid) = r.movie_id
+                    && let Some(&idx) = id_to_idx.get(&mid)
+                {
+                    out[idx].images.push(image_from_row(r));
                 }
             }
             Ok(out)
@@ -881,12 +882,12 @@ impl Database {
             let movie_id = r.id;
             let mut movie = movie_from_row(r);
             s.list_movie_remotes.bind((movie_id,))?;
-            while let Some(r) = s.list_movie_remotes.next::<MovieRemoteRow>()? {
+            while let Some(r) = s.list_movie_remotes.next::<RemoteRow>()? {
                 movie.remotes.push(r.remote_id);
             }
             s.list_movie_images.bind((movie_id,))?;
-            while let Some(r) = s.list_movie_images.next::<MovieImageRow>()? {
-                movie.images.push(movie_image_from_row(r));
+            while let Some(r) = s.list_movie_images.next::<ImageRow>()? {
+                movie.images.push(image_from_row(r));
             }
             Ok(Some(movie))
         })
@@ -905,12 +906,12 @@ impl Database {
             let series_id = r.id;
             let mut series = series_from_row(r);
             s.list_series_remotes.bind((series_id,))?;
-            while let Some(r) = s.list_series_remotes.next::<SeriesRemoteRow>()? {
+            while let Some(r) = s.list_series_remotes.next::<RemoteRow>()? {
                 series.remotes.push(r.remote_id);
             }
             s.list_series_images.bind((series_id,))?;
-            while let Some(r) = s.list_series_images.next::<SeriesImageRow>()? {
-                series.images.push(series_image_from_row(r));
+            while let Some(r) = s.list_series_images.next::<ImageRow>()? {
+                series.images.push(image_from_row(r));
             }
             Ok(Some(series))
         })
@@ -929,12 +930,12 @@ impl Database {
             let movie_id = r.id;
             let mut movie = movie_from_row(r);
             s.list_movie_remotes.bind((movie_id,))?;
-            while let Some(r) = s.list_movie_remotes.next::<MovieRemoteRow>()? {
+            while let Some(r) = s.list_movie_remotes.next::<RemoteRow>()? {
                 movie.remotes.push(r.remote_id);
             }
             s.list_movie_images.bind((movie_id,))?;
-            while let Some(r) = s.list_movie_images.next::<MovieImageRow>()? {
-                movie.images.push(movie_image_from_row(r));
+            while let Some(r) = s.list_movie_images.next::<ImageRow>()? {
+                movie.images.push(image_from_row(r));
             }
             Ok(Some(movie))
         })
@@ -984,7 +985,7 @@ impl Database {
         .await?
     }
 
-    // ── Series images ──
+    // ── Images ──
 
     pub async fn upsert_series_image(
         &self,
@@ -992,16 +993,15 @@ impl Database {
         kind: ImageKind,
         source: ImageSource,
         path: &str,
-    ) -> Result<api::SeriesImage> {
+    ) -> Result<api::MediaImage> {
         let path = path.to_owned();
         let mut s = self.inner.clone().lock_owned().await;
 
         spawn_blocking(move || {
-            // Auto-select if this is the first image of this kind for the series
             let is_first = {
                 s.list_series_images.bind((series_id,))?;
                 let mut found = false;
-                while let Some(r) = s.list_series_images.next::<SeriesImageRow>()? {
+                while let Some(r) = s.list_series_images.next::<ImageRow>()? {
                     if r.kind == kind {
                         found = true;
                         break;
@@ -1013,70 +1013,16 @@ impl Database {
                 .bind((series_id, kind, source, &path[..], is_first))?;
             let r = s
                 .insert_series_image
-                .next::<SeriesImageRow>()?
+                .next::<ImageRow>()?
                 .context("insert_series_image returned no row")?;
             ensure!(
                 s.insert_series_image.step()?.is_done(),
                 "insert_series_image"
             );
-            Ok(series_image_from_row(r))
+            Ok(image_from_row(r))
         })
         .await?
     }
-
-    pub async fn select_series_image(&self, id: SeriesImageId) -> Result<()> {
-        let mut s = self.inner.clone().lock_owned().await;
-
-        spawn_blocking(move || {
-            s.series_image_by_id.bind((id,))?;
-            let r = s
-                .series_image_by_id
-                .next::<SeriesImageRow>()?
-                .context("series image not found")?;
-            let series_id = r.series_id;
-            let kind = r.kind;
-            s.deselect_series_images.bind((series_id, kind))?;
-            ensure!(
-                s.deselect_series_images.step()?.is_done(),
-                "deselect_series_images"
-            );
-            s.select_series_image.bind((id,))?;
-            ensure!(
-                s.select_series_image.step()?.is_done(),
-                "select_series_image"
-            );
-            Ok(())
-        })
-        .await?
-    }
-
-    pub async fn series_id_for_image(&self, id: SeriesImageId) -> Result<Option<SeriesId>> {
-        let mut s = self.inner.clone().lock_owned().await;
-        spawn_blocking(move || {
-            s.series_image_by_id.bind((id,))?;
-            Ok(s.series_image_by_id.next::<SeriesImageRow>()?.map(|r| r.series_id))
-        })
-        .await?
-    }
-
-    pub async fn list_series_images(
-        &self,
-        series_id: SeriesId,
-    ) -> Result<Vec<api::SeriesImage>> {
-        let mut s = self.inner.clone().lock_owned().await;
-
-        spawn_blocking(move || {
-            s.list_series_images.bind((series_id,))?;
-            let mut out = Vec::new();
-            while let Some(r) = s.list_series_images.next::<SeriesImageRow>()? {
-                out.push(series_image_from_row(r));
-            }
-            Ok(out)
-        })
-        .await?
-    }
-
-    // ── Movie images ──
 
     pub async fn upsert_movie_image(
         &self,
@@ -1084,7 +1030,7 @@ impl Database {
         kind: ImageKind,
         source: ImageSource,
         path: &str,
-    ) -> Result<api::MovieImage> {
+    ) -> Result<api::MediaImage> {
         let path = path.to_owned();
         let mut s = self.inner.clone().lock_owned().await;
 
@@ -1092,7 +1038,7 @@ impl Database {
             let is_first = {
                 s.list_movie_images.bind((movie_id,))?;
                 let mut found = false;
-                while let Some(r) = s.list_movie_images.next::<MovieImageRow>()? {
+                while let Some(r) = s.list_movie_images.next::<ImageRow>()? {
                     if r.kind == kind {
                         found = true;
                         break;
@@ -1104,62 +1050,48 @@ impl Database {
                 .bind((movie_id, kind, source, &path[..], is_first))?;
             let r = s
                 .insert_movie_image
-                .next::<MovieImageRow>()?
+                .next::<ImageRow>()?
                 .context("insert_movie_image returned no row")?;
-            ensure!(
-                s.insert_movie_image.step()?.is_done(),
-                "insert_movie_image"
-            );
-            Ok(movie_image_from_row(r))
+            ensure!(s.insert_movie_image.step()?.is_done(), "insert_movie_image");
+            Ok(image_from_row(r))
         })
         .await?
     }
 
-    pub async fn select_movie_image(&self, id: MovieImageId) -> Result<()> {
+    /// Deselects all images of the same kind for the owning entity, then
+    /// selects the given image. Returns which entity owns the image.
+    pub async fn select_image(&self, id: ImageId) -> Result<api::ImageOwner> {
         let mut s = self.inner.clone().lock_owned().await;
 
         spawn_blocking(move || {
-            s.movie_image_by_id.bind((id,))?;
+            s.image_by_id.bind((id,))?;
             let r = s
-                .movie_image_by_id
-                .next::<MovieImageRow>()?
-                .context("movie image not found")?;
-            let movie_id = r.movie_id;
+                .image_by_id
+                .next::<ImageRow>()?
+                .context("image not found")?;
             let kind = r.kind;
-            s.deselect_movie_images.bind((movie_id, kind))?;
-            ensure!(
-                s.deselect_movie_images.step()?.is_done(),
-                "deselect_movie_images"
-            );
-            s.select_movie_image.bind((id,))?;
-            ensure!(
-                s.select_movie_image.step()?.is_done(),
-                "select_movie_image"
-            );
-            Ok(())
-        })
-        .await?
-    }
-
-    pub async fn movie_id_for_image(&self, id: MovieImageId) -> Result<Option<MovieId>> {
-        let mut s = self.inner.clone().lock_owned().await;
-        spawn_blocking(move || {
-            s.movie_image_by_id.bind((id,))?;
-            Ok(s.movie_image_by_id.next::<MovieImageRow>()?.map(|r| r.movie_id))
-        })
-        .await?
-    }
-
-    pub async fn list_movie_images(&self, movie_id: MovieId) -> Result<Vec<api::MovieImage>> {
-        let mut s = self.inner.clone().lock_owned().await;
-
-        spawn_blocking(move || {
-            s.list_movie_images.bind((movie_id,))?;
-            let mut out = Vec::new();
-            while let Some(r) = s.list_movie_images.next::<MovieImageRow>()? {
-                out.push(movie_image_from_row(r));
-            }
-            Ok(out)
+            let owner = match (r.series_id, r.movie_id) {
+                (Some(sid), _) => {
+                    s.deselect_series_images.bind((sid, kind))?;
+                    ensure!(
+                        s.deselect_series_images.step()?.is_done(),
+                        "deselect_series_images"
+                    );
+                    api::ImageOwner::Series(sid)
+                }
+                (_, Some(mid)) => {
+                    s.deselect_movie_images.bind((mid, kind))?;
+                    ensure!(
+                        s.deselect_movie_images.step()?.is_done(),
+                        "deselect_movie_images"
+                    );
+                    api::ImageOwner::Movie(mid)
+                }
+                _ => anyhow::bail!("image has no owner"),
+            };
+            s.select_image.bind((id,))?;
+            ensure!(s.select_image.step()?.is_done(), "select_image");
+            Ok(owner)
         })
         .await?
     }
@@ -1174,21 +1106,22 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         spawn_blocking(move || {
-            let (kind_str, series_id, episode_id, movie_id) = match kind {
-                WatchedKind::Episode { series, episode } => {
-                    ("episode", Some(series), Some(episode), None)
-                }
-                WatchedKind::Movie { movie } => ("movie", None, None, Some(movie)),
+            let (episode_id, movie_id) = match kind {
+                WatchedKind::Episode { episode, .. } => (Some(episode), None),
+                WatchedKind::Movie { movie } => (None, Some(movie)),
             };
 
-            s.insert_watched
-                .bind((timestamp, kind_str, series_id, episode_id, movie_id))?;
+            s.insert_watched.bind((timestamp, episode_id, movie_id))?;
             let r = s
                 .insert_watched
-                .next::<WatchedRow>()?
+                .next::<InsertWatchedRow>()?
                 .context("insert_watched returned no row")?;
             ensure!(s.insert_watched.step()?.is_done(), "insert_watched");
-            watched_from_row(r)
+            Ok(api::Watched {
+                id: r.id,
+                timestamp: r.timestamp,
+                kind,
+            })
         })
         .await?
     }
@@ -1253,7 +1186,7 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         spawn_blocking(move || {
-            s.list_pending_episodes.bind((today,))?;
+            s.list_pending_episodes.bind((today, today))?;
             let mut out = Vec::new();
 
             while let Some(r) = s.list_pending_episodes.next::<PendingEpisodeRow>()? {
@@ -1500,10 +1433,9 @@ fn series_from_row(r: SeriesRow) -> api::Series {
     }
 }
 
-fn series_image_from_row(r: SeriesImageRow) -> api::SeriesImage {
-    api::SeriesImage {
+fn image_from_row(r: ImageRow) -> api::MediaImage {
+    api::MediaImage {
         id: r.id,
-        series_id: r.series_id,
         kind: r.kind,
         source: r.source,
         image: Image::from_raw(format!("{}:{}", r.source.as_str(), r.path)),
@@ -1549,35 +1481,18 @@ fn movie_from_row(r: MovieRow) -> api::Movie {
         overview: r.overview,
         remotes: Vec::new(),
         watched: r.watched,
+        tracked: r.tracked,
         watched_count: r.watched_count as u32,
         pending: r.pending,
         images: Vec::new(),
     }
 }
 
-fn movie_image_from_row(r: MovieImageRow) -> api::MovieImage {
-    api::MovieImage {
-        id: r.id,
-        movie_id: r.movie_id,
-        kind: r.kind,
-        source: r.source,
-        image: Image::from_raw(format!("{}:{}", r.source.as_str(), r.path)),
-        selected: r.selected,
-    }
-}
-
 fn watched_from_row(r: WatchedRow) -> Result<api::Watched> {
-    let kind = match r.kind.as_str() {
-        "episode" => {
-            let series = r.series_id.context("watched episode missing series_id")?;
-            let episode = r.episode_id.context("watched episode missing episode_id")?;
-            WatchedKind::Episode { series, episode }
-        }
-        "movie" => {
-            let movie = r.movie_id.context("watched movie missing movie_id")?;
-            WatchedKind::Movie { movie }
-        }
-        other => anyhow::bail!("unknown watched kind: {other}"),
+    let kind = match (r.series_id, r.episode_id, r.movie_id) {
+        (Some(series), Some(episode), None) => WatchedKind::Episode { series, episode },
+        (None, None, Some(movie)) => WatchedKind::Movie { movie },
+        _ => anyhow::bail!("watched row violates CHECK constraint"),
     };
 
     Ok(api::Watched {

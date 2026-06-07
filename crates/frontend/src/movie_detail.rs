@@ -11,6 +11,7 @@ pub(super) struct MovieDetail {
     watched: Vec<api::Watched>,
     confirm_remove: bool,
     confirm_remove_watch: bool,
+    image_modal: Option<api::ImageKind>,
     _setup: crate::SetupChannel,
     _broadcast: ws::Listener,
     _movie_req: ws::Request,
@@ -34,8 +35,10 @@ pub(super) enum Msg {
     RemoveWatchedDone(Result<ws::Packet<api::RemoveWatched>, ws::Error>),
     ConfirmRemoveWatch,
     CancelRemoveWatch,
-    SelectImage(api::MovieImageId),
-    SelectImageDone(Result<ws::Packet<api::SelectMovieImage>, ws::Error>),
+    SelectImage(api::ImageId),
+    SelectImageDone(Result<ws::Packet<api::SelectImage>, ws::Error>),
+    OpenImageModal(api::ImageKind),
+    CloseImageModal,
     ConfirmRemove,
     CancelRemove,
     RemoveMovie,
@@ -73,6 +76,7 @@ impl Component for MovieDetail {
             watched: Vec::new(),
             confirm_remove: false,
             confirm_remove_watch: false,
+            image_modal: None,
             _setup,
             _broadcast,
             _movie_req: ws::Request::default(),
@@ -97,10 +101,32 @@ impl Component for MovieDetail {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
+        let Some(ref movie) = self.movie else {
+            return html! {
+                <div class="page">
+                    <div class="empty text-muted">{"Loading…"}</div>
+                </div>
+            };
+        };
+
+        let url = movie
+            .images
+            .iter()
+            .find(|i| matches!(i.kind, api::ImageKind::Backdrop))
+            .map(|image| image.image.proxy_url());
+
+        let style = url
+            .as_ref()
+            .map(|url| format!("--background: url('{}')", url))
+            .unwrap_or_default();
+
         html! {
-            <div class="page">
-                { self.view_header(ctx) }
-                { self.view_body(ctx) }
+            <div class="page-container" {style}>
+                <div class="page">
+                    { self.view_header(ctx, movie) }
+
+                    { self.view_body(ctx, movie) }
+                </div>
             </div>
         }
     }
@@ -111,11 +137,13 @@ impl Component for MovieDetail {
             self.watched.clear();
             self.confirm_remove = false;
             self.confirm_remove_watch = false;
+
             if self.channel.id() != ws::ChannelId::NONE {
                 self.load_movie(ctx);
                 self.load_watched(ctx);
             }
         }
+
         true
     }
 }
@@ -287,14 +315,23 @@ impl MovieDetail {
                 self._select_image_req = self
                     .channel
                     .request()
-                    .body(api::SelectMovieImageRequest { id })
+                    .body(api::SelectImageRequest { id })
                     .on_packet(ctx.link().callback(Msg::SelectImageDone))
                     .send();
                 Ok(false)
             }
             Msg::SelectImageDone(result) => {
                 result.context(Message::SyncingSeries)?;
+                self.image_modal = None;
                 Ok(false)
+            }
+            Msg::OpenImageModal(kind) => {
+                self.image_modal = Some(kind);
+                Ok(true)
+            }
+            Msg::CloseImageModal => {
+                self.image_modal = None;
+                Ok(true)
             }
             Msg::Back => {
                 ctx.props().on_navigate.emit(Route::Movies);
@@ -326,8 +363,9 @@ impl MovieDetail {
             .send();
     }
 
-    fn view_header(&self, ctx: &Context<Self>) -> Html {
+    fn view_header(&self, ctx: &Context<Self>, movie: &api::Movie) -> Html {
         let link = ctx.link();
+
         html! {
             <div class="row page-title">
                 <button class="btn" onclick={link.callback(|_| Msg::Back)}>
@@ -335,39 +373,32 @@ impl MovieDetail {
                     {"Movies"}
                 </button>
 
-                if let Some(ref m) = self.movie {
-                    <span class="fill">{&m.title}</span>
-                    if !m.remotes.is_empty() {
-                        <button class="btn" onclick={link.callback(|_| Msg::SyncMovie)} title="Sync from remote">
-                            <span class="icon-inline"><span class="icon arrow-path" /></span>
-                            <span class="hide-mobile">{"Sync"}</span>
-                        </button>
-                    }
-                    if self.confirm_remove {
-                        <ConfirmDanger
-                            prompt="Remove movie"
-                            label={m.title.clone()}
-                            on_confirm={link.callback(|_| Msg::RemoveMovie)}
-                            on_cancel={link.callback(|_| Msg::CancelRemove)}
-                        />
-                    } else {
-                        <button class="btn btn-danger" onclick={link.callback(|_| Msg::ConfirmRemove)} title="Remove movie">
-                            <span class="icon-inline"><span class="icon trash" /></span>
-                            <span class="hide-mobile">{"Remove"}</span>
-                        </button>
-                    }
+                <span class="fill">{&movie.title}</span>
+
+                if !movie.remotes.is_empty() {
+                    <button class="btn" onclick={link.callback(|_| Msg::SyncMovie)} title="Sync from remote">
+                        <span class="icon-inline"><span class="icon arrow-path" /></span>
+                        <span class="hide-mobile">{"Sync"}</span>
+                    </button>
+                }
+                if self.confirm_remove {
+                    <ConfirmDanger
+                        prompt="Remove movie"
+                        label={movie.title.clone()}
+                        on_confirm={link.callback(|_| Msg::RemoveMovie)}
+                        on_cancel={link.callback(|_| Msg::CancelRemove)}
+                    />
                 } else {
-                    <span class="fill" />
+                    <button class="btn btn-danger" onclick={link.callback(|_| Msg::ConfirmRemove)} title="Remove movie">
+                        <span class="icon-inline"><span class="icon trash" /></span>
+                        <span class="hide-mobile">{"Remove"}</span>
+                    </button>
                 }
             </div>
         }
     }
 
-    fn view_body(&self, ctx: &Context<Self>) -> Html {
-        let Some(ref movie) = self.movie else {
-            return html! { <div class="empty text-muted">{"Loading…"}</div> };
-        };
-
+    fn view_body(&self, ctx: &Context<Self>, movie: &api::Movie) -> Html {
         let last_watched_id = self.watched.first().map(|w| w.id);
         let movie_id = ctx.props().movie_id;
         let link = ctx.link();
@@ -434,21 +465,20 @@ impl MovieDetail {
 
         html! {
             <>
-            if let Some(banner) = movie.selected_image(api::ImageKind::Banner)
-                .or_else(|| movie.selected_image(api::ImageKind::Backdrop))
-                .or_else(|| movie.selected_image(api::ImageKind::Fanart))
-            {
-                <img class="banner" src={banner.proxy_url()} />
-            }
+            <div class="row actions">
+                if movie.images.iter().any(|i| matches!(i.kind, api::ImageKind::Banner | api::ImageKind::Fanart | api::ImageKind::Backdrop)) {
+                    <button class="btn" onclick={link.callback(|_| Msg::OpenImageModal(api::ImageKind::Banner))}>
+                        <span class="icon-inline"><span class="icon photo" /></span>
+                        {"Background"}
+                    </button>
+                }
+            </div>
 
             <div class="detail-layout">
                 <div class="detail-sidebar section">
                     if let Some(poster) = movie.selected_image(api::ImageKind::Poster) {
-                        <img class="poster" src={poster.proxy_url()} />
-                    } else {
-                        <div class="poster" />
+                        <img class="poster hide-mobile" src={poster.proxy_url()} />
                     }
-                    { self.view_images(ctx, movie) }
                 </div>
 
                 <div class="detail-content section">
@@ -474,16 +504,25 @@ impl MovieDetail {
                     }
                 </div>
             </div>
+
+            if let Some(kind) = self.image_modal {
+                { self.view_image_modal(ctx, movie, kind) }
+            }
             </>
         }
     }
 
-    fn view_images(&self, ctx: &Context<Self>, movie: &api::Movie) -> Html {
+    fn view_image_modal(
+        &self,
+        ctx: &Context<Self>,
+        movie: &api::Movie,
+        kind: api::ImageKind,
+    ) -> Html {
         let items: Vec<ImageItem> = movie
             .images
             .iter()
             .map(|img| ImageItem {
-                id: img.id.get(),
+                id: img.id,
                 kind: img.kind,
                 source: img.source,
                 image: img.image.clone(),
@@ -494,7 +533,9 @@ impl MovieDetail {
         html! {
             <ImageGallery
                 {items}
-                on_select={link.callback(|id| Msg::SelectImage(api::MovieImageId::new(id)))}
+                {kind}
+                on_select={link.callback(Msg::SelectImage)}
+                on_close={link.callback(|_| Msg::CloseImageModal)}
             />
         }
     }

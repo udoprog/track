@@ -102,6 +102,7 @@ impl Component for MoviesList {
                     <span class="fill">{"Movies"}</span>
                     <span class="text-muted">{total}</span>
                 </div>
+
                 <div class="row">
                     <div class="input-group fill">
                         <input
@@ -260,6 +261,12 @@ impl MoviesList {
                                 <button class="btn-icon-success" title="Mark watched" onclick={ctx.link().callback(move |_| Msg::MarkWatched(movie_id))}>
                                     <span class="icon check" />
                                 </button>
+                            }
+
+                            if !m.tracked {
+                                <span class="end icon-inline" title="Untracked movie">
+                                    <span class="icon eye-slash" />
+                                </span>
                             }
                         </div>
                     </div>

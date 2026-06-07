@@ -57,7 +57,9 @@ async fn sync_series_tmdb(
     db.update_series(
         series_id,
         &info.title,
-        info.first_air_date.as_ref().or(series.first_air_date.as_ref()),
+        info.first_air_date
+            .as_ref()
+            .or(series.first_air_date.as_ref()),
         &info.overview,
         series.tracked,
     )
@@ -68,8 +70,13 @@ async fn sync_series_tmdb(
             .await?;
     }
     if let Some(ref img) = info.fanart {
-        db.upsert_series_image(series_id, ImageKind::Backdrop, ImageSource::Tmdb, img.path())
-            .await?;
+        db.upsert_series_image(
+            series_id,
+            ImageKind::Backdrop,
+            ImageSource::Tmdb,
+            img.path(),
+        )
+        .await?;
     }
 
     let updated = db
@@ -239,13 +246,8 @@ pub(crate) async fn sync_movie(
                 .await?;
         }
         if let Some(ref img) = info.fanart {
-            db.upsert_movie_image(
-                movie_id,
-                ImageKind::Backdrop,
-                ImageSource::Tmdb,
-                img.path(),
-            )
-            .await?;
+            db.upsert_movie_image(movie_id, ImageKind::Backdrop, ImageSource::Tmdb, img.path())
+                .await?;
         }
 
         let updated = db

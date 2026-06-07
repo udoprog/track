@@ -65,6 +65,7 @@ impl Component for Dashboard {
         html! {
             <div class="page">
                 { self.view_pending(ctx) }
+
                 <div class="section">
                     <div class="row"><h2>{"Coming Up"}</h2></div>
                     <crate::Calendar

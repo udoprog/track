@@ -95,9 +95,10 @@ impl Component for SeriesList {
         html! {
             <div class="page">
                 <div class="page-title row">
-                    <span class="fill">{"Series"}</span>
+                    <span class="fill">{"Movies"}</span>
                     <span class="text-muted">{total}</span>
                 </div>
+
                 <div class="row">
                     <div class="input-group fill">
                         <input
@@ -115,12 +116,14 @@ impl Component for SeriesList {
                         }
                     </div>
                 </div>
+
                 if page_items.is_empty() {
                     <div class="empty text-muted">{"No series tracked."}</div>
                 } else {
                     <div class="table">
-                    { for page_items.into_iter().map(|s| self.view_row(ctx, s)) }
+                        { for page_items.into_iter().map(|s| self.view_row(ctx, s)) }
                     </div>
+
                     if total_pages > 1 {
                         <div class="row center">
                             <button class="btn-icon" disabled={prev_page.is_none()}
@@ -217,7 +220,7 @@ impl SeriesList {
                         <div class="poster-sm" />
                     }
 
-                    <div class="row-fill fill top">
+                    <div class="row-fill fill">
                         <div class="column fill">
                             <span class="item-title">{&s.title}</span>
 
@@ -228,13 +231,17 @@ impl SeriesList {
                             }
                         </div>
 
-                        if let Some(date) = s.first_air_date {
-                            <span class="text-muted end">{date.year().to_string()}</span>
-                        }
+                        <div class="row top">
+                            if let Some(date) = s.first_air_date {
+                                <span class="text-muted end">{date.year().to_string()}</span>
+                            }
 
-                        if !s.tracked {
-                            <span class="status end">{"Untracked"}</span>
-                        }
+                            if !s.tracked {
+                                <span class="end icon-inline" title="Untracked series">
+                                    <span class="icon eye-slash" />
+                                </span>
+                            }
+                        </div>
                     </div>
 
                     <span class="icon-inline"><span class="icon chevron-right" /></span>

@@ -39,7 +39,8 @@ CREATE TABLE movies (
     title        TEXT NOT NULL,
     release_date INTEGER,
     overview     TEXT NOT NULL DEFAULT '',
-    pending      INTEGER NOT NULL DEFAULT 0
+    pending      INTEGER NOT NULL DEFAULT 0,
+    tracked      INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE INDEX idx_movies_release_date ON movies (release_date) WHERE release_date IS NOT NULL;
@@ -47,10 +48,9 @@ CREATE INDEX idx_movies_release_date ON movies (release_date) WHERE release_date
 CREATE TABLE watched (
     id         INTEGER PRIMARY KEY,
     timestamp  INTEGER NOT NULL,
-    kind       TEXT NOT NULL CHECK(kind IN ('episode','movie')),
-    series_id  INTEGER REFERENCES series(id) ON DELETE CASCADE,
     episode_id INTEGER REFERENCES episodes(id) ON DELETE CASCADE,
-    movie_id   INTEGER REFERENCES movies(id) ON DELETE CASCADE
+    movie_id   INTEGER REFERENCES movies(id) ON DELETE CASCADE,
+    CHECK((episode_id IS NULL) != (movie_id IS NULL))
 );
 
 CREATE TABLE config (
@@ -58,36 +58,28 @@ CREATE TABLE config (
     value TEXT NOT NULL
 );
 
-CREATE TABLE series_images (
+CREATE TABLE images (
     id        INTEGER PRIMARY KEY,
-    series_id INTEGER NOT NULL REFERENCES series(id) ON DELETE CASCADE,
     kind      TEXT NOT NULL,
     source    TEXT NOT NULL,
     path      TEXT NOT NULL,
     selected  INTEGER NOT NULL DEFAULT 0,
-    UNIQUE(series_id, kind, path)
+    series_id INTEGER REFERENCES series(id) ON DELETE CASCADE,
+    movie_id  INTEGER REFERENCES movies(id) ON DELETE CASCADE,
+    CHECK((series_id IS NULL) != (movie_id IS NULL))
 );
 
-CREATE TABLE movie_images (
-    id       INTEGER PRIMARY KEY,
-    movie_id INTEGER NOT NULL REFERENCES movies(id) ON DELETE CASCADE,
-    kind     TEXT NOT NULL,
-    source   TEXT NOT NULL,
-    path     TEXT NOT NULL,
-    selected INTEGER NOT NULL DEFAULT 0,
-    UNIQUE(movie_id, kind, path)
-);
+CREATE UNIQUE INDEX idx_images_series ON images (series_id, kind, path) WHERE series_id IS NOT NULL;
+CREATE UNIQUE INDEX idx_images_movie  ON images (movie_id,  kind, path) WHERE movie_id  IS NOT NULL;
 
-CREATE TABLE series_remotes (
+CREATE TABLE remotes (
     id        INTEGER PRIMARY KEY,
-    series_id INTEGER NOT NULL REFERENCES series(id) ON DELETE CASCADE,
     remote_id TEXT NOT NULL,
+    series_id INTEGER REFERENCES series(id) ON DELETE CASCADE,
+    movie_id  INTEGER REFERENCES movies(id) ON DELETE CASCADE,
+    CHECK((series_id IS NULL) != (movie_id IS NULL)),
     UNIQUE(remote_id)
 );
 
-CREATE TABLE movie_remotes (
-    id       INTEGER PRIMARY KEY,
-    movie_id INTEGER NOT NULL REFERENCES movies(id) ON DELETE CASCADE,
-    remote_id TEXT NOT NULL,
-    UNIQUE(remote_id)
-);
+CREATE INDEX idx_remotes_series ON remotes (series_id) WHERE series_id IS NOT NULL;
+CREATE INDEX idx_remotes_movie  ON remotes (movie_id)  WHERE movie_id  IS NOT NULL;

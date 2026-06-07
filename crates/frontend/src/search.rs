@@ -118,6 +118,7 @@ impl Component for Search {
                         <option value="series" selected={matches!(self.kind, api::SearchKind::Series)}>
                             {"Series"}
                         </option>
+
                         <option value="movies" selected={matches!(self.kind, api::SearchKind::Movies)}>
                             {"Movies"}
                         </option>

@@ -15,6 +15,7 @@ pub(super) struct SeriesDetail {
     confirm_remove_watch: Option<api::WatchedId>,
     expanded_episode: Option<api::EpisodeId>,
     episode_history: Vec<api::Watched>,
+    image_modal: Option<api::ImageKind>,
     _setup: crate::SetupChannel,
     _broadcast: ws::Listener,
     _series_req: ws::Request,
@@ -61,8 +62,10 @@ pub(super) enum Msg {
         Option<api::EpisodeId>,
         Result<ws::Packet<api::SetNextEpisode>, ws::Error>,
     ),
-    SelectImage(api::SeriesImageId),
-    SelectImageDone(Result<ws::Packet<api::SelectSeriesImage>, ws::Error>),
+    SelectImage(api::ImageId),
+    SelectImageDone(Result<ws::Packet<api::SelectImage>, ws::Error>),
+    OpenImageModal(api::ImageKind),
+    CloseImageModal,
     Back,
 }
 
@@ -98,6 +101,7 @@ impl Component for SeriesDetail {
             confirm_remove_watch: None,
             expanded_episode: None,
             episode_history: Vec::new(),
+            image_modal: None,
             _setup,
             _broadcast,
             _series_req: ws::Request::default(),
@@ -126,21 +130,49 @@ impl Component for SeriesDetail {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
+        let Some(ref series) = self.series else {
+            return html! {
+                <div class="page">
+                    <div class="empty text-muted">{"Loading…"}</div>
+                </div>
+            };
+        };
+
+        let link = ctx.link();
+
+        let url = series
+            .images
+            .iter()
+            .find(|i| matches!(i.kind, api::ImageKind::Backdrop))
+            .map(|image| image.image.proxy_url());
+
+        let style = url
+            .as_ref()
+            .map(|url| format!("--background: url('{}')", url))
+            .unwrap_or_default();
+
         html! {
-            <div class="page">
-                { self.view_header(ctx) }
+            <div class="page-container" {style}>
+                <div class="page">
+                    { self.view_header(ctx) }
 
-                if let Some(banner) = self.series.as_ref().and_then(|s| {
-                    s.selected_image(api::ImageKind::Banner)
-                        .or_else(|| s.selected_image(api::ImageKind::Fanart))
-                        .or_else(|| s.selected_image(api::ImageKind::Backdrop))
-                }) {
-                    <img class="banner" src={banner.proxy_url()} />
-                }
+                    <div class="row actions">
+                        if series.images.iter().any(|i| matches!(i.kind, api::ImageKind::Banner | api::ImageKind::Fanart | api::ImageKind::Backdrop)) {
+                            <button class="btn" onclick={link.callback(|_| Msg::OpenImageModal(api::ImageKind::Banner))}>
+                                <span class="icon-inline"><span class="icon photo" /></span>
+                                {"Background"}
+                            </button>
+                        }
+                    </div>
 
-                <div class="detail-layout">
-                    { self.view_sidebar(ctx) }
-                    { self.view_episodes(ctx) }
+                    <div class="detail-layout">
+                        { self.view_sidebar(ctx, series) }
+                        { self.view_episodes(ctx, series) }
+                    </div>
+
+                    if let Some(kind) = self.image_modal {
+                        { self.view_image_modal(ctx, kind, series) }
+                    }
                 </div>
             </div>
         }
@@ -272,9 +304,12 @@ impl SeriesDetail {
             Msg::SelectSeason(season) => {
                 if self.selected != Some(season) {
                     let id = ctx.props().series_id;
-                    ctx.props()
-                        .on_navigate
-                        .emit(Route::SeriesDetail(id, SeriesQuery { season: Some(season) }));
+                    ctx.props().on_navigate.emit(Route::SeriesDetail(
+                        id,
+                        SeriesQuery {
+                            season: Some(season),
+                        },
+                    ));
                 }
                 Ok(false)
             }
@@ -467,14 +502,23 @@ impl SeriesDetail {
                 self._select_image_req = self
                     .channel
                     .request()
-                    .body(api::SelectSeriesImageRequest { id })
+                    .body(api::SelectImageRequest { id })
                     .on_packet(ctx.link().callback(Msg::SelectImageDone))
                     .send();
                 Ok(false)
             }
             Msg::SelectImageDone(result) => {
                 result.context(Message::SyncingSeries)?;
+                self.image_modal = None;
                 Ok(false)
+            }
+            Msg::OpenImageModal(kind) => {
+                self.image_modal = Some(kind);
+                Ok(true)
+            }
+            Msg::CloseImageModal => {
+                self.image_modal = None;
+                Ok(true)
             }
             Msg::Back => {
                 ctx.props().on_navigate.emit(Route::Series);
@@ -534,6 +578,7 @@ impl SeriesDetail {
 
     fn view_header(&self, ctx: &Context<Self>) -> Html {
         let link = ctx.link();
+
         html! {
             <div class="row page-title">
                 <button class="btn" onclick={link.callback(|_| Msg::Back)}>
@@ -542,9 +587,6 @@ impl SeriesDetail {
                 </button>
                 if let Some(ref s) = self.series {
                     <span class="fill">{&s.title}</span>
-                    if !s.tracked {
-                        <span class="status">{"Untracked"}</span>
-                    }
                     if s.tracked {
                         <button class="btn" onclick={link.callback(|_| Msg::SetTracked(false))} title="Untrack series">
                             <span class="icon-inline"><span class="icon eye-slash" /></span>
@@ -556,12 +598,14 @@ impl SeriesDetail {
                             <span class="hide-mobile">{"Track"}</span>
                         </button>
                     }
+
                     if !s.remotes.is_empty() {
                         <button class="btn" onclick={link.callback(|_| Msg::SyncSeries)} title="Sync from remote">
                             <span class="icon-inline"><span class="icon arrow-path" /></span>
                             <span class="hide-mobile">{"Sync"}</span>
                         </button>
                     }
+
                     if self.confirm_remove {
                         <ConfirmDanger
                             prompt="Remove series"
@@ -582,42 +626,46 @@ impl SeriesDetail {
         }
     }
 
-    fn view_sidebar(&self, ctx: &Context<Self>) -> Html {
+    fn view_sidebar(&self, ctx: &Context<Self>, series: &api::Series) -> Html {
         html! {
             <div class="detail-sidebar section">
-                if let Some(poster) = self.series.as_ref().and_then(|s| s.selected_image(api::ImageKind::Poster)) {
-                    <img class="poster" src={poster.proxy_url()} />
+                if let Some(poster) = series.selected_image(api::ImageKind::Poster) {
+                    <img class="poster hide-mobile" src={poster.proxy_url()} />
                 }
 
                 <div class="table table-striped">
                     { for self.seasons.iter().map(|s| self.view_season_item(ctx, s)) }
                 </div>
-
-                { self.view_images(ctx) }
             </div>
         }
     }
 
-    fn view_images(&self, ctx: &Context<Self>) -> Html {
-        let Some(ref series) = self.series else {
-            return Html::default();
-        };
+    fn view_image_modal(
+        &self,
+        ctx: &Context<Self>,
+        kind: api::ImageKind,
+        series: &api::Series,
+    ) -> Html {
         let items: Vec<ImageItem> = series
             .images
             .iter()
             .map(|img| ImageItem {
-                id: img.id.get(),
+                id: img.id,
                 kind: img.kind,
                 source: img.source,
                 image: img.image.clone(),
                 selected: img.selected,
             })
             .collect();
+
         let link = ctx.link();
+
         html! {
             <ImageGallery
                 {items}
-                on_select={link.callback(|id| Msg::SelectImage(api::SeriesImageId::new(id)))}
+                {kind}
+                on_select={link.callback(Msg::SelectImage)}
+                on_close={link.callback(|_| Msg::CloseImageModal)}
             />
         }
     }
@@ -647,7 +695,7 @@ impl SeriesDetail {
         }
     }
 
-    fn view_episodes(&self, ctx: &Context<Self>) -> Html {
+    fn view_episodes(&self, ctx: &Context<Self>, series: &api::Series) -> Html {
         let series_id = ctx.props().series_id;
         let link = ctx.link();
 
@@ -681,18 +729,14 @@ impl SeriesDetail {
                     let watched = ep.watched;
                     let last_watched_id = ep.last_watched_id;
                     let expanded = self.expanded_episode == Some(episode_id);
-                    let is_next = self.series.as_ref()
-                        .and_then(|s| s.pending_episode_id)
-                        == Some(episode_id);
+                    let is_next = series.pending_episode_id == Some(episode_id);
                     let on_mark = link.callback(move |_| Msg::MarkWatched(series_id, episode_id));
                     let on_remove_confirm = last_watched_id.map(|wid| {
                         link.callback(move |_| Msg::ConfirmRemoveWatch(wid))
                     });
                     let confirming_remove_watch = last_watched_id
                         .map_or(false, |wid| self.confirm_remove_watch == Some(wid));
-                    let series_title: AttrValue = self.series.as_ref()
-                        .map(|s| AttrValue::from(s.title.clone()))
-                        .unwrap_or_default();
+                    let series_title: AttrValue = AttrValue::from(series.title.clone());
                     let on_toggle_history = watched.then(|| {
                         link.callback(move |_| Msg::ToggleHistory(episode_id))
                     });

@@ -218,16 +218,31 @@ async fn import_series_images(
     g: &YamlSeriesGraphics,
 ) -> Result<()> {
     if let Some(img) = image(g.poster.as_ref()) {
-        db.upsert_series_image(series_id, api::ImageKind::Poster, image_source(&img), img.path())
-            .await?;
+        db.upsert_series_image(
+            series_id,
+            api::ImageKind::Poster,
+            image_source(&img),
+            img.path(),
+        )
+        .await?;
     }
     if let Some(img) = image(g.banner.as_ref()) {
-        db.upsert_series_image(series_id, api::ImageKind::Banner, image_source(&img), img.path())
-            .await?;
+        db.upsert_series_image(
+            series_id,
+            api::ImageKind::Banner,
+            image_source(&img),
+            img.path(),
+        )
+        .await?;
     }
     if let Some(img) = image(g.fanart.as_ref()) {
-        db.upsert_series_image(series_id, api::ImageKind::Fanart, image_source(&img), img.path())
-            .await?;
+        db.upsert_series_image(
+            series_id,
+            api::ImageKind::Fanart,
+            image_source(&img),
+            img.path(),
+        )
+        .await?;
     }
     Ok(())
 }
@@ -238,16 +253,31 @@ async fn import_movie_images(
     g: &YamlMovieGraphics,
 ) -> Result<()> {
     if let Some(img) = image(g.poster.as_ref()) {
-        db.upsert_movie_image(movie_id, api::ImageKind::Poster, image_source(&img), img.path())
-            .await?;
+        db.upsert_movie_image(
+            movie_id,
+            api::ImageKind::Poster,
+            image_source(&img),
+            img.path(),
+        )
+        .await?;
     }
     if let Some(img) = image(g.banner.as_ref()) {
-        db.upsert_movie_image(movie_id, api::ImageKind::Banner, image_source(&img), img.path())
-            .await?;
+        db.upsert_movie_image(
+            movie_id,
+            api::ImageKind::Banner,
+            image_source(&img),
+            img.path(),
+        )
+        .await?;
     }
     if let Some(img) = image(g.fanart.as_ref()) {
-        db.upsert_movie_image(movie_id, api::ImageKind::Fanart, image_source(&img), img.path())
-            .await?;
+        db.upsert_movie_image(
+            movie_id,
+            api::ImageKind::Fanart,
+            image_source(&img),
+            img.path(),
+        )
+        .await?;
     }
     Ok(())
 }
@@ -326,7 +356,9 @@ async fn main() -> Result<()> {
         .into_iter()
         .flat_map(|s| {
             let id = s.id;
-            s.remotes.into_iter().map(move |r| (r.as_str().to_owned(), id))
+            s.remotes
+                .into_iter()
+                .map(move |r| (r.as_str().to_owned(), id))
         })
         .collect();
 
@@ -337,7 +369,9 @@ async fn main() -> Result<()> {
         .into_iter()
         .flat_map(|m| {
             let id = m.id;
-            m.remotes.into_iter().map(move |r| (r.as_str().to_owned(), id))
+            m.remotes
+                .into_iter()
+                .map(move |r| (r.as_str().to_owned(), id))
         })
         .collect();
 
@@ -511,8 +545,9 @@ async fn main() -> Result<()> {
             let inserted = db
                 .create_movie(
                     &m.title,
-                    m.release_date.as_ref().map(|d| naive_to_date(*d)).as_ref(),
+                    m.release_date.as_ref().map(|d| naive_to_date(*d)),
                     &m.overview,
+                    true,
                 )
                 .await
                 .with_context(|| format!("inserting movie '{}'", m.title))?;
