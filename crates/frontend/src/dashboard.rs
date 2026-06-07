@@ -92,20 +92,22 @@ impl Dashboard {
             }
             Msg::AppBroadcast(packet) => {
                 let event = packet?.decode_event()?;
+
                 if event.channel == self.channel.id() {
                     return Ok(false);
                 }
+
                 match event.kind {
                     api::AppEventKind::PendingChanged
                     | api::AppEventKind::WatchedChanged { .. }
                     | api::AppEventKind::SeriesCreated { .. }
+                    | api::AppEventKind::SeriesChanged { .. }
                     | api::AppEventKind::SeriesDeleted { .. }
                     | api::AppEventKind::MovieCreated { .. }
+                    | api::AppEventKind::MovieChanged { .. }
                     | api::AppEventKind::MovieDeleted { .. }
                     | api::AppEventKind::TaskCompleted { .. } => {
-                        if self.channel.id() != ws::ChannelId::NONE {
-                            self.load_pending(ctx);
-                        }
+                        self.load_pending(ctx);
                         Ok(false)
                     }
                     _ => Ok(false),

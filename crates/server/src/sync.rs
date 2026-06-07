@@ -29,22 +29,19 @@ pub(crate) async fn sync_series(
     let source = series.effective_sync_source();
 
     match source {
-        Some("tmdb") => {
+        Some(api::SyncSource::Tmdb) => {
             let remote_id = series
                 .remote_by_source("tmdb")
                 .context("series has no tmdb remote")?;
             let tmdb_id: u32 = remote_id.value().parse().context("invalid tmdb id")?;
             sync_series_tmdb(series_id, tmdb_id, remote, db, broadcast).await?;
         }
-        Some("tvdb") => {
+        Some(api::SyncSource::Tvdb) => {
             let remote_id = series
                 .remote_by_source("tvdb")
                 .context("series has no tvdb remote")?;
             let tvdb_id: u32 = remote_id.value().parse().context("invalid tvdb id")?;
             sync_series_tvdb(series_id, tvdb_id, remote, db, broadcast).await?;
-        }
-        Some(other) => {
-            anyhow::bail!("unsupported series sync source: {other}");
         }
         None => anyhow::bail!("series has no syncable remote (tmdb or tvdb)"),
     }
@@ -244,7 +241,7 @@ pub(crate) async fn sync_movie(
     let source = movie.effective_sync_source();
 
     match source {
-        Some("tmdb") => {
+        Some(api::SyncSource::Tmdb) => {
             let remote_id = movie
                 .remote_by_source("tmdb")
                 .context("movie has no tmdb remote")?;
@@ -277,7 +274,7 @@ pub(crate) async fn sync_movie(
                 api::AppEventKind::MovieChanged { movie: updated },
             );
         }
-        Some(other) => anyhow::bail!("unsupported movie sync source: {other}"),
+        Some(api::SyncSource::Tvdb) => anyhow::bail!("unsupported movie sync source: tvdb"),
         None => anyhow::bail!("movie has no syncable remote (tmdb)"),
     }
 

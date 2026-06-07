@@ -636,6 +636,58 @@ impl ::sqll::BindValue for ImageSource {
 }
 
 #[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize,
+)]
+#[musli(crate = musli_core)]
+#[serde(rename_all = "lowercase")]
+pub enum SyncSource {
+    Tvdb,
+    Tmdb,
+}
+
+impl SyncSource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SyncSource::Tvdb => "tvdb",
+            SyncSource::Tmdb => "tmdb",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "tvdb" => Some(SyncSource::Tvdb),
+            "tmdb" => Some(SyncSource::Tmdb),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for SyncSource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+#[cfg(feature = "sqll")]
+impl ::sqll::FromColumn<'_> for SyncSource {
+    type Type = ::sqll::ty::Text;
+
+    fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Text) -> ::sqll::Result<Self> {
+        let s = String::from_column(stmt, index)?;
+
+        SyncSource::from_str(&s)
+            .ok_or_else(|| ::sqll::Error::custom(format!("unknown sync source: {s}")))
+    }
+}
+
+#[cfg(feature = "sqll")]
+impl ::sqll::BindValue for SyncSource {
+    fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
+        self.as_str().bind_value(stmt, index)
+    }
+}
+
+#[derive(
     Debug, Clone, Copy, PartialEq, Eq, Default, Encode, Decode, serde::Serialize, serde::Deserialize,
 )]
 #[musli(crate = musli_core)]
@@ -702,7 +754,7 @@ pub struct Series {
     pub first_air_date: Option<Date>,
     pub overview: String,
     pub tracked: bool,
-    pub sync_source: Option<String>,
+    pub sync_source: Option<SyncSource>,
     pub remotes: Vec<RemoteId>,
     pub pending_episode_id: Option<EpisodeId>,
     pub images: Vec<MediaImage>,
@@ -720,12 +772,22 @@ impl Series {
         self.remotes.iter().find(|r| r.source() == source)
     }
 
-    pub fn effective_sync_source(&self) -> Option<&str> {
-        self.sync_source
-            .as_deref()
-            .filter(|source| self.remote_by_source(source).is_some())
-            .or_else(|| self.remote_by_source("tmdb").map(|_| "tmdb"))
-            .or_else(|| self.remote_by_source("tvdb").map(|_| "tvdb"))
+    pub fn effective_sync_source(&self) -> Option<SyncSource> {
+        if let Some(source) = self.sync_source
+            && self.remote_by_source(source.as_str()).is_some()
+        {
+            return Some(source);
+        }
+
+        if self.remote_by_source("tmdb").is_some() {
+            return Some(SyncSource::Tmdb);
+        }
+
+        if self.remote_by_source("tvdb").is_some() {
+            return Some(SyncSource::Tvdb);
+        }
+
+        None
     }
 }
 
@@ -767,7 +829,7 @@ pub struct Movie {
     pub release_date: Option<Date>,
     pub overview: String,
     pub remotes: Vec<RemoteId>,
-    pub sync_source: Option<String>,
+    pub sync_source: Option<SyncSource>,
     pub watched: bool,
     pub watched_count: u32,
     pub tracked: bool,
@@ -787,12 +849,11 @@ impl Movie {
         self.remotes.iter().find(|r| r.source() == source)
     }
 
-    pub fn effective_sync_source(&self) -> Option<&str> {
+    pub fn effective_sync_source(&self) -> Option<SyncSource> {
         self.sync_source
-            .as_deref()
-            .filter(|source| self.remote_by_source(source).is_some())
-            .or_else(|| self.remote_by_source("tmdb").map(|_| "tmdb"))
-            .or_else(|| self.remote_by_source("tvdb").map(|_| "tvdb"))
+            .filter(|source| self.remote_by_source(source.as_str()).is_some())
+            .or_else(|| self.remote_by_source("tmdb").map(|_| SyncSource::Tmdb))
+            .or_else(|| self.remote_by_source("tvdb").map(|_| SyncSource::Tvdb))
     }
 }
 
@@ -1153,14 +1214,14 @@ pub struct SyncMovieRequest {
 #[musli(crate = musli_core)]
 pub struct SetSeriesSyncSourceRequest {
     pub id: SeriesId,
-    pub source: String,
+    pub source: SyncSource,
 }
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct SetMovieSyncSourceRequest {
     pub id: MovieId,
-    pub source: String,
+    pub source: SyncSource,
 }
 
 #[derive(Debug, Encode, Decode)]

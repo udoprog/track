@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use api::{
     Config, Date, EpisodeId, Image, ImageId, ImageKind, ImageSource, MovieId, RemoteId, SeasonId,
-    SeasonNumber, SeriesId, ThemeType, Timestamp, WatchedId, WatchedKind,
+    SeasonNumber, SeriesId, SyncSource, ThemeType, Timestamp, WatchedId, WatchedKind,
 };
 use rust_embed::RustEmbed;
 use sqll::{OpenOptions, Row, SendStatement};
@@ -35,7 +35,7 @@ struct SeriesRow {
     first_air: Option<Date>,
     overview: String,
     tracked: bool,
-    sync_source: Option<String>,
+    sync_source: Option<SyncSource>,
     pending_episode_id: Option<EpisodeId>,
 }
 
@@ -95,7 +95,7 @@ struct MovieRow {
     watched_count: i64,
     pending: bool,
     tracked: bool,
-    sync_source: Option<String>,
+    sync_source: Option<SyncSource>,
 }
 
 #[derive(Row)]
@@ -664,12 +664,11 @@ impl Database {
         .await?
     }
 
-    pub async fn set_series_sync_source(&self, id: SeriesId, source: &str) -> Result<()> {
-        let source = source.to_owned();
+    pub async fn set_series_sync_source(&self, id: SeriesId, source: SyncSource) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
         spawn_blocking(move || {
-            s.set_series_sync_source.bind((source.as_str(), id))?;
+            s.set_series_sync_source.bind((source, id))?;
             ensure!(
                 s.set_series_sync_source.step()?.is_done(),
                 "set_series_sync_source"
@@ -1019,12 +1018,11 @@ impl Database {
         .await?
     }
 
-    pub async fn set_movie_sync_source(&self, id: MovieId, source: &str) -> Result<()> {
-        let source = source.to_owned();
+    pub async fn set_movie_sync_source(&self, id: MovieId, source: SyncSource) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
         spawn_blocking(move || {
-            s.set_movie_sync_source.bind((source.as_str(), id))?;
+            s.set_movie_sync_source.bind((source, id))?;
             ensure!(
                 s.set_movie_sync_source.step()?.is_done(),
                 "set_movie_sync_source"

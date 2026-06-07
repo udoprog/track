@@ -150,26 +150,28 @@ impl MoviesList {
         match msg {
             Msg::Channel(result) => {
                 self.channel = result?;
+
                 if self.channel.id() != ws::ChannelId::NONE {
                     self.load(ctx);
                 } else {
                     self.movies.clear();
                 }
+
                 Ok(true)
             }
             Msg::AppBroadcast(packet) => {
                 let event = packet?.decode_event()?;
+
                 if event.channel == self.channel.id() {
                     return Ok(false);
                 }
+
                 match event.kind {
                     api::AppEventKind::MovieCreated { .. }
                     | api::AppEventKind::MovieChanged { .. }
                     | api::AppEventKind::MovieDeleted { .. }
                     | api::AppEventKind::WatchedChanged { .. } => {
-                        if self.channel.id() != ws::ChannelId::NONE {
-                            self.load(ctx);
-                        }
+                        self.load(ctx);
                         Ok(false)
                     }
                     _ => Ok(false),
@@ -197,6 +199,11 @@ impl MoviesList {
             }
             Msg::MarkWatchedDone(result) => {
                 result.context(Message::MarkingWatched)?;
+
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self.load(ctx);
+                }
+
                 Ok(false)
             }
             Msg::Filter(s) => {

@@ -47,8 +47,11 @@ pub(super) enum Msg {
     RemoveDone(Result<ws::Packet<api::RemoveMovie>, ws::Error>),
     SyncMovie,
     SyncDone(Result<ws::Packet<api::SyncMovie>, ws::Error>),
-    SetSyncSource(String),
-    SetSyncSourceDone(String, Result<ws::Packet<api::SetMovieSyncSource>, ws::Error>),
+    SetSyncSource(api::SyncSource),
+    SetSyncSourceDone(
+        api::SyncSource,
+        Result<ws::Packet<api::SetMovieSyncSource>, ws::Error>,
+    ),
     SetTracked(bool),
     SetTrackedDone(bool, Result<ws::Packet<api::UntrackMovie>, ws::Error>),
     SetPending(bool),
@@ -532,12 +535,12 @@ impl MovieDetail {
                 <RemoteSourceSelect
                     kind={RemoteSourceKind::Movie}
                     remotes={movie.remotes.clone()}
-                    current_source={movie.effective_sync_source().map(str::to_owned)}
+                    current_source={movie.effective_sync_source()}
                     on_change={link.callback(Msg::SetSyncSource)}
                 />
 
                 if movie.images.iter().any(|i| matches!(i.kind, api::ImageKind::Banner | api::ImageKind::Fanart | api::ImageKind::Backdrop)) {
-                    <button class="btn" onclick={link.callback(|_| Msg::OpenImageModal(api::ImageKind::Banner))}>
+                    <button class="btn" onclick={link.callback(|_| Msg::OpenImageModal(api::ImageKind::Backdrop))} title="Change backdrop">
                         <span class="icon-inline"><span class="icon photo" /></span>
                         {"Background"}
                     </button>
@@ -599,7 +602,9 @@ impl MovieDetail {
                 selected: img.selected,
             })
             .collect();
+
         let link = ctx.link();
+
         html! {
             <ImageGallery
                 {items}

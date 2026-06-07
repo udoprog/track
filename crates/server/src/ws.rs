@@ -94,9 +94,9 @@ impl WsHandler {
                     )
                     .await?;
                 self.db.add_series_remote(series.id, &req.remote_id).await?;
-                self.db
-                    .set_series_sync_source(series.id, req.remote_id.source())
-                    .await?;
+                if let Some(source) = api::SyncSource::from_str(req.remote_id.source()) {
+                    self.db.set_series_sync_source(series.id, source).await?;
+                }
                 let series = self
                     .db
                     .series_by_id(series.id)
@@ -109,7 +109,7 @@ impl WsHandler {
                     },
                 });
                 let _ = self.broadcast.send(api::AppEvent {
-                    channel: musli_web::api::ChannelId::NONE,
+                    channel: incoming.channel(),
                     kind: api::AppEventKind::PendingChanged,
                 });
                 self.queue
@@ -141,7 +141,7 @@ impl WsHandler {
                     },
                 });
                 let _ = self.broadcast.send(api::AppEvent {
-                    channel: musli_web::api::ChannelId::NONE,
+                    channel: incoming.channel(),
                     kind: api::AppEventKind::PendingChanged,
                 });
                 outgoing.write(api::Empty);
@@ -156,7 +156,7 @@ impl WsHandler {
                     kind: api::AppEventKind::SeriesDeleted { series_id: req.id },
                 });
                 let _ = self.broadcast.send(api::AppEvent {
-                    channel: musli_web::api::ChannelId::NONE,
+                    channel: incoming.channel(),
                     kind: api::AppEventKind::PendingChanged,
                 });
                 outgoing.write(api::Empty);
@@ -206,9 +206,9 @@ impl WsHandler {
                     .await?;
 
                 self.db.add_movie_remote(movie.id, &req.remote_id).await?;
-                self.db
-                    .set_movie_sync_source(movie.id, req.remote_id.source())
-                    .await?;
+                if let Some(source) = api::SyncSource::from_str(req.remote_id.source()) {
+                    self.db.set_movie_sync_source(movie.id, source).await?;
+                }
                 let movie = self
                     .db
                     .movie_by_id(movie.id)
@@ -222,7 +222,7 @@ impl WsHandler {
                 });
 
                 let _ = self.broadcast.send(api::AppEvent {
-                    channel: musli_web::api::ChannelId::NONE,
+                    channel: incoming.channel(),
                     kind: api::AppEventKind::PendingChanged,
                 });
 
@@ -255,7 +255,7 @@ impl WsHandler {
                     },
                 });
                 let _ = self.broadcast.send(api::AppEvent {
-                    channel: musli_web::api::ChannelId::NONE,
+                    channel: incoming.channel(),
                     kind: api::AppEventKind::PendingChanged,
                 });
                 outgoing.write(api::Empty);
@@ -270,7 +270,7 @@ impl WsHandler {
                     kind: api::AppEventKind::MovieDeleted { movie_id: req.id },
                 });
                 let _ = self.broadcast.send(api::AppEvent {
-                    channel: musli_web::api::ChannelId::NONE,
+                    channel: incoming.channel(),
                     kind: api::AppEventKind::PendingChanged,
                 });
                 outgoing.write(api::Empty);
@@ -286,7 +286,7 @@ impl WsHandler {
                     kind: api::AppEventKind::WatchedChanged { kind: req.kind },
                 });
                 let _ = self.broadcast.send(api::AppEvent {
-                    channel: musli_web::api::ChannelId::NONE,
+                    channel: incoming.channel(),
                     kind: api::AppEventKind::PendingChanged,
                 });
                 outgoing.write(api::MarkWatchedResponse { watched });
@@ -301,7 +301,7 @@ impl WsHandler {
                     kind: api::AppEventKind::WatchedChanged { kind: req.kind },
                 });
                 let _ = self.broadcast.send(api::AppEvent {
-                    channel: musli_web::api::ChannelId::NONE,
+                    channel: incoming.channel(),
                     kind: api::AppEventKind::PendingChanged,
                 });
                 outgoing.write(api::Empty);
@@ -451,17 +451,11 @@ impl WsHandler {
                     .await?
                     .context("series not found")?;
 
-                let source = req.source.as_str();
-
-                if !matches!(source, "tmdb" | "tvdb") {
-                    anyhow::bail!("unsupported series sync source: {source}");
+                if series.remote_by_source(req.source.as_str()).is_none() {
+                    anyhow::bail!("series does not have remote for source: {}", req.source);
                 }
 
-                if series.remote_by_source(source).is_none() {
-                    anyhow::bail!("series does not have remote for source: {source}");
-                }
-
-                self.db.set_series_sync_source(req.id, source).await?;
+                self.db.set_series_sync_source(req.id, req.source).await?;
 
                 let series = self
                     .db
@@ -477,7 +471,7 @@ impl WsHandler {
                 });
 
                 let _ = self.broadcast.send(api::AppEvent {
-                    channel: musli_web::api::ChannelId::NONE,
+                    channel: incoming.channel(),
                     kind: api::AppEventKind::PendingChanged,
                 });
 
@@ -505,17 +499,15 @@ impl WsHandler {
                     .await?
                     .context("movie not found")?;
 
-                let source = req.source.as_str();
-
-                if source != "tmdb" {
-                    anyhow::bail!("unsupported movie sync source: {source}");
+                if req.source != api::SyncSource::Tmdb {
+                    anyhow::bail!("unsupported movie sync source: {}", req.source);
                 }
 
-                if movie.remote_by_source(source).is_none() {
-                    anyhow::bail!("movie does not have remote for source: {source}");
+                if movie.remote_by_source(req.source.as_str()).is_none() {
+                    anyhow::bail!("movie does not have remote for source: {}", req.source);
                 }
 
-                self.db.set_movie_sync_source(req.id, source).await?;
+                self.db.set_movie_sync_source(req.id, req.source).await?;
 
                 let movie = self
                     .db
@@ -531,7 +523,7 @@ impl WsHandler {
                 });
 
                 let _ = self.broadcast.send(api::AppEvent {
-                    channel: musli_web::api::ChannelId::NONE,
+                    channel: incoming.channel(),
                     kind: api::AppEventKind::PendingChanged,
                 });
 
@@ -627,7 +619,7 @@ impl WsHandler {
                     },
                 });
                 let _ = self.broadcast.send(api::AppEvent {
-                    channel: musli_web::api::ChannelId::NONE,
+                    channel: incoming.channel(),
                     kind: api::AppEventKind::PendingChanged,
                 });
                 outgoing.write(api::Empty);
@@ -649,7 +641,7 @@ impl WsHandler {
                     },
                 });
                 let _ = self.broadcast.send(api::AppEvent {
-                    channel: musli_web::api::ChannelId::NONE,
+                    channel: incoming.channel(),
                     kind: api::AppEventKind::PendingChanged,
                 });
                 outgoing.write(api::Empty);

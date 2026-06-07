@@ -65,8 +65,11 @@ pub(super) enum Msg {
     ),
     SelectImage(api::ImageId),
     SelectImageDone(Result<ws::Packet<api::SelectImage>, ws::Error>),
-    SetSyncSource(String),
-    SetSyncSourceDone(String, Result<ws::Packet<api::SetSeriesSyncSource>, ws::Error>),
+    SetSyncSource(api::SyncSource),
+    SetSyncSourceDone(
+        api::SyncSource,
+        Result<ws::Packet<api::SetSeriesSyncSource>, ws::Error>,
+    ),
     OpenImageModal(api::ImageKind),
     CloseImageModal,
     Back,
@@ -164,12 +167,12 @@ impl Component for SeriesDetail {
                         <RemoteSourceSelect
                             kind={RemoteSourceKind::Series}
                             remotes={series.remotes.clone()}
-                            current_source={series.effective_sync_source().map(str::to_owned)}
+                            current_source={series.effective_sync_source()}
                             on_change={link.callback(Msg::SetSyncSource)}
                         />
 
                         if series.images.iter().any(|i| matches!(i.kind, api::ImageKind::Banner | api::ImageKind::Fanart | api::ImageKind::Backdrop)) {
-                            <button class="btn" onclick={link.callback(|_| Msg::OpenImageModal(api::ImageKind::Banner))}>
+                            <button class="btn" onclick={link.callback(|_| Msg::OpenImageModal(api::ImageKind::Backdrop))}>
                                 <span class="icon-inline"><span class="icon photo" /></span>
                                 {"Background"}
                             </button>
@@ -525,6 +528,7 @@ impl SeriesDetail {
             }
             Msg::SetSyncSource(source) => {
                 let id = ctx.props().series_id;
+
                 self._set_sync_source_req = self
                     .channel
                     .request()
@@ -537,6 +541,7 @@ impl SeriesDetail {
                             .callback(move |r| Msg::SetSyncSourceDone(source.clone(), r)),
                     )
                     .send();
+
                 Ok(false)
             }
             Msg::SetSyncSourceDone(source, result) => {

@@ -101,10 +101,9 @@ impl WatchNext {
                     | api::AppEventKind::SeriesCreated { .. }
                     | api::AppEventKind::SeriesDeleted { .. }
                     | api::AppEventKind::MovieCreated { .. }
-                    | api::AppEventKind::MovieDeleted { .. } => {
-                        if self.channel.id() != ws::ChannelId::NONE {
-                            self.load(ctx);
-                        }
+                    | api::AppEventKind::MovieDeleted { .. }
+                    | api::AppEventKind::TaskCompleted { .. } => {
+                        self.load(ctx);
                         Ok(false)
                     }
                     _ => Ok(false),
@@ -132,6 +131,9 @@ impl WatchNext {
             }
             Msg::MarkWatchedDone(result) => {
                 result.context(Message::MarkingWatched)?;
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self.load(ctx);
+                }
                 Ok(false)
             }
             Msg::Navigate(route) => {

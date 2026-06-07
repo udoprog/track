@@ -57,21 +57,23 @@ pub(super) enum RemoteSourceKind {
 #[derive(Properties, PartialEq)]
 pub(super) struct RemoteSourceSelectProps {
     pub(super) remotes: Vec<api::RemoteId>,
-    pub(super) current_source: Option<String>,
+    pub(super) current_source: Option<api::SyncSource>,
     pub(super) kind: RemoteSourceKind,
-    pub(super) on_change: Callback<String>,
+    pub(super) on_change: Callback<api::SyncSource>,
 }
 
 #[function_component]
 pub(super) fn RemoteSourceSelect(props: &RemoteSourceSelectProps) -> Html {
-    let mut options: Vec<String> = Vec::new();
+    let mut options: Vec<api::SyncSource> = Vec::new();
 
     for remote in &props.remotes {
-        let source = remote.source();
+        let Some(source) = api::SyncSource::from_str(remote.source()) else {
+            continue;
+        };
 
-        if source == "tmdb" || (matches!(props.kind, RemoteSourceKind::Series) && source == "tvdb") {
-            let source = source.to_owned();
-
+        if source == api::SyncSource::Tmdb
+            || (matches!(props.kind, RemoteSourceKind::Series) && source == api::SyncSource::Tvdb)
+        {
             if !options.iter().any(|existing| existing == &source) {
                 options.push(source);
             }
@@ -84,10 +86,10 @@ pub(super) fn RemoteSourceSelect(props: &RemoteSourceSelectProps) -> Html {
 
     let selected = props
         .current_source
-        .as_deref()
-        .filter(|source| options.iter().any(|option| option == source))
-        .map(str::to_owned)
-        .unwrap_or_else(|| options[0].clone());
+        .as_ref()
+        .filter(|source| options.iter().any(|option| option == *source))
+        .copied()
+        .unwrap_or(options[0]);
 
     let disabled = options.len() <= 1;
 
@@ -95,18 +97,20 @@ pub(super) fn RemoteSourceSelect(props: &RemoteSourceSelectProps) -> Html {
         let cb = props.on_change.clone();
         Callback::from(move |e: Event| {
             let input: web_sys::HtmlSelectElement = e.target_unchecked_into();
-            cb.emit(input.value());
+            if let Some(source) = api::SyncSource::from_str(&input.value()) {
+                cb.emit(source);
+            }
         })
     };
 
     html! {
-        <select class="input-select" value={selected} onchange={on_change} {disabled} title="Select remote source">
+        <select class="input-select" value={selected.as_str()} onchange={on_change} {disabled} title="Select remote source">
             {
                 for options.into_iter().map(|source| {
-                    let label = source.to_uppercase();
+                    let label = source.as_str().to_uppercase();
 
                     html! {
-                        <option value={source.clone()}>{label}</option>
+                        <option value={source.as_str()}>{label}</option>
                     }
                 })
             }
@@ -153,6 +157,7 @@ pub(super) fn ImageGallery(props: &ImageGalleryProps) -> Html {
                         <span class="icon x-mark" />
                     </button>
                 </div>
+
                 if imgs.is_empty() {
                     <div class="empty text-muted">{"No images available."}</div>
                 } else {

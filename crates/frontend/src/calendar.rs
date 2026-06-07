@@ -159,6 +159,7 @@ impl Calendar {
                 }
                 match event.kind {
                     api::AppEventKind::EpisodesChanged { .. }
+                    | api::AppEventKind::SeriesChanged { .. }
                     | api::AppEventKind::SeriesCreated { .. }
                     | api::AppEventKind::SeriesDeleted { .. }
                     | api::AppEventKind::TaskCompleted { .. } => {
