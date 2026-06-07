@@ -824,6 +824,7 @@ pub struct Episode {
     pub name: Option<String>,
     pub overview: String,
     pub aired: Option<Date>,
+    pub aired_at: Option<Timestamp>,
     pub filename: Option<Image>,
     pub remote_id: Option<RemoteId>,
     pub watched: bool,
@@ -910,6 +911,7 @@ pub enum PendingKind {
 pub struct Pending {
     pub kind: PendingKind,
     pub aired: Option<Date>,
+    pub aired_at: Option<Timestamp>,
     pub series_title: Option<String>,
     pub label: String,
     pub poster: Option<Image>,

@@ -27,12 +27,14 @@ CREATE TABLE episodes (
     name            TEXT,
     overview        TEXT NOT NULL DEFAULT '',
     aired           INTEGER,
+    aired_at        INTEGER,
     filename        TEXT,
     remote_id       TEXT,
     UNIQUE(series_id, season, number)
 );
 
-CREATE INDEX idx_episodes_aired ON episodes (aired) WHERE aired IS NOT NULL;
+CREATE INDEX idx_episodes_aired    ON episodes (aired)    WHERE aired    IS NOT NULL;
+CREATE INDEX idx_episodes_aired_at ON episodes (aired_at) WHERE aired_at IS NOT NULL;
 
 CREATE TABLE movies (
     id           INTEGER PRIMARY KEY,

@@ -330,6 +330,7 @@ body {
 
 .pending-item {
     display: flex;
+    flex-direction: column;
     gap: $gap-sm;
     background: $bg-panel;
     border: 1px solid $border-subtle;
@@ -338,8 +339,7 @@ body {
 }
 
 .pending-poster {
-    width: 64px;
-    height: 96px;
+    width: 100%;
     object-fit: cover;
     border-radius: $radius-sm;
     flex-shrink: 0;
@@ -587,7 +587,7 @@ body {
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
-    filter: blur(22px);
+    filter: blur(8px);
     transform: scale(1.08);
     opacity: 0.35;
     pointer-events: none;

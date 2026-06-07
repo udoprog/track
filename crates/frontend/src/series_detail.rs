@@ -817,7 +817,9 @@ impl SeriesDetail {
                                     { ep.name.as_deref().unwrap_or("—") }
                                 </span>
 
-                                if let Some(date) = ep.aired {
+                                if let Some(at) = ep.aired_at {
+                                    <span class="text-muted">{at.to_string()}</span>
+                                } else if let Some(date) = ep.aired {
                                     <span class="text-muted">{date.to_string()}</span>
                                 }
 

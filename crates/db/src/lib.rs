@@ -77,6 +77,7 @@ struct EpisodeRow {
     name: Option<String>,
     overview: String,
     aired: Option<Date>,
+    aired_at: Option<Timestamp>,
     filename: Option<Image>,
     remote_id: Option<RemoteId>,
     watched: bool,
@@ -112,19 +113,32 @@ struct InsertWatchedRow {
 }
 
 #[derive(Row)]
-struct PendingRow {
-    id: api::PendingId,
-    timestamp: api::Timestamp,
+struct PendingBaseRow {
     episode_id: Option<api::EpisodeId>,
     movie_id: Option<api::MovieId>,
-    series_id: Option<api::SeriesId>,
-    series_title: Option<String>,
+}
+
+#[derive(Row)]
+struct PendingEpisodeDetailRow {
+    series_id: api::SeriesId,
+    series_title: String,
+    season: i64,
+    number: i64,
     episode_name: Option<String>,
-    season: Option<i64>,
-    number: Option<i64>,
-    movie_title: Option<String>,
-    poster: Option<api::Image>,
     aired: Option<api::Date>,
+    aired_at: Option<api::Timestamp>,
+}
+
+#[derive(Row)]
+struct PendingMovieDetailRow {
+    title: String,
+    release_date: Option<api::Date>,
+}
+
+#[derive(Row)]
+struct PosterRow {
+    source: String,
+    path: String,
 }
 
 #[derive(Row)]
@@ -303,12 +317,12 @@ statements! {
                 aired           = excluded.aired,
                 filename        = excluded.filename,
                 remote_id       = excluded.remote_id
-            RETURNING id, series_id, season, number, absolute_number, name, overview, aired, filename, remote_id,
+            RETURNING id, series_id, season, number, absolute_number, name, overview, aired, aired_at, filename, remote_id,
                       0 AS watched, 0 AS watched_count, NULL AS last_watched_id
         "#,
         list_episodes: r#"
             SELECT e.id, e.series_id, e.season, e.number, e.absolute_number, e.name, e.overview,
-                   e.aired, e.filename, e.remote_id,
+                   e.aired, e.aired_at, e.filename, e.remote_id,
                    (SELECT COUNT(*) FROM watched w WHERE w.episode_id = e.id) > 0 AS watched,
                    (SELECT COUNT(*) FROM watched w WHERE w.episode_id = e.id) AS watched_count,
                    (SELECT w.id FROM watched w WHERE w.episode_id = e.id ORDER BY w.id DESC LIMIT 1) AS last_watched_id
@@ -318,11 +332,14 @@ statements! {
         "#,
         episode_by_id: r#"
             SELECT e.id, e.series_id, e.season, e.number, e.absolute_number, e.name, e.overview,
-                   e.aired, e.filename, e.remote_id,
+                   e.aired, e.aired_at, e.filename, e.remote_id,
                    (SELECT COUNT(*) FROM watched w WHERE w.episode_id = e.id) > 0 AS watched,
                    (SELECT COUNT(*) FROM watched w WHERE w.episode_id = e.id) AS watched_count,
                    (SELECT w.id FROM watched w WHERE w.episode_id = e.id ORDER BY w.id DESC LIMIT 1) AS last_watched_id
             FROM episodes e WHERE e.id = ?
+        "#,
+        update_episode_aired_at: r#"
+            UPDATE episodes SET aired_at = ? WHERE series_id = ? AND season = ? AND number = ?
         "#,
 
         // movies
@@ -436,22 +453,29 @@ statements! {
               AND NOT EXISTS (SELECT 1 FROM pending p WHERE p.movie_id = m.id)
         "#,
         list_pending: r#"
-            SELECT p.id, p.timestamp, p.episode_id, p.movie_id,
-                   e.series_id, s.title AS series_title, e.name AS episode_name,
-                   e.season, e.number,
-                   m.title AS movie_title,
-                   COALESCE(e.aired, m.release_date) AS aired,
-                   COALESCE(
-                       (SELECT source || ':' || path FROM images
-                        WHERE series_id = e.series_id AND kind = 'poster' AND selected = 1 LIMIT 1),
-                       (SELECT source || ':' || path FROM images
-                        WHERE movie_id = p.movie_id AND kind = 'poster' AND selected = 1 LIMIT 1)
-                   ) AS poster
-            FROM pending p
-            LEFT JOIN episodes e ON e.id = p.episode_id
-            LEFT JOIN series   s ON s.id = e.series_id
-            LEFT JOIN movies   m ON m.id = p.movie_id
-            ORDER BY p.timestamp DESC, series_title, m.title
+            SELECT episode_id, movie_id
+            FROM pending
+            ORDER BY timestamp DESC
+        "#,
+        pending_episode_detail: r#"
+            SELECT e.series_id, s.title AS series_title,
+                   e.season, e.number, e.name AS episode_name, e.aired, e.aired_at
+            FROM episodes e
+            JOIN series s ON s.id = e.series_id
+            WHERE e.id = ?
+        "#,
+        pending_movie_detail: r#"
+            SELECT title, release_date FROM movies WHERE id = ?
+        "#,
+        pending_series_poster: r#"
+            SELECT source, path FROM images
+            WHERE series_id = ? AND kind = 'poster' AND selected = 1
+            LIMIT 1
+        "#,
+        pending_movie_poster: r#"
+            SELECT source, path FROM images
+            WHERE movie_id = ? AND kind = 'poster' AND selected = 1
+            LIMIT 1
         "#,
 
         // schedule: episodes airing in the next N days
@@ -800,6 +824,34 @@ impl Database {
         spawn_blocking(move || {
             s.episode_by_id.bind((id,))?;
             Ok(s.episode_by_id.next::<EpisodeRow>()?.map(episode_from_row))
+        })
+        .await?
+    }
+
+    pub async fn update_episodes_aired_at(
+        &self,
+        series_id: SeriesId,
+        updates: Vec<(SeasonNumber, u32, Timestamp)>,
+    ) -> Result<()> {
+        if updates.is_empty() {
+            return Ok(());
+        }
+        let mut s = self.inner.clone().lock_owned().await;
+        spawn_blocking(move || {
+            for (season, number, aired_at) in &updates {
+                s.update_episode_aired_at.bind((
+                    &aired_at,
+                    series_id,
+                    season.to_i64(),
+                    *number as i64,
+                ))?;
+                ensure!(
+                    s.update_episode_aired_at.step()?.is_done(),
+                    "update_episode_aired_at"
+                );
+                s.update_episode_aired_at.reset()?;
+            }
+            Ok(())
         })
         .await?
     }
@@ -1352,42 +1404,72 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         spawn_blocking(move || {
+            // 1. Collect the ordered list of pending entries.
             s.list_pending.reset()?;
+            let mut base: Vec<PendingBaseRow> = Vec::new();
+            while let Some(r) = s.list_pending.next::<PendingBaseRow>()? {
+                base.push(r);
+            }
+            s.list_pending.reset()?;
+
             let mut out = Vec::new();
 
-            while let Some(r) = s.list_pending.next::<PendingRow>()? {
-                let (kind, label, series_title) = if r.episode_id.is_some() {
-                    let label = match r.episode_name {
-                        Some(ref name) => format!(
-                            "S{:02}E{:02} \u{2013} {}",
-                            r.season.unwrap_or(0),
-                            r.number.unwrap_or(0),
-                            name
-                        ),
-                        None => {
-                            format!("S{:02}E{:02}", r.season.unwrap_or(0), r.number.unwrap_or(0))
+            for r in base {
+                // 2. Fetch detail and poster for each entry via targeted queries.
+                let pending = if let Some(episode_id) = r.episode_id {
+                    s.pending_episode_detail.bind((episode_id,))?;
+                    let detail = s.pending_episode_detail.next::<PendingEpisodeDetailRow>()?;
+                    s.pending_episode_detail.reset()?;
+                    let Some(d) = detail else { continue };
+
+                    s.pending_series_poster.bind((d.series_id,))?;
+                    let poster_row = s.pending_series_poster.next::<PosterRow>()?;
+                    s.pending_series_poster.reset()?;
+                    let poster = poster_row
+                        .map(|p| api::Image::from_raw(format!("{}:{}", p.source, p.path)));
+
+                    let label = match d.episode_name {
+                        Some(ref name) => {
+                            format!("S{:02}E{:02} \u{2013} {name}", d.season, d.number)
                         }
+                        None => format!("S{:02}E{:02}", d.season, d.number),
                     };
-                    let kind = api::PendingKind::Episode {
-                        series: r.series_id.unwrap(),
-                        episode: r.episode_id.unwrap(),
-                    };
-                    (kind, label, r.series_title)
+
+                    api::Pending {
+                        kind: api::PendingKind::Episode {
+                            series: d.series_id,
+                            episode: episode_id,
+                        },
+                        aired: d.aired,
+                        aired_at: d.aired_at,
+                        series_title: Some(d.series_title),
+                        label,
+                        poster,
+                    }
                 } else {
-                    let label = r.movie_title.unwrap_or_default();
-                    let kind = api::PendingKind::Movie {
-                        movie: r.movie_id.unwrap(),
-                    };
-                    (kind, label, None)
+                    let movie_id = r.movie_id.unwrap();
+                    s.pending_movie_detail.bind((movie_id,))?;
+                    let detail = s.pending_movie_detail.next::<PendingMovieDetailRow>()?;
+                    s.pending_movie_detail.reset()?;
+                    let Some(d) = detail else { continue };
+
+                    s.pending_movie_poster.bind((movie_id,))?;
+                    let poster_row = s.pending_movie_poster.next::<PosterRow>()?;
+                    s.pending_movie_poster.reset()?;
+                    let poster = poster_row
+                        .map(|p| api::Image::from_raw(format!("{}:{}", p.source, p.path)));
+
+                    api::Pending {
+                        kind: api::PendingKind::Movie { movie: movie_id },
+                        aired: d.release_date,
+                        aired_at: None,
+                        series_title: None,
+                        label: d.title,
+                        poster,
+                    }
                 };
 
-                out.push(api::Pending {
-                    kind,
-                    aired: r.aired,
-                    series_title,
-                    label,
-                    poster: r.poster,
-                });
+                out.push(pending);
             }
 
             Ok(out)
@@ -1419,6 +1501,7 @@ impl Database {
                     name: r.name,
                     overview: r.overview,
                     aired: r.aired,
+                    aired_at: None,
                     filename: r.filename,
                     remote_id: r.remote_id,
                     watched: false,
@@ -1626,6 +1709,7 @@ fn episode_from_row(r: EpisodeRow) -> api::Episode {
         name: r.name,
         overview: r.overview,
         aired: r.aired,
+        aired_at: r.aired_at,
         filename: r.filename,
         remote_id: r.remote_id,
         watched: r.watched,

@@ -213,7 +213,9 @@ impl Dashboard {
                         <span class="pending-label">{&p.label}</span>
                     }
 
-                    if let Some(date) = p.aired {
+                    if let Some(date) = p.aired_at {
+                        <span class="pending-date">{date.to_string()}</span>
+                    } else if let Some(date) = p.aired {
                         <span class="pending-date">{date.to_string()}</span>
                     }
 

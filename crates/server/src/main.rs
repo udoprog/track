@@ -9,6 +9,7 @@ mod sync;
 mod task_queue;
 mod tmdb;
 mod tvdb;
+mod tvmaze;
 mod ws;
 
 use std::net::SocketAddr;

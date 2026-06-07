@@ -375,20 +375,22 @@ async fn main() -> Result<()> {
         })
         .collect();
 
-    // (episode_id or movie_id as u64, timestamp string) — covers both kinds
-    let mut watched_seen: std::collections::HashSet<(u64, String)> = db
-        .all_watched()
-        .await
-        .context("loading existing watched")?
-        .into_iter()
-        .map(|w| {
-            let item_id = match w.kind {
-                api::WatchedKind::Episode { episode, .. } => episode.get(),
-                api::WatchedKind::Movie { movie } => movie.get(),
-            };
-            (item_id, w.timestamp.to_string())
-        })
-        .collect();
+    let mut episodes_watched_seen: std::collections::HashSet<(u64, String)> =
+        std::collections::HashSet::new();
+    let mut movies_watched_seen: std::collections::HashSet<(u64, String)> =
+        std::collections::HashSet::new();
+
+    for w in db.all_watched().await.context("loading existing watched")? {
+        let ts = w.timestamp.to_string();
+        match w.kind {
+            api::WatchedKind::Episode { episode, .. } => {
+                episodes_watched_seen.insert((episode.get(), ts));
+            }
+            api::WatchedKind::Movie { movie } => {
+                movies_watched_seen.insert((movie.get(), ts));
+            }
+        }
+    }
 
     // ── Config ────────────────────────────────────────────────────────────────
     let config_path = source.join("config.yaml");
@@ -598,7 +600,7 @@ async fn main() -> Result<()> {
                 };
                 let ts = chrono_to_timestamp(timestamp);
                 let key = (episode_id.get(), ts.to_string());
-                if watched_seen.contains(&key) {
+                if episodes_watched_seen.contains(&key) {
                     skipped += 1;
                     continue;
                 }
@@ -611,7 +613,7 @@ async fn main() -> Result<()> {
                 )
                 .await
                 .context("inserting watched episode")?;
-                watched_seen.insert(key);
+                episodes_watched_seen.insert(key);
             }
             YamlWatched::Movie {
                 timestamp, movie, ..
@@ -622,14 +624,14 @@ async fn main() -> Result<()> {
                 };
                 let ts = chrono_to_timestamp(timestamp);
                 let key = (movie_id.get(), ts.to_string());
-                if watched_seen.contains(&key) {
+                if movies_watched_seen.contains(&key) {
                     skipped += 1;
                     continue;
                 }
                 db.mark_watched(api::WatchedKind::Movie { movie: movie_id }, ts)
                     .await
                     .context("inserting watched movie")?;
-                watched_seen.insert(key);
+                movies_watched_seen.insert(key);
             }
         }
 
@@ -689,6 +691,18 @@ async fn main() -> Result<()> {
 
         tracing::info!("added {added} remote IDs");
     }
+
+    // ── Pending ───────────────────────────────────────────────────────────────
+    tracing::info!("filling pending episodes for {} series", series_map.len());
+    let mut pending_filled = 0usize;
+    for &series_id in series_map.values() {
+        db.fill_pending_for_series(series_id).await?;
+        pending_filled += 1;
+    }
+    tracing::info!("  filled pending for {pending_filled} series");
+
+    tracing::info!("discovering pending movies");
+    db.discover_pending_movies().await?;
 
     tracing::info!("import complete");
     Ok(())

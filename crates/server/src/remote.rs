@@ -15,13 +15,18 @@ pub(crate) struct RemoteClients {
 struct Inner {
     tmdb: Option<crate::tmdb::Client>,
     tvdb: Option<crate::tvdb::Client>,
+    tvmaze: Option<crate::tvmaze::Client>,
 }
 
 impl RemoteClients {
     pub(crate) fn new(http: reqwest::Client) -> Self {
+        let inner = Inner {
+            tvmaze: Some(crate::tvmaze::Client::new(http.clone())),
+            ..Inner::default()
+        };
         Self {
             http,
-            inner: Arc::new(Mutex::new(Inner::default())),
+            inner: Arc::new(Mutex::new(inner)),
         }
     }
 
@@ -32,6 +37,9 @@ impl RemoteClients {
         inner.tvdb = (!config.tvdb_legacy_apikey.is_empty()).then(|| {
             crate::tvdb::Client::new(self.http.clone(), config.tvdb_legacy_apikey.clone())
         });
+        if inner.tvmaze.is_none() {
+            inner.tvmaze = Some(crate::tvmaze::Client::new(self.http.clone()));
+        }
     }
 
     fn tmdb(&self) -> Option<crate::tmdb::Client> {
@@ -40,6 +48,10 @@ impl RemoteClients {
 
     fn tvdb(&self) -> Option<crate::tvdb::Client> {
         self.inner.lock().tvdb.clone()
+    }
+
+    fn tvmaze(&self) -> Option<crate::tvmaze::Client> {
+        self.inner.lock().tvmaze.clone()
     }
 
     // ── Search ────────────────────────────────────────────────────────────────
@@ -137,6 +149,30 @@ impl RemoteClients {
         self.tvdb()
             .context("no TVDB client configured")?
             .fetch_episodes(series_id)
+            .await
+    }
+
+    pub(crate) async fn lookup_tvmaze_by_tvdb(&self, tvdb_id: u32) -> Result<Option<u32>> {
+        self.tvmaze()
+            .context("no TVMaze client")?
+            .lookup_by_tvdb(tvdb_id)
+            .await
+    }
+
+    pub(crate) async fn lookup_tvmaze_by_imdb(&self, imdb_id: &str) -> Result<Option<u32>> {
+        self.tvmaze()
+            .context("no TVMaze client")?
+            .lookup_by_imdb(imdb_id)
+            .await
+    }
+
+    pub(crate) async fn fetch_tvmaze_episodes(
+        &self,
+        tvmaze_id: u32,
+    ) -> Result<Vec<crate::tvmaze::EpisodeInfo>> {
+        self.tvmaze()
+            .context("no TVMaze client")?
+            .fetch_episodes(tvmaze_id)
             .await
     }
 }

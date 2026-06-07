@@ -35,7 +35,7 @@ explicitly switched to TVMaze.
 Approach B populates `aired_at` for **every** series regardless of its primary sync
 source. TMDB and TVDB remain unchanged. TVMaze is a transparent enrichment layer
 that fires after the primary sync, looks up the show via a cross-reference endpoint
-(`/lookup/shows?thetvdb={id}` or `?themoviedb={id}`), and fills in exact airtimes.
+(`/lookup/shows?thetvdb={id}` or `?imdb={id}`), and fills in exact airtimes.
 If the lookup returns 404 (TVMaze has no entry for the show), the sync still
 completes normally.
 
@@ -64,7 +64,7 @@ Base URL: `https://api.tvmaze.com`. No API key required. Rate limit ~20 req/s.
 | Endpoint | Purpose |
 |---|---|
 | `GET /lookup/shows?thetvdb={id}` | Resolve TVDB series id → TVMaze show id (or 404) |
-| `GET /lookup/shows?themoviedb={id}` | Resolve TMDB series id → TVMaze show id (or 404) |
+| `GET /lookup/shows?imdb={id}` | Resolve IMDB series id → TVMaze show id (or 404) |
 | `GET /shows/{id}/episodes` | All episodes for a TVMaze show (single request, no pagination) |
 
 ### Episode object (fields we use)
@@ -287,9 +287,9 @@ impl Client {
         self.lookup("thetvdb", tvdb_id).await
     }
 
-    /// Returns the TVMaze show id for the given TMDB series id, or None if not found.
-    pub(crate) async fn lookup_by_tmdb(&self, tmdb_id: u32) -> Result<Option<u32>> {
-        self.lookup("themoviedb", tmdb_id).await
+    /// Returns the TVMaze show id for the given IMDB series id, or None if not found.
+    pub(crate) async fn lookup_by_imdb(&self, imdb_id: &str) -> Result<Option<u32>> {
+        self.lookup("imdb", imdb_id).await
     }
 
     async fn lookup(&self, param: &str, id: u32) -> Result<Option<u32>> {
@@ -395,8 +395,8 @@ impl RemoteClients {
         self.tvmaze().context("no TVMaze client")?.lookup_by_tvdb(id).await
     }
 
-    pub(crate) async fn lookup_tvmaze_by_tmdb(&self, id: u32) -> Result<Option<u32>> {
-        self.tvmaze().context("no TVMaze client")?.lookup_by_tmdb(id).await
+    pub(crate) async fn lookup_tvmaze_by_imdb(&self, id: u32) -> Result<Option<u32>> {
+        self.tvmaze().context("no TVMaze client")?.lookup_by_imdb(id).await
     }
 
     pub(crate) async fn fetch_tvmaze_episodes(&self, id: u32)
@@ -428,9 +428,8 @@ async fn enrich_with_tvmaze(
     let tvmaze_id = if let Some(r) = series.remote_by_source("tvdb") {
         let id: u32 = r.value().parse().context("invalid tvdb id")?;
         remote.lookup_tvmaze_by_tvdb(id).await?
-    } else if let Some(r) = series.remote_by_source("tmdb") {
-        let id: u32 = r.value().parse().context("invalid tmdb id")?;
-        remote.lookup_tvmaze_by_tmdb(id).await?
+    } else if let Some(r) = series.remote_by_source("imdb") {
+        remote.lookup_tvmaze_by_imdb(r.value()).await?
     } else {
         return Ok(());  // no cross-reference possible
     };
