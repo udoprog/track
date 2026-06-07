@@ -357,18 +357,10 @@ body {
     min-width: 0;
 }
 
-.pending-series {
+.pending-label {
     font-size: $font-sm;
     font-weight: 600;
     color: $text-primary;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.pending-label {
-    font-size: $font-sm;
-    color: $text-muted;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

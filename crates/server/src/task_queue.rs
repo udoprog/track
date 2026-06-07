@@ -4,10 +4,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use anyhow::Result;
-use musli_web::api::ChannelId;
-use tokio::sync::{Mutex, Notify, broadcast};
+use tokio::sync::{Mutex, Notify};
 use tokio::time::Instant;
 
+use crate::app_broadcast::Broadcaster;
 use crate::remote::RemoteClients;
 use crate::sync;
 use db::Database;
@@ -58,7 +58,7 @@ impl TaskQueue {
         &self,
         kind: api::TaskKind,
         immediate: bool,
-        broadcast: &broadcast::Sender<api::AppEvent>,
+        broadcast: &Broadcaster,
     ) -> bool {
         let mut inner = self.inner.lock().await;
 
@@ -114,10 +114,11 @@ impl TaskQueue {
             task: task.clone(),
         });
 
-        let _ = broadcast.send(api::AppEvent {
-            channel: ChannelId::NONE,
-            kind: api::AppEventKind::TaskAdded { task },
-        });
+        broadcast.emit(
+            musli_web::api::ChannelId::NONE,
+            api::AppEventKind::TaskAdded { task },
+            "task queue task added",
+        );
 
         self.notify.notify_one();
         true
@@ -132,12 +133,7 @@ impl TaskQueue {
         }
     }
 
-    pub(crate) async fn run(
-        self,
-        db: Database,
-        remote: RemoteClients,
-        broadcast: broadcast::Sender<api::AppEvent>,
-    ) {
+    pub(crate) async fn run(self, db: Database, remote: RemoteClients, broadcast: Broadcaster) {
         loop {
             // Determine how long to sleep until the next task is ready.
             let sleep_until = {
@@ -169,12 +165,47 @@ impl TaskQueue {
 
             let Some(task) = task else { continue };
 
-            let _ = broadcast.send(api::AppEvent {
-                channel: ChannelId::NONE,
-                kind: api::AppEventKind::TaskStarted { task: task.clone() },
-            });
+            broadcast.emit(
+                musli_web::api::ChannelId::NONE,
+                api::AppEventKind::TaskStarted { task: task.clone() },
+                "task queue task started",
+            );
 
             let result = execute(&task, &db, &remote, &broadcast).await;
+
+            if result.is_ok() {
+                match &task.kind {
+                    api::TaskKind::SyncSeries { series_id, .. } => {
+                        if let Ok(Some(series)) = db.series_by_id(*series_id).await {
+                            broadcast.emit(
+                                musli_web::api::ChannelId::NONE,
+                                api::AppEventKind::SeriesChanged { series },
+                                "task queue series changed",
+                            );
+                        }
+                        broadcast.emit(
+                            musli_web::api::ChannelId::NONE,
+                            api::AppEventKind::PendingChanged,
+                            "task queue pending changed",
+                        );
+                    }
+                    api::TaskKind::SyncMovie { movie_id, .. } => {
+                        if let Ok(Some(movie)) = db.movie_by_id(*movie_id).await {
+                            broadcast.emit(
+                                musli_web::api::ChannelId::NONE,
+                                api::AppEventKind::MovieChanged { movie },
+                                "task queue movie changed",
+                            );
+                        }
+                        broadcast.emit(
+                            musli_web::api::ChannelId::NONE,
+                            api::AppEventKind::PendingChanged,
+                            "task queue pending changed",
+                        );
+                    }
+                }
+            }
+
             if let Err(e) = result {
                 tracing::error!(task_id = ?task.id, error = %e, "task failed");
             }
@@ -199,10 +230,11 @@ impl TaskQueue {
                 inner.completed.truncate(MAX_COMPLETED);
             }
 
-            let _ = broadcast.send(api::AppEvent {
-                channel: ChannelId::NONE,
-                kind: api::AppEventKind::TaskCompleted { task: completed },
-            });
+            broadcast.emit(
+                musli_web::api::ChannelId::NONE,
+                api::AppEventKind::TaskCompleted { task: completed },
+                "task queue task completed",
+            );
         }
     }
 }
@@ -211,7 +243,7 @@ async fn execute(
     task: &api::Task,
     db: &Database,
     remote: &RemoteClients,
-    broadcast: &broadcast::Sender<api::AppEvent>,
+    broadcast: &Broadcaster,
 ) -> Result<()> {
     match &task.kind {
         api::TaskKind::SyncSeries { series_id, .. } => {

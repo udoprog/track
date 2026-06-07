@@ -44,6 +44,9 @@ pending/schedule/watch-next queries, key/value config table. Done.
 - `sync.rs` — `sync_series` / `sync_movie` (TMDB + TVDB), broadcasting
   `SeriesChanged`/`SeasonsChanged`/`EpisodesChanged`/`PendingChanged` with
   `channel: ChannelId::NONE`.
+- Broadcast plumbing now flows through `app_broadcast::Broadcaster` (owned,
+  cloneable wrapper) passed across `main`/`ws`/`task_queue`/`sync` instead of
+  passing raw `tokio::sync::broadcast::Sender` values around.
 - `task_queue.rs` — `TaskQueue` with pending (delayed)/running/completed
   tracking, dedup by series/movie id, and a `run(db, remote, broadcast)` worker
   loop spawned from `main`. `push(kind, immediate, &broadcast)` enqueues and

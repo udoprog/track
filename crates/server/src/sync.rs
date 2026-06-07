@@ -4,22 +4,19 @@ use anyhow::{Context as _, Result};
 use api::{ImageKind, ImageSource, SeasonNumber};
 use db::Database;
 use musli_web::api::ChannelId;
-use tokio::sync::broadcast;
 
+use crate::app_broadcast::Broadcaster;
 use crate::remote::RemoteClients;
 
-fn broadcast_event(tx: &broadcast::Sender<api::AppEvent>, kind: api::AppEventKind) {
-    let _ = tx.send(api::AppEvent {
-        channel: ChannelId::NONE,
-        kind,
-    });
+fn broadcast_event(broadcast: &Broadcaster, kind: api::AppEventKind) {
+    broadcast.emit(ChannelId::NONE, kind, "sync event");
 }
 
 pub(crate) async fn sync_series(
     series_id: api::SeriesId,
     db: &Database,
     remote: &RemoteClients,
-    broadcast: &broadcast::Sender<api::AppEvent>,
+    broadcast: &Broadcaster,
 ) -> Result<()> {
     let series = db
         .series_by_id(series_id)
@@ -55,7 +52,7 @@ async fn sync_series_tmdb(
     tmdb_id: u32,
     remote: &RemoteClients,
     db: &Database,
-    broadcast: &broadcast::Sender<api::AppEvent>,
+    broadcast: &Broadcaster,
 ) -> Result<()> {
     let series = db
         .series_by_id(series_id)
@@ -154,7 +151,7 @@ async fn sync_series_tvdb(
     tvdb_id: u32,
     remote: &RemoteClients,
     db: &Database,
-    broadcast: &broadcast::Sender<api::AppEvent>,
+    broadcast: &Broadcaster,
 ) -> Result<()> {
     let series = db
         .series_by_id(series_id)
@@ -234,7 +231,7 @@ pub(crate) async fn sync_movie(
     movie_id: api::MovieId,
     db: &Database,
     remote: &RemoteClients,
-    broadcast: &broadcast::Sender<api::AppEvent>,
+    broadcast: &Broadcaster,
 ) -> Result<()> {
     let movie = db.movie_by_id(movie_id).await?.context("movie not found")?;
 

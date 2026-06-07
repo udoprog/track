@@ -1228,7 +1228,7 @@ impl Database {
 
     // ── Dashboard queries ──
 
-    pub async fn pending_episodes(&self, limit: u32) -> Result<Vec<api::Pending>> {
+    pub async fn pending_episodes(&self) -> Result<Vec<api::Pending>> {
         let today = api::Date::today();
         let mut s = self.inner.clone().lock_owned().await;
 
@@ -1237,13 +1237,11 @@ impl Database {
             let mut out = Vec::new();
 
             while let Some(r) = s.list_pending_episodes.next::<PendingEpisodeRow>()? {
-                if out.len() >= limit as usize {
-                    break;
-                }
                 let label = match r.episode_name {
                     Some(ref name) => format!("S{:02}E{:02} – {}", r.season, r.number, name),
                     None => format!("S{:02}E{:02}", r.season, r.number),
                 };
+
                 out.push(api::Pending {
                     kind: api::PendingKind::Episode {
                         series: r.series_id,

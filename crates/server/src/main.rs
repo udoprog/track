@@ -1,3 +1,4 @@
+mod app_broadcast;
 mod cache;
 mod proxy;
 mod remote;
@@ -12,8 +13,8 @@ mod ws;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
+use crate::app_broadcast::Broadcaster;
 use anyhow::{Context as _, Result};
-use api::AppEvent;
 use axum::Router;
 use axum::routing::get;
 use cache::ImageCache;
@@ -28,7 +29,7 @@ use tower_http::cors::CorsLayer;
 #[derive(Clone)]
 struct AppState {
     db: Database,
-    broadcast: broadcast::Sender<AppEvent>,
+    broadcast: Broadcaster,
     channels: Channels,
     http: reqwest::Client,
     cache: ImageCache,
@@ -73,7 +74,8 @@ async fn main() -> Result<()> {
 
     let cache = ImageCache::new(&args.cache_dir);
 
-    let (broadcast, _) = broadcast::channel(64);
+    let (broadcast_tx, _) = broadcast::channel(64);
+    let broadcast = Broadcaster::new(broadcast_tx);
 
     let queue = TaskQueue::new();
 

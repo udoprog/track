@@ -6,13 +6,14 @@ use musli_web::axum08;
 use musli_web::ws;
 use tokio::sync::broadcast;
 
+use crate::app_broadcast::Broadcaster;
 use crate::remote::RemoteClients;
 use crate::task_queue::TaskQueue;
 
 #[derive(Clone)]
 pub(super) struct WsHandler {
     pub(super) db: Database,
-    pub(super) broadcast: broadcast::Sender<api::AppEvent>,
+    pub(super) broadcast: Broadcaster,
     pub(super) remote: RemoteClients,
     pub(super) queue: TaskQueue,
 }
@@ -43,6 +44,26 @@ impl ws::Handler for WsHandler {
 }
 
 impl WsHandler {
+    async fn enqueue_series_sync(&self, series_id: api::SeriesId, title: String, immediate: bool) {
+        self.queue
+            .push(
+                api::TaskKind::SyncSeries { series_id, title },
+                immediate,
+                &self.broadcast,
+            )
+            .await;
+    }
+
+    async fn enqueue_movie_sync(&self, movie_id: api::MovieId, title: String, immediate: bool) {
+        self.queue
+            .push(
+                api::TaskKind::SyncMovie { movie_id, title },
+                immediate,
+                &self.broadcast,
+            )
+            .await;
+    }
+
     async fn handle_inner(
         &self,
         id: api::Request,
@@ -102,25 +123,19 @@ impl WsHandler {
                     .series_by_id(series.id)
                     .await?
                     .context("series not found")?;
-                let _ = self.broadcast.send(api::AppEvent {
-                    channel: incoming.channel(),
-                    kind: api::AppEventKind::SeriesCreated {
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::SeriesCreated {
                         series: series.clone(),
                     },
-                });
-                let _ = self.broadcast.send(api::AppEvent {
-                    channel: incoming.channel(),
-                    kind: api::AppEventKind::PendingChanged,
-                });
-                self.queue
-                    .push(
-                        api::TaskKind::SyncSeries {
-                            series_id: series.id,
-                            title: series.title.clone(),
-                        },
-                        true,
-                        &self.broadcast,
-                    )
+                    "ws track series created",
+                );
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::PendingChanged,
+                    "ws track series pending changed",
+                );
+                self.enqueue_series_sync(series.id, series.title.clone(), true)
                     .await;
                 outgoing.write(series);
             }
@@ -134,16 +149,18 @@ impl WsHandler {
                     .series_by_id(req.id)
                     .await?
                     .context("series not found")?;
-                let _ = self.broadcast.send(api::AppEvent {
-                    channel: incoming.channel(),
-                    kind: api::AppEventKind::SeriesChanged {
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::SeriesChanged {
                         series: series.clone(),
                     },
-                });
-                let _ = self.broadcast.send(api::AppEvent {
-                    channel: incoming.channel(),
-                    kind: api::AppEventKind::PendingChanged,
-                });
+                    "ws untrack series changed",
+                );
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::PendingChanged,
+                    "ws untrack series pending changed",
+                );
                 outgoing.write(api::Empty);
             }
             api::Request::RemoveSeries => {
@@ -151,14 +168,16 @@ impl WsHandler {
                     .read::<api::RemoveSeriesRequest>()
                     .context("missing request")?;
                 self.db.delete_series(req.id).await?;
-                let _ = self.broadcast.send(api::AppEvent {
-                    channel: incoming.channel(),
-                    kind: api::AppEventKind::SeriesDeleted { series_id: req.id },
-                });
-                let _ = self.broadcast.send(api::AppEvent {
-                    channel: incoming.channel(),
-                    kind: api::AppEventKind::PendingChanged,
-                });
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::SeriesDeleted { series_id: req.id },
+                    "ws remove series deleted",
+                );
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::PendingChanged,
+                    "ws remove series pending changed",
+                );
                 outgoing.write(api::Empty);
             }
             api::Request::ListEpisodes => {
@@ -214,27 +233,20 @@ impl WsHandler {
                     .movie_by_id(movie.id)
                     .await?
                     .context("movie not found")?;
-                let _ = self.broadcast.send(api::AppEvent {
-                    channel: incoming.channel(),
-                    kind: api::AppEventKind::MovieCreated {
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::MovieCreated {
                         movie: movie.clone(),
                     },
-                });
+                    "ws track movie created",
+                );
 
-                let _ = self.broadcast.send(api::AppEvent {
-                    channel: incoming.channel(),
-                    kind: api::AppEventKind::PendingChanged,
-                });
-
-                self.queue
-                    .push(
-                        api::TaskKind::SyncMovie {
-                            movie_id: movie.id,
-                            title: movie.title.clone(),
-                        },
-                        true,
-                        &self.broadcast,
-                    )
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::PendingChanged,
+                    "ws track movie pending changed",
+                );
+                self.enqueue_movie_sync(movie.id, movie.title.clone(), true)
                     .await;
                 outgoing.write(movie);
             }
@@ -248,16 +260,18 @@ impl WsHandler {
                     .movie_by_id(req.id)
                     .await?
                     .context("movie not found")?;
-                let _ = self.broadcast.send(api::AppEvent {
-                    channel: incoming.channel(),
-                    kind: api::AppEventKind::MovieChanged {
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::MovieChanged {
                         movie: movie.clone(),
                     },
-                });
-                let _ = self.broadcast.send(api::AppEvent {
-                    channel: incoming.channel(),
-                    kind: api::AppEventKind::PendingChanged,
-                });
+                    "ws untrack movie changed",
+                );
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::PendingChanged,
+                    "ws untrack movie pending changed",
+                );
                 outgoing.write(api::Empty);
             }
             api::Request::RemoveMovie => {
@@ -265,14 +279,16 @@ impl WsHandler {
                     .read::<api::RemoveMovieRequest>()
                     .context("missing request")?;
                 self.db.delete_movie(req.id).await?;
-                let _ = self.broadcast.send(api::AppEvent {
-                    channel: incoming.channel(),
-                    kind: api::AppEventKind::MovieDeleted { movie_id: req.id },
-                });
-                let _ = self.broadcast.send(api::AppEvent {
-                    channel: incoming.channel(),
-                    kind: api::AppEventKind::PendingChanged,
-                });
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::MovieDeleted { movie_id: req.id },
+                    "ws remove movie deleted",
+                );
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::PendingChanged,
+                    "ws remove movie pending changed",
+                );
                 outgoing.write(api::Empty);
             }
             api::Request::MarkWatched => {
@@ -281,14 +297,16 @@ impl WsHandler {
                     .context("missing request")?;
                 let ts = req.timestamp.unwrap_or_else(api::Timestamp::now);
                 let watched = self.db.mark_watched(req.kind, ts).await?;
-                let _ = self.broadcast.send(api::AppEvent {
-                    channel: incoming.channel(),
-                    kind: api::AppEventKind::WatchedChanged { kind: req.kind },
-                });
-                let _ = self.broadcast.send(api::AppEvent {
-                    channel: incoming.channel(),
-                    kind: api::AppEventKind::PendingChanged,
-                });
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::WatchedChanged { kind: req.kind },
+                    "ws mark watched changed",
+                );
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::PendingChanged,
+                    "ws mark watched pending changed",
+                );
                 outgoing.write(api::MarkWatchedResponse { watched });
             }
             api::Request::RemoveWatched => {
@@ -296,14 +314,16 @@ impl WsHandler {
                     .read::<api::RemoveWatchedRequest>()
                     .context("missing request")?;
                 self.db.remove_watched(req.id).await?;
-                let _ = self.broadcast.send(api::AppEvent {
-                    channel: incoming.channel(),
-                    kind: api::AppEventKind::WatchedChanged { kind: req.kind },
-                });
-                let _ = self.broadcast.send(api::AppEvent {
-                    channel: incoming.channel(),
-                    kind: api::AppEventKind::PendingChanged,
-                });
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::WatchedChanged { kind: req.kind },
+                    "ws remove watched changed",
+                );
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::PendingChanged,
+                    "ws remove watched pending changed",
+                );
                 outgoing.write(api::Empty);
             }
             api::Request::ListWatched => {
@@ -322,15 +342,9 @@ impl WsHandler {
                 let _req = incoming
                     .read::<api::ListPendingRequest>()
                     .context("missing request")?;
-
-                let config = self
-                    .db
-                    .load_config()
-                    .await
-                    .context("loading configuration")?;
                 let mut pending = self
                     .db
-                    .pending_episodes(config.dashboard_limit)
+                    .pending_episodes()
                     .await
                     .context("loading pending episodes")?;
                 pending.extend(
@@ -352,8 +366,7 @@ impl WsHandler {
                 let _req = incoming
                     .read::<api::ListWatchNextRequest>()
                     .context("missing request")?;
-                let config = self.db.load_config().await?;
-                let pending = self.db.pending_episodes(config.dashboard_page).await?;
+                let pending = self.db.pending_episodes().await?;
                 outgoing.write(api::ListWatchNextResponse { pending });
             }
             api::Request::Search => {
@@ -407,15 +420,7 @@ impl WsHandler {
                     .series_by_id(req.id)
                     .await?
                     .context("series not found")?;
-                self.queue
-                    .push(
-                        api::TaskKind::SyncSeries {
-                            series_id: series.id,
-                            title: series.title,
-                        },
-                        true,
-                        &self.broadcast,
-                    )
+                self.enqueue_series_sync(series.id, series.title, true)
                     .await;
                 outgoing.write(api::Empty);
             }
@@ -428,16 +433,7 @@ impl WsHandler {
                     .movie_by_id(req.id)
                     .await?
                     .context("movie not found")?;
-                self.queue
-                    .push(
-                        api::TaskKind::SyncMovie {
-                            movie_id: movie.id,
-                            title: movie.title,
-                        },
-                        true,
-                        &self.broadcast,
-                    )
-                    .await;
+                self.enqueue_movie_sync(movie.id, movie.title, true).await;
                 outgoing.write(api::Empty);
             }
             api::Request::SetSeriesSyncSource => {
@@ -463,27 +459,21 @@ impl WsHandler {
                     .await?
                     .context("series not found")?;
 
-                let _ = self.broadcast.send(api::AppEvent {
-                    channel: incoming.channel(),
-                    kind: api::AppEventKind::SeriesChanged {
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::SeriesChanged {
                         series: series.clone(),
                     },
-                });
+                    "ws set series sync source changed",
+                );
 
-                let _ = self.broadcast.send(api::AppEvent {
-                    channel: incoming.channel(),
-                    kind: api::AppEventKind::PendingChanged,
-                });
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::PendingChanged,
+                    "ws set series sync source pending changed",
+                );
 
-                self.queue
-                    .push(
-                        api::TaskKind::SyncSeries {
-                            series_id: series.id,
-                            title: series.title,
-                        },
-                        true,
-                        &self.broadcast,
-                    )
+                self.enqueue_series_sync(series.id, series.title, true)
                     .await;
 
                 outgoing.write(api::Empty);
@@ -515,28 +505,21 @@ impl WsHandler {
                     .await?
                     .context("movie not found")?;
 
-                let _ = self.broadcast.send(api::AppEvent {
-                    channel: incoming.channel(),
-                    kind: api::AppEventKind::MovieChanged {
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::MovieChanged {
                         movie: movie.clone(),
                     },
-                });
+                    "ws set movie sync source changed",
+                );
 
-                let _ = self.broadcast.send(api::AppEvent {
-                    channel: incoming.channel(),
-                    kind: api::AppEventKind::PendingChanged,
-                });
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::PendingChanged,
+                    "ws set movie sync source pending changed",
+                );
 
-                self.queue
-                    .push(
-                        api::TaskKind::SyncMovie {
-                            movie_id: movie.id,
-                            title: movie.title,
-                        },
-                        true,
-                        &self.broadcast,
-                    )
-                    .await;
+                self.enqueue_movie_sync(movie.id, movie.title, true).await;
 
                 outgoing.write(api::Empty);
             }
@@ -546,29 +529,11 @@ impl WsHandler {
                     .context("missing request")?;
                 let series = self.db.series().await?;
                 for s in series {
-                    self.queue
-                        .push(
-                            api::TaskKind::SyncSeries {
-                                series_id: s.id,
-                                title: s.title,
-                            },
-                            false,
-                            &self.broadcast,
-                        )
-                        .await;
+                    self.enqueue_series_sync(s.id, s.title, false).await;
                 }
                 let movies = self.db.movies().await?;
                 for m in movies {
-                    self.queue
-                        .push(
-                            api::TaskKind::SyncMovie {
-                                movie_id: m.id,
-                                title: m.title,
-                            },
-                            false,
-                            &self.broadcast,
-                        )
-                        .await;
+                    self.enqueue_movie_sync(m.id, m.title, false).await;
                 }
                 outgoing.write(api::Empty);
             }
@@ -592,12 +557,13 @@ impl WsHandler {
                     .context("missing request")?;
                 self.db.save_config(&req.config).await?;
                 self.remote.configure(&req.config);
-                let _ = self.broadcast.send(api::AppEvent {
-                    channel: incoming.channel(),
-                    kind: api::AppEventKind::ConfigChanged {
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::ConfigChanged {
                         config: req.config.clone(),
                     },
-                });
+                    "ws config changed",
+                );
                 outgoing.write(api::Empty);
             }
             api::Request::SetNextEpisode => {
@@ -612,16 +578,18 @@ impl WsHandler {
                     .series_by_id(req.series_id)
                     .await?
                     .context("series not found")?;
-                let _ = self.broadcast.send(api::AppEvent {
-                    channel: incoming.channel(),
-                    kind: api::AppEventKind::SeriesChanged {
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::SeriesChanged {
                         series: series.clone(),
                     },
-                });
-                let _ = self.broadcast.send(api::AppEvent {
-                    channel: incoming.channel(),
-                    kind: api::AppEventKind::PendingChanged,
-                });
+                    "ws set next episode changed",
+                );
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::PendingChanged,
+                    "ws set next episode pending changed",
+                );
                 outgoing.write(api::Empty);
             }
             api::Request::SetMoviePending => {
@@ -634,16 +602,18 @@ impl WsHandler {
                     .movie_by_id(req.id)
                     .await?
                     .context("movie not found")?;
-                let _ = self.broadcast.send(api::AppEvent {
-                    channel: incoming.channel(),
-                    kind: api::AppEventKind::MovieChanged {
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::MovieChanged {
                         movie: movie.clone(),
                     },
-                });
-                let _ = self.broadcast.send(api::AppEvent {
-                    channel: incoming.channel(),
-                    kind: api::AppEventKind::PendingChanged,
-                });
+                    "ws set movie pending changed",
+                );
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::PendingChanged,
+                    "ws set movie pending pending changed",
+                );
                 outgoing.write(api::Empty);
             }
             api::Request::SelectImage => {
@@ -658,12 +628,13 @@ impl WsHandler {
                             .series_by_id(series_id)
                             .await?
                             .context("series not found")?;
-                        let _ = self.broadcast.send(api::AppEvent {
-                            channel: incoming.channel(),
-                            kind: api::AppEventKind::SeriesChanged {
+                        self.broadcast.emit(
+                            incoming.channel(),
+                            api::AppEventKind::SeriesChanged {
                                 series: series.clone(),
                             },
-                        });
+                            "ws select image series changed",
+                        );
                     }
                     api::ImageOwner::Movie(movie_id) => {
                         let movie = self
@@ -671,12 +642,13 @@ impl WsHandler {
                             .movie_by_id(movie_id)
                             .await?
                             .context("movie not found")?;
-                        let _ = self.broadcast.send(api::AppEvent {
-                            channel: incoming.channel(),
-                            kind: api::AppEventKind::MovieChanged {
+                        self.broadcast.emit(
+                            incoming.channel(),
+                            api::AppEventKind::MovieChanged {
                                 movie: movie.clone(),
                             },
-                        });
+                            "ws select image movie changed",
+                        );
                     }
                 }
                 outgoing.write(api::Empty);

@@ -181,6 +181,7 @@ impl Dashboard {
         };
         let route_poster = route.clone();
         let on_navigate = ctx.link().callback(move |_| Msg::Navigate(route.clone()));
+        let on_navigate_series = on_navigate.clone();
         let on_navigate_poster = ctx
             .link()
             .callback(move |_| Msg::Navigate(route_poster.clone()));
@@ -203,10 +204,14 @@ impl Dashboard {
 
                 <div class="pending-info">
                     if let Some(ref title) = p.series_title {
-                        <span class="pending-series clickable" onclick={on_navigate}>{title}</span>
+                        <span class="pending-label clickable" onclick={on_navigate_series}>{title}</span>
                     }
 
-                    <span class="pending-label">{&p.label}</span>
+                    if matches!(p.kind, api::PendingKind::Movie { .. }) {
+                        <span class="pending-label clickable" onclick={on_navigate.clone()}>{&p.label}</span>
+                    } else {
+                        <span class="pending-label">{&p.label}</span>
+                    }
 
                     if let Some(date) = p.aired {
                         <span class="pending-date">{date.to_string()}</span>
