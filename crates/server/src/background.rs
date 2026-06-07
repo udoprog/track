@@ -34,6 +34,7 @@ pub(crate) async fn run(
     broadcast: Broadcaster,
     remote: RemoteClients,
     config_changed: Arc<Notify>,
+    shutdown: crate::shutdown::Shutdown,
 ) -> anyhow::Result<()> {
     discover_pending_movies(&db).await?;
 
@@ -43,6 +44,7 @@ pub(crate) async fn run(
         tokio::select! {
             _ = interval.tick() => {}
             _ = config_changed.notified() => {}
+            _ = shutdown.cancelled() => { return Ok(()); }
         }
 
         let config = db.load_config().await?;

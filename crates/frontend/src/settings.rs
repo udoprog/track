@@ -3,6 +3,10 @@ use yew::prelude::*;
 
 use crate::error::{CustomContext, Error, Message};
 
+fn tz_is_valid(name: &str) -> bool {
+    name.is_empty() || jiff_tzdb::get(name).is_some()
+}
+
 pub(super) struct Settings {
     channel: ws::Channel,
     config: api::Config,
@@ -19,6 +23,7 @@ pub(super) enum Msg {
     ThemeChanged(api::ThemeType),
     TvdbKeyChanged(String),
     TmdbKeyChanged(String),
+    TimezoneChanged(String),
     ScheduleDaysChanged(String),
     DashboardLimitChanged(String),
     DashboardPageChanged(String),
@@ -103,6 +108,11 @@ impl Component for Settings {
             Msg::DashboardPageChanged(input.value())
         });
 
+        let on_timezone = link.callback(|e: InputEvent| {
+            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+            Msg::TimezoneChanged(input.value())
+        });
+
         let on_auto_sync_toggle = link.callback(|_| Msg::AutoSyncEnabledToggle);
 
         let on_auto_sync_interval = link.callback(|e: InputEvent| {
@@ -119,7 +129,7 @@ impl Component for Settings {
 
         html! {
             <form class="page" onsubmit={on_save}>
-                <div class="section">
+                <div class="column">
                     <h2>{"Appearance"}</h2>
 
                     <div class="form">
@@ -133,7 +143,7 @@ impl Component for Settings {
                     </div>
                 </div>
 
-                <div class="section">
+                <div class="column">
                     <h2>{"API Keys"}</h2>
 
                     <div class="form">
@@ -162,7 +172,7 @@ impl Component for Settings {
                     </div>
                 </div>
 
-                <div class="section">
+                <div class="column">
                     <h2>{"Dashboard"}</h2>
 
                     <div class="form">
@@ -207,7 +217,39 @@ impl Component for Settings {
                     </div>
                 </div>
 
-                <div class="section">
+                <div class="column">
+                    <h2>{"Display"}</h2>
+
+                    <div class="form">
+                        <div class={classes!("field", (!tz_is_valid(&self.config.timezone)).then_some("error"))}>
+                            <label>{"Timezone (IANA name)"}</label>
+
+                            <input
+                                type="text"
+                                class="input-text"
+                                placeholder="Leave empty to use browser timezone"
+                                value={self.config.timezone.clone()}
+                                oninput={on_timezone}
+                                list="tz-datalist"
+                                autocomplete="off"
+                            />
+                            <datalist id="tz-datalist">
+                                { for jiff_tzdb::available().map(|name| html! {
+                                    <option value={name} />
+                                }) }
+                            </datalist>
+
+                            if !tz_is_valid(&self.config.timezone) {
+                                <span>
+                                    <span class="icon-inline"><span class="icon exclamation-triangle" /></span>
+                                    {"Unknown timezone"}
+                                </span>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <div class="column">
                     <h2>{"Sync"}</h2>
 
                     <div class="form">
@@ -284,6 +326,10 @@ impl Settings {
             }
             Msg::TmdbKeyChanged(val) => {
                 self.config.tmdb_api_key = val;
+                Ok(false)
+            }
+            Msg::TimezoneChanged(val) => {
+                self.config.timezone = val;
                 Ok(false)
             }
             Msg::ScheduleDaysChanged(val) => {

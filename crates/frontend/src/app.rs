@@ -10,20 +10,23 @@ use crate::SeriesDetail;
 use crate::SeriesList;
 use crate::Settings;
 use crate::WatchNext;
-use crate::error::Error;
+use crate::error::{CustomContext, Error, Message};
 use crate::router::Route;
 use crate::setup_channel::SetupChannel;
 
 pub(super) struct App {
     channel: ws::Channel,
     ws: ws::Service,
+    tz: crate::SystemTz,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
+    _config_req: ws::Request,
 }
 
 pub(super) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
+    ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
     WsError(ws::Error),
     Navigate(Route),
 }
@@ -54,35 +57,18 @@ impl Component for App {
         Self {
             channel: ws::Channel::default(),
             ws,
+            tz: crate::SystemTz(jiff::tz::TimeZone::system()),
             _setup,
             _broadcast,
+            _config_req: ws::Request::default(),
         }
     }
 
     fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
-        match msg {
-            Msg::Channel(result) => {
-                match result {
-                    Ok(ch) => self.channel = ch,
-                    Err(e) => ctx.props().onerror.emit(e.into()),
-                }
-
-                true
-            }
-            Msg::AppBroadcast(result) => {
-                if let Err(e) = result {
-                    ctx.props().onerror.emit(e.into());
-                    return false;
-                }
-
-                true
-            }
-            Msg::WsError(e) => {
-                ctx.props().onerror.emit(e.into());
-                false
-            }
-            Msg::Navigate(route) => {
-                ctx.props().on_navigate.emit(route);
+        match self.try_update(ctx, msg) {
+            Ok(render) => render,
+            Err(e) => {
+                ctx.props().onerror.emit(e);
                 false
             }
         }
@@ -93,6 +79,7 @@ impl Component for App {
         let on_nav = |route: Route| link.callback(move |_| Msg::Navigate(route.clone()));
 
         html! {
+            <ContextProvider<crate::SystemTz> context={self.tz.clone()}>
             <ContextProvider<ws::Handle> context={self.ws.handle()}>
             <div class="app">
                 <div class="toolbar">
@@ -138,11 +125,67 @@ impl Component for App {
                 </div>
             </div>
             </ContextProvider<ws::Handle>>
+            </ContextProvider<crate::SystemTz>>
         }
     }
 }
 
 impl App {
+    fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
+        match msg {
+            Msg::Channel(result) => {
+                self.channel = result?;
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._config_req = self
+                        .channel
+                        .request()
+                        .body(api::GetConfigRequest)
+                        .on_packet(ctx.link().callback(Msg::ConfigLoaded))
+                        .send();
+                }
+                Ok(true)
+            }
+            Msg::AppBroadcast(result) => {
+                let event = result?.decode_event()?;
+                if let api::AppEventKind::ConfigChanged { config } = event.kind {
+                    let new_tz = Self::tz_from_config(&config);
+                    if new_tz != self.tz {
+                        self.tz = new_tz;
+                        return Ok(true);
+                    }
+                }
+                Ok(false)
+            }
+            Msg::ConfigLoaded(result) => {
+                let config = result
+                    .context(Message::LoadingConfig)?
+                    .decode()
+                    .context(Message::LoadingConfig)?
+                    .config;
+                let new_tz = Self::tz_from_config(&config);
+                if new_tz != self.tz {
+                    self.tz = new_tz;
+                    return Ok(true);
+                }
+                Ok(false)
+            }
+            Msg::WsError(e) => Err(e.into()),
+            Msg::Navigate(route) => {
+                ctx.props().on_navigate.emit(route);
+                Ok(false)
+            }
+        }
+    }
+
+    fn tz_from_config(config: &api::Config) -> crate::SystemTz {
+        if !config.timezone.is_empty() {
+            if let Ok(tz) = jiff::tz::TimeZone::get(&config.timezone) {
+                return crate::SystemTz(tz);
+            }
+        }
+        crate::SystemTz(jiff::tz::TimeZone::system())
+    }
+
     fn view_page(&self, ctx: &Context<Self>) -> Html {
         let onerror = ctx.props().onerror.clone();
         let on_navigate = ctx.link().callback(Msg::Navigate);

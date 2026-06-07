@@ -141,6 +141,7 @@ impl TaskQueue {
         remote: RemoteClients,
         broadcast: Broadcaster,
         pending: crate::pending::PendingSystem,
+        shutdown: crate::shutdown::Shutdown,
     ) {
         loop {
             // Determine how long to sleep until the next task is ready.
@@ -155,6 +156,7 @@ impl TaskQueue {
             tokio::select! {
                 _ = tokio::time::sleep_until(sleep_until) => {}
                 _ = self.notify.notified() => { continue; }
+                _ = shutdown.cancelled() => { break; }
             }
 
             // Pop the next task if it's due.
@@ -183,44 +185,44 @@ impl TaskQueue {
             let start = Instant::now();
             let result = execute(&task, &db, &remote, &broadcast, &pending).await;
 
-            if result.is_ok() {
-                match &task.kind {
-                    api::TaskKind::SyncSeries { series_id, .. } => {
-                        if let Ok(Some(series)) = db.series_by_id(*series_id).await {
-                            broadcast.emit(
-                                musli_web::api::ChannelId::NONE,
-                                api::AppEventKind::SeriesChanged { series },
-                                "task queue series changed",
-                            );
-                        }
-                        broadcast.emit(
-                            musli_web::api::ChannelId::NONE,
-                            api::AppEventKind::PendingChanged,
-                            "task queue pending changed",
-                        );
-                    }
-                    api::TaskKind::SyncMovie { movie_id, .. } => {
-                        if let Ok(Some(movie)) = db.movie_by_id(*movie_id).await {
-                            broadcast.emit(
-                                musli_web::api::ChannelId::NONE,
-                                api::AppEventKind::MovieChanged { movie },
-                                "task queue movie changed",
-                            );
-                        }
-                        broadcast.emit(
-                            musli_web::api::ChannelId::NONE,
-                            api::AppEventKind::PendingChanged,
-                            "task queue pending changed",
-                        );
-                    }
-                }
-            }
-
             match result {
                 Ok(()) => {
-                    info!(task_id = ?task.id, elapsed_ms = start.elapsed().as_millis(), "task completed")
+                    info!(?task.id, elapsed_ms = start.elapsed().as_millis(), "task completed");
+
+                    match &task.kind {
+                        api::TaskKind::SyncSeries { series_id, .. } => {
+                            if let Ok(Some(series)) = db.series_by_id(*series_id).await {
+                                broadcast.emit(
+                                    musli_web::api::ChannelId::NONE,
+                                    api::AppEventKind::SeriesChanged { series },
+                                    "task queue series changed",
+                                );
+                            }
+                            broadcast.emit(
+                                musli_web::api::ChannelId::NONE,
+                                api::AppEventKind::PendingChanged,
+                                "task queue pending changed",
+                            );
+                        }
+                        api::TaskKind::SyncMovie { movie_id, .. } => {
+                            if let Ok(Some(movie)) = db.movie_by_id(*movie_id).await {
+                                broadcast.emit(
+                                    musli_web::api::ChannelId::NONE,
+                                    api::AppEventKind::MovieChanged { movie },
+                                    "task queue movie changed",
+                                );
+                            }
+                            broadcast.emit(
+                                musli_web::api::ChannelId::NONE,
+                                api::AppEventKind::PendingChanged,
+                                "task queue pending changed",
+                            );
+                        }
+                    }
                 }
-                Err(e) => error!(task_id = ?task.id, "task failed: {e:#}"),
+                Err(e) => {
+                    error!(task_id = ?task.id, "task failed: {e:#}");
+                }
             }
 
             let completed = api::CompletedTask {
@@ -248,6 +250,10 @@ impl TaskQueue {
                 api::AppEventKind::TaskCompleted { task: completed },
                 "task queue task completed",
             );
+
+            if shutdown.is_cancelled() {
+                break;
+            }
         }
     }
 }

@@ -11,6 +11,8 @@ api = { path = "../api", features = ["js"] }
 
 derive_more = { version = "2.1.1", features = ["display"] }
 gloo = "0.12.0"
+jiff = { version = "0.2.28", features = ["js"] }
+jiff-tzdb = "0.1.6"
 js-sys = "0.3.99"
 musli-web = { version = "0.4.2", default-features = false, features = ["web03", "yew023"] }
 tracing = "0.1.44"

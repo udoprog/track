@@ -1758,6 +1758,8 @@ impl Database {
             .and_then(|v| v.parse().ok())
             .unwrap_or(24);
 
+        let timezone = self.get_config("timezone").await?.unwrap_or_default();
+
         Ok(Config {
             theme,
             tvdb_legacy_apikey,
@@ -1767,6 +1769,7 @@ impl Database {
             dashboard_page,
             auto_sync_enabled,
             auto_sync_interval_hours,
+            timezone,
         })
     }
 
@@ -1800,6 +1803,7 @@ impl Database {
             &config.auto_sync_interval_hours.to_string(),
         )
         .await?;
+        self.set_config("timezone", &config.timezone).await?;
         Ok(())
     }
 }

@@ -490,6 +490,12 @@ impl MovieDetail {
         let movie_id = ctx.props().movie_id;
         let link = ctx.link();
 
+        let tz = ctx
+            .link()
+            .context::<crate::SystemTz>(Callback::noop())
+            .map(|(t, _)| t.get().clone())
+            .unwrap_or(jiff::tz::TimeZone::UTC);
+
         let actions = 'actions: {
             if let Some(wid) = last_watched_id
                 && self.confirm_remove_watch
@@ -565,6 +571,13 @@ impl MovieDetail {
                         <span class="icon-inline"><span class="icon photo" /></span>
                         {"Background"}
                     </button>
+                }
+
+                if let Some(ts) = movie.last_synced_at {
+                    <span class="text-muted">
+                        {"Synced "}
+                        {ts.inner().to_zoned(tz).strftime("%Y-%m-%d %H:%M").to_string()}
+                    </span>
                 }
             </div>
 

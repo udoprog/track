@@ -1,6 +1,8 @@
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
+use api::HasAired;
+
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{Route, SeriesQuery};
 use crate::ui::{ConfirmDanger, ImageGallery, ImageItem, RemoteSourceKind, RemoteSourceSelect};
@@ -146,6 +148,12 @@ impl Component for SeriesDetail {
 
         let link = ctx.link();
 
+        let tz = ctx
+            .link()
+            .context::<crate::SystemTz>(Callback::noop())
+            .map(|(t, _)| t.get().clone())
+            .unwrap_or(jiff::tz::TimeZone::UTC);
+
         let url = series
             .images
             .iter()
@@ -175,6 +183,13 @@ impl Component for SeriesDetail {
                                 <span class="icon-inline"><span class="icon photo" /></span>
                                 {"Background"}
                             </button>
+                        }
+
+                        if let Some(ts) = series.last_synced_at {
+                            <span class="text-muted">
+                                {"Synced "}
+                                {ts.inner().to_zoned(tz).strftime("%Y-%m-%d %H:%M").to_string()}
+                            </span>
                         }
                     </div>
 
@@ -752,6 +767,11 @@ impl SeriesDetail {
     fn view_episodes(&self, ctx: &Context<Self>, series: &api::Series) -> Html {
         let series_id = ctx.props().series_id;
         let link = ctx.link();
+        let tz = ctx
+            .link()
+            .context::<crate::SystemTz>(Callback::noop())
+            .map(|(t, _)| t.get().clone())
+            .unwrap_or(jiff::tz::TimeZone::UTC);
 
         let watched_count = self.episodes.iter().filter(|ep| ep.watched).count();
         let total = self.episodes.len();
@@ -818,10 +838,8 @@ impl SeriesDetail {
                                     { ep.name.as_deref().unwrap_or("—") }
                                 </span>
 
-                                if let Some(at) = ep.aired_at {
-                                    <span class="text-muted">{at.to_string()}</span>
-                                } else if let Some(date) = ep.aired {
-                                    <span class="text-muted">{date.to_string()}</span>
+                                if let Some(s) = ep.display_at(&tz) {
+                                    <span class="text-muted">{s}</span>
                                 }
 
                                 if watched {

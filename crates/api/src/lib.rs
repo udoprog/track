@@ -972,6 +972,41 @@ pub struct Pending {
     pub poster: Option<Image>,
 }
 
+/// Implemented by types that carry both a civil air date and an optional
+/// precise timestamp. `display_at` picks the most precise value available
+/// and formats it in the given time zone.
+pub trait HasAired {
+    fn aired(&self) -> Option<Date>;
+    fn aired_at(&self) -> Option<Timestamp>;
+
+    fn display_at(&self, tz: &jiff::tz::TimeZone) -> Option<String> {
+        if let Some(ts) = self.aired_at() {
+            let zdt = ts.inner().to_zoned(tz.clone());
+            Some(zdt.strftime("%Y-%m-%d %H:%M").to_string())
+        } else {
+            self.aired().map(|d| d.to_string())
+        }
+    }
+}
+
+impl HasAired for Episode {
+    fn aired(&self) -> Option<Date> {
+        self.aired
+    }
+    fn aired_at(&self) -> Option<Timestamp> {
+        self.aired_at
+    }
+}
+
+impl HasAired for Pending {
+    fn aired(&self) -> Option<Date> {
+        self.aired
+    }
+    fn aired_at(&self) -> Option<Timestamp> {
+        self.aired_at
+    }
+}
+
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct ScheduledEntry {
@@ -998,6 +1033,8 @@ pub struct Config {
     pub dashboard_page: u32,
     pub auto_sync_enabled: bool,
     pub auto_sync_interval_hours: u32,
+    /// IANA timezone name (e.g. "America/New_York"). Empty = use browser/system default.
+    pub timezone: String,
 }
 
 impl Default for Config {
@@ -1011,6 +1048,7 @@ impl Default for Config {
             dashboard_page: 6,
             auto_sync_enabled: false,
             auto_sync_interval_hours: 24,
+            timezone: String::new(),
         }
     }
 }

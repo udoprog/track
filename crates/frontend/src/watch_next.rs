@@ -1,6 +1,8 @@
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
+use api::HasAired;
+
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{Route, SeriesQuery};
 
@@ -153,6 +155,11 @@ impl WatchNext {
     }
 
     fn view_row(&self, ctx: &Context<Self>, p: &api::Pending) -> Html {
+        let tz = ctx
+            .link()
+            .context::<crate::SystemTz>(Callback::noop())
+            .map(|(t, _)| t.get().clone())
+            .unwrap_or(jiff::tz::TimeZone::UTC);
         let kind = p.kind.clone();
 
         let route = match p.kind {
@@ -192,8 +199,8 @@ impl WatchNext {
                                 {&p.label}
                             </span>
 
-                            if let Some(date) = p.aired {
-                                <span class="text-muted">{date.to_string()}</span>
+                            if let Some(s) = p.display_at(&tz) {
+                                <span class="text-muted">{s}</span>
                             }
                         </div>
                     </div>

@@ -1,6 +1,8 @@
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
+use api::HasAired;
+
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{Route, SeriesQuery};
 use crate::ui::PaginationButtons;
@@ -282,6 +284,11 @@ impl Dashboard {
     }
 
     fn view_pending_item(&self, ctx: &Context<Self>, p: &api::Pending) -> Html {
+        let tz = ctx
+            .link()
+            .context::<crate::SystemTz>(Callback::noop())
+            .map(|(t, _)| t.get().clone())
+            .unwrap_or(jiff::tz::TimeZone::UTC);
         let kind = p.kind.clone();
         let remove_kind = p.kind.clone();
         let route = match p.kind {
@@ -328,10 +335,8 @@ impl Dashboard {
                             <span class="pending-label">{&p.label}</span>
                         }
 
-                        if let Some(date) = p.aired_at {
-                            <span class="pending-date">{date.to_string()}</span>
-                        } else if let Some(date) = p.aired {
-                            <span class="pending-date">{date.to_string()}</span>
+                        if let Some(s) = p.display_at(&tz) {
+                            <span class="pending-date">{s}</span>
                         }
                     </div>
 
