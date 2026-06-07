@@ -849,7 +849,6 @@ impl Database {
                     s.update_episode_aired_at.step()?.is_done(),
                     "update_episode_aired_at"
                 );
-                s.update_episode_aired_at.reset()?;
             }
             Ok(())
         })
@@ -1269,7 +1268,6 @@ impl Database {
                 s.upsert_pending_episode.step()?.is_done(),
                 "upsert_pending_episode"
             );
-            s.upsert_pending_episode.reset()?;
             Ok(())
         })
         .await?
@@ -1288,7 +1286,6 @@ impl Database {
                 s.upsert_pending_movie.step()?.is_done(),
                 "upsert_pending_movie"
             );
-            s.upsert_pending_movie.reset()?;
             Ok(())
         })
         .await?
@@ -1303,7 +1300,6 @@ impl Database {
                 s.delete_pending_episode.step()?.is_done(),
                 "delete_pending_episode"
             );
-            s.delete_pending_episode.reset()?;
             Ok(())
         })
         .await?
@@ -1318,7 +1314,6 @@ impl Database {
                 s.delete_pending_movie.step()?.is_done(),
                 "delete_pending_movie"
             );
-            s.delete_pending_movie.reset()?;
             Ok(())
         })
         .await?
@@ -1330,32 +1325,29 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         spawn_blocking(move || {
-            // 1. Check if there is already a pending episode for this series
             s.has_pending_episode_for_series.bind((series_id,))?;
             let already_has = s.has_pending_episode_for_series.next::<(i64,)>()?.is_some();
-            s.has_pending_episode_for_series.reset()?;
 
             if already_has {
                 return Ok(());
             }
 
-            // 2. Find the next unwatched aired episode
             let today = api::Date::today();
+
             s.next_pending_episode_for_series.bind((series_id, today))?;
             let next = s.next_pending_episode_for_series.next::<NextEpisodeRow>()?;
-            s.next_pending_episode_for_series.reset()?;
 
             if let Some(r) = next {
                 let ts = r
                     .aired
                     .map(|d| d.to_timestamp())
                     .unwrap_or_else(api::Timestamp::now);
+
                 s.upsert_pending_episode.bind((ts, r.id))?;
                 ensure!(
                     s.upsert_pending_episode.step()?.is_done(),
                     "upsert_pending_episode"
                 );
-                s.upsert_pending_episode.reset()?;
             }
 
             Ok(())
@@ -1372,26 +1364,20 @@ impl Database {
             let today = api::Date::today();
             s.movies_needing_pending.bind((today,))?;
 
-            let mut candidates = Vec::new();
             while let Some(r) = s
                 .movies_needing_pending
                 .next::<PendingMovieCandidateRow>()?
             {
-                candidates.push(r);
-            }
-            s.movies_needing_pending.reset()?;
-
-            for r in candidates {
                 let ts = r
                     .release_date
                     .map(|d| d.to_timestamp())
                     .unwrap_or_else(api::Timestamp::now);
+
                 s.upsert_pending_movie.bind((ts, r.id))?;
                 ensure!(
                     s.upsert_pending_movie.step()?.is_done(),
                     "upsert_pending_movie"
                 );
-                s.upsert_pending_movie.reset()?;
             }
 
             Ok(())
@@ -1404,69 +1390,71 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         spawn_blocking(move || {
-            // 1. Collect the ordered list of pending entries.
-            s.list_pending.reset()?;
-            let mut base: Vec<PendingBaseRow> = Vec::new();
-            while let Some(r) = s.list_pending.next::<PendingBaseRow>()? {
-                base.push(r);
-            }
             s.list_pending.reset()?;
 
             let mut out = Vec::new();
 
-            for r in base {
-                // 2. Fetch detail and poster for each entry via targeted queries.
-                let pending = if let Some(episode_id) = r.episode_id {
-                    s.pending_episode_detail.bind((episode_id,))?;
-                    let detail = s.pending_episode_detail.next::<PendingEpisodeDetailRow>()?;
-                    s.pending_episode_detail.reset()?;
-                    let Some(d) = detail else { continue };
+            'outer: while let Some(r) = s.list_pending.next::<PendingBaseRow>()? {
+                let pending = 'pending: {
+                    if let Some(episode_id) = r.episode_id {
+                        s.pending_episode_detail.bind((episode_id,))?;
+                        let detail = s.pending_episode_detail.next::<PendingEpisodeDetailRow>()?;
 
-                    s.pending_series_poster.bind((d.series_id,))?;
-                    let poster_row = s.pending_series_poster.next::<PosterRow>()?;
-                    s.pending_series_poster.reset()?;
-                    let poster = poster_row
-                        .map(|p| api::Image::from_raw(format!("{}:{}", p.source, p.path)));
+                        let Some(d) = detail else {
+                            continue 'outer;
+                        };
 
-                    let label = match d.episode_name {
-                        Some(ref name) => {
-                            format!("S{:02}E{:02} \u{2013} {name}", d.season, d.number)
-                        }
-                        None => format!("S{:02}E{:02}", d.season, d.number),
+                        s.pending_series_poster.bind((d.series_id,))?;
+                        let poster_row = s.pending_series_poster.next::<PosterRow>()?;
+
+                        let poster = poster_row
+                            .map(|p| api::Image::from_raw(format!("{}:{}", p.source, p.path)));
+
+                        let label = match d.episode_name {
+                            Some(ref name) => {
+                                format!("S{:02}E{:02} \u{2013} {name}", d.season, d.number)
+                            }
+                            None => format!("S{:02}E{:02}", d.season, d.number),
+                        };
+
+                        break 'pending api::Pending {
+                            kind: api::PendingKind::Episode {
+                                series: d.series_id,
+                                episode: episode_id,
+                            },
+                            aired: d.aired,
+                            aired_at: d.aired_at,
+                            series_title: Some(d.series_title),
+                            label,
+                            poster,
+                        };
+                    }
+
+                    if let Some(movie_id) = r.movie_id {
+                        s.pending_movie_detail.bind((movie_id,))?;
+                        let detail = s.pending_movie_detail.next::<PendingMovieDetailRow>()?;
+
+                        let Some(d) = detail else {
+                            continue 'outer;
+                        };
+
+                        s.pending_movie_poster.bind((movie_id,))?;
+                        let poster_row = s.pending_movie_poster.next::<PosterRow>()?;
+
+                        let poster = poster_row
+                            .map(|p| api::Image::from_raw(format!("{}:{}", p.source, p.path)));
+
+                        break 'pending api::Pending {
+                            kind: api::PendingKind::Movie { movie: movie_id },
+                            aired: d.release_date,
+                            aired_at: None,
+                            series_title: None,
+                            label: d.title,
+                            poster,
+                        };
                     };
 
-                    api::Pending {
-                        kind: api::PendingKind::Episode {
-                            series: d.series_id,
-                            episode: episode_id,
-                        },
-                        aired: d.aired,
-                        aired_at: d.aired_at,
-                        series_title: Some(d.series_title),
-                        label,
-                        poster,
-                    }
-                } else {
-                    let movie_id = r.movie_id.unwrap();
-                    s.pending_movie_detail.bind((movie_id,))?;
-                    let detail = s.pending_movie_detail.next::<PendingMovieDetailRow>()?;
-                    s.pending_movie_detail.reset()?;
-                    let Some(d) = detail else { continue };
-
-                    s.pending_movie_poster.bind((movie_id,))?;
-                    let poster_row = s.pending_movie_poster.next::<PosterRow>()?;
-                    s.pending_movie_poster.reset()?;
-                    let poster = poster_row
-                        .map(|p| api::Image::from_raw(format!("{}:{}", p.source, p.path)));
-
-                    api::Pending {
-                        kind: api::PendingKind::Movie { movie: movie_id },
-                        aired: d.release_date,
-                        aired_at: None,
-                        series_title: None,
-                        label: d.title,
-                        poster,
-                    }
+                    continue 'outer;
                 };
 
                 out.push(pending);
