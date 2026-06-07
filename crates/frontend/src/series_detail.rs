@@ -3,7 +3,7 @@ use yew::prelude::*;
 
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{Route, SeriesQuery};
-use crate::ui::ConfirmDanger;
+use crate::ui::{ConfirmDanger, ImageGallery, ImageItem};
 
 pub(super) struct SeriesDetail {
     channel: ws::Channel,
@@ -28,6 +28,7 @@ pub(super) struct SeriesDetail {
     _watch_remaining_reqs: Vec<ws::Request>,
     _history_req: ws::Request,
     _set_next_req: ws::Request,
+    _select_image_req: ws::Request,
 }
 
 pub(super) enum Msg {
@@ -60,6 +61,8 @@ pub(super) enum Msg {
         Option<api::EpisodeId>,
         Result<ws::Packet<api::SetNextEpisode>, ws::Error>,
     ),
+    SelectImage(api::SeriesImageId),
+    SelectImageDone(Result<ws::Packet<api::SelectSeriesImage>, ws::Error>),
     Back,
 }
 
@@ -108,6 +111,7 @@ impl Component for SeriesDetail {
             _watch_remaining_reqs: Vec::new(),
             _history_req: ws::Request::default(),
             _set_next_req: ws::Request::default(),
+            _select_image_req: ws::Request::default(),
         }
     }
 
@@ -126,7 +130,11 @@ impl Component for SeriesDetail {
             <div class="page">
                 { self.view_header(ctx) }
 
-                if let Some(banner) = self.series.as_ref().and_then(|s| s.banner.as_ref()) {
+                if let Some(banner) = self.series.as_ref().and_then(|s| {
+                    s.selected_image(api::ImageKind::Banner)
+                        .or_else(|| s.selected_image(api::ImageKind::Fanart))
+                        .or_else(|| s.selected_image(api::ImageKind::Backdrop))
+                }) {
                     <img class="banner" src={banner.proxy_url()} />
                 }
 
@@ -455,6 +463,19 @@ impl SeriesDetail {
                 }
                 Ok(true)
             }
+            Msg::SelectImage(id) => {
+                self._select_image_req = self
+                    .channel
+                    .request()
+                    .body(api::SelectSeriesImageRequest { id })
+                    .on_packet(ctx.link().callback(Msg::SelectImageDone))
+                    .send();
+                Ok(false)
+            }
+            Msg::SelectImageDone(result) => {
+                result.context(Message::SyncingSeries)?;
+                Ok(false)
+            }
             Msg::Back => {
                 ctx.props().on_navigate.emit(Route::Series);
                 Ok(false)
@@ -535,7 +556,7 @@ impl SeriesDetail {
                             <span class="hide-mobile">{"Track"}</span>
                         </button>
                     }
-                    if s.remote_id.is_some() {
+                    if !s.remotes.is_empty() {
                         <button class="btn" onclick={link.callback(|_| Msg::SyncSeries)} title="Sync from remote">
                             <span class="icon-inline"><span class="icon arrow-path" /></span>
                             <span class="hide-mobile">{"Sync"}</span>
@@ -564,14 +585,40 @@ impl SeriesDetail {
     fn view_sidebar(&self, ctx: &Context<Self>) -> Html {
         html! {
             <div class="detail-sidebar section">
-                if let Some(poster) = self.series.as_ref().and_then(|s| s.poster.as_ref()) {
+                if let Some(poster) = self.series.as_ref().and_then(|s| s.selected_image(api::ImageKind::Poster)) {
                     <img class="poster" src={poster.proxy_url()} />
                 }
 
                 <div class="table table-striped">
                     { for self.seasons.iter().map(|s| self.view_season_item(ctx, s)) }
                 </div>
+
+                { self.view_images(ctx) }
             </div>
+        }
+    }
+
+    fn view_images(&self, ctx: &Context<Self>) -> Html {
+        let Some(ref series) = self.series else {
+            return Html::default();
+        };
+        let items: Vec<ImageItem> = series
+            .images
+            .iter()
+            .map(|img| ImageItem {
+                id: img.id.get(),
+                kind: img.kind,
+                source: img.source,
+                image: img.image.clone(),
+                selected: img.selected,
+            })
+            .collect();
+        let link = ctx.link();
+        html! {
+            <ImageGallery
+                {items}
+                on_select={link.callback(|id| Msg::SelectImage(api::SeriesImageId::new(id)))}
+            />
         }
     }
 

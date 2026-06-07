@@ -77,6 +77,8 @@ define_id!(EpisodeId);
 define_id!(MovieId);
 define_id!(WatchedId);
 define_id!(TaskId);
+define_id!(SeriesImageId);
+define_id!(MovieImageId);
 
 /// RFC 3339 UTC-normalised timestamp stored as TEXT.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -529,6 +531,103 @@ impl fmt::Display for SeasonNumber {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize)]
+#[musli(crate = musli_core)]
+#[serde(rename_all = "lowercase")]
+pub enum ImageKind {
+    Poster,
+    Banner,
+    Fanart,
+    Backdrop,
+}
+
+impl ImageKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ImageKind::Poster => "poster",
+            ImageKind::Banner => "banner",
+            ImageKind::Fanart => "fanart",
+            ImageKind::Backdrop => "backdrop",
+        }
+    }
+}
+
+impl fmt::Display for ImageKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+#[cfg(feature = "sqll")]
+impl ::sqll::FromColumn<'_> for ImageKind {
+    type Type = ::sqll::ty::Text;
+
+    fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Text) -> ::sqll::Result<Self> {
+        let s = String::from_column(stmt, index)?;
+        match s.as_str() {
+            "poster" => Ok(ImageKind::Poster),
+            "banner" => Ok(ImageKind::Banner),
+            "fanart" => Ok(ImageKind::Fanart),
+            "backdrop" => Ok(ImageKind::Backdrop),
+            other => Err(::sqll::Error::custom(format!("unknown image kind: {other}"))),
+        }
+    }
+}
+
+#[cfg(feature = "sqll")]
+impl ::sqll::BindValue for ImageKind {
+    fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
+        self.as_str().bind_value(stmt, index)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize)]
+#[musli(crate = musli_core)]
+#[serde(rename_all = "lowercase")]
+pub enum ImageSource {
+    Tvdb,
+    Tmdb,
+    Local,
+}
+
+impl ImageSource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ImageSource::Tvdb => "tvdb",
+            ImageSource::Tmdb => "tmdb",
+            ImageSource::Local => "local",
+        }
+    }
+}
+
+impl fmt::Display for ImageSource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+#[cfg(feature = "sqll")]
+impl ::sqll::FromColumn<'_> for ImageSource {
+    type Type = ::sqll::ty::Text;
+
+    fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Text) -> ::sqll::Result<Self> {
+        let s = String::from_column(stmt, index)?;
+        match s.as_str() {
+            "tvdb" => Ok(ImageSource::Tvdb),
+            "tmdb" => Ok(ImageSource::Tmdb),
+            "local" => Ok(ImageSource::Local),
+            other => Err(::sqll::Error::custom(format!("unknown image source: {other}"))),
+        }
+    }
+}
+
+#[cfg(feature = "sqll")]
+impl ::sqll::BindValue for ImageSource {
+    fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
+        self.as_str().bind_value(stmt, index)
+    }
+}
+
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Default, Encode, Decode, serde::Serialize, serde::Deserialize,
 )]
@@ -580,17 +679,50 @@ impl ::sqll::BindValue for ThemeType {
 
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
+pub struct SeriesImage {
+    pub id: SeriesImageId,
+    pub series_id: SeriesId,
+    pub kind: ImageKind,
+    pub source: ImageSource,
+    pub image: Image,
+    pub selected: bool,
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct MovieImage {
+    pub id: MovieImageId,
+    pub movie_id: MovieId,
+    pub kind: ImageKind,
+    pub source: ImageSource,
+    pub image: Image,
+    pub selected: bool,
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
+#[musli(crate = musli_core)]
 pub struct Series {
     pub id: SeriesId,
     pub title: String,
     pub first_air_date: Option<Date>,
     pub overview: String,
-    pub poster: Option<Image>,
-    pub banner: Option<Image>,
-    pub fanart: Option<Image>,
     pub tracked: bool,
-    pub remote_id: Option<RemoteId>,
+    pub remotes: Vec<RemoteId>,
     pub pending_episode_id: Option<EpisodeId>,
+    pub images: Vec<SeriesImage>,
+}
+
+impl Series {
+    pub fn selected_image(&self, kind: ImageKind) -> Option<&Image> {
+        self.images
+            .iter()
+            .find(|img| img.kind == kind && img.selected)
+            .map(|img| &img.image)
+    }
+
+    pub fn remote_by_source(&self, source: &str) -> Option<&RemoteId> {
+        self.remotes.iter().find(|r| r.source() == source)
+    }
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
@@ -630,13 +762,24 @@ pub struct Movie {
     pub title: String,
     pub release_date: Option<Date>,
     pub overview: String,
-    pub poster: Option<Image>,
-    pub banner: Option<Image>,
-    pub fanart: Option<Image>,
-    pub remote_id: Option<RemoteId>,
+    pub remotes: Vec<RemoteId>,
     pub watched: bool,
     pub watched_count: u32,
     pub pending: bool,
+    pub images: Vec<MovieImage>,
+}
+
+impl Movie {
+    pub fn selected_image(&self, kind: ImageKind) -> Option<&Image> {
+        self.images
+            .iter()
+            .find(|img| img.kind == kind && img.selected)
+            .map(|img| &img.image)
+    }
+
+    pub fn remote_by_source(&self, source: &str) -> Option<&RemoteId> {
+        self.remotes.iter().find(|r| r.source() == source)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
@@ -1025,6 +1168,18 @@ pub struct SetMoviePendingRequest {
     pub pending: bool,
 }
 
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct SelectSeriesImageRequest {
+    pub id: SeriesImageId,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct SelectMovieImageRequest {
+    pub id: MovieImageId,
+}
+
 // ── Broadcast events ─────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Encode, Decode)]
@@ -1240,6 +1395,18 @@ api::define! {
     pub type SetMoviePending;
     impl Endpoint for SetMoviePending {
         impl Request for SetMoviePendingRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type SelectSeriesImage;
+    impl Endpoint for SelectSeriesImage {
+        impl Request for SelectSeriesImageRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type SelectMovieImage;
+    impl Endpoint for SelectMovieImage {
+        impl Request for SelectMovieImageRequest;
         type Response<'de> = Empty;
     }
 

@@ -211,7 +211,7 @@ impl SeriesList {
         html! {
             <div class="table-entry clickable" {onclick}>
                 <div class="row">
-                    if let Some(ref poster) = s.poster {
+                    if let Some(poster) = s.selected_image(api::ImageKind::Poster) {
                         <img class="poster-sm" src={poster.proxy_url()} />
                     } else {
                         <div class="poster-sm" />

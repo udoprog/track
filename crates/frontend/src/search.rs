@@ -152,7 +152,7 @@ impl Search {
                 }
                 match event.kind {
                     api::AppEventKind::SeriesCreated { series } => {
-                        if let Some(remote_id) = &series.remote_id {
+                        for remote_id in &series.remotes {
                             for r in &mut self.series {
                                 if &r.remote_id == remote_id {
                                     r.already_tracked = Some(series.id);
@@ -162,7 +162,7 @@ impl Search {
                         Ok(true)
                     }
                     api::AppEventKind::MovieCreated { movie } => {
-                        if let Some(remote_id) = &movie.remote_id {
+                        for remote_id in &movie.remotes {
                             for r in &mut self.movies {
                                 if &r.remote_id == remote_id {
                                     r.already_tracked = Some(movie.id);

@@ -232,7 +232,7 @@ impl MoviesList {
         html! {
             <div class="table-entry clickable" {onclick}>
                 <div class="row">
-                    if let Some(ref poster) = m.poster {
+                    if let Some(poster) = m.selected_image(api::ImageKind::Poster) {
                         <img class="poster-sm" src={poster.proxy_url()} />
                     } else {
                         <div class="poster-sm" />

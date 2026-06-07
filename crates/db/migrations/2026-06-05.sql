@@ -1,13 +1,10 @@
 CREATE TABLE series (
-    id        INTEGER PRIMARY KEY,
-    title     TEXT NOT NULL,
-    first_air INTEGER,
-    overview  TEXT NOT NULL DEFAULT '',
-    poster    TEXT,
-    banner    TEXT,
-    fanart    TEXT,
-    tracked   INTEGER NOT NULL DEFAULT 1,
-    remote_id TEXT
+    id                  INTEGER PRIMARY KEY,
+    title               TEXT NOT NULL,
+    first_air           INTEGER,
+    overview            TEXT NOT NULL DEFAULT '',
+    tracked             INTEGER NOT NULL DEFAULT 1,
+    pending_episode_id  INTEGER REFERENCES episodes(id) ON DELETE SET NULL
 );
 
 CREATE TABLE seasons (
@@ -42,10 +39,7 @@ CREATE TABLE movies (
     title        TEXT NOT NULL,
     release_date INTEGER,
     overview     TEXT NOT NULL DEFAULT '',
-    poster       TEXT,
-    banner       TEXT,
-    fanart       TEXT,
-    remote_id    TEXT
+    pending      INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX idx_movies_release_date ON movies (release_date) WHERE release_date IS NOT NULL;
@@ -62,4 +56,38 @@ CREATE TABLE watched (
 CREATE TABLE config (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
+);
+
+CREATE TABLE series_images (
+    id        INTEGER PRIMARY KEY,
+    series_id INTEGER NOT NULL REFERENCES series(id) ON DELETE CASCADE,
+    kind      TEXT NOT NULL,
+    source    TEXT NOT NULL,
+    path      TEXT NOT NULL,
+    selected  INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(series_id, kind, path)
+);
+
+CREATE TABLE movie_images (
+    id       INTEGER PRIMARY KEY,
+    movie_id INTEGER NOT NULL REFERENCES movies(id) ON DELETE CASCADE,
+    kind     TEXT NOT NULL,
+    source   TEXT NOT NULL,
+    path     TEXT NOT NULL,
+    selected INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(movie_id, kind, path)
+);
+
+CREATE TABLE series_remotes (
+    id        INTEGER PRIMARY KEY,
+    series_id INTEGER NOT NULL REFERENCES series(id) ON DELETE CASCADE,
+    remote_id TEXT NOT NULL,
+    UNIQUE(remote_id)
+);
+
+CREATE TABLE movie_remotes (
+    id       INTEGER PRIMARY KEY,
+    movie_id INTEGER NOT NULL REFERENCES movies(id) ON DELETE CASCADE,
+    remote_id TEXT NOT NULL,
+    UNIQUE(remote_id)
 );

@@ -3,7 +3,7 @@ use yew::prelude::*;
 
 use crate::error::{CustomContext, Error, Message};
 use crate::router::Route;
-use crate::ui::ConfirmDanger;
+use crate::ui::{ConfirmDanger, ImageGallery, ImageItem};
 
 pub(super) struct MovieDetail {
     channel: ws::Channel,
@@ -20,6 +20,7 @@ pub(super) struct MovieDetail {
     _remove_req: ws::Request,
     _sync_req: ws::Request,
     _pending_req: ws::Request,
+    _select_image_req: ws::Request,
 }
 
 pub(super) enum Msg {
@@ -33,6 +34,8 @@ pub(super) enum Msg {
     RemoveWatchedDone(Result<ws::Packet<api::RemoveWatched>, ws::Error>),
     ConfirmRemoveWatch,
     CancelRemoveWatch,
+    SelectImage(api::MovieImageId),
+    SelectImageDone(Result<ws::Packet<api::SelectMovieImage>, ws::Error>),
     ConfirmRemove,
     CancelRemove,
     RemoveMovie,
@@ -79,6 +82,7 @@ impl Component for MovieDetail {
             _remove_req: ws::Request::default(),
             _sync_req: ws::Request::default(),
             _pending_req: ws::Request::default(),
+            _select_image_req: ws::Request::default(),
         }
     }
 
@@ -279,6 +283,19 @@ impl MovieDetail {
                 }
                 Ok(true)
             }
+            Msg::SelectImage(id) => {
+                self._select_image_req = self
+                    .channel
+                    .request()
+                    .body(api::SelectMovieImageRequest { id })
+                    .on_packet(ctx.link().callback(Msg::SelectImageDone))
+                    .send();
+                Ok(false)
+            }
+            Msg::SelectImageDone(result) => {
+                result.context(Message::SyncingSeries)?;
+                Ok(false)
+            }
             Msg::Back => {
                 ctx.props().on_navigate.emit(Route::Movies);
                 Ok(false)
@@ -320,7 +337,7 @@ impl MovieDetail {
 
                 if let Some(ref m) = self.movie {
                     <span class="fill">{&m.title}</span>
-                    if m.remote_id.is_some() {
+                    if !m.remotes.is_empty() {
                         <button class="btn" onclick={link.callback(|_| Msg::SyncMovie)} title="Sync from remote">
                             <span class="icon-inline"><span class="icon arrow-path" /></span>
                             <span class="hide-mobile">{"Sync"}</span>
@@ -417,17 +434,21 @@ impl MovieDetail {
 
         html! {
             <>
-            if let Some(ref banner) = movie.banner {
+            if let Some(banner) = movie.selected_image(api::ImageKind::Banner)
+                .or_else(|| movie.selected_image(api::ImageKind::Backdrop))
+                .or_else(|| movie.selected_image(api::ImageKind::Fanart))
+            {
                 <img class="banner" src={banner.proxy_url()} />
             }
 
             <div class="detail-layout">
                 <div class="detail-sidebar section">
-                    if let Some(ref poster) = movie.poster {
+                    if let Some(poster) = movie.selected_image(api::ImageKind::Poster) {
                         <img class="poster" src={poster.proxy_url()} />
                     } else {
                         <div class="poster" />
                     }
+                    { self.view_images(ctx, movie) }
                 </div>
 
                 <div class="detail-content section">
@@ -454,6 +475,27 @@ impl MovieDetail {
                 </div>
             </div>
             </>
+        }
+    }
+
+    fn view_images(&self, ctx: &Context<Self>, movie: &api::Movie) -> Html {
+        let items: Vec<ImageItem> = movie
+            .images
+            .iter()
+            .map(|img| ImageItem {
+                id: img.id.get(),
+                kind: img.kind,
+                source: img.source,
+                image: img.image.clone(),
+                selected: img.selected,
+            })
+            .collect();
+        let link = ctx.link();
+        html! {
+            <ImageGallery
+                {items}
+                on_select={link.callback(|id| Msg::SelectImage(api::MovieImageId::new(id)))}
+            />
         }
     }
 }

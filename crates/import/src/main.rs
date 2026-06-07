@@ -204,12 +204,69 @@ fn image(s: Option<&String>) -> Option<api::Image> {
     Some(api::Image::from_raw(s.as_str()))
 }
 
+fn image_source(img: &api::Image) -> api::ImageSource {
+    match img.source() {
+        "tvdb" => api::ImageSource::Tvdb,
+        "tmdb" => api::ImageSource::Tmdb,
+        _ => api::ImageSource::Local,
+    }
+}
+
+async fn import_series_images(
+    db: &db::Database,
+    series_id: api::SeriesId,
+    g: &YamlSeriesGraphics,
+) -> Result<()> {
+    if let Some(img) = image(g.poster.as_ref()) {
+        db.upsert_series_image(series_id, api::ImageKind::Poster, image_source(&img), img.path())
+            .await?;
+    }
+    if let Some(img) = image(g.banner.as_ref()) {
+        db.upsert_series_image(series_id, api::ImageKind::Banner, image_source(&img), img.path())
+            .await?;
+    }
+    if let Some(img) = image(g.fanart.as_ref()) {
+        db.upsert_series_image(series_id, api::ImageKind::Fanart, image_source(&img), img.path())
+            .await?;
+    }
+    Ok(())
+}
+
+async fn import_movie_images(
+    db: &db::Database,
+    movie_id: api::MovieId,
+    g: &YamlMovieGraphics,
+) -> Result<()> {
+    if let Some(img) = image(g.poster.as_ref()) {
+        db.upsert_movie_image(movie_id, api::ImageKind::Poster, image_source(&img), img.path())
+            .await?;
+    }
+    if let Some(img) = image(g.banner.as_ref()) {
+        db.upsert_movie_image(movie_id, api::ImageKind::Banner, image_source(&img), img.path())
+            .await?;
+    }
+    if let Some(img) = image(g.fanart.as_ref()) {
+        db.upsert_movie_image(movie_id, api::ImageKind::Fanart, image_source(&img), img.path())
+            .await?;
+    }
+    Ok(())
+}
+
 fn remote_id(s: Option<&String>) -> Option<api::RemoteId> {
     let s = s?;
     if s.is_empty() {
         return None;
     }
     Some(api::RemoteId::from_raw(s.as_str()))
+}
+
+#[derive(Debug, Deserialize)]
+struct YamlRemote {
+    #[serde(rename = "type")]
+    kind: String,
+    uuid: Uuid,
+    #[serde(default)]
+    remotes: Vec<String>,
 }
 
 fn naive_to_date(d: NaiveDate) -> api::Date {
@@ -267,7 +324,10 @@ async fn main() -> Result<()> {
         .await
         .context("loading existing series")?
         .into_iter()
-        .filter_map(|s| s.remote_id.map(|r| (r.as_str().to_owned(), s.id)))
+        .flat_map(|s| {
+            let id = s.id;
+            s.remotes.into_iter().map(move |r| (r.as_str().to_owned(), id))
+        })
         .collect();
 
     let mut movies_by_remote: HashMap<String, api::MovieId> = db
@@ -275,7 +335,10 @@ async fn main() -> Result<()> {
         .await
         .context("loading existing movies")?
         .into_iter()
-        .filter_map(|m| m.remote_id.map(|r| (r.as_str().to_owned(), m.id)))
+        .flat_map(|m| {
+            let id = m.id;
+            m.remotes.into_iter().map(move |r| (r.as_str().to_owned(), id))
+        })
         .collect();
 
     // (episode_id or movie_id as u64, timestamp string) — covers both kinds
@@ -330,35 +393,11 @@ async fn main() -> Result<()> {
     tracing::info!("importing {total_series} series");
 
     for (i, s) in all_series.iter().enumerate() {
-        let series_id = if let Some(rid) = &s.remote_id {
-            if let Some(&existing_id) = series_by_remote.get(rid.as_str()) {
-                existing_id
-            } else {
-                let inserted = db
-                    .create_series(
-                        &s.title,
-                        s.first_air_date
-                            .as_ref()
-                            .map(|d| naive_to_date(*d))
-                            .as_ref(),
-                        &s.overview,
-                        image(s.graphics.poster.as_ref()).as_ref(),
-                        image(s.graphics.banner.as_ref()).as_ref(),
-                        image(s.graphics.fanart.as_ref()).as_ref(),
-                        Some(&api::RemoteId::from_raw(rid.as_str())),
-                    )
-                    .await
-                    .with_context(|| format!("inserting series '{}'", s.title))?;
-
-                if !s.tracked {
-                    db.set_series_tracked(inserted.id, false).await?;
-                }
-
-                series_by_remote.insert(rid.clone(), inserted.id);
-                inserted.id
-            }
+        let series_id = if let Some(rid) = &s.remote_id
+            && let Some(&existing_id) = series_by_remote.get(rid.as_str())
+        {
+            existing_id
         } else {
-            // No remote_id: always insert (can't reliably deduplicate)
             let inserted = db
                 .create_series(
                     &s.title,
@@ -367,16 +406,19 @@ async fn main() -> Result<()> {
                         .map(|d| naive_to_date(*d))
                         .as_ref(),
                     &s.overview,
-                    image(s.graphics.poster.as_ref()).as_ref(),
-                    image(s.graphics.banner.as_ref()).as_ref(),
-                    image(s.graphics.fanart.as_ref()).as_ref(),
-                    None,
                 )
                 .await
                 .with_context(|| format!("inserting series '{}'", s.title))?;
 
             if !s.tracked {
                 db.set_series_tracked(inserted.id, false).await?;
+            }
+            import_series_images(&db, inserted.id, &s.graphics).await?;
+
+            if let Some(rid) = &s.remote_id {
+                let remote = api::RemoteId::from_raw(rid.as_str());
+                db.add_series_remote(inserted.id, &remote).await?;
+                series_by_remote.insert(rid.clone(), inserted.id);
             }
 
             inserted.id
@@ -461,39 +503,27 @@ async fn main() -> Result<()> {
     tracing::info!("importing {total_movies} movies");
 
     for (i, m) in all_movies.iter().enumerate() {
-        let movie_id = if let Some(rid) = &m.remote_id {
-            if let Some(&existing_id) = movies_by_remote.get(rid.as_str()) {
-                existing_id
-            } else {
-                let inserted = db
-                    .create_movie(
-                        &m.title,
-                        m.release_date.as_ref().map(|d| naive_to_date(*d)).as_ref(),
-                        &m.overview,
-                        image(m.graphics.poster.as_ref()).as_ref(),
-                        image(m.graphics.banner.as_ref()).as_ref(),
-                        image(m.graphics.fanart.as_ref()).as_ref(),
-                        Some(&api::RemoteId::from_raw(rid.as_str())),
-                    )
-                    .await
-                    .with_context(|| format!("inserting movie '{}'", m.title))?;
-
-                movies_by_remote.insert(rid.clone(), inserted.id);
-                inserted.id
-            }
+        let movie_id = if let Some(rid) = &m.remote_id
+            && let Some(&existing_id) = movies_by_remote.get(rid.as_str())
+        {
+            existing_id
         } else {
             let inserted = db
                 .create_movie(
                     &m.title,
                     m.release_date.as_ref().map(|d| naive_to_date(*d)).as_ref(),
                     &m.overview,
-                    image(m.graphics.poster.as_ref()).as_ref(),
-                    image(m.graphics.banner.as_ref()).as_ref(),
-                    image(m.graphics.fanart.as_ref()).as_ref(),
-                    None,
                 )
                 .await
                 .with_context(|| format!("inserting movie '{}'", m.title))?;
+
+            import_movie_images(&db, inserted.id, &m.graphics).await?;
+
+            if let Some(rid) = &m.remote_id {
+                let remote = api::RemoteId::from_raw(rid.as_str());
+                db.add_movie_remote(inserted.id, &remote).await?;
+                movies_by_remote.insert(rid.clone(), inserted.id);
+            }
 
             inserted.id
         };
@@ -577,6 +607,52 @@ async fn main() -> Result<()> {
         tracing::warn!(
             "{skipped} watched entries skipped (referencing missing series/episodes/movies)"
         );
+    }
+
+    // ── Remotes ───────────────────────────────────────────────────────────────
+    let remotes_path = source.join("remotes.yaml");
+    if remotes_path.exists() {
+        let all_remotes: Vec<YamlRemote> =
+            parse_yaml_docs(&remotes_path).context("parsing remotes.yaml")?;
+
+        tracing::info!("importing remotes from {} entries", all_remotes.len());
+        let mut added = 0usize;
+
+        for entry in &all_remotes {
+            match entry.kind.as_str() {
+                "series" => {
+                    let Some(&series_id) = series_map.get(&entry.uuid) else {
+                        continue;
+                    };
+                    for rid in &entry.remotes {
+                        let remote = api::RemoteId::from_raw(rid.as_str());
+                        db.add_series_remote(series_id, &remote)
+                            .await
+                            .with_context(|| {
+                                format!("adding remote {rid} to series {:?}", entry.uuid)
+                            })?;
+                        added += 1;
+                    }
+                }
+                "movie" => {
+                    let Some(&movie_id) = movie_map.get(&entry.uuid) else {
+                        continue;
+                    };
+                    for rid in &entry.remotes {
+                        let remote = api::RemoteId::from_raw(rid.as_str());
+                        db.add_movie_remote(movie_id, &remote)
+                            .await
+                            .with_context(|| {
+                                format!("adding remote {rid} to movie {:?}", entry.uuid)
+                            })?;
+                        added += 1;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        tracing::info!("added {added} remote IDs");
     }
 
     tracing::info!("import complete");
