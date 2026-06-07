@@ -17,6 +17,7 @@ pub(crate) async fn sync_series(
     db: &Database,
     remote: &RemoteClients,
     broadcast: &Broadcaster,
+    pending: &crate::pending::PendingSystem,
 ) -> Result<()> {
     let series = db
         .series_by_id(series_id)
@@ -43,6 +44,7 @@ pub(crate) async fn sync_series(
         None => anyhow::bail!("series has no syncable remote (tmdb or tvdb)"),
     }
 
+    pending.fill_for_series(series_id).await?;
     broadcast_event(broadcast, api::AppEventKind::PendingChanged);
     Ok(())
 }
@@ -232,6 +234,7 @@ pub(crate) async fn sync_movie(
     db: &Database,
     remote: &RemoteClients,
     broadcast: &Broadcaster,
+    pending: &crate::pending::PendingSystem,
 ) -> Result<()> {
     let movie = db.movie_by_id(movie_id).await?.context("movie not found")?;
 
@@ -275,6 +278,7 @@ pub(crate) async fn sync_movie(
         None => anyhow::bail!("movie has no syncable remote (tmdb)"),
     }
 
+    pending.discover_movies().await?;
     broadcast_event(broadcast, api::AppEventKind::PendingChanged);
     Ok(())
 }

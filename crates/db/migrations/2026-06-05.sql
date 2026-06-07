@@ -4,8 +4,7 @@ CREATE TABLE series (
     first_air           INTEGER,
     overview            TEXT NOT NULL DEFAULT '',
     tracked             INTEGER NOT NULL DEFAULT 1,
-    sync_source         TEXT,
-    pending_episode_id  INTEGER REFERENCES episodes(id) ON DELETE SET NULL
+    sync_source         TEXT
 );
 
 CREATE TABLE seasons (
@@ -40,7 +39,6 @@ CREATE TABLE movies (
     title        TEXT NOT NULL,
     release_date INTEGER,
     overview     TEXT NOT NULL DEFAULT '',
-    pending      INTEGER NOT NULL DEFAULT 0,
     tracked      INTEGER NOT NULL DEFAULT 1,
     sync_source  TEXT
 );
@@ -54,6 +52,18 @@ CREATE TABLE watched (
     movie_id   INTEGER REFERENCES movies(id) ON DELETE CASCADE,
     CHECK((episode_id IS NULL) != (movie_id IS NULL))
 );
+
+CREATE TABLE pending (
+    id         INTEGER PRIMARY KEY,
+    timestamp  INTEGER NOT NULL,
+    episode_id INTEGER REFERENCES episodes(id) ON DELETE CASCADE,
+    movie_id   INTEGER REFERENCES movies(id) ON DELETE CASCADE,
+    CHECK((episode_id IS NULL) != (movie_id IS NULL))
+);
+
+CREATE INDEX idx_pending_timestamp ON pending (timestamp);
+CREATE UNIQUE INDEX idx_pending_episode ON pending (episode_id) WHERE episode_id IS NOT NULL;
+CREATE UNIQUE INDEX idx_pending_movie   ON pending (movie_id)   WHERE movie_id   IS NOT NULL;
 
 CREATE TABLE config (
     key   TEXT PRIMARY KEY,

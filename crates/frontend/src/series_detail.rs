@@ -58,11 +58,10 @@ pub(super) enum Msg {
     SyncDone(Result<ws::Packet<api::SyncSeries>, ws::Error>),
     ToggleHistory(api::EpisodeId),
     HistoryLoaded(Result<ws::Packet<api::ListWatched>, ws::Error>),
-    SetNextEpisode(Option<api::EpisodeId>),
-    SetNextEpisodeDone(
-        Option<api::EpisodeId>,
-        Result<ws::Packet<api::SetNextEpisode>, ws::Error>,
-    ),
+    AddPending(api::EpisodeId),
+    AddPendingDone(Result<ws::Packet<api::AddPending>, ws::Error>),
+    RemovePending(api::EpisodeId),
+    RemovePendingDone(Result<ws::Packet<api::RemovePending>, ws::Error>),
     SelectImage(api::ImageId),
     SelectImageDone(Result<ws::Packet<api::SelectImage>, ws::Error>),
     SetSyncSource(api::SyncSource),
@@ -489,28 +488,43 @@ impl SeriesDetail {
                     .watched;
                 Ok(true)
             }
-            Msg::SetNextEpisode(episode_id) => {
+            Msg::AddPending(episode_id) => {
                 let series_id = ctx.props().series_id;
                 self._set_next_req = self
                     .channel
                     .request()
-                    .body(api::SetNextEpisodeRequest {
-                        series_id,
-                        episode_id,
+                    .body(api::AddPendingRequest {
+                        kind: api::PendingKind::Episode {
+                            series: series_id,
+                            episode: episode_id,
+                        },
                     })
-                    .on_packet(
-                        ctx.link()
-                            .callback(move |r| Msg::SetNextEpisodeDone(episode_id, r)),
-                    )
+                    .on_packet(ctx.link().callback(Msg::AddPendingDone))
                     .send();
                 Ok(false)
             }
-            Msg::SetNextEpisodeDone(episode_id, result) => {
+            Msg::AddPendingDone(result) => {
                 result.context(Message::SyncingSeries)?;
-                if let Some(ref mut series) = self.series {
-                    series.pending_episode_id = episode_id;
-                }
-                Ok(true)
+                Ok(false)
+            }
+            Msg::RemovePending(episode_id) => {
+                let series_id = ctx.props().series_id;
+                self._set_next_req = self
+                    .channel
+                    .request()
+                    .body(api::RemovePendingRequest {
+                        kind: api::PendingKind::Episode {
+                            series: series_id,
+                            episode: episode_id,
+                        },
+                    })
+                    .on_packet(ctx.link().callback(Msg::RemovePendingDone))
+                    .send();
+                Ok(false)
+            }
+            Msg::RemovePendingDone(result) => {
+                result.context(Message::SyncingSeries)?;
+                Ok(false)
             }
             Msg::SelectImage(id) => {
                 self._select_image_req = self
@@ -768,7 +782,6 @@ impl SeriesDetail {
                     let watched = ep.watched;
                     let last_watched_id = ep.last_watched_id;
                     let expanded = self.expanded_episode == Some(episode_id);
-                    let is_next = series.pending_episode_id == Some(episode_id);
                     let on_mark = link.callback(move |_| Msg::MarkWatched(series_id, episode_id));
                     let on_remove_confirm = last_watched_id.map(|wid| {
                         link.callback(move |_| Msg::ConfirmRemoveWatch(wid))
@@ -779,11 +792,8 @@ impl SeriesDetail {
                     let on_toggle_history = watched.then(|| {
                         link.callback(move |_| Msg::ToggleHistory(episode_id))
                     });
-                    let on_set_next = if is_next {
-                        link.callback(|_| Msg::SetNextEpisode(None))
-                    } else {
-                        link.callback(move |_| Msg::SetNextEpisode(Some(episode_id)))
-                    };
+                    let on_add_pending = link.callback(move |_| Msg::AddPending(episode_id));
+                    let on_remove_pending = link.callback(move |_| Msg::RemovePending(episode_id));
 
                     let actions = 'actions: {
                         if let Some(wid) = last_watched_id && confirming_remove_watch {
@@ -806,10 +816,6 @@ impl SeriesDetail {
                                 <span class="fill">
                                     { ep.name.as_deref().unwrap_or("—") }
                                 </span>
-
-                                if is_next {
-                                    <span class="status">{"Next"}</span>
-                                }
 
                                 if let Some(date) = ep.aired {
                                     <span class="text-muted">{date.to_string()}</span>
@@ -840,10 +846,11 @@ impl SeriesDetail {
                                     </button>
                                 }
 
-                                <button class={if is_next { "btn-icon-primary" } else { "btn-icon" }}
-                                    onclick={on_set_next}
-                                    title={if is_next { "Clear next episode" } else { "Set as next episode" }}>
+                                <button class="btn-icon" onclick={on_add_pending} title="Add to pending">
                                     <span class="icon bookmark" />
+                                </button>
+                                <button class="btn-icon" onclick={on_remove_pending} title="Remove from pending">
+                                    <span class="icon bookmark-slash" />
                                 </button>
                             </div>
                         }

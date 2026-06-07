@@ -36,7 +36,6 @@ struct SeriesRow {
     overview: String,
     tracked: bool,
     sync_source: Option<SyncSource>,
-    pending_episode_id: Option<EpisodeId>,
 }
 
 #[derive(Row)]
@@ -93,7 +92,6 @@ struct MovieRow {
     overview: String,
     watched: bool,
     watched_count: i64,
-    pending: bool,
     tracked: bool,
     sync_source: Option<SyncSource>,
 }
@@ -114,23 +112,31 @@ struct InsertWatchedRow {
 }
 
 #[derive(Row)]
-struct PendingEpisodeRow {
-    series_id: SeriesId,
-    episode_id: EpisodeId,
-    aired: Option<Date>,
-    series_title: String,
+struct PendingRow {
+    id: api::PendingId,
+    timestamp: api::Timestamp,
+    episode_id: Option<api::EpisodeId>,
+    movie_id: Option<api::MovieId>,
+    series_id: Option<api::SeriesId>,
+    series_title: Option<String>,
     episode_name: Option<String>,
-    season: i64,
-    number: i64,
-    poster: Option<Image>,
+    season: Option<i64>,
+    number: Option<i64>,
+    movie_title: Option<String>,
+    poster: Option<api::Image>,
+    aired: Option<api::Date>,
 }
 
 #[derive(Row)]
-struct PendingMovieRow {
-    movie_id: MovieId,
-    title: String,
-    release_date: Option<Date>,
-    poster: Option<Image>,
+struct NextEpisodeRow {
+    id: api::EpisodeId,
+    aired: Option<api::Date>,
+}
+
+#[derive(Row)]
+struct PendingMovieCandidateRow {
+    id: api::MovieId,
+    release_date: Option<api::Date>,
 }
 
 #[derive(Row)]
@@ -190,24 +196,21 @@ statements! {
         insert_series: r#"
             INSERT INTO series (title, first_air, overview, tracked)
             VALUES (?, ?, ?, ?)
-            RETURNING id, title, first_air, overview, tracked, sync_source, NULL AS pending_episode_id
+            RETURNING id, title, first_air, overview, tracked, sync_source
         "#,
         list_series: r#"
-            SELECT id, title, first_air, overview, tracked, sync_source, pending_episode_id
+            SELECT id, title, first_air, overview, tracked, sync_source
             FROM series ORDER BY title
         "#,
         series_by_id: r#"
-            SELECT id, title, first_air, overview, tracked, sync_source, pending_episode_id
+            SELECT id, title, first_air, overview, tracked, sync_source
             FROM series WHERE id = ?
         "#,
         series_by_remote: r#"
-            SELECT s.id, s.title, s.first_air, s.overview, s.tracked, s.sync_source, s.pending_episode_id
+            SELECT s.id, s.title, s.first_air, s.overview, s.tracked, s.sync_source
             FROM series s
             JOIN remotes r ON r.series_id = s.id
             WHERE r.remote_id = ?
-        "#,
-        set_series_next_episode: r#"
-            UPDATE series SET pending_episode_id = ? WHERE id = ?
         "#,
         update_series: r#"
             UPDATE series
@@ -326,33 +329,30 @@ statements! {
         insert_movie: r#"
             INSERT INTO movies (title, release_date, overview, tracked)
             VALUES (?, ?, ?, ?)
-            RETURNING id, title, release_date, overview, 0 AS watched, 0 AS watched_count, 0 AS pending, tracked, sync_source
+            RETURNING id, title, release_date, overview, 0 AS watched, 0 AS watched_count, tracked, sync_source
         "#,
         list_movies: r#"
             SELECT m.id, m.title, m.release_date, m.overview,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) > 0 AS watched,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) AS watched_count,
-                   m.pending, m.tracked, m.sync_source
+                   m.tracked, m.sync_source
             FROM movies m ORDER BY m.title
         "#,
         movie_by_id: r#"
             SELECT m.id, m.title, m.release_date, m.overview,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) > 0 AS watched,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) AS watched_count,
-                   m.pending, m.tracked, m.sync_source
+                   m.tracked, m.sync_source
             FROM movies m WHERE m.id = ?
         "#,
         movie_by_remote: r#"
             SELECT m.id, m.title, m.release_date, m.overview,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) > 0 AS watched,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) AS watched_count,
-                   m.pending, m.tracked, m.sync_source
+                   m.tracked, m.sync_source
             FROM movies m
             JOIN remotes r ON r.movie_id = m.id
             WHERE r.remote_id = ?
-        "#,
-        set_movie_pending: r#"
-            UPDATE movies SET pending = ? WHERE id = ?
         "#,
         set_movie_tracked: r#"
             UPDATE movies SET tracked = ? WHERE id = ?
@@ -397,56 +397,61 @@ statements! {
             FROM watched WHERE movie_id = ? ORDER BY timestamp DESC
         "#,
 
-        // pending (unwatched aired episodes + unwatched movies)
-        list_pending_episodes: r#"
-            SELECT e.series_id, e.id AS episode_id, e.aired,
-                   s.title AS series_title,
-                   e.name AS episode_name,
-                   e.season, e.number,
-                   (SELECT source || ':' || path FROM images
-                    WHERE series_id = s.id AND kind = 'poster' AND selected = 1 LIMIT 1) AS poster
-            FROM series s
-            JOIN episodes e ON e.id = s.pending_episode_id
-            WHERE s.tracked = 1
-              AND s.pending_episode_id IS NOT NULL
-
-            UNION ALL
-
-            SELECT e.series_id, e.id AS episode_id, e.aired,
-                   s.title AS series_title,
-                   e.name AS episode_name,
-                   e.season, e.number,
-                   (SELECT source || ':' || path FROM images
-                    WHERE series_id = s.id AND kind = 'poster' AND selected = 1 LIMIT 1) AS poster
+        // pending table management
+        upsert_pending_episode: r#"
+            INSERT INTO pending (timestamp, episode_id) VALUES (?, ?)
+            ON CONFLICT(episode_id) WHERE episode_id IS NOT NULL
+                DO UPDATE SET timestamp = excluded.timestamp
+        "#,
+        upsert_pending_movie: r#"
+            INSERT INTO pending (timestamp, movie_id) VALUES (?, ?)
+            ON CONFLICT(movie_id) WHERE movie_id IS NOT NULL
+                DO UPDATE SET timestamp = excluded.timestamp
+        "#,
+        delete_pending_episode: r#"DELETE FROM pending WHERE episode_id = ?"#,
+        delete_pending_movie: r#"DELETE FROM pending WHERE movie_id = ?"#,
+        has_pending_episode_for_series: r#"
+            SELECT 1 FROM pending p
+            JOIN episodes e ON e.id = p.episode_id
+            WHERE e.series_id = ?
+            LIMIT 1
+        "#,
+        next_pending_episode_for_series: r#"
+            SELECT e.id, e.aired
             FROM episodes e
-            JOIN series s ON s.id = e.series_id
-            WHERE s.tracked = 1
-              AND s.pending_episode_id IS NULL
+            WHERE e.series_id = ?
               AND e.aired IS NOT NULL
               AND e.aired <= ?
               AND NOT EXISTS (SELECT 1 FROM watched w WHERE w.episode_id = e.id)
-              AND NOT EXISTS (
-                SELECT 1 FROM episodes e2
-                WHERE e2.series_id = e.series_id
-                  AND e2.aired IS NOT NULL
-                  AND e2.aired <= ?
-                  AND NOT EXISTS (SELECT 1 FROM watched w2 WHERE w2.episode_id = e2.id)
-                  AND (e2.season < e.season OR (e2.season = e.season AND e2.number < e.number))
-              )
-
-            ORDER BY aired DESC, series_title, season, number
+            ORDER BY e.season, e.number
+            LIMIT 1
         "#,
-        list_pending_movies: r#"
-            SELECT m.id AS movie_id, m.title, m.release_date,
-                   (SELECT source || ':' || path FROM images
-                    WHERE movie_id = m.id AND kind = 'poster' AND selected = 1 LIMIT 1) AS poster
+        movies_needing_pending: r#"
+            SELECT m.id, m.release_date
             FROM movies m
-            WHERE (
-                m.release_date IS NOT NULL
-                AND m.release_date <= ?
-                AND NOT EXISTS (SELECT 1 FROM watched w WHERE w.movie_id = m.id)
-            ) OR m.pending = 1
-            ORDER BY m.release_date DESC, m.title
+            WHERE m.tracked = 1
+              AND m.release_date IS NOT NULL
+              AND m.release_date <= ?
+              AND NOT EXISTS (SELECT 1 FROM watched w WHERE w.movie_id = m.id)
+              AND NOT EXISTS (SELECT 1 FROM pending p WHERE p.movie_id = m.id)
+        "#,
+        list_pending: r#"
+            SELECT p.id, p.timestamp, p.episode_id, p.movie_id,
+                   e.series_id, s.title AS series_title, e.name AS episode_name,
+                   e.season, e.number,
+                   m.title AS movie_title,
+                   COALESCE(e.aired, m.release_date) AS aired,
+                   COALESCE(
+                       (SELECT source || ':' || path FROM images
+                        WHERE series_id = e.series_id AND kind = 'poster' AND selected = 1 LIMIT 1),
+                       (SELECT source || ':' || path FROM images
+                        WHERE movie_id = p.movie_id AND kind = 'poster' AND selected = 1 LIMIT 1)
+                   ) AS poster
+            FROM pending p
+            LEFT JOIN episodes e ON e.id = p.episode_id
+            LEFT JOIN series   s ON s.id = e.series_id
+            LEFT JOIN movies   m ON m.id = p.movie_id
+            ORDER BY p.timestamp DESC, series_title, m.title
         "#,
 
         // schedule: episodes airing in the next N days
@@ -672,24 +677,6 @@ impl Database {
             ensure!(
                 s.set_series_sync_source.step()?.is_done(),
                 "set_series_sync_source"
-            );
-            Ok(())
-        })
-        .await?
-    }
-
-    pub async fn set_series_next_episode(
-        &self,
-        series_id: SeriesId,
-        episode_id: Option<EpisodeId>,
-    ) -> Result<()> {
-        let mut s = self.inner.clone().lock_owned().await;
-
-        spawn_blocking(move || {
-            s.set_series_next_episode.bind((episode_id, series_id))?;
-            ensure!(
-                s.set_series_next_episode.step()?.is_done(),
-                "set_series_next_episode"
             );
             Ok(())
         })
@@ -996,17 +983,6 @@ impl Database {
         .await?
     }
 
-    pub async fn set_movie_pending(&self, id: MovieId, pending: bool) -> Result<()> {
-        let mut s = self.inner.clone().lock_owned().await;
-
-        spawn_blocking(move || {
-            s.set_movie_pending.bind((pending, id))?;
-            ensure!(s.set_movie_pending.step()?.is_done(), "set_movie_pending");
-            Ok(())
-        })
-        .await?
-    }
-
     pub async fn set_movie_tracked(&self, id: MovieId, tracked: bool) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
@@ -1226,60 +1202,200 @@ impl Database {
         .await?
     }
 
-    // ── Dashboard queries ──
+    // ── Pending table ──
 
-    pub async fn pending_episodes(&self) -> Result<Vec<api::Pending>> {
-        let today = api::Date::today();
+    pub async fn add_pending_episode(
+        &self,
+        episode_id: api::EpisodeId,
+        ts: api::Timestamp,
+    ) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
         spawn_blocking(move || {
-            s.list_pending_episodes.bind((today, today))?;
+            s.upsert_pending_episode.bind((ts, episode_id))?;
+            ensure!(
+                s.upsert_pending_episode.step()?.is_done(),
+                "upsert_pending_episode"
+            );
+            s.upsert_pending_episode.reset()?;
+            Ok(())
+        })
+        .await?
+    }
+
+    pub async fn add_pending_movie(
+        &self,
+        movie_id: api::MovieId,
+        ts: api::Timestamp,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.upsert_pending_movie.bind((ts, movie_id))?;
+            ensure!(
+                s.upsert_pending_movie.step()?.is_done(),
+                "upsert_pending_movie"
+            );
+            s.upsert_pending_movie.reset()?;
+            Ok(())
+        })
+        .await?
+    }
+
+    pub async fn remove_pending_episode(&self, episode_id: api::EpisodeId) -> Result<()> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.delete_pending_episode.bind((episode_id,))?;
+            ensure!(
+                s.delete_pending_episode.step()?.is_done(),
+                "delete_pending_episode"
+            );
+            s.delete_pending_episode.reset()?;
+            Ok(())
+        })
+        .await?
+    }
+
+    pub async fn remove_pending_movie(&self, movie_id: api::MovieId) -> Result<()> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.delete_pending_movie.bind((movie_id,))?;
+            ensure!(
+                s.delete_pending_movie.step()?.is_done(),
+                "delete_pending_movie"
+            );
+            s.delete_pending_movie.reset()?;
+            Ok(())
+        })
+        .await?
+    }
+
+    /// Fill the pending slot for a series, but ONLY if it currently has no pending episode.
+    /// Called after sync upserts episodes, and after MarkWatched clears the old pending row.
+    pub async fn fill_pending_for_series(&self, series_id: api::SeriesId) -> Result<()> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            // 1. Check if there is already a pending episode for this series
+            s.has_pending_episode_for_series.bind((series_id,))?;
+            let already_has = s.has_pending_episode_for_series.next::<(i64,)>()?.is_some();
+            s.has_pending_episode_for_series.reset()?;
+
+            if already_has {
+                return Ok(());
+            }
+
+            // 2. Find the next unwatched aired episode
+            let today = api::Date::today();
+            s.next_pending_episode_for_series.bind((series_id, today))?;
+            let next = s.next_pending_episode_for_series.next::<NextEpisodeRow>()?;
+            s.next_pending_episode_for_series.reset()?;
+
+            if let Some(r) = next {
+                let ts = r
+                    .aired
+                    .map(|d| d.to_timestamp())
+                    .unwrap_or_else(api::Timestamp::now);
+                s.upsert_pending_episode.bind((ts, r.id))?;
+                ensure!(
+                    s.upsert_pending_episode.step()?.is_done(),
+                    "upsert_pending_episode"
+                );
+                s.upsert_pending_episode.reset()?;
+            }
+
+            Ok(())
+        })
+        .await?
+    }
+
+    /// Auto-discover movies past their release date that are not yet pending or watched.
+    /// Called after movie sync and once at startup.
+    pub async fn discover_pending_movies(&self) -> Result<()> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            let today = api::Date::today();
+            s.movies_needing_pending.bind((today,))?;
+
+            let mut candidates = Vec::new();
+            while let Some(r) = s
+                .movies_needing_pending
+                .next::<PendingMovieCandidateRow>()?
+            {
+                candidates.push(r);
+            }
+            s.movies_needing_pending.reset()?;
+
+            for r in candidates {
+                let ts = r
+                    .release_date
+                    .map(|d| d.to_timestamp())
+                    .unwrap_or_else(api::Timestamp::now);
+                s.upsert_pending_movie.bind((ts, r.id))?;
+                ensure!(
+                    s.upsert_pending_movie.step()?.is_done(),
+                    "upsert_pending_movie"
+                );
+                s.upsert_pending_movie.reset()?;
+            }
+
+            Ok(())
+        })
+        .await?
+    }
+
+    /// Unified pending list replacing pending_episodes + pending_movies.
+    pub async fn pending(&self) -> Result<Vec<api::Pending>> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.list_pending.reset()?;
             let mut out = Vec::new();
 
-            while let Some(r) = s.list_pending_episodes.next::<PendingEpisodeRow>()? {
-                let label = match r.episode_name {
-                    Some(ref name) => format!("S{:02}E{:02} – {}", r.season, r.number, name),
-                    None => format!("S{:02}E{:02}", r.season, r.number),
+            while let Some(r) = s.list_pending.next::<PendingRow>()? {
+                let (kind, label, series_title) = if r.episode_id.is_some() {
+                    let label = match r.episode_name {
+                        Some(ref name) => format!(
+                            "S{:02}E{:02} \u{2013} {}",
+                            r.season.unwrap_or(0),
+                            r.number.unwrap_or(0),
+                            name
+                        ),
+                        None => {
+                            format!("S{:02}E{:02}", r.season.unwrap_or(0), r.number.unwrap_or(0))
+                        }
+                    };
+                    let kind = api::PendingKind::Episode {
+                        series: r.series_id.unwrap(),
+                        episode: r.episode_id.unwrap(),
+                    };
+                    (kind, label, r.series_title)
+                } else {
+                    let label = r.movie_title.unwrap_or_default();
+                    let kind = api::PendingKind::Movie {
+                        movie: r.movie_id.unwrap(),
+                    };
+                    (kind, label, None)
                 };
 
                 out.push(api::Pending {
-                    kind: api::PendingKind::Episode {
-                        series: r.series_id,
-                        episode: r.episode_id,
-                    },
+                    kind,
                     aired: r.aired,
-                    series_title: Some(r.series_title),
+                    series_title,
                     label,
                     poster: r.poster,
                 });
             }
 
-            s.list_pending_episodes.reset()?;
             Ok(out)
         })
         .await?
     }
 
-    pub async fn pending_movies(&self) -> Result<Vec<api::Pending>> {
-        let today = api::Date::today();
-        let mut s = self.inner.clone().lock_owned().await;
-
-        spawn_blocking(move || {
-            s.list_pending_movies.bind((today,))?;
-            let mut out = Vec::new();
-            while let Some(r) = s.list_pending_movies.next::<PendingMovieRow>()? {
-                out.push(api::Pending {
-                    kind: api::PendingKind::Movie { movie: r.movie_id },
-                    aired: r.release_date,
-                    series_title: None,
-                    label: r.title,
-                    poster: r.poster,
-                });
-            }
-            Ok(out)
-        })
-        .await?
-    }
+    // ── Dashboard queries ──
 
     pub async fn schedule(&self, days: u32) -> Result<Vec<api::ScheduledDay>> {
         let today = api::Date::today();
@@ -1474,7 +1590,6 @@ fn series_from_row(r: SeriesRow) -> api::Series {
         tracked: r.tracked,
         sync_source: r.sync_source,
         remotes: Vec::new(),
-        pending_episode_id: r.pending_episode_id,
         images: Vec::new(),
     }
 }
@@ -1530,7 +1645,6 @@ fn movie_from_row(r: MovieRow) -> api::Movie {
         watched: r.watched,
         tracked: r.tracked,
         watched_count: r.watched_count as u32,
-        pending: r.pending,
         images: Vec::new(),
     }
 }

@@ -1,5 +1,6 @@
 mod app_broadcast;
 mod cache;
+mod pending;
 mod proxy;
 mod remote;
 #[cfg(feature = "bundle")]
@@ -14,6 +15,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use crate::app_broadcast::Broadcaster;
+use crate::pending::PendingSystem;
 use anyhow::{Context as _, Result};
 use axum::Router;
 use axum::routing::get;
@@ -35,6 +37,7 @@ struct AppState {
     cache: ImageCache,
     queue: TaskQueue,
     remote: RemoteClients,
+    pending: PendingSystem,
 }
 
 #[derive(Parser)]
@@ -84,12 +87,16 @@ async fn main() -> Result<()> {
         remote.configure(&config);
     }
 
+    let pending = PendingSystem::new(db.clone());
+    pending.discover_movies().await.ok();
+
     // Spawn the task queue worker.
-    tokio::spawn(
-        queue
-            .clone()
-            .run(db.clone(), remote.clone(), broadcast.clone()),
-    );
+    tokio::spawn(queue.clone().run(
+        db.clone(),
+        remote.clone(),
+        broadcast.clone(),
+        pending.clone(),
+    ));
 
     // Spawn the automatic background sync loop.
     tokio::spawn({
@@ -143,6 +150,7 @@ async fn main() -> Result<()> {
         cache,
         queue,
         remote,
+        pending,
     };
 
     let app = Router::new();

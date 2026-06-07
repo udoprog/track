@@ -133,7 +133,13 @@ impl TaskQueue {
         }
     }
 
-    pub(crate) async fn run(self, db: Database, remote: RemoteClients, broadcast: Broadcaster) {
+    pub(crate) async fn run(
+        self,
+        db: Database,
+        remote: RemoteClients,
+        broadcast: Broadcaster,
+        pending: crate::pending::PendingSystem,
+    ) {
         loop {
             // Determine how long to sleep until the next task is ready.
             let sleep_until = {
@@ -171,7 +177,7 @@ impl TaskQueue {
                 "task queue task started",
             );
 
-            let result = execute(&task, &db, &remote, &broadcast).await;
+            let result = execute(&task, &db, &remote, &broadcast, &pending).await;
 
             if result.is_ok() {
                 match &task.kind {
@@ -244,13 +250,14 @@ async fn execute(
     db: &Database,
     remote: &RemoteClients,
     broadcast: &Broadcaster,
+    pending: &crate::pending::PendingSystem,
 ) -> Result<()> {
     match &task.kind {
         api::TaskKind::SyncSeries { series_id, .. } => {
-            sync::sync_series(*series_id, db, remote, broadcast).await
+            sync::sync_series(*series_id, db, remote, broadcast, pending).await
         }
         api::TaskKind::SyncMovie { movie_id, .. } => {
-            sync::sync_movie(*movie_id, db, remote, broadcast).await
+            sync::sync_movie(*movie_id, db, remote, broadcast, pending).await
         }
     }
 }

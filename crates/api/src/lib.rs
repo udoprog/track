@@ -78,6 +78,7 @@ define_id!(MovieId);
 define_id!(WatchedId);
 define_id!(TaskId);
 define_id!(ImageId);
+define_id!(PendingId);
 
 /// RFC 3339 UTC-normalised timestamp stored as TEXT.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -259,6 +260,16 @@ impl Date {
                 .checked_add(jiff::Span::new().days(days))
                 .unwrap_or(self.0),
         )
+    }
+
+    pub fn to_timestamp(self) -> Timestamp {
+        let ts = self
+            .0
+            .at(0, 0, 0, 0)
+            .to_zoned(jiff::tz::TimeZone::UTC)
+            .expect("valid UTC midnight")
+            .timestamp();
+        Timestamp(ts)
     }
 }
 
@@ -756,7 +767,6 @@ pub struct Series {
     pub tracked: bool,
     pub sync_source: Option<SyncSource>,
     pub remotes: Vec<RemoteId>,
-    pub pending_episode_id: Option<EpisodeId>,
     pub images: Vec<MediaImage>,
 }
 
@@ -833,7 +843,6 @@ pub struct Movie {
     pub watched: bool,
     pub watched_count: u32,
     pub tracked: bool,
-    pub pending: bool,
     pub images: Vec<MediaImage>,
 }
 
@@ -1258,16 +1267,14 @@ pub struct SetConfigRequest {
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
-pub struct SetNextEpisodeRequest {
-    pub series_id: SeriesId,
-    pub episode_id: Option<EpisodeId>,
+pub struct AddPendingRequest {
+    pub kind: PendingKind,
 }
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
-pub struct SetMoviePendingRequest {
-    pub id: MovieId,
-    pub pending: bool,
+pub struct RemovePendingRequest {
+    pub kind: PendingKind,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -1500,15 +1507,15 @@ api::define! {
         type Response<'de> = Empty;
     }
 
-    pub type SetNextEpisode;
-    impl Endpoint for SetNextEpisode {
-        impl Request for SetNextEpisodeRequest;
+    pub type AddPending;
+    impl Endpoint for AddPending {
+        impl Request for AddPendingRequest;
         type Response<'de> = Empty;
     }
 
-    pub type SetMoviePending;
-    impl Endpoint for SetMoviePending {
-        impl Request for SetMoviePendingRequest;
+    pub type RemovePending;
+    impl Endpoint for RemovePending {
+        impl Request for RemovePendingRequest;
         type Response<'de> = Empty;
     }
 

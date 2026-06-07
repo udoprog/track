@@ -7,6 +7,7 @@ use musli_web::ws;
 use tokio::sync::broadcast;
 
 use crate::app_broadcast::Broadcaster;
+use crate::pending::PendingSystem;
 use crate::remote::RemoteClients;
 use crate::task_queue::TaskQueue;
 
@@ -16,6 +17,7 @@ pub(super) struct WsHandler {
     pub(super) broadcast: Broadcaster,
     pub(super) remote: RemoteClients,
     pub(super) queue: TaskQueue,
+    pub(super) pending: PendingSystem,
 }
 
 impl ws::Handler for WsHandler {
@@ -297,6 +299,9 @@ impl WsHandler {
                     .context("missing request")?;
                 let ts = req.timestamp.unwrap_or_else(api::Timestamp::now);
                 let watched = self.db.mark_watched(req.kind, ts).await?;
+                if let api::WatchedKind::Episode { series, episode } = req.kind {
+                    self.pending.on_episode_watched(series, episode).await?;
+                }
                 self.broadcast.emit(
                     incoming.channel(),
                     api::AppEventKind::WatchedChanged { kind: req.kind },
@@ -342,17 +347,7 @@ impl WsHandler {
                 let _req = incoming
                     .read::<api::ListPendingRequest>()
                     .context("missing request")?;
-                let mut pending = self
-                    .db
-                    .pending_episodes()
-                    .await
-                    .context("loading pending episodes")?;
-                pending.extend(
-                    self.db
-                        .pending_movies()
-                        .await
-                        .context("loading pending movies")?,
-                );
+                let pending = self.db.pending().await.context("loading pending")?;
                 outgoing.write(api::ListPendingResponse { pending });
             }
             api::Request::ListSchedule => {
@@ -366,7 +361,8 @@ impl WsHandler {
                 let _req = incoming
                     .read::<api::ListWatchNextRequest>()
                     .context("missing request")?;
-                let pending = self.db.pending_episodes().await?;
+                let mut pending = self.db.pending().await.context("loading watch next")?;
+                pending.retain(|p| matches!(p.kind, api::PendingKind::Episode { .. }));
                 outgoing.write(api::ListWatchNextResponse { pending });
             }
             api::Request::Search => {
@@ -566,53 +562,42 @@ impl WsHandler {
                 );
                 outgoing.write(api::Empty);
             }
-            api::Request::SetNextEpisode => {
+            api::Request::AddPending => {
                 let req = incoming
-                    .read::<api::SetNextEpisodeRequest>()
+                    .read::<api::AddPendingRequest>()
                     .context("missing request")?;
-                self.db
-                    .set_series_next_episode(req.series_id, req.episode_id)
-                    .await?;
-                let series = self
-                    .db
-                    .series_by_id(req.series_id)
-                    .await?
-                    .context("series not found")?;
-                self.broadcast.emit(
-                    incoming.channel(),
-                    api::AppEventKind::SeriesChanged {
-                        series: series.clone(),
-                    },
-                    "ws set next episode changed",
-                );
+                let ts = api::Timestamp::now();
+                match req.kind {
+                    api::PendingKind::Episode { episode, .. } => {
+                        self.db.add_pending_episode(episode, ts).await?;
+                    }
+                    api::PendingKind::Movie { movie } => {
+                        self.db.add_pending_movie(movie, ts).await?;
+                    }
+                }
                 self.broadcast.emit(
                     incoming.channel(),
                     api::AppEventKind::PendingChanged,
-                    "ws set next episode pending changed",
+                    "ws add pending",
                 );
                 outgoing.write(api::Empty);
             }
-            api::Request::SetMoviePending => {
+            api::Request::RemovePending => {
                 let req = incoming
-                    .read::<api::SetMoviePendingRequest>()
+                    .read::<api::RemovePendingRequest>()
                     .context("missing request")?;
-                self.db.set_movie_pending(req.id, req.pending).await?;
-                let movie = self
-                    .db
-                    .movie_by_id(req.id)
-                    .await?
-                    .context("movie not found")?;
-                self.broadcast.emit(
-                    incoming.channel(),
-                    api::AppEventKind::MovieChanged {
-                        movie: movie.clone(),
-                    },
-                    "ws set movie pending changed",
-                );
+                match req.kind {
+                    api::PendingKind::Episode { episode, .. } => {
+                        self.db.remove_pending_episode(episode).await?;
+                    }
+                    api::PendingKind::Movie { movie } => {
+                        self.db.remove_pending_movie(movie).await?;
+                    }
+                }
                 self.broadcast.emit(
                     incoming.channel(),
                     api::AppEventKind::PendingChanged,
-                    "ws set movie pending pending changed",
+                    "ws remove pending",
                 );
                 outgoing.write(api::Empty);
             }
@@ -672,6 +657,7 @@ pub(super) async fn ws_handler(
             broadcast: state.broadcast.clone(),
             remote: state.remote.clone(),
             queue: state.queue.clone(),
+            pending: state.pending.clone(),
         };
 
         let mut subscribe = state.broadcast.subscribe();

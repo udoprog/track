@@ -54,8 +54,10 @@ pub(super) enum Msg {
     ),
     SetTracked(bool),
     SetTrackedDone(bool, Result<ws::Packet<api::UntrackMovie>, ws::Error>),
-    SetPending(bool),
-    SetPendingDone(bool, Result<ws::Packet<api::SetMoviePending>, ws::Error>),
+    AddPending,
+    AddPendingDone(Result<ws::Packet<api::AddPending>, ws::Error>),
+    RemovePending,
+    RemovePendingDone(Result<ws::Packet<api::RemovePending>, ws::Error>),
     Back,
 }
 
@@ -345,25 +347,37 @@ impl MovieDetail {
                 }
                 Ok(true)
             }
-            Msg::SetPending(pending) => {
-                let id = ctx.props().movie_id;
+            Msg::AddPending => {
+                let movie = ctx.props().movie_id;
                 self._pending_req = self
                     .channel
                     .request()
-                    .body(api::SetMoviePendingRequest { id, pending })
-                    .on_packet(
-                        ctx.link()
-                            .callback(move |r| Msg::SetPendingDone(pending, r)),
-                    )
+                    .body(api::AddPendingRequest {
+                        kind: api::PendingKind::Movie { movie },
+                    })
+                    .on_packet(ctx.link().callback(Msg::AddPendingDone))
                     .send();
                 Ok(false)
             }
-            Msg::SetPendingDone(pending, result) => {
+            Msg::AddPendingDone(result) => {
                 result.context(Message::SyncingSeries)?;
-                if let Some(ref mut movie) = self.movie {
-                    movie.pending = pending;
-                }
-                Ok(true)
+                Ok(false)
+            }
+            Msg::RemovePending => {
+                let movie = ctx.props().movie_id;
+                self._pending_req = self
+                    .channel
+                    .request()
+                    .body(api::RemovePendingRequest {
+                        kind: api::PendingKind::Movie { movie },
+                    })
+                    .on_packet(ctx.link().callback(Msg::RemovePendingDone))
+                    .send();
+                Ok(false)
+            }
+            Msg::RemovePendingDone(result) => {
+                result.context(Message::SyncingSeries)?;
+                Ok(false)
             }
             Msg::SelectImage(id) => {
                 self._select_image_req = self
@@ -508,17 +522,14 @@ impl MovieDetail {
                             {"Remove watch"}
                         </button>
 
-                        if movie.pending {
-                            <button class="btn btn-primary" onclick={link.callback(|_| Msg::SetPending(false))} title="Clear pending">
-                                <span class="icon-inline"><span class="icon bookmark" /></span>
-                                {"Clear pending"}
-                            </button>
-                        } else {
-                            <button class="btn" onclick={link.callback(|_| Msg::SetPending(true))} title="Mark as pending">
-                                <span class="icon-inline"><span class="icon bookmark" /></span>
-                                {"Mark pending"}
-                            </button>
-                        }
+                        <button class="btn" onclick={link.callback(|_| Msg::AddPending)} title="Mark as pending">
+                            <span class="icon-inline"><span class="icon bookmark" /></span>
+                            {"Mark pending"}
+                        </button>
+                        <button class="btn" onclick={link.callback(|_| Msg::RemovePending)} title="Remove from pending">
+                            <span class="icon-inline"><span class="icon bookmark-slash" /></span>
+                            {"Remove pending"}
+                        </button>
                     } else {
                         <button class="btn btn-success" onclick={link.callback(|e: MouseEvent| { e.prevent_default(); Msg::MarkWatched })} title="Mark watched">
                             <span class="icon-inline"><span class="icon check" /></span>
