@@ -208,13 +208,13 @@ pub(super) fn RemoteSourceSelect(props: &RemoteSourceSelectProps) -> Html {
     };
 
     html! {
-        <select class="input-select" value={selected.as_str()} onchange={on_change} {disabled} title="Select remote source">
+        <select class="input-select" onchange={on_change} {disabled} title="Select remote source">
             {
                 for options.into_iter().map(|source| {
                     let label = source.as_str().to_uppercase();
 
                     html! {
-                        <option value={source.as_str()}>{label}</option>
+                        <option value={source.as_str()} selected={source == selected}>{label}</option>
                     }
                 })
             }

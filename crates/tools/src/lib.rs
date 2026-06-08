@@ -1,0 +1,379 @@
+use std::collections::BTreeMap;
+use std::fmt::Write as _;
+
+use anyhow::{Context, Result, bail};
+use serde::Deserialize;
+
+const URL: &str = "https://iso639-3.sil.org/sites/iso639-3/files/downloads/iso-639-3.tab";
+
+#[derive(Debug)]
+struct LanguageRow {
+    id: String,
+    part2b: Option<String>,
+    part2t: Option<String>,
+    part1: Option<String>,
+    scope: Scope,
+    language_type: LanguageType,
+    ref_name: String,
+    comment: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Scope {
+    Individual,
+    Macrolanguage,
+    Special,
+}
+
+impl Scope {
+    fn parse(value: &str) -> Result<Self> {
+        match value {
+            "I" => Ok(Self::Individual),
+            "M" => Ok(Self::Macrolanguage),
+            "S" => Ok(Self::Special),
+            _ => bail!("unknown scope code: {value}"),
+        }
+    }
+
+    fn rust_variant(self) -> &'static str {
+        match self {
+            Self::Individual => "Individual",
+            Self::Macrolanguage => "Macrolanguage",
+            Self::Special => "Special",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum LanguageType {
+    Living,
+    Extinct,
+    Historical,
+    Constructed,
+    Special,
+}
+
+impl LanguageType {
+    fn parse(value: &str) -> Result<Self> {
+        match value {
+            "L" => Ok(Self::Living),
+            "E" => Ok(Self::Extinct),
+            "H" => Ok(Self::Historical),
+            "C" => Ok(Self::Constructed),
+            "S" => Ok(Self::Special),
+            _ => bail!("unknown language type code: {value}"),
+        }
+    }
+
+    fn rust_variant(self) -> &'static str {
+        match self {
+            Self::Living => "Living",
+            Self::Extinct => "Extinct",
+            Self::Historical => "Historical",
+            Self::Constructed => "Constructed",
+            Self::Special => "Special",
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct RawLanguageRow {
+    #[serde(rename = "Id")]
+    id: String,
+    #[serde(rename = "Part2b", deserialize_with = "deserialize_optional")]
+    part2b: Option<String>,
+    #[serde(rename = "Part2t", deserialize_with = "deserialize_optional")]
+    part2t: Option<String>,
+    #[serde(rename = "Part1", deserialize_with = "deserialize_optional")]
+    part1: Option<String>,
+    #[serde(rename = "Scope")]
+    scope: String,
+    #[serde(rename = "Language_Type")]
+    language_type: String,
+    #[serde(rename = "Ref_Name")]
+    ref_name: String,
+    #[serde(rename = "Comment", deserialize_with = "deserialize_optional")]
+    comment: Option<String>,
+}
+
+pub fn generate_module() -> Result<String> {
+    generate_data_module()
+}
+
+pub fn generate_standalone_module() -> Result<String> {
+    let body = download_table()?;
+    generate_standalone_module_from_tab(&body)
+}
+
+pub fn generate_data_module() -> Result<String> {
+    let body = download_table()?;
+    generate_module_from_tab(&body)
+}
+
+pub fn generate_standalone_module_from_tab(tab: &str) -> Result<String> {
+    let rows = parse_rows(tab)?;
+    render_module(&rows, true)
+}
+
+pub fn generate_module_from_tab(tab: &str) -> Result<String> {
+    let rows = parse_rows(tab)?;
+    render_module(&rows, false)
+}
+
+pub fn download_table() -> Result<String> {
+    reqwest::blocking::get(URL)
+        .and_then(|response| response.error_for_status())
+        .context("failed to download iso-639-3 dataset")?
+        .text()
+        .context("failed to read iso-639-3 response body")
+}
+
+fn parse_rows(input: &str) -> Result<Vec<LanguageRow>> {
+    if input.trim().is_empty() {
+        bail!("dataset is empty");
+    }
+
+    let mut reader = csv::ReaderBuilder::new()
+        .delimiter(b'\t')
+        .from_reader(input.trim_start_matches('\u{feff}').as_bytes());
+
+    let mut rows = Vec::new();
+
+    for (index, row) in reader.deserialize::<RawLanguageRow>().enumerate() {
+        let line_no = index + 2;
+        let row = row.with_context(|| format!("failed to parse row at line {line_no}"))?;
+
+        let id = row.id.trim();
+        let scope = row.scope.trim();
+        let language_type = row.language_type.trim();
+        let ref_name = row.ref_name.trim();
+
+        if id.len() != 3 {
+            bail!("invalid language id at line {line_no}: {id:?}");
+        }
+
+        if scope.is_empty() {
+            bail!("empty scope at line {line_no}");
+        }
+
+        if language_type.is_empty() {
+            bail!("empty language type at line {line_no}");
+        }
+
+        if ref_name.is_empty() {
+            bail!("empty ref name at line {line_no}");
+        }
+
+        let scope = Scope::parse(scope).with_context(|| format!("invalid scope at line {line_no}"))?;
+        let language_type = LanguageType::parse(language_type)
+            .with_context(|| format!("invalid language type at line {line_no}"))?;
+
+        rows.push(LanguageRow {
+            id: id.to_owned(),
+            part2b: row.part2b,
+            part2t: row.part2t,
+            part1: row.part1,
+            scope,
+            language_type,
+            ref_name: ref_name.to_owned(),
+            comment: row.comment,
+        });
+    }
+
+    if rows.is_empty() {
+        bail!("dataset has no data rows");
+    }
+
+    Ok(rows)
+}
+
+fn parse_optional(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_owned())
+    }
+}
+
+fn deserialize_optional<'de, D>(deserializer: D) -> std::result::Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Option::<String>::deserialize(deserializer)?;
+    Ok(value.and_then(|v| parse_optional(&v)))
+}
+
+fn render_module(rows: &[LanguageRow], include_types: bool) -> Result<String> {
+    let mut entries = rows.iter().collect::<Vec<_>>();
+    entries.sort_by(|a, b| a.id.cmp(&b.id));
+
+    let mut id_map = BTreeMap::new();
+    let mut part1_map = BTreeMap::new();
+    let mut part2b_map = BTreeMap::new();
+    let mut part2t_map = BTreeMap::new();
+    let mut by_scope: BTreeMap<Scope, BTreeMap<String, usize>> = BTreeMap::new();
+    let mut by_type: BTreeMap<LanguageType, BTreeMap<String, usize>> = BTreeMap::new();
+
+    for (index, row) in entries.iter().enumerate() {
+        id_map.insert(row.id.clone(), index);
+
+        if let Some(code) = &row.part1 {
+            part1_map.entry(code.clone()).or_insert(index);
+        }
+
+        if let Some(code) = &row.part2b {
+            part2b_map.entry(code.clone()).or_insert(index);
+        }
+
+        if let Some(code) = &row.part2t {
+            part2t_map.entry(code.clone()).or_insert(index);
+        }
+
+        by_scope
+            .entry(row.scope)
+            .or_default()
+            .insert(row.id.clone(), index);
+
+        by_type
+            .entry(row.language_type)
+            .or_default()
+            .insert(row.id.clone(), index);
+    }
+
+    let mut out = String::new();
+    writeln!(out, "// Generated by crates/tools/src/lib.rs")?;
+    writeln!(out, "// Source: {URL}")?;
+    writeln!(out)?;
+
+    if include_types {
+        writeln!(out, "#[derive(Debug, Clone, Copy, PartialEq, Eq)]")?;
+        writeln!(out, "pub enum Scope {{")?;
+        writeln!(out, "    /// Single distinct language.")?;
+        writeln!(out, "    Individual,")?;
+        writeln!(out, "    /// Grouping that spans multiple individual languages.")?;
+        writeln!(out, "    Macrolanguage,")?;
+        writeln!(out, "    /// Special pseudo-language codes.")?;
+        writeln!(out, "    Special,")?;
+        writeln!(out, "}}")?;
+        writeln!(out)?;
+
+        writeln!(out, "#[derive(Debug, Clone, Copy, PartialEq, Eq)]")?;
+        writeln!(out, "pub enum LanguageType {{")?;
+        writeln!(out, "    /// Language still in active use.")?;
+        writeln!(out, "    Living,")?;
+        writeln!(out, "    /// Language with no known living speakers.")?;
+        writeln!(out, "    Extinct,")?;
+        writeln!(out, "    /// Historical stage or documented earlier form.")?;
+        writeln!(out, "    Historical,")?;
+        writeln!(out, "    /// Intentionally created language.")?;
+        writeln!(out, "    Constructed,")?;
+        writeln!(out, "    /// Special pseudo-language category.")?;
+        writeln!(out, "    Special,")?;
+        writeln!(out, "}}")?;
+        writeln!(out)?;
+
+        writeln!(out, "#[derive(Debug, Clone, Copy)]")?;
+        writeln!(out, "pub struct Entry {{")?;
+        writeln!(out, "    pub id: &'static str,")?;
+        writeln!(out, "    pub part2b: Option<&'static str>,")?;
+        writeln!(out, "    pub part2t: Option<&'static str>,")?;
+        writeln!(out, "    pub part1: Option<&'static str>,")?;
+        writeln!(out, "    pub scope: Scope,")?;
+        writeln!(out, "    pub language_type: LanguageType,")?;
+        writeln!(out, "    pub ref_name: &'static str,")?;
+        writeln!(out, "    pub comment: Option<&'static str>,")?;
+        writeln!(out, "}}")?;
+        writeln!(out)?;
+    }
+
+    writeln!(out, "pub const ENTRIES: &[Entry] = &[")?;
+    for row in &entries {
+        writeln!(out, "    Entry {{")?;
+        writeln!(out, "        id: {:?},", row.id)?;
+        write!(out, "        part2b: ")?;
+        write_optional(&mut out, row.part2b.as_deref())?;
+        writeln!(out, ",")?;
+        write!(out, "        part2t: ")?;
+        write_optional(&mut out, row.part2t.as_deref())?;
+        writeln!(out, ",")?;
+        write!(out, "        part1: ")?;
+        write_optional(&mut out, row.part1.as_deref())?;
+        writeln!(out, ",")?;
+        writeln!(out, "        scope: Scope::{},", row.scope.rust_variant())?;
+        writeln!(
+            out,
+            "        language_type: LanguageType::{},",
+            row.language_type.rust_variant()
+        )?;
+        write!(out, "        ref_name: ")?;
+        write_string_literal(&mut out, &row.ref_name)?;
+        writeln!(out, ",")?;
+        write!(out, "        comment: ")?;
+        write_optional(&mut out, row.comment.as_deref())?;
+        writeln!(out, ",")?;
+        writeln!(out, "    }},")?;
+    }
+    writeln!(out, "];\n")?;
+
+    write_map(&mut out, "PART1_MAP", &part1_map)?;
+    write_map(&mut out, "PART3_ID_MAP", &id_map)?;
+    write_map(&mut out, "PART2B_MAP", &part2b_map)?;
+    write_map(&mut out, "PART2T_MAP", &part2t_map)?;
+
+    for (scope, codes) in by_scope {
+        let ident = format!("SCOPE_{}_MAP", sanitize_ident_fragment(scope.rust_variant()));
+        write_map(&mut out, &ident, &codes)?;
+    }
+
+    for (language_type, codes) in by_type {
+        let ident = format!(
+            "LANGUAGE_TYPE_{}_MAP",
+            sanitize_ident_fragment(language_type.rust_variant())
+        );
+        write_map(&mut out, &ident, &codes)?;
+    }
+
+    Ok(out)
+}
+
+fn sanitize_ident_fragment(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for ch in value.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_uppercase());
+        } else {
+            out.push('_');
+        }
+    }
+    out
+}
+
+fn write_map(out: &mut String, name: &str, values: &BTreeMap<String, usize>) -> Result<()> {
+    writeln!(out, "pub const {name}: &[(&str, usize)] = &[")?;
+
+    for (value, index) in values {
+        writeln!(out, "    ({value:?}, {index}),")?;
+    }
+
+    writeln!(out, "];\n")?;
+    Ok(())
+}
+
+fn write_optional(out: &mut String, value: Option<&str>) -> Result<()> {
+    match value {
+        Some(value) => {
+            write!(out, "Some(")?;
+            write_string_literal(out, value)?;
+            write!(out, ")")?;
+        }
+        None => write!(out, "None")?,
+    }
+
+    Ok(())
+}
+
+fn write_string_literal(out: &mut String, value: &str) -> Result<()> {
+    write!(out, "{value:?}")?;
+    Ok(())
+}

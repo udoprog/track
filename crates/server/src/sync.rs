@@ -106,6 +106,8 @@ async fn sync_series_tmdb(
         .context("series not found after update")?;
     broadcast.broadcast_event(api::AppEventKind::SeriesChanged { series: updated });
 
+    let mut synced_seasons: Vec<SeasonNumber> = Vec::new();
+
     for season_info in &info.seasons {
         db.upsert_season(
             series_id,
@@ -143,7 +145,11 @@ async fn sync_series_tmdb(
             series_id,
             season: season_info.number,
         });
+
+        synced_seasons.push(season_info.number);
     }
+
+    db.prune_seasons(series_id, &synced_seasons).await?;
 
     let seasons = db.seasons(series_id).await?;
     broadcast.broadcast_event(api::AppEventKind::SeasonsChanged { series_id, seasons });
@@ -231,6 +237,9 @@ async fn sync_series_tvdb(
             .await?;
         broadcast.broadcast_event(api::AppEventKind::EpisodesChanged { series_id, season });
     }
+
+    let synced_seasons: Vec<SeasonNumber> = seasons_seen.into_iter().collect();
+    db.prune_seasons(series_id, &synced_seasons).await?;
 
     let seasons = db.seasons(series_id).await?;
     broadcast.broadcast_event(api::AppEventKind::SeasonsChanged { series_id, seasons });

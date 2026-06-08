@@ -315,6 +315,8 @@ statements! {
             SELECT id, series_id, number, air_date, name, overview, poster
             FROM seasons WHERE series_id = ? ORDER BY number
         "#,
+        delete_season: r#"DELETE FROM seasons WHERE series_id = ?1 AND number = ?2"#,
+        delete_season_episodes: r#"DELETE FROM episodes WHERE series_id = ?1 AND season = ?2"#,
 
         // episodes
         upsert_episode: r#"
@@ -826,6 +828,34 @@ impl Database {
             Ok(out)
         })
         .await?
+    }
+
+    pub async fn prune_seasons(
+        &self,
+        series_id: SeriesId,
+        kept: &[SeasonNumber],
+    ) -> Result<Vec<SeasonNumber>> {
+        let existing = self.seasons(series_id).await?;
+        let mut removed = Vec::new();
+        for season in existing {
+            if !kept.contains(&season.number) {
+                let n = season.number.to_i64();
+                let mut s = self.inner.clone().lock_owned().await;
+                spawn_blocking(move || {
+                    s.delete_season_episodes.bind((series_id, n))?;
+                    ensure!(
+                        s.delete_season_episodes.step()?.is_done(),
+                        "delete_season_episodes"
+                    );
+                    s.delete_season.bind((series_id, n))?;
+                    ensure!(s.delete_season.step()?.is_done(), "delete_season");
+                    Ok(())
+                })
+                .await??;
+                removed.push(season.number);
+            }
+        }
+        Ok(removed)
     }
 
     // ── Episodes ──

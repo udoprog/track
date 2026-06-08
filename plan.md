@@ -28,6 +28,11 @@ crate-by-crate blueprint is complete and is not repeated here — read the sourc
 - `sync_series` stamps `last_synced_at` at completion; `sync_movie` fetches+upserts releases then stamps.
 - Background loop replaced: 15-minute poll, only queues items stale relative to configured interval (never-synced always queued). TaskQueue dedup prevents double-queueing.
 
+### Language dataset generation tool — DONE
+- `crates/tools/src/bin/update-languages.rs` now downloads ISO-639-3 data from SIL, validates the TSV header/rows, parses codes, and generates deterministic Rust constants.
+- Generated constants include sets for `ISO639_3`, `ISO639_1`, `ISO639_2B`, `ISO639_2T`, plus language-id sets grouped by `Scope` and `Language_Type`.
+- Running `cargo run -p tools --bin update-languages [output-file]` prints the Rust module to stdout or writes it to the provided path.
+
 
 
 ### `crates/api`

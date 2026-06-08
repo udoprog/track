@@ -13,7 +13,7 @@ pub(super) struct MovieDetail {
     watched: Vec<api::Watched>,
     confirm_remove: bool,
     confirm_mark_watch: bool,
-    confirm_remove_watch: bool,
+    confirm_remove_watch: Option<api::WatchedId>,
     syncing: bool,
     image_modal: Option<api::ImageKind>,
     _setup: crate::SetupChannel,
@@ -41,7 +41,7 @@ pub(super) enum Msg {
     MarkWatchedDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
     RemoveWatched(api::WatchedId, api::WatchedKind),
     RemoveWatchedDone(Result<ws::Packet<api::RemoveWatched>, ws::Error>),
-    ConfirmRemoveWatch,
+    ConfirmRemoveWatch(api::WatchedId),
     CancelRemoveWatch,
     SelectImage(api::ImageId),
     SelectImageDone(Result<ws::Packet<api::SelectImage>, ws::Error>),
@@ -93,7 +93,7 @@ impl Component for MovieDetail {
             watched: Vec::new(),
             confirm_remove: false,
             confirm_mark_watch: false,
-            confirm_remove_watch: false,
+            confirm_remove_watch: None,
             syncing: false,
             image_modal: None,
             _setup,
@@ -158,7 +158,7 @@ impl Component for MovieDetail {
             self.watched.clear();
             self.confirm_remove = false;
             self.confirm_mark_watch = false;
-            self.confirm_remove_watch = false;
+            self.confirm_remove_watch = None;
 
             if self.channel.id() != ws::ChannelId::NONE {
                 self.load_movie(ctx);
@@ -255,7 +255,7 @@ impl MovieDetail {
             }
             Msg::AskMarkWatched => {
                 self.confirm_mark_watch = true;
-                self.confirm_remove_watch = false;
+                self.confirm_remove_watch = None;
                 Ok(true)
             }
             Msg::CancelMarkWatch => {
@@ -293,18 +293,18 @@ impl MovieDetail {
             }
             Msg::RemoveWatchedDone(result) => {
                 result.context(Message::RemovingWatched)?;
-                self.confirm_remove_watch = false;
+                self.confirm_remove_watch = None;
                 self.load_movie(ctx);
                 self.load_watched(ctx);
                 Ok(false)
             }
-            Msg::ConfirmRemoveWatch => {
+            Msg::ConfirmRemoveWatch(wid) => {
                 self.confirm_mark_watch = false;
-                self.confirm_remove_watch = true;
+                self.confirm_remove_watch = Some(wid);
                 Ok(true)
             }
             Msg::CancelRemoveWatch => {
-                self.confirm_remove_watch = false;
+                self.confirm_remove_watch = None;
                 Ok(true)
             }
             Msg::ConfirmRemove => {
@@ -533,7 +533,7 @@ impl MovieDetail {
             }
 
             if let Some(wid) = last_watched_id
-                && self.confirm_remove_watch
+                && self.confirm_remove_watch == Some(wid)
             {
                 break 'actions html! {
                     <div class="row actions">
@@ -565,10 +565,12 @@ impl MovieDetail {
                             {"Watch again"}
                         </button>
 
-                        <button class="btn btn-danger" onclick={link.callback(|_| Msg::ConfirmRemoveWatch)} title="Remove last watch">
-                            <span class="icon-inline"><span class="icon x-mark" /></span>
-                            {"Remove watch"}
-                        </button>
+                        if let Some(wid) = last_watched_id {
+                            <button class="btn btn-danger" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove last watch">
+                                <span class="icon-inline"><span class="icon x-mark" /></span>
+                                {"Remove watch"}
+                            </button>
+                        }
 
                         if movie.pending {
                             <button class="btn" onclick={link.callback(|_| Msg::RemovePending)} title="Remove from pending">
@@ -674,10 +676,33 @@ impl MovieDetail {
                     if !self.watched.is_empty() {
                         <div class="section">
                             <div class="text-muted">{"Watch history"}</div>
-
-                            {for self.watched.iter().map(|w| html! {
-                                <div class="text-muted">{w.timestamp.display(&tz)}</div>
-                            })}
+                            <div class="table">
+                                { for self.watched.iter().map(|w| {
+                                    let wid = w.id;
+                                    let wkind = api::WatchedKind::Movie { movie: movie_id };
+                                    if self.confirm_remove_watch == Some(wid) {
+                                        html! {
+                                            <div class="table-entry">
+                                                <ConfirmDanger
+                                                    prompt="Remove watch"
+                                                    label={w.timestamp.display(&tz)}
+                                                    on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, wkind))}
+                                                    on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
+                                                />
+                                            </div>
+                                        }
+                                    } else {
+                                        html! {
+                                            <div class="table-entry text-muted">
+                                                <span class="fill">{w.timestamp.display(&tz)}</span>
+                                                <button class="btn-icon" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
+                                                    <span class="icon x-mark" />
+                                                </button>
+                                            </div>
+                                        }
+                                    }
+                                }) }
+                            </div>
                         </div>
                     }
                 </div>

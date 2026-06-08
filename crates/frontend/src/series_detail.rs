@@ -19,8 +19,7 @@ pub(super) struct SeriesDetail {
     syncing: bool,
     confirm_remove_watch: Option<api::WatchedId>,
     confirming_mark_watch: Option<api::EpisodeId>,
-    expanded_episode: Option<api::EpisodeId>,
-    episode_history: Vec<api::Watched>,
+    episode_histories: std::collections::HashMap<api::EpisodeId, Vec<api::Watched>>,
     image_modal: Option<api::ImageKind>,
     _setup: crate::SetupChannel,
     _broadcast: ws::Listener,
@@ -33,7 +32,7 @@ pub(super) struct SeriesDetail {
     _remove_req: ws::Request,
     _sync_req: ws::Request,
     _watch_remaining_reqs: Vec<ws::Request>,
-    _history_req: ws::Request,
+    _history_reqs: std::collections::HashMap<api::EpisodeId, ws::Request>,
     _set_next_req: ws::Request,
     _select_image_req: ws::Request,
     _set_sync_source_req: ws::Request,
@@ -65,7 +64,7 @@ pub(super) enum Msg {
     SyncSeries,
     SyncDone(Result<ws::Packet<api::SyncSeries>, ws::Error>),
     ToggleHistory(api::EpisodeId),
-    HistoryLoaded(Result<ws::Packet<api::ListWatched>, ws::Error>),
+    HistoryLoaded(api::EpisodeId, Result<ws::Packet<api::ListWatched>, ws::Error>),
     AddPending(api::EpisodeId),
     AddPendingDone(Result<ws::Packet<api::AddPending>, ws::Error>),
     RemovePending(api::EpisodeId),
@@ -114,8 +113,7 @@ impl Component for SeriesDetail {
             syncing: false,
             confirm_remove_watch: None,
             confirming_mark_watch: None,
-            expanded_episode: None,
-            episode_history: Vec::new(),
+            episode_histories: std::collections::HashMap::new(),
             image_modal: None,
             _setup,
             _broadcast,
@@ -128,7 +126,7 @@ impl Component for SeriesDetail {
             _remove_req: ws::Request::default(),
             _sync_req: ws::Request::default(),
             _watch_remaining_reqs: Vec::new(),
-            _history_req: ws::Request::default(),
+            _history_reqs: std::collections::HashMap::new(),
             _set_next_req: ws::Request::default(),
             _select_image_req: ws::Request::default(),
             _set_sync_source_req: ws::Request::default(),
@@ -260,8 +258,8 @@ impl Component for SeriesDetail {
             self.confirm_remove = false;
             self.syncing = false;
             self.confirm_remove_watch = None;
-            self.expanded_episode = None;
-            self.episode_history.clear();
+            self.episode_histories.clear();
+            self._history_reqs.clear();
             if self.channel.id() != ws::ChannelId::NONE {
                 self.load_series(ctx);
                 self.load_seasons(ctx);
@@ -272,8 +270,8 @@ impl Component for SeriesDetail {
                     self.selected = Some(season);
                     self.episodes.clear();
                     self.confirm_remove_watch = None;
-                    self.expanded_episode = None;
-                    self.episode_history.clear();
+                    self.episode_histories.clear();
+                    self._history_reqs.clear();
                     if self.channel.id() != ws::ChannelId::NONE {
                         self.load_episodes(ctx, season);
                     }
@@ -365,7 +363,10 @@ impl SeriesDetail {
 
                         if relevant && let Some(season) = self.selected {
                             self.load_episodes(ctx, season);
-                            self.load_episode_history(ctx);
+                            let expanded: Vec<_> = self.episode_histories.keys().copied().collect();
+                            for ep_id in expanded {
+                                self.load_episode_history(ctx, ep_id);
+                            }
                         }
 
                         Ok(false)
@@ -450,7 +451,10 @@ impl SeriesDetail {
                 if let Some(season) = self.selected {
                     self.load_episodes(ctx, season);
                 }
-                self.load_episode_history(ctx);
+                let expanded: Vec<_> = self.episode_histories.keys().copied().collect();
+                for ep_id in expanded {
+                    self.load_episode_history(ctx, ep_id);
+                }
                 Ok(false)
             }
             Msg::RemoveWatched(id, kind) => {
@@ -468,7 +472,10 @@ impl SeriesDetail {
                 if let Some(season) = self.selected {
                     self.load_episodes(ctx, season);
                 }
-                self.load_episode_history(ctx);
+                let expanded: Vec<_> = self.episode_histories.keys().copied().collect();
+                for ep_id in expanded {
+                    self.load_episode_history(ctx, ep_id);
+                }
                 Ok(false)
             }
             Msg::ConfirmRemoveWatch(episode_id) => {
@@ -508,7 +515,10 @@ impl SeriesDetail {
                 if let Some(season) = self.selected {
                     self.load_episodes(ctx, season);
                 }
-                self.load_episode_history(ctx);
+                let expanded: Vec<_> = self.episode_histories.keys().copied().collect();
+                for ep_id in expanded {
+                    self.load_episode_history(ctx, ep_id);
+                }
                 Ok(false)
             }
             Msg::SetTracked(tracked) => {
@@ -571,22 +581,21 @@ impl SeriesDetail {
                 Ok(false)
             }
             Msg::ToggleHistory(id) => {
-                if self.expanded_episode == Some(id) {
-                    self.expanded_episode = None;
-                    self.episode_history.clear();
+                if self.episode_histories.contains_key(&id) {
+                    self.episode_histories.remove(&id);
+                    self._history_reqs.remove(&id);
                 } else {
-                    self.expanded_episode = Some(id);
-                    self.episode_history.clear();
-                    self.load_episode_history(ctx);
+                    self.load_episode_history(ctx, id);
                 }
                 Ok(true)
             }
-            Msg::HistoryLoaded(result) => {
-                self.episode_history = result
+            Msg::HistoryLoaded(episode_id, result) => {
+                let watched = result
                     .context(Message::LoadingWatched)?
                     .decode()
                     .context(Message::LoadingWatched)?
                     .watched;
+                self.episode_histories.insert(episode_id, watched);
                 Ok(true)
             }
             Msg::AddPending(episode_id) => {
@@ -722,19 +731,20 @@ impl SeriesDetail {
             .send();
     }
 
-    fn load_episode_history(&mut self, ctx: &Context<Self>) {
-        let Some(episode) = self.expanded_episode else {
-            return;
-        };
+    fn load_episode_history(&mut self, ctx: &Context<Self>, episode: api::EpisodeId) {
         let series = ctx.props().series_id;
-        self._history_req = self
+        let req = self
             .channel
             .request()
             .body(api::ListWatchedRequest {
                 kind: api::WatchedKind::Episode { series, episode },
             })
-            .on_packet(ctx.link().callback(Msg::HistoryLoaded))
+            .on_packet(
+                ctx.link()
+                    .callback(move |r| Msg::HistoryLoaded(episode, r)),
+            )
             .send();
+        self._history_reqs.insert(episode, req);
     }
 
     fn view_header(&self, ctx: &Context<Self>) -> Html {
@@ -872,7 +882,7 @@ impl SeriesDetail {
                     let episode_id = ep.id;
                     let watched = ep.watched;
                     let last_watched_id = ep.last_watched_id;
-                    let expanded = self.expanded_episode == Some(episode_id);
+                    let expanded = self.episode_histories.contains_key(&episode_id);
                     let confirming_mark = self.confirming_mark_watch == Some(episode_id);
                     let on_ask_mark = link.callback(move |_| Msg::AskMarkWatched(episode_id));
                     let aired_at = ep.aired_at;
@@ -977,7 +987,7 @@ impl SeriesDetail {
                                     <img class="poster-sm" src={img.proxy_url()} />
                                 }
                                 <div class="table">
-                                    { for self.episode_history.iter().map(|w| {
+                                    { for self.episode_histories.get(&episode_id).map(Vec::as_slice).unwrap_or_default().iter().map(|w| {
                                         let wid = w.id;
                                         let wkind = api::WatchedKind::Episode { series: series_id, episode: episode_id };
                                         if self.confirm_remove_watch == Some(wid) {
