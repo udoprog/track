@@ -101,7 +101,7 @@ pub(super) fn RemoteSourceSelect(props: &RemoteSourceSelectProps) -> Html {
     let mut options: Vec<api::SyncSource> = Vec::new();
 
     for remote in &props.remotes {
-        let Some(source) = api::SyncSource::from_str(remote.source()) else {
+        let Some(source) = api::SyncSource::from_remote_source(remote.source()) else {
             continue;
         };
 
@@ -129,6 +129,7 @@ pub(super) fn RemoteSourceSelect(props: &RemoteSourceSelectProps) -> Html {
 
     let on_change = {
         let cb = props.on_change.clone();
+
         Callback::from(move |e: Event| {
             let input: web_sys::HtmlSelectElement = e.target_unchecked_into();
             if let Some(source) = api::SyncSource::from_str(&input.value()) {

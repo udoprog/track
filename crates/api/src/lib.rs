@@ -372,65 +372,194 @@ impl ::sqll::BindValue for Date {
     }
 }
 
+/// The source of a remote identifier.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RemoteSource {
+    Tvdb,
+    Tmdb,
+    Imdb,
+    Other(String),
+}
+
+impl RemoteSource {
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Tvdb => "tvdb",
+            Self::Tmdb => "tmdb",
+            Self::Imdb => "imdb",
+            Self::Other(s) => s.as_str(),
+        }
+    }
+
+    fn parse(s: &str) -> Self {
+        match s {
+            "tvdb" => Self::Tvdb,
+            "tmdb" => Self::Tmdb,
+            "imdb" => Self::Imdb,
+            other => Self::Other(other.to_owned()),
+        }
+    }
+}
+
+impl fmt::Display for RemoteSource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// The value part of a remote identifier — either an integer or a string.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RemoteValue {
+    Int(u32),
+    Str(String),
+}
+
+impl RemoteValue {
+    pub fn as_u32(&self) -> Option<u32> {
+        match self {
+            Self::Int(n) => Some(*n),
+            Self::Str(_) => None,
+        }
+    }
+
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            Self::Str(s) => Some(s.as_str()),
+            Self::Int(_) => None,
+        }
+    }
+
+    fn parse(s: &str) -> Self {
+        match s.parse::<u32>() {
+            Ok(n) => Self::Int(n),
+            Err(_) => Self::Str(s.to_owned()),
+        }
+    }
+}
+
+impl fmt::Display for RemoteValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Int(n) => write!(f, "{n}"),
+            Self::Str(s) => f.write_str(s),
+        }
+    }
+}
+
 /// Remote identifier: "tvdb:123", "tmdb:456", "imdb:tt0001234".
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize)]
-#[musli(crate = musli_core, transparent)]
-#[serde(transparent)]
-pub struct RemoteId(String);
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(from = "String", into = "String")]
+pub struct RemoteId {
+    source: RemoteSource,
+    value: RemoteValue,
+}
 
 impl RemoteId {
     pub fn tvdb(id: u32) -> Self {
-        Self(format!("tvdb:{id}"))
+        Self {
+            source: RemoteSource::Tvdb,
+            value: RemoteValue::Int(id),
+        }
     }
 
     pub fn tmdb(id: u32) -> Self {
-        Self(format!("tmdb:{id}"))
+        Self {
+            source: RemoteSource::Tmdb,
+            value: RemoteValue::Int(id),
+        }
     }
 
     pub fn imdb(s: &str) -> Self {
-        Self(format!("imdb:{s}"))
+        Self {
+            source: RemoteSource::Imdb,
+            value: RemoteValue::Str(s.to_owned()),
+        }
     }
 
-    pub fn from_raw(s: impl Into<String>) -> Self {
-        Self(s.into())
+    pub fn from_raw(s: &str) -> Self {
+        match s.split_once(':') {
+            Some((src, val)) => Self {
+                source: RemoteSource::parse(src),
+                value: RemoteValue::parse(val),
+            },
+            None => Self {
+                source: RemoteSource::Other(String::new()),
+                value: RemoteValue::Str(s.to_owned()),
+            },
+        }
     }
 
-    pub fn source(&self) -> &str {
-        self.0.split_once(':').map(|(s, _)| s).unwrap_or("")
+    pub fn source(&self) -> &RemoteSource {
+        &self.source
     }
 
-    pub fn value(&self) -> &str {
-        self.0.split_once(':').map(|(_, v)| v).unwrap_or(&self.0)
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
+    pub fn value(&self) -> &RemoteValue {
+        &self.value
     }
 
     pub fn series_url(&self) -> Option<String> {
-        let v = self.value();
-        match self.source() {
-            "tvdb" => Some(format!("https://thetvdb.com/series/{v}")),
-            "tmdb" => Some(format!("https://www.themoviedb.org/tv/{v}")),
-            "imdb" => Some(format!("https://www.imdb.com/title/{v}/")),
-            _ => None,
+        let v = &self.value;
+        match &self.source {
+            RemoteSource::Tvdb => Some(format!("https://thetvdb.com/series/{v}")),
+            RemoteSource::Tmdb => Some(format!("https://www.themoviedb.org/tv/{v}")),
+            RemoteSource::Imdb => Some(format!("https://www.imdb.com/title/{v}/")),
+            RemoteSource::Other(_) => None,
         }
     }
 
     pub fn movie_url(&self) -> Option<String> {
-        let v = self.value();
-        match self.source() {
-            "tvdb" => Some(format!("https://thetvdb.com/movies/{v}")),
-            "tmdb" => Some(format!("https://www.themoviedb.org/movie/{v}")),
-            "imdb" => Some(format!("https://www.imdb.com/title/{v}/")),
-            _ => None,
+        let v = &self.value;
+        match &self.source {
+            RemoteSource::Tvdb => Some(format!("https://thetvdb.com/movies/{v}")),
+            RemoteSource::Tmdb => Some(format!("https://www.themoviedb.org/movie/{v}")),
+            RemoteSource::Imdb => Some(format!("https://www.imdb.com/title/{v}/")),
+            RemoteSource::Other(_) => None,
         }
     }
 }
 
 impl fmt::Display for RemoteId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
+        write!(f, "{}:{}", self.source, self.value)
+    }
+}
+
+impl From<String> for RemoteId {
+    fn from(s: String) -> Self {
+        Self::from_raw(&s)
+    }
+}
+
+impl From<RemoteId> for String {
+    fn from(r: RemoteId) -> String {
+        r.to_string()
+    }
+}
+
+impl<M> musli_core::Encode<M> for RemoteId {
+    type Encode = Self;
+
+    fn encode<E>(&self, encoder: E) -> Result<(), E::Error>
+    where
+        E: musli_core::Encoder<Mode = M>,
+    {
+        encoder.collect_string(self)
+    }
+
+    fn as_encode(&self) -> &Self::Encode {
+        self
+    }
+}
+
+impl<'de, M, A> musli_core::Decode<'de, M, A> for RemoteId
+where
+    A: musli_core::Allocator,
+{
+    fn decode<D>(decoder: D) -> Result<Self, D::Error>
+    where
+        D: musli_core::Decoder<'de, Mode = M, Allocator = A>,
+    {
+        decoder.decode_unsized(|s: &str| Ok::<_, D::Error>(RemoteId::from_raw(s)))
     }
 }
 
@@ -440,7 +569,8 @@ impl ::sqll::FromColumn<'_> for RemoteId {
 
     #[inline]
     fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Text) -> ::sqll::Result<Self> {
-        Ok(RemoteId(String::from_column(stmt, index)?))
+        let s = String::from_column(stmt, index)?;
+        Ok(RemoteId::from_raw(&s))
     }
 }
 
@@ -448,7 +578,8 @@ impl ::sqll::FromColumn<'_> for RemoteId {
 impl ::sqll::BindValue for RemoteId {
     #[inline]
     fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
-        self.0.as_str().bind_value(stmt, index)
+        let s = self.to_string();
+        s.as_str().bind_value(stmt, index)
     }
 }
 
@@ -693,8 +824,16 @@ pub enum SyncSource {
 impl SyncSource {
     pub fn as_str(self) -> &'static str {
         match self {
-            SyncSource::Tvdb => "tvdb",
-            SyncSource::Tmdb => "tmdb",
+            Self::Tvdb => "tvdb",
+            Self::Tmdb => "tmdb",
+        }
+    }
+
+    pub fn from_remote_source(remote_source: &RemoteSource) -> Option<Self> {
+        match remote_source {
+            RemoteSource::Tvdb => Some(Self::Tvdb),
+            RemoteSource::Tmdb => Some(Self::Tmdb),
+            _ => None,
         }
     }
 
@@ -861,7 +1000,7 @@ impl Series {
     }
 
     pub fn remote_by_source(&self, source: &str) -> Option<&RemoteId> {
-        self.remotes.iter().find(|r| r.source() == source)
+        self.remotes.iter().find(|r| r.source().as_str() == source)
     }
 
     pub fn effective_sync_source(&self) -> Option<SyncSource> {
@@ -942,7 +1081,7 @@ impl Movie {
     }
 
     pub fn remote_by_source(&self, source: &str) -> Option<&RemoteId> {
-        self.remotes.iter().find(|r| r.source() == source)
+        self.remotes.iter().find(|r| r.source().as_str() == source)
     }
 
     pub fn effective_sync_source(&self) -> Option<SyncSource> {

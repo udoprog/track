@@ -356,9 +356,7 @@ async fn main() -> Result<()> {
         .into_iter()
         .flat_map(|s| {
             let id = s.id;
-            s.remotes
-                .into_iter()
-                .map(move |r| (r.as_str().to_owned(), id))
+            s.remotes.into_iter().map(move |r| (r.to_string(), id))
         })
         .collect();
 
@@ -369,9 +367,7 @@ async fn main() -> Result<()> {
         .into_iter()
         .flat_map(|m| {
             let id = m.id;
-            m.remotes
-                .into_iter()
-                .map(move |r| (r.as_str().to_owned(), id))
+            m.remotes.into_iter().map(move |r| (r.to_string(), id))
         })
         .collect();
 

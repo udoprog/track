@@ -3,15 +3,10 @@ use std::collections::{HashMap, HashSet};
 use anyhow::{Context as _, Result};
 use api::{ImageKind, ImageSource, SeasonNumber};
 use db::Database;
-use musli_web::api::ChannelId;
 use tracing::{info, warn};
 
 use crate::app_broadcast::Broadcaster;
 use crate::remote::RemoteClients;
-
-fn broadcast_event(broadcast: &Broadcaster, kind: api::AppEventKind) {
-    broadcast.emit(ChannelId::NONE, kind, "sync event");
-}
 
 pub(crate) async fn sync_series(
     series_id: api::SeriesId,
@@ -33,14 +28,14 @@ pub(crate) async fn sync_series(
             let remote_id = series
                 .remote_by_source("tmdb")
                 .context("series has no tmdb remote")?;
-            let tmdb_id: u32 = remote_id.value().parse().context("invalid tmdb id")?;
+            let tmdb_id: u32 = remote_id.value().as_u32().context("invalid tmdb id")?;
             sync_series_tmdb(series_id, tmdb_id, remote, db, broadcast).await?;
         }
         Some(api::SyncSource::Tvdb) => {
             let remote_id = series
                 .remote_by_source("tvdb")
                 .context("series has no tvdb remote")?;
-            let tvdb_id: u32 = remote_id.value().parse().context("invalid tvdb id")?;
+            let tvdb_id: u32 = remote_id.value().as_u32().context("invalid tvdb id")?;
             sync_series_tvdb(series_id, tvdb_id, remote, db, broadcast).await?;
         }
         None => anyhow::bail!("series has no syncable remote (tmdb or tvdb)"),
@@ -57,7 +52,7 @@ pub(crate) async fn sync_series(
     pending.fill_for_series(series_id).await?;
     db.set_series_synced_at(series_id, api::Timestamp::now())
         .await?;
-    broadcast_event(broadcast, api::AppEventKind::PendingChanged);
+    broadcast.broadcast_event(api::AppEventKind::PendingChanged);
     info!(series_id = %series_id, "sync complete");
     Ok(())
 }
@@ -109,10 +104,7 @@ async fn sync_series_tmdb(
         .series_by_id(series_id)
         .await?
         .context("series not found after update")?;
-    broadcast_event(
-        broadcast,
-        api::AppEventKind::SeriesChanged { series: updated },
-    );
+    broadcast.broadcast_event(api::AppEventKind::SeriesChanged { series: updated });
 
     for season_info in &info.seasons {
         db.upsert_season(
@@ -147,20 +139,14 @@ async fn sync_series_tmdb(
             .await?;
         }
 
-        broadcast_event(
-            broadcast,
-            api::AppEventKind::EpisodesChanged {
-                series_id,
-                season: season_info.number,
-            },
-        );
+        broadcast.broadcast_event(api::AppEventKind::EpisodesChanged {
+            series_id,
+            season: season_info.number,
+        });
     }
 
     let seasons = db.seasons(series_id).await?;
-    broadcast_event(
-        broadcast,
-        api::AppEventKind::SeasonsChanged { series_id, seasons },
-    );
+    broadcast.broadcast_event(api::AppEventKind::SeasonsChanged { series_id, seasons });
 
     Ok(())
 }
@@ -209,10 +195,7 @@ async fn sync_series_tvdb(
         .series_by_id(series_id)
         .await?
         .context("series not found after update")?;
-    broadcast_event(
-        broadcast,
-        api::AppEventKind::SeriesChanged { series: updated },
-    );
+    broadcast.broadcast_event(api::AppEventKind::SeriesChanged { series: updated });
 
     info!(tvdb_id, "fetching TVDB episodes");
     let episodes = remote.fetch_tvdb_episodes(tvdb_id).await?;
@@ -246,17 +229,11 @@ async fn sync_series_tvdb(
         let air_date = season_air_dates.get(&season);
         db.upsert_season(series_id, season, air_date, None, "", None)
             .await?;
-        broadcast_event(
-            broadcast,
-            api::AppEventKind::EpisodesChanged { series_id, season },
-        );
+        broadcast.broadcast_event(api::AppEventKind::EpisodesChanged { series_id, season });
     }
 
     let seasons = db.seasons(series_id).await?;
-    broadcast_event(
-        broadcast,
-        api::AppEventKind::SeasonsChanged { series_id, seasons },
-    );
+    broadcast.broadcast_event(api::AppEventKind::SeasonsChanged { series_id, seasons });
 
     Ok(())
 }
@@ -277,7 +254,7 @@ pub(crate) async fn sync_movie(
             let remote_id = movie
                 .remote_by_source("tmdb")
                 .context("movie has no tmdb remote")?;
-            let tmdb_id: u32 = remote_id.value().parse().context("invalid tmdb id")?;
+            let tmdb_id: u32 = remote_id.value().as_u32().context("invalid tmdb id")?;
             info!(tmdb_id, "fetching tmdb movie");
             let info = remote.fetch_tmdb_movie(tmdb_id).await?;
 
@@ -318,10 +295,7 @@ pub(crate) async fn sync_movie(
                 .movie_by_id(movie_id)
                 .await?
                 .context("movie not found after update")?;
-            broadcast_event(
-                broadcast,
-                api::AppEventKind::MovieChanged { movie: updated },
-            );
+            broadcast.broadcast_event(api::AppEventKind::MovieChanged { movie: updated });
         }
         Some(api::SyncSource::Tvdb) => anyhow::bail!("unsupported movie sync source: tvdb"),
         None => anyhow::bail!("movie has no syncable remote (tmdb)"),
@@ -330,7 +304,7 @@ pub(crate) async fn sync_movie(
     crate::background::discover_pending_movies(db).await?;
     db.set_movie_synced_at(movie_id, api::Timestamp::now())
         .await?;
-    broadcast_event(broadcast, api::AppEventKind::PendingChanged);
+    broadcast.broadcast_event(api::AppEventKind::PendingChanged);
     info!(movie_id = %movie_id, "sync complete");
     Ok(())
 }
@@ -344,12 +318,13 @@ async fn enrich_with_tvmaze(
     broadcast: &Broadcaster,
 ) -> Result<()> {
     let tvmaze_id = if let Some(r) = series.remote_by_source("tvdb") {
-        let id: u32 = r.value().parse().context("invalid tvdb id")?;
+        let id: u32 = r.value().as_u32().context("invalid tvdb id")?;
         info!(tvdb_id = id, "looking up tvmaze id via TVDB");
         remote.lookup_tvmaze_by_tvdb(id).await?
     } else if let Some(r) = series.remote_by_source("imdb") {
-        info!(imdb_id = r.value(), "looking up tvmaze id via IMDB");
-        remote.lookup_tvmaze_by_imdb(r.value()).await?
+        let imdb_id = r.value().as_str().context("invalid imdb id")?;
+        info!(imdb_id, "looking up tvmaze id via IMDB");
+        remote.lookup_tvmaze_by_imdb(imdb_id).await?
     } else {
         info!(series_id = %series_id, "skipping tvmaze enrichment: no TVDB or IMDB remote");
         return Ok(());
@@ -382,10 +357,7 @@ async fn enrich_with_tvmaze(
     db.update_episodes_aired_at(series_id, updates).await?;
 
     for season in seasons_updated {
-        broadcast_event(
-            broadcast,
-            api::AppEventKind::EpisodesChanged { series_id, season },
-        );
+        broadcast.broadcast_event(api::AppEventKind::EpisodesChanged { series_id, season });
     }
 
     Ok(())

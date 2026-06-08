@@ -22,4 +22,8 @@ impl Broadcaster {
             tracing::warn!(%error, %context, "broadcast failed");
         }
     }
+
+    pub(crate) fn broadcast_event(&self, kind: api::AppEventKind) {
+        self.emit(ChannelId::NONE, kind, "sync event");
+    }
 }

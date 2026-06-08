@@ -470,7 +470,7 @@ impl MovieDetail {
                 <span class="fill">{&movie.title}</span>
                 { for movie.remotes.iter().filter_map(|r| {
                     let url = r.movie_url()?;
-                    let label = r.source().to_uppercase();
+                    let label = r.source().as_str().to_uppercase();
                     Some(html! {
                         <a class="btn" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
                             <span class="icon-inline"><span class="icon arrow-top-right-on-square" /></span>
