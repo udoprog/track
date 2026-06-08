@@ -133,6 +133,13 @@ impl Client {
             #[serde(default)]
             poster_path: Option<String>,
         }
+        #[derive(Deserialize, Default)]
+        struct ExternalIds {
+            #[serde(default)]
+            tvdb_id: Option<u32>,
+            #[serde(default)]
+            imdb_id: Option<String>,
+        }
         #[derive(Deserialize)]
         struct Details {
             #[serde(default)]
@@ -149,9 +156,13 @@ impl Client {
             first_air_date: Option<String>,
             #[serde(default)]
             seasons: Vec<SeasonDetails>,
+            #[serde(default)]
+            external_ids: ExternalIds,
         }
 
-        let d: Details = self.get_json(&format!("{BASE}/tv/{id}")).await?;
+        let d: Details = self
+            .get_json(&format!("{BASE}/tv/{id}?append_to_response=external_ids"))
+            .await?;
 
         let seasons = d
             .seasons
@@ -168,6 +179,16 @@ impl Client {
             })
             .collect();
 
+        let mut remotes = vec![RemoteId::tmdb(id)];
+        if let Some(tvdb_id) = d.external_ids.tvdb_id {
+            remotes.push(RemoteId::tvdb(tvdb_id));
+        }
+        if let Some(ref imdb_id) = d.external_ids.imdb_id {
+            if !imdb_id.is_empty() {
+                remotes.push(RemoteId::imdb(imdb_id));
+            }
+        }
+
         Ok(SeriesInfo {
             title: d.original_name.or(d.name).unwrap_or_default(),
             overview: d.overview.unwrap_or_default(),
@@ -175,6 +196,7 @@ impl Client {
             poster: opt_image(d.poster_path.as_deref()),
             fanart: opt_image(d.backdrop_path.as_deref()),
             seasons,
+            remotes,
         })
     }
 
@@ -271,6 +293,11 @@ impl Client {
     }
 
     pub(crate) async fn fetch_movie(&self, id: u32) -> Result<MovieInfo> {
+        #[derive(Deserialize, Default)]
+        struct ExternalIds {
+            #[serde(default)]
+            imdb_id: Option<String>,
+        }
         #[derive(Deserialize)]
         struct Details {
             #[serde(default)]
@@ -285,9 +312,22 @@ impl Client {
             backdrop_path: Option<String>,
             #[serde(default)]
             release_date: Option<String>,
+            #[serde(default)]
+            external_ids: ExternalIds,
         }
 
-        let d: Details = self.get_json(&format!("{BASE}/movie/{id}")).await?;
+        let d: Details = self
+            .get_json(&format!(
+                "{BASE}/movie/{id}?append_to_response=external_ids"
+            ))
+            .await?;
+
+        let mut remotes = vec![RemoteId::tmdb(id)];
+        if let Some(ref imdb_id) = d.external_ids.imdb_id {
+            if !imdb_id.is_empty() {
+                remotes.push(RemoteId::imdb(imdb_id));
+            }
+        }
 
         Ok(MovieInfo {
             title: d.original_title.or(d.title).unwrap_or_default(),
@@ -295,6 +335,7 @@ impl Client {
             release_date: opt_date(d.release_date.as_deref()),
             poster: opt_image(d.poster_path.as_deref()),
             fanart: opt_image(d.backdrop_path.as_deref()),
+            remotes,
         })
     }
 }
@@ -308,6 +349,7 @@ pub(crate) struct SeriesInfo {
     pub poster: Option<Image>,
     pub fanart: Option<Image>,
     pub seasons: Vec<SeasonInfo>,
+    pub remotes: Vec<RemoteId>,
 }
 
 pub(crate) struct SeasonInfo {
@@ -334,6 +376,7 @@ pub(crate) struct MovieInfo {
     pub release_date: Option<Date>,
     pub poster: Option<Image>,
     pub fanart: Option<Image>,
+    pub remotes: Vec<RemoteId>,
 }
 
 pub(crate) struct SearchSeriesResult {

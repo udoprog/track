@@ -705,11 +705,15 @@ async fn main() -> Result<()> {
     tracing::info!("discovering pending movies");
     let today = api::Date::today();
     for (id, date) in db.theatrical_movie_candidates(today).await? {
-        let ts = date.map(|d| d.to_timestamp()).unwrap_or_else(api::Timestamp::now);
+        let ts = date
+            .map(|d| d.to_timestamp())
+            .unwrap_or_else(api::Timestamp::now);
         db.add_pending_movie(id, ts).await?;
     }
     for (id, date) in db.digital_movie_candidates(today).await? {
-        let ts = date.map(|d| d.to_timestamp()).unwrap_or_else(api::Timestamp::now);
+        let ts = date
+            .map(|d| d.to_timestamp())
+            .unwrap_or_else(api::Timestamp::now);
         db.add_pending_movie(id, ts).await?;
     }
 

@@ -292,14 +292,16 @@ impl SeriesDetail {
                     }
                     api::AppEventKind::TaskAdded { task }
                     | api::AppEventKind::TaskStarted { task } => {
-                        if matches!(&task.kind, api::TaskKind::SyncSeries { series_id, .. } if *series_id == ctx.props().series_id) {
+                        if matches!(&task.kind, api::TaskKind::SyncSeries { series_id, .. } if *series_id == ctx.props().series_id)
+                        {
                             self.syncing = true;
                             return Ok(true);
                         }
                         Ok(false)
                     }
                     api::AppEventKind::TaskCompleted { task } => {
-                        if matches!(&task.kind, api::TaskKind::SyncSeries { series_id, .. } if *series_id == ctx.props().series_id) {
+                        if matches!(&task.kind, api::TaskKind::SyncSeries { series_id, .. } if *series_id == ctx.props().series_id)
+                        {
                             self.syncing = false;
                             return Ok(true);
                         }

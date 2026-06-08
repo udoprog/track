@@ -208,14 +208,16 @@ impl MovieDetail {
                     }
                     api::AppEventKind::TaskAdded { task }
                     | api::AppEventKind::TaskStarted { task } => {
-                        if matches!(&task.kind, api::TaskKind::SyncMovie { movie_id, .. } if *movie_id == ctx.props().movie_id) {
+                        if matches!(&task.kind, api::TaskKind::SyncMovie { movie_id, .. } if *movie_id == ctx.props().movie_id)
+                        {
                             self.syncing = true;
                             return Ok(true);
                         }
                         Ok(false)
                     }
                     api::AppEventKind::TaskCompleted { task } => {
-                        if matches!(&task.kind, api::TaskKind::SyncMovie { movie_id, .. } if *movie_id == ctx.props().movie_id) {
+                        if matches!(&task.kind, api::TaskKind::SyncMovie { movie_id, .. } if *movie_id == ctx.props().movie_id)
+                        {
                             self.syncing = false;
                             return Ok(true);
                         }

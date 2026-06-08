@@ -105,6 +105,8 @@ impl Client {
             banner: Option<String>,
             #[serde(default)]
             fanart: Option<String>,
+            #[serde(default)]
+            imdb_id: Option<String>,
         }
         #[derive(Deserialize)]
         struct Resp {
@@ -124,12 +126,20 @@ impl Client {
         let resp: Resp = serde_json::from_slice(&bytes)?;
         let v = resp.data;
 
+        let mut remotes = vec![RemoteId::tvdb(id)];
+        if let Some(ref imdb_id) = v.imdb_id {
+            if !imdb_id.is_empty() {
+                remotes.push(RemoteId::imdb(imdb_id));
+            }
+        }
+
         Ok(SeriesInfo {
             title: v.series_name,
             overview: v.overview.unwrap_or_default(),
             poster: opt_image(v.poster.as_deref()),
             banner: opt_image(v.banner.as_deref()),
             fanart: opt_image(v.fanart.as_deref()),
+            remotes,
         })
     }
 
@@ -215,6 +225,7 @@ pub(crate) struct SeriesInfo {
     pub poster: Option<Image>,
     pub banner: Option<Image>,
     pub fanart: Option<Image>,
+    pub remotes: Vec<RemoteId>,
 }
 
 pub(crate) struct EpisodeInfo {

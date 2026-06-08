@@ -87,6 +87,10 @@ async fn sync_series_tmdb(
     )
     .await?;
 
+    for remote in &info.remotes {
+        db.add_series_remote(series_id, remote).await?;
+    }
+
     if let Some(ref img) = info.poster {
         db.upsert_series_image(series_id, ImageKind::Poster, ImageSource::Tmdb, img.path())
             .await?;
@@ -184,6 +188,10 @@ async fn sync_series_tvdb(
     )
     .await?;
 
+    for remote in &info.remotes {
+        db.add_series_remote(series_id, remote).await?;
+    }
+
     if let Some(ref img) = info.poster {
         db.upsert_series_image(series_id, ImageKind::Poster, ImageSource::Tvdb, img.path())
             .await?;
@@ -280,6 +288,10 @@ pub(crate) async fn sync_movie(
                 &info.overview,
             )
             .await?;
+
+            for remote in &info.remotes {
+                db.add_movie_remote(movie_id, remote).await?;
+            }
 
             if let Some(ref img) = info.poster {
                 db.upsert_movie_image(movie_id, ImageKind::Poster, ImageSource::Tmdb, img.path())
