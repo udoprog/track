@@ -406,6 +406,26 @@ impl RemoteId {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    pub fn series_url(&self) -> Option<String> {
+        let v = self.value();
+        match self.source() {
+            "tvdb" => Some(format!("https://thetvdb.com/series/{v}")),
+            "tmdb" => Some(format!("https://www.themoviedb.org/tv/{v}")),
+            "imdb" => Some(format!("https://www.imdb.com/title/{v}/")),
+            _ => None,
+        }
+    }
+
+    pub fn movie_url(&self) -> Option<String> {
+        let v = self.value();
+        match self.source() {
+            "tvdb" => Some(format!("https://thetvdb.com/movies/{v}")),
+            "tmdb" => Some(format!("https://www.themoviedb.org/movie/{v}")),
+            "imdb" => Some(format!("https://www.imdb.com/title/{v}/")),
+            _ => None,
+        }
+    }
 }
 
 impl fmt::Display for RemoteId {
@@ -892,6 +912,7 @@ pub struct Episode {
     pub watched: bool,
     pub watched_count: u32,
     pub last_watched_id: Option<WatchedId>,
+    pub pending: bool,
 }
 
 #[derive(Debug, Clone, Encode, Decode)]

@@ -572,8 +572,8 @@ impl WsHandler {
                     .context("missing request")?;
                 let ts = api::Timestamp::now();
                 match req.kind {
-                    api::PendingKind::Episode { episode, .. } => {
-                        self.db.add_pending_episode(episode, ts).await?;
+                    api::PendingKind::Episode { series, episode } => {
+                        self.db.add_pending_episode(series, episode, ts).await?;
                     }
                     api::PendingKind::Movie { movie } => {
                         self.db.add_pending_movie(movie, ts).await?;
@@ -591,8 +591,8 @@ impl WsHandler {
                     .read::<api::RemovePendingRequest>()
                     .context("missing request")?;
                 match req.kind {
-                    api::PendingKind::Episode { episode, .. } => {
-                        self.db.remove_pending_episode(episode).await?;
+                    api::PendingKind::Episode { series, .. } => {
+                        self.db.remove_pending_episode(series).await?;
                     }
                     api::PendingKind::Movie { movie } => {
                         self.db.remove_pending_movie(movie).await?;

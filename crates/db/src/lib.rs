@@ -84,6 +84,7 @@ struct EpisodeRow {
     watched: bool,
     watched_count: i64,
     last_watched_id: Option<WatchedId>,
+    pending: bool,
 }
 
 #[derive(Row)]
@@ -327,14 +328,15 @@ statements! {
                 filename        = excluded.filename,
                 remote_id       = excluded.remote_id
             RETURNING id, series_id, season, number, absolute_number, name, overview, aired, aired_at, filename, remote_id,
-                      0 AS watched, 0 AS watched_count, NULL AS last_watched_id
+                      0 AS watched, 0 AS watched_count, NULL AS last_watched_id, 0 AS pending
         "#,
         list_episodes: r#"
             SELECT e.id, e.series_id, e.season, e.number, e.absolute_number, e.name, e.overview,
                    e.aired, e.aired_at, e.filename, e.remote_id,
                    (SELECT COUNT(*) FROM watched w WHERE w.episode_id = e.id) > 0 AS watched,
                    (SELECT COUNT(*) FROM watched w WHERE w.episode_id = e.id) AS watched_count,
-                   (SELECT w.id FROM watched w WHERE w.episode_id = e.id ORDER BY w.id DESC LIMIT 1) AS last_watched_id
+                   (SELECT w.id FROM watched w WHERE w.episode_id = e.id ORDER BY w.id DESC LIMIT 1) AS last_watched_id,
+                   EXISTS(SELECT 1 FROM pending p WHERE p.episode_id = e.id) AS pending
             FROM episodes e
             WHERE e.series_id = ? AND e.season = ?
             ORDER BY e.number
@@ -344,7 +346,8 @@ statements! {
                    e.aired, e.aired_at, e.filename, e.remote_id,
                    (SELECT COUNT(*) FROM watched w WHERE w.episode_id = e.id) > 0 AS watched,
                    (SELECT COUNT(*) FROM watched w WHERE w.episode_id = e.id) AS watched_count,
-                   (SELECT w.id FROM watched w WHERE w.episode_id = e.id ORDER BY w.id DESC LIMIT 1) AS last_watched_id
+                   (SELECT w.id FROM watched w WHERE w.episode_id = e.id ORDER BY w.id DESC LIMIT 1) AS last_watched_id,
+                   EXISTS(SELECT 1 FROM pending p WHERE p.episode_id = e.id) AS pending
             FROM episodes e WHERE e.id = ?
         "#,
         update_episode_aired_at: r#"
@@ -425,23 +428,20 @@ statements! {
 
         // pending table management
         upsert_pending_episode: r#"
-            INSERT INTO pending (timestamp, episode_id) VALUES (?, ?)
-            ON CONFLICT(episode_id) WHERE episode_id IS NOT NULL
-                DO UPDATE SET timestamp = excluded.timestamp
+            INSERT INTO pending (timestamp, series_id, episode_id) VALUES (?, ?, ?)
+            ON CONFLICT(series_id) WHERE series_id IS NOT NULL
+                DO UPDATE SET episode_id = excluded.episode_id, timestamp = excluded.timestamp
         "#,
         upsert_pending_movie: r#"
             INSERT INTO pending (timestamp, movie_id) VALUES (?, ?)
             ON CONFLICT(movie_id) WHERE movie_id IS NOT NULL
                 DO UPDATE SET timestamp = excluded.timestamp
         "#,
-        delete_pending_episode: r#"DELETE FROM pending WHERE episode_id = ?"#,
+        delete_pending_episode: r#"DELETE FROM pending WHERE series_id = ?"#,
         delete_pending_movie: r#"DELETE FROM pending WHERE movie_id = ?"#,
         has_pending_movie: r#"SELECT 1 FROM pending WHERE movie_id = ? LIMIT 1"#,
         has_pending_episode_for_series: r#"
-            SELECT 1 FROM pending p
-            JOIN episodes e ON e.id = p.episode_id
-            WHERE e.series_id = ?
-            LIMIT 1
+            SELECT 1 FROM pending WHERE series_id = ? LIMIT 1
         "#,
         next_pending_episode_for_series: r#"
             SELECT e.id, e.aired
@@ -1332,13 +1332,14 @@ impl Database {
 
     pub async fn add_pending_episode(
         &self,
+        series_id: api::SeriesId,
         episode_id: api::EpisodeId,
         ts: api::Timestamp,
     ) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
         spawn_blocking(move || {
-            s.upsert_pending_episode.bind((ts, episode_id))?;
+            s.upsert_pending_episode.bind((ts, series_id, episode_id))?;
             ensure!(
                 s.upsert_pending_episode.step()?.is_done(),
                 "upsert_pending_episode"
@@ -1366,11 +1367,11 @@ impl Database {
         .await?
     }
 
-    pub async fn remove_pending_episode(&self, episode_id: api::EpisodeId) -> Result<()> {
+    pub async fn remove_pending_episode(&self, series_id: api::SeriesId) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
         spawn_blocking(move || {
-            s.delete_pending_episode.bind((episode_id,))?;
+            s.delete_pending_episode.bind((series_id,))?;
             ensure!(
                 s.delete_pending_episode.step()?.is_done(),
                 "delete_pending_episode"
@@ -1418,7 +1419,7 @@ impl Database {
                     .aired
                     .map(|d| d.to_timestamp())
                     .unwrap_or_else(api::Timestamp::now);
-                s.upsert_pending_episode.bind((ts, r.id))?;
+                s.upsert_pending_episode.bind((ts, series_id, r.id))?;
                 ensure!(
                     s.upsert_pending_episode.step()?.is_done(),
                     "upsert_pending_episode"
@@ -1649,6 +1650,7 @@ impl Database {
                     watched: false,
                     watched_count: 0,
                     last_watched_id: None,
+                    pending: false,
                 };
 
                 if let Some(day_entry) = days_map.iter_mut().find(|(d, _)| d == &day) {
@@ -1873,6 +1875,7 @@ fn episode_from_row(r: EpisodeRow) -> api::Episode {
         watched: r.watched,
         watched_count: r.watched_count as u32,
         last_watched_id: r.last_watched_id,
+        pending: r.pending,
     }
 }
 

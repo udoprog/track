@@ -11,6 +11,7 @@ pub(super) struct MovieDetail {
     watched: Vec<api::Watched>,
     confirm_remove: bool,
     confirm_remove_watch: bool,
+    syncing: bool,
     image_modal: Option<api::ImageKind>,
     _setup: crate::SetupChannel,
     _broadcast: ws::Listener,
@@ -87,6 +88,7 @@ impl Component for MovieDetail {
             watched: Vec::new(),
             confirm_remove: false,
             confirm_remove_watch: false,
+            syncing: false,
             image_modal: None,
             _setup,
             _broadcast,
@@ -201,6 +203,21 @@ impl MovieDetail {
                         if relevant && self.channel.id() != ws::ChannelId::NONE {
                             self.load_movie(ctx);
                             self.load_watched(ctx);
+                        }
+                        Ok(false)
+                    }
+                    api::AppEventKind::TaskAdded { task }
+                    | api::AppEventKind::TaskStarted { task } => {
+                        if matches!(&task.kind, api::TaskKind::SyncMovie { movie_id, .. } if *movie_id == ctx.props().movie_id) {
+                            self.syncing = true;
+                            return Ok(true);
+                        }
+                        Ok(false)
+                    }
+                    api::AppEventKind::TaskCompleted { task } => {
+                        if matches!(&task.kind, api::TaskKind::SyncMovie { movie_id, .. } if *movie_id == ctx.props().movie_id) {
+                            self.syncing = false;
+                            return Ok(true);
                         }
                         Ok(false)
                     }
@@ -449,6 +466,16 @@ impl MovieDetail {
                 </button>
 
                 <span class="fill">{&movie.title}</span>
+                { for movie.remotes.iter().filter_map(|r| {
+                    let url = r.movie_url()?;
+                    let label = r.source().to_uppercase();
+                    Some(html! {
+                        <a class="btn" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
+                            <span class="icon-inline"><span class="icon arrow-top-right-on-square" /></span>
+                            <span class="hide-mobile">{label}</span>
+                        </a>
+                    })
+                }) }
 
                 if movie.tracked {
                     <button class="btn" onclick={link.callback(|_| Msg::SetTracked(false))} title="Untrack movie">
@@ -464,7 +491,7 @@ impl MovieDetail {
 
                 if !movie.remotes.is_empty() {
                     <button class="btn" onclick={link.callback(|_| Msg::SyncMovie)} title="Sync from remote">
-                        <span class="icon-inline"><span class="icon arrow-path" /></span>
+                        <span class="icon-inline"><span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} /></span>
                         <span class="hide-mobile">{"Sync"}</span>
                     </button>
                 }

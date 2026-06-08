@@ -14,6 +14,7 @@ pub(super) struct SeriesDetail {
     selected: Option<api::SeasonNumber>,
     episodes: Vec<api::Episode>,
     confirm_remove: bool,
+    syncing: bool,
     confirm_remove_watch: Option<api::WatchedId>,
     expanded_episode: Option<api::EpisodeId>,
     episode_history: Vec<api::Watched>,
@@ -105,6 +106,7 @@ impl Component for SeriesDetail {
             selected: None,
             episodes: Vec::new(),
             confirm_remove: false,
+            syncing: false,
             confirm_remove_watch: None,
             expanded_episode: None,
             episode_history: Vec::new(),
@@ -213,6 +215,7 @@ impl Component for SeriesDetail {
             self.selected = None;
             self.episodes.clear();
             self.confirm_remove = false;
+            self.syncing = false;
             self.confirm_remove_watch = None;
             self.expanded_episode = None;
             self.episode_history.clear();
@@ -278,6 +281,27 @@ impl SeriesDetail {
                     {
                         if self.selected == Some(*season) {
                             self.load_episodes(ctx, *season);
+                        }
+                        Ok(false)
+                    }
+                    api::AppEventKind::PendingChanged => {
+                        if let Some(season) = self.selected {
+                            self.load_episodes(ctx, season);
+                        }
+                        Ok(false)
+                    }
+                    api::AppEventKind::TaskAdded { task }
+                    | api::AppEventKind::TaskStarted { task } => {
+                        if matches!(&task.kind, api::TaskKind::SyncSeries { series_id, .. } if *series_id == ctx.props().series_id) {
+                            self.syncing = true;
+                            return Ok(true);
+                        }
+                        Ok(false)
+                    }
+                    api::AppEventKind::TaskCompleted { task } => {
+                        if matches!(&task.kind, api::TaskKind::SyncSeries { series_id, .. } if *series_id == ctx.props().series_id) {
+                            self.syncing = false;
+                            return Ok(true);
                         }
                         Ok(false)
                     }
@@ -520,6 +544,9 @@ impl SeriesDetail {
             }
             Msg::AddPendingDone(result) => {
                 result.context(Message::SyncingSeries)?;
+                if let Some(season) = self.selected {
+                    self.load_episodes(ctx, season);
+                }
                 Ok(false)
             }
             Msg::RemovePending(episode_id) => {
@@ -539,6 +566,9 @@ impl SeriesDetail {
             }
             Msg::RemovePendingDone(result) => {
                 result.context(Message::SyncingSeries)?;
+                if let Some(season) = self.selected {
+                    self.load_episodes(ctx, season);
+                }
                 Ok(false)
             }
             Msg::SelectImage(id) => {
@@ -656,6 +686,16 @@ impl SeriesDetail {
                 </button>
                 if let Some(ref s) = self.series {
                     <span class="fill">{&s.title}</span>
+                    { for s.remotes.iter().filter_map(|r| {
+                        let url = r.series_url()?;
+                        let label = r.source().to_uppercase();
+                        Some(html! {
+                            <a class="btn" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
+                                <span class="icon-inline"><span class="icon arrow-top-right-on-square" /></span>
+                                <span class="hide-mobile">{label}</span>
+                            </a>
+                        })
+                    }) }
                     if s.tracked {
                         <button class="btn" onclick={link.callback(|_| Msg::SetTracked(false))} title="Untrack series">
                             <span class="icon-inline"><span class="icon eye-slash" /></span>
@@ -670,7 +710,7 @@ impl SeriesDetail {
 
                     if !s.remotes.is_empty() {
                         <button class="btn" onclick={link.callback(|_| Msg::SyncSeries)} title="Sync from remote">
-                            <span class="icon-inline"><span class="icon arrow-path" /></span>
+                            <span class="icon-inline"><span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} /></span>
                             <span class="hide-mobile">{"Sync"}</span>
                         </button>
                     }
@@ -867,12 +907,15 @@ impl SeriesDetail {
                                     </button>
                                 }
 
-                                <button class="btn-icon" onclick={on_add_pending} title="Add to pending">
-                                    <span class="icon bookmark" />
-                                </button>
-                                <button class="btn-icon" onclick={on_remove_pending} title="Remove from pending">
-                                    <span class="icon bookmark-slash" />
-                                </button>
+                                if ep.pending {
+                                    <button class="btn-icon" onclick={on_remove_pending} title="Remove from pending">
+                                        <span class="icon bookmark-slash" />
+                                    </button>
+                                } else {
+                                    <button class="btn-icon" onclick={on_add_pending} title="Add to pending">
+                                        <span class="icon bookmark" />
+                                    </button>
+                                }
                             </div>
                         }
                     };

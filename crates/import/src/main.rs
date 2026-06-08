@@ -415,6 +415,7 @@ async fn main() -> Result<()> {
             dashboard_page: cfg.dashboard_page,
             auto_sync_enabled: false,
             auto_sync_interval_hours: 24,
+            timezone: String::new(),
         })
         .await
         .context("saving config")?;
@@ -702,7 +703,15 @@ async fn main() -> Result<()> {
     tracing::info!("  filled pending for {pending_filled} series");
 
     tracing::info!("discovering pending movies");
-    db.discover_pending_movies().await?;
+    let today = api::Date::today();
+    for (id, date) in db.theatrical_movie_candidates(today).await? {
+        let ts = date.map(|d| d.to_timestamp()).unwrap_or_else(api::Timestamp::now);
+        db.add_pending_movie(id, ts).await?;
+    }
+    for (id, date) in db.digital_movie_candidates(today).await? {
+        let ts = date.map(|d| d.to_timestamp()).unwrap_or_else(api::Timestamp::now);
+        db.add_pending_movie(id, ts).await?;
+    }
 
     tracing::info!("import complete");
     Ok(())

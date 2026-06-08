@@ -73,14 +73,16 @@ CREATE TABLE watched (
 CREATE TABLE pending (
     id         INTEGER PRIMARY KEY,
     timestamp  INTEGER NOT NULL,
+    series_id  INTEGER REFERENCES series(id)   ON DELETE CASCADE,
     episode_id INTEGER REFERENCES episodes(id) ON DELETE CASCADE,
-    movie_id   INTEGER REFERENCES movies(id) ON DELETE CASCADE,
-    CHECK((episode_id IS NULL) != (movie_id IS NULL))
+    movie_id   INTEGER REFERENCES movies(id)   ON DELETE CASCADE,
+    CHECK((episode_id IS NULL) != (movie_id IS NULL)),
+    CHECK(episode_id IS NULL OR series_id IS NOT NULL)
 );
 
 CREATE INDEX idx_pending_timestamp ON pending (timestamp);
-CREATE UNIQUE INDEX idx_pending_episode ON pending (episode_id) WHERE episode_id IS NOT NULL;
-CREATE UNIQUE INDEX idx_pending_movie   ON pending (movie_id)   WHERE movie_id   IS NOT NULL;
+CREATE UNIQUE INDEX idx_pending_series ON pending (series_id) WHERE series_id IS NOT NULL;
+CREATE UNIQUE INDEX idx_pending_movie  ON pending (movie_id)  WHERE movie_id  IS NOT NULL;
 
 CREATE TABLE config (
     key   TEXT PRIMARY KEY,

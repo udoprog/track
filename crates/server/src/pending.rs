@@ -24,7 +24,7 @@ impl PendingSystem {
         series_id: api::SeriesId,
         episode_id: api::EpisodeId,
     ) -> Result<()> {
-        self.db.remove_pending_episode(episode_id).await?;
+        self.db.remove_pending_episode(series_id).await?;
         self.db.fill_pending_for_series(series_id).await
     }
 }

@@ -330,7 +330,7 @@ impl Settings {
             }
             Msg::TimezoneChanged(val) => {
                 self.config.timezone = val;
-                Ok(false)
+                Ok(true)
             }
             Msg::ScheduleDaysChanged(val) => {
                 if let Ok(n) = val.parse::<u32>() {
