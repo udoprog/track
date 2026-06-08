@@ -4,7 +4,7 @@ use yew::prelude::*;
 use api::HasAired;
 
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{Route, SeriesQuery};
+use crate::router::{Route, SeriesDetailQuery};
 use crate::ui::{ConfirmDanger, MarkWatchedPicker, PaginationButtons};
 
 pub(super) struct Dashboard {
@@ -188,9 +188,11 @@ impl Dashboard {
             }
             Msg::MarkWatchedDone(result) => {
                 result.context(Message::MarkingWatched)?;
+
                 if self.channel.id() != ws::ChannelId::NONE {
                     self.load_pending(ctx);
                 }
+
                 Ok(false)
             }
             Msg::AskSkipEpisode(series, episode) => {
@@ -214,6 +216,11 @@ impl Dashboard {
             }
             Msg::SkipEpisodeDone(result) => {
                 result.context(Message::SyncingSeries)?;
+
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self.load_pending(ctx);
+                }
+
                 Ok(false)
             }
             Msg::AdjustPageSize(delta) => {
@@ -314,7 +321,7 @@ impl Dashboard {
         let confirming_watch = self.confirming_watch.as_ref() == Some(&p.kind);
         let route = match p.kind {
             api::PendingKind::Episode { series, .. } => {
-                Route::SeriesDetail(series, SeriesQuery::default())
+                Route::SeriesDetail(series, SeriesDetailQuery::default())
             }
             api::PendingKind::Movie { movie } => Route::MovieDetail(movie),
         };
@@ -357,7 +364,7 @@ impl Dashboard {
 
             if confirming_skip && let Some((series, episode)) = skip_ids {
                 break 'actions html! {
-                        <ConfirmDanger
+                    <ConfirmDanger
                         prompt="Skip"
                         {label}
                         on_confirm={ctx.link().callback(move |_| Msg::SkipEpisode(series, episode))}

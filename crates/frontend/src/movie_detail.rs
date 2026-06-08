@@ -2,7 +2,7 @@ use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
 use crate::error::{CustomContext, Error, Message};
-use crate::router::Route;
+use crate::router::{PagedQuery, Route};
 use crate::ui::{
     ConfirmDanger, ImageGallery, ImageItem, LanguagePicker, MarkWatchedPicker, RemoteSourceKind,
     RemoteSourceSelect,
@@ -213,7 +213,9 @@ impl MovieDetail {
                     api::AppEventKind::MovieDeleted { movie_id }
                         if *movie_id == ctx.props().movie_id =>
                     {
-                        ctx.props().on_navigate.emit(Route::Movies);
+                        ctx.props()
+                            .on_navigate
+                            .emit(Route::Movies(PagedQuery::default()));
                         Ok(false)
                     }
                     api::AppEventKind::WatchedChanged { kind } => {
@@ -339,7 +341,9 @@ impl MovieDetail {
             }
             Msg::RemoveDone(result) => {
                 result.context(Message::RemovingMovie)?;
-                ctx.props().on_navigate.emit(Route::Movies);
+                ctx.props()
+                    .on_navigate
+                    .emit(Route::Movies(PagedQuery::default()));
                 Ok(false)
             }
             Msg::SyncMovie => {
@@ -506,7 +510,9 @@ impl MovieDetail {
                 Ok(true)
             }
             Msg::Back => {
-                ctx.props().on_navigate.emit(Route::Movies);
+                ctx.props()
+                    .on_navigate
+                    .emit(Route::Movies(PagedQuery::default()));
                 Ok(false)
             }
         }

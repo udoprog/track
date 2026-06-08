@@ -4,7 +4,7 @@ use yew::prelude::*;
 use api::HasAired;
 
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{Route, SeriesQuery};
+use crate::router::{PagedQuery, Route, SeriesDetailQuery};
 use crate::ui::{
     ConfirmDanger, ImageGallery, ImageItem, LanguagePicker, MarkWatchedPicker, RemoteSourceKind,
     RemoteSourceSelect,
@@ -427,13 +427,15 @@ impl SeriesDetail {
             Msg::SelectSeason(season) => {
                 if self.selected != Some(season) {
                     let id = ctx.props().series_id;
+
                     ctx.props().on_navigate.emit(Route::SeriesDetail(
                         id,
-                        SeriesQuery {
+                        SeriesDetailQuery {
                             season: Some(season),
                         },
                     ));
                 }
+
                 Ok(false)
             }
             Msg::EpisodesLoaded(result) => {
@@ -581,7 +583,9 @@ impl SeriesDetail {
             }
             Msg::RemoveDone(result) => {
                 result.context(Message::RemovingSeries)?;
-                ctx.props().on_navigate.emit(Route::Series);
+                ctx.props()
+                    .on_navigate
+                    .emit(Route::Series(PagedQuery::default()));
                 Ok(false)
             }
             Msg::SyncSeries => {
@@ -754,7 +758,9 @@ impl SeriesDetail {
                 Ok(true)
             }
             Msg::Back => {
-                ctx.props().on_navigate.emit(Route::Series);
+                ctx.props()
+                    .on_navigate
+                    .emit(Route::Series(PagedQuery::default()));
                 Ok(false)
             }
         }
@@ -996,7 +1002,7 @@ impl SeriesDetail {
                             <div class="actions row-fill">
                                 <div class="row fill">
                                     <span class="episode-code">
-                                        { format!("S{:02}E{:02}", ep.season.to_i64(), ep.number) }
+                                        { format!("S{:02}E{:02}", ep.season.to_u32(), ep.number) }
                                     </span>
 
                                     <span class="fill">

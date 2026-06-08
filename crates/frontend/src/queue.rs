@@ -2,7 +2,7 @@ use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{Route, SeriesQuery};
+use crate::router::{Route, SeriesDetailQuery};
 use crate::ui::PaginationButtons;
 
 const PAGE_SIZE: usize = 20;
@@ -223,9 +223,10 @@ impl Queue {
 
     fn view_task_row(&self, ctx: &Context<Self>, task: &api::Task, spinning: bool) -> Html {
         let route = match &task.kind {
-            api::TaskKind::SyncSeries { series_id, .. } => {
-                Some(Route::SeriesDetail(*series_id, SeriesQuery::default()))
-            }
+            api::TaskKind::SyncSeries { series_id, .. } => Some(Route::SeriesDetail(
+                *series_id,
+                SeriesDetailQuery::default(),
+            )),
             api::TaskKind::SyncMovie { movie_id, .. } => Some(Route::MovieDetail(*movie_id)),
         };
         let on_navigate = route.map(|r| ctx.link().callback(move |_| Msg::Navigate(r.clone())));
@@ -282,9 +283,10 @@ impl Queue {
 
     fn view_completed_row(&self, ctx: &Context<Self>, task: &api::CompletedTask) -> Html {
         let route = match &task.kind {
-            api::TaskKind::SyncSeries { series_id, .. } => {
-                Some(Route::SeriesDetail(*series_id, SeriesQuery::default()))
-            }
+            api::TaskKind::SyncSeries { series_id, .. } => Some(Route::SeriesDetail(
+                *series_id,
+                SeriesDetailQuery::default(),
+            )),
             api::TaskKind::SyncMovie { movie_id, .. } => Some(Route::MovieDetail(*movie_id)),
         };
         let on_navigate = route.map(|r| ctx.link().callback(move |_| Msg::Navigate(r.clone())));

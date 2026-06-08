@@ -110,6 +110,7 @@ async fn sync_series_tmdb(
         db.upsert_series_image(series_id, ImageKind::Poster, ImageSource::Tmdb, img.path())
             .await?;
     }
+
     if let Some(ref img) = info.fanart {
         db.upsert_series_image(
             series_id,

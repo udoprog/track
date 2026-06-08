@@ -4,7 +4,7 @@ use yew::prelude::*;
 use api::HasAired;
 
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{Route, SeriesQuery};
+use crate::router::{Route, SeriesDetailQuery};
 
 pub(super) struct WatchNext {
     channel: ws::Channel,
@@ -164,7 +164,7 @@ impl WatchNext {
 
         let route = match p.kind {
             api::PendingKind::Episode { series, .. } => {
-                Route::SeriesDetail(series, SeriesQuery::default())
+                Route::SeriesDetail(series, SeriesDetailQuery::default())
             }
             api::PendingKind::Movie { movie } => Route::MovieDetail(movie),
         };

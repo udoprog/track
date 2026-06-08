@@ -11,7 +11,7 @@ use crate::SeriesList;
 use crate::Settings;
 use crate::WatchNext;
 use crate::error::{CustomContext, Error, Message};
-use crate::router::Route;
+use crate::router::{PagedQuery, Route};
 use crate::setup_channel::SetupChannel;
 
 pub(super) struct App {
@@ -101,11 +101,11 @@ impl Component for App {
                                 <span class="icon-inline"><span class="icon play" /></span>
                                 <span class="hide-mobile">{"Watch Next"}</span>
                             </button>
-                            <button onclick={on_nav(Route::Series)} class="btn" title="Series">
+                            <button onclick={on_nav(Route::Series(PagedQuery::default()))} class="btn" title="Series">
                                 <span class="icon-inline"><span class="icon tv" /></span>
                                 <span class="hide-mobile">{"Series"}</span>
                             </button>
-                            <button onclick={on_nav(Route::Movies)} class="btn" title="Movies">
+                            <button onclick={on_nav(Route::Movies(PagedQuery::default()))} class="btn" title="Movies">
                                 <span class="icon-inline"><span class="icon film" /></span>
                                 <span class="hide-mobile">{"Movies"}</span>
                             </button>
@@ -193,17 +193,20 @@ impl App {
             Route::Dashboard => html! { <Dashboard {onerror} {on_navigate} /> },
             Route::Queue => html! { <Queue {onerror} {on_navigate} /> },
             Route::WatchNext => html! { <WatchNext {onerror} {on_navigate} /> },
-            Route::Series => html! {
-                <SeriesList {onerror} {on_navigate} />
+            Route::Series(query) => html! {
+                <SeriesList {onerror} {on_navigate} page={query.page} filter={query.filter.clone()} />
             },
             Route::SeriesDetail(series_id, query) => {
                 let series_id = *series_id;
                 let initial_season = query.season;
+
                 html! {
                     <SeriesDetail {series_id} {initial_season} {onerror} {on_navigate} />
                 }
             }
-            Route::Movies => html! { <MoviesList {onerror} {on_navigate} /> },
+            Route::Movies(query) => html! {
+                <MoviesList {onerror} {on_navigate} page={query.page} filter={query.filter.clone()} />
+            },
             Route::MovieDetail(movie_id) => {
                 let movie_id = *movie_id;
                 html! { <MovieDetail {movie_id} {onerror} {on_navigate} /> }

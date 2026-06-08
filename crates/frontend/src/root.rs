@@ -75,11 +75,10 @@ impl Component for Root {
         let link = ctx.link();
 
         if let Some(ref err) = self.error {
-            let msgs: Vec<String> = err.sources().map(|e| e.to_string()).collect();
             return html! {
                 <div class="error-page">
                     <div class="error-box">
-                        { for msgs.iter().map(|m| html! { <p>{m}</p> }) }
+                        { for err.sources().map(|e| html! { <p>{e.to_string()}</p> }) }
 
                         <button onclick={link.callback(|_| Msg::ClearError)} class="btn">
                             {"Dismiss"}

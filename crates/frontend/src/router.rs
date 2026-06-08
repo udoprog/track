@@ -7,32 +7,74 @@ use yew::prelude::*;
 use crate::error::{CustomContext, Error, Message};
 
 #[derive(Default, Debug, Clone, PartialEq)]
-pub(super) struct SeriesQuery {
-    pub(super) season: Option<api::SeasonNumber>,
+pub(super) struct PagedQuery {
+    pub(super) page: usize,
+    pub(super) filter: String,
 }
 
-impl SeriesQuery {
+impl PagedQuery {
     fn to_query_string(&self) -> String {
-        match self.season {
-            Some(s) => format!("season={}", s.to_i64()),
-            None => String::new(),
+        let mut s = form_urlencoded::Serializer::new(String::new());
+
+        if !self.filter.is_empty() {
+            s.append_pair("filter", &self.filter);
         }
+
+        if self.page > 0 {
+            s.append_pair("page", &self.page.to_string());
+        }
+
+        s.finish()
     }
 
     fn from_search(search: &str) -> Self {
-        let query = search.trim_start_matches('?');
-        let mut season = None;
+        let mut this = Self::default();
 
-        for (k, v) in query.split('&').filter_map(|pair| {
-            let mut it = pair.splitn(2, '=');
-            Some((it.next()?, it.next().unwrap_or("")))
-        }) {
-            if k == "season" {
-                season = v.parse::<i64>().ok().map(api::SeasonNumber::from_i64);
+        for (key, value) in form_urlencoded::parse(search.as_bytes()) {
+            match key.as_ref() {
+                "filter" => {
+                    this.filter = value.into_owned();
+                }
+                "page" => {
+                    this.page = value.parse::<usize>().unwrap_or(0);
+                }
+                _ => continue,
             }
         }
 
-        Self { season }
+        this
+    }
+}
+
+#[derive(Default, Debug, Clone, PartialEq)]
+pub(super) struct SeriesDetailQuery {
+    pub(super) season: Option<api::SeasonNumber>,
+}
+
+impl SeriesDetailQuery {
+    fn to_query_string(&self) -> String {
+        let mut s = form_urlencoded::Serializer::new(String::new());
+
+        if let Some(season) = self.season {
+            s.append_pair("season", &season.to_u32().to_string());
+        }
+
+        s.finish()
+    }
+
+    fn from_search(search: &str) -> Self {
+        let mut this = Self::default();
+
+        for (key, value) in form_urlencoded::parse(search.as_bytes()) {
+            match key.as_ref() {
+                "season" => {
+                    this.season = value.parse::<u32>().ok().map(api::SeasonNumber::from_u32);
+                }
+                _ => continue,
+            }
+        }
+
+        this
     }
 }
 
@@ -42,9 +84,9 @@ pub(super) enum Route {
     Dashboard,
     Queue,
     WatchNext,
-    Series,
-    SeriesDetail(api::SeriesId, SeriesQuery),
-    Movies,
+    Series(PagedQuery),
+    SeriesDetail(api::SeriesId, SeriesDetailQuery),
+    Movies(PagedQuery),
     MovieDetail(api::MovieId),
     Search,
     Settings,
@@ -56,16 +98,33 @@ impl fmt::Display for Route {
             Route::Dashboard => f.write_str("/"),
             Route::Queue => f.write_str("/queue"),
             Route::WatchNext => f.write_str("/watch-next"),
-            Route::Series => f.write_str("/series"),
+            Route::Series(q) => {
+                let qs = q.to_query_string();
+
+                if qs.is_empty() {
+                    f.write_str("/series")
+                } else {
+                    write!(f, "/series?{qs}")
+                }
+            }
             Route::SeriesDetail(id, q) => {
                 let qs = q.to_query_string();
+
                 if qs.is_empty() {
                     write!(f, "/series/{id}")
                 } else {
                     write!(f, "/series/{id}?{qs}")
                 }
             }
-            Route::Movies => f.write_str("/movies"),
+            Route::Movies(q) => {
+                let qs = q.to_query_string();
+
+                if qs.is_empty() {
+                    f.write_str("/movies")
+                } else {
+                    write!(f, "/movies?{qs}")
+                }
+            }
             Route::MovieDetail(id) => write!(f, "/movies/{id}"),
             Route::Search => f.write_str("/search"),
             Route::Settings => f.write_str("/settings"),
@@ -76,22 +135,26 @@ impl fmt::Display for Route {
 impl Route {
     fn from_location(path: &str, search: &str) -> Self {
         let mut parts = path.split('/').filter(|s| !s.is_empty());
+
         match parts.next() {
             Some("queue") => Route::Queue,
             Some("watch-next") => Route::WatchNext,
             Some("series") => match parts.next() {
                 Some(id) => u64::from_str_radix(id, 16)
                     .map(|n| {
-                        Route::SeriesDetail(api::SeriesId::new(n), SeriesQuery::from_search(search))
+                        Route::SeriesDetail(
+                            api::SeriesId::new(n),
+                            SeriesDetailQuery::from_search(search),
+                        )
                     })
-                    .unwrap_or(Route::Series),
-                None => Route::Series,
+                    .unwrap_or(Route::Series(PagedQuery::default())),
+                None => Route::Series(PagedQuery::from_search(search)),
             },
             Some("movies") => match parts.next() {
                 Some(id) => u64::from_str_radix(id, 16)
                     .map(|n| Route::MovieDetail(api::MovieId::new(n)))
-                    .unwrap_or(Route::Movies),
-                None => Route::Movies,
+                    .unwrap_or(Route::Movies(PagedQuery::default())),
+                None => Route::Movies(PagedQuery::from_search(search)),
             },
             Some("search") => Route::Search,
             Some("settings") => Route::Settings,

@@ -2,7 +2,7 @@ use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
 use crate::error::{CustomContext, Error, Message};
-use crate::router::Route;
+use crate::router::{PagedQuery, Route};
 use crate::ui::MarkWatchedPicker;
 
 const PAGE_SIZE: usize = 20;
@@ -34,6 +34,8 @@ pub(super) enum Msg {
 
 #[derive(Properties, PartialEq)]
 pub(super) struct Props {
+    pub(super) page: usize,
+    pub(super) filter: String,
     pub(super) onerror: Callback<Error>,
     pub(super) on_navigate: Callback<Route>,
 }
@@ -54,8 +56,8 @@ impl Component for MoviesList {
         Self {
             channel: ws::Channel::default(),
             movies: Vec::new(),
-            filter: String::new(),
-            page: 0,
+            page: ctx.props().page,
+            filter: ctx.props().filter.clone(),
             _setup,
             _broadcast,
             _list_req: ws::Request::default(),
@@ -78,6 +80,7 @@ impl Component for MoviesList {
         let link = ctx.link();
 
         let filter = self.filter.to_lowercase();
+
         let filtered: Vec<&api::Movie> = self
             .movies
             .iter()
@@ -228,10 +231,22 @@ impl MoviesList {
             Msg::Filter(s) => {
                 self.filter = s;
                 self.page = 0;
+
+                ctx.props().on_navigate.emit(Route::Movies(PagedQuery {
+                    page: 0,
+                    filter: self.filter.clone(),
+                }));
+
                 Ok(true)
             }
             Msg::SetPage(p) => {
                 self.page = p;
+
+                ctx.props().on_navigate.emit(Route::Movies(PagedQuery {
+                    page: self.page,
+                    filter: self.filter.clone(),
+                }));
+
                 Ok(true)
             }
             Msg::Navigate(route) => {

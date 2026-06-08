@@ -670,18 +670,18 @@ pub enum SeasonNumber {
 }
 
 impl SeasonNumber {
-    pub fn to_i64(self) -> i64 {
+    pub fn to_u32(self) -> u32 {
         match self {
             SeasonNumber::Specials => 0,
-            SeasonNumber::Number(n) => n as i64,
+            SeasonNumber::Number(n) => n,
         }
     }
 
-    pub fn from_i64(n: i64) -> Self {
+    pub fn from_u32(n: u32) -> Self {
         if n == 0 {
             SeasonNumber::Specials
         } else {
-            SeasonNumber::Number(n as u32)
+            SeasonNumber::Number(n)
         }
     }
 

@@ -62,7 +62,7 @@ struct ImageRow {
 struct SeasonRow {
     id: SeasonId,
     series_id: SeriesId,
-    number: i64,
+    number: u32,
     air_date: Option<Date>,
     name: Option<String>,
     overview: Option<String>,
@@ -73,9 +73,9 @@ struct SeasonRow {
 struct EpisodeRow {
     id: EpisodeId,
     series_id: SeriesId,
-    season: i64,
-    number: i64,
-    absolute_number: Option<i64>,
+    season: u32,
+    number: u32,
+    absolute_number: Option<u32>,
     name: Option<String>,
     overview: Option<String>,
     aired: Option<Date>,
@@ -170,9 +170,9 @@ struct ScheduleRow {
     series_id: SeriesId,
     series_title: String,
     episode_id: EpisodeId,
-    season: i64,
-    number: i64,
-    absolute_number: Option<i64>,
+    season: u32,
+    number: u32,
+    absolute_number: Option<u32>,
     name: Option<String>,
     overview: Option<String>,
     aired: Option<Date>,
@@ -645,7 +645,7 @@ impl Database {
         let overview = overview.to_owned();
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.insert_series
                 .bind((&title[..], first_air.as_ref(), &overview[..], true))?;
 
@@ -656,29 +656,31 @@ impl Database {
 
             ensure!(s.insert_series.step()?.is_done(), "insert_series");
             Ok(series_from_row(r))
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn add_series_remote(&self, series_id: SeriesId, remote_id: &RemoteId) -> Result<()> {
         let remote_id = remote_id.clone();
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.insert_series_remote.bind((series_id, &remote_id))?;
             ensure!(
                 s.insert_series_remote.step()?.is_done(),
                 "insert_series_remote"
             );
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn series(&self) -> Result<Vec<api::Series>> {
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.list_series.reset()?;
             let mut out: Vec<api::Series> = Vec::new();
             let mut id_to_idx: HashMap<SeriesId, usize> = HashMap::new();
@@ -704,14 +706,15 @@ impl Database {
                 }
             }
             Ok(out)
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn series_by_id(&self, id: SeriesId) -> Result<Option<api::Series>> {
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.series_by_id.bind((id,))?;
             let Some(r) = s.series_by_id.next::<SeriesRow>()? else {
                 return Ok(None);
@@ -726,8 +729,9 @@ impl Database {
                 series.images.push(image_from_row(r));
             }
             Ok(Some(series))
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn update_series(
@@ -743,7 +747,7 @@ impl Database {
         let overview = overview.map(str::to_owned);
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.update_series.bind((
                 title.as_deref(),
                 first_air.as_ref(),
@@ -753,58 +757,63 @@ impl Database {
             ))?;
             ensure!(s.update_series.step()?.is_done(), "update_series");
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn delete_series(&self, id: SeriesId) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.delete_series.bind((id,))?;
             ensure!(s.delete_series.step()?.is_done(), "delete_series");
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn set_series_tracked(&self, id: SeriesId, tracked: bool) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.set_series_tracked.bind((tracked, id))?;
             ensure!(s.set_series_tracked.step()?.is_done(), "set_series_tracked");
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn set_series_sync_source(&self, id: SeriesId, source: SyncSource) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.set_series_sync_source.bind((source, id))?;
             ensure!(
                 s.set_series_sync_source.step()?.is_done(),
                 "set_series_sync_source"
             );
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn set_series_language(&self, id: SeriesId, language: Option<String>) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.set_series_language.bind((language.as_deref(), id))?;
             ensure!(
                 s.set_series_language.step()?.is_done(),
                 "set_series_language"
             );
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     // ── Seasons ──
@@ -824,10 +833,10 @@ impl Database {
         let poster = poster.cloned();
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.upsert_season.bind((
                 series_id,
-                number.to_i64(),
+                number.to_u32(),
                 air_date.as_ref(),
                 name.as_deref(),
                 &overview[..],
@@ -839,22 +848,24 @@ impl Database {
                 .context("upsert_season returned no row")?;
             ensure!(s.upsert_season.step()?.is_done(), "upsert_season");
             Ok(season_from_row(r))
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn seasons(&self, series_id: SeriesId) -> Result<Vec<api::Season>> {
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.list_seasons.bind((series_id,))?;
             let mut out = Vec::new();
             while let Some(r) = s.list_seasons.next::<SeasonRow>()? {
                 out.push(season_from_row(r));
             }
             Ok(out)
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn prune_seasons(
@@ -864,24 +875,31 @@ impl Database {
     ) -> Result<Vec<SeasonNumber>> {
         let existing = self.seasons(series_id).await?;
         let mut removed = Vec::new();
+
         for season in existing {
-            if !kept.contains(&season.number) {
-                let n = season.number.to_i64();
-                let mut s = self.inner.clone().lock_owned().await;
-                spawn_blocking(move || {
-                    s.delete_season_episodes.bind((series_id, n))?;
-                    ensure!(
-                        s.delete_season_episodes.step()?.is_done(),
-                        "delete_season_episodes"
-                    );
-                    s.delete_season.bind((series_id, n))?;
-                    ensure!(s.delete_season.step()?.is_done(), "delete_season");
-                    Ok(())
-                })
-                .await??;
-                removed.push(season.number);
+            if kept.contains(&season.number) {
+                continue;
             }
+
+            let n = season.number.to_u32();
+            let mut s = self.inner.clone().lock_owned().await;
+
+            let result = spawn_blocking(move || {
+                s.delete_season_episodes.bind((series_id, n))?;
+                ensure!(
+                    s.delete_season_episodes.step()?.is_done(),
+                    "delete_season_episodes"
+                );
+
+                s.delete_season.bind((series_id, n))?;
+                ensure!(s.delete_season.step()?.is_done(), "delete_season");
+                Ok(())
+            });
+
+            result.await??;
+            removed.push(season.number);
         }
+
         Ok(removed)
     }
 
@@ -906,10 +924,10 @@ impl Database {
         let remote_id = remote_id.cloned();
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.upsert_episode.bind((
                 series_id,
-                season.to_i64(),
+                season.to_u32(),
                 number as i64,
                 absolute_number.map(|n| n as i64),
                 name.as_deref(),
@@ -924,8 +942,9 @@ impl Database {
                 .context("upsert_episode returned no row")?;
             ensure!(s.upsert_episode.step()?.is_done(), "upsert_episode");
             Ok(episode_from_row(r))
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn episodes(
@@ -935,25 +954,27 @@ impl Database {
     ) -> Result<Vec<api::Episode>> {
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
-            s.list_episodes.bind((series_id, season.to_i64()))?;
+        let result = spawn_blocking(move || {
+            s.list_episodes.bind((series_id, season.to_u32()))?;
             let mut out = Vec::new();
             while let Some(r) = s.list_episodes.next::<EpisodeRow>()? {
                 out.push(episode_from_row(r));
             }
             Ok(out)
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn episode_by_id(&self, id: EpisodeId) -> Result<Option<api::Episode>> {
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.episode_by_id.bind((id,))?;
             Ok(s.episode_by_id.next::<EpisodeRow>()?.map(episode_from_row))
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn update_episodes_aired_at(
@@ -965,12 +986,12 @@ impl Database {
             return Ok(());
         }
         let mut s = self.inner.clone().lock_owned().await;
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             for (season, number, aired_at) in &updates {
                 s.update_episode_aired_at.bind((
                     &aired_at,
                     series_id,
-                    season.to_i64(),
+                    season.to_u32(),
                     *number as i64,
                 ))?;
                 ensure!(
@@ -979,8 +1000,9 @@ impl Database {
                 );
             }
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     // ── Movies ──
@@ -996,7 +1018,7 @@ impl Database {
         let overview = overview.to_owned();
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.insert_movie
                 .bind((&title[..], release_date, &overview[..], tracked))?;
 
@@ -1007,29 +1029,31 @@ impl Database {
 
             ensure!(s.insert_movie.step()?.is_done(), "insert_movie");
             Ok(movie_from_row(r))
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn add_movie_remote(&self, movie_id: MovieId, remote_id: &RemoteId) -> Result<()> {
         let remote_id = remote_id.clone();
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.insert_movie_remote.bind((movie_id, &remote_id))?;
             ensure!(
                 s.insert_movie_remote.step()?.is_done(),
                 "insert_movie_remote"
             );
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn movies(&self) -> Result<Vec<api::Movie>> {
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.list_movies.reset()?;
             let mut out: Vec<api::Movie> = Vec::new();
             let mut id_to_idx: HashMap<MovieId, usize> = HashMap::new();
@@ -1055,14 +1079,15 @@ impl Database {
                 }
             }
             Ok(out)
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn movie_by_id(&self, id: MovieId) -> Result<Option<api::Movie>> {
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.movie_by_id.bind((id,))?;
             let Some(r) = s.movie_by_id.next::<MovieRow>()? else {
                 return Ok(None);
@@ -1090,15 +1115,16 @@ impl Database {
             s.has_pending_movie.bind((movie_id,))?;
             movie.pending = s.has_pending_movie.next::<(i64,)>()?.is_some();
             Ok(Some(movie))
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn series_by_remote_id(&self, remote_id: &RemoteId) -> Result<Option<api::Series>> {
         let remote_id = remote_id.clone();
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.series_by_remote.bind((remote_id,))?;
             let Some(r) = s.series_by_remote.next::<SeriesRow>()? else {
                 return Ok(None);
@@ -1114,15 +1140,16 @@ impl Database {
                 series.images.push(image_from_row(r));
             }
             Ok(Some(series))
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn movie_by_remote_id(&self, remote_id: &RemoteId) -> Result<Option<api::Movie>> {
         let remote_id = remote_id.clone();
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.movie_by_remote.bind((remote_id,))?;
             let Some(r) = s.movie_by_remote.next::<MovieRow>()? else {
                 return Ok(None);
@@ -1138,8 +1165,9 @@ impl Database {
                 movie.images.push(image_from_row(r));
             }
             Ok(Some(movie))
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn update_movie(
@@ -1154,7 +1182,7 @@ impl Database {
         let overview = overview.map(str::to_owned);
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.update_movie.bind((
                 title.as_deref(),
                 release_date.as_ref(),
@@ -1163,55 +1191,60 @@ impl Database {
             ))?;
             ensure!(s.update_movie.step()?.is_done(), "update_movie");
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn delete_movie(&self, id: MovieId) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.delete_movie.bind((id,))?;
             ensure!(s.delete_movie.step()?.is_done(), "delete_movie");
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn set_movie_tracked(&self, id: MovieId, tracked: bool) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.set_movie_tracked.bind((tracked, id))?;
             ensure!(s.set_movie_tracked.step()?.is_done(), "set_movie_tracked");
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn set_movie_sync_source(&self, id: MovieId, source: SyncSource) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.set_movie_sync_source.bind((source, id))?;
             ensure!(
                 s.set_movie_sync_source.step()?.is_done(),
                 "set_movie_sync_source"
             );
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn set_movie_language(&self, id: MovieId, language: Option<String>) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.set_movie_language.bind((language.as_deref(), id))?;
             ensure!(s.set_movie_language.step()?.is_done(), "set_movie_language");
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     // ── Images ──
@@ -1226,18 +1259,21 @@ impl Database {
         let path = path.to_owned();
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             let is_first = {
                 s.list_series_images.bind((series_id,))?;
                 let mut found = false;
+
                 while let Some(r) = s.list_series_images.next::<ImageRow>()? {
                     if r.kind == kind {
                         found = true;
                         break;
                     }
                 }
+
                 !found
             };
+
             s.insert_series_image
                 .bind((series_id, kind, source, &path[..], is_first))?;
             let r = s
@@ -1248,9 +1284,11 @@ impl Database {
                 s.insert_series_image.step()?.is_done(),
                 "insert_series_image"
             );
+
             Ok(image_from_row(r))
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn upsert_movie_image(
@@ -1263,7 +1301,7 @@ impl Database {
         let path = path.to_owned();
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             let is_first = {
                 s.list_movie_images.bind((movie_id,))?;
                 let mut found = false;
@@ -1283,8 +1321,9 @@ impl Database {
                 .context("insert_movie_image returned no row")?;
             ensure!(s.insert_movie_image.step()?.is_done(), "insert_movie_image");
             Ok(image_from_row(r))
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     /// Deselects all images of the same kind for the owning entity, then
@@ -1292,7 +1331,7 @@ impl Database {
     pub async fn select_image(&self, id: ImageId) -> Result<api::ImageOwner> {
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.image_by_id.bind((id,))?;
             let r = s
                 .image_by_id
@@ -1321,8 +1360,9 @@ impl Database {
             s.select_image.bind((id,))?;
             ensure!(s.select_image.step()?.is_done(), "select_image");
             Ok(owner)
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn clear_selected_image(
@@ -1332,7 +1372,7 @@ impl Database {
     ) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             match owner {
                 api::ImageOwner::Series(series_id) => {
                     s.deselect_series_images.bind((series_id, kind))?;
@@ -1351,8 +1391,9 @@ impl Database {
             }
 
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     // ── Watched ──
@@ -1364,7 +1405,7 @@ impl Database {
     ) -> Result<api::Watched> {
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             let (episode_id, movie_id) = match kind {
                 WatchedKind::Episode { episode, .. } => (Some(episode), None),
                 WatchedKind::Movie { movie } => (None, Some(movie)),
@@ -1382,61 +1423,66 @@ impl Database {
                 timestamp: r.timestamp,
                 kind,
             })
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn remove_watched(&self, id: WatchedId) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.delete_watched.bind((id,))?;
             ensure!(s.delete_watched.step()?.is_done(), "delete_watched");
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn all_watched(&self) -> Result<Vec<api::Watched>> {
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.list_all_watched.reset()?;
             let mut out = Vec::new();
             while let Some(r) = s.list_all_watched.next::<WatchedRow>()? {
                 out.push(watched_from_row(r)?);
             }
             Ok(out)
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn watched_for_episode(&self, episode_id: EpisodeId) -> Result<Vec<api::Watched>> {
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.list_watched_episode.bind((episode_id,))?;
             let mut out = Vec::new();
             while let Some(r) = s.list_watched_episode.next::<WatchedRow>()? {
                 out.push(watched_from_row(r)?);
             }
             Ok(out)
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn watched_for_movie(&self, movie_id: MovieId) -> Result<Vec<api::Watched>> {
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.list_watched_movie.bind((movie_id,))?;
             let mut out = Vec::new();
             while let Some(r) = s.list_watched_movie.next::<WatchedRow>()? {
                 out.push(watched_from_row(r)?);
             }
             Ok(out)
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     // ── Pending table ──
@@ -1449,15 +1495,16 @@ impl Database {
     ) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.upsert_pending_episode.bind((ts, series_id, episode_id))?;
             ensure!(
                 s.upsert_pending_episode.step()?.is_done(),
                 "upsert_pending_episode"
             );
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn add_pending_movie(
@@ -1467,29 +1514,31 @@ impl Database {
     ) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.upsert_pending_movie.bind((ts, movie_id))?;
             ensure!(
                 s.upsert_pending_movie.step()?.is_done(),
                 "upsert_pending_movie"
             );
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn remove_pending_episode(&self, series_id: api::SeriesId) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.delete_pending_episode.bind((series_id,))?;
             ensure!(
                 s.delete_pending_episode.step()?.is_done(),
                 "delete_pending_episode"
             );
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn skip_pending_episode(
@@ -1499,7 +1548,7 @@ impl Database {
     ) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.next_episode_after.bind((series_id, episode_id))?;
             let next_id = s
                 .next_episode_after
@@ -1525,22 +1574,24 @@ impl Database {
             }
 
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn remove_pending_movie(&self, movie_id: api::MovieId) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.delete_pending_movie.bind((movie_id,))?;
             ensure!(
                 s.delete_pending_movie.step()?.is_done(),
                 "delete_pending_movie"
             );
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     /// Fill the pending slot for a series, but ONLY if it currently has no pending episode.
@@ -1548,7 +1599,7 @@ impl Database {
     pub async fn fill_pending_for_series(&self, series_id: api::SeriesId) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             // 1. Check if there is already a pending episode for this series
             s.has_pending_episode_for_series.bind((series_id,))?;
             let already_has = s.has_pending_episode_for_series.next::<(i64,)>()?.is_some();
@@ -1575,8 +1626,9 @@ impl Database {
             }
 
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     /// Tracked movies with a passed theatrical release date that are not yet pending or watched.
@@ -1585,7 +1637,7 @@ impl Database {
         today: Date,
     ) -> Result<Vec<(MovieId, Option<Date>)>> {
         let mut s = self.inner.clone().lock_owned().await;
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.movies_needing_pending.bind((today,))?;
             let mut out = Vec::new();
             while let Some(r) = s
@@ -1595,8 +1647,9 @@ impl Database {
                 out.push((r.id, r.release_date));
             }
             Ok(out)
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     /// Tracked movies with a passed digital release date (type 4) that are not yet pending or watched.
@@ -1605,7 +1658,7 @@ impl Database {
         today: Date,
     ) -> Result<Vec<(MovieId, Option<Date>)>> {
         let mut s = self.inner.clone().lock_owned().await;
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.movies_needing_pending_digital.bind((today,))?;
             let mut out = Vec::new();
             while let Some(r) = s
@@ -1615,34 +1668,37 @@ impl Database {
                 out.push((r.id, r.release_date));
             }
             Ok(out)
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn set_series_synced_at(&self, id: SeriesId, at: Timestamp) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.set_series_synced_at.bind((at, id))?;
             ensure!(
                 s.set_series_synced_at.step()?.is_done(),
                 "set_series_synced_at"
             );
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn set_movie_synced_at(&self, id: MovieId, at: Timestamp) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.set_movie_synced_at.bind((at, id))?;
             ensure!(
                 s.set_movie_synced_at.step()?.is_done(),
                 "set_movie_synced_at"
             );
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn upsert_movie_release(
@@ -1655,7 +1711,7 @@ impl Database {
         let country = country.to_owned();
         let date = *date;
         let mut s = self.inner.clone().lock_owned().await;
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.upsert_movie_release
                 .bind((movie_id, country.as_str(), release_type as i64, date))?;
             ensure!(
@@ -1663,43 +1719,48 @@ impl Database {
                 "upsert_movie_release"
             );
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn series_needing_sync(&self, interval_hours: u32) -> Result<Vec<api::Series>> {
         let cutoff = cutoff_timestamp(interval_hours);
         let mut s = self.inner.clone().lock_owned().await;
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.series_needing_sync.bind((cutoff,))?;
             let mut out = Vec::new();
+
             while let Some(r) = s.series_needing_sync.next::<SeriesRow>()? {
                 out.push(series_from_row(r));
             }
+
             Ok(out)
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn movies_needing_sync(&self, interval_hours: u32) -> Result<Vec<api::Movie>> {
         let cutoff = cutoff_timestamp(interval_hours);
         let mut s = self.inner.clone().lock_owned().await;
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.movies_needing_sync.bind((cutoff,))?;
             let mut out = Vec::new();
             while let Some(r) = s.movies_needing_sync.next::<MovieRow>()? {
                 out.push(movie_from_row(r));
             }
             Ok(out)
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     /// Unified pending list replacing pending_episodes + pending_movies.
     pub async fn pending(&self) -> Result<Vec<api::Pending>> {
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             // 1. Collect the ordered list of pending entries.
             s.list_pending.reset()?;
             let mut base: Vec<PendingBaseRow> = Vec::new();
@@ -1764,8 +1825,9 @@ impl Database {
             }
 
             Ok(out)
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     // ── Dashboard queries ──
@@ -1775,7 +1837,7 @@ impl Database {
         let end = today.checked_add_days(days as i32);
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.list_schedule.bind((today, end))?;
 
             let mut days_map = Vec::<(Date, Vec<(SeriesId, String, Vec<api::Episode>)>)>::new();
@@ -1786,9 +1848,9 @@ impl Database {
                 let ep = api::Episode {
                     id: r.episode_id,
                     series_id: r.series_id,
-                    season: SeasonNumber::from_i64(r.season),
+                    season: SeasonNumber::from_u32(r.season),
                     number: r.number as u32,
-                    absolute_number: r.absolute_number.map(|n| n as u32),
+                    absolute_number: r.absolute_number,
                     name: r.name,
                     overview: r.overview,
                     aired: r.aired,
@@ -1830,8 +1892,9 @@ impl Database {
                 .collect();
 
             Ok(out)
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     // ── Config ──
@@ -1840,11 +1903,12 @@ impl Database {
         let key = key.to_owned();
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.get_config.bind((key.as_str(),))?;
             Ok(s.get_config.next::<ConfigRow>()?.map(|r| r.value))
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn set_config(&self, key: &str, value: &str) -> Result<()> {
@@ -1852,12 +1916,13 @@ impl Database {
         let value = value.to_owned();
         let mut s = self.inner.clone().lock_owned().await;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.set_config.bind((key.as_str(), value.as_str()))?;
             ensure!(s.set_config.step()?.is_done(), "set_config");
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     pub async fn load_config(&self) -> Result<Config> {
@@ -1929,19 +1994,25 @@ impl Database {
     pub async fn save_config(&self, config: &Config) -> Result<()> {
         self.set_config("theme", config.theme.to_string().as_str())
             .await?;
+
         self.set_config("tvdb_legacy_apikey", &config.tvdb_legacy_apikey)
             .await?;
+
         self.set_config("tmdb_api_key", &config.tmdb_api_key)
             .await?;
+
         self.set_config(
             "schedule_duration_days",
             &config.schedule_duration_days.to_string(),
         )
         .await?;
+
         self.set_config("dashboard_limit", &config.dashboard_limit.to_string())
             .await?;
+
         self.set_config("dashboard_page", &config.dashboard_page.to_string())
             .await?;
+
         self.set_config(
             "auto_sync_enabled",
             if config.auto_sync_enabled {
@@ -1951,12 +2022,15 @@ impl Database {
             },
         )
         .await?;
+
         self.set_config(
             "auto_sync_interval_hours",
             &config.auto_sync_interval_hours.to_string(),
         )
         .await?;
+
         self.set_config("timezone", &config.timezone).await?;
+
         self.set_config("language", config.language.as_deref().unwrap_or(""))
             .await?;
         Ok(())
@@ -2005,7 +2079,7 @@ fn season_from_row(r: SeasonRow) -> api::Season {
     api::Season {
         id: r.id,
         series_id: r.series_id,
-        number: SeasonNumber::from_i64(r.number),
+        number: SeasonNumber::from_u32(r.number),
         air_date: r.air_date,
         name: r.name,
         overview: r.overview,
@@ -2017,9 +2091,9 @@ fn episode_from_row(r: EpisodeRow) -> api::Episode {
     api::Episode {
         id: r.id,
         series_id: r.series_id,
-        season: SeasonNumber::from_i64(r.season),
+        season: SeasonNumber::from_u32(r.season),
         number: r.number as u32,
-        absolute_number: r.absolute_number.map(|n| n as u32),
+        absolute_number: r.absolute_number,
         name: r.name,
         overview: r.overview,
         aired: r.aired,

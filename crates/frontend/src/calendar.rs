@@ -4,7 +4,7 @@ use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{Route, SeriesQuery};
+use crate::router::{Route, SeriesDetailQuery};
 
 pub(super) struct Calendar {
     channel: ws::Channel,
@@ -111,11 +111,11 @@ impl Component for Calendar {
                                                     let season = entry.episodes.first().map(|ep| ep.season);
 
                                                     let on_click = link.callback(move |_|
-                                                        Msg::Navigate(Route::SeriesDetail(series_id, SeriesQuery { season }))
+                                                        Msg::Navigate(Route::SeriesDetail(series_id, SeriesDetailQuery { season }))
                                                     );
 
                                                     let codes = entry.episodes.iter()
-                                                        .map(|ep| format!("S{:02}E{:02}", ep.season.to_i64(), ep.number))
+                                                        .map(|ep| format!("S{:02}E{:02}", ep.season.to_u32(), ep.number))
                                                         .collect::<Vec<_>>()
                                                         .join(" ");
 

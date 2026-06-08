@@ -2,15 +2,15 @@ use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{Route, SeriesQuery};
+use crate::router::{PagedQuery, Route, SeriesDetailQuery};
 
 const PAGE_SIZE: usize = 20;
 
 pub(super) struct SeriesList {
     channel: ws::Channel,
     series: Vec<api::Series>,
-    filter: String,
     page: usize,
+    filter: String,
     _setup: crate::SetupChannel,
     _broadcast: ws::Listener,
     _list_req: ws::Request,
@@ -27,6 +27,8 @@ pub(super) enum Msg {
 
 #[derive(Properties, PartialEq)]
 pub(super) struct Props {
+    pub(super) page: usize,
+    pub(super) filter: String,
     pub(super) onerror: Callback<Error>,
     pub(super) on_navigate: Callback<Route>,
 }
@@ -47,8 +49,8 @@ impl Component for SeriesList {
         Self {
             channel: ws::Channel::default(),
             series: Vec::new(),
-            filter: String::new(),
-            page: 0,
+            page: ctx.props().page,
+            filter: ctx.props().filter.clone(),
             _setup,
             _broadcast,
             _list_req: ws::Request::default(),
@@ -69,6 +71,7 @@ impl Component for SeriesList {
         let link = ctx.link();
 
         let filter = self.filter.to_lowercase();
+
         let filtered: Vec<&api::Series> = self
             .series
             .iter()
@@ -113,6 +116,7 @@ impl Component for SeriesList {
                             oninput={on_filter}
                             class="input-text fill"
                         />
+
                         if !self.filter.is_empty() {
                             <button class="btn-icon" title="Clear filter"
                                 onclick={link.callback(|_| Msg::Filter(String::new()))}>
@@ -187,11 +191,22 @@ impl SeriesList {
             }
             Msg::Filter(s) => {
                 self.filter = s;
-                self.page = 0;
+
+                ctx.props().on_navigate.emit(Route::Series(PagedQuery {
+                    page: 0,
+                    filter: self.filter.clone(),
+                }));
+
                 Ok(true)
             }
             Msg::SetPage(p) => {
                 self.page = p;
+
+                ctx.props().on_navigate.emit(Route::Series(PagedQuery {
+                    page: self.page,
+                    filter: self.filter.clone(),
+                }));
+
                 Ok(true)
             }
             Msg::Navigate(route) => {
@@ -212,9 +227,9 @@ impl SeriesList {
 
     fn view_row(&self, ctx: &Context<Self>, s: &api::Series) -> Html {
         let id = s.id;
-        let onclick = ctx
-            .link()
-            .callback(move |_| Msg::Navigate(Route::SeriesDetail(id, SeriesQuery::default())));
+        let onclick = ctx.link().callback(move |_| {
+            Msg::Navigate(Route::SeriesDetail(id, SeriesDetailQuery::default()))
+        });
 
         html! {
             <div class="table-entry clickable" {onclick}>
