@@ -46,6 +46,7 @@ $sidebar-width: 240px;
 
 @use 'grid' as g;
 @use 'icons';
+@use 'flags';
 @use 'calendar' with (
     $bg-surface: $bg-surface,
     $color-primary: $color-primary,
@@ -171,6 +172,20 @@ body {
 }
 
 .icon-inline {
+    display: inline-flex;
+    width: $input-height;
+    height: $input-height;
+    padding: $inline-icon-padding;
+    margin: -$inline-icon-padding;
+    vertical-align: middle;
+
+    @include g.until-mobile {
+        width: $input-height-touch;
+        height: $input-height-touch;
+    }
+}
+
+.flag-inline {
     display: inline-flex;
     width: $input-height;
     height: $input-height;
@@ -835,15 +850,14 @@ body {
 }
 
 .modal {
+    display: flex;
+    flex-direction: column;
+    gap: $gap-sm;
     background: $bg-panel;
     border: 1px solid $border-subtle;
     border-radius: $radius;
     width: min(600px, calc(100vw - #{$gap-sm * 2}));
-    max-height: 80vh;
     overflow-y: auto;
     z-index: 401;
     padding: $gap-sm;
-    display: flex;
-    flex-direction: column;
-    gap: $gap-sm;
 }

@@ -5,6 +5,7 @@ CREATE TABLE series (
     overview            TEXT NOT NULL DEFAULT '',
     tracked             INTEGER NOT NULL DEFAULT 1,
     sync_source         TEXT,
+    language            TEXT,              -- ISO 639-1 override, NULL = use config default
     last_synced_at      INTEGER            -- epoch ms, NULL = never synced
 );
 
@@ -44,6 +45,7 @@ CREATE TABLE movies (
     overview       TEXT NOT NULL DEFAULT '',
     tracked        INTEGER NOT NULL DEFAULT 1,
     sync_source    TEXT,
+    language       TEXT,              -- ISO 639-1 override, NULL = use config default
     last_synced_at INTEGER            -- epoch ms, NULL = never synced
 );
 

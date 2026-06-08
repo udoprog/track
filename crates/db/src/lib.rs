@@ -37,6 +37,7 @@ struct SeriesRow {
     tracked: bool,
     sync_source: Option<SyncSource>,
     last_synced_at: Option<Timestamp>,
+    language: Option<String>,
 }
 
 #[derive(Row)]
@@ -98,6 +99,7 @@ struct MovieRow {
     tracked: bool,
     sync_source: Option<SyncSource>,
     last_synced_at: Option<Timestamp>,
+    language: Option<String>,
 }
 
 #[derive(Row)]
@@ -220,18 +222,18 @@ statements! {
         insert_series: r#"
             INSERT INTO series (title, first_air, overview, tracked)
             VALUES (?, ?, ?, ?)
-            RETURNING id, title, first_air, overview, tracked, sync_source, last_synced_at
+            RETURNING id, title, first_air, overview, tracked, sync_source, last_synced_at, language
         "#,
         list_series: r#"
-            SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at
+            SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at, language
             FROM series ORDER BY title
         "#,
         series_by_id: r#"
-            SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at
+            SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at, language
             FROM series WHERE id = ?
         "#,
         series_by_remote: r#"
-            SELECT s.id, s.title, s.first_air, s.overview, s.tracked, s.sync_source, s.last_synced_at
+            SELECT s.id, s.title, s.first_air, s.overview, s.tracked, s.sync_source, s.last_synced_at, s.language
             FROM series s
             JOIN remotes r ON r.series_id = s.id
             WHERE r.remote_id = ?
@@ -249,6 +251,9 @@ statements! {
         "#,
         set_series_sync_source: r#"
             UPDATE series SET sync_source = ? WHERE id = ?
+        "#,
+        set_series_language: r#"
+            UPDATE series SET language = ? WHERE id = ?
         "#,
         // remotes (series and movies share one table)
         list_series_remotes: r#"
@@ -360,27 +365,27 @@ statements! {
         insert_movie: r#"
             INSERT INTO movies (title, release_date, overview, tracked)
             VALUES (?, ?, ?, ?)
-            RETURNING id, title, release_date, overview, 0 AS watched, 0 AS watched_count, tracked, sync_source, last_synced_at
+            RETURNING id, title, release_date, overview, 0 AS watched, 0 AS watched_count, tracked, sync_source, last_synced_at, language
         "#,
         list_movies: r#"
             SELECT m.id, m.title, m.release_date, m.overview,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) > 0 AS watched,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) AS watched_count,
-                   m.tracked, m.sync_source, m.last_synced_at
+                   m.tracked, m.sync_source, m.last_synced_at, m.language
             FROM movies m ORDER BY m.title
         "#,
         movie_by_id: r#"
             SELECT m.id, m.title, m.release_date, m.overview,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) > 0 AS watched,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) AS watched_count,
-                   m.tracked, m.sync_source, m.last_synced_at
+                   m.tracked, m.sync_source, m.last_synced_at, m.language
             FROM movies m WHERE m.id = ?
         "#,
         movie_by_remote: r#"
             SELECT m.id, m.title, m.release_date, m.overview,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) > 0 AS watched,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) AS watched_count,
-                   m.tracked, m.sync_source, m.last_synced_at
+                   m.tracked, m.sync_source, m.last_synced_at, m.language
             FROM movies m
             JOIN remotes r ON r.movie_id = m.id
             WHERE r.remote_id = ?
@@ -390,6 +395,9 @@ statements! {
         "#,
         set_movie_sync_source: r#"
             UPDATE movies SET sync_source = ? WHERE id = ?
+        "#,
+        set_movie_language: r#"
+            UPDATE movies SET language = ? WHERE id = ?
         "#,
         update_movie: r#"
             UPDATE movies
@@ -536,7 +544,7 @@ statements! {
 
         // stale-item queries
         series_needing_sync: r#"
-            SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at
+            SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at, language
             FROM series
             WHERE tracked = 1
               AND (last_synced_at IS NULL OR last_synced_at < ?)
@@ -546,7 +554,7 @@ statements! {
             SELECT m.id, m.title, m.release_date, m.overview,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) > 0 AS watched,
                    (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) AS watched_count,
-                   m.tracked, m.sync_source, m.last_synced_at
+                   m.tracked, m.sync_source, m.last_synced_at, m.language
             FROM movies m
             WHERE m.tracked = 1
               AND (m.last_synced_at IS NULL OR m.last_synced_at < ?)
@@ -774,6 +782,20 @@ impl Database {
             ensure!(
                 s.set_series_sync_source.step()?.is_done(),
                 "set_series_sync_source"
+            );
+            Ok(())
+        })
+        .await?
+    }
+
+    pub async fn set_series_language(&self, id: SeriesId, language: Option<String>) -> Result<()> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.set_series_language.bind((language.as_deref(), id))?;
+            ensure!(
+                s.set_series_language.step()?.is_done(),
+                "set_series_language"
             );
             Ok(())
         })
@@ -1167,6 +1189,17 @@ impl Database {
                 s.set_movie_sync_source.step()?.is_done(),
                 "set_movie_sync_source"
             );
+            Ok(())
+        })
+        .await?
+    }
+
+    pub async fn set_movie_language(&self, id: MovieId, language: Option<String>) -> Result<()> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.set_movie_language.bind((language.as_deref(), id))?;
+            ensure!(s.set_movie_language.step()?.is_done(), "set_movie_language");
             Ok(())
         })
         .await?
@@ -1838,6 +1871,8 @@ impl Database {
 
         let timezone = self.get_config("timezone").await?.unwrap_or_default();
 
+        let language = self.get_config("language").await?.filter(|v| !v.is_empty());
+
         Ok(Config {
             theme,
             tvdb_legacy_apikey,
@@ -1848,6 +1883,7 @@ impl Database {
             auto_sync_enabled,
             auto_sync_interval_hours,
             timezone,
+            language,
         })
     }
 
@@ -1882,6 +1918,8 @@ impl Database {
         )
         .await?;
         self.set_config("timezone", &config.timezone).await?;
+        self.set_config("language", config.language.as_deref().unwrap_or(""))
+            .await?;
         Ok(())
     }
 }
@@ -1910,6 +1948,7 @@ fn series_from_row(r: SeriesRow) -> api::Series {
         remotes: Vec::new(),
         images: Vec::new(),
         last_synced_at: r.last_synced_at,
+        language: r.language,
     }
 }
 
@@ -1970,6 +2009,7 @@ fn movie_from_row(r: MovieRow) -> api::Movie {
         images: Vec::new(),
         last_synced_at: r.last_synced_at,
         releases: Vec::new(),
+        language: r.language,
     }
 }
 

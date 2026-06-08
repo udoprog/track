@@ -110,10 +110,14 @@ impl RemoteClients {
 
     // ── Sync fetch helpers ────────────────────────────────────────────────────
 
-    pub(crate) async fn fetch_tmdb_series(&self, id: u32) -> Result<crate::tmdb::SeriesInfo> {
+    pub(crate) async fn fetch_tmdb_series(
+        &self,
+        id: u32,
+        language: Option<&str>,
+    ) -> Result<crate::tmdb::SeriesInfo> {
         self.tmdb()
             .context("no tmdb client configured")?
-            .fetch_series(id)
+            .fetch_series(id, language)
             .await
     }
 
@@ -121,17 +125,22 @@ impl RemoteClients {
         &self,
         series_id: u32,
         season: u32,
+        language: Option<&str>,
     ) -> Result<Vec<crate::tmdb::EpisodeInfo>> {
         self.tmdb()
             .context("no tmdb client configured")?
-            .fetch_season_episodes(series_id, season)
+            .fetch_season_episodes(series_id, season, language)
             .await
     }
 
-    pub(crate) async fn fetch_tmdb_movie(&self, id: u32) -> Result<crate::tmdb::MovieInfo> {
+    pub(crate) async fn fetch_tmdb_movie(
+        &self,
+        id: u32,
+        language: Option<&str>,
+    ) -> Result<crate::tmdb::MovieInfo> {
         self.tmdb()
             .context("no tmdb client configured")?
-            .fetch_movie(id)
+            .fetch_movie(id, language)
             .await
     }
 
@@ -145,20 +154,25 @@ impl RemoteClients {
             .await
     }
 
-    pub(crate) async fn fetch_tvdb_series(&self, id: u32) -> Result<crate::tvdb::SeriesInfo> {
+    pub(crate) async fn fetch_tvdb_series(
+        &self,
+        id: u32,
+        language: Option<&str>,
+    ) -> Result<crate::tvdb::SeriesInfo> {
         self.tvdb()
             .context("no tvdb client configured")?
-            .fetch_series(id)
+            .fetch_series(id, language)
             .await
     }
 
     pub(crate) async fn fetch_tvdb_episodes(
         &self,
         series_id: u32,
+        language: Option<&str>,
     ) -> Result<Vec<crate::tvdb::EpisodeInfo>> {
         self.tvdb()
             .context("no tvdb client configured")?
-            .fetch_episodes(series_id)
+            .fetch_episodes(series_id, language)
             .await
     }
 

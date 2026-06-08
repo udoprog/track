@@ -4,7 +4,8 @@ use yew::prelude::*;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::Route;
 use crate::ui::{
-    ConfirmDanger, ImageGallery, ImageItem, MarkWatchedPicker, RemoteSourceKind, RemoteSourceSelect,
+    ConfirmDanger, ImageGallery, ImageItem, LanguagePicker, MarkWatchedPicker, RemoteSourceKind,
+    RemoteSourceSelect,
 };
 
 pub(super) struct MovieDetail {
@@ -28,6 +29,7 @@ pub(super) struct MovieDetail {
     _pending_req: ws::Request,
     _select_image_req: ws::Request,
     _set_sync_source_req: ws::Request,
+    _set_language_req: ws::Request,
 }
 
 pub(super) enum Msg {
@@ -57,6 +59,11 @@ pub(super) enum Msg {
     SetSyncSourceDone(
         api::SyncSource,
         Result<ws::Packet<api::SetMovieSyncSource>, ws::Error>,
+    ),
+    SetLanguage(Option<String>),
+    SetLanguageDone(
+        Option<String>,
+        Result<ws::Packet<api::SetMovieLanguage>, ws::Error>,
     ),
     SetTracked(bool),
     SetTrackedDone(bool, Result<ws::Packet<api::UntrackMovie>, ws::Error>),
@@ -108,6 +115,7 @@ impl Component for MovieDetail {
             _pending_req: ws::Request::default(),
             _select_image_req: ws::Request::default(),
             _set_sync_source_req: ws::Request::default(),
+            _set_language_req: ws::Request::default(),
         }
     }
 
@@ -369,6 +377,31 @@ impl MovieDetail {
                 }
                 Ok(true)
             }
+            Msg::SetLanguage(language) => {
+                let id = ctx.props().movie_id;
+
+                self._set_language_req = self
+                    .channel
+                    .request()
+                    .body(api::SetMovieLanguageRequest {
+                        id,
+                        language: language.clone(),
+                    })
+                    .on_packet(
+                        ctx.link()
+                            .callback(move |r| Msg::SetLanguageDone(language.clone(), r)),
+                    )
+                    .send();
+
+                Ok(false)
+            }
+            Msg::SetLanguageDone(language, result) => {
+                result.context(Message::SettingLanguage)?;
+                if let Some(ref mut movie) = self.movie {
+                    movie.language = language;
+                }
+                Ok(true)
+            }
             Msg::SetTracked(tracked) => {
                 let id = ctx.props().movie_id;
                 self._untrack_req = self
@@ -602,6 +635,12 @@ impl MovieDetail {
                         remotes={movie.remotes.clone()}
                         current_source={movie.effective_sync_source()}
                         on_change={link.callback(Msg::SetSyncSource)}
+                    />
+
+                    <LanguagePicker
+                        current={movie.language.clone()}
+                        placeholder="Default"
+                        on_change={link.callback(Msg::SetLanguage)}
                     />
 
                     if movie.images.iter().any(|i| matches!(i.kind, api::ImageKind::Banner | api::ImageKind::Fanart | api::ImageKind::Backdrop)) {

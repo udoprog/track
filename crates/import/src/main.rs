@@ -412,6 +412,7 @@ async fn main() -> Result<()> {
             auto_sync_enabled: false,
             auto_sync_interval_hours: 24,
             timezone: String::new(),
+            language: None,
         })
         .await
         .context("saving config")?;

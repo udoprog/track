@@ -1,6 +1,8 @@
 use web_sys::MouseEvent;
 use yew::prelude::*;
 
+use iso639::Languages;
+
 #[derive(Properties, PartialEq)]
 pub(super) struct PaginationButtonsProps {
     pub(super) page: usize,
@@ -288,5 +290,176 @@ pub(super) fn ImageGallery(props: &ImageGalleryProps) -> Html {
                 }
             </div>
         </div>
+    }
+}
+
+// ── LanguagePicker ────────────────────────────────────────────────────────────
+
+const LANGUAGE_PAGE_SIZE: usize = 5;
+
+#[derive(Properties, PartialEq)]
+pub(super) struct LanguagePickerProps {
+    /// Currently selected ISO 639-1 code, or `None` for the default.
+    pub(super) current: Option<String>,
+    pub(super) on_change: Callback<Option<String>>,
+    /// Label shown for the "use default" option (e.g. "Default" or "API default").
+    pub(super) placeholder: &'static str,
+}
+
+pub(super) enum Msg {
+    Open,
+    Close,
+    Filter(String),
+    Page(usize),
+    Pick(Option<String>),
+}
+
+pub(super) struct LanguagePicker {
+    languages: Languages,
+    open: bool,
+    filter: String,
+    page: usize,
+}
+
+impl Component for LanguagePicker {
+    type Message = Msg;
+    type Properties = LanguagePickerProps;
+
+    fn create(_ctx: &Context<Self>) -> Self {
+        Self {
+            languages: Languages::new(),
+            open: false,
+            filter: String::new(),
+            page: 0,
+        }
+    }
+
+    fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
+        match msg {
+            Msg::Open => {
+                self.open = true;
+                self.filter.clear();
+                self.page = 0;
+            }
+            Msg::Close => {
+                self.open = false;
+            }
+            Msg::Filter(s) => {
+                self.filter = s;
+                self.page = 0;
+            }
+            Msg::Page(p) => {
+                self.page = p;
+            }
+            Msg::Pick(value) => {
+                self.open = false;
+                ctx.props().on_change.emit(value);
+            }
+        }
+
+        true
+    }
+
+    fn view(&self, ctx: &Context<Self>) -> Html {
+        let link = ctx.link();
+        let props = ctx.props();
+
+        let value = ctx.props().current.as_ref().and_then(|code| self
+            .languages
+            .get_by_part1(code)
+            .and_then(|entry| Some((entry.ref_name, entry.part1?))));
+
+        let trigger = match value {
+            Some((label, code)) => html! {
+                <button class="btn" onclick={link.callback(|_| Msg::Open)} title="Select language">
+                    <span class="icon-inline"><span class="icon language" /></span>
+                    <span class="hide-mobile">{label}</span>
+                    <span class={classes!("inline-flag", "flag", code)}></span>
+                </button>
+            },
+            None => html! {
+                <button class="btn" onclick={link.callback(|_| Msg::Open)} title="Select language">
+                    <span class="icon-inline"><span class="icon language" /></span>
+                    <span class="hide-mobile">{props.placeholder}</span>
+                </button>
+            },
+        };
+
+        if !self.open {
+            return trigger;
+        }
+
+        let needle = self.filter.to_lowercase();
+        let filtered: Vec<(&'static str, &'static iso639::Entry)> = self
+            .languages
+            .iter()
+            .filter(|(_, entry)| {
+                needle.is_empty() || entry.ref_name.to_lowercase().contains(&needle)
+            })
+            .collect();
+
+        let total_pages = filtered.len().div_ceil(LANGUAGE_PAGE_SIZE).max(1);
+        let page = self.page.min(total_pages.saturating_sub(1));
+
+        let on_filter = link.callback(|e: InputEvent| {
+            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+            Msg::Filter(input.value())
+        });
+
+        let current = props.current.clone();
+
+        html! {
+            <>
+                {trigger}
+                <div class="modal-background" onclick={link.callback(|_| Msg::Close)}>
+                    <div class="modal" onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
+                        <div class="row">
+                            <span class="fill">{"Language"}</span>
+
+                            <button class="btn-icon" onclick={link.callback(|_| Msg::Close)}>
+                                <span class="icon x-mark" />
+                            </button>
+                        </div>
+
+                        <input type="text" class="input-text fill" placeholder="Filter" value={self.filter.clone()} oninput={on_filter} />
+
+                        <div class="table">
+                            <div class="table-entry row clickable" onclick={link.callback(|_| Msg::Pick(None))}>
+                                <span class="fill">{props.placeholder}</span>
+
+                                if current.is_none() {
+                                    <span class="icon check" />
+                                }
+                            </div>
+
+                            {
+                                for filtered.iter()
+                                    .skip(page * LANGUAGE_PAGE_SIZE)
+                                    .take(LANGUAGE_PAGE_SIZE)
+                                    .map(|&(part1, entry)| {
+                                        let selected = current.as_deref() == Some(part1);
+
+                                        html! {
+                                            <div key={part1} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))}
+                                                onclick={link.callback(move |_| Msg::Pick(Some(part1.to_string())))}>
+                                                <span class="fill">{entry.ref_name}</span>
+                                                <span class="text-muted">{part1}</span>
+                                            </div>
+                                        }
+                                    })
+                            }
+                        </div>
+
+                        <div class="row">
+                            <PaginationButtons
+                                page={page}
+                                total_pages={total_pages}
+                                on_page={link.callback(Msg::Page)}
+                            />
+                        </div>
+                    </div>
+                </div>
+            </>
+        }
     }
 }

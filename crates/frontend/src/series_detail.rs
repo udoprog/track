@@ -6,7 +6,8 @@ use api::HasAired;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{Route, SeriesQuery};
 use crate::ui::{
-    ConfirmDanger, ImageGallery, ImageItem, MarkWatchedPicker, RemoteSourceKind, RemoteSourceSelect,
+    ConfirmDanger, ImageGallery, ImageItem, LanguagePicker, MarkWatchedPicker, RemoteSourceKind,
+    RemoteSourceSelect,
 };
 
 pub(super) struct SeriesDetail {
@@ -36,6 +37,7 @@ pub(super) struct SeriesDetail {
     _set_next_req: ws::Request,
     _select_image_req: ws::Request,
     _set_sync_source_req: ws::Request,
+    _set_language_req: ws::Request,
 }
 
 pub(super) enum Msg {
@@ -64,7 +66,10 @@ pub(super) enum Msg {
     SyncSeries,
     SyncDone(Result<ws::Packet<api::SyncSeries>, ws::Error>),
     ToggleHistory(api::EpisodeId),
-    HistoryLoaded(api::EpisodeId, Result<ws::Packet<api::ListWatched>, ws::Error>),
+    HistoryLoaded(
+        api::EpisodeId,
+        Result<ws::Packet<api::ListWatched>, ws::Error>,
+    ),
     AddPending(api::EpisodeId),
     AddPendingDone(Result<ws::Packet<api::AddPending>, ws::Error>),
     RemovePending(api::EpisodeId),
@@ -75,6 +80,11 @@ pub(super) enum Msg {
     SetSyncSourceDone(
         api::SyncSource,
         Result<ws::Packet<api::SetSeriesSyncSource>, ws::Error>,
+    ),
+    SetLanguage(Option<String>),
+    SetLanguageDone(
+        Option<String>,
+        Result<ws::Packet<api::SetSeriesLanguage>, ws::Error>,
     ),
     OpenImageModal(api::ImageKind),
     CloseImageModal,
@@ -130,6 +140,7 @@ impl Component for SeriesDetail {
             _set_next_req: ws::Request::default(),
             _select_image_req: ws::Request::default(),
             _set_sync_source_req: ws::Request::default(),
+            _set_language_req: ws::Request::default(),
         }
     }
 
@@ -183,6 +194,12 @@ impl Component for SeriesDetail {
                                 remotes={series.remotes.clone()}
                                 current_source={series.effective_sync_source()}
                                 on_change={link.callback(Msg::SetSyncSource)}
+                            />
+
+                            <LanguagePicker
+                                current={series.language.clone()}
+                                placeholder="Default"
+                                on_change={link.callback(Msg::SetLanguage)}
                             />
 
                             if series.images.iter().any(|i| matches!(i.kind, api::ImageKind::Banner | api::ImageKind::Fanart | api::ImageKind::Backdrop)) {
@@ -682,6 +699,31 @@ impl SeriesDetail {
                 }
                 Ok(true)
             }
+            Msg::SetLanguage(language) => {
+                let id = ctx.props().series_id;
+
+                self._set_language_req = self
+                    .channel
+                    .request()
+                    .body(api::SetSeriesLanguageRequest {
+                        id,
+                        language: language.clone(),
+                    })
+                    .on_packet(
+                        ctx.link()
+                            .callback(move |r| Msg::SetLanguageDone(language.clone(), r)),
+                    )
+                    .send();
+
+                Ok(false)
+            }
+            Msg::SetLanguageDone(language, result) => {
+                result.context(Message::SettingLanguage)?;
+                if let Some(ref mut series) = self.series {
+                    series.language = language;
+                }
+                Ok(true)
+            }
             Msg::OpenImageModal(kind) => {
                 self.image_modal = Some(kind);
                 Ok(true)
@@ -739,10 +781,7 @@ impl SeriesDetail {
             .body(api::ListWatchedRequest {
                 kind: api::WatchedKind::Episode { series, episode },
             })
-            .on_packet(
-                ctx.link()
-                    .callback(move |r| Msg::HistoryLoaded(episode, r)),
-            )
+            .on_packet(ctx.link().callback(move |r| Msg::HistoryLoaded(episode, r)))
             .send();
         self._history_reqs.insert(episode, req);
     }

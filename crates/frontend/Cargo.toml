@@ -8,6 +8,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 api = { path = "../api", features = ["js"] }
+iso639 = { path = "../iso639" }
 
 derive_more = { version = "2.1.1", features = ["display"] }
 gloo = "0.12.0"

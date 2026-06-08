@@ -2,6 +2,7 @@ use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
 use crate::error::{CustomContext, Error, Message};
+use crate::ui::LanguagePicker;
 
 fn tz_is_valid(name: &str) -> bool {
     name.is_empty() || jiff_tzdb::get(name).is_some()
@@ -24,6 +25,7 @@ pub(super) enum Msg {
     TvdbKeyChanged(String),
     TmdbKeyChanged(String),
     TimezoneChanged(String),
+    LanguageChanged(Option<String>),
     ScheduleDaysChanged(String),
     DashboardLimitChanged(String),
     DashboardPageChanged(String),
@@ -149,25 +151,11 @@ impl Component for Settings {
                     <div class="form">
                         <div class="field">
                             <label>{"TheTVDB Legacy API Key"}</label>
-
-                            <input
-                                type="text"
-                                class="input-text"
-                                placeholder="Enter TVDB API key"
-                                value={self.config.tvdb_legacy_apikey.clone()}
-                                oninput={on_tvdb}
-                            />
+                            <input type="text" class="input-text" placeholder="Enter TVDB API key" value={self.config.tvdb_legacy_apikey.clone()} oninput={on_tvdb} />
                         </div>
                         <div class="field">
                             <label>{"TheMovieDB API Key"}</label>
-
-                            <input
-                                type="text"
-                                class="input-text"
-                                placeholder="Enter TMDB API key"
-                                value={self.config.tmdb_api_key.clone()}
-                                oninput={on_tmdb}
-                            />
+                            <input type="text" class="input-text" placeholder="Enter TMDB API key" value={self.config.tmdb_api_key.clone()} oninput={on_tmdb} />
                         </div>
                     </div>
                 </div>
@@ -245,6 +233,16 @@ impl Component for Settings {
                                     {"Unknown timezone"}
                                 </span>
                             }
+                        </div>
+
+                        <div class="field">
+                            <label>{"Default language"}</label>
+
+                            <LanguagePicker
+                                current={self.config.language.clone()}
+                                placeholder="API default"
+                                on_change={link.callback(Msg::LanguageChanged)}
+                            />
                         </div>
                     </div>
                 </div>
@@ -330,6 +328,10 @@ impl Settings {
             }
             Msg::TimezoneChanged(val) => {
                 self.config.timezone = val;
+                Ok(true)
+            }
+            Msg::LanguageChanged(val) => {
+                self.config.language = val;
                 Ok(true)
             }
             Msg::ScheduleDaysChanged(val) => {

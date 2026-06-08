@@ -989,6 +989,7 @@ pub struct Series {
     pub remotes: Vec<RemoteId>,
     pub images: Vec<MediaImage>,
     pub last_synced_at: Option<Timestamp>,
+    pub language: Option<String>,
 }
 
 impl Series {
@@ -1070,6 +1071,7 @@ pub struct Movie {
     pub images: Vec<MediaImage>,
     pub last_synced_at: Option<Timestamp>,
     pub releases: Vec<MovieRelease>,
+    pub language: Option<String>,
 }
 
 impl Movie {
@@ -1204,6 +1206,8 @@ pub struct Config {
     pub auto_sync_interval_hours: u32,
     /// IANA timezone name (e.g. "America/New_York"). Empty = use browser/system default.
     pub timezone: String,
+    /// ISO 639-1 language code (e.g. "en", "de"). None = use API default.
+    pub language: Option<String>,
 }
 
 impl Default for Config {
@@ -1218,6 +1222,7 @@ impl Default for Config {
             auto_sync_enabled: false,
             auto_sync_interval_hours: 24,
             timezone: String::new(),
+            language: None,
         }
     }
 }
@@ -1499,6 +1504,20 @@ pub struct SetMovieSyncSourceRequest {
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
+pub struct SetSeriesLanguageRequest {
+    pub id: SeriesId,
+    pub language: Option<String>,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct SetMovieLanguageRequest {
+    pub id: MovieId,
+    pub language: Option<String>,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
 pub struct SyncAllRequest;
 
 #[derive(Debug, Encode, Decode)]
@@ -1751,6 +1770,18 @@ api::define! {
     pub type SetMovieSyncSource;
     impl Endpoint for SetMovieSyncSource {
         impl Request for SetMovieSyncSourceRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type SetSeriesLanguage;
+    impl Endpoint for SetSeriesLanguage {
+        impl Request for SetSeriesLanguageRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type SetMovieLanguage;
+    impl Endpoint for SetMovieLanguage {
+        impl Request for SetMovieLanguageRequest;
         type Response<'de> = Empty;
     }
 

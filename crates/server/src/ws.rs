@@ -550,6 +550,57 @@ impl WsHandler {
 
                 outgoing.write(api::Empty);
             }
+            api::Request::SetSeriesLanguage => {
+                let req = incoming
+                    .read::<api::SetSeriesLanguageRequest>()
+                    .context("missing request")?;
+
+                self.db.set_series_language(req.id, req.language).await?;
+
+                let series = self
+                    .db
+                    .series_by_id(req.id)
+                    .await?
+                    .context("series not found")?;
+
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::SeriesChanged {
+                        series: series.clone(),
+                    },
+                    "ws set series language changed",
+                );
+
+                self.enqueue_series_sync(series.id, series.title, true)
+                    .await;
+
+                outgoing.write(api::Empty);
+            }
+            api::Request::SetMovieLanguage => {
+                let req = incoming
+                    .read::<api::SetMovieLanguageRequest>()
+                    .context("missing request")?;
+
+                self.db.set_movie_language(req.id, req.language).await?;
+
+                let movie = self
+                    .db
+                    .movie_by_id(req.id)
+                    .await?
+                    .context("movie not found")?;
+
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::MovieChanged {
+                        movie: movie.clone(),
+                    },
+                    "ws set movie language changed",
+                );
+
+                self.enqueue_movie_sync(movie.id, movie.title, true).await;
+
+                outgoing.write(api::Empty);
+            }
             api::Request::SyncAll => {
                 let _req = incoming
                     .read::<api::SyncAllRequest>()

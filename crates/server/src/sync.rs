@@ -20,8 +20,11 @@ pub(crate) async fn sync_series(
         .await?
         .context("series not found")?;
 
+    let config = db.load_config().await?;
+    let language = series.language.clone().or_else(|| config.language.clone());
+
     let source = series.effective_sync_source();
-    info!(series_id = %series_id, title = series.title, ?source, "syncing series");
+    info!(series_id = %series_id, title = series.title, ?source, ?language, "syncing series");
 
     match source {
         Some(api::SyncSource::Tmdb) => {
@@ -29,14 +32,30 @@ pub(crate) async fn sync_series(
                 .remote_by_source("tmdb")
                 .context("series has no tmdb remote")?;
             let tmdb_id: u32 = remote_id.value().as_u32().context("invalid tmdb id")?;
-            sync_series_tmdb(series_id, tmdb_id, remote, db, broadcast).await?;
+            sync_series_tmdb(
+                series_id,
+                tmdb_id,
+                language.as_deref(),
+                remote,
+                db,
+                broadcast,
+            )
+            .await?;
         }
         Some(api::SyncSource::Tvdb) => {
             let remote_id = series
                 .remote_by_source("tvdb")
                 .context("series has no tvdb remote")?;
             let tvdb_id: u32 = remote_id.value().as_u32().context("invalid tvdb id")?;
-            sync_series_tvdb(series_id, tvdb_id, remote, db, broadcast).await?;
+            sync_series_tvdb(
+                series_id,
+                tvdb_id,
+                language.as_deref(),
+                remote,
+                db,
+                broadcast,
+            )
+            .await?;
         }
         None => anyhow::bail!("series has no syncable remote (tmdb or tvdb)"),
     }
@@ -60,6 +79,7 @@ pub(crate) async fn sync_series(
 async fn sync_series_tmdb(
     series_id: api::SeriesId,
     tmdb_id: u32,
+    language: Option<&str>,
     remote: &RemoteClients,
     db: &Database,
     broadcast: &Broadcaster,
@@ -69,7 +89,7 @@ async fn sync_series_tmdb(
         .await?
         .context("series not found")?;
     info!(tmdb_id, "fetching tmdb series");
-    let info = remote.fetch_tmdb_series(tmdb_id).await?;
+    let info = remote.fetch_tmdb_series(tmdb_id, language).await?;
 
     db.update_series(
         series_id,
@@ -126,7 +146,10 @@ async fn sync_series_tmdb(
 
         info!(tmdb_id, season, "fetching tmdb season episodes");
 
-        for ep in remote.fetch_tmdb_season_episodes(tmdb_id, season).await? {
+        for ep in remote
+            .fetch_tmdb_season_episodes(tmdb_id, season, language)
+            .await?
+        {
             db.upsert_episode(
                 series_id,
                 ep.season,
@@ -160,6 +183,7 @@ async fn sync_series_tmdb(
 async fn sync_series_tvdb(
     series_id: api::SeriesId,
     tvdb_id: u32,
+    language: Option<&str>,
     remote: &RemoteClients,
     db: &Database,
     broadcast: &Broadcaster,
@@ -169,7 +193,7 @@ async fn sync_series_tvdb(
         .await?
         .context("series not found")?;
     info!(tvdb_id, "fetching TVDB series");
-    let info = remote.fetch_tvdb_series(tvdb_id).await?;
+    let info = remote.fetch_tvdb_series(tvdb_id, language).await?;
 
     db.update_series(
         series_id,
@@ -204,7 +228,7 @@ async fn sync_series_tvdb(
     broadcast.broadcast_event(api::AppEventKind::SeriesChanged { series: updated });
 
     info!(tvdb_id, "fetching TVDB episodes");
-    let episodes = remote.fetch_tvdb_episodes(tvdb_id).await?;
+    let episodes = remote.fetch_tvdb_episodes(tvdb_id, language).await?;
     info!(count = episodes.len(), "got episodes from TVDB");
 
     let mut seasons_seen: HashSet<SeasonNumber> = HashSet::new();
@@ -255,8 +279,11 @@ pub(crate) async fn sync_movie(
 ) -> Result<()> {
     let movie = db.movie_by_id(movie_id).await?.context("movie not found")?;
 
+    let config = db.load_config().await?;
+    let language = movie.language.clone().or_else(|| config.language.clone());
+
     let source = movie.effective_sync_source();
-    info!(movie_id = %movie_id, title = movie.title, ?source, "syncing movie");
+    info!(movie_id = %movie_id, title = movie.title, ?source, ?language, "syncing movie");
 
     match source {
         Some(api::SyncSource::Tmdb) => {
@@ -265,7 +292,9 @@ pub(crate) async fn sync_movie(
                 .context("movie has no tmdb remote")?;
             let tmdb_id: u32 = remote_id.value().as_u32().context("invalid tmdb id")?;
             info!(tmdb_id, "fetching tmdb movie");
-            let info = remote.fetch_tmdb_movie(tmdb_id).await?;
+            let info = remote
+                .fetch_tmdb_movie(tmdb_id, language.as_deref())
+                .await?;
 
             db.update_movie(
                 movie_id,

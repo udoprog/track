@@ -91,7 +91,7 @@ impl Client {
         Ok(out)
     }
 
-    pub(crate) async fn fetch_series(&self, id: u32) -> Result<SeriesInfo> {
+    pub(crate) async fn fetch_series(&self, id: u32, language: Option<&str>) -> Result<SeriesInfo> {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct Value {
@@ -114,15 +114,14 @@ impl Client {
         }
 
         let token = self.login().await?;
-        let bytes = self
+        let mut req = self
             .http
             .get(format!("{BASE}/series/{id}"))
-            .bearer_auth(&token)
-            .send()
-            .await?
-            .error_for_status()?
-            .bytes()
-            .await?;
+            .bearer_auth(&token);
+        if let Some(language) = language.filter(|l| !l.is_empty()) {
+            req = req.header("Accept-Language", language);
+        }
+        let bytes = req.send().await?.error_for_status()?.bytes().await?;
         let resp: Resp = serde_json::from_slice(&bytes)?;
         let v = resp.data;
 
@@ -143,7 +142,11 @@ impl Client {
         })
     }
 
-    pub(crate) async fn fetch_episodes(&self, series_id: u32) -> Result<Vec<EpisodeInfo>> {
+    pub(crate) async fn fetch_episodes(
+        &self,
+        series_id: u32,
+        language: Option<&str>,
+    ) -> Result<Vec<EpisodeInfo>> {
         #[derive(Debug, Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct Row {
@@ -183,6 +186,9 @@ impl Client {
                 .http
                 .get(format!("{BASE}/series/{series_id}/episodes"))
                 .bearer_auth(&token);
+            if let Some(language) = language.filter(|l| !l.is_empty()) {
+                req = req.header("Accept-Language", language);
+            }
             if let Some(p) = page {
                 req = req.query(&[("page", p.to_string().as_str())]);
             }

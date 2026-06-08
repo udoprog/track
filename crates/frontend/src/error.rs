@@ -92,6 +92,8 @@ pub(crate) enum Message {
     SyncingSeries,
     #[display("setting sync source")]
     SettingSyncSource,
+    #[display("setting language")]
+    SettingLanguage,
     #[display("loading tasks")]
     LoadingTasks,
     #[display("searching")]

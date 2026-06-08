@@ -164,7 +164,8 @@ fn parse_rows(input: &str) -> Result<Vec<LanguageRow>> {
             bail!("empty ref name at line {line_no}");
         }
 
-        let scope = Scope::parse(scope).with_context(|| format!("invalid scope at line {line_no}"))?;
+        let scope =
+            Scope::parse(scope).with_context(|| format!("invalid scope at line {line_no}"))?;
         let language_type = LanguageType::parse(language_type)
             .with_context(|| format!("invalid language type at line {line_no}"))?;
 
@@ -251,7 +252,10 @@ fn render_module(rows: &[LanguageRow], include_types: bool) -> Result<String> {
         writeln!(out, "pub enum Scope {{")?;
         writeln!(out, "    /// Single distinct language.")?;
         writeln!(out, "    Individual,")?;
-        writeln!(out, "    /// Grouping that spans multiple individual languages.")?;
+        writeln!(
+            out,
+            "    /// Grouping that spans multiple individual languages."
+        )?;
         writeln!(out, "    Macrolanguage,")?;
         writeln!(out, "    /// Special pseudo-language codes.")?;
         writeln!(out, "    Special,")?;
@@ -322,7 +326,10 @@ fn render_module(rows: &[LanguageRow], include_types: bool) -> Result<String> {
     write_map(&mut out, "PART2T_MAP", &part2t_map)?;
 
     for (scope, codes) in by_scope {
-        let ident = format!("SCOPE_{}_MAP", sanitize_ident_fragment(scope.rust_variant()));
+        let ident = format!(
+            "SCOPE_{}_MAP",
+            sanitize_ident_fragment(scope.rust_variant())
+        );
         write_map(&mut out, &ident, &codes)?;
     }
 

@@ -15,11 +15,21 @@ impl Client {
         Self { http, api_key }
     }
 
-    async fn get_json<T: serde::de::DeserializeOwned>(&self, url: &str) -> Result<T> {
-        let bytes = self
+    async fn get_json<T: serde::de::DeserializeOwned>(
+        &self,
+        url: &str,
+        language: Option<&str>,
+    ) -> Result<T> {
+        let mut req = self
             .http
             .get(url)
-            .query(&[("api_key", self.api_key.as_str())])
+            .query(&[("api_key", self.api_key.as_str())]);
+
+        if let Some(language) = language.filter(|l| !l.is_empty()) {
+            req = req.query(&[("language", language)]);
+        }
+
+        let bytes = req
             .send()
             .await
             .context("request failed")?
@@ -119,7 +129,7 @@ impl Client {
             .collect())
     }
 
-    pub(crate) async fn fetch_series(&self, id: u32) -> Result<SeriesInfo> {
+    pub(crate) async fn fetch_series(&self, id: u32, language: Option<&str>) -> Result<SeriesInfo> {
         #[derive(Deserialize)]
         struct SeasonDetails {
             #[serde(default)]
@@ -161,7 +171,10 @@ impl Client {
         }
 
         let d: Details = self
-            .get_json(&format!("{BASE}/tv/{id}?append_to_response=external_ids"))
+            .get_json(
+                &format!("{BASE}/tv/{id}?append_to_response=external_ids"),
+                language,
+            )
             .await?;
 
         let seasons = d
@@ -204,6 +217,7 @@ impl Client {
         &self,
         series_id: u32,
         season_number: u32,
+        language: Option<&str>,
     ) -> Result<Vec<EpisodeInfo>> {
         #[derive(Deserialize)]
         struct EpDetail {
@@ -226,7 +240,10 @@ impl Client {
         }
 
         let resp: SeasonResp = self
-            .get_json(&format!("{BASE}/tv/{series_id}/season/{season_number}"))
+            .get_json(
+                &format!("{BASE}/tv/{series_id}/season/{season_number}"),
+                language,
+            )
             .await?;
 
         let season = if season_number == 0 {
@@ -271,7 +288,7 @@ impl Client {
         }
 
         let d: Resp = self
-            .get_json(&format!("{BASE}/movie/{id}/release_dates"))
+            .get_json(&format!("{BASE}/movie/{id}/release_dates"), None)
             .await?;
 
         let mut out = Vec::new();
@@ -292,7 +309,7 @@ impl Client {
         Ok(out)
     }
 
-    pub(crate) async fn fetch_movie(&self, id: u32) -> Result<MovieInfo> {
+    pub(crate) async fn fetch_movie(&self, id: u32, language: Option<&str>) -> Result<MovieInfo> {
         #[derive(Deserialize, Default)]
         struct ExternalIds {
             #[serde(default)]
@@ -317,9 +334,10 @@ impl Client {
         }
 
         let d: Details = self
-            .get_json(&format!(
-                "{BASE}/movie/{id}?append_to_response=external_ids"
-            ))
+            .get_json(
+                &format!("{BASE}/movie/{id}?append_to_response=external_ids"),
+                language,
+            )
             .await?;
 
         let mut remotes = vec![RemoteId::tmdb(id)];
