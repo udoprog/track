@@ -1,7 +1,7 @@
 use web_sys::MouseEvent;
 use yew::prelude::*;
 
-use iso639::Languages;
+use iso639::{LanguageToCountry, Languages};
 
 #[derive(Properties, PartialEq)]
 pub(super) struct PaginationButtonsProps {
@@ -241,6 +241,7 @@ pub(super) struct ImageGalleryProps {
     pub(super) items: Vec<ImageItem>,
     pub(super) kind: api::ImageKind,
     pub(super) on_select: Callback<api::ImageId>,
+    pub(super) on_clear: Option<Callback<()>>,
     pub(super) on_close: Callback<()>,
 }
 
@@ -259,6 +260,14 @@ pub(super) fn ImageGallery(props: &ImageGalleryProps) -> Html {
             <div class="modal" onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
                 <div class="row">
                     <span class="fill">{format!("Select {}", props.kind)}</span>
+
+                    if let Some(on_clear) = props.on_clear.clone() {
+                        <button class="btn" onclick={Callback::from(move |_| on_clear.emit(()))}>
+                            <span class="icon-inline"><span class="icon x-mark" /></span>
+                            {"Clear"}
+                        </button>
+                    }
+
                     <button class="btn-icon" onclick={props.on_close.reform(|_| ())}>
                         <span class="icon x-mark" />
                     </button>
@@ -314,6 +323,7 @@ pub(super) enum Msg {
 
 pub(super) struct LanguagePicker {
     languages: Languages,
+    language_to_country: LanguageToCountry,
     open: bool,
     filter: String,
     page: usize,
@@ -326,6 +336,7 @@ impl Component for LanguagePicker {
     fn create(_ctx: &Context<Self>) -> Self {
         Self {
             languages: Languages::new(),
+            language_to_country: LanguageToCountry::new(),
             open: false,
             filter: String::new(),
             page: 0,
@@ -375,7 +386,7 @@ impl Component for LanguagePicker {
                     <span class="hide-mobile">{label}</span>
 
 
-                    if let Some(code) = language_to_country(code) {
+                    if let Some(code) = self.language_to_country.get_by_part1(code) {
                         <span class={classes!("flag", code)}></span>
                     }
                 </button>
@@ -448,7 +459,7 @@ impl Component for LanguagePicker {
                                             <div key={part1} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| Msg::Pick(Some(part1.to_string())))}>
                                                 <span class="fill">{entry.ref_name}</span>
 
-                                                if let Some(code) = language_to_country(part1) {
+                                                if let Some(code) = self.language_to_country.get_by_part1(part1) {
                                                     <span class={classes!("flag-inline", "flag", code)} />
                                                 }
 
@@ -470,26 +481,5 @@ impl Component for LanguagePicker {
                 </div>
             </>
         }
-    }
-}
-
-fn language_to_country(part1: &str) -> Option<&'static str> {
-    // ISO 639-1 codes that match their corresponding ISO 3166-1 alpha-2 country
-    // codes. This is not a comprehensive mapping of all languages to flags,
-    // just a few common ones.
-    match part1 {
-        "de" => Some("de"),
-        "en" => Some("us"),
-        "es" => Some("es"),
-        "fi" => Some("fi"),
-        "fr" => Some("fr"),
-        "it" => Some("it"),
-        "ja" => Some("jp"),
-        "ko" => Some("kr"),
-        "pt" => Some("pt"),
-        "ru" => Some("ru"),
-        "sv" => Some("se"),
-        "zh" => Some("cn"),
-        _ => None,
     }
 }

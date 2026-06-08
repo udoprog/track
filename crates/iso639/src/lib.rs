@@ -1,6 +1,6 @@
+use std::cell::LazyCell;
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use std::cell::LazyCell;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Scope {
@@ -36,6 +36,11 @@ mod generated {
     include!(concat!(env!("OUT_DIR"), "/generated.rs"));
 }
 
+#[allow(dead_code)]
+mod generated_to_3166_1 {
+    include!(concat!(env!("OUT_DIR"), "/generated_to_3166_1.rs"));
+}
+
 pub use generated::ENTRIES;
 
 #[derive(Debug, Clone)]
@@ -45,8 +50,17 @@ pub struct Languages {
 
 impl Languages {
     pub fn new() -> Self {
-        let by_part1 = LazyCell::new(|| Arc::new(generated::PART1_MAP.iter().copied().collect::<BTreeMap<_, _>>()));
-        Self { by_part1: (*by_part1).clone() }
+        let by_part1 = LazyCell::new(|| {
+            Arc::new(
+                generated::PART1_MAP
+                    .iter()
+                    .copied()
+                    .collect::<BTreeMap<_, _>>(),
+            )
+        });
+        Self {
+            by_part1: (*by_part1).clone(),
+        }
     }
 
     pub fn get_by_part1(&self, part1: &str) -> Option<&'static Entry> {
@@ -63,5 +77,64 @@ impl Languages {
 impl Default for Languages {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct LanguageToCountry {
+    by_part1: Arc<BTreeMap<&'static str, &'static str>>,
+}
+
+impl LanguageToCountry {
+    pub fn new() -> Self {
+        let by_part1 = LazyCell::new(|| {
+            Arc::new(
+                generated_to_3166_1::TO_3166_1
+                    .iter()
+                    .copied()
+                    .collect::<BTreeMap<_, _>>(),
+            )
+        });
+        Self {
+            by_part1: (*by_part1).clone(),
+        }
+    }
+
+    pub fn get_by_part1(&self, part1: &str) -> Option<&'static str> {
+        self.by_part1.get(part1).copied()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&'static str, &'static str)> + '_ {
+        self.by_part1
+            .iter()
+            .map(|(part1, country)| (*part1, *country))
+    }
+}
+
+impl Default for LanguageToCountry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{LanguageToCountry, Languages};
+
+    #[test]
+    fn test_languages() {
+        let languages = Languages::new();
+        let language_to_country = LanguageToCountry::new();
+
+        for (_, entry) in languages.iter() {
+            let Some(part1) = entry.part1 else {
+                continue;
+            };
+
+            assert!(
+                language_to_country.get_by_part1(part1).is_some(),
+                "language with ISO-639-1 code {part1:?} is missing from to-3166-1 mapping"
+            );
+        }
     }
 }

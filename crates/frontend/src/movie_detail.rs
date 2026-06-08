@@ -28,6 +28,7 @@ pub(super) struct MovieDetail {
     _untrack_req: ws::Request,
     _pending_req: ws::Request,
     _select_image_req: ws::Request,
+    _clear_image_req: ws::Request,
     _set_sync_source_req: ws::Request,
     _set_language_req: ws::Request,
 }
@@ -46,7 +47,9 @@ pub(super) enum Msg {
     ConfirmRemoveWatch(api::WatchedId),
     CancelRemoveWatch,
     SelectImage(api::ImageId),
+    ClearSelectedImage(api::ImageKind),
     SelectImageDone(Result<ws::Packet<api::SelectImage>, ws::Error>),
+    ClearSelectedImageDone(Result<ws::Packet<api::ClearSelectedImage>, ws::Error>),
     OpenImageModal(api::ImageKind),
     CloseImageModal,
     ConfirmRemove,
@@ -114,6 +117,7 @@ impl Component for MovieDetail {
             _untrack_req: ws::Request::default(),
             _pending_req: ws::Request::default(),
             _select_image_req: ws::Request::default(),
+            _clear_image_req: ws::Request::default(),
             _set_sync_source_req: ws::Request::default(),
             _set_language_req: ws::Request::default(),
         }
@@ -469,7 +473,25 @@ impl MovieDetail {
                     .send();
                 Ok(false)
             }
+            Msg::ClearSelectedImage(kind) => {
+                self._clear_image_req = self
+                    .channel
+                    .request()
+                    .body(api::ClearSelectedImageRequest {
+                        owner: api::ImageOwner::Movie(ctx.props().movie_id),
+                        kind,
+                    })
+                    .on_packet(ctx.link().callback(Msg::ClearSelectedImageDone))
+                    .send();
+                Ok(false)
+            }
             Msg::SelectImageDone(result) => {
+                result.context(Message::SyncingSeries)?;
+                self.image_modal = None;
+                self.load_movie(ctx);
+                Ok(true)
+            }
+            Msg::ClearSelectedImageDone(result) => {
                 result.context(Message::SyncingSeries)?;
                 self.image_modal = None;
                 self.load_movie(ctx);
@@ -778,6 +800,11 @@ impl MovieDetail {
                 {items}
                 {kind}
                 on_select={link.callback(Msg::SelectImage)}
+                on_clear={if kind == api::ImageKind::Backdrop {
+                    Some(link.callback(move |_| Msg::ClearSelectedImage(kind)))
+                } else {
+                    None
+                }}
                 on_close={link.callback(|_| Msg::CloseImageModal)}
             />
         }

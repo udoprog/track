@@ -1316,6 +1316,36 @@ impl Database {
         .await?
     }
 
+    pub async fn clear_selected_image(
+        &self,
+        owner: api::ImageOwner,
+        kind: ImageKind,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            match owner {
+                api::ImageOwner::Series(series_id) => {
+                    s.deselect_series_images.bind((series_id, kind))?;
+                    ensure!(
+                        s.deselect_series_images.step()?.is_done(),
+                        "deselect_series_images"
+                    );
+                }
+                api::ImageOwner::Movie(movie_id) => {
+                    s.deselect_movie_images.bind((movie_id, kind))?;
+                    ensure!(
+                        s.deselect_movie_images.step()?.is_done(),
+                        "deselect_movie_images"
+                    );
+                }
+            }
+
+            Ok(())
+        })
+        .await?
+    }
+
     // ── Watched ──
 
     pub async fn mark_watched(

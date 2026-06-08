@@ -1094,7 +1094,10 @@ impl Movie {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize,
+)]
+#[musli(crate = musli_core)]
 pub enum ImageOwner {
     Series(SeriesId),
     Movie(MovieId),
@@ -1571,6 +1574,13 @@ pub struct SelectImageRequest {
     pub id: ImageId,
 }
 
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct ClearSelectedImageRequest {
+    pub owner: ImageOwner,
+    pub kind: ImageKind,
+}
+
 // ── Broadcast events ─────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Encode, Decode)]
@@ -1828,6 +1838,12 @@ api::define! {
     pub type SelectImage;
     impl Endpoint for SelectImage {
         impl Request for SelectImageRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type ClearSelectedImage;
+    impl Endpoint for ClearSelectedImage {
+        impl Request for ClearSelectedImageRequest;
         type Response<'de> = Empty;
     }
 

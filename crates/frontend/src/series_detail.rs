@@ -36,6 +36,7 @@ pub(super) struct SeriesDetail {
     _history_reqs: std::collections::HashMap<api::EpisodeId, ws::Request>,
     _set_next_req: ws::Request,
     _select_image_req: ws::Request,
+    _clear_image_req: ws::Request,
     _set_sync_source_req: ws::Request,
     _set_language_req: ws::Request,
 }
@@ -75,7 +76,9 @@ pub(super) enum Msg {
     RemovePending(api::EpisodeId),
     RemovePendingDone(Result<ws::Packet<api::RemovePending>, ws::Error>),
     SelectImage(api::ImageId),
+    ClearSelectedImage(api::ImageKind),
     SelectImageDone(Result<ws::Packet<api::SelectImage>, ws::Error>),
+    ClearSelectedImageDone(Result<ws::Packet<api::ClearSelectedImage>, ws::Error>),
     SetSyncSource(api::SyncSource),
     SetSyncSourceDone(
         api::SyncSource,
@@ -139,6 +142,7 @@ impl Component for SeriesDetail {
             _history_reqs: std::collections::HashMap::new(),
             _set_next_req: ws::Request::default(),
             _select_image_req: ws::Request::default(),
+            _clear_image_req: ws::Request::default(),
             _set_sync_source_req: ws::Request::default(),
             _set_language_req: ws::Request::default(),
         }
@@ -667,7 +671,25 @@ impl SeriesDetail {
                     .send();
                 Ok(false)
             }
+            Msg::ClearSelectedImage(kind) => {
+                self._clear_image_req = self
+                    .channel
+                    .request()
+                    .body(api::ClearSelectedImageRequest {
+                        owner: api::ImageOwner::Series(ctx.props().series_id),
+                        kind,
+                    })
+                    .on_packet(ctx.link().callback(Msg::ClearSelectedImageDone))
+                    .send();
+                Ok(false)
+            }
             Msg::SelectImageDone(result) => {
+                result.context(Message::SyncingSeries)?;
+                self.image_modal = None;
+                self.load_series(ctx);
+                Ok(true)
+            }
+            Msg::ClearSelectedImageDone(result) => {
                 result.context(Message::SyncingSeries)?;
                 self.image_modal = None;
                 self.load_series(ctx);
@@ -852,6 +874,11 @@ impl SeriesDetail {
                 {items}
                 {kind}
                 on_select={link.callback(Msg::SelectImage)}
+                on_clear={if kind == api::ImageKind::Backdrop {
+                    Some(link.callback(move |_| Msg::ClearSelectedImage(kind)))
+                } else {
+                    None
+                }}
                 on_close={link.callback(|_| Msg::CloseImageModal)}
             />
         }

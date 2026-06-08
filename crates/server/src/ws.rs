@@ -762,6 +762,46 @@ impl WsHandler {
 
                 outgoing.write(api::Empty);
             }
+            api::Request::ClearSelectedImage => {
+                let req = incoming
+                    .read::<api::ClearSelectedImageRequest>()
+                    .context("missing request")?;
+
+                self.db.clear_selected_image(req.owner, req.kind).await?;
+
+                match req.owner {
+                    api::ImageOwner::Series(series_id) => {
+                        let series = self
+                            .db
+                            .series_by_id(series_id)
+                            .await?
+                            .context("series not found")?;
+                        self.broadcast.emit(
+                            incoming.channel(),
+                            api::AppEventKind::SeriesChanged {
+                                series: series.clone(),
+                            },
+                            "ws clear selected image series changed",
+                        );
+                    }
+                    api::ImageOwner::Movie(movie_id) => {
+                        let movie = self
+                            .db
+                            .movie_by_id(movie_id)
+                            .await?
+                            .context("movie not found")?;
+                        self.broadcast.emit(
+                            incoming.channel(),
+                            api::AppEventKind::MovieChanged {
+                                movie: movie.clone(),
+                            },
+                            "ws clear selected image movie changed",
+                        );
+                    }
+                }
+
+                outgoing.write(api::Empty);
+            }
             api::Request::Unknown(id) => {
                 anyhow::bail!("unknown request id: {id:?}");
             }
