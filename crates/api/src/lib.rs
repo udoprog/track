@@ -981,9 +981,9 @@ pub struct MediaImage {
 #[musli(crate = musli_core)]
 pub struct Series {
     pub id: SeriesId,
-    pub title: String,
+    pub title: Option<String>,
     pub first_air_date: Option<Date>,
-    pub overview: String,
+    pub overview: Option<String>,
     pub tracked: bool,
     pub sync_source: Option<SyncSource>,
     pub remotes: Vec<RemoteId>,
@@ -1031,7 +1031,7 @@ pub struct Season {
     pub number: SeasonNumber,
     pub air_date: Option<Date>,
     pub name: Option<String>,
-    pub overview: String,
+    pub overview: Option<String>,
     pub poster: Option<Image>,
 }
 
@@ -1044,7 +1044,7 @@ pub struct Episode {
     pub number: u32,
     pub absolute_number: Option<u32>,
     pub name: Option<String>,
-    pub overview: String,
+    pub overview: Option<String>,
     pub aired: Option<Date>,
     pub aired_at: Option<Timestamp>,
     pub filename: Option<Image>,
@@ -1059,9 +1059,9 @@ pub struct Episode {
 #[musli(crate = musli_core)]
 pub struct Movie {
     pub id: MovieId,
-    pub title: String,
+    pub title: Option<String>,
     pub release_date: Option<Date>,
-    pub overview: String,
+    pub overview: Option<String>,
     pub remotes: Vec<RemoteId>,
     pub sync_source: Option<SyncSource>,
     pub watched: bool,
@@ -1245,9 +1245,9 @@ pub enum SearchKind {
 #[musli(crate = musli_core)]
 pub struct SearchSeries {
     pub remote_id: RemoteId,
-    pub title: String,
+    pub title: Option<String>,
     pub poster: Option<Image>,
-    pub overview: String,
+    pub overview: Option<String>,
     pub first_air_date: Option<Date>,
     pub already_tracked: Option<SeriesId>,
 }
@@ -1256,9 +1256,9 @@ pub struct SearchSeries {
 #[musli(crate = musli_core)]
 pub struct SearchMovie {
     pub remote_id: RemoteId,
-    pub title: String,
+    pub title: Option<String>,
     pub poster: Option<Image>,
-    pub overview: String,
+    pub overview: Option<String>,
     pub release_date: Option<Date>,
     pub already_tracked: Option<MovieId>,
 }
@@ -1268,14 +1268,23 @@ pub struct SearchMovie {
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub enum TaskKind {
-    SyncSeries { series_id: SeriesId, title: String },
-    SyncMovie { movie_id: MovieId, title: String },
+    SyncSeries {
+        series_id: SeriesId,
+        title: Option<String>,
+    },
+    SyncMovie {
+        movie_id: MovieId,
+        title: Option<String>,
+    },
 }
 
 impl TaskKind {
-    pub fn title(&self) -> &str {
+    #[inline]
+    pub fn title(&self) -> Option<&str> {
         match self {
-            TaskKind::SyncSeries { title, .. } | TaskKind::SyncMovie { title, .. } => title,
+            TaskKind::SyncSeries { title, .. } | TaskKind::SyncMovie { title, .. } => {
+                title.as_deref()
+            }
         }
     }
 }

@@ -77,8 +77,8 @@ impl Client {
             .into_iter()
             .map(|r| SearchSeriesResult {
                 remote_id: RemoteId::tmdb(r.id),
-                title: r.name.or(r.original_name).unwrap_or_default(),
-                overview: r.overview.unwrap_or_default(),
+                title: r.name.or(r.original_name),
+                overview: r.overview,
                 first_air_date: opt_date(r.first_air_date.as_deref()),
                 poster: opt_image(r.poster_path.as_deref()),
             })
@@ -121,8 +121,8 @@ impl Client {
             .into_iter()
             .map(|r| SearchMovieResult {
                 remote_id: RemoteId::tmdb(r.id),
-                title: r.title.or(r.original_title).unwrap_or_default(),
-                overview: r.overview.unwrap_or_default(),
+                title: r.title.or(r.original_title),
+                overview: r.overview,
                 release_date: opt_date(r.release_date.as_deref()),
                 poster: opt_image(r.poster_path.as_deref()),
             })
@@ -203,8 +203,8 @@ impl Client {
         }
 
         Ok(SeriesInfo {
-            title: d.name.or(d.original_name).unwrap_or_default(),
-            overview: d.overview.unwrap_or_default(),
+            title: d.name.or(d.original_name),
+            overview: d.overview,
             first_air_date: opt_date(d.first_air_date.as_deref()),
             poster: opt_image(d.poster_path.as_deref()),
             fanart: opt_image(d.backdrop_path.as_deref()),
@@ -341,6 +341,7 @@ impl Client {
             .await?;
 
         let mut remotes = vec![RemoteId::tmdb(id)];
+
         if let Some(ref imdb_id) = d.external_ids.imdb_id {
             if !imdb_id.is_empty() {
                 remotes.push(RemoteId::imdb(imdb_id));
@@ -348,8 +349,8 @@ impl Client {
         }
 
         Ok(MovieInfo {
-            title: d.title.or(d.original_title).unwrap_or_default(),
-            overview: d.overview.unwrap_or_default(),
+            title: d.title.or(d.original_title),
+            overview: d.overview,
             release_date: opt_date(d.release_date.as_deref()),
             poster: opt_image(d.poster_path.as_deref()),
             fanart: opt_image(d.backdrop_path.as_deref()),
@@ -361,8 +362,8 @@ impl Client {
 // ── Output types ─────────────────────────────────────────────────────────────
 
 pub(crate) struct SeriesInfo {
-    pub title: String,
-    pub overview: String,
+    pub title: Option<String>,
+    pub overview: Option<String>,
     pub first_air_date: Option<Date>,
     pub poster: Option<Image>,
     pub fanart: Option<Image>,
@@ -389,8 +390,8 @@ pub(crate) struct EpisodeInfo {
 }
 
 pub(crate) struct MovieInfo {
-    pub title: String,
-    pub overview: String,
+    pub title: Option<String>,
+    pub overview: Option<String>,
     pub release_date: Option<Date>,
     pub poster: Option<Image>,
     pub fanart: Option<Image>,
@@ -399,16 +400,16 @@ pub(crate) struct MovieInfo {
 
 pub(crate) struct SearchSeriesResult {
     pub remote_id: RemoteId,
-    pub title: String,
-    pub overview: String,
+    pub title: Option<String>,
+    pub overview: Option<String>,
     pub first_air_date: Option<Date>,
     pub poster: Option<Image>,
 }
 
 pub(crate) struct SearchMovieResult {
     pub remote_id: RemoteId,
-    pub title: String,
-    pub overview: String,
+    pub title: Option<String>,
+    pub overview: Option<String>,
     pub release_date: Option<Date>,
     pub poster: Option<Image>,
 }

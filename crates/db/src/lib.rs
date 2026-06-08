@@ -31,9 +31,9 @@ struct Migrations;
 #[derive(Row)]
 struct SeriesRow {
     id: SeriesId,
-    title: String,
+    title: Option<String>,
     first_air: Option<Date>,
-    overview: String,
+    overview: Option<String>,
     tracked: bool,
     sync_source: Option<SyncSource>,
     last_synced_at: Option<Timestamp>,
@@ -65,7 +65,7 @@ struct SeasonRow {
     number: i64,
     air_date: Option<Date>,
     name: Option<String>,
-    overview: String,
+    overview: Option<String>,
     poster: Option<Image>,
 }
 
@@ -77,7 +77,7 @@ struct EpisodeRow {
     number: i64,
     absolute_number: Option<i64>,
     name: Option<String>,
-    overview: String,
+    overview: Option<String>,
     aired: Option<Date>,
     aired_at: Option<Timestamp>,
     filename: Option<Image>,
@@ -91,9 +91,9 @@ struct EpisodeRow {
 #[derive(Row)]
 struct MovieRow {
     id: MovieId,
-    title: String,
+    title: Option<String>,
     release_date: Option<Date>,
-    overview: String,
+    overview: Option<String>,
     watched: bool,
     watched_count: i64,
     tracked: bool,
@@ -174,7 +174,7 @@ struct ScheduleRow {
     number: i64,
     absolute_number: Option<i64>,
     name: Option<String>,
-    overview: String,
+    overview: Option<String>,
     aired: Option<Date>,
     filename: Option<Image>,
     remote_id: Option<RemoteId>,
@@ -733,19 +733,24 @@ impl Database {
     pub async fn update_series(
         &self,
         id: SeriesId,
-        title: &str,
+        title: Option<&str>,
         first_air: Option<&Date>,
-        overview: &str,
+        overview: Option<&str>,
         tracked: bool,
     ) -> Result<()> {
-        let title = title.to_owned();
+        let title = title.map(str::to_owned);
         let first_air = first_air.cloned();
-        let overview = overview.to_owned();
+        let overview = overview.map(str::to_owned);
         let mut s = self.inner.clone().lock_owned().await;
 
         spawn_blocking(move || {
-            s.update_series
-                .bind((&title[..], first_air.as_ref(), &overview[..], tracked, id))?;
+            s.update_series.bind((
+                title.as_deref(),
+                first_air.as_ref(),
+                overview.as_deref(),
+                tracked,
+                id,
+            ))?;
             ensure!(s.update_series.step()?.is_done(), "update_series");
             Ok(())
         })
@@ -1140,18 +1145,22 @@ impl Database {
     pub async fn update_movie(
         &self,
         id: MovieId,
-        title: &str,
+        title: Option<&str>,
         release_date: Option<&Date>,
-        overview: &str,
+        overview: Option<&str>,
     ) -> Result<()> {
-        let title = title.to_owned();
+        let title = title.map(str::to_owned);
         let release_date = release_date.cloned();
-        let overview = overview.to_owned();
+        let overview = overview.map(str::to_owned);
         let mut s = self.inner.clone().lock_owned().await;
 
         spawn_blocking(move || {
-            s.update_movie
-                .bind((&title[..], release_date.as_ref(), &overview[..], id))?;
+            s.update_movie.bind((
+                title.as_deref(),
+                release_date.as_ref(),
+                overview.as_deref(),
+                id,
+            ))?;
             ensure!(s.update_movie.step()?.is_done(), "update_movie");
             Ok(())
         })

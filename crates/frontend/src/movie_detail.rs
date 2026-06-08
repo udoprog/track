@@ -545,7 +545,12 @@ impl MovieDetail {
                     {"Movies"}
                 </button>
 
-                <span class="fill">{&movie.title}</span>
+                if let Some(ref title) = movie.title {
+                    <span class="fill">{title}</span>
+                } else {
+                    <span class="fill text-muted">{"Untitled Movie"}</span>
+                }
+
                 { for movie.remotes.iter().filter_map(|r| {
                     let url = r.movie_url()?;
                     let label = r.source().as_str().to_uppercase();
@@ -727,8 +732,8 @@ impl MovieDetail {
                         <div class="section text-muted">{date.to_string()}</div>
                     }
 
-                    if !movie.overview.is_empty() {
-                        <p class="overview">{&movie.overview}</p>
+                    if let Some(ref overview) = movie.overview {
+                        <p class="overview">{overview}</p>
                     }
 
                     {actions}

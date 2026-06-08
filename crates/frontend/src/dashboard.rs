@@ -343,6 +343,44 @@ impl Dashboard {
         let aired = p.aired;
         let label = p.label.clone();
 
+        let actions = 'actions: {
+            if confirming_watch {
+                break 'actions html! {
+                    <MarkWatchedPicker
+                        {aired_at}
+                        {aired}
+                        on_confirm={ctx.link().callback(move |ts| Msg::MarkWatched(watched_kind, ts))}
+                        on_cancel={ctx.link().callback(|_| Msg::CancelMarkWatch)}
+                    />
+                };
+            }
+
+            if confirming_skip && let Some((series, episode)) = skip_ids {
+                break 'actions html! {
+                        <ConfirmDanger
+                        prompt="Skip"
+                        {label}
+                        on_confirm={ctx.link().callback(move |_| Msg::SkipEpisode(series, episode))}
+                        on_cancel={ctx.link().callback(|_| Msg::CancelSkipEpisode)}
+                    />
+                };
+            }
+
+            html! {
+                <>
+                    <button class="btn-icon-success" onclick={on_ask_mark} title="Mark watched">
+                        <span class="icon check" />
+                    </button>
+
+                    if let Some((series, episode)) = skip_ids {
+                        <button class="btn-icon" onclick={ctx.link().callback(move |_| Msg::AskSkipEpisode(series, episode))} title="Skip episode">
+                            <span class="icon forward" />
+                        </button>
+                    }
+                </>
+            }
+        };
+
         html! {
             <div class="pending-item">
                 if let Some(ref poster) = p.poster {
@@ -369,32 +407,7 @@ impl Dashboard {
                     </div>
 
                     <div class="pending-actions">
-                        if confirming_watch {
-                            <MarkWatchedPicker
-                                {aired_at}
-                                {aired}
-                                on_confirm={ctx.link().callback(move |ts| Msg::MarkWatched(watched_kind, ts))}
-                                on_cancel={ctx.link().callback(|_| Msg::CancelMarkWatch)}
-                            />
-                        } else if confirming_skip {
-                            if let Some((series, episode)) = skip_ids {
-                                <ConfirmDanger
-                                    prompt="Skip"
-                                    {label}
-                                    on_confirm={ctx.link().callback(move |_| Msg::SkipEpisode(series, episode))}
-                                    on_cancel={ctx.link().callback(|_| Msg::CancelSkipEpisode)}
-                                />
-                            }
-                        } else {
-                            <button class="btn-icon-success" onclick={on_ask_mark} title="Mark watched">
-                                <span class="icon check" />
-                            </button>
-                            if let Some((series, episode)) = skip_ids {
-                                <button class="btn-icon" onclick={ctx.link().callback(move |_| Msg::AskSkipEpisode(series, episode))} title="Skip episode">
-                                    <span class="icon forward" />
-                                </button>
-                            }
-                        }
+                        {actions}
                     </div>
                 </div>
             </div>

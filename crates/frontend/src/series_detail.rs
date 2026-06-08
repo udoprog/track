@@ -817,7 +817,12 @@ impl SeriesDetail {
                     {"Series"}
                 </button>
                 if let Some(ref s) = self.series {
-                    <span class="fill">{&s.title}</span>
+                    if let Some(ref title) = s.title {
+                        <span class="fill">{title}</span>
+                    } else {
+                        <span class="fill text-muted">{"Untitled Series"}</span>
+                    }
+
                     { for s.remotes.iter().filter_map(|r| {
                         let url = r.series_url()?;
                         let label = r.source().as_str().to_uppercase();
@@ -957,7 +962,7 @@ impl SeriesDetail {
                     });
                     let confirming_remove_watch = last_watched_id
                         .map_or(false, |wid| self.confirm_remove_watch == Some(wid));
-                    let series_title: AttrValue = AttrValue::from(series.title.clone());
+                    let series_title = series.title.clone();
                     let on_toggle_history = watched.then(|| {
                         link.callback(move |_| Msg::ToggleHistory(episode_id))
                     });
@@ -1047,8 +1052,8 @@ impl SeriesDetail {
                         <div class={classes!("section", watched.then_some("watched"))}>
                             {actions}
 
-                            if !ep.overview.is_empty() {
-                                <p class="overview">{&ep.overview}</p>
+                            if let Some(ref overview) = ep.overview {
+                                <p class="overview">{overview}</p>
                             }
 
                             if expanded {

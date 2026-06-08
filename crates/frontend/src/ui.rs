@@ -39,7 +39,7 @@ pub(super) fn PaginationButtons(props: &PaginationButtonsProps) -> Html {
 
 #[derive(Properties, PartialEq)]
 pub(super) struct ConfirmDangerProps {
-    pub(super) label: AttrValue,
+    pub(super) label: Option<AttrValue>,
     pub(super) on_confirm: Callback<()>,
     pub(super) on_cancel: Callback<()>,
     pub(super) prompt: AttrValue,
@@ -68,7 +68,11 @@ pub(super) fn ConfirmDanger(props: &ConfirmDangerProps) -> Html {
 
     html! {
         <div class="row-fill fill">
-            <span class="fill">{&props.prompt}{" "}{&props.label}{"?"}</span>
+            if let Some(ref label) = props.label {
+                <span class="fill">{&props.prompt}{" "}{label}{"?"}</span>
+            } else {
+                <span class="fill">{&props.prompt}{"?"}</span>
+            }
 
             <div class="input-group end">
                 <button onclick={on_cancel} class={classes!("btn-icon", &props.btn_class)} title="No">

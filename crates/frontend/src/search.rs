@@ -278,14 +278,17 @@ impl Search {
                 }
                 <div class="fill">
                     <div class="row">
-                        <span class="fill">{&r.title}</span>
+                        if let Some(ref title) = r.title {
+                            <span class="fill">{title}</span>
+                        }
+
                         if let Some(date) = r.first_air_date {
                             <span class="text-muted">{date.year().to_string()}</span>
                         }
                     </div>
 
-                    if !r.overview.is_empty() {
-                        <p class="overview text-muted">{&r.overview}</p>
+                    if let Some(ref overview) = r.overview {
+                        <p class="overview text-muted">{overview}</p>
                     }
                 </div>
                 {
@@ -324,14 +327,17 @@ impl Search {
                 }
                 <div class="fill">
                     <div class="row">
-                        <span class="fill">{&r.title}</span>
+                        if let Some(ref title) = r.title {
+                            <span class="fill">{title}</span>
+                        }
+
                         if let Some(date) = r.release_date {
                             <span class="text-muted">{date.year().to_string()}</span>
                         }
                     </div>
 
-                    if !r.overview.is_empty() {
-                        <p class="overview text-muted">{&r.overview}</p>
+                    if let Some(ref overview) = r.overview {
+                        <p class="overview text-muted">{overview}</p>
                     }
                 </div>
                 {

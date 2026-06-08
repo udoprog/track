@@ -93,11 +93,11 @@ async fn sync_series_tmdb(
 
     db.update_series(
         series_id,
-        &info.title,
+        info.title.as_deref(),
         info.first_air_date
             .as_ref()
             .or(series.first_air_date.as_ref()),
-        &info.overview,
+        info.overview.as_deref(),
         series.tracked,
     )
     .await?;
@@ -197,9 +197,9 @@ async fn sync_series_tvdb(
 
     db.update_series(
         series_id,
-        &info.title,
+        info.title.as_deref(),
         series.first_air_date.as_ref(),
-        &info.overview,
+        info.overview.as_deref(),
         series.tracked,
     )
     .await?;
@@ -306,9 +306,9 @@ pub(crate) async fn sync_movie(
 
             db.update_movie(
                 movie_id,
-                &info.title,
+                info.title.as_deref(),
                 info.release_date.as_ref().or(movie.release_date.as_ref()),
-                &info.overview,
+                info.overview.as_deref(),
             )
             .await?;
 

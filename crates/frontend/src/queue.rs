@@ -249,15 +249,18 @@ impl Queue {
             api::TaskKind::SyncSeries { .. } => "Updating series",
             api::TaskKind::SyncMovie { .. } => "Updating movie",
         };
-        let title = task.kind.title().to_owned();
+
         html! {
             <>
                 <span class="text-muted">{verb}{" — "}</span>
-                if let Some(onclick) = on_navigate {
-                    <span class="clickable" {onclick}>{title}</span>
-                } else {
-                    {title}
-                }
+
+                <span class={classes!(on_navigate.is_some().then_some("clickable"))} onclick={on_navigate}>
+                    if let Some(ref title) = task.kind.title() {
+                        {title}
+                    } else {
+                        <span class="text-muted">{"Untitled"}</span>
+                    }
+                </span>
             </>
         }
     }
@@ -307,15 +310,18 @@ impl Queue {
             api::TaskKind::SyncSeries { .. } => "Updated series",
             api::TaskKind::SyncMovie { .. } => "Updated movie",
         };
-        let title = task.kind.title().to_owned();
+
         html! {
             <>
                 <span class="text-muted">{verb}{" — "}</span>
-                if let Some(onclick) = on_navigate {
-                    <span class="clickable" {onclick}>{title}</span>
-                } else {
-                    {title}
-                }
+
+                <span class="clickable" onclick={on_navigate}>
+                    if let Some(ref title) = task.kind.title() {
+                        {title}
+                    } else {
+                        <span class="text-muted">{"Untitled"}</span>
+                    }
+                </span>
             </>
         }
     }

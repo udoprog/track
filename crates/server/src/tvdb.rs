@@ -82,8 +82,8 @@ impl Client {
             let row: Row = serde_json::from_value(val)?;
             out.push(SearchSeriesResult {
                 remote_id: RemoteId::tvdb(row.id),
-                title: row.series_name,
-                overview: row.overview.unwrap_or_default(),
+                title: Some(row.series_name),
+                overview: row.overview,
                 first_air_date: opt_date(row.first_aired.as_deref()),
                 poster: opt_image(row.poster.as_deref()),
             });
@@ -133,8 +133,8 @@ impl Client {
         }
 
         Ok(SeriesInfo {
-            title: v.series_name,
-            overview: v.overview.unwrap_or_default(),
+            title: Some(v.series_name),
+            overview: v.overview,
             poster: opt_image(v.poster.as_deref()),
             banner: opt_image(v.banner.as_deref()),
             fanart: opt_image(v.fanart.as_deref()),
@@ -226,8 +226,8 @@ impl Client {
 // ── Output types ─────────────────────────────────────────────────────────────
 
 pub(crate) struct SeriesInfo {
-    pub title: String,
-    pub overview: String,
+    pub title: Option<String>,
+    pub overview: Option<String>,
     pub poster: Option<Image>,
     pub banner: Option<Image>,
     pub fanart: Option<Image>,
@@ -247,8 +247,8 @@ pub(crate) struct EpisodeInfo {
 
 pub(crate) struct SearchSeriesResult {
     pub remote_id: RemoteId,
-    pub title: String,
-    pub overview: String,
+    pub title: Option<String>,
+    pub overview: Option<String>,
     pub first_air_date: Option<Date>,
     pub poster: Option<Image>,
 }

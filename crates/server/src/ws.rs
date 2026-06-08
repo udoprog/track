@@ -49,7 +49,12 @@ impl ws::Handler for WsHandler {
 }
 
 impl WsHandler {
-    async fn enqueue_series_sync(&self, series_id: api::SeriesId, title: String, immediate: bool) {
+    async fn enqueue_series_sync(
+        &self,
+        series_id: api::SeriesId,
+        title: Option<String>,
+        immediate: bool,
+    ) {
         self.queue
             .push(
                 api::TaskKind::SyncSeries { series_id, title },
@@ -59,7 +64,12 @@ impl WsHandler {
             .await;
     }
 
-    async fn enqueue_movie_sync(&self, movie_id: api::MovieId, title: String, immediate: bool) {
+    async fn enqueue_movie_sync(
+        &self,
+        movie_id: api::MovieId,
+        title: Option<String>,
+        immediate: bool,
+    ) {
         self.queue
             .push(
                 api::TaskKind::SyncMovie { movie_id, title },

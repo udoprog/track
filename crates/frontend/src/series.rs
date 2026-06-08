@@ -72,7 +72,12 @@ impl Component for SeriesList {
         let filtered: Vec<&api::Series> = self
             .series
             .iter()
-            .filter(|s| filter.is_empty() || s.title.to_lowercase().contains(&filter))
+            .filter(|s| {
+                filter.is_empty()
+                    || s.title
+                        .as_ref()
+                        .is_some_and(|t| t.to_lowercase().contains(&filter))
+            })
             .collect();
 
         let total = filtered.len();
@@ -222,12 +227,14 @@ impl SeriesList {
 
                     <div class="row-fill fill">
                         <div class="column fill">
-                            <span class="item-title">{&s.title}</span>
+                            if let Some(ref title) = s.title {
+                                <span class="item-title">{title}</span>
+                            } else {
+                                <span class="item-title text-muted">{"Untitled Series"}</span>
+                            }
 
-                            if !s.overview.is_empty() {
-                                <div class="overview">
-                                    {&s.overview}
-                                </div>
+                            if let Some(ref overview) = s.overview {
+                                <div class="overview">{overview}</div>
                             }
                         </div>
 

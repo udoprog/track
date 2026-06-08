@@ -81,7 +81,12 @@ impl Component for MoviesList {
         let filtered: Vec<&api::Movie> = self
             .movies
             .iter()
-            .filter(|m| filter.is_empty() || m.title.to_lowercase().contains(&filter))
+            .filter(|m| {
+                filter.is_empty()
+                    || m.title
+                        .as_ref()
+                        .map_or(false, |t| t.to_lowercase().contains(&filter))
+            })
             .collect();
 
         let total = filtered.len();
@@ -262,11 +267,13 @@ impl MoviesList {
 
                     <div class="row-fill fill top">
                         <div class="column fill">
-                            <span class="item-title">{&m.title}</span>
+                            if let Some(ref title) = m.title {
+                                <span class="item-title">{title}</span>
+                            }
 
-                            if !m.overview.is_empty() {
+                            if let Some(ref overview) = m.overview {
                                 <div class="overview">
-                                    {&m.overview}
+                                    {overview}
                                 </div>
                             }
                         </div>

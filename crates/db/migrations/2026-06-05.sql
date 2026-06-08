@@ -1,8 +1,8 @@
 CREATE TABLE series (
     id                  INTEGER PRIMARY KEY,
-    title               TEXT NOT NULL,
+    title               TEXT,
     first_air           INTEGER,
-    overview            TEXT NOT NULL DEFAULT '',
+    overview            TEXT,
     tracked             INTEGER NOT NULL DEFAULT 1,
     sync_source         TEXT,
     language            TEXT,              -- ISO 639-1 override, NULL = use config default
@@ -15,7 +15,7 @@ CREATE TABLE seasons (
     number    INTEGER NOT NULL,
     air_date  INTEGER,
     name      TEXT,
-    overview  TEXT NOT NULL DEFAULT '',
+    overview  TEXT,
     poster    TEXT,
     UNIQUE(series_id, number)
 );
@@ -27,7 +27,7 @@ CREATE TABLE episodes (
     number          INTEGER NOT NULL,
     absolute_number INTEGER,
     name            TEXT,
-    overview        TEXT NOT NULL DEFAULT '',
+    overview        TEXT,
     aired           INTEGER,
     aired_at        INTEGER,
     filename        TEXT,
@@ -40,9 +40,9 @@ CREATE INDEX idx_episodes_aired_at ON episodes (aired_at) WHERE aired_at IS NOT 
 
 CREATE TABLE movies (
     id             INTEGER PRIMARY KEY,
-    title          TEXT NOT NULL,
+    title          TEXT,
     release_date   INTEGER,
-    overview       TEXT NOT NULL DEFAULT '',
+    overview       TEXT,
     tracked        INTEGER NOT NULL DEFAULT 1,
     sync_source    TEXT,
     language       TEXT,              -- ISO 639-1 override, NULL = use config default
