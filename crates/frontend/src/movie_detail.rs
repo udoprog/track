@@ -651,14 +651,13 @@ impl MovieDetail {
                     }
 
                     if let Some(ts) = movie.last_synced_at {
-                        <span class="text-muted hide-mobile">
-                            {"Synced "}
+                        <span class="text-muted hide-mobile" title="Last synced at">
                             {ts.display(&tz)}
                         </span>
                     }
                 </div>
 
-                <div class="row fill end">
+                <div class="row end">
                     if movie.tracked {
                         <button class="btn" onclick={link.callback(|_| Msg::SetTracked(false))} title="Untrack movie">
                             <span class="icon-inline"><span class="icon eye-slash" /></span>

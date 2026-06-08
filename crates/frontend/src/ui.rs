@@ -364,17 +364,21 @@ impl Component for LanguagePicker {
         let link = ctx.link();
         let props = ctx.props();
 
-        let value = ctx.props().current.as_ref().and_then(|code| self
-            .languages
-            .get_by_part1(code)
-            .and_then(|entry| Some((entry.ref_name, entry.part1?))));
+        let value = ctx.props().current.as_ref().and_then(|code| {
+            self.languages
+                .get_by_part1(code)
+                .and_then(|entry| Some((entry.ref_name, entry.part1?)))
+        });
 
         let trigger = match value {
             Some((label, code)) => html! {
                 <button class="btn" onclick={link.callback(|_| Msg::Open)} title="Select language">
                     <span class="icon-inline"><span class="icon language" /></span>
                     <span class="hide-mobile">{label}</span>
-                    <span class={classes!("inline-flag", "flag", code)}></span>
+
+                    if let Some(code) = language_to_country(code) {
+                        <span class={classes!("inline-flag", "flag", code)}></span>
+                    }
                 </button>
             },
             None => html! {
@@ -461,5 +465,26 @@ impl Component for LanguagePicker {
                 </div>
             </>
         }
+    }
+}
+
+fn language_to_country(part1: &str) -> Option<&'static str> {
+    // ISO 639-1 codes that match their corresponding ISO 3166-1 alpha-2 country
+    // codes. This is not a comprehensive mapping of all languages to flags,
+    // just a few common ones.
+    match part1 {
+        "de" => Some("de"),
+        "en" => Some("gb"),
+        "es" => Some("es"),
+        "fi" => Some("fi"),
+        "fr" => Some("fr"),
+        "it" => Some("it"),
+        "ja" => Some("jp"),
+        "ko" => Some("kr"),
+        "pt" => Some("pt"),
+        "ru" => Some("ru"),
+        "sv" => Some("se"),
+        "zh" => Some("cn"),
+        _ => None,
     }
 }

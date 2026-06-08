@@ -210,14 +210,13 @@ impl Component for SeriesDetail {
                             }
 
                             if let Some(ts) = series.last_synced_at {
-                                <span class="text-muted hide-mobile">
-                                    {"Synced "}
+                                <span class="text-muted hide-mobile" title="Last synced at">
                                     {ts.display(&tz)}
                                 </span>
                             }
                         </div>
 
-                        <div class="row fill end">
+                        <div class="row end">
                             if series.tracked {
                                 <button class="btn" onclick={link.callback(|_| Msg::SetTracked(false))} title="Untrack series">
                                     <span class="icon-inline"><span class="icon eye-slash" /></span>
@@ -962,53 +961,57 @@ impl SeriesDetail {
                         }
 
                         html! {
-                            <div class="actions row">
-                                <span class="episode-code">
-                                    { format!("S{:02}E{:02}", ep.season.to_i64(), ep.number) }
-                                </span>
+                            <div class="actions row-fill">
+                                <div class="row fill">
+                                    <span class="episode-code">
+                                        { format!("S{:02}E{:02}", ep.season.to_i64(), ep.number) }
+                                    </span>
 
-                                <span class="fill">
-                                    { ep.name.as_deref().unwrap_or("—") }
-                                </span>
+                                    <span class="fill">
+                                        { ep.name.as_deref().unwrap_or("—") }
+                                    </span>
+                                </div>
 
-                                if let Some(s) = ep.display_at(&tz) {
-                                    <span class="text-muted">{s}</span>
-                                }
+                                <div class="row end">
+                                    if let Some(s) = ep.display_at(&tz) {
+                                        <span class="text-muted">{s}</span>
+                                    }
 
-                                if watched {
-                                    if let Some(on_toggle) = on_toggle_history {
-                                        <button class="btn-icon" onclick={on_toggle}
-                                            title={if expanded { "Hide watch history" } else { "Show watch history" }}>
-                                            <span class={if expanded { "icon chevron-up" } else { "icon clock" }} />
+                                    if watched {
+                                        if let Some(on_toggle) = on_toggle_history {
+                                            <button class="btn-icon" onclick={on_toggle}
+                                                title={if expanded { "Hide watch history" } else { "Show watch history" }}>
+                                                <span class={if expanded { "icon chevron-up" } else { "icon clock" }} />
+                                            </button>
+                                        }
+
+                                        <button class="btn-icon-success" onclick={on_ask_mark.clone()} title="Watch again">
+                                            <span class="icon check" />
+                                        </button>
+
+                                        if let Some(on_remove) = on_remove_confirm {
+                                            <button class="btn-icon" onclick={on_remove} title="Remove last watch">
+                                                <span class="icon check-circle" />
+                                            </button>
+                                        } else {
+                                            <span class="icon-inline" title="Watched"><span class="icon check-circle" /></span>
+                                        }
+                                    } else {
+                                        <button class="btn-icon-success" onclick={on_ask_mark} title="Mark watched">
+                                            <span class="icon check" />
                                         </button>
                                     }
 
-                                    <button class="btn-icon-success" onclick={on_ask_mark.clone()} title="Watch again">
-                                        <span class="icon check" />
-                                    </button>
-
-                                    if let Some(on_remove) = on_remove_confirm {
-                                        <button class="btn-icon" onclick={on_remove} title="Remove last watch">
-                                            <span class="icon check-circle" />
+                                    if ep.pending {
+                                        <button class="btn-icon" onclick={on_remove_pending} title="Remove from pending">
+                                            <span class="icon bookmark-slash" />
                                         </button>
                                     } else {
-                                        <span class="icon-inline" title="Watched"><span class="icon check-circle" /></span>
+                                        <button class="btn-icon" onclick={on_add_pending} title="Add to pending">
+                                            <span class="icon bookmark" />
+                                        </button>
                                     }
-                                } else {
-                                    <button class="btn-icon-success" onclick={on_ask_mark} title="Mark watched">
-                                        <span class="icon check" />
-                                    </button>
-                                }
-
-                                if ep.pending {
-                                    <button class="btn-icon" onclick={on_remove_pending} title="Remove from pending">
-                                        <span class="icon bookmark-slash" />
-                                    </button>
-                                } else {
-                                    <button class="btn-icon" onclick={on_add_pending} title="Add to pending">
-                                        <span class="icon bookmark" />
-                                    </button>
-                                }
+                                </div>
                             </div>
                         }
                     };

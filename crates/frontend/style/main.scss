@@ -435,11 +435,9 @@ body {
 .schedule-series {
     font-weight: 600;
     min-width: 180px;
-    flex-shrink: 0;
 
     @include g.until-mobile {
         min-width: 0;
-        flex-shrink: 1;
     }
 }
 
@@ -514,7 +512,6 @@ body {
     height: $poster-height-sm;
     object-fit: cover;
     border-radius: $radius-sm;
-    flex-shrink: 0;
     background: $bg-surface;
 }
 
@@ -530,7 +527,6 @@ body {
 
 .detail-sidebar {
     width: $sidebar-width;
-    flex-shrink: 0;
     overflow-y: auto;
 
     @include g.until-mobile {
@@ -554,7 +550,6 @@ body {
 .actions {
     padding: $padding-row $gap-sm;
     border-bottom: 1px solid $border-subtle;
-    gap: $gap-sm;
 }
 
 .overview {
@@ -567,8 +562,6 @@ body {
     font-family: $monospace-font;
     font-size: $font-xs;
     color: $text-muted;
-    flex-shrink: 0;
-    width: 68px;
 }
 
 .error-page {
