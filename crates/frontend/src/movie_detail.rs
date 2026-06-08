@@ -332,13 +332,14 @@ impl MovieDetail {
             }
             Msg::SyncMovie => {
                 let id = ctx.props().movie_id;
-                self.syncing = true;
+
                 self._sync_req = self
                     .channel
                     .request()
                     .body(api::SyncMovieRequest { id })
                     .on_packet(ctx.link().callback(Msg::SyncDone))
                     .send();
+
                 Ok(true)
             }
             Msg::SyncDone(result) => {
@@ -500,38 +501,6 @@ impl MovieDetail {
                         </a>
                     })
                 }) }
-
-                if movie.tracked {
-                    <button class="btn" onclick={link.callback(|_| Msg::SetTracked(false))} title="Untrack movie">
-                        <span class="icon-inline"><span class="icon eye-slash" /></span>
-                        <span class="hide-mobile">{"Untrack"}</span>
-                    </button>
-                } else {
-                    <button class="btn" onclick={link.callback(|_| Msg::SetTracked(true))} title="Track movie">
-                        <span class="icon-inline"><span class="icon eye" /></span>
-                        <span class="hide-mobile">{"Track"}</span>
-                    </button>
-                }
-
-                if !movie.remotes.is_empty() {
-                    <button class="btn" onclick={link.callback(|_| Msg::SyncMovie)} title="Sync from remote">
-                        <span class="icon-inline"><span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} /></span>
-                        <span class="hide-mobile">{"Sync"}</span>
-                    </button>
-                }
-                if self.confirm_remove {
-                    <ConfirmDanger
-                        prompt="Remove movie"
-                        label={movie.title.clone()}
-                        on_confirm={link.callback(|_| Msg::RemoveMovie)}
-                        on_cancel={link.callback(|_| Msg::CancelRemove)}
-                    />
-                } else {
-                    <button class="btn btn-danger" onclick={link.callback(|_| Msg::ConfirmRemove)} title="Remove movie">
-                        <span class="icon-inline"><span class="icon trash" /></span>
-                        <span class="hide-mobile">{"Remove"}</span>
-                    </button>
-                }
             </div>
         }
     }
@@ -624,27 +593,64 @@ impl MovieDetail {
 
         html! {
             <>
-            <div class="row actions">
-                <RemoteSourceSelect
-                    kind={RemoteSourceKind::Movie}
-                    remotes={movie.remotes.clone()}
-                    current_source={movie.effective_sync_source()}
-                    on_change={link.callback(Msg::SetSyncSource)}
-                />
+            <div class="row-fill actions">
+                <div class="row fill start">
+                    <RemoteSourceSelect
+                        kind={RemoteSourceKind::Movie}
+                        remotes={movie.remotes.clone()}
+                        current_source={movie.effective_sync_source()}
+                        on_change={link.callback(Msg::SetSyncSource)}
+                    />
 
-                if movie.images.iter().any(|i| matches!(i.kind, api::ImageKind::Banner | api::ImageKind::Fanart | api::ImageKind::Backdrop)) {
-                    <button class="btn" onclick={link.callback(|_| Msg::OpenImageModal(api::ImageKind::Backdrop))} title="Change backdrop">
-                        <span class="icon-inline"><span class="icon photo" /></span>
-                        {"Background"}
-                    </button>
-                }
+                    if movie.images.iter().any(|i| matches!(i.kind, api::ImageKind::Banner | api::ImageKind::Fanart | api::ImageKind::Backdrop)) {
+                        <button class="btn" onclick={link.callback(|_| Msg::OpenImageModal(api::ImageKind::Backdrop))} title="Change backdrop">
+                            <span class="icon-inline"><span class="icon photo" /></span>
+                            <span class="hide-mobile">{"Background"}</span>
+                        </button>
+                    }
 
-                if let Some(ts) = movie.last_synced_at {
-                    <span class="text-muted">
-                        {"Synced "}
-                        {ts.display(&tz)}
-                    </span>
-                }
+                    if let Some(ts) = movie.last_synced_at {
+                        <span class="text-muted hide-mobile">
+                            {"Synced "}
+                            {ts.display(&tz)}
+                        </span>
+                    }
+                </div>
+
+                <div class="row fill end">
+                    if movie.tracked {
+                        <button class="btn" onclick={link.callback(|_| Msg::SetTracked(false))} title="Untrack movie">
+                            <span class="icon-inline"><span class="icon eye-slash" /></span>
+                            <span class="hide-mobile">{"Untrack"}</span>
+                        </button>
+                    } else {
+                        <button class="btn" onclick={link.callback(|_| Msg::SetTracked(true))} title="Track movie">
+                            <span class="icon-inline"><span class="icon eye" /></span>
+                            <span class="hide-mobile">{"Track"}</span>
+                        </button>
+                    }
+
+                    if !movie.remotes.is_empty() {
+                        <button class="btn" onclick={link.callback(|_| Msg::SyncMovie)} title="Sync from remote">
+                            <span class="icon-inline"><span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} /></span>
+                            <span class="hide-mobile">{"Sync"}</span>
+                        </button>
+                    }
+
+                    if self.confirm_remove {
+                        <ConfirmDanger
+                            prompt="Remove movie"
+                            label={movie.title.clone()}
+                            on_confirm={link.callback(|_| Msg::RemoveMovie)}
+                            on_cancel={link.callback(|_| Msg::CancelRemove)}
+                        />
+                    } else {
+                        <button class="btn btn-danger" onclick={link.callback(|_| Msg::ConfirmRemove)} title="Remove movie">
+                            <span class="icon-inline"><span class="icon trash" /></span>
+                            <span class="hide-mobile">{"Remove"}</span>
+                        </button>
+                    }
+                </div>
             </div>
 
             <div class="detail-layout">
@@ -667,12 +673,11 @@ impl MovieDetail {
 
                     if !self.watched.is_empty() {
                         <div class="section">
-                            <div class="section text-muted">{"Watch history"}</div>
-                            {
-                                for self.watched.iter().map(|w| html! {
-                                    <div class="section text-muted">{w.timestamp.display(&tz)}</div>
-                                })
-                            }
+                            <div class="text-muted">{"Watch history"}</div>
+
+                            {for self.watched.iter().map(|w| html! {
+                                <div class="text-muted">{w.timestamp.display(&tz)}</div>
+                            })}
                         </div>
                     }
                 </div>

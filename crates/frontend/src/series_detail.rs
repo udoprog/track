@@ -178,27 +178,64 @@ impl Component for SeriesDetail {
                 <div class="page">
                     { self.view_header(ctx) }
 
-                    <div class="row actions">
-                        <RemoteSourceSelect
-                            kind={RemoteSourceKind::Series}
-                            remotes={series.remotes.clone()}
-                            current_source={series.effective_sync_source()}
-                            on_change={link.callback(Msg::SetSyncSource)}
-                        />
+                    <div class="row-fill actions">
+                        <div class="row fill start">
+                            <RemoteSourceSelect
+                                kind={RemoteSourceKind::Series}
+                                remotes={series.remotes.clone()}
+                                current_source={series.effective_sync_source()}
+                                on_change={link.callback(Msg::SetSyncSource)}
+                            />
 
-                        if series.images.iter().any(|i| matches!(i.kind, api::ImageKind::Banner | api::ImageKind::Fanart | api::ImageKind::Backdrop)) {
-                            <button class="btn" onclick={link.callback(|_| Msg::OpenImageModal(api::ImageKind::Backdrop))}>
-                                <span class="icon-inline"><span class="icon photo" /></span>
-                                {"Background"}
-                            </button>
-                        }
+                            if series.images.iter().any(|i| matches!(i.kind, api::ImageKind::Banner | api::ImageKind::Fanart | api::ImageKind::Backdrop)) {
+                                <button class="btn" onclick={link.callback(|_| Msg::OpenImageModal(api::ImageKind::Backdrop))}>
+                                    <span class="icon-inline"><span class="icon photo" /></span>
+                                    <span class="hide-mobile">{"Background"}</span>
+                                </button>
+                            }
 
-                        if let Some(ts) = series.last_synced_at {
-                            <span class="text-muted">
-                                {"Synced "}
-                                {ts.display(&tz)}
-                            </span>
-                        }
+                            if let Some(ts) = series.last_synced_at {
+                                <span class="text-muted hide-mobile">
+                                    {"Synced "}
+                                    {ts.display(&tz)}
+                                </span>
+                            }
+                        </div>
+
+                        <div class="row fill end">
+                            if series.tracked {
+                                <button class="btn" onclick={link.callback(|_| Msg::SetTracked(false))} title="Untrack series">
+                                    <span class="icon-inline"><span class="icon eye-slash" /></span>
+                                    <span class="hide-mobile">{"Untrack"}</span>
+                                </button>
+                            } else {
+                                <button class="btn" onclick={link.callback(|_| Msg::SetTracked(true))} title="Track series">
+                                    <span class="icon-inline"><span class="icon eye" /></span>
+                                    <span class="hide-mobile">{"Track"}</span>
+                                </button>
+                            }
+
+                            if !series.remotes.is_empty() {
+                                <button class="btn" onclick={link.callback(|_| Msg::SyncSeries)} title="Sync from remote">
+                                    <span class="icon-inline"><span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} /></span>
+                                    <span class="hide-mobile">{"Sync"}</span>
+                                </button>
+                            }
+
+                            if self.confirm_remove {
+                                <ConfirmDanger
+                                    prompt="Remove series"
+                                    label={series.title.clone()}
+                                    on_confirm={link.callback(|_| Msg::RemoveSeries)}
+                                    on_cancel={link.callback(|_| Msg::CancelRemove)}
+                                />
+                            } else {
+                                <button class="btn btn-danger" onclick={link.callback(|_| Msg::ConfirmRemove)} title="Remove series">
+                                    <span class="icon-inline"><span class="icon trash" /></span>
+                                    <span class="hide-mobile">{"Remove"}</span>
+                                </button>
+                            }
+                        </div>
                     </div>
 
                     <div class="detail-layout">
@@ -519,13 +556,14 @@ impl SeriesDetail {
             }
             Msg::SyncSeries => {
                 let id = ctx.props().series_id;
-                self.syncing = true;
+
                 self._sync_req = self
                     .channel
                     .request()
                     .body(api::SyncSeriesRequest { id })
                     .on_packet(ctx.link().callback(Msg::SyncDone))
                     .send();
+
                 Ok(true)
             }
             Msg::SyncDone(result) => {
@@ -720,38 +758,6 @@ impl SeriesDetail {
                             </a>
                         })
                     }) }
-                    if s.tracked {
-                        <button class="btn" onclick={link.callback(|_| Msg::SetTracked(false))} title="Untrack series">
-                            <span class="icon-inline"><span class="icon eye-slash" /></span>
-                            <span class="hide-mobile">{"Untrack"}</span>
-                        </button>
-                    } else {
-                        <button class="btn" onclick={link.callback(|_| Msg::SetTracked(true))} title="Track series">
-                            <span class="icon-inline"><span class="icon eye" /></span>
-                            <span class="hide-mobile">{"Track"}</span>
-                        </button>
-                    }
-
-                    if !s.remotes.is_empty() {
-                        <button class="btn" onclick={link.callback(|_| Msg::SyncSeries)} title="Sync from remote">
-                            <span class="icon-inline"><span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} /></span>
-                            <span class="hide-mobile">{"Sync"}</span>
-                        </button>
-                    }
-
-                    if self.confirm_remove {
-                        <ConfirmDanger
-                            prompt="Remove series"
-                            label={s.title.clone()}
-                            on_confirm={link.callback(|_| Msg::RemoveSeries)}
-                            on_cancel={link.callback(|_| Msg::CancelRemove)}
-                        />
-                    } else {
-                        <button class="btn btn-danger" onclick={link.callback(|_| Msg::ConfirmRemove)} title="Remove series">
-                            <span class="icon-inline"><span class="icon trash" /></span>
-                            <span class="hide-mobile">{"Remove"}</span>
-                        </button>
-                    }
                 } else {
                     <span class="fill" />
                 }
