@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
+use std::path::Path;
 
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
@@ -120,7 +121,7 @@ pub fn generate_module_from_tab(tab: &str) -> Result<String> {
     render_module(&rows, false)
 }
 
-pub fn generate_module_from_to_3166_1(input: &str) -> Result<String> {
+pub fn generate_module_from_to_3166_1(input: &str, flags_dir: &Path) -> Result<String> {
     let mut map = BTreeMap::new();
 
     for (index, raw_line) in input.lines().enumerate() {
@@ -132,12 +133,18 @@ pub fn generate_module_from_to_3166_1(input: &str) -> Result<String> {
         }
 
         let mut parts = line.split_whitespace();
+
         let part1 = parts
             .next()
             .context(format!("missing iso639-1 code at line {line_no}"))?;
+
         let iso3166_1 = parts
             .next()
             .context(format!("missing iso3166-1 code at line {line_no}"))?;
+
+        if !flags_dir.join(format!("{iso3166_1}.svg")).is_file() {
+            continue;
+        }
 
         if parts.next().is_some() {
             bail!("too many fields in to-3166-1 mapping at line {line_no}");

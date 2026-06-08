@@ -17,8 +17,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let target = out_dir.join("generated.rs");
     fs::write(target, generated)?;
 
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("..");
+    path.push("..");
+    path.push("3rdparty");
+    path.push("flag-icons");
+    path.push("flags");
+    path.push("4x3");
+
+    if !path.is_dir() {
+        panic!(
+            "expected flag icons to be present at {}, but the directory does not exist",
+            path.display()
+        );
+    }
+
     let to_3166_1 = fs::read_to_string(&to_3166_1_path)?;
-    let generated = update_languages::generate_module_from_to_3166_1(&to_3166_1)?;
+    let generated = update_languages::generate_module_from_to_3166_1(&to_3166_1, &path)?;
     let out_dir = PathBuf::from(env::var("OUT_DIR")?);
     let target = out_dir.join("generated_to_3166_1.rs");
     fs::write(target, generated)?;
