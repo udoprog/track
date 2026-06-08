@@ -5,7 +5,7 @@ use api::HasAired;
 
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{Route, SeriesQuery};
-use crate::ui::{ConfirmDanger, ImageGallery, ImageItem, RemoteSourceKind, RemoteSourceSelect};
+use crate::ui::{ConfirmDanger, ImageGallery, ImageItem, MarkWatchedPicker, RemoteSourceKind, RemoteSourceSelect};
 
 pub(super) struct SeriesDetail {
     channel: ws::Channel,
@@ -16,6 +16,7 @@ pub(super) struct SeriesDetail {
     confirm_remove: bool,
     syncing: bool,
     confirm_remove_watch: Option<api::WatchedId>,
+    confirming_mark_watch: Option<api::EpisodeId>,
     expanded_episode: Option<api::EpisodeId>,
     episode_history: Vec<api::Watched>,
     image_modal: Option<api::ImageKind>,
@@ -43,8 +44,10 @@ pub(super) enum Msg {
     SeasonsLoaded(Result<ws::Packet<api::ListSeasons>, ws::Error>),
     SelectSeason(api::SeasonNumber),
     EpisodesLoaded(Result<ws::Packet<api::ListEpisodes>, ws::Error>),
-    MarkWatched(api::SeriesId, api::EpisodeId),
+    AskMarkWatched(api::EpisodeId),
+    MarkWatched(api::SeriesId, api::EpisodeId, Option<api::Timestamp>),
     MarkWatchedDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
+    CancelMarkWatch,
     RemoveWatched(api::WatchedId, api::WatchedKind),
     RemoveWatchedDone(Result<ws::Packet<api::RemoveWatched>, ws::Error>),
     ConfirmRemoveWatch(api::WatchedId),
@@ -108,6 +111,7 @@ impl Component for SeriesDetail {
             confirm_remove: false,
             syncing: false,
             confirm_remove_watch: None,
+            confirming_mark_watch: None,
             expanded_episode: None,
             episode_history: Vec::new(),
             image_modal: None,
@@ -375,17 +379,27 @@ impl SeriesDetail {
                     .episodes;
                 Ok(true)
             }
-            Msg::MarkWatched(series, episode) => {
+            Msg::AskMarkWatched(episode_id) => {
+                self.confirming_mark_watch = Some(episode_id);
+                self.confirm_remove_watch = None;
+                Ok(true)
+            }
+            Msg::CancelMarkWatch => {
+                self.confirming_mark_watch = None;
+                Ok(true)
+            }
+            Msg::MarkWatched(series, episode, timestamp) => {
+                self.confirming_mark_watch = None;
                 self._mark_req = self
                     .channel
                     .request()
                     .body(api::MarkWatchedRequest {
                         kind: api::WatchedKind::Episode { series, episode },
-                        timestamp: None,
+                        timestamp,
                     })
                     .on_packet(ctx.link().callback(Msg::MarkWatchedDone))
                     .send();
-                Ok(false)
+                Ok(true)
             }
             Msg::MarkWatchedDone(result) => {
                 result.context(Message::MarkingWatched)?;
@@ -845,7 +859,10 @@ impl SeriesDetail {
                     let watched = ep.watched;
                     let last_watched_id = ep.last_watched_id;
                     let expanded = self.expanded_episode == Some(episode_id);
-                    let on_mark = link.callback(move |_| Msg::MarkWatched(series_id, episode_id));
+                    let confirming_mark = self.confirming_mark_watch == Some(episode_id);
+                    let on_ask_mark = link.callback(move |_| Msg::AskMarkWatched(episode_id));
+                    let aired_at = ep.aired_at;
+                    let aired = ep.aired;
                     let on_remove_confirm = last_watched_id.map(|wid| {
                         link.callback(move |_| Msg::ConfirmRemoveWatch(wid))
                     });
@@ -859,6 +876,17 @@ impl SeriesDetail {
                     let on_remove_pending = link.callback(move |_| Msg::RemovePending(episode_id));
 
                     let actions = 'actions: {
+                        if confirming_mark {
+                            break 'actions html! {
+                                <MarkWatchedPicker
+                                    {aired_at}
+                                    {aired}
+                                    on_confirm={link.callback(move |ts| Msg::MarkWatched(series_id, episode_id, ts))}
+                                    on_cancel={link.callback(|_| Msg::CancelMarkWatch)}
+                                />
+                            };
+                        }
+
                         if let Some(wid) = last_watched_id && confirming_remove_watch {
                             break 'actions html! {
                                 <ConfirmDanger
@@ -892,7 +920,7 @@ impl SeriesDetail {
                                         </button>
                                     }
 
-                                    <button class="btn-icon-success" onclick={on_mark.clone()} title="Watch again">
+                                    <button class="btn-icon-success" onclick={on_ask_mark.clone()} title="Watch again">
                                         <span class="icon check" />
                                     </button>
 
@@ -904,7 +932,7 @@ impl SeriesDetail {
                                         <span class="icon-inline" title="Watched"><span class="icon check-circle" /></span>
                                     }
                                 } else {
-                                    <button class="btn-icon-success" onclick={on_mark} title="Mark watched">
+                                    <button class="btn-icon-success" onclick={on_ask_mark} title="Mark watched">
                                         <span class="icon check" />
                                     </button>
                                 }

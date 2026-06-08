@@ -1,4 +1,5 @@
 use yew::prelude::*;
+use web_sys::MouseEvent;
 
 #[derive(Properties, PartialEq)]
 pub(super) struct PaginationButtonsProps {
@@ -65,7 +66,7 @@ pub(super) fn ConfirmDanger(props: &ConfirmDangerProps) -> Html {
 
     html! {
         <div class="row-fill fill">
-            <span class="fill">{&props.prompt}{" "}<strong>{&props.label}</strong>{"?"}</span>
+            <span class="fill">{&props.prompt}{" "}{&props.label}{"?"}</span>
 
             <div class="input-group end">
                 <button onclick={on_cancel} class={classes!("btn-icon", &props.btn_class)} title="No">
@@ -75,6 +76,74 @@ pub(super) fn ConfirmDanger(props: &ConfirmDangerProps) -> Html {
                 <button onclick={on_confirm} class={classes!("btn-icon-danger", &props.btn_class)} title="Yes">
                     <span class="icon check" />
                 </button>
+            </div>
+        </div>
+    }
+}
+
+// ── MarkWatchedPicker ─────────────────────────────────────────────────────────
+
+/// Two-button step shown after clicking "Mark watched": choose now or when aired.
+/// Renders as a `row-fill fill` that can replace the watch button's action area.
+#[derive(Properties, PartialEq)]
+pub(super) struct MarkWatchedPickerProps {
+    /// Exact airtime if known (preferred for the "Aired" option).
+    pub(super) aired_at: Option<api::Timestamp>,
+    /// Civil air date used when `aired_at` is absent.
+    pub(super) aired: Option<api::Date>,
+    /// Emits `None` for "now", `Some(ts)` for the air timestamp.
+    pub(super) on_confirm: Callback<Option<api::Timestamp>>,
+    pub(super) on_cancel: Callback<()>,
+}
+
+#[function_component]
+pub(super) fn MarkWatchedPicker(props: &MarkWatchedPickerProps) -> Html {
+    let aired_ts = props
+        .aired_at
+        .or_else(|| props.aired.map(|d| d.to_timestamp()));
+
+    let on_now = {
+        let cb = props.on_confirm.clone();
+        Callback::from(move |e: MouseEvent| {
+            e.stop_propagation();
+            cb.emit(None);
+        })
+    };
+
+    let on_aired = aired_ts.map(|ts| {
+        let cb = props.on_confirm.clone();
+        Callback::from(move |e: MouseEvent| {
+            e.stop_propagation();
+            cb.emit(Some(ts));
+        })
+    });
+
+    let on_cancel = {
+        let cb = props.on_cancel.clone();
+        Callback::from(move |e: MouseEvent| {
+            e.stop_propagation();
+            cb.emit(());
+        })
+    };
+
+    html! {
+        <div class="row-fill fill">
+            <span class="fill">{"Watched when?"}</span>
+
+            <div class="input-group end">
+                <button class="btn-icon" onclick={on_cancel} title="Cancel">
+                    <span class="icon x-mark" />
+                </button>
+                <button class="btn-success" onclick={on_now} title="Watched now">
+                    <span class="icon-inline"><span class="icon check" /></span>
+                    {"Now"}
+                </button>
+                if let Some(on_a) = on_aired {
+                    <button class="btn" onclick={on_a} title="Watched when aired">
+                        <span class="icon-inline"><span class="icon clock" /></span>
+                        {"Aired"}
+                    </button>
+                }
             </div>
         </div>
     }

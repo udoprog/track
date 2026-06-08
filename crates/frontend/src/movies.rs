@@ -3,6 +3,7 @@ use yew::prelude::*;
 
 use crate::error::{CustomContext, Error, Message};
 use crate::router::Route;
+use crate::ui::MarkWatchedPicker;
 
 const PAGE_SIZE: usize = 20;
 
@@ -15,13 +16,16 @@ pub(super) struct MoviesList {
     _broadcast: ws::Listener,
     _list_req: ws::Request,
     _mark_req: ws::Request,
+    confirming_watch: Option<api::MovieId>,
 }
 
 pub(super) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     MoviesLoaded(Result<ws::Packet<api::ListMovies>, ws::Error>),
-    MarkWatched(api::MovieId),
+    AskMarkWatched(api::MovieId),
+    CancelMarkWatch,
+    MarkWatched(api::MovieId, Option<api::Timestamp>),
     MarkWatchedDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
     Filter(String),
     SetPage(usize),
@@ -56,6 +60,7 @@ impl Component for MoviesList {
             _broadcast,
             _list_req: ws::Request::default(),
             _mark_req: ws::Request::default(),
+            confirming_watch: None,
         }
     }
 
@@ -185,17 +190,26 @@ impl MoviesList {
                     .movies;
                 Ok(true)
             }
-            Msg::MarkWatched(movie_id) => {
+            Msg::AskMarkWatched(movie_id) => {
+                self.confirming_watch = Some(movie_id);
+                Ok(true)
+            }
+            Msg::CancelMarkWatch => {
+                self.confirming_watch = None;
+                Ok(true)
+            }
+            Msg::MarkWatched(movie_id, timestamp) => {
+                self.confirming_watch = None;
                 self._mark_req = self
                     .channel
                     .request()
                     .body(api::MarkWatchedRequest {
                         kind: api::WatchedKind::Movie { movie: movie_id },
-                        timestamp: None,
+                        timestamp,
                     })
                     .on_packet(ctx.link().callback(Msg::MarkWatchedDone))
                     .send();
-                Ok(false)
+                Ok(true)
             }
             Msg::MarkWatchedDone(result) => {
                 result.context(Message::MarkingWatched)?;
@@ -257,25 +271,34 @@ impl MoviesList {
                             }
                         </div>
 
-                        <div class="row end top">
-                            if let Some(date) = m.release_date {
-                                <span class="text-muted">{date.year().to_string()}</span>
-                            }
+                        if self.confirming_watch == Some(movie_id) {
+                            <MarkWatchedPicker
+                                aired_at={None::<api::Timestamp>}
+                                aired={m.release_date}
+                                on_confirm={ctx.link().callback(move |ts| Msg::MarkWatched(movie_id, ts))}
+                                on_cancel={ctx.link().callback(|_| Msg::CancelMarkWatch)}
+                            />
+                        } else {
+                            <div class="row end top">
+                                if let Some(date) = m.release_date {
+                                    <span class="text-muted">{date.year().to_string()}</span>
+                                }
 
-                            if m.watched {
-                                <span class="icon-inline" title="Watched"><span class="icon check-circle" /></span>
-                            } else {
-                                <button class="btn-icon-success" title="Mark watched" onclick={ctx.link().callback(move |_| Msg::MarkWatched(movie_id))}>
-                                    <span class="icon check" />
-                                </button>
-                            }
+                                if m.watched {
+                                    <span class="icon-inline" title="Watched"><span class="icon check-circle" /></span>
+                                } else {
+                                    <button class="btn-icon-success" title="Mark watched" onclick={ctx.link().callback(move |_| Msg::AskMarkWatched(movie_id))}>
+                                        <span class="icon check" />
+                                    </button>
+                                }
 
-                            if !m.tracked {
-                                <span class="end icon-inline" title="Untracked movie">
-                                    <span class="icon eye-slash" />
-                                </span>
-                            }
-                        </div>
+                                if !m.tracked {
+                                    <span class="end icon-inline" title="Untracked movie">
+                                        <span class="icon eye-slash" />
+                                    </span>
+                                }
+                            </div>
+                        }
                     </div>
 
                     <span class="icon-inline"><span class="icon chevron-right" /></span>

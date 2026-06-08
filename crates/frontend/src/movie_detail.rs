@@ -3,13 +3,14 @@ use yew::prelude::*;
 
 use crate::error::{CustomContext, Error, Message};
 use crate::router::Route;
-use crate::ui::{ConfirmDanger, ImageGallery, ImageItem, RemoteSourceKind, RemoteSourceSelect};
+use crate::ui::{ConfirmDanger, ImageGallery, ImageItem, MarkWatchedPicker, RemoteSourceKind, RemoteSourceSelect};
 
 pub(super) struct MovieDetail {
     channel: ws::Channel,
     movie: Option<api::Movie>,
     watched: Vec<api::Watched>,
     confirm_remove: bool,
+    confirm_mark_watch: bool,
     confirm_remove_watch: bool,
     syncing: bool,
     image_modal: Option<api::ImageKind>,
@@ -32,7 +33,9 @@ pub(super) enum Msg {
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     MovieLoaded(Result<ws::Packet<api::GetMovie>, ws::Error>),
     WatchedLoaded(Result<ws::Packet<api::ListWatched>, ws::Error>),
-    MarkWatched,
+    AskMarkWatched,
+    CancelMarkWatch,
+    MarkWatched(Option<api::Timestamp>),
     MarkWatchedDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
     RemoveWatched(api::WatchedId, api::WatchedKind),
     RemoveWatchedDone(Result<ws::Packet<api::RemoveWatched>, ws::Error>),
@@ -87,6 +90,7 @@ impl Component for MovieDetail {
             movie: None,
             watched: Vec::new(),
             confirm_remove: false,
+            confirm_mark_watch: false,
             confirm_remove_watch: false,
             syncing: false,
             image_modal: None,
@@ -151,6 +155,7 @@ impl Component for MovieDetail {
             self.movie = None;
             self.watched.clear();
             self.confirm_remove = false;
+            self.confirm_mark_watch = false;
             self.confirm_remove_watch = false;
 
             if self.channel.id() != ws::ChannelId::NONE {
@@ -243,18 +248,28 @@ impl MovieDetail {
                     .watched;
                 Ok(true)
             }
-            Msg::MarkWatched => {
+            Msg::AskMarkWatched => {
+                self.confirm_mark_watch = true;
+                self.confirm_remove_watch = false;
+                Ok(true)
+            }
+            Msg::CancelMarkWatch => {
+                self.confirm_mark_watch = false;
+                Ok(true)
+            }
+            Msg::MarkWatched(timestamp) => {
+                self.confirm_mark_watch = false;
                 let movie = ctx.props().movie_id;
                 self._mark_req = self
                     .channel
                     .request()
                     .body(api::MarkWatchedRequest {
                         kind: api::WatchedKind::Movie { movie },
-                        timestamp: None,
+                        timestamp,
                     })
                     .on_packet(ctx.link().callback(Msg::MarkWatchedDone))
                     .send();
-                Ok(false)
+                Ok(true)
             }
             Msg::MarkWatchedDone(result) => {
                 result.context(Message::MarkingWatched)?;
@@ -279,6 +294,7 @@ impl MovieDetail {
                 Ok(false)
             }
             Msg::ConfirmRemoveWatch => {
+                self.confirm_mark_watch = false;
                 self.confirm_remove_watch = true;
                 Ok(true)
             }
@@ -525,7 +541,22 @@ impl MovieDetail {
             .map(|(t, _)| t.get().clone())
             .unwrap_or(jiff::tz::TimeZone::UTC);
 
+        let release_date = movie.release_date;
+
         let actions = 'actions: {
+            if self.confirm_mark_watch {
+                break 'actions html! {
+                    <div class="row actions">
+                        <MarkWatchedPicker
+                            aired_at={None::<api::Timestamp>}
+                            aired={release_date}
+                            on_confirm={link.callback(Msg::MarkWatched)}
+                            on_cancel={link.callback(|_| Msg::CancelMarkWatch)}
+                        />
+                    </div>
+                };
+            }
+
             if let Some(wid) = last_watched_id
                 && self.confirm_remove_watch
             {
@@ -554,7 +585,7 @@ impl MovieDetail {
                             }
                         </span>
 
-                        <button class="btn" onclick={link.callback(|_| Msg::MarkWatched)} title="Watch again">
+                        <button class="btn" onclick={link.callback(|_| Msg::AskMarkWatched)} title="Watch again">
                             <span class="icon-inline"><span class="icon check" /></span>
                             {"Watch again"}
                         </button>
@@ -576,7 +607,7 @@ impl MovieDetail {
                             </button>
                         }
                     } else {
-                        <button class="btn btn-success" onclick={link.callback(|e: MouseEvent| { e.prevent_default(); Msg::MarkWatched })} title="Mark watched">
+                        <button class="btn btn-success" onclick={link.callback(|_| Msg::AskMarkWatched)} title="Mark watched">
                             <span class="icon-inline"><span class="icon check" /></span>
                             {"Mark watched"}
                         </button>

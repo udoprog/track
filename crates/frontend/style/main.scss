@@ -352,8 +352,11 @@ body {
 .pending-poster {
     width: 100%;
     object-fit: cover;
-    border-radius: $radius-sm;
     flex-shrink: 0;
+
+    @include g.until-mobile {
+        height: $poster-height;
+    }
 }
 
 .pending-poster-placeholder {
@@ -378,6 +381,7 @@ body {
 .pending-actions {
     display: flex;
     gap: $gap-sm;
+    justify-content: flex-end;
 }
 
 .pending-label {

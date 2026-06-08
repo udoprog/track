@@ -5,7 +5,7 @@ use api::HasAired;
 
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{Route, SeriesQuery};
-use crate::ui::PaginationButtons;
+use crate::ui::{ConfirmDanger, MarkWatchedPicker, PaginationButtons};
 
 pub(super) struct Dashboard {
     channel: ws::Channel,
@@ -17,8 +17,10 @@ pub(super) struct Dashboard {
     _pending_req: ws::Request,
     _config_req: ws::Request,
     _mark_req: ws::Request,
-    _remove_pending_req: ws::Request,
+    _skip_req: ws::Request,
     _set_config_req: ws::Request,
+    confirming_watch: Option<api::PendingKind>,
+    confirming_skip: Option<(api::SeriesId, api::EpisodeId)>,
 }
 
 pub(super) enum Msg {
@@ -26,10 +28,14 @@ pub(super) enum Msg {
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     PendingLoaded(Result<ws::Packet<api::ListPending>, ws::Error>),
     ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
-    MarkWatched(api::WatchedKind),
+    AskMarkWatched(api::PendingKind),
+    CancelMarkWatch,
+    MarkWatched(api::WatchedKind, Option<api::Timestamp>),
     MarkWatchedDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
-    RemovePending(api::PendingKind),
-    RemovePendingDone(Result<ws::Packet<api::RemovePending>, ws::Error>),
+    AskSkipEpisode(api::SeriesId, api::EpisodeId),
+    CancelSkipEpisode,
+    SkipEpisode(api::SeriesId, api::EpisodeId),
+    SkipEpisodeDone(Result<ws::Packet<api::SkipEpisode>, ws::Error>),
     AdjustPageSize(i32),
     SetConfigDone(Result<ws::Packet<api::SetConfig>, ws::Error>),
     SetPage(usize),
@@ -65,8 +71,10 @@ impl Component for Dashboard {
             _pending_req: ws::Request::default(),
             _config_req: ws::Request::default(),
             _mark_req: ws::Request::default(),
-            _remove_pending_req: ws::Request::default(),
+            _skip_req: ws::Request::default(),
             _set_config_req: ws::Request::default(),
+            confirming_watch: None,
+            confirming_skip: None,
         }
     }
 
@@ -160,17 +168,23 @@ impl Dashboard {
                 self.clamp_page();
                 Ok(true)
             }
-            Msg::MarkWatched(kind) => {
+            Msg::AskMarkWatched(pending_kind) => {
+                self.confirming_watch = Some(pending_kind);
+                Ok(true)
+            }
+            Msg::CancelMarkWatch => {
+                self.confirming_watch = None;
+                Ok(true)
+            }
+            Msg::MarkWatched(kind, timestamp) => {
+                self.confirming_watch = None;
                 self._mark_req = self
                     .channel
                     .request()
-                    .body(api::MarkWatchedRequest {
-                        kind,
-                        timestamp: None,
-                    })
+                    .body(api::MarkWatchedRequest { kind, timestamp })
                     .on_packet(ctx.link().callback(Msg::MarkWatchedDone))
                     .send();
-                Ok(false)
+                Ok(true)
             }
             Msg::MarkWatchedDone(result) => {
                 result.context(Message::MarkingWatched)?;
@@ -179,20 +193,27 @@ impl Dashboard {
                 }
                 Ok(false)
             }
-            Msg::RemovePending(kind) => {
-                self._remove_pending_req = self
+            Msg::AskSkipEpisode(series, episode) => {
+                self.confirming_skip = Some((series, episode));
+                self.confirming_watch = None;
+                Ok(true)
+            }
+            Msg::CancelSkipEpisode => {
+                self.confirming_skip = None;
+                Ok(true)
+            }
+            Msg::SkipEpisode(series, episode) => {
+                self.confirming_skip = None;
+                self._skip_req = self
                     .channel
                     .request()
-                    .body(api::RemovePendingRequest { kind })
-                    .on_packet(ctx.link().callback(Msg::RemovePendingDone))
+                    .body(api::SkipEpisodeRequest { series, episode })
+                    .on_packet(ctx.link().callback(Msg::SkipEpisodeDone))
                     .send();
-                Ok(false)
+                Ok(true)
             }
-            Msg::RemovePendingDone(result) => {
+            Msg::SkipEpisodeDone(result) => {
                 result.context(Message::SyncingSeries)?;
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self.load_pending(ctx);
-                }
                 Ok(false)
             }
             Msg::AdjustPageSize(delta) => {
@@ -289,13 +310,19 @@ impl Dashboard {
             .context::<crate::SystemTz>(Callback::noop())
             .map(|(t, _)| t.get().clone())
             .unwrap_or(jiff::tz::TimeZone::UTC);
-        let kind = p.kind.clone();
-        let remove_kind = p.kind.clone();
+        let pending_kind = p.kind.clone();
+        let confirming_watch = self.confirming_watch.as_ref() == Some(&p.kind);
         let route = match p.kind {
             api::PendingKind::Episode { series, .. } => {
                 Route::SeriesDetail(series, SeriesQuery::default())
             }
             api::PendingKind::Movie { movie } => Route::MovieDetail(movie),
+        };
+        let watched_kind = match p.kind {
+            api::PendingKind::Episode { series, episode } => {
+                api::WatchedKind::Episode { series, episode }
+            }
+            api::PendingKind::Movie { movie } => api::WatchedKind::Movie { movie },
         };
         let route_poster = route.clone();
         let on_navigate = ctx.link().callback(move |_| Msg::Navigate(route.clone()));
@@ -303,17 +330,18 @@ impl Dashboard {
         let on_navigate_poster = ctx
             .link()
             .callback(move |_| Msg::Navigate(route_poster.clone()));
-        let on_mark = ctx.link().callback(move |_| {
-            Msg::MarkWatched(match kind {
-                api::PendingKind::Episode { series, episode } => {
-                    api::WatchedKind::Episode { series, episode }
-                }
-                api::PendingKind::Movie { movie } => api::WatchedKind::Movie { movie },
-            })
-        });
-        let on_remove = ctx
+        let on_ask_mark = ctx
             .link()
-            .callback(move |_| Msg::RemovePending(remove_kind.clone()));
+            .callback(move |_| Msg::AskMarkWatched(pending_kind.clone()));
+        let skip_ids = if let api::PendingKind::Episode { series, episode } = p.kind {
+            Some((series, episode))
+        } else {
+            None
+        };
+        let confirming_skip = self.confirming_skip == skip_ids;
+        let aired_at = p.aired_at;
+        let aired = p.aired;
+        let label = p.label.clone();
 
         html! {
             <div class="pending-item">
@@ -341,12 +369,32 @@ impl Dashboard {
                     </div>
 
                     <div class="pending-actions">
-                        <button class="btn-icon-success" onclick={on_mark} title="Mark watched">
-                            <span class="icon check" />
-                        </button>
-                        <button class="btn-icon" onclick={on_remove} title="Remove from pending">
-                            <span class="icon bookmark-slash" />
-                        </button>
+                        if confirming_watch {
+                            <MarkWatchedPicker
+                                {aired_at}
+                                {aired}
+                                on_confirm={ctx.link().callback(move |ts| Msg::MarkWatched(watched_kind, ts))}
+                                on_cancel={ctx.link().callback(|_| Msg::CancelMarkWatch)}
+                            />
+                        } else if confirming_skip {
+                            if let Some((series, episode)) = skip_ids {
+                                <ConfirmDanger
+                                    prompt="Skip"
+                                    {label}
+                                    on_confirm={ctx.link().callback(move |_| Msg::SkipEpisode(series, episode))}
+                                    on_cancel={ctx.link().callback(|_| Msg::CancelSkipEpisode)}
+                                />
+                            }
+                        } else {
+                            <button class="btn-icon-success" onclick={on_ask_mark} title="Mark watched">
+                                <span class="icon check" />
+                            </button>
+                            if let Some((series, episode)) = skip_ids {
+                                <button class="btn-icon" onclick={ctx.link().callback(move |_| Msg::AskSkipEpisode(series, episode))} title="Skip episode">
+                                    <span class="icon forward" />
+                                </button>
+                            }
+                        }
                     </div>
                 </div>
             </div>

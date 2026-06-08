@@ -654,6 +654,21 @@ impl WsHandler {
 
                 outgoing.write(api::Empty);
             }
+            api::Request::SkipEpisode => {
+                let req = incoming
+                    .read::<api::SkipEpisodeRequest>()
+                    .context("missing request")?;
+
+                self.db.skip_pending_episode(req.series, req.episode).await?;
+
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::PendingChanged,
+                    "ws skip episode",
+                );
+
+                outgoing.write(api::Empty);
+            }
             api::Request::SelectImage => {
                 let req = incoming
                     .read::<api::SelectImageRequest>()

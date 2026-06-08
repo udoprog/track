@@ -110,7 +110,7 @@ impl Component for Calendar {
                                                     let series_id = entry.series_id;
                                                     let season = entry.episodes.first().map(|ep| ep.season);
 
-                                                    let on_click  = link.callback(move |_|
+                                                    let on_click = link.callback(move |_|
                                                         Msg::Navigate(Route::SeriesDetail(series_id, SeriesQuery { season }))
                                                     );
 
@@ -120,9 +120,9 @@ impl Component for Calendar {
                                                         .join(" ");
 
                                                     html! {
-                                                        <div class="row-fill calendar-item clickable" onclick={on_click}>
+                                                        <div class="calendar-item clickable" onclick={on_click}>
                                                             <div class="calendar-item-title">{&entry.series_title}</div>
-                                                            <div class="calendar-item-code end">{codes}</div>
+                                                            <div class="calendar-item-code">{codes}</div>
                                                         </div>
                                                     }
                                                 }) }
@@ -162,6 +162,7 @@ impl Calendar {
                     | api::AppEventKind::SeriesChanged { .. }
                     | api::AppEventKind::SeriesCreated { .. }
                     | api::AppEventKind::SeriesDeleted { .. }
+                    | api::AppEventKind::WatchedChanged { .. }
                     | api::AppEventKind::TaskCompleted { .. } => {
                         if self.channel.id() != ws::ChannelId::NONE {
                             self.load_schedule(ctx);

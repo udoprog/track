@@ -438,6 +438,14 @@ statements! {
                 DO UPDATE SET timestamp = excluded.timestamp
         "#,
         delete_pending_episode: r#"DELETE FROM pending WHERE series_id = ?"#,
+        next_episode_after: r#"
+            SELECT e.id FROM episodes e
+            JOIN episodes curr ON curr.id = ?2
+            WHERE e.series_id = ?1
+              AND (e.season > curr.season OR (e.season = curr.season AND e.number > curr.number))
+            ORDER BY e.season, e.number
+            LIMIT 1
+        "#,
         delete_pending_movie: r#"DELETE FROM pending WHERE movie_id = ?"#,
         has_pending_movie: r#"SELECT 1 FROM pending WHERE movie_id = ? LIMIT 1"#,
         has_pending_episode_for_series: r#"
@@ -1266,6 +1274,7 @@ impl Database {
                 .next::<InsertWatchedRow>()?
                 .context("insert_watched returned no row")?;
             ensure!(s.insert_watched.step()?.is_done(), "insert_watched");
+
             Ok(api::Watched {
                 id: r.id,
                 timestamp: r.timestamp,
@@ -1376,6 +1385,40 @@ impl Database {
                 s.delete_pending_episode.step()?.is_done(),
                 "delete_pending_episode"
             );
+            Ok(())
+        })
+        .await?
+    }
+
+    pub async fn skip_pending_episode(
+        &self,
+        series_id: api::SeriesId,
+        episode_id: api::EpisodeId,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        spawn_blocking(move || {
+            s.next_episode_after.bind((series_id, episode_id))?;
+            let next_id = s.next_episode_after.next::<(api::EpisodeId,)>()?.map(|r| r.0);
+
+            match next_id {
+                Some(next) => {
+                    let ts = api::Timestamp::now();
+                    s.upsert_pending_episode.bind((ts, series_id, next))?;
+                    ensure!(
+                        s.upsert_pending_episode.step()?.is_done(),
+                        "upsert_pending_episode"
+                    );
+                }
+                None => {
+                    s.delete_pending_episode.bind((series_id,))?;
+                    ensure!(
+                        s.delete_pending_episode.step()?.is_done(),
+                        "delete_pending_episode"
+                    );
+                }
+            }
+
             Ok(())
         })
         .await?

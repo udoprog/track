@@ -1543,6 +1543,13 @@ pub struct RemovePendingRequest {
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
+pub struct SkipEpisodeRequest {
+    pub series: SeriesId,
+    pub episode: EpisodeId,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
 pub struct SelectImageRequest {
     pub id: ImageId,
 }
@@ -1780,6 +1787,12 @@ api::define! {
     pub type RemovePending;
     impl Endpoint for RemovePending {
         impl Request for RemovePendingRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type SkipEpisode;
+    impl Endpoint for SkipEpisode {
+        impl Request for SkipEpisodeRequest;
         type Response<'de> = Empty;
     }
 
