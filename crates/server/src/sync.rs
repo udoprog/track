@@ -212,10 +212,12 @@ async fn sync_series_tvdb(
         db.upsert_series_image(series_id, ImageKind::Poster, ImageSource::Tvdb, img.path())
             .await?;
     }
+
     if let Some(ref img) = info.banner {
         db.upsert_series_image(series_id, ImageKind::Banner, ImageSource::Tvdb, img.path())
             .await?;
     }
+
     if let Some(ref img) = info.fanart {
         db.upsert_series_image(series_id, ImageKind::Fanart, ImageSource::Tvdb, img.path())
             .await?;
@@ -225,6 +227,7 @@ async fn sync_series_tvdb(
         .series_by_id(series_id)
         .await?
         .context("series not found after update")?;
+
     broadcast.broadcast_event(api::AppEventKind::SeriesChanged { series: updated });
 
     info!(tvdb_id, "fetching TVDB episodes");
@@ -233,14 +236,17 @@ async fn sync_series_tvdb(
 
     let mut seasons_seen: HashSet<SeasonNumber> = HashSet::new();
     let mut season_air_dates: HashMap<SeasonNumber, api::Date> = HashMap::new();
+
     for ep in &episodes {
         seasons_seen.insert(ep.season);
+
         if let Some(date) = ep.aired {
             let entry = season_air_dates.entry(ep.season).or_insert(date);
             if date < *entry {
                 *entry = date;
             }
         }
+
         db.upsert_episode(
             series_id,
             ep.season,
@@ -257,8 +263,10 @@ async fn sync_series_tvdb(
 
     for &season in &seasons_seen {
         let air_date = season_air_dates.get(&season);
+
         db.upsert_season(series_id, season, air_date, None, "", None)
             .await?;
+
         broadcast.broadcast_event(api::AppEventKind::EpisodesChanged { series_id, season });
     }
 

@@ -77,7 +77,7 @@ impl Client {
             .into_iter()
             .map(|r| SearchSeriesResult {
                 remote_id: RemoteId::tmdb(r.id),
-                title: r.original_name.or(r.name).unwrap_or_default(),
+                title: r.name.or(r.original_name).unwrap_or_default(),
                 overview: r.overview.unwrap_or_default(),
                 first_air_date: opt_date(r.first_air_date.as_deref()),
                 poster: opt_image(r.poster_path.as_deref()),
@@ -121,7 +121,7 @@ impl Client {
             .into_iter()
             .map(|r| SearchMovieResult {
                 remote_id: RemoteId::tmdb(r.id),
-                title: r.original_title.or(r.title).unwrap_or_default(),
+                title: r.title.or(r.original_title).unwrap_or_default(),
                 overview: r.overview.unwrap_or_default(),
                 release_date: opt_date(r.release_date.as_deref()),
                 poster: opt_image(r.poster_path.as_deref()),
@@ -203,7 +203,7 @@ impl Client {
         }
 
         Ok(SeriesInfo {
-            title: d.original_name.or(d.name).unwrap_or_default(),
+            title: d.name.or(d.original_name).unwrap_or_default(),
             overview: d.overview.unwrap_or_default(),
             first_air_date: opt_date(d.first_air_date.as_deref()),
             poster: opt_image(d.poster_path.as_deref()),
@@ -348,7 +348,7 @@ impl Client {
         }
 
         Ok(MovieInfo {
-            title: d.original_title.or(d.title).unwrap_or_default(),
+            title: d.title.or(d.original_title).unwrap_or_default(),
             overview: d.overview.unwrap_or_default(),
             release_date: opt_date(d.release_date.as_deref()),
             poster: opt_image(d.poster_path.as_deref()),
