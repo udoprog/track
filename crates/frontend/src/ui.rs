@@ -1,5 +1,5 @@
-use yew::prelude::*;
 use web_sys::MouseEvent;
+use yew::prelude::*;
 
 #[derive(Properties, PartialEq)]
 pub(super) struct PaginationButtonsProps {

@@ -1399,7 +1399,10 @@ impl Database {
 
         spawn_blocking(move || {
             s.next_episode_after.bind((series_id, episode_id))?;
-            let next_id = s.next_episode_after.next::<(api::EpisodeId,)>()?.map(|r| r.0);
+            let next_id = s
+                .next_episode_after
+                .next::<(api::EpisodeId,)>()?
+                .map(|r| r.0);
 
             match next_id {
                 Some(next) => {

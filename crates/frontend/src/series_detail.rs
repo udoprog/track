@@ -5,7 +5,9 @@ use api::HasAired;
 
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{Route, SeriesQuery};
-use crate::ui::{ConfirmDanger, ImageGallery, ImageItem, MarkWatchedPicker, RemoteSourceKind, RemoteSourceSelect};
+use crate::ui::{
+    ConfirmDanger, ImageGallery, ImageItem, MarkWatchedPicker, RemoteSourceKind, RemoteSourceSelect,
+};
 
 pub(super) struct SeriesDetail {
     channel: ws::Channel,
@@ -307,6 +309,11 @@ impl SeriesDetail {
                         if matches!(&task.kind, api::TaskKind::SyncSeries { series_id, .. } if *series_id == ctx.props().series_id)
                         {
                             self.syncing = false;
+                            self.load_series(ctx);
+                            self.load_seasons(ctx);
+                            if let Some(season) = self.selected {
+                                self.load_episodes(ctx, season);
+                            }
                             return Ok(true);
                         }
                         Ok(false)
@@ -512,13 +519,14 @@ impl SeriesDetail {
             }
             Msg::SyncSeries => {
                 let id = ctx.props().series_id;
+                self.syncing = true;
                 self._sync_req = self
                     .channel
                     .request()
                     .body(api::SyncSeriesRequest { id })
                     .on_packet(ctx.link().callback(Msg::SyncDone))
                     .send();
-                Ok(false)
+                Ok(true)
             }
             Msg::SyncDone(result) => {
                 result.context(Message::SyncingSeries)?;

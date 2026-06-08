@@ -3,7 +3,9 @@ use yew::prelude::*;
 
 use crate::error::{CustomContext, Error, Message};
 use crate::router::Route;
-use crate::ui::{ConfirmDanger, ImageGallery, ImageItem, MarkWatchedPicker, RemoteSourceKind, RemoteSourceSelect};
+use crate::ui::{
+    ConfirmDanger, ImageGallery, ImageItem, MarkWatchedPicker, RemoteSourceKind, RemoteSourceSelect,
+};
 
 pub(super) struct MovieDetail {
     channel: ws::Channel,
@@ -184,9 +186,11 @@ impl MovieDetail {
             }
             Msg::AppBroadcast(packet) => {
                 let event = packet?.decode_event()?;
+
                 if event.channel == self.channel.id() {
                     return Ok(false);
                 }
+
                 match &event.kind {
                     api::AppEventKind::MovieChanged { movie }
                         if movie.id == ctx.props().movie_id =>
@@ -224,6 +228,7 @@ impl MovieDetail {
                         if matches!(&task.kind, api::TaskKind::SyncMovie { movie_id, .. } if *movie_id == ctx.props().movie_id)
                         {
                             self.syncing = false;
+                            self.load_movie(ctx);
                             return Ok(true);
                         }
                         Ok(false)
@@ -327,13 +332,14 @@ impl MovieDetail {
             }
             Msg::SyncMovie => {
                 let id = ctx.props().movie_id;
+                self.syncing = true;
                 self._sync_req = self
                     .channel
                     .request()
                     .body(api::SyncMovieRequest { id })
                     .on_packet(ctx.link().callback(Msg::SyncDone))
                     .send();
-                Ok(false)
+                Ok(true)
             }
             Msg::SyncDone(result) => {
                 result.context(Message::SyncingSeries)?;

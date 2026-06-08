@@ -659,7 +659,9 @@ impl WsHandler {
                     .read::<api::SkipEpisodeRequest>()
                     .context("missing request")?;
 
-                self.db.skip_pending_episode(req.series, req.episode).await?;
+                self.db
+                    .skip_pending_episode(req.series, req.episode)
+                    .await?;
 
                 self.broadcast.emit(
                     incoming.channel(),
