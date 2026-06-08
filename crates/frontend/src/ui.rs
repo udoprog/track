@@ -299,10 +299,8 @@ const LANGUAGE_PAGE_SIZE: usize = 5;
 
 #[derive(Properties, PartialEq)]
 pub(super) struct LanguagePickerProps {
-    /// Currently selected ISO 639-1 code, or `None` for the default.
     pub(super) current: Option<String>,
     pub(super) on_change: Callback<Option<String>>,
-    /// Label shown for the "use default" option (e.g. "Default" or "API default").
     pub(super) placeholder: &'static str,
 }
 
@@ -376,8 +374,9 @@ impl Component for LanguagePicker {
                     <span class="icon-inline"><span class="icon language" /></span>
                     <span class="hide-mobile">{label}</span>
 
+
                     if let Some(code) = language_to_country(code) {
-                        <span class={classes!("inline-flag", "flag", code)}></span>
+                        <span class={classes!("flag", code)}></span>
                     }
                 </button>
             },
@@ -425,7 +424,9 @@ impl Component for LanguagePicker {
                             </button>
                         </div>
 
-                        <input type="text" class="input-text fill" placeholder="Filter" value={self.filter.clone()} oninput={on_filter} />
+                        <div class="row">
+                            <input type="text" class="input-text fill" placeholder="Filter" value={self.filter.clone()} oninput={on_filter} />
+                        </div>
 
                         <div class="table">
                             <div class="table-entry row clickable" onclick={link.callback(|_| Msg::Pick(None))}>
@@ -438,15 +439,19 @@ impl Component for LanguagePicker {
 
                             {
                                 for filtered.iter()
-                                    .skip(page * LANGUAGE_PAGE_SIZE)
+                                    .skip(page.saturating_mul(LANGUAGE_PAGE_SIZE))
                                     .take(LANGUAGE_PAGE_SIZE)
                                     .map(|&(part1, entry)| {
                                         let selected = current.as_deref() == Some(part1);
 
                                         html! {
-                                            <div key={part1} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))}
-                                                onclick={link.callback(move |_| Msg::Pick(Some(part1.to_string())))}>
+                                            <div key={part1} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| Msg::Pick(Some(part1.to_string())))}>
                                                 <span class="fill">{entry.ref_name}</span>
+
+                                                if let Some(code) = language_to_country(part1) {
+                                                    <span class={classes!("flag-inline", "flag", code)} />
+                                                }
+
                                                 <span class="text-muted">{part1}</span>
                                             </div>
                                         }
@@ -454,7 +459,7 @@ impl Component for LanguagePicker {
                             }
                         </div>
 
-                        <div class="row">
+                        <div class="row center">
                             <PaginationButtons
                                 page={page}
                                 total_pages={total_pages}
@@ -474,7 +479,7 @@ fn language_to_country(part1: &str) -> Option<&'static str> {
     // just a few common ones.
     match part1 {
         "de" => Some("de"),
-        "en" => Some("gb"),
+        "en" => Some("us"),
         "es" => Some("es"),
         "fi" => Some("fi"),
         "fr" => Some("fr"),

@@ -1204,9 +1204,7 @@ pub struct Config {
     pub dashboard_page: u32,
     pub auto_sync_enabled: bool,
     pub auto_sync_interval_hours: u32,
-    /// IANA timezone name (e.g. "America/New_York"). Empty = use browser/system default.
     pub timezone: String,
-    /// ISO 639-1 language code (e.g. "en", "de"). None = use API default.
     pub language: Option<String>,
 }
 

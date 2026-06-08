@@ -240,7 +240,7 @@ impl Component for Settings {
 
                             <LanguagePicker
                                 current={self.config.language.clone()}
-                                placeholder="API default"
+                                placeholder="Default"
                                 on_change={link.callback(Msg::LanguageChanged)}
                             />
                         </div>

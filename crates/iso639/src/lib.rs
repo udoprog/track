@@ -1,4 +1,6 @@
 use std::collections::BTreeMap;
+use std::sync::Arc;
+use std::cell::LazyCell;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Scope {
@@ -38,13 +40,13 @@ pub use generated::ENTRIES;
 
 #[derive(Debug, Clone)]
 pub struct Languages {
-    by_part1: BTreeMap<&'static str, usize>,
+    by_part1: Arc<BTreeMap<&'static str, usize>>,
 }
 
 impl Languages {
     pub fn new() -> Self {
-        let by_part1 = generated::PART1_MAP.iter().copied().collect();
-        Self { by_part1 }
+        let by_part1 = LazyCell::new(|| Arc::new(generated::PART1_MAP.iter().copied().collect::<BTreeMap<_, _>>()));
+        Self { by_part1: (*by_part1).clone() }
     }
 
     pub fn get_by_part1(&self, part1: &str) -> Option<&'static Entry> {
