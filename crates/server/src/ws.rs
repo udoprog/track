@@ -318,8 +318,7 @@ impl WsHandler {
                     .context("missing request")?;
 
                 let now = api::Timestamp::now();
-                let at = req.timestamp.unwrap_or(now);
-                let watched = self.db.mark_watched(req.kind, at).await?;
+                let watched = self.db.mark_watched(req.kind, req.mark_time, now).await?;
 
                 if let api::WatchedKind::Episode { series, episode } = req.kind {
                     self.pending
@@ -329,7 +328,9 @@ impl WsHandler {
 
                 self.broadcast.emit(
                     incoming.channel(),
-                    api::AppEventKind::WatchedChanged { kind: req.kind },
+                    api::AppEventKind::WatchedChanged {
+                        event: req.kind.into_event(),
+                    },
                     "ws mark watched changed",
                 );
 
@@ -341,6 +342,30 @@ impl WsHandler {
 
                 outgoing.write(api::MarkWatchedResponse { watched });
             }
+            api::Request::MarkWatchedRemaining => {
+                let req = incoming
+                    .read::<api::MarkWatchedRemainingRequest>()
+                    .context("missing request")?;
+
+                let now = api::Timestamp::now();
+
+                self.db
+                    .mark_watched_remaining(req.series_id, req.season, req.mark_time, now)
+                    .await?;
+
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::WatchedChanged {
+                        event: api::WatchedEvent::RemainingSeason {
+                            series: req.series_id,
+                            season: req.season,
+                        },
+                    },
+                    "ws mark watched changed remaining season",
+                );
+
+                outgoing.write(api::Empty);
+            }
             api::Request::RemoveWatched => {
                 let req = incoming
                     .read::<api::RemoveWatchedRequest>()
@@ -350,7 +375,9 @@ impl WsHandler {
 
                 self.broadcast.emit(
                     incoming.channel(),
-                    api::AppEventKind::WatchedChanged { kind: req.kind },
+                    api::AppEventKind::WatchedChanged {
+                        event: req.kind.into_event(),
+                    },
                     "ws remove watched changed",
                 );
 

@@ -376,6 +376,7 @@ async fn main() -> Result<()> {
 
     for w in db.all_watched().await.context("loading existing watched")? {
         let ts = w.timestamp.to_string();
+
         match w.kind {
             api::WatchedKind::Episode { episode, .. } => {
                 episodes_watched_seen.insert((episode.get(), ts));
@@ -621,6 +622,7 @@ async fn main() -> Result<()> {
                         series: series_id,
                         episode: episode_id,
                     },
+                    api::MarkTime::Now,
                     timestamp,
                 )
                 .await
@@ -644,9 +646,14 @@ async fn main() -> Result<()> {
                     continue;
                 }
 
-                db.mark_watched(api::WatchedKind::Movie { movie: movie_id }, ts)
-                    .await
-                    .context("inserting watched movie")?;
+                db.mark_watched(
+                    api::WatchedKind::Movie { movie: movie_id },
+                    api::MarkTime::Now,
+                    ts,
+                )
+                .await
+                .context("inserting watched movie")?;
+
                 movies_watched_seen.insert(key);
             }
         }

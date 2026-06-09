@@ -32,7 +32,7 @@ pub(super) enum Msg {
     ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
     AskMarkWatched(api::PendingKind),
     CancelMarkWatch,
-    MarkWatched(api::WatchedKind, Option<api::Timestamp>),
+    MarkWatched(api::WatchedKind, api::MarkTime),
     MarkWatchedDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
     AskSkipEpisode(api::SeriesId, api::EpisodeId),
     CancelSkipEpisode,
@@ -191,12 +191,12 @@ impl Dashboard {
                 self.confirming_watch = None;
                 Ok(true)
             }
-            Msg::MarkWatched(kind, timestamp) => {
+            Msg::MarkWatched(kind, mark_time) => {
                 self.confirming_watch = None;
                 self._mark_req = self
                     .channel
                     .request()
-                    .body(api::MarkWatchedRequest { kind, timestamp })
+                    .body(api::MarkWatchedRequest { kind, mark_time })
                     .on_packet(ctx.link().callback(Msg::MarkWatchedDone))
                     .send();
                 Ok(true)
@@ -352,7 +352,7 @@ impl Dashboard {
             }
             api::PendingKind::Movie { movie } => Route::MovieDetail(movie),
         };
-        let watched_kind = match p.kind {
+        let kind = match p.kind {
             api::PendingKind::Episode { series, episode } => {
                 api::WatchedKind::Episode { series, episode }
             }
@@ -373,15 +373,13 @@ impl Dashboard {
             None
         };
         let confirming_skip = self.confirming_skip == skip_ids;
-        let aired = p.aired;
         let label = p.label.clone();
 
         let actions = 'actions: {
             if confirming_watch {
                 break 'actions html! {
                     <MarkWatchedPicker
-                        {aired}
-                        on_confirm={ctx.link().callback(move |ts| Msg::MarkWatched(watched_kind, ts))}
+                        on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(kind, mark_time))}
                         on_cancel={ctx.link().callback(|_| Msg::CancelMarkWatch)}
                     />
                 };

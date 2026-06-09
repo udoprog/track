@@ -93,8 +93,7 @@ pub(super) fn ConfirmDanger(props: &ConfirmDangerProps) -> Html {
 /// Renders as a `row-fill fill` that can replace the watch button's action area.
 #[derive(Properties, PartialEq)]
 pub(super) struct MarkWatchedPickerProps {
-    pub(super) aired: Option<api::Timestamp>,
-    pub(super) on_confirm: Callback<Option<api::Timestamp>>,
+    pub(super) on_confirm: Callback<api::MarkTime>,
     pub(super) on_cancel: Callback<()>,
 }
 
@@ -102,14 +101,12 @@ pub(super) struct MarkWatchedPickerProps {
 pub(super) fn MarkWatchedPicker(props: &MarkWatchedPickerProps) -> Html {
     let on_now = props.on_confirm.reform(|e: MouseEvent| {
         e.stop_propagation();
-        None
+        api::MarkTime::Now
     });
 
-    let on_aired = props.aired.map(|ts| {
-        props.on_confirm.reform(move |e: MouseEvent| {
-            e.stop_propagation();
-            Some(ts)
-        })
+    let on_aired = props.on_confirm.reform(move |e: MouseEvent| {
+        e.stop_propagation();
+        api::MarkTime::WhenAired
     });
 
     let on_cancel = props.on_cancel.reform(move |e: MouseEvent| {
@@ -128,12 +125,10 @@ pub(super) fn MarkWatchedPicker(props: &MarkWatchedPickerProps) -> Html {
                     <span class="icon-inline"><span class="icon check" /></span>
                     {"Now"}
                 </button>
-                if let Some(on_a) = on_aired {
-                    <button class="btn" onclick={on_a} title="Watched when aired">
-                        <span class="icon-inline"><span class="icon clock" /></span>
-                        {"Aired"}
-                    </button>
-                }
+                <button class="btn" onclick={on_aired} title="Watched when aired">
+                    <span class="icon-inline"><span class="icon clock" /></span>
+                    {"Aired"}
+                </button>
             </div>
         </div>
     }

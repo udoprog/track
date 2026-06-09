@@ -277,7 +277,9 @@ impl Component for Settings {
                     </div>
                 </div>
 
-                <button type="submit" class="btn">{"Save"}</button>
+                <div class="row">
+                    <button type="submit" class="btn">{"Save"}</button>
+                </div>
             </form>
         }
     }

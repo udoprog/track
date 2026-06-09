@@ -43,7 +43,7 @@ pub(super) enum Msg {
     WatchedLoaded(Result<ws::Packet<api::ListWatched>, ws::Error>),
     AskMarkWatched,
     CancelMarkWatch,
-    MarkWatched(Option<api::Timestamp>),
+    MarkWatched(api::MarkTime),
     MarkWatchedDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
     RemoveWatched(api::WatchedId, api::WatchedKind),
     RemoveWatchedDone(Result<ws::Packet<api::RemoveWatched>, ws::Error>),
@@ -229,15 +229,17 @@ impl MovieDetail {
                             .emit(Route::Movies(PagedQuery::default()));
                         Ok(false)
                     }
-                    api::AppEventKind::WatchedChanged { kind } => {
+                    api::AppEventKind::WatchedChanged { event: kind } => {
                         let relevant = matches!(
                             kind,
-                            api::WatchedKind::Movie { movie } if *movie == ctx.props().movie_id
+                            api::WatchedEvent::Movie { movie } if *movie == ctx.props().movie_id
                         );
+
                         if relevant && self.channel.id() != ws::ChannelId::NONE {
                             self.load_movie(ctx);
                             self.load_watched(ctx);
                         }
+
                         Ok(false)
                     }
                     api::AppEventKind::TaskAdded { task }
@@ -287,7 +289,7 @@ impl MovieDetail {
                 self.confirm_mark_watch = false;
                 Ok(true)
             }
-            Msg::MarkWatched(timestamp) => {
+            Msg::MarkWatched(mark_time) => {
                 self.confirm_mark_watch = false;
                 let movie = ctx.props().movie_id;
                 self._mark_req = self
@@ -295,7 +297,7 @@ impl MovieDetail {
                     .request()
                     .body(api::MarkWatchedRequest {
                         kind: api::WatchedKind::Movie { movie },
-                        timestamp,
+                        mark_time,
                     })
                     .on_packet(ctx.link().callback(Msg::MarkWatchedDone))
                     .send();
@@ -323,9 +325,9 @@ impl MovieDetail {
                 self.load_watched(ctx);
                 Ok(false)
             }
-            Msg::ConfirmRemoveWatch(wid) => {
+            Msg::ConfirmRemoveWatch(watched_id) => {
                 self.confirm_mark_watch = false;
-                self.confirm_remove_watch = Some(wid);
+                self.confirm_remove_watch = Some(watched_id);
                 Ok(true)
             }
             Msg::CancelRemoveWatch => {
@@ -591,7 +593,6 @@ impl MovieDetail {
         let movie_id = ctx.props().movie_id;
         let link = ctx.link();
 
-        let release_date = movie.release_date;
         let watched_count = self.watched.len();
 
         let actions = 'actions: {
@@ -599,7 +600,6 @@ impl MovieDetail {
                 break 'actions html! {
                     <div class="row actions">
                         <MarkWatchedPicker
-                            aired={release_date}
                             on_confirm={link.callback(Msg::MarkWatched)}
                             on_cancel={link.callback(|_| Msg::CancelMarkWatch)}
                         />
@@ -625,8 +625,8 @@ impl MovieDetail {
                             {"Watch again"}
                         </button>
 
-                        if let Some(wid) = last_watched_id {
-                            <button class="btn btn-danger" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove last watch">
+                        if let Some(last_watched_id) = last_watched_id {
+                            <button class="btn btn-danger" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(last_watched_id))} title="Remove last watch">
                                 <span class="icon-inline"><span class="icon x-mark" /></span>
                                 {"Remove watch"}
                             </button>
@@ -729,7 +729,7 @@ impl MovieDetail {
 
                 <div class="detail-content section">
                     if let Some(date) = movie.release_date {
-                        <div class="section text-muted">{date.to_string()}</div>
+                        <div class="section text-muted">{date.display(self.tz.clone())}</div>
                     }
 
                     if let Some(ref overview) = movie.overview {

@@ -771,6 +771,25 @@ impl fmt::Display for SeasonNumber {
     }
 }
 
+#[cfg(feature = "sqll")]
+impl ::sqll::FromColumn<'_> for SeasonNumber {
+    type Type = ::sqll::ty::Integer;
+
+    #[inline]
+    fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Integer) -> ::sqll::Result<Self> {
+        let n = u32::from_column(stmt, index)?;
+        Ok(SeasonNumber::from_u32(n))
+    }
+}
+
+#[cfg(feature = "sqll")]
+impl ::sqll::BindValue for SeasonNumber {
+    #[inline]
+    fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
+        self.to_u32().bind_value(stmt, index)
+    }
+}
+
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize,
 )]
@@ -1199,6 +1218,31 @@ pub enum WatchedKind {
     },
 }
 
+impl WatchedKind {
+    pub fn into_event(self) -> WatchedEvent {
+        match self {
+            WatchedKind::Episode { series, episode } => WatchedEvent::Episode { series, episode },
+            WatchedKind::Movie { movie } => WatchedEvent::Movie { movie },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub enum WatchedEvent {
+    Episode {
+        series: SeriesId,
+        episode: EpisodeId,
+    },
+    RemainingSeason {
+        series: SeriesId,
+        season: SeasonNumber,
+    },
+    Movie {
+        movie: MovieId,
+    },
+}
+
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct Watched {
@@ -1482,17 +1526,32 @@ pub struct RemoveMovieRequest {
     pub id: MovieId,
 }
 
+#[derive(Debug, Clone, Copy, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub enum MarkTime {
+    Now,
+    WhenAired,
+}
+
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct MarkWatchedRequest {
     pub kind: WatchedKind,
-    pub timestamp: Option<Timestamp>,
+    pub mark_time: MarkTime,
 }
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct MarkWatchedResponse {
     pub watched: Watched,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct MarkWatchedRemainingRequest {
+    pub series_id: SeriesId,
+    pub season: SeasonNumber,
+    pub mark_time: MarkTime,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -1719,7 +1778,7 @@ pub enum AppEventKind {
         movie_id: MovieId,
     },
     WatchedChanged {
-        kind: WatchedKind,
+        event: WatchedEvent,
     },
     PendingChanged,
     ConfigChanged {
@@ -1815,6 +1874,12 @@ api::define! {
     impl Endpoint for MarkWatched {
         impl Request for MarkWatchedRequest;
         type Response<'de> = MarkWatchedResponse;
+    }
+
+    pub type MarkWatchedRemaining;
+    impl Endpoint for MarkWatchedRemaining {
+        impl Request for MarkWatchedRemainingRequest;
+        type Response<'de> = Empty;
     }
 
     pub type RemoveWatched;

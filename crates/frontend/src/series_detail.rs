@@ -22,6 +22,7 @@ pub(super) struct SeriesDetail {
     syncing: bool,
     confirm_remove_watch: Option<api::WatchedId>,
     confirming_mark_watch: Option<api::EpisodeId>,
+    select_mark_remaining: bool,
     watched: HashMap<api::EpisodeId, Vec<api::WatchedEpisode>>,
     expanded: HashSet<api::EpisodeId>,
     image_modal: Option<api::ImageKind>,
@@ -37,7 +38,7 @@ pub(super) struct SeriesDetail {
     _untrack_req: ws::Request,
     _remove_req: ws::Request,
     _sync_req: ws::Request,
-    _watch_remaining_reqs: Vec<ws::Request>,
+    _watch_remaining_reqs: ws::Request,
     _watched_req: ws::Request,
     _set_next_req: ws::Request,
     _select_image_req: ws::Request,
@@ -54,14 +55,16 @@ pub(super) enum Msg {
     SelectSeason(api::SeasonNumber),
     EpisodesLoaded(Result<ws::Packet<api::ListEpisodes>, ws::Error>),
     AskMarkWatched(api::EpisodeId),
-    MarkWatched(api::SeriesId, api::EpisodeId, Option<api::Timestamp>),
+    MarkWatched(api::SeriesId, api::EpisodeId, api::MarkTime),
     MarkWatchedDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
     CancelMarkWatch,
+    MarkRemainingWatch,
+    CancelMarkRemainingWatch,
     RemoveWatched(api::WatchedId, api::WatchedKind),
     RemoveWatchedDone(Result<ws::Packet<api::RemoveWatched>, ws::Error>),
     ConfirmRemoveWatch(api::WatchedId),
     CancelRemoveWatch,
-    WatchRemaining(api::SeasonNumber),
+    WatchRemaining(api::SeasonNumber, api::MarkTime),
     WatchRemainingDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
     SetTracked(bool),
     SetTrackedDone(bool, Result<ws::Packet<api::UntrackSeries>, ws::Error>),
@@ -134,6 +137,7 @@ impl Component for SeriesDetail {
             syncing: false,
             confirm_remove_watch: None,
             confirming_mark_watch: None,
+            select_mark_remaining: false,
             watched: HashMap::new(),
             expanded: HashSet::new(),
             image_modal: None,
@@ -149,7 +153,7 @@ impl Component for SeriesDetail {
             _untrack_req: ws::Request::default(),
             _remove_req: ws::Request::default(),
             _sync_req: ws::Request::default(),
-            _watch_remaining_reqs: Vec::new(),
+            _watch_remaining_reqs: ws::Request::default(),
             _watched_req: ws::Request::default(),
             _set_next_req: ws::Request::default(),
             _select_image_req: ws::Request::default(),
@@ -380,12 +384,15 @@ impl SeriesDetail {
                         }
                         Ok(false)
                     }
-                    api::AppEventKind::WatchedChanged { kind } => {
+                    api::AppEventKind::WatchedChanged { event: kind } => {
                         let relevant = match kind {
-                            api::WatchedKind::Episode { series, .. } => {
+                            api::WatchedEvent::Episode { series, .. } => {
                                 *series == ctx.props().series_id
                             }
-                            api::WatchedKind::Movie { .. } => false,
+                            api::WatchedEvent::RemainingSeason { series, .. } => {
+                                *series == ctx.props().series_id
+                            }
+                            api::WatchedEvent::Movie { .. } => false,
                         };
 
                         if relevant && let Some(season) = self.selected {
@@ -478,14 +485,22 @@ impl SeriesDetail {
                 self.confirming_mark_watch = None;
                 Ok(true)
             }
-            Msg::MarkWatched(series, episode, timestamp) => {
+            Msg::MarkRemainingWatch => {
+                self.select_mark_remaining = true;
+                Ok(true)
+            }
+            Msg::CancelMarkRemainingWatch => {
+                self.select_mark_remaining = false;
+                Ok(true)
+            }
+            Msg::MarkWatched(series, episode, mark_time) => {
                 self.confirming_mark_watch = None;
                 self._mark_req = self
                     .channel
                     .request()
                     .body(api::MarkWatchedRequest {
                         kind: api::WatchedKind::Episode { series, episode },
-                        timestamp,
+                        mark_time,
                     })
                     .on_packet(ctx.link().callback(Msg::MarkWatchedDone))
                     .send();
@@ -530,31 +545,21 @@ impl SeriesDetail {
                 self.confirm_remove_watch = None;
                 Ok(true)
             }
-            Msg::WatchRemaining(season) => {
+            Msg::WatchRemaining(season, mark_time) => {
+                self.select_mark_remaining = false;
+
                 let series_id = ctx.props().series_id;
-                let reqs: Vec<ws::Request> = self
-                    .episodes
-                    .iter()
-                    .filter(|ep| {
-                        ep.season == season
-                            && self.watched.get(&ep.id).map(Vec::len).unwrap_or_default() == 0
+
+                self._watch_remaining_reqs = self
+                    .channel
+                    .request()
+                    .body(api::MarkWatchedRemainingRequest {
+                        series_id: series_id,
+                        season,
+                        mark_time,
                     })
-                    .map(|ep| {
-                        let episode_id = ep.id;
-                        self.channel
-                            .request()
-                            .body(api::MarkWatchedRequest {
-                                kind: api::WatchedKind::Episode {
-                                    series: series_id,
-                                    episode: episode_id,
-                                },
-                                timestamp: None,
-                            })
-                            .on_packet(ctx.link().callback(Msg::WatchRemainingDone))
-                            .send()
-                    })
-                    .collect();
-                self._watch_remaining_reqs = reqs;
+                    .on_packet(ctx.link().callback(Msg::WatchRemainingDone))
+                    .send();
                 Ok(false)
             }
             Msg::WatchRemainingDone(result) => {
@@ -973,17 +978,25 @@ impl SeriesDetail {
         html! {
             <div class="detail-content section">
                 if let Some(season) = self.selected {
-                    <div class="row actions">
-                        if total > 0 {
-                            <span class="text-muted">
-                                {format!("{watched_count} / {total} watched")}
-                            </span>
-                        }
+                    <div class="row-fill actions">
+                        if self.select_mark_remaining {
+                            <MarkWatchedPicker
+                                on_confirm={link.callback(move |mark_time| Msg::WatchRemaining(season, mark_time))}
+                                on_cancel={link.callback(|_| Msg::CancelMarkRemainingWatch)}
+                            />
+                        } else {
+                            if total > 0 {
+                                <span class="text-muted">
+                                    {format!("{watched_count} / {total} watched")}
+                                </span>
+                            }
 
-                        if watched_count < total {
-                            <button class="btn" onclick={link.callback(move |_| Msg::WatchRemaining(season))}>
-                                {"Watch remaining"}
-                            </button>
+                            if watched_count < total {
+                                <button class="btn-success end" onclick={link.callback(move |_| Msg::MarkRemainingWatch)} title="Mark remaining episodes as watched">
+                                    <span class="icon-inline"><span class="icon check" /></span>
+                                    <span class="hide-mobile">{"Remaining"}</span>
+                                </button>
+                            }
                         }
                     </div>
                 }
@@ -1012,7 +1025,6 @@ impl SeriesDetail {
         let expanded = self.expanded.contains(&episode_id);
         let confirming_mark = self.confirming_mark_watch == Some(episode_id);
         let on_ask_mark = link.callback(move |_| Msg::AskMarkWatched(episode_id));
-        let aired = ep.aired;
         let on_remove_confirm = watched.last().map(|w| {
             let id = w.id;
             link.callback(move |_| Msg::ConfirmRemoveWatch(id))
@@ -1026,8 +1038,7 @@ impl SeriesDetail {
             if confirming_mark {
                 break 'actions html! {
                     <MarkWatchedPicker
-                        {aired}
-                        on_confirm={link.callback(move |ts| Msg::MarkWatched(series_id, episode_id, ts))}
+                        on_confirm={link.callback(move |mark_time| Msg::MarkWatched(series_id, episode_id, mark_time))}
                         on_cancel={link.callback(|_| Msg::CancelMarkWatch)}
                     />
                 };

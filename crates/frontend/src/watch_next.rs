@@ -136,7 +136,7 @@ impl WatchNext {
                     .request()
                     .body(api::MarkWatchedRequest {
                         kind,
-                        timestamp: None,
+                        mark_time: api::MarkTime::Now,
                     })
                     .on_packet(ctx.link().callback(Msg::MarkWatchedDone))
                     .send();
@@ -182,12 +182,14 @@ impl WatchNext {
         let on_navigate = ctx.link().callback(move |_| Msg::Navigate(route.clone()));
 
         let on_mark = ctx.link().callback(move |_| {
-            Msg::MarkWatched(match kind {
+            let kind = match kind {
                 api::PendingKind::Episode { series, episode } => {
                     api::WatchedKind::Episode { series, episode }
                 }
                 api::PendingKind::Movie { movie } => api::WatchedKind::Movie { movie },
-            })
+            };
+
+            Msg::MarkWatched(kind)
         });
 
         html! {

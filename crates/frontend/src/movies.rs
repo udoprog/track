@@ -28,7 +28,7 @@ pub(super) enum Msg {
     MoviesLoaded(Result<ws::Packet<api::ListMovies>, ws::Error>),
     AskMarkWatched(api::MovieId),
     CancelMarkWatch,
-    MarkWatched(api::MovieId, Option<api::Timestamp>),
+    MarkWatched(api::MovieId, api::MarkTime),
     MarkWatchedDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
     Filter(String),
     SetPage(usize),
@@ -217,14 +217,14 @@ impl MoviesList {
                 self.confirming_watch = None;
                 Ok(true)
             }
-            Msg::MarkWatched(movie_id, timestamp) => {
+            Msg::MarkWatched(movie_id, mark_time) => {
                 self.confirming_watch = None;
                 self._mark_req = self
                     .channel
                     .request()
                     .body(api::MarkWatchedRequest {
                         kind: api::WatchedKind::Movie { movie: movie_id },
-                        timestamp,
+                        mark_time,
                     })
                     .on_packet(ctx.link().callback(Msg::MarkWatchedDone))
                     .send();
@@ -310,8 +310,7 @@ impl MoviesList {
 
                         if self.confirming_watch == Some(movie_id) {
                             <MarkWatchedPicker
-                                aired={m.release_date}
-                                on_confirm={ctx.link().callback(move |ts| Msg::MarkWatched(movie_id, ts))}
+                                on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(movie_id, mark_time))}
                                 on_cancel={ctx.link().callback(|_| Msg::CancelMarkWatch)}
                             />
                         } else {

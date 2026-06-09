@@ -7,9 +7,9 @@ use anyhow::{Context as _, Result, ensure};
 use std::collections::HashMap;
 
 use api::{
-    Config, Date, EpisodeId, Image, ImageId, ImageKind, ImageSource, MovieId, ReleaseType,
-    RemoteId, SeasonId, SeasonNumber, SeriesId, SyncSource, ThemeType, Timestamp, WatchedId,
-    WatchedKind,
+    Config, Date, EpisodeId, Image, ImageId, ImageKind, ImageSource, MarkTime, MovieId,
+    ReleaseType, RemoteId, SeasonId, SeasonNumber, SeriesId, SyncSource, ThemeType, Timestamp,
+    WatchedId, WatchedKind,
 };
 use rust_embed::RustEmbed;
 use sqll::{OpenOptions, Row, SendStatement};
@@ -63,7 +63,7 @@ struct ImageRow {
 struct SeasonRow {
     id: SeasonId,
     series_id: SeriesId,
-    number: u32,
+    number: SeasonNumber,
     air_date: Option<Timestamp>,
     name: Option<String>,
     overview: Option<String>,
@@ -74,7 +74,7 @@ struct SeasonRow {
 struct EpisodeRow {
     id: EpisodeId,
     series_id: SeriesId,
-    season: u32,
+    season: SeasonNumber,
     number: u32,
     absolute_number: Option<u32>,
     name: Option<String>,
@@ -171,7 +171,7 @@ struct ScheduleRow {
     series_id: SeriesId,
     series_title: String,
     episode_id: EpisodeId,
-    season: u32,
+    season: SeasonNumber,
     number: u32,
     absolute_number: Option<u32>,
     name: Option<String>,
@@ -411,6 +411,9 @@ statements! {
         insert_movie_remote: r#"
             INSERT OR IGNORE INTO remotes (movie_id, remote_id) VALUES (?, ?)
         "#,
+        movie_released_by_id: r#"
+            SELECT release_date FROM movies WHERE id = ?
+        "#,
 
         // watched
         insert_watched: r#"
@@ -429,6 +432,12 @@ statements! {
         list_watched_movie: r#"
             SELECT id, timestamp, episode_id, movie_id, NULL AS series_id
             FROM watched WHERE movie_id = ? ORDER BY timestamp DESC
+        "#,
+        // select episodes which have 0 watched by series and season.
+        select_unwatched_by_series_season: r#"
+            SELECT id FROM episodes
+            WHERE series_id = ? AND season = ?
+              AND NOT EXISTS (SELECT 1 FROM watched w WHERE w.episode_id = episodes.id)
         "#,
 
         // pending table management
@@ -582,6 +591,32 @@ statements! {
               AND NOT EXISTS (SELECT 1 FROM pending p WHERE p.movie_id = m.id)
             GROUP BY m.id
         "#,
+    }
+}
+
+impl Inner {
+    fn episode_mark_time(
+        &mut self,
+        episode: EpisodeId,
+        mark_time: MarkTime,
+        now: Timestamp,
+    ) -> Result<Timestamp> {
+        match mark_time {
+            MarkTime::Now => Ok(now),
+            MarkTime::WhenAired => {
+                self.episode_aired_by_id.bind((episode,))?;
+
+                let Some(aired) = self
+                    .episode_aired_by_id
+                    .next::<Option<Timestamp>>()?
+                    .flatten()
+                else {
+                    anyhow::bail!("episode has no air date");
+                };
+
+                Ok(aired)
+            }
+        }
     }
 }
 
@@ -955,6 +990,40 @@ impl Database {
             }
 
             Ok(out)
+        });
+
+        result.await?
+    }
+
+    pub async fn mark_watched_remaining(
+        &self,
+        series_id: SeriesId,
+        season: SeasonNumber,
+        mark_time: MarkTime,
+        now: Timestamp,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        let result = spawn_blocking(move || {
+            s.select_unwatched_by_series_season
+                .bind((series_id, season))?;
+
+            while let Some(id) = s.select_unwatched_by_series_season.next::<EpisodeId>()? {
+                let timestamp = s.episode_mark_time(id, mark_time, now)?;
+                s.insert_watched.bind((timestamp, id, None::<MovieId>))?;
+
+                _ = s
+                    .insert_watched
+                    .next::<InsertWatchedRow>()?
+                    .context("insert_watched returned no row")?;
+
+                ensure!(
+                    s.insert_watched.step()?.is_done(),
+                    "mark_watched_remaining/insert_watched"
+                );
+            }
+
+            Ok(())
         });
 
         result.await?
@@ -1445,14 +1514,37 @@ impl Database {
     pub async fn mark_watched(
         &self,
         kind: WatchedKind,
-        timestamp: Timestamp,
+        mark_time: MarkTime,
+        now: Timestamp,
     ) -> Result<api::Watched> {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            let (episode_id, movie_id) = match kind {
-                WatchedKind::Episode { episode, .. } => (Some(episode), None),
-                WatchedKind::Movie { movie } => (None, Some(movie)),
+            let (episode_id, movie_id, timestamp) = match kind {
+                WatchedKind::Episode { episode, .. } => {
+                    let timestamp = s.episode_mark_time(episode, mark_time, now)?;
+                    (Some(episode), None, timestamp)
+                }
+                WatchedKind::Movie { movie } => {
+                    let timestamp = match mark_time {
+                        MarkTime::Now => now,
+                        MarkTime::WhenAired => {
+                            s.movie_released_by_id.bind((movie,))?;
+
+                            let Some(released) = s
+                                .movie_released_by_id
+                                .next::<Option<Timestamp>>()?
+                                .flatten()
+                            else {
+                                anyhow::bail!("movie has no release date");
+                            };
+
+                            released
+                        }
+                    };
+
+                    (None, Some(movie), timestamp)
+                }
             };
 
             s.insert_watched.bind((timestamp, episode_id, movie_id))?;
@@ -1953,8 +2045,8 @@ impl Database {
                 let ep = api::Episode {
                     id: r.episode_id,
                     series_id: r.series_id,
-                    season: SeasonNumber::from_u32(r.season),
-                    number: r.number as u32,
+                    season: r.season,
+                    number: r.number,
                     absolute_number: r.absolute_number,
                     name: r.name,
                     overview: r.overview,
@@ -2182,7 +2274,7 @@ fn season_from_row(r: SeasonRow) -> api::Season {
     api::Season {
         id: r.id,
         series_id: r.series_id,
-        number: SeasonNumber::from_u32(r.number),
+        number: r.number,
         air_date: r.air_date,
         name: r.name,
         overview: r.overview,
@@ -2194,7 +2286,7 @@ fn episode_from_row(r: EpisodeRow) -> api::Episode {
     api::Episode {
         id: r.id,
         series_id: r.series_id,
-        season: SeasonNumber::from_u32(r.season),
+        season: r.season,
         number: r.number as u32,
         absolute_number: r.absolute_number,
         name: r.name,
