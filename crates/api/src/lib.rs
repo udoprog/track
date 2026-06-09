@@ -925,6 +925,7 @@ impl ::sqll::BindValue for ThemeType {
 )]
 #[musli(crate = musli_core)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum ReleaseType {
     Premiere,
     TheatricalLimited,
@@ -935,27 +936,43 @@ pub enum ReleaseType {
 }
 
 impl ReleaseType {
-    pub fn from_tmdb(n: u8) -> Option<Self> {
-        Some(match n {
-            1 => Self::Premiere,
-            2 => Self::TheatricalLimited,
-            3 => Self::Theatrical,
-            4 => Self::Digital,
-            5 => Self::Physical,
-            6 => Self::Tv,
-            _ => return None,
-        })
-    }
-
-    pub fn to_tmdb(self) -> u8 {
+    pub fn as_id(self) -> &'static str {
         match self {
-            Self::Premiere => 1,
-            Self::TheatricalLimited => 2,
-            Self::Theatrical => 3,
-            Self::Digital => 4,
-            Self::Physical => 5,
-            Self::Tv => 6,
+            Self::Premiere => "premiere",
+            Self::TheatricalLimited => "theatrical-limited",
+            Self::Theatrical => "theatrical",
+            Self::Digital => "digital",
+            Self::Physical => "physical",
+            Self::Tv => "tv",
         }
+    }
+}
+
+#[cfg(feature = "sqll")]
+impl ::sqll::FromColumn<'_> for ReleaseType {
+    type Type = ::sqll::ty::Text;
+
+    #[inline]
+    fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Text) -> ::sqll::Result<Self> {
+        match <str as ::sqll::FromUnsizedColumn>::from_unsized_column(stmt, index)? {
+            "premiere" => Ok(Self::Premiere),
+            "theatrical-limited" => Ok(Self::TheatricalLimited),
+            "theatrical" => Ok(Self::Theatrical),
+            "digital" => Ok(Self::Digital),
+            "physical" => Ok(Self::Physical),
+            "tv" => Ok(Self::Tv),
+            other => Err(::sqll::Error::custom(format!(
+                "unknown release type: {other}"
+            ))),
+        }
+    }
+}
+
+#[cfg(feature = "sqll")]
+impl ::sqll::BindValue for ReleaseType {
+    #[inline]
+    fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
+        self.as_id().bind_value(stmt, index)
     }
 }
 

@@ -7,8 +7,9 @@ use anyhow::{Context as _, Result, ensure};
 use std::collections::HashMap;
 
 use api::{
-    Config, Date, EpisodeId, Image, ImageId, ImageKind, ImageSource, MovieId, RemoteId, SeasonId,
-    SeasonNumber, SeriesId, SyncSource, ThemeType, Timestamp, WatchedId, WatchedKind,
+    Config, Date, EpisodeId, Image, ImageId, ImageKind, ImageSource, MovieId, ReleaseType,
+    RemoteId, SeasonId, SeasonNumber, SeriesId, SyncSource, ThemeType, Timestamp, WatchedId,
+    WatchedKind,
 };
 use rust_embed::RustEmbed;
 use sqll::{OpenOptions, Row, SendStatement};
@@ -105,7 +106,7 @@ struct MovieRow {
 #[derive(Row)]
 struct MovieReleaseRow {
     country: String,
-    release_type: i64,
+    release_type: ReleaseType,
     date: Date,
 }
 
@@ -255,6 +256,7 @@ statements! {
         set_series_language: r#"
             UPDATE series SET language = ? WHERE id = ?
         "#,
+
         // remotes (series and movies share one table)
         list_series_remotes: r#"
             SELECT series_id, movie_id, remote_id FROM remotes WHERE series_id = ? ORDER BY id
@@ -265,6 +267,7 @@ statements! {
         insert_series_remote: r#"
             INSERT OR IGNORE INTO remotes (series_id, remote_id) VALUES (?, ?)
         "#,
+
         // images (series and movies share one table)
         list_series_images: r#"
             SELECT id, kind, source, path, selected, series_id, movie_id FROM images
@@ -579,7 +582,7 @@ statements! {
         movies_needing_pending_digital: r#"
             SELECT m.id, MIN(mr.date) AS release_date
             FROM movies m
-            JOIN movie_releases mr ON mr.movie_id = m.id AND mr.release_type = 4
+            JOIN movie_releases mr ON mr.movie_id = m.id AND mr.release_type = 'digital'
             WHERE m.tracked = 1
               AND mr.date <= ?
               AND NOT EXISTS (SELECT 1 FROM watched w WHERE w.movie_id = m.id)
@@ -1094,24 +1097,26 @@ impl Database {
             };
             let movie_id = r.id;
             let mut movie = movie_from_row(r);
+
             s.list_movie_remotes.bind((movie_id,))?;
             while let Some(r) = s.list_movie_remotes.next::<RemoteRow>()? {
                 movie.remotes.push(r.remote_id);
             }
+
             s.list_movie_images.bind((movie_id,))?;
             while let Some(r) = s.list_movie_images.next::<ImageRow>()? {
                 movie.images.push(image_from_row(r));
             }
+
             s.list_movie_releases.bind((movie_id,))?;
             while let Some(r) = s.list_movie_releases.next::<MovieReleaseRow>()? {
-                if let Some(release_type) = api::ReleaseType::from_tmdb(r.release_type as u8) {
-                    movie.releases.push(api::MovieRelease {
-                        country: r.country,
-                        release_type,
-                        date: r.date,
-                    });
-                }
+                movie.releases.push(api::MovieRelease {
+                    country: r.country,
+                    release_type: r.release_type,
+                    date: r.date,
+                });
             }
+
             s.has_pending_movie.bind((movie_id,))?;
             movie.pending = s.has_pending_movie.next::<(i64,)>()?.is_some();
             Ok(Some(movie))
@@ -1154,16 +1159,19 @@ impl Database {
             let Some(r) = s.movie_by_remote.next::<MovieRow>()? else {
                 return Ok(None);
             };
+
             let movie_id = r.id;
             let mut movie = movie_from_row(r);
             s.list_movie_remotes.bind((movie_id,))?;
             while let Some(r) = s.list_movie_remotes.next::<RemoteRow>()? {
                 movie.remotes.push(r.remote_id);
             }
+
             s.list_movie_images.bind((movie_id,))?;
             while let Some(r) = s.list_movie_images.next::<ImageRow>()? {
                 movie.images.push(image_from_row(r));
             }
+
             Ok(Some(movie))
         });
 
@@ -1705,7 +1713,7 @@ impl Database {
         &self,
         movie_id: MovieId,
         country: &str,
-        release_type: u8,
+        release_type: ReleaseType,
         date: &Date,
     ) -> Result<()> {
         let country = country.to_owned();
@@ -1713,7 +1721,7 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
         let result = spawn_blocking(move || {
             s.upsert_movie_release
-                .bind((movie_id, country.as_str(), release_type as i64, date))?;
+                .bind((movie_id, country.as_str(), release_type, date))?;
             ensure!(
                 s.upsert_movie_release.step()?.is_done(),
                 "upsert_movie_release"

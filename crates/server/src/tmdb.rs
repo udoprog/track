@@ -1,5 +1,5 @@
 use anyhow::{Context as _, Result};
-use api::{Date, Image, RemoteId, SeasonNumber};
+use api::{Date, Image, ReleaseType, RemoteId, SeasonNumber};
 use serde::Deserialize;
 
 const BASE: &str = "https://api.themoviedb.org/3";
@@ -268,6 +268,18 @@ impl Client {
     }
 
     pub(crate) async fn fetch_movie_releases(&self, id: u32) -> Result<Vec<MovieReleaseInfo>> {
+        pub fn release_type_from_tmdb(n: u8) -> Option<ReleaseType> {
+            match n {
+                1 => Some(ReleaseType::Premiere),
+                2 => Some(ReleaseType::TheatricalLimited),
+                3 => Some(ReleaseType::Theatrical),
+                4 => Some(ReleaseType::Digital),
+                5 => Some(ReleaseType::Physical),
+                6 => Some(ReleaseType::Tv),
+                _ => None,
+            }
+        }
+
         #[derive(Deserialize)]
         struct Entry {
             #[serde(rename = "type")]
@@ -275,12 +287,14 @@ impl Client {
             #[serde(default)]
             release_date: Option<String>,
         }
+
         #[derive(Deserialize)]
         struct CountryBlock {
             iso_3166_1: String,
             #[serde(default)]
             release_dates: Vec<Entry>,
         }
+
         #[derive(Deserialize)]
         struct Resp {
             #[serde(default)]
@@ -292,20 +306,25 @@ impl Client {
             .await?;
 
         let mut out = Vec::new();
+
         for block in d.results {
             for e in block.release_dates {
-                if !(1..=6).contains(&e.type_) {
+                let Some(release_type) = release_type_from_tmdb(e.type_) else {
                     continue;
-                }
-                if let Some(date) = parse_release_date(e.release_date.as_deref()) {
-                    out.push(MovieReleaseInfo {
-                        country: block.iso_3166_1.clone(),
-                        release_type: e.type_,
-                        date,
-                    });
-                }
+                };
+
+                let Some(date) = parse_release_date(e.release_date.as_deref()) else {
+                    continue;
+                };
+
+                out.push(MovieReleaseInfo {
+                    country: block.iso_3166_1.clone(),
+                    release_type,
+                    date,
+                });
             }
         }
+
         Ok(out)
     }
 
@@ -416,7 +435,7 @@ pub(crate) struct SearchMovieResult {
 
 pub(crate) struct MovieReleaseInfo {
     pub country: String,
-    pub release_type: u8,
+    pub release_type: ReleaseType,
     pub date: Date,
 }
 
