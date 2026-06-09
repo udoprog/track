@@ -1,6 +1,7 @@
 use core::iter;
 
 use anyhow::{Context as _, Result};
+use api::TimeZone;
 use db::Database;
 use musli_web::axum08;
 use musli_web::ws;
@@ -315,12 +316,11 @@ impl WsHandler {
                     .read::<api::MarkWatchedRequest>()
                     .context("missing request")?;
 
-                let ts = req.timestamp.unwrap_or_else(api::Timestamp::now);
-
-                let watched = self.db.mark_watched(req.kind, ts).await?;
+                let now = req.timestamp.unwrap_or_else(api::Timestamp::now);
+                let watched = self.db.mark_watched(req.kind, now).await?;
 
                 if let api::WatchedKind::Episode { series, .. } = req.kind {
-                    self.pending.on_episode_watched(series).await?;
+                    self.pending.on_episode_watched(series, now).await?;
                 }
 
                 self.broadcast.emit(
@@ -386,8 +386,12 @@ impl WsHandler {
                     .read::<api::ListScheduleRequest>()
                     .context("missing request")?;
 
-                let days = self.db.schedule(req.days).await?;
-
+                let tz = req
+                    .tz
+                    .as_deref()
+                    .and_then(TimeZone::get)
+                    .unwrap_or(TimeZone::UTC);
+                let days = self.db.schedule(req.days, &tz).await?;
                 outgoing.write(api::ListScheduleResponse { days });
             }
             api::Request::ListWatchNext => {

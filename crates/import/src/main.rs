@@ -92,7 +92,7 @@ struct YamlEpisode {
     season: YamlSeasonNumber,
     number: u32,
     #[serde(default)]
-    aired_date: Option<NaiveDate>,
+    aired: Option<NaiveDate>,
     #[serde(default)]
     graphics: YamlEpisodeGraphics,
     #[serde(default)]
@@ -305,10 +305,8 @@ fn naive_to_date(d: NaiveDate) -> api::Date {
         .expect("NaiveDate always formats as valid ISO date")
 }
 
-fn chrono_to_timestamp(dt: chrono::DateTime<chrono::Utc>) -> api::Timestamp {
-    dt.to_rfc3339()
-        .parse::<api::Timestamp>()
-        .unwrap_or_else(|_| api::Timestamp::now())
+fn chrono_to_timestamp(dt: chrono::DateTime<chrono::Utc>) -> Result<api::Timestamp> {
+    Ok(dt.to_rfc3339().parse::<api::Timestamp>()?)
 }
 
 fn parse_yaml_docs<T>(path: &Path) -> Result<Vec<T>>
@@ -432,15 +430,13 @@ async fn main() -> Result<()> {
         {
             existing_id
         } else {
+            let first_air = s
+                .first_air_date
+                .as_ref()
+                .and_then(|d| naive_to_date(*d).to_timestamp_at_midnight_utc().ok());
+
             let inserted = db
-                .create_series(
-                    &s.title,
-                    s.first_air_date
-                        .as_ref()
-                        .map(|d| naive_to_date(*d))
-                        .as_ref(),
-                    &s.overview,
-                )
+                .create_series(&s.title, first_air, &s.overview)
                 .await
                 .with_context(|| format!("inserting series '{}'", s.title))?;
 
@@ -477,10 +473,16 @@ async fn main() -> Result<()> {
                 .with_context(|| format!("parsing seasons for {}", s.id))?;
 
             for season in seasons {
+                let air_date = season
+                    .air_date
+                    .as_ref()
+                    .map(|d| naive_to_date(*d).to_timestamp_at_midnight_utc())
+                    .transpose()?;
+
                 db.upsert_season(
                     series_id,
                     season.number.into(),
-                    season.air_date.as_ref().map(|d| naive_to_date(*d)).as_ref(),
+                    air_date,
                     season.name.as_deref(),
                     &season.overview,
                     image(season.graphics.poster.as_ref()).as_ref(),
@@ -496,6 +498,12 @@ async fn main() -> Result<()> {
                 .with_context(|| format!("parsing episodes for {}", s.id))?;
 
             for ep in episodes {
+                let aired = ep
+                    .aired
+                    .as_ref()
+                    .map(|d| naive_to_date(*d).to_timestamp_at_midnight_utc())
+                    .transpose()?;
+
                 let inserted = db
                     .upsert_episode(
                         series_id,
@@ -504,7 +512,7 @@ async fn main() -> Result<()> {
                         ep.absolute_number,
                         ep.name.as_deref(),
                         &ep.overview,
-                        ep.aired_date.as_ref().map(|d| naive_to_date(*d)).as_ref(),
+                        aired,
                         image(ep.graphics.filename.as_ref()).as_ref(),
                         remote_id(ep.remote_id.as_ref()).as_ref(),
                     )
@@ -542,13 +550,14 @@ async fn main() -> Result<()> {
         {
             existing_id
         } else {
+            let release_date = m
+                .release_date
+                .as_ref()
+                .map(|d| naive_to_date(*d).to_timestamp_at_midnight_utc())
+                .transpose()?;
+
             let inserted = db
-                .create_movie(
-                    &m.title,
-                    m.release_date.as_ref().map(|d| naive_to_date(*d)),
-                    &m.overview,
-                    true,
-                )
+                .create_movie(&m.title, release_date, &m.overview, true)
                 .await
                 .with_context(|| format!("inserting movie '{}'", m.title))?;
 
@@ -592,25 +601,31 @@ async fn main() -> Result<()> {
                     skipped += 1;
                     continue;
                 };
+
                 let Some(&episode_id) = episode_map.get(&episode) else {
                     skipped += 1;
                     continue;
                 };
-                let ts = chrono_to_timestamp(timestamp);
-                let key = (episode_id.get(), ts.to_string());
+
+                let timestamp =
+                    chrono_to_timestamp(timestamp).context("parsing watched timestamp")?;
+                let key = (episode_id.get(), timestamp.to_string());
+
                 if episodes_watched_seen.contains(&key) {
                     skipped += 1;
                     continue;
                 }
+
                 db.mark_watched(
                     api::WatchedKind::Episode {
                         series: series_id,
                         episode: episode_id,
                     },
-                    ts,
+                    timestamp,
                 )
                 .await
                 .context("inserting watched episode")?;
+
                 episodes_watched_seen.insert(key);
             }
             YamlWatched::Movie {
@@ -620,12 +635,15 @@ async fn main() -> Result<()> {
                     skipped += 1;
                     continue;
                 };
-                let ts = chrono_to_timestamp(timestamp);
+
+                let ts = chrono_to_timestamp(timestamp).context("parsing watched timestamp")?;
                 let key = (movie_id.get(), ts.to_string());
+
                 if movies_watched_seen.contains(&key) {
                     skipped += 1;
                     continue;
                 }
+
                 db.mark_watched(api::WatchedKind::Movie { movie: movie_id }, ts)
                     .await
                     .context("inserting watched movie")?;
@@ -690,27 +708,27 @@ async fn main() -> Result<()> {
         tracing::info!("added {added} remote IDs");
     }
 
-    // ── Pending ───────────────────────────────────────────────────────────────
+    let now = api::Timestamp::now();
+
     tracing::info!("filling pending episodes for {} series", series_map.len());
     let mut pending_filled = 0usize;
+
     for &series_id in series_map.values() {
-        db.fill_pending_for_series(series_id).await?;
+        db.fill_pending_for_series(series_id, now).await?;
         pending_filled += 1;
     }
-    tracing::info!("  filled pending for {pending_filled} series");
+
+    tracing::info!("filled pending for {pending_filled} series");
 
     tracing::info!("discovering pending movies");
-    let today = api::Date::today();
-    for (id, date) in db.theatrical_movie_candidates(today).await? {
-        let ts = date
-            .map(|d| d.to_timestamp())
-            .unwrap_or_else(api::Timestamp::now);
+
+    for (id, ts) in db.theatrical_movie_candidates(now).await? {
+        let ts = ts.unwrap_or(now);
         db.add_pending_movie(id, ts).await?;
     }
-    for (id, date) in db.digital_movie_candidates(today).await? {
-        let ts = date
-            .map(|d| d.to_timestamp())
-            .unwrap_or_else(api::Timestamp::now);
+
+    for (id, ts) in db.digital_movie_candidates(now).await? {
+        let ts = ts.unwrap_or(now);
         db.add_pending_movie(id, ts).await?;
     }
 

@@ -1,5 +1,5 @@
 use anyhow::{Context as _, Result};
-use api::{Date, Image, RemoteId, SeasonNumber};
+use api::{Date, Image, RemoteId, SeasonNumber, Timestamp};
 use serde::{Deserialize, Serialize};
 
 const BASE: &str = "https://api.thetvdb.com/";
@@ -88,8 +88,10 @@ impl Client {
         let resp: Resp = serde_json::from_slice(&bytes)?;
 
         let mut out = Vec::new();
+
         for val in resp.data {
             let row: Row = serde_json::from_value(val)?;
+
             out.push(SearchSeriesResult {
                 remote_id: RemoteId::tvdb(row.id),
                 title: Some(row.series_name),
@@ -98,6 +100,7 @@ impl Client {
                 poster: opt_image(row.poster.as_deref()),
             });
         }
+
         Ok(out)
     }
 
@@ -224,7 +227,9 @@ impl Client {
                     absolute_number: row.absolute_number,
                     name: row.episode_name.filter(|s| !s.is_empty()),
                     overview: row.overview.unwrap_or_default(),
-                    aired_date: opt_date(row.first_aired.as_deref()),
+                    aired: opt_date(row.first_aired.as_deref())
+                        .map(|d| d.to_timestamp_at_midnight_utc())
+                        .transpose()?,
                     filename: opt_image(row.filename.as_deref()),
                     remote_id: RemoteId::tvdb(row.id),
                 });
@@ -257,7 +262,7 @@ pub(crate) struct EpisodeInfo {
     pub absolute_number: Option<u32>,
     pub name: Option<String>,
     pub overview: String,
-    pub aired_date: Option<Date>,
+    pub aired: Option<Timestamp>,
     pub filename: Option<Image>,
     pub remote_id: RemoteId,
 }

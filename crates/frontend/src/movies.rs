@@ -1,3 +1,4 @@
+use api::TimeZone;
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
@@ -12,6 +13,8 @@ pub(super) struct MoviesList {
     movies: Vec<api::Movie>,
     filter: String,
     page: usize,
+    tz: TimeZone,
+    _tz_handle: ContextHandle<TimeZone>,
     _setup: crate::SetupChannel,
     _broadcast: ws::Listener,
     _list_req: ws::Request,
@@ -30,6 +33,7 @@ pub(super) enum Msg {
     Filter(String),
     SetPage(usize),
     Navigate(Route),
+    SetTz(TimeZone),
 }
 
 #[derive(Properties, PartialEq)]
@@ -53,11 +57,18 @@ impl Component for MoviesList {
         let _setup = crate::SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
+        let (tz, _tz_handle) = ctx
+            .link()
+            .context::<TimeZone>(ctx.link().callback(Msg::SetTz))
+            .expect("time zone not found");
+
         Self {
             channel: ws::Channel::default(),
             movies: Vec::new(),
             page: ctx.props().page,
             filter: ctx.props().filter.clone(),
+            tz,
+            _tz_handle,
             _setup,
             _broadcast,
             _list_req: ws::Request::default(),
@@ -253,6 +264,10 @@ impl MoviesList {
                 ctx.props().on_navigate.emit(route);
                 Ok(false)
             }
+            Msg::SetTz(tz) => {
+                self.tz = tz;
+                Ok(true)
+            }
         }
     }
 
@@ -295,15 +310,14 @@ impl MoviesList {
 
                         if self.confirming_watch == Some(movie_id) {
                             <MarkWatchedPicker
-                                aired_timestamp={None::<api::Timestamp>}
-                                aired_date={m.release_date}
+                                aired={m.release_date}
                                 on_confirm={ctx.link().callback(move |ts| Msg::MarkWatched(movie_id, ts))}
                                 on_cancel={ctx.link().callback(|_| Msg::CancelMarkWatch)}
                             />
                         } else {
                             <div class="row end top">
                                 if let Some(date) = m.release_date {
-                                    <span class="text-muted">{date.year().to_string()}</span>
+                                    <span class="text-muted">{date.date(&self.tz).year().to_string()}</span>
                                 }
 
                                 if m.watched {

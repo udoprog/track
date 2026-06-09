@@ -1,15 +1,19 @@
 use std::collections::HashMap;
 
+use api::TimeZone;
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
+use crate::SetupChannel;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{Route, SeriesDetailQuery};
 
 pub(super) struct Calendar {
     channel: ws::Channel,
     schedule: Vec<api::ScheduledDay>,
-    _setup: crate::SetupChannel,
+    tz: TimeZone,
+    _tz_handle: ContextHandle<TimeZone>,
+    _setup: SetupChannel,
     _broadcast: ws::Listener,
     _schedule_req: ws::Request,
 }
@@ -19,6 +23,7 @@ pub(super) enum Msg {
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     ScheduleLoaded(Result<ws::Packet<api::ListSchedule>, ws::Error>),
     Navigate(Route),
+    SetTz(TimeZone),
 }
 
 #[derive(Properties, PartialEq)]
@@ -37,12 +42,19 @@ impl Component for Calendar {
             .context::<ws::Handle>(Callback::noop())
             .expect("ws::Handle context not found");
 
-        let _setup = crate::SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
+        let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
+
+        let (tz, _tz_handle) = ctx
+            .link()
+            .context::<TimeZone>(ctx.link().callback(Msg::SetTz))
+            .expect("time zone not found");
 
         Self {
             channel: ws::Channel::default(),
             schedule: Vec::new(),
+            tz,
+            _tz_handle,
             _setup,
             _broadcast,
             _schedule_req: ws::Request::default(),
@@ -184,6 +196,15 @@ impl Calendar {
                 ctx.props().on_navigate.emit(route);
                 Ok(false)
             }
+            Msg::SetTz(tz) => {
+                self.tz = tz;
+
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self.load_schedule(ctx);
+                }
+
+                Ok(true)
+            }
         }
     }
 
@@ -191,7 +212,10 @@ impl Calendar {
         self._schedule_req = self
             .channel
             .request()
-            .body(api::ListScheduleRequest { days: 28 })
+            .body(api::ListScheduleRequest {
+                tz: self.tz.iana_name(),
+                days: 28,
+            })
             .on_packet(ctx.link().callback(Msg::ScheduleLoaded))
             .send();
     }

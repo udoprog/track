@@ -1,7 +1,7 @@
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
-use api::HasAired;
+use api::{HasAired, TimeZone};
 
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{PagedQuery, Route, SeriesDetailQuery};
@@ -22,6 +22,8 @@ pub(super) struct SeriesDetail {
     confirming_mark_watch: Option<api::EpisodeId>,
     episode_histories: std::collections::HashMap<api::EpisodeId, Vec<api::Watched>>,
     image_modal: Option<api::ImageKind>,
+    tz: TimeZone,
+    _tz_handle: ContextHandle<TimeZone>,
     _setup: crate::SetupChannel,
     _broadcast: ws::Listener,
     _series_req: ws::Request,
@@ -92,6 +94,7 @@ pub(super) enum Msg {
     OpenImageModal(api::ImageKind),
     CloseImageModal,
     Back,
+    SetTz(TimeZone),
 }
 
 #[derive(Properties, PartialEq)]
@@ -116,6 +119,11 @@ impl Component for SeriesDetail {
         let _setup = crate::SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
+        let (tz, _tz_handle) = ctx
+            .link()
+            .context::<TimeZone>(ctx.link().callback(Msg::SetTz))
+            .expect("time zone not found");
+
         Self {
             channel: ws::Channel::default(),
             series: None,
@@ -128,6 +136,8 @@ impl Component for SeriesDetail {
             confirming_mark_watch: None,
             episode_histories: std::collections::HashMap::new(),
             image_modal: None,
+            tz,
+            _tz_handle,
             _setup,
             _broadcast,
             _series_req: ws::Request::default(),
@@ -169,12 +179,6 @@ impl Component for SeriesDetail {
 
         let link = ctx.link();
 
-        let tz = ctx
-            .link()
-            .context::<crate::SystemTz>(Callback::noop())
-            .map(|(t, _)| t.get().clone())
-            .unwrap_or(jiff::tz::TimeZone::UTC);
-
         let url = series
             .images
             .iter()
@@ -215,7 +219,7 @@ impl Component for SeriesDetail {
 
                             if let Some(ts) = series.last_synced_at {
                                 <span class="text-muted hide-mobile" title="Last synced at">
-                                    {ts.display(&tz)}
+                                    {ts.display(&self.tz)}
                                 </span>
                             }
                         </div>
@@ -763,6 +767,10 @@ impl SeriesDetail {
                     .emit(Route::Series(PagedQuery::default()));
                 Ok(false)
             }
+            Msg::SetTz(tz) => {
+                self.tz = tz;
+                Ok(true)
+            }
         }
     }
 
@@ -909,8 +917,8 @@ impl SeriesDetail {
             <div class={classes!("table-entry", "row", "clickable", active.then_some("active"))} {onclick}>
                 <span class="fill">{label}</span>
 
-                if let Some(date) = season.air_date {
-                    <span class="text-muted">{date.year().to_string()}</span>
+                if let Some(ts) = season.air_date {
+                    <span class="text-muted">{ts.date(&self.tz).year().to_string()}</span>
                 }
 
                 <span class="icon-inline">
@@ -923,11 +931,6 @@ impl SeriesDetail {
     fn view_episodes(&self, ctx: &Context<Self>, series: &api::Series) -> Html {
         let series_id = ctx.props().series_id;
         let link = ctx.link();
-        let tz = ctx
-            .link()
-            .context::<crate::SystemTz>(Callback::noop())
-            .map(|(t, _)| t.get().clone())
-            .unwrap_or(jiff::tz::TimeZone::UTC);
 
         let watched_count = self.episodes.iter().filter(|ep| ep.watched).count();
         let total = self.episodes.len();
@@ -961,8 +964,7 @@ impl SeriesDetail {
                     let expanded = self.episode_histories.contains_key(&episode_id);
                     let confirming_mark = self.confirming_mark_watch == Some(episode_id);
                     let on_ask_mark = link.callback(move |_| Msg::AskMarkWatched(episode_id));
-                    let aired_timestamp = ep.aired_timestamp;
-                    let aired_date = ep.aired_date;
+                    let aired = ep.aired;
                     let on_remove_confirm = last_watched_id.map(|wid| {
                         link.callback(move |_| Msg::ConfirmRemoveWatch(wid))
                     });
@@ -979,8 +981,7 @@ impl SeriesDetail {
                         if confirming_mark {
                             break 'actions html! {
                                 <MarkWatchedPicker
-                                    {aired_timestamp}
-                                    {aired_date}
+                                    {aired}
                                     on_confirm={link.callback(move |ts| Msg::MarkWatched(series_id, episode_id, ts))}
                                     on_cancel={link.callback(|_| Msg::CancelMarkWatch)}
                                 />
@@ -1011,7 +1012,7 @@ impl SeriesDetail {
                                 </div>
 
                                 <div class="row end">
-                                    if let Some(s) = ep.display_at(&tz) {
+                                    if let Some(s) = ep.display_at(&self.tz) {
                                         <span class="text-muted">{s}</span>
                                     }
 
@@ -1075,7 +1076,7 @@ impl SeriesDetail {
                                                 <div class="table-entry">
                                                     <ConfirmDanger
                                                         prompt="Remove watch"
-                                                        label={w.timestamp.display(&tz)}
+                                                        label={w.timestamp.display(&self.tz)}
                                                         on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, wkind))}
                                                         on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
                                                     />
@@ -1084,7 +1085,7 @@ impl SeriesDetail {
                                         } else {
                                             html! {
                                                 <div class="table-entry text-muted">
-                                                    <span class="fill">{w.timestamp.display(&tz)}</span>
+                                                    <span class="fill">{w.timestamp.display(&self.tz)}</span>
                                                     <button class="btn-icon" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
                                                         <span class="icon x-mark" />
                                                     </button>

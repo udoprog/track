@@ -11,7 +11,7 @@ pub(super) async fn image_handler(
 ) -> Response {
     let url = match source.as_str() {
         "tmdb" => format!("https://image.tmdb.org/t/p/original/{path}"),
-        "tvdb" => format!("https://artworks.thetvdb.com/banners/{path}"),
+        "tvdb" => format!("https://artworks.thetvdb.com/{path}"),
         _ => return (StatusCode::BAD_REQUEST, "unknown image source").into_response(),
     };
 

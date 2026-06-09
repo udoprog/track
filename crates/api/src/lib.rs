@@ -2,7 +2,8 @@ use core::fmt;
 use core::str::FromStr;
 
 use jiff::Timestamp as JiffTimestamp;
-use jiff::civil::Date as CivilDate;
+use jiff::civil::Date as JiffDate;
+use jiff::tz::TimeZone as JiffTimeZone;
 use musli_core::{Context, Decode, Encode};
 use musli_web::api::{self, ChannelId};
 
@@ -81,7 +82,29 @@ define_id!(TaskId);
 define_id!(ImageId);
 define_id!(PendingId);
 
-/// RFC 3339 UTC-normalised timestamp stored as TEXT.
+#[derive(Clone, PartialEq, Eq)]
+pub struct TimeZone(JiffTimeZone);
+
+impl TimeZone {
+    /// The UTC TimeZone.
+    pub const UTC: Self = Self(JiffTimeZone::UTC);
+
+    #[inline]
+    pub fn from_jiff(tz: JiffTimeZone) -> Self {
+        Self(tz)
+    }
+
+    #[inline]
+    pub fn get(s: &str) -> Option<Self> {
+        Some(Self(JiffTimeZone::get(s).ok()?))
+    }
+
+    #[inline]
+    pub fn iana_name(&self) -> Option<String> {
+        self.0.iana_name().map(|s| s.to_owned())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Timestamp(JiffTimestamp);
 
@@ -105,11 +128,16 @@ impl Timestamp {
     /// The timezone suffix is the IANA abbreviation (e.g. `CEST`, `EST`) when
     /// available, or the numeric offset (e.g. `+05:30`) for fixed-offset zones.
     #[inline]
-    pub fn display(&self, tz: &jiff::tz::TimeZone) -> String {
+    pub fn display(&self, tz: &TimeZone) -> String {
         self.0
-            .to_zoned(tz.clone())
+            .to_zoned(tz.0.clone())
             .strftime("%Y-%m-%d %H:%M %Z")
             .to_string()
+    }
+
+    #[inline]
+    pub fn date(&self, tz: &TimeZone) -> Date {
+        Date(self.0.to_zoned(tz.0.clone()).date())
     }
 }
 
@@ -220,20 +248,71 @@ impl Weekday {
     }
 }
 
+#[derive(Debug)]
+enum InnerDateError {
+    ToUtc(jiff::Error),
+}
+
+pub struct DateError {
+    inner: InnerDateError,
+}
+
+impl From<InnerDateError> for DateError {
+    #[inline]
+    fn from(inner: InnerDateError) -> Self {
+        Self { inner }
+    }
+}
+
+impl core::error::Error for DateError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        match self.inner {
+            InnerDateError::ToUtc(ref e) => Some(e),
+        }
+    }
+}
+
+impl fmt::Display for DateError {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.inner {
+            InnerDateError::ToUtc(..) => write!(f, "date to utc error"),
+        }
+    }
+}
+
+impl fmt::Debug for DateError {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.inner.fmt(f)
+    }
+}
+
 /// Calendar date stored as TEXT "YYYY-MM-DD".
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Date(CivilDate);
+pub struct Date(JiffDate);
 
 impl Date {
     pub fn new(year: i16, month: i8, day: i8) -> Option<Self> {
-        Some(Self(CivilDate::new(year, month, day).ok()?))
+        Some(Self(JiffDate::new(year, month, day).ok()?))
+    }
+
+    pub fn to_timestamp_at_midnight_utc(self) -> Result<Timestamp, DateError> {
+        let zoned = self
+            .0
+            .at(0, 0, 0, 0)
+            .to_zoned(JiffTimeZone::UTC)
+            .map_err(InnerDateError::ToUtc)?;
+
+        Ok(Timestamp(zoned.timestamp()))
     }
 
     pub fn today() -> Self {
         Self(jiff::Zoned::now().date())
     }
 
-    pub fn inner(self) -> CivilDate {
+    pub fn inner(self) -> JiffDate {
         self.0
     }
 
@@ -285,23 +364,13 @@ impl Date {
                 .unwrap_or(self.0),
         )
     }
-
-    pub fn to_timestamp(self) -> Timestamp {
-        let ts = self
-            .0
-            .at(0, 0, 0, 0)
-            .to_zoned(jiff::tz::TimeZone::UTC)
-            .expect("valid UTC midnight")
-            .timestamp();
-        Timestamp(ts)
-    }
 }
 
 impl FromStr for Date {
     type Err = jiff::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        s.parse::<CivilDate>().map(Date)
+        s.parse::<JiffDate>().map(Date)
     }
 }
 
@@ -336,7 +405,7 @@ where
         D: musli_core::Decoder<'de, Mode = M, Allocator = A>,
     {
         let cx = decoder.cx();
-        decoder.decode_unsized(|s: &str| s.parse::<CivilDate>().map(Date).map_err(cx.map()))
+        decoder.decode_unsized(|s: &str| s.parse::<JiffDate>().map(Date).map_err(cx.map()))
     }
 }
 
@@ -349,7 +418,7 @@ impl serde::Serialize for Date {
 impl<'de> serde::Deserialize<'de> for Date {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let s = String::deserialize(deserializer)?;
-        s.parse::<CivilDate>()
+        s.parse::<JiffDate>()
             .map(Date)
             .map_err(serde::de::Error::custom)
     }
@@ -366,7 +435,7 @@ impl ::sqll::FromColumn<'_> for Date {
         let month = ((n / 100) % 100) as i8;
         let day = (n % 100) as i8;
 
-        CivilDate::new(year, month, day)
+        JiffDate::new(year, month, day)
             .map(Date)
             .map_err(|e| ::sqll::Error::custom(format!("invalid date integer {n}: {e}")))
     }
@@ -983,7 +1052,7 @@ pub struct MediaImage {
 pub struct Series {
     pub id: SeriesId,
     pub title: Option<String>,
-    pub first_air_date: Option<Date>,
+    pub first_air_date: Option<Timestamp>,
     pub overview: Option<String>,
     pub tracked: bool,
     pub sync_source: Option<SyncSource>,
@@ -1030,7 +1099,7 @@ pub struct Season {
     pub id: SeasonId,
     pub series_id: SeriesId,
     pub number: SeasonNumber,
-    pub air_date: Option<Date>,
+    pub air_date: Option<Timestamp>,
     pub name: Option<String>,
     pub overview: Option<String>,
     pub poster: Option<Image>,
@@ -1046,8 +1115,7 @@ pub struct Episode {
     pub absolute_number: Option<u32>,
     pub name: Option<String>,
     pub overview: Option<String>,
-    pub aired_date: Option<Date>,
-    pub aired_timestamp: Option<Timestamp>,
+    pub aired: Option<Timestamp>,
     pub filename: Option<Image>,
     pub remote_id: Option<RemoteId>,
     pub watched: bool,
@@ -1061,7 +1129,7 @@ pub struct Episode {
 pub struct Movie {
     pub id: MovieId,
     pub title: Option<String>,
-    pub release_date: Option<Date>,
+    pub release_date: Option<Timestamp>,
     pub overview: Option<String>,
     pub remotes: Vec<RemoteId>,
     pub sync_source: Option<SyncSource>,
@@ -1141,8 +1209,7 @@ pub enum PendingKind {
 #[musli(crate = musli_core)]
 pub struct Pending {
     pub kind: PendingKind,
-    pub aired_date: Option<Date>,
-    pub aired_timestamp: Option<Timestamp>,
+    pub aired: Option<Timestamp>,
     pub series_title: Option<String>,
     pub label: String,
     pub poster: Option<Image>,
@@ -1152,33 +1219,23 @@ pub struct Pending {
 /// precise timestamp. `display_at` picks the most precise value available
 /// and formats it in the given time zone.
 pub trait HasAired {
-    fn aired_date(&self) -> Option<Date>;
-    fn aired_timestamp(&self) -> Option<Timestamp>;
+    fn aired(&self) -> Option<Timestamp>;
 
-    fn display_at(&self, tz: &jiff::tz::TimeZone) -> Option<String> {
-        if let Some(ts) = self.aired_timestamp() {
-            Some(ts.display(tz))
-        } else {
-            self.aired_date().map(|d| d.to_string())
-        }
+    fn display_at(&self, tz: &TimeZone) -> Option<String> {
+        let ts = self.aired()?;
+        Some(ts.display(tz))
     }
 }
 
 impl HasAired for Episode {
-    fn aired_date(&self) -> Option<Date> {
-        self.aired_date
-    }
-    fn aired_timestamp(&self) -> Option<Timestamp> {
-        self.aired_timestamp
+    fn aired(&self) -> Option<Timestamp> {
+        self.aired
     }
 }
 
 impl HasAired for Pending {
-    fn aired_date(&self) -> Option<Date> {
-        self.aired_date
-    }
-    fn aired_timestamp(&self) -> Option<Timestamp> {
-        self.aired_timestamp
+    fn aired(&self) -> Option<Timestamp> {
+        self.aired
     }
 }
 
@@ -1454,6 +1511,7 @@ pub struct ListPendingResponse {
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct ListScheduleRequest {
+    pub tz: Option<String>,
     pub days: u32,
 }
 

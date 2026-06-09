@@ -1,7 +1,7 @@
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
-use api::HasAired;
+use api::{HasAired, TimeZone};
 
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{Route, SeriesDetailQuery};
@@ -12,6 +12,8 @@ pub(super) struct Dashboard {
     pending: Vec<api::Pending>,
     config: api::Config,
     page: usize,
+    tz: TimeZone,
+    _tz_handle: ContextHandle<TimeZone>,
     _setup: crate::SetupChannel,
     _broadcast: ws::Listener,
     _pending_req: ws::Request,
@@ -40,6 +42,7 @@ pub(super) enum Msg {
     SetConfigDone(Result<ws::Packet<api::SetConfig>, ws::Error>),
     SetPage(usize),
     Navigate(Route),
+    SetTz(TimeZone),
 }
 
 #[derive(Properties, PartialEq)]
@@ -61,11 +64,18 @@ impl Component for Dashboard {
         let _setup = crate::SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
+        let (tz, _tz_handle) = ctx
+            .link()
+            .context::<TimeZone>(ctx.link().callback(Msg::SetTz))
+            .expect("time zone not found");
+
         Self {
             channel: ws::Channel::default(),
             pending: Vec::new(),
             config: api::Config::default(),
             page: 0,
+            tz,
+            _tz_handle,
             _setup,
             _broadcast,
             _pending_req: ws::Request::default(),
@@ -249,6 +259,10 @@ impl Dashboard {
                 ctx.props().on_navigate.emit(route);
                 Ok(false)
             }
+            Msg::SetTz(tz) => {
+                self.tz = tz;
+                Ok(true)
+            }
         }
     }
 
@@ -312,11 +326,6 @@ impl Dashboard {
     }
 
     fn view_pending_item(&self, ctx: &Context<Self>, p: &api::Pending) -> Html {
-        let tz = ctx
-            .link()
-            .context::<crate::SystemTz>(Callback::noop())
-            .map(|(t, _)| t.get().clone())
-            .unwrap_or(jiff::tz::TimeZone::UTC);
         let pending_kind = p.kind.clone();
         let confirming_watch = self.confirming_watch.as_ref() == Some(&p.kind);
         let route = match p.kind {
@@ -346,16 +355,14 @@ impl Dashboard {
             None
         };
         let confirming_skip = self.confirming_skip == skip_ids;
-        let aired_timestamp = p.aired_timestamp;
-        let aired_date = p.aired_date;
+        let aired = p.aired;
         let label = p.label.clone();
 
         let actions = 'actions: {
             if confirming_watch {
                 break 'actions html! {
                     <MarkWatchedPicker
-                        {aired_timestamp}
-                        {aired_date}
+                        {aired}
                         on_confirm={ctx.link().callback(move |ts| Msg::MarkWatched(watched_kind, ts))}
                         on_cancel={ctx.link().callback(|_| Msg::CancelMarkWatch)}
                     />
@@ -408,7 +415,7 @@ impl Dashboard {
                             <span class="pending-label">{&p.label}</span>
                         }
 
-                        if let Some(s) = p.display_at(&tz) {
+                        if let Some(s) = p.display_at(&self.tz) {
                             <span class="pending-date">{s}</span>
                         }
                     </div>

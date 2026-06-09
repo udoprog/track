@@ -31,20 +31,15 @@ CREATE TABLE
         absolute_number INTEGER,
         name TEXT,
         overview TEXT,
-        aired_date INTEGER,
-        aired_timestamp INTEGER,
+        aired INTEGER,
         filename TEXT,
         remote_id TEXT,
         UNIQUE (series_id, season, number)
     );
 
-CREATE INDEX idx_episodes_aired_date ON episodes (aired_date)
+CREATE INDEX idx_episodes_aired ON episodes (aired)
 WHERE
-    aired_date IS NOT NULL;
-
-CREATE INDEX idx_episodes_aired_timestamp ON episodes (aired_timestamp)
-WHERE
-    aired_timestamp IS NOT NULL;
+    aired IS NOT NULL;
 
 CREATE TABLE
     movies (
@@ -98,10 +93,7 @@ CREATE TABLE
         episode_id INTEGER REFERENCES episodes (id) ON DELETE CASCADE,
         movie_id INTEGER REFERENCES movies (id) ON DELETE CASCADE,
         CHECK (
-            (
-                episode_id IS NULL
-                AND series_id IS NOT NULL
-            )
+            (series_id IS NOT NULL AND episode_id IS NOT NULL)
             OR (movie_id IS NOT NULL)
         )
     );

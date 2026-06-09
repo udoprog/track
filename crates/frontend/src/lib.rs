@@ -28,21 +28,6 @@ use self::settings::Settings;
 use self::setup_channel::SetupChannel;
 use self::watch_next::WatchNext;
 
-#[derive(Clone)]
-pub(crate) struct SystemTz(jiff::tz::TimeZone);
-
-impl SystemTz {
-    pub(crate) fn get(&self) -> &jiff::tz::TimeZone {
-        &self.0
-    }
-}
-
-impl PartialEq for SystemTz {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.iana_name() == other.0.iana_name()
-    }
-}
-
 use tracing::Level;
 use tracing_wasm::WASMLayerConfigBuilder;
 use wasm_bindgen::prelude::*;

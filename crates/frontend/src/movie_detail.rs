@@ -1,3 +1,4 @@
+use api::TimeZone;
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
@@ -17,6 +18,8 @@ pub(super) struct MovieDetail {
     confirm_remove_watch: Option<api::WatchedId>,
     syncing: bool,
     image_modal: Option<api::ImageKind>,
+    tz: TimeZone,
+    _tz_handle: ContextHandle<TimeZone>,
     _setup: crate::SetupChannel,
     _broadcast: ws::Listener,
     _movie_req: ws::Request,
@@ -75,6 +78,7 @@ pub(super) enum Msg {
     RemovePending,
     RemovePendingDone(Result<ws::Packet<api::RemovePending>, ws::Error>),
     Back,
+    SetTz(TimeZone),
 }
 
 #[derive(Properties, PartialEq)]
@@ -97,6 +101,11 @@ impl Component for MovieDetail {
         let _setup = crate::SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
+        let (tz, _tz_handle) = ctx
+            .link()
+            .context::<TimeZone>(ctx.link().callback(Msg::SetTz))
+            .expect("time zone not found");
+
         Self {
             channel: ws::Channel::default(),
             movie: None,
@@ -106,6 +115,8 @@ impl Component for MovieDetail {
             confirm_remove_watch: None,
             syncing: false,
             image_modal: None,
+            tz,
+            _tz_handle,
             _setup,
             _broadcast,
             _movie_req: ws::Request::default(),
@@ -515,6 +526,10 @@ impl MovieDetail {
                     .emit(Route::Movies(PagedQuery::default()));
                 Ok(false)
             }
+            Msg::SetTz(tz) => {
+                self.tz = tz;
+                Ok(true)
+            }
         }
     }
 
@@ -576,12 +591,6 @@ impl MovieDetail {
         let movie_id = ctx.props().movie_id;
         let link = ctx.link();
 
-        let tz = ctx
-            .link()
-            .context::<crate::SystemTz>(Callback::noop())
-            .map(|(t, _)| t.get().clone())
-            .unwrap_or(jiff::tz::TimeZone::UTC);
-
         let release_date = movie.release_date;
 
         let actions = 'actions: {
@@ -589,8 +598,7 @@ impl MovieDetail {
                 break 'actions html! {
                     <div class="row actions">
                         <MarkWatchedPicker
-                            aired_timestamp={None::<api::Timestamp>}
-                            aired_date={release_date}
+                            aired={release_date}
                             on_confirm={link.callback(Msg::MarkWatched)}
                             on_cancel={link.callback(|_| Msg::CancelMarkWatch)}
                         />
@@ -685,7 +693,7 @@ impl MovieDetail {
 
                     if let Some(ts) = movie.last_synced_at {
                         <span class="text-muted hide-mobile" title="Last synced at">
-                            {ts.display(&tz)}
+                            {ts.display(&self.tz)}
                         </span>
                     }
                 </div>
@@ -756,7 +764,7 @@ impl MovieDetail {
                                             <div class="table-entry">
                                                 <ConfirmDanger
                                                     prompt="Remove watch"
-                                                    label={w.timestamp.display(&tz)}
+                                                    label={w.timestamp.display(&self.tz)}
                                                     on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, wkind))}
                                                     on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
                                                 />
@@ -765,7 +773,7 @@ impl MovieDetail {
                                     } else {
                                         html! {
                                             <div class="table-entry text-muted">
-                                                <span class="fill">{w.timestamp.display(&tz)}</span>
+                                                <span class="fill">{w.timestamp.display(&self.tz)}</span>
                                                 <button class="btn-icon" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
                                                     <span class="icon x-mark" />
                                                 </button>

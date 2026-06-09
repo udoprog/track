@@ -3,7 +3,7 @@ use api::{Date, Image, ReleaseType, RemoteId, SeasonNumber, Timestamp};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
-const BASE: &str = "https://api.themoviedb.org/3";
+const BASE: &str = "https://api.themoviedb.org/3/";
 
 #[derive(Clone)]
 pub(crate) struct Client {
@@ -184,20 +184,22 @@ impl Client {
             .get_json(format!("tv/{id}?append_to_response=external_ids"), language)
             .await?;
 
-        let seasons = d
-            .seasons
-            .into_iter()
-            .map(|s| SeasonInfo {
+        let mut seasons = Vec::with_capacity(d.seasons.len());
+
+        for s in d.seasons {
+            seasons.push(SeasonInfo {
                 number: match s.season_number {
                     Some(n) if n > 0 => SeasonNumber::Number(n),
                     _ => SeasonNumber::Specials,
                 },
-                air_date: opt_date(s.air_date.as_deref()),
+                air_date: opt_date(s.air_date.as_deref())
+                    .map(|d| d.to_timestamp_at_midnight_utc())
+                    .transpose()?,
                 name: s.name.filter(|s| !s.is_empty()),
                 overview: s.overview.unwrap_or_default(),
                 poster: opt_image(s.poster_path.as_deref()),
             })
-            .collect();
+        }
 
         let mut remotes = vec![RemoteId::tmdb(id)];
         if let Some(tvdb_id) = d.external_ids.tvdb_id {
@@ -212,7 +214,9 @@ impl Client {
         Ok(SeriesInfo {
             title: d.name.or(d.original_name),
             overview: d.overview,
-            first_air_date: opt_date(d.first_air_date.as_deref()),
+            first_air_date: opt_date(d.first_air_date.as_deref())
+                .map(|d| d.to_timestamp_at_midnight_utc())
+                .transpose()?,
             poster: opt_image(d.poster_path.as_deref()),
             fanart: opt_image(d.backdrop_path.as_deref()),
             seasons,
@@ -227,7 +231,7 @@ impl Client {
         language: Option<&str>,
     ) -> Result<Vec<EpisodeInfo>> {
         #[derive(Deserialize)]
-        struct EpDetail {
+        struct EpisodeResponse {
             id: u32,
             #[serde(default)]
             episode_number: u32,
@@ -240,13 +244,14 @@ impl Client {
             #[serde(default)]
             still_path: Option<String>,
         }
+
         #[derive(Deserialize)]
-        struct SeasonResp {
+        struct SeasonResponse {
             #[serde(default)]
-            episodes: Vec<EpDetail>,
+            episodes: Vec<EpisodeResponse>,
         }
 
-        let resp: SeasonResp = self
+        let resp: SeasonResponse = self
             .get_json(format!("tv/{series_id}/season/{season_number}"), language)
             .await?;
 
@@ -256,19 +261,23 @@ impl Client {
             SeasonNumber::Number(season_number)
         };
 
-        Ok(resp
-            .episodes
-            .into_iter()
-            .map(|e| EpisodeInfo {
+        let mut updates = Vec::new();
+
+        for e in resp.episodes {
+            updates.push(EpisodeInfo {
                 season,
                 number: e.episode_number,
                 name: e.name.filter(|s| !s.is_empty()),
                 overview: e.overview.unwrap_or_default(),
-                aired_date: opt_date(e.air_date.as_deref()),
+                aired: opt_date(e.air_date.as_deref())
+                    .map(|d| d.to_timestamp_at_midnight_utc())
+                    .transpose()?,
                 filename: opt_image(e.still_path.as_deref()),
                 remote_id: RemoteId::tmdb(e.id),
-            })
-            .collect())
+            });
+        }
+
+        Ok(updates)
     }
 
     pub(crate) async fn fetch_movie_releases(&self, id: u32) -> Result<Vec<MovieReleaseInfo>> {
@@ -372,7 +381,9 @@ impl Client {
         Ok(MovieInfo {
             title: d.title.or(d.original_title),
             overview: d.overview,
-            release_date: opt_date(d.release_date.as_deref()),
+            release_date: opt_date(d.release_date.as_deref())
+                .map(|d| d.to_timestamp_at_midnight_utc())
+                .transpose()?,
             poster: opt_image(d.poster_path.as_deref()),
             fanart: opt_image(d.backdrop_path.as_deref()),
             remotes,
@@ -385,7 +396,7 @@ impl Client {
 pub(crate) struct SeriesInfo {
     pub title: Option<String>,
     pub overview: Option<String>,
-    pub first_air_date: Option<Date>,
+    pub first_air_date: Option<Timestamp>,
     pub poster: Option<Image>,
     pub fanart: Option<Image>,
     pub seasons: Vec<SeasonInfo>,
@@ -394,7 +405,7 @@ pub(crate) struct SeriesInfo {
 
 pub(crate) struct SeasonInfo {
     pub number: SeasonNumber,
-    pub air_date: Option<Date>,
+    pub air_date: Option<Timestamp>,
     pub name: Option<String>,
     pub overview: String,
     pub poster: Option<Image>,
@@ -405,7 +416,7 @@ pub(crate) struct EpisodeInfo {
     pub number: u32,
     pub name: Option<String>,
     pub overview: String,
-    pub aired_date: Option<Date>,
+    pub aired: Option<Timestamp>,
     pub filename: Option<Image>,
     pub remote_id: RemoteId,
 }
@@ -413,7 +424,7 @@ pub(crate) struct EpisodeInfo {
 pub(crate) struct MovieInfo {
     pub title: Option<String>,
     pub overview: Option<String>,
-    pub release_date: Option<Date>,
+    pub release_date: Option<Timestamp>,
     pub poster: Option<Image>,
     pub fanart: Option<Image>,
     pub remotes: Vec<RemoteId>,

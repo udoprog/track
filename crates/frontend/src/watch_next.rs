@@ -1,15 +1,18 @@
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
-use api::HasAired;
+use api::{HasAired, TimeZone};
 
+use crate::SetupChannel;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{Route, SeriesDetailQuery};
 
 pub(super) struct WatchNext {
     channel: ws::Channel,
     pending: Vec<api::Pending>,
-    _setup: crate::SetupChannel,
+    tz: TimeZone,
+    _tz_handle: ContextHandle<TimeZone>,
+    _setup: SetupChannel,
     _broadcast: ws::Listener,
     _list_req: ws::Request,
     _mark_req: ws::Request,
@@ -22,6 +25,7 @@ pub(super) enum Msg {
     MarkWatched(api::WatchedKind),
     MarkWatchedDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
     Navigate(Route),
+    SetTz(TimeZone),
 }
 
 #[derive(Properties, PartialEq)]
@@ -40,12 +44,19 @@ impl Component for WatchNext {
             .context::<ws::Handle>(Callback::noop())
             .expect("ws::Handle context not found");
 
-        let _setup = crate::SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
+        let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
+
+        let (tz, _tz_handle) = ctx
+            .link()
+            .context::<TimeZone>(ctx.link().callback(Msg::SetTz))
+            .expect("time zone not found");
 
         Self {
             channel: ws::Channel::default(),
             pending: Vec::new(),
+            tz,
+            _tz_handle,
             _setup,
             _broadcast,
             _list_req: ws::Request::default(),
@@ -142,6 +153,10 @@ impl WatchNext {
                 ctx.props().on_navigate.emit(route);
                 Ok(false)
             }
+            Msg::SetTz(tz) => {
+                self.tz = tz;
+                Ok(true)
+            }
         }
     }
 
@@ -155,11 +170,6 @@ impl WatchNext {
     }
 
     fn view_row(&self, ctx: &Context<Self>, p: &api::Pending) -> Html {
-        let tz = ctx
-            .link()
-            .context::<crate::SystemTz>(Callback::noop())
-            .map(|(t, _)| t.get().clone())
-            .unwrap_or(jiff::tz::TimeZone::UTC);
         let kind = p.kind.clone();
 
         let route = match p.kind {
@@ -199,7 +209,7 @@ impl WatchNext {
                                 {&p.label}
                             </span>
 
-                            if let Some(s) = p.display_at(&tz) {
+                            if let Some(s) = p.display_at(&self.tz) {
                                 <span class="text-muted">{s}</span>
                             }
                         </div>

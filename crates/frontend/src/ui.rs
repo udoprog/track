@@ -93,17 +93,14 @@ pub(super) fn ConfirmDanger(props: &ConfirmDangerProps) -> Html {
 /// Renders as a `row-fill fill` that can replace the watch button's action area.
 #[derive(Properties, PartialEq)]
 pub(super) struct MarkWatchedPickerProps {
-    pub(super) aired_timestamp: Option<api::Timestamp>,
-    pub(super) aired_date: Option<api::Date>,
+    pub(super) aired: Option<api::Timestamp>,
     pub(super) on_confirm: Callback<Option<api::Timestamp>>,
     pub(super) on_cancel: Callback<()>,
 }
 
 #[function_component]
 pub(super) fn MarkWatchedPicker(props: &MarkWatchedPickerProps) -> Html {
-    let aired_ts = props
-        .aired_timestamp
-        .or_else(|| props.aired_date.map(|d| d.to_timestamp()));
+    let aired = props.aired;
 
     let on_now = {
         let cb = props.on_confirm.clone();
@@ -113,7 +110,7 @@ pub(super) fn MarkWatchedPicker(props: &MarkWatchedPickerProps) -> Html {
         })
     };
 
-    let on_aired = aired_ts.map(|ts| {
+    let on_aired = aired.map(|ts| {
         let cb = props.on_confirm.clone();
         Callback::from(move |e: MouseEvent| {
             e.stop_propagation();

@@ -68,9 +68,9 @@ pub(crate) async fn sync_series(
         }
     }
 
-    pending.fill_for_series(series_id).await?;
-    db.set_series_synced_at(series_id, api::Timestamp::now())
-        .await?;
+    let now = api::Timestamp::now();
+    pending.fill_for_series(series_id, now).await?;
+    db.set_series_synced_at(series_id, now).await?;
     broadcast.broadcast_event(api::AppEventKind::PendingChanged);
     info!(series_id = %series_id, "sync complete");
     Ok(())
@@ -94,9 +94,7 @@ async fn sync_series_tmdb(
     db.update_series(
         series_id,
         info.title.as_deref(),
-        info.first_air_date
-            .as_ref()
-            .or(series.first_air_date.as_ref()),
+        info.first_air_date.or(series.first_air_date),
         info.overview.as_deref(),
         series.tracked,
     )
@@ -133,7 +131,7 @@ async fn sync_series_tmdb(
         db.upsert_season(
             series_id,
             season_info.number,
-            season_info.air_date.as_ref(),
+            season_info.air_date,
             season_info.name.as_deref(),
             &season_info.overview,
             season_info.poster.as_ref(),
@@ -158,7 +156,7 @@ async fn sync_series_tmdb(
                 None,
                 ep.name.as_deref(),
                 &ep.overview,
-                ep.aired_date.as_ref(),
+                ep.aired,
                 ep.filename.as_ref(),
                 Some(&ep.remote_id),
             )
@@ -199,7 +197,7 @@ async fn sync_series_tvdb(
     db.update_series(
         series_id,
         info.title.as_deref(),
-        series.first_air_date.as_ref(),
+        series.first_air_date,
         info.overview.as_deref(),
         series.tracked,
     )
@@ -236,15 +234,16 @@ async fn sync_series_tvdb(
     info!(count = episodes.len(), "got episodes from TVDB");
 
     let mut seasons_seen: HashSet<SeasonNumber> = HashSet::new();
-    let mut season_air_dates: HashMap<SeasonNumber, api::Date> = HashMap::new();
+    let mut season_air_dates: HashMap<SeasonNumber, api::Timestamp> = HashMap::new();
 
     for ep in &episodes {
         seasons_seen.insert(ep.season);
 
-        if let Some(date) = ep.aired_date {
-            let entry = season_air_dates.entry(ep.season).or_insert(date);
-            if date < *entry {
-                *entry = date;
+        if let Some(aired) = ep.aired {
+            let entry = season_air_dates.entry(ep.season).or_insert(aired);
+
+            if aired < *entry {
+                *entry = aired;
             }
         }
 
@@ -255,7 +254,7 @@ async fn sync_series_tvdb(
             ep.absolute_number,
             ep.name.as_deref(),
             &ep.overview,
-            ep.aired_date.as_ref(),
+            ep.aired,
             ep.filename.as_ref(),
             Some(&ep.remote_id),
         )
@@ -263,7 +262,7 @@ async fn sync_series_tvdb(
     }
 
     for &season in &seasons_seen {
-        let air_date = season_air_dates.get(&season);
+        let air_date = season_air_dates.get(&season).copied();
 
         db.upsert_season(series_id, season, air_date, None, "", None)
             .await?;
@@ -308,7 +307,7 @@ pub(crate) async fn sync_movie(
             db.update_movie(
                 movie_id,
                 info.title.as_deref(),
-                info.release_date.as_ref().or(movie.release_date.as_ref()),
+                info.release_date.or(movie.release_date),
                 info.overview.as_deref(),
             )
             .await?;
@@ -406,8 +405,7 @@ async fn enrich_with_tvmaze(
         "updating episodes with exact airtimes"
     );
 
-    db.update_episodes_aired_timestamp(series_id, updates)
-        .await?;
+    db.update_episodes_aired(series_id, updates).await?;
 
     for season in seasons_updated {
         broadcast.broadcast_event(api::AppEventKind::EpisodesChanged { series_id, season });

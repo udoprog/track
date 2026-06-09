@@ -1,23 +1,20 @@
+use api::TimeZone;
+use jiff::tz::TimeZone as JiffTimeZone;
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
-use crate::Dashboard;
-use crate::MovieDetail;
-use crate::MoviesList;
-use crate::Queue;
-use crate::Search;
-use crate::SeriesDetail;
-use crate::SeriesList;
-use crate::Settings;
-use crate::WatchNext;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{PagedQuery, Route};
 use crate::setup_channel::SetupChannel;
+use crate::{
+    Dashboard, MovieDetail, MoviesList, Queue, Search, SeriesDetail, SeriesList, Settings,
+    WatchNext,
+};
 
 pub(super) struct App {
     channel: ws::Channel,
     ws: ws::Service,
-    tz: crate::SystemTz,
+    tz: TimeZone,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
     _config_req: ws::Request,
@@ -49,6 +46,7 @@ impl Component for App {
             .build();
 
         let _setup = SetupChannel::new(ws.handle().clone(), ctx.link().callback(Msg::Channel));
+
         let _broadcast = ws
             .handle()
             .clone()
@@ -57,7 +55,7 @@ impl Component for App {
         Self {
             channel: ws::Channel::default(),
             ws,
-            tz: crate::SystemTz(jiff::tz::TimeZone::system()),
+            tz: TimeZone::from_jiff(JiffTimeZone::system()),
             _setup,
             _broadcast,
             _config_req: ws::Request::default(),
@@ -79,7 +77,7 @@ impl Component for App {
         let on_nav = |route: Route| link.callback(move |_| Msg::Navigate(route.clone()));
 
         html! {
-            <ContextProvider<crate::SystemTz> context={self.tz.clone()}>
+            <ContextProvider<TimeZone> context={self.tz.clone()}>
             <ContextProvider<ws::Handle> context={self.ws.handle()}>
             <div class="app">
                 <div class="toolbar">
@@ -125,7 +123,7 @@ impl Component for App {
                 </div>
             </div>
             </ContextProvider<ws::Handle>>
-            </ContextProvider<crate::SystemTz>>
+            </ContextProvider<TimeZone>>
         }
     }
 }
@@ -147,13 +145,16 @@ impl App {
             }
             Msg::AppBroadcast(result) => {
                 let event = result?.decode_event()?;
+
                 if let api::AppEventKind::ConfigChanged { config } = event.kind {
                     let new_tz = Self::tz_from_config(&config);
+
                     if new_tz != self.tz {
                         self.tz = new_tz;
                         return Ok(true);
                     }
                 }
+
                 Ok(false)
             }
             Msg::ConfigLoaded(result) => {
@@ -177,13 +178,14 @@ impl App {
         }
     }
 
-    fn tz_from_config(config: &api::Config) -> crate::SystemTz {
+    fn tz_from_config(config: &api::Config) -> TimeZone {
         if !config.timezone.is_empty() {
-            if let Ok(tz) = jiff::tz::TimeZone::get(&config.timezone) {
-                return crate::SystemTz(tz);
+            if let Ok(tz) = JiffTimeZone::get(&config.timezone) {
+                return TimeZone::from_jiff(tz);
             }
         }
-        crate::SystemTz(jiff::tz::TimeZone::system())
+
+        TimeZone::from_jiff(JiffTimeZone::system())
     }
 
     fn view_page(&self, ctx: &Context<Self>) -> Html {
