@@ -88,7 +88,7 @@ impl Client {
             .map(|r| SearchSeriesResult {
                 remote_id: RemoteId::tmdb(r.id),
                 title: r.name.or(r.original_name),
-                overview: r.overview,
+                overview: r.overview.filter(|s| !s.trim().is_empty()),
                 first_air_date: opt_date(r.first_air_date.as_deref()),
                 poster: opt_image(r.poster_path.as_deref()),
             })
@@ -132,7 +132,7 @@ impl Client {
             .map(|r| SearchMovieResult {
                 remote_id: RemoteId::tmdb(r.id),
                 title: r.title.or(r.original_title),
-                overview: r.overview,
+                overview: r.overview.filter(|s| !s.trim().is_empty()),
                 release_date: opt_date(r.release_date.as_deref()),
                 poster: opt_image(r.poster_path.as_deref()),
             })
@@ -153,6 +153,7 @@ impl Client {
             #[serde(default)]
             poster_path: Option<String>,
         }
+
         #[derive(Deserialize, Default)]
         struct ExternalIds {
             #[serde(default)]
@@ -160,6 +161,7 @@ impl Client {
             #[serde(default)]
             imdb_id: Option<String>,
         }
+
         #[derive(Deserialize)]
         struct Details {
             #[serde(default)]
@@ -195,16 +197,18 @@ impl Client {
                 air_date: opt_date(s.air_date.as_deref())
                     .map(|d| d.to_timestamp_at_midnight_utc())
                     .transpose()?,
-                name: s.name.filter(|s| !s.is_empty()),
-                overview: s.overview.unwrap_or_default(),
+                name: s.name.filter(|s| !s.trim().is_empty()),
+                overview: s.overview.filter(|s| !s.trim().is_empty()),
                 poster: opt_image(s.poster_path.as_deref()),
             })
         }
 
         let mut remotes = vec![RemoteId::tmdb(id)];
+
         if let Some(tvdb_id) = d.external_ids.tvdb_id {
             remotes.push(RemoteId::tvdb(tvdb_id));
         }
+
         if let Some(ref imdb_id) = d.external_ids.imdb_id {
             if !imdb_id.is_empty() {
                 remotes.push(RemoteId::imdb(imdb_id));
@@ -230,7 +234,7 @@ impl Client {
         season_number: u32,
         language: Option<&str>,
     ) -> Result<Vec<EpisodeInfo>> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         struct EpisodeResponse {
             id: u32,
             #[serde(default)]
@@ -264,11 +268,13 @@ impl Client {
         let mut updates = Vec::new();
 
         for e in resp.episodes {
+            tracing::warn!(?e);
+
             updates.push(EpisodeInfo {
                 season,
                 number: e.episode_number,
                 name: e.name.filter(|s| !s.is_empty()),
-                overview: e.overview.unwrap_or_default(),
+                overview: e.overview,
                 aired: opt_date(e.air_date.as_deref())
                     .map(|d| d.to_timestamp_at_midnight_utc())
                     .transpose()?,
@@ -407,7 +413,7 @@ pub(crate) struct SeasonInfo {
     pub number: SeasonNumber,
     pub air_date: Option<Timestamp>,
     pub name: Option<String>,
-    pub overview: String,
+    pub overview: Option<String>,
     pub poster: Option<Image>,
 }
 
@@ -415,7 +421,7 @@ pub(crate) struct EpisodeInfo {
     pub season: SeasonNumber,
     pub number: u32,
     pub name: Option<String>,
-    pub overview: String,
+    pub overview: Option<String>,
     pub aired: Option<Timestamp>,
     pub filename: Option<Image>,
     pub remote_id: RemoteId,

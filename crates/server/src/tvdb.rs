@@ -225,8 +225,8 @@ impl Client {
                     },
                     number: row.aired_episode_number,
                     absolute_number: row.absolute_number,
-                    name: row.episode_name.filter(|s| !s.is_empty()),
-                    overview: row.overview.unwrap_or_default(),
+                    name: row.episode_name.filter(|s| !s.trim().is_empty()),
+                    overview: row.overview.filter(|s| !s.trim().is_empty()),
                     aired: opt_date(row.first_aired.as_deref())
                         .map(|d| d.to_timestamp_at_midnight_utc())
                         .transpose()?,
@@ -261,7 +261,7 @@ pub(crate) struct EpisodeInfo {
     pub number: u32,
     pub absolute_number: Option<u32>,
     pub name: Option<String>,
-    pub overview: String,
+    pub overview: Option<String>,
     pub aired: Option<Timestamp>,
     pub filename: Option<Image>,
     pub remote_id: RemoteId,

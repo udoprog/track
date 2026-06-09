@@ -876,11 +876,11 @@ impl Database {
         number: SeasonNumber,
         air_date: Option<Timestamp>,
         name: Option<&str>,
-        overview: &str,
+        overview: Option<&str>,
         poster: Option<&Image>,
     ) -> Result<api::Season> {
         let name = name.map(str::to_owned);
-        let overview = overview.to_owned();
+        let overview = overview.map(str::to_owned);
         let poster = poster.cloned();
         let mut s = self.inner.clone().lock_owned().await;
 
@@ -890,7 +890,7 @@ impl Database {
                 number.to_u32(),
                 air_date.as_ref(),
                 name.as_deref(),
-                &overview[..],
+                overview.as_deref(),
                 poster.as_ref(),
             ))?;
             let r = s
@@ -963,13 +963,13 @@ impl Database {
         number: u32,
         absolute_number: Option<u32>,
         name: Option<&str>,
-        overview: &str,
+        overview: Option<&str>,
         aired: Option<Timestamp>,
         filename: Option<&Image>,
         remote_id: Option<&RemoteId>,
     ) -> Result<api::Episode> {
         let name = name.map(str::to_owned);
-        let overview = overview.to_owned();
+        let overview = overview.map(str::to_owned);
         let filename = filename.cloned();
         let remote_id = remote_id.cloned();
         let mut s = self.inner.clone().lock_owned().await;
@@ -981,7 +981,7 @@ impl Database {
                 number as i64,
                 absolute_number.map(|n| n as i64),
                 name.as_deref(),
-                &overview[..],
+                overview.as_deref(),
                 aired.as_ref(),
                 filename.as_ref(),
                 remote_id.as_ref(),

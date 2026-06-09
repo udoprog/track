@@ -68,7 +68,7 @@ struct YamlSeason {
     #[serde(default)]
     name: Option<String>,
     #[serde(default)]
-    overview: String,
+    overview: Option<String>,
     #[serde(default)]
     graphics: YamlSeasonGraphics,
 }
@@ -85,7 +85,7 @@ struct YamlEpisode {
     #[serde(default)]
     name: Option<String>,
     #[serde(default)]
-    overview: String,
+    overview: Option<String>,
     #[serde(default)]
     absolute_number: Option<u32>,
     #[serde(default)]
@@ -484,8 +484,8 @@ async fn main() -> Result<()> {
                     series_id,
                     season.number.into(),
                     air_date,
-                    season.name.as_deref(),
-                    &season.overview,
+                    season.name.as_deref().filter(|s| !s.trim().is_empty()),
+                    season.overview.as_deref().filter(|s| !s.trim().is_empty()),
                     image(season.graphics.poster.as_ref()).as_ref(),
                 )
                 .await
@@ -511,8 +511,8 @@ async fn main() -> Result<()> {
                         ep.season.into(),
                         ep.number,
                         ep.absolute_number,
-                        ep.name.as_deref(),
-                        &ep.overview,
+                        ep.name.as_deref().filter(|s| !s.trim().is_empty()),
+                        ep.overview.as_deref().filter(|s| !s.trim().is_empty()),
                         aired,
                         image(ep.graphics.filename.as_ref()).as_ref(),
                         remote_id(ep.remote_id.as_ref()).as_ref(),

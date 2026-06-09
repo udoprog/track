@@ -133,7 +133,7 @@ async fn sync_series_tmdb(
             season_info.number,
             season_info.air_date,
             season_info.name.as_deref(),
-            &season_info.overview,
+            season_info.overview.as_deref(),
             season_info.poster.as_ref(),
         )
         .await?;
@@ -155,7 +155,7 @@ async fn sync_series_tmdb(
                 ep.number,
                 None,
                 ep.name.as_deref(),
-                &ep.overview,
+                ep.overview.as_deref(),
                 ep.aired,
                 ep.filename.as_ref(),
                 Some(&ep.remote_id),
@@ -253,7 +253,7 @@ async fn sync_series_tvdb(
             ep.number,
             ep.absolute_number,
             ep.name.as_deref(),
-            &ep.overview,
+            ep.overview.as_deref(),
             ep.aired,
             ep.filename.as_ref(),
             Some(&ep.remote_id),
@@ -264,7 +264,7 @@ async fn sync_series_tvdb(
     for &season in &seasons_seen {
         let air_date = season_air_dates.get(&season).copied();
 
-        db.upsert_season(series_id, season, air_date, None, "", None)
+        db.upsert_season(series_id, season, air_date, None, None, None)
             .await?;
 
         broadcast.broadcast_event(api::AppEventKind::EpisodesChanged { series_id, season });
