@@ -7,6 +7,38 @@ use yew::prelude::*;
 use crate::error::{CustomContext, Error, Message};
 
 #[derive(Default, Debug, Clone, PartialEq)]
+pub(super) struct DashboardQuery {
+    pub(super) page: usize,
+}
+
+impl DashboardQuery {
+    fn to_query_string(&self) -> String {
+        let mut s = form_urlencoded::Serializer::new(String::new());
+
+        if self.page > 0 {
+            s.append_pair("page", &self.page.to_string());
+        }
+
+        s.finish()
+    }
+
+    fn from_search(search: &str) -> Self {
+        let mut this = Self::default();
+
+        for (key, value) in form_urlencoded::parse(search.as_bytes()) {
+            match key.as_ref() {
+                "page" => {
+                    this.page = value.parse::<usize>().unwrap_or(0);
+                }
+                _ => continue,
+            }
+        }
+
+        this
+    }
+}
+
+#[derive(Default, Debug, Clone, PartialEq)]
 pub(super) struct PagedQuery {
     pub(super) page: usize,
     pub(super) filter: String,
@@ -78,10 +110,9 @@ impl SeriesDetailQuery {
     }
 }
 
-#[derive(Default, Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(super) enum Route {
-    #[default]
-    Dashboard,
+    Dashboard(DashboardQuery),
     Queue,
     WatchNext,
     Series(PagedQuery),
@@ -92,10 +123,25 @@ pub(super) enum Route {
     Settings,
 }
 
+impl Default for Route {
+    #[inline]
+    fn default() -> Self {
+        Route::Dashboard(DashboardQuery::default())
+    }
+}
+
 impl fmt::Display for Route {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Route::Dashboard => f.write_str("/"),
+            Route::Dashboard(q) => {
+                let qs = q.to_query_string();
+
+                if qs.is_empty() {
+                    f.write_str("/")
+                } else {
+                    write!(f, "/?{qs}")
+                }
+            }
             Route::Queue => f.write_str("/queue"),
             Route::WatchNext => f.write_str("/watch-next"),
             Route::Series(q) => {
@@ -135,6 +181,7 @@ impl fmt::Display for Route {
 impl Route {
     fn from_location(path: &str, search: &str) -> Self {
         let mut parts = path.split('/').filter(|s| !s.is_empty());
+        let search = search.strip_prefix('?').unwrap_or(search);
 
         match parts.next() {
             Some("queue") => Route::Queue,
@@ -158,7 +205,7 @@ impl Route {
             },
             Some("search") => Route::Search,
             Some("settings") => Route::Settings,
-            _ => Route::Dashboard,
+            _ => Route::Dashboard(DashboardQuery::from_search(search)),
         }
     }
 }

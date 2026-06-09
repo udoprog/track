@@ -26,6 +26,7 @@ impl Component for Root {
         match RouterState::new() {
             Ok(r) => {
                 let _history_listener = r.on_change(ctx.link().callback(|()| Msg::PopState));
+
                 Self {
                     router: Some(r),
                     _history_listener: Some(_history_listener),

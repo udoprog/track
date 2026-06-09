@@ -4,7 +4,7 @@ use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{PagedQuery, Route};
+use crate::router::{DashboardQuery, PagedQuery, Route};
 use crate::setup_channel::SetupChannel;
 use crate::{
     Dashboard, MovieDetail, MoviesList, Queue, Search, SeriesDetail, SeriesList, Settings,
@@ -87,7 +87,7 @@ impl Component for App {
                         </div>
 
                         <div class="row end">
-                            <button onclick={on_nav(Route::Dashboard)} class="btn" title="Dashboard">
+                            <button onclick={on_nav(Route::Dashboard(DashboardQuery::default()))} class="btn" title="Dashboard">
                                 <span class="icon-inline"><span class="icon rectangle-stack" /></span>
                                 <span class="hide-mobile">{"Dashboard"}</span>
                             </button>
@@ -191,8 +191,11 @@ impl App {
     fn view_page(&self, ctx: &Context<Self>) -> Html {
         let onerror = ctx.props().onerror.clone();
         let on_navigate = ctx.link().callback(Msg::Navigate);
+
         match &ctx.props().route {
-            Route::Dashboard => html! { <Dashboard {onerror} {on_navigate} /> },
+            Route::Dashboard(query) => {
+                html! { <Dashboard {onerror} {on_navigate} page={query.page} /> }
+            }
             Route::Queue => html! { <Queue {onerror} {on_navigate} /> },
             Route::WatchNext => html! { <WatchNext {onerror} {on_navigate} /> },
             Route::Series(query) => html! {

@@ -4,14 +4,13 @@ use yew::prelude::*;
 use api::{HasAired, TimeZone};
 
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{Route, SeriesDetailQuery};
+use crate::router::{DashboardQuery, Route, SeriesDetailQuery};
 use crate::ui::{ConfirmDanger, MarkWatchedPicker, PaginationButtons};
 
 pub(super) struct Dashboard {
     channel: ws::Channel,
     pending: Vec<api::Pending>,
     config: api::Config,
-    page: usize,
     tz: TimeZone,
     _tz_handle: ContextHandle<TimeZone>,
     _setup: crate::SetupChannel,
@@ -49,6 +48,7 @@ pub(super) enum Msg {
 pub(super) struct Props {
     pub(super) onerror: Callback<Error>,
     pub(super) on_navigate: Callback<Route>,
+    pub(super) page: usize,
 }
 
 impl Component for Dashboard {
@@ -73,7 +73,6 @@ impl Component for Dashboard {
             channel: ws::Channel::default(),
             pending: Vec::new(),
             config: api::Config::default(),
-            page: 0,
             tz,
             _tz_handle,
             _setup,
@@ -142,7 +141,7 @@ impl Dashboard {
                 match event.kind {
                     api::AppEventKind::ConfigChanged { config } => {
                         self.config = config;
-                        self.clamp_page();
+                        self.clamp_page(ctx);
                         Ok(true)
                     }
                     api::AppEventKind::PendingChanged
@@ -166,7 +165,8 @@ impl Dashboard {
                     .decode()
                     .context(Message::LoadingPending)?
                     .pending;
-                self.clamp_page();
+
+                self.clamp_page(ctx);
                 Ok(true)
             }
             Msg::ConfigLoaded(result) => {
@@ -175,7 +175,8 @@ impl Dashboard {
                     .decode()
                     .context(Message::LoadingPending)?
                     .config;
-                self.clamp_page();
+
+                self.clamp_page(ctx);
                 Ok(true)
             }
             Msg::AskMarkWatched(pending_kind) => {
@@ -234,9 +235,14 @@ impl Dashboard {
                 Ok(false)
             }
             Msg::AdjustPageSize(delta) => {
-                let new_size = (self.config.dashboard_page as i32 + delta).max(1) as u32;
+                let new_size = self
+                    .config
+                    .dashboard_page
+                    .saturating_add_signed(delta)
+                    .max(1) as u32;
                 self.config.dashboard_page = new_size;
-                self.clamp_page();
+                self.clamp_page(ctx);
+
                 self._set_config_req = self
                     .channel
                     .request()
@@ -252,7 +258,9 @@ impl Dashboard {
                 Ok(false)
             }
             Msg::SetPage(p) => {
-                self.page = p;
+                ctx.props()
+                    .on_navigate
+                    .emit(Route::Dashboard(DashboardQuery { page: p }));
                 Ok(true)
             }
             Msg::Navigate(route) => {
@@ -266,9 +274,15 @@ impl Dashboard {
         }
     }
 
-    fn clamp_page(&mut self) {
+    fn clamp_page(&self, ctx: &Context<Self>) {
         let total_pages = self.pending.len().div_ceil(self.page_size()).max(1);
-        self.page = self.page.min(total_pages - 1);
+        let page = ctx.props().page.min(total_pages - 1);
+
+        if page != ctx.props().page {
+            ctx.props()
+                .on_navigate
+                .emit(Route::Dashboard(DashboardQuery { page }));
+        }
     }
 
     fn load_pending(&mut self, ctx: &Context<Self>) {
@@ -293,7 +307,7 @@ impl Dashboard {
         let page_size = self.page_size();
         let total = self.pending.len();
         let total_pages = total.div_ceil(page_size).max(1);
-        let page = self.page.min(total_pages - 1);
+        let page = ctx.props().page.min(total_pages - 1);
         let link = ctx.link();
 
         html! {
