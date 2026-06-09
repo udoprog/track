@@ -3,6 +3,8 @@ use std::sync::Arc;
 use anyhow::{Context as _, Result};
 use parking_lot::Mutex;
 
+use crate::{tmdb, tvdb};
+
 /// Holds tmdb and tvdb clients, constructed only when the relevant API key is
 /// configured. Call `configure` on startup and whenever `SetConfig` is handled.
 #[derive(Clone)]
@@ -13,8 +15,8 @@ pub(crate) struct RemoteClients {
 
 #[derive(Default)]
 struct Inner {
-    tmdb: Option<crate::tmdb::Client>,
-    tvdb: Option<crate::tvdb::Client>,
+    tmdb: Option<tmdb::Client>,
+    tvdb: Option<tvdb::Client>,
     tvmaze: Option<crate::tvmaze::Client>,
 }
 
@@ -36,7 +38,7 @@ impl RemoteClients {
         inner.tmdb = if config.tmdb_api_key.is_empty() {
             None
         } else {
-            Some(crate::tmdb::Client::new(
+            Some(tmdb::Client::new(
                 self.http.clone(),
                 config.tmdb_api_key.clone(),
             )?)
@@ -45,7 +47,7 @@ impl RemoteClients {
         inner.tvdb = if config.tvdb_legacy_apikey.is_empty() {
             None
         } else {
-            Some(crate::tvdb::Client::new(
+            Some(tvdb::Client::new(
                 self.http.clone(),
                 config.tvdb_legacy_apikey.clone(),
             )?)
@@ -58,11 +60,11 @@ impl RemoteClients {
         Ok(())
     }
 
-    fn tmdb(&self) -> Option<crate::tmdb::Client> {
+    fn tmdb(&self) -> Option<tmdb::Client> {
         self.inner.lock().tmdb.clone()
     }
 
-    fn tvdb(&self) -> Option<crate::tvdb::Client> {
+    fn tvdb(&self) -> Option<tvdb::Client> {
         self.inner.lock().tvdb.clone()
     }
 
@@ -130,7 +132,7 @@ impl RemoteClients {
         &self,
         id: u32,
         language: Option<&str>,
-    ) -> Result<crate::tmdb::SeriesInfo> {
+    ) -> Result<tmdb::SeriesInfo> {
         self.tmdb()
             .context("no tmdb client configured")?
             .fetch_series(id, language)
@@ -142,7 +144,7 @@ impl RemoteClients {
         series_id: u32,
         season: u32,
         language: Option<&str>,
-    ) -> Result<Vec<crate::tmdb::EpisodeInfo>> {
+    ) -> Result<Vec<tmdb::EpisodeInfo>> {
         self.tmdb()
             .context("no tmdb client configured")?
             .fetch_season_episodes(series_id, season, language)
@@ -153,7 +155,7 @@ impl RemoteClients {
         &self,
         id: u32,
         language: Option<&str>,
-    ) -> Result<crate::tmdb::MovieInfo> {
+    ) -> Result<tmdb::MovieInfo> {
         self.tmdb()
             .context("no tmdb client configured")?
             .fetch_movie(id, language)
@@ -163,7 +165,7 @@ impl RemoteClients {
     pub(crate) async fn fetch_tmdb_movie_releases(
         &self,
         id: u32,
-    ) -> Result<Vec<crate::tmdb::MovieReleaseInfo>> {
+    ) -> Result<Vec<tmdb::MovieReleaseInfo>> {
         self.tmdb()
             .context("no tmdb client configured")?
             .fetch_movie_releases(id)
@@ -174,7 +176,7 @@ impl RemoteClients {
         &self,
         id: u32,
         language: Option<&str>,
-    ) -> Result<crate::tvdb::SeriesInfo> {
+    ) -> Result<tvdb::SeriesInfo> {
         self.tvdb()
             .context("no tvdb client configured")?
             .fetch_series(id, language)
@@ -185,7 +187,7 @@ impl RemoteClients {
         &self,
         series_id: u32,
         language: Option<&str>,
-    ) -> Result<Vec<crate::tvdb::EpisodeInfo>> {
+    ) -> Result<Vec<tvdb::EpisodeInfo>> {
         self.tvdb()
             .context("no tvdb client configured")?
             .fetch_episodes(series_id, language)

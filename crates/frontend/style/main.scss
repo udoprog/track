@@ -799,8 +799,21 @@ body {
 .image-gallery {
     display: flex;
     flex-wrap: wrap;
+    justify-content: space-between;
     gap: $gap-sm;
     padding: $gap-sm 0;
+
+    &.poster {
+        img {
+            width: 80px;
+        }
+    }
+
+    &.backdrop {
+        img {
+            width: 160px;
+        }
+    }
 }
 
 .image-thumb {
@@ -815,9 +828,6 @@ body {
 
     img {
         display: block;
-        width: 80px;
-        height: 60px;
-        object-fit: cover;
     }
 
     &:hover {
@@ -869,4 +879,5 @@ body {
     overflow-y: auto;
     z-index: 401;
     padding: $gap-sm;
+    max-height: 80vh;
 }

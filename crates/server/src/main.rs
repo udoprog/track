@@ -55,10 +55,7 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<ExitCode> {
     tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("info".parse().context("invalid tracing directive")?),
-        )
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
     let args = Args::parse();

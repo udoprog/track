@@ -34,7 +34,8 @@ impl ws::Handler for WsHandler {
         incoming: &mut ws::Incoming<'_>,
         outgoing: &mut ws::Outgoing<'_>,
     ) -> Self::Response {
-        tracing::debug!(?id, "request");
+        tracing::trace!(?id, "request");
+
         let result = self.handle_inner(id, incoming, outgoing).await;
 
         if let Err(error) = &result {

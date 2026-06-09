@@ -223,6 +223,7 @@ async fn import_series_images(
             api::ImageKind::Poster,
             image_source(&img),
             img.path(),
+            true,
         )
         .await?;
     }
@@ -232,6 +233,7 @@ async fn import_series_images(
             api::ImageKind::Banner,
             image_source(&img),
             img.path(),
+            true,
         )
         .await?;
     }
@@ -241,6 +243,7 @@ async fn import_series_images(
             api::ImageKind::Fanart,
             image_source(&img),
             img.path(),
+            true,
         )
         .await?;
     }
@@ -258,6 +261,7 @@ async fn import_movie_images(
             api::ImageKind::Poster,
             image_source(&img),
             img.path(),
+            true,
         )
         .await?;
     }
@@ -267,6 +271,7 @@ async fn import_movie_images(
             api::ImageKind::Banner,
             image_source(&img),
             img.path(),
+            true,
         )
         .await?;
     }
@@ -276,6 +281,7 @@ async fn import_movie_images(
             api::ImageKind::Fanart,
             image_source(&img),
             img.path(),
+            true,
         )
         .await?;
     }

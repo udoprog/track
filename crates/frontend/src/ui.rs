@@ -259,7 +259,7 @@ pub(super) fn ImageGallery(props: &ImageGalleryProps) -> Html {
                 if imgs.is_empty() {
                     <div class="empty text-muted">{"No images available."}</div>
                 } else {
-                    <div class="image-gallery">
+                    <div class={classes!("image-gallery", props.kind.as_str())}>
                         { for imgs.iter().map(|img| {
                             let id = img.id;
                             let selected = img.selected;

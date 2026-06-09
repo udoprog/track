@@ -289,11 +289,11 @@ statements! {
         // images (series and movies share one table)
         list_series_images: r#"
             SELECT id, kind, source, path, selected FROM images
-            WHERE series_id = ? ORDER BY kind, selected DESC, id
+            WHERE series_id = ? ORDER BY kind, path, id
         "#,
         list_all_series_images: r#"
             SELECT id, kind, source, path, selected, series_id FROM images
-            WHERE series_id IS NOT NULL ORDER BY series_id, kind, selected DESC, id
+            WHERE series_id IS NOT NULL ORDER BY series_id, kind, path, id
         "#,
         insert_series_image: r#"
             INSERT INTO images (series_id, kind, source, path, selected) VALUES (?, ?, ?, ?, ?)
@@ -302,11 +302,11 @@ statements! {
         "#,
         list_movie_images: r#"
             SELECT id, kind, source, path, selected FROM images
-            WHERE movie_id = ? ORDER BY kind, selected DESC, id
+            WHERE movie_id = ? ORDER BY kind, path, id
         "#,
         list_all_movie_images: r#"
             SELECT id, kind, source, path, selected, movie_id FROM images
-            WHERE movie_id IS NOT NULL ORDER BY movie_id, kind, selected DESC, id
+            WHERE movie_id IS NOT NULL ORDER BY movie_id, kind, path, id
         "#,
         insert_movie_image: r#"
             INSERT INTO images (movie_id, kind, source, path, selected) VALUES (?, ?, ?, ?, ?)
@@ -1400,27 +1400,14 @@ impl Database {
         kind: ImageKind,
         source: ImageSource,
         path: &str,
+        selected: bool,
     ) -> Result<api::MediaImage> {
         let path = path.to_owned();
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            let is_first = {
-                s.list_series_images.bind((series_id,))?;
-                let mut found = false;
-
-                while let Some(r) = s.list_series_images.next::<ImageRow>()? {
-                    if r.kind == kind {
-                        found = true;
-                        break;
-                    }
-                }
-
-                !found
-            };
-
             s.insert_series_image
-                .bind((series_id, kind, source, &path[..], is_first))?;
+                .bind((series_id, kind, source, &path[..], selected))?;
 
             let r = s
                 .insert_series_image
@@ -1444,34 +1431,20 @@ impl Database {
         kind: ImageKind,
         source: ImageSource,
         path: &str,
+        selected: bool,
     ) -> Result<api::MediaImage> {
         let path = path.to_owned();
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            let is_first = {
-                s.list_movie_images.bind((movie_id,))?;
-                let mut found = false;
-
-                while let Some(r) = s.list_movie_images.next::<ImageRow>()? {
-                    if r.kind == kind {
-                        found = true;
-                        break;
-                    }
-                }
-
-                !found
-            };
-
             s.insert_movie_image
-                .bind((movie_id, kind, source, &path[..], is_first))?;
+                .bind((movie_id, kind, source, &path[..], selected))?;
 
             let r = s
                 .insert_movie_image
                 .next::<ImageRow>()?
                 .context("insert_movie_image returned no row")?;
             ensure!(s.insert_movie_image.step()?.is_done(), "insert_movie_image");
-
             Ok(image_from_row(r))
         });
 

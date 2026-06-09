@@ -216,10 +216,17 @@ impl Component for SeriesDetail {
                                 on_change={link.callback(Msg::SetLanguage)}
                             />
 
-                            if series.images.iter().any(|i| matches!(i.kind, api::ImageKind::Banner | api::ImageKind::Fanart | api::ImageKind::Backdrop)) {
+                            if series.images.iter().any(|i| matches!(i.kind, api::ImageKind::Poster)) {
+                                <button class="btn" onclick={link.callback(|_| Msg::OpenImageModal(api::ImageKind::Poster))}>
+                                    <span class="icon-inline"><span class="icon photo" /></span>
+                                    <span class="hide-mobile">{"Poster"}</span>
+                                </button>
+                            }
+
+                            if series.images.iter().any(|i| matches!(i.kind, api::ImageKind::Backdrop)) {
                                 <button class="btn" onclick={link.callback(|_| Msg::OpenImageModal(api::ImageKind::Backdrop))}>
                                     <span class="icon-inline"><span class="icon photo" /></span>
-                                    <span class="hide-mobile">{"Background"}</span>
+                                    <span class="hide-mobile">{"Backdrop"}</span>
                                 </button>
                             }
 

@@ -21,7 +21,7 @@ pub(crate) async fn sync_series(
         .context("series not found")?;
 
     let config = db.load_config().await?;
-    let language = series.language.clone().or_else(|| config.language.clone());
+    let language = series.language.as_deref().or(config.language.as_deref());
 
     let source = series.effective_sync_source();
     info!(series_id = %series_id, title = series.title, ?source, ?language, "syncing series");
@@ -32,30 +32,16 @@ pub(crate) async fn sync_series(
                 .remote_by_source("tmdb")
                 .context("series has no tmdb remote")?;
             let tmdb_id: u32 = remote_id.value().as_u32().context("invalid tmdb id")?;
-            sync_series_tmdb(
-                series_id,
-                tmdb_id,
-                language.as_deref(),
-                remote,
-                db,
-                broadcast,
-            )
-            .await?;
+
+            sync_series_tmdb(series_id, tmdb_id, language, remote, db, broadcast).await?;
         }
         Some(api::SyncSource::Tvdb) => {
             let remote_id = series
                 .remote_by_source("tvdb")
                 .context("series has no tvdb remote")?;
             let tvdb_id: u32 = remote_id.value().as_u32().context("invalid tvdb id")?;
-            sync_series_tvdb(
-                series_id,
-                tvdb_id,
-                language.as_deref(),
-                remote,
-                db,
-                broadcast,
-            )
-            .await?;
+
+            sync_series_tvdb(series_id, tvdb_id, language, remote, db, broadcast).await?;
         }
         None => anyhow::bail!("series has no syncable remote (tmdb or tvdb)"),
     }
@@ -104,17 +90,28 @@ async fn sync_series_tmdb(
         db.add_series_remote(series_id, remote).await?;
     }
 
-    if let Some(ref img) = info.poster {
-        db.upsert_series_image(series_id, ImageKind::Poster, ImageSource::Tmdb, img.path())
-            .await?;
+    for image in info.posters {
+        let selected = Some(&image) == info.selected_poster.as_ref();
+
+        db.upsert_series_image(
+            series_id,
+            ImageKind::Poster,
+            ImageSource::Tmdb,
+            image.path(),
+            selected,
+        )
+        .await?;
     }
 
-    if let Some(ref img) = info.fanart {
+    for image in info.backdrops {
+        let selected = Some(&image) == info.selected_backdrop.as_ref();
+
         db.upsert_series_image(
             series_id,
             ImageKind::Backdrop,
             ImageSource::Tmdb,
-            img.path(),
+            image.path(),
+            selected,
         )
         .await?;
     }
@@ -207,19 +204,40 @@ async fn sync_series_tvdb(
         db.add_series_remote(series_id, remote).await?;
     }
 
-    if let Some(ref img) = info.poster {
-        db.upsert_series_image(series_id, ImageKind::Poster, ImageSource::Tvdb, img.path())
-            .await?;
+    for poster in info.poster {
+        let selected = Some(&poster) == info.selected_poster.as_ref();
+        db.upsert_series_image(
+            series_id,
+            ImageKind::Poster,
+            ImageSource::Tvdb,
+            poster.path(),
+            selected,
+        )
+        .await?;
     }
 
-    if let Some(ref img) = info.banner {
-        db.upsert_series_image(series_id, ImageKind::Banner, ImageSource::Tvdb, img.path())
-            .await?;
+    for banner in info.banner {
+        let selected = Some(&banner) == info.selected_banner.as_ref();
+        db.upsert_series_image(
+            series_id,
+            ImageKind::Banner,
+            ImageSource::Tvdb,
+            banner.path(),
+            selected,
+        )
+        .await?;
     }
 
-    if let Some(ref img) = info.fanart {
-        db.upsert_series_image(series_id, ImageKind::Fanart, ImageSource::Tvdb, img.path())
-            .await?;
+    for fanart in info.fanart {
+        let selected = Some(&fanart) == info.selected_fanart.as_ref();
+        db.upsert_series_image(
+            series_id,
+            ImageKind::Fanart,
+            ImageSource::Tvdb,
+            fanart.path(),
+            selected,
+        )
+        .await?;
     }
 
     let updated = db
@@ -288,7 +306,7 @@ pub(crate) async fn sync_movie(
     let movie = db.movie_by_id(movie_id).await?.context("movie not found")?;
 
     let config = db.load_config().await?;
-    let language = movie.language.clone().or_else(|| config.language.clone());
+    let language = movie.language.as_deref().or(config.language.as_deref());
 
     let source = movie.effective_sync_source();
     info!(movie_id = %movie_id, title = movie.title, ?source, ?language, "syncing movie");
@@ -298,8 +316,10 @@ pub(crate) async fn sync_movie(
             let remote_id = movie
                 .remote_by_source("tmdb")
                 .context("movie has no tmdb remote")?;
+
             let tmdb_id: u32 = remote_id.value().as_u32().context("invalid tmdb id")?;
             info!(tmdb_id, "fetching tmdb movie");
+
             let info = remote
                 .fetch_tmdb_movie(tmdb_id, language.as_deref())
                 .await?;
@@ -316,13 +336,28 @@ pub(crate) async fn sync_movie(
                 db.add_movie_remote(movie_id, remote).await?;
             }
 
-            if let Some(ref img) = info.poster {
-                db.upsert_movie_image(movie_id, ImageKind::Poster, ImageSource::Tmdb, img.path())
-                    .await?;
+            for img in info.posters {
+                let selected = Some(&img) == info.selected_poster.as_ref();
+                db.upsert_movie_image(
+                    movie_id,
+                    ImageKind::Poster,
+                    ImageSource::Tmdb,
+                    img.path(),
+                    selected,
+                )
+                .await?;
             }
-            if let Some(ref img) = info.fanart {
-                db.upsert_movie_image(movie_id, ImageKind::Backdrop, ImageSource::Tmdb, img.path())
-                    .await?;
+
+            for img in info.backdrops {
+                let selected = Some(&img) == info.selected_backdrop.as_ref();
+                db.upsert_movie_image(
+                    movie_id,
+                    ImageKind::Backdrop,
+                    ImageSource::Tmdb,
+                    img.path(),
+                    selected,
+                )
+                .await?;
             }
 
             match remote.fetch_tmdb_movie_releases(tmdb_id).await {

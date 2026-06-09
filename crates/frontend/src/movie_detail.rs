@@ -671,10 +671,17 @@ impl MovieDetail {
                         on_change={link.callback(Msg::SetLanguage)}
                     />
 
-                    if movie.images.iter().any(|i| matches!(i.kind, api::ImageKind::Banner | api::ImageKind::Fanart | api::ImageKind::Backdrop)) {
+                    if movie.images.iter().any(|i| matches!(i.kind, api::ImageKind::Poster)) {
+                        <button class="btn" onclick={link.callback(|_| Msg::OpenImageModal(api::ImageKind::Poster))} title="Change poster">
+                            <span class="icon-inline"><span class="icon photo" /></span>
+                            <span class="hide-mobile">{"Poster"}</span>
+                        </button>
+                    }
+
+                    if movie.images.iter().any(|i| matches!(i.kind, api::ImageKind::Backdrop)) {
                         <button class="btn" onclick={link.callback(|_| Msg::OpenImageModal(api::ImageKind::Backdrop))} title="Change backdrop">
                             <span class="icon-inline"><span class="icon photo" /></span>
-                            <span class="hide-mobile">{"Background"}</span>
+                            <span class="hide-mobile">{"Backdrop"}</span>
                         </button>
                     }
 

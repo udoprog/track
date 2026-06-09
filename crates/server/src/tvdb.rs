@@ -1,26 +1,49 @@
+use core::time::Duration;
+use std::sync::Arc;
+use std::time::Instant;
+
 use anyhow::{Context as _, Result};
 use api::{Date, Image, RemoteId, SeasonNumber, Timestamp};
+use reqwest::{Method, header};
 use serde::{Deserialize, Serialize};
+use tokio::sync::{Mutex, MutexGuard};
 
 const BASE: &str = "https://api.thetvdb.com/";
+const EXPIRATION_SECONDS: u64 = 3600 * 24;
 
-#[derive(Clone)]
-pub(crate) struct Client {
+struct Credentials {
+    expires_at: Instant,
+    token: String,
+}
+
+struct Inner {
     base: reqwest::Url,
     http: reqwest::Client,
     api_key: String,
+    credentials: Mutex<Credentials>,
+}
+
+#[derive(Clone)]
+pub(crate) struct Client {
+    inner: Arc<Inner>,
 }
 
 impl Client {
     pub(crate) fn new(http: reqwest::Client, api_key: String) -> Result<Self> {
         Ok(Self {
-            base: reqwest::Url::parse(BASE)?,
-            http,
-            api_key,
+            inner: Arc::new(Inner {
+                base: reqwest::Url::parse(BASE)?,
+                http,
+                api_key,
+                credentials: Mutex::new(Credentials {
+                    expires_at: Instant::now(),
+                    token: String::new(),
+                }),
+            }),
         })
     }
 
-    async fn login(&self) -> Result<String> {
+    async fn login(&self) -> Result<MutexGuard<'_, Credentials>> {
         #[derive(Serialize)]
         struct Body<'a> {
             apikey: &'a str,
@@ -31,14 +54,23 @@ impl Client {
             token: String,
         }
 
+        let now = Instant::now();
+
+        let mut creds = self.inner.credentials.lock().await;
+
+        if creds.expires_at > now {
+            return Ok(creds);
+        }
+
         let body = serde_json::to_vec(&Body {
-            apikey: &self.api_key,
+            apikey: &self.inner.api_key,
         })
         .context("serializing login body")?;
 
         let bytes = self
+            .inner
             .http
-            .post(self.base.join("login")?)
+            .post(self.inner.base.join("login")?)
             .header("content-type", "application/json")
             .body(body)
             .send()
@@ -50,7 +82,33 @@ impl Client {
             .await?;
 
         let resp: Resp = serde_json::from_slice(&bytes).context("tvdb login response")?;
-        Ok(resp.token)
+
+        let expires_at = now
+            .checked_add(Duration::from_secs(EXPIRATION_SECONDS))
+            .context("calculating credentials expiration time")?;
+
+        *creds = Credentials {
+            token: resp.token.clone(),
+            expires_at,
+        };
+
+        Ok(creds)
+    }
+
+    async fn request(
+        &self,
+        method: Method,
+        path: impl AsRef<str>,
+    ) -> Result<reqwest::RequestBuilder, anyhow::Error> {
+        let token = self.login().await?;
+
+        let req = self
+            .inner
+            .http
+            .request(method, self.inner.base.join(path.as_ref())?)
+            .bearer_auth(&token.token);
+
+        Ok(req)
     }
 
     pub(crate) async fn search_series(&self, query: &str) -> Result<Vec<SearchSeriesResult>> {
@@ -67,18 +125,16 @@ impl Client {
             #[serde(default)]
             first_aired: Option<String>,
         }
+
         #[derive(Deserialize)]
         struct Resp {
             data: Vec<serde_json::Value>,
         }
 
-        let token = self.login().await?;
-
         let bytes = self
-            .http
-            .get(self.base.join("search/series")?)
+            .request(Method::GET, "search/series")
+            .await?
             .query(&[("name", query)])
-            .bearer_auth(&token)
             .send()
             .await?
             .error_for_status()?
@@ -126,15 +182,10 @@ impl Client {
             data: Value,
         }
 
-        let token = self.login().await?;
+        let mut req = self.request(Method::GET, format!("series/{id}")).await?;
 
-        let mut req = self
-            .http
-            .get(self.base.join(&format!("series/{id}"))?)
-            .bearer_auth(&token);
-
-        if let Some(language) = language.filter(|l| !l.is_empty()) {
-            req = req.header("Accept-Language", language);
+        if let Some(language) = language {
+            req = req.header(header::ACCEPT_LANGUAGE, language);
         }
 
         let bytes = req.send().await?.error_for_status()?.bytes().await?;
@@ -142,18 +193,26 @@ impl Client {
         let v = resp.data;
 
         let mut remotes = vec![RemoteId::tvdb(id)];
+
         if let Some(ref imdb_id) = v.imdb_id {
             if !imdb_id.is_empty() {
                 remotes.push(RemoteId::imdb(imdb_id));
             }
         }
 
+        let selected_poster = v.poster.as_ref().map(|p| Image::tvdb(p));
+        let selected_banner = v.banner.as_ref().map(|p| Image::tvdb(p));
+        let selected_fanart = v.fanart.as_ref().map(|p| Image::tvdb(p));
+
         Ok(SeriesInfo {
             title: Some(v.series_name),
             overview: v.overview,
-            poster: opt_image(v.poster.as_deref()),
-            banner: opt_image(v.banner.as_deref()),
-            fanart: opt_image(v.fanart.as_deref()),
+            poster: selected_poster.iter().cloned().collect(),
+            selected_poster,
+            banner: selected_banner.iter().cloned().collect(),
+            selected_banner,
+            fanart: selected_fanart.iter().cloned().collect(),
+            selected_fanart,
             remotes,
         })
     }
@@ -195,18 +254,24 @@ impl Client {
             links: Links,
         }
 
-        let token = self.login().await?;
+        let token = self.login().await?.token.clone();
+
         let mut output = Vec::new();
-        let mut page: Option<u32> = None;
+        let mut page = None::<u32>;
 
         loop {
             let mut req = self
+                .inner
                 .http
-                .get(self.base.join(&format!("series/{series_id}/episodes"))?)
+                .get(
+                    self.inner
+                        .base
+                        .join(&format!("series/{series_id}/episodes"))?,
+                )
                 .bearer_auth(&token);
 
-            if let Some(language) = language.filter(|l| !l.is_empty()) {
-                req = req.header("Accept-Language", language);
+            if let Some(language) = language {
+                req = req.header(header::ACCEPT_LANGUAGE, language);
             }
 
             if let Some(p) = page {
@@ -218,6 +283,7 @@ impl Client {
 
             for val in resp.data {
                 let row: Row = serde_json::from_value(val)?;
+
                 output.push(EpisodeInfo {
                     season: match row.aired_season {
                         Some(n) if n > 0 => SeasonNumber::Number(n),
@@ -250,9 +316,12 @@ impl Client {
 pub(crate) struct SeriesInfo {
     pub title: Option<String>,
     pub overview: Option<String>,
-    pub poster: Option<Image>,
-    pub banner: Option<Image>,
-    pub fanart: Option<Image>,
+    pub poster: Vec<Image>,
+    pub selected_poster: Option<Image>,
+    pub banner: Vec<Image>,
+    pub selected_banner: Option<Image>,
+    pub fanart: Vec<Image>,
+    pub selected_fanart: Option<Image>,
     pub remotes: Vec<RemoteId>,
 }
 
