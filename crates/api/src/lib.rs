@@ -1,4 +1,5 @@
 use core::fmt;
+use core::str::FromStr;
 
 use jiff::Timestamp as JiffTimestamp;
 use jiff::civil::Date as CivilDate;
@@ -85,14 +86,17 @@ define_id!(PendingId);
 pub struct Timestamp(JiffTimestamp);
 
 impl Timestamp {
+    #[inline]
     pub fn now() -> Self {
         Self(JiffTimestamp::now())
     }
 
+    #[inline]
     pub fn inner(self) -> JiffTimestamp {
         self.0
     }
 
+    #[inline]
     pub fn from_jiff(ts: JiffTimestamp) -> Self {
         Self(ts)
     }
@@ -100,6 +104,7 @@ impl Timestamp {
     /// Format this timestamp in the given timezone as `"YYYY-MM-DD HH:MM TZ"`.
     /// The timezone suffix is the IANA abbreviation (e.g. `CEST`, `EST`) when
     /// available, or the numeric offset (e.g. `+05:30`) for fixed-offset zones.
+    #[inline]
     pub fn display(&self, tz: &jiff::tz::TimeZone) -> String {
         self.0
             .to_zoned(tz.clone())
@@ -108,11 +113,12 @@ impl Timestamp {
     }
 }
 
-impl std::str::FromStr for Timestamp {
+impl FromStr for Timestamp {
     type Err = jiff::Error;
 
+    #[inline]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        s.parse::<JiffTimestamp>().map(Timestamp)
+        Ok(Self(s.parse::<JiffTimestamp>()?))
     }
 }
 
@@ -219,6 +225,10 @@ impl Weekday {
 pub struct Date(CivilDate);
 
 impl Date {
+    pub fn new(year: i16, month: i8, day: i8) -> Option<Self> {
+        Some(Self(CivilDate::new(year, month, day).ok()?))
+    }
+
     pub fn today() -> Self {
         Self(jiff::Zoned::now().date())
     }
@@ -287,7 +297,7 @@ impl Date {
     }
 }
 
-impl std::str::FromStr for Date {
+impl FromStr for Date {
     type Err = jiff::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -901,6 +911,7 @@ impl ::sqll::BindValue for ThemeType {
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum ReleaseType {
+    Unknown,
     Premiere,
     TheatricalLimited,
     Theatrical,
@@ -912,6 +923,7 @@ pub enum ReleaseType {
 impl ReleaseType {
     pub fn as_id(self) -> &'static str {
         match self {
+            Self::Unknown => "unknown",
             Self::Premiere => "premiere",
             Self::TheatricalLimited => "theatrical-limited",
             Self::Theatrical => "theatrical",
@@ -935,9 +947,7 @@ impl ::sqll::FromColumn<'_> for ReleaseType {
             "digital" => Ok(Self::Digital),
             "physical" => Ok(Self::Physical),
             "tv" => Ok(Self::Tv),
-            other => Err(::sqll::Error::custom(format!(
-                "unknown release type: {other}"
-            ))),
+            _ => Ok(Self::Unknown),
         }
     }
 }
@@ -950,12 +960,12 @@ impl ::sqll::BindValue for ReleaseType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct MovieRelease {
     pub country: String,
     pub release_type: ReleaseType,
-    pub date: Date,
+    pub timestamp: Timestamp,
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
@@ -1036,8 +1046,8 @@ pub struct Episode {
     pub absolute_number: Option<u32>,
     pub name: Option<String>,
     pub overview: Option<String>,
-    pub aired: Option<Date>,
-    pub aired_at: Option<Timestamp>,
+    pub aired_date: Option<Date>,
+    pub aired_timestamp: Option<Timestamp>,
     pub filename: Option<Image>,
     pub remote_id: Option<RemoteId>,
     pub watched: bool,
@@ -1131,8 +1141,8 @@ pub enum PendingKind {
 #[musli(crate = musli_core)]
 pub struct Pending {
     pub kind: PendingKind,
-    pub aired: Option<Date>,
-    pub aired_at: Option<Timestamp>,
+    pub aired_date: Option<Date>,
+    pub aired_timestamp: Option<Timestamp>,
     pub series_title: Option<String>,
     pub label: String,
     pub poster: Option<Image>,
@@ -1142,33 +1152,33 @@ pub struct Pending {
 /// precise timestamp. `display_at` picks the most precise value available
 /// and formats it in the given time zone.
 pub trait HasAired {
-    fn aired(&self) -> Option<Date>;
-    fn aired_at(&self) -> Option<Timestamp>;
+    fn aired_date(&self) -> Option<Date>;
+    fn aired_timestamp(&self) -> Option<Timestamp>;
 
     fn display_at(&self, tz: &jiff::tz::TimeZone) -> Option<String> {
-        if let Some(ts) = self.aired_at() {
+        if let Some(ts) = self.aired_timestamp() {
             Some(ts.display(tz))
         } else {
-            self.aired().map(|d| d.to_string())
+            self.aired_date().map(|d| d.to_string())
         }
     }
 }
 
 impl HasAired for Episode {
-    fn aired(&self) -> Option<Date> {
-        self.aired
+    fn aired_date(&self) -> Option<Date> {
+        self.aired_date
     }
-    fn aired_at(&self) -> Option<Timestamp> {
-        self.aired_at
+    fn aired_timestamp(&self) -> Option<Timestamp> {
+        self.aired_timestamp
     }
 }
 
 impl HasAired for Pending {
-    fn aired(&self) -> Option<Date> {
-        self.aired
+    fn aired_date(&self) -> Option<Date> {
+        self.aired_date
     }
-    fn aired_at(&self) -> Option<Timestamp> {
-        self.aired_at
+    fn aired_timestamp(&self) -> Option<Timestamp> {
+        self.aired_timestamp
     }
 }
 

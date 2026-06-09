@@ -2,17 +2,22 @@ use anyhow::{Context as _, Result};
 use api::{Date, Image, RemoteId, SeasonNumber};
 use serde::{Deserialize, Serialize};
 
-const BASE: &str = "https://api.thetvdb.com";
+const BASE: &str = "https://api.thetvdb.com/";
 
 #[derive(Clone)]
 pub(crate) struct Client {
+    base: reqwest::Url,
     http: reqwest::Client,
     api_key: String,
 }
 
 impl Client {
-    pub(crate) fn new(http: reqwest::Client, api_key: String) -> Self {
-        Self { http, api_key }
+    pub(crate) fn new(http: reqwest::Client, api_key: String) -> Result<Self> {
+        Ok(Self {
+            base: reqwest::Url::parse(BASE)?,
+            http,
+            api_key,
+        })
     }
 
     async fn login(&self) -> Result<String> {
@@ -20,6 +25,7 @@ impl Client {
         struct Body<'a> {
             apikey: &'a str,
         }
+
         #[derive(Deserialize)]
         struct Resp {
             token: String,
@@ -29,9 +35,10 @@ impl Client {
             apikey: &self.api_key,
         })
         .context("serializing login body")?;
+
         let bytes = self
             .http
-            .post(format!("{BASE}/login"))
+            .post(self.base.join("login")?)
             .header("content-type", "application/json")
             .body(body)
             .send()
@@ -41,6 +48,7 @@ impl Client {
             .context("tvdb login status")?
             .bytes()
             .await?;
+
         let resp: Resp = serde_json::from_slice(&bytes).context("tvdb login response")?;
         Ok(resp.token)
     }
@@ -65,9 +73,10 @@ impl Client {
         }
 
         let token = self.login().await?;
+
         let bytes = self
             .http
-            .get(format!("{BASE}/search/series"))
+            .get(self.base.join("search/series")?)
             .query(&[("name", query)])
             .bearer_auth(&token)
             .send()
@@ -75,6 +84,7 @@ impl Client {
             .error_for_status()?
             .bytes()
             .await?;
+
         let resp: Resp = serde_json::from_slice(&bytes)?;
 
         let mut out = Vec::new();
@@ -114,13 +124,16 @@ impl Client {
         }
 
         let token = self.login().await?;
+
         let mut req = self
             .http
-            .get(format!("{BASE}/series/{id}"))
+            .get(self.base.join(&format!("series/{id}"))?)
             .bearer_auth(&token);
+
         if let Some(language) = language.filter(|l| !l.is_empty()) {
             req = req.header("Accept-Language", language);
         }
+
         let bytes = req.send().await?.error_for_status()?.bytes().await?;
         let resp: Resp = serde_json::from_slice(&bytes)?;
         let v = resp.data;
@@ -166,11 +179,13 @@ impl Client {
             #[serde(default)]
             first_aired: Option<String>,
         }
+
         #[derive(Deserialize)]
         struct Links {
             #[serde(default)]
             next: Option<u32>,
         }
+
         #[derive(Deserialize)]
         struct Resp {
             data: Vec<serde_json::Value>,
@@ -184,11 +199,13 @@ impl Client {
         loop {
             let mut req = self
                 .http
-                .get(format!("{BASE}/series/{series_id}/episodes"))
+                .get(self.base.join(&format!("series/{series_id}/episodes"))?)
                 .bearer_auth(&token);
+
             if let Some(language) = language.filter(|l| !l.is_empty()) {
                 req = req.header("Accept-Language", language);
             }
+
             if let Some(p) = page {
                 req = req.query(&[("page", p.to_string().as_str())]);
             }
@@ -207,7 +224,7 @@ impl Client {
                     absolute_number: row.absolute_number,
                     name: row.episode_name.filter(|s| !s.is_empty()),
                     overview: row.overview.unwrap_or_default(),
-                    aired: opt_date(row.first_aired.as_deref()),
+                    aired_date: opt_date(row.first_aired.as_deref()),
                     filename: opt_image(row.filename.as_deref()),
                     remote_id: RemoteId::tvdb(row.id),
                 });
@@ -240,7 +257,7 @@ pub(crate) struct EpisodeInfo {
     pub absolute_number: Option<u32>,
     pub name: Option<String>,
     pub overview: String,
-    pub aired: Option<Date>,
+    pub aired_date: Option<Date>,
     pub filename: Option<Image>,
     pub remote_id: RemoteId,
 }

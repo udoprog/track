@@ -295,8 +295,8 @@ impl MoviesList {
 
                         if self.confirming_watch == Some(movie_id) {
                             <MarkWatchedPicker
-                                aired_at={None::<api::Timestamp>}
-                                aired={m.release_date}
+                                aired_timestamp={None::<api::Timestamp>}
+                                aired_date={m.release_date}
                                 on_confirm={ctx.link().callback(move |ts| Msg::MarkWatched(movie_id, ts))}
                                 on_cancel={ctx.link().callback(|_| Msg::CancelMarkWatch)}
                             />

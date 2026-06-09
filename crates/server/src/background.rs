@@ -6,7 +6,6 @@ use tokio::sync::Notify;
 use tracing::info;
 
 use crate::app_broadcast::Broadcaster;
-use crate::remote::RemoteClients;
 use crate::task_queue::TaskQueue;
 
 const POLL: Duration = Duration::from_secs(15 * 60);
@@ -32,7 +31,6 @@ pub(crate) async fn run(
     db: Database,
     queue: TaskQueue,
     broadcast: Broadcaster,
-    remote: RemoteClients,
     config_changed: Arc<Notify>,
     shutdown: crate::shutdown::Shutdown,
 ) -> anyhow::Result<()> {
@@ -48,7 +46,6 @@ pub(crate) async fn run(
         }
 
         let config = db.load_config().await?;
-        remote.configure(&config);
 
         if !config.auto_sync_enabled {
             continue;

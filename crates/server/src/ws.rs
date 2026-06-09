@@ -654,8 +654,7 @@ impl WsHandler {
                     .context("missing request")?;
 
                 self.db.save_config(&req.config).await?;
-
-                self.remote.configure(&req.config);
+                self.remote.configure(&req.config)?;
 
                 self.config_changed.notify_one();
 

@@ -80,9 +80,9 @@ async fn main() -> Result<ExitCode> {
     let shutdown = Shutdown::new();
 
     let remote = RemoteClients::new(http.clone());
-    if let Ok(config) = db.load_config().await {
-        remote.configure(&config);
-    }
+
+    let config = db.load_config().await.context("loading config")?;
+    remote.configure(&config)?;
 
     let pending = PendingSystem::new(db.clone());
     let config_changed = Arc::new(Notify::new());
@@ -99,7 +99,6 @@ async fn main() -> Result<ExitCode> {
         db.clone(),
         queue.clone(),
         broadcast.clone(),
-        remote.clone(),
         config_changed.clone(),
         shutdown.clone(),
     ));

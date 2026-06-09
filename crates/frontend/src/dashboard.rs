@@ -346,16 +346,16 @@ impl Dashboard {
             None
         };
         let confirming_skip = self.confirming_skip == skip_ids;
-        let aired_at = p.aired_at;
-        let aired = p.aired;
+        let aired_timestamp = p.aired_timestamp;
+        let aired_date = p.aired_date;
         let label = p.label.clone();
 
         let actions = 'actions: {
             if confirming_watch {
                 break 'actions html! {
                     <MarkWatchedPicker
-                        {aired_at}
-                        {aired}
+                        {aired_timestamp}
+                        {aired_date}
                         on_confirm={ctx.link().callback(move |ts| Msg::MarkWatched(watched_kind, ts))}
                         on_cancel={ctx.link().callback(|_| Msg::CancelMarkWatch)}
                     />

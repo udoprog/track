@@ -93,11 +93,8 @@ pub(super) fn ConfirmDanger(props: &ConfirmDangerProps) -> Html {
 /// Renders as a `row-fill fill` that can replace the watch button's action area.
 #[derive(Properties, PartialEq)]
 pub(super) struct MarkWatchedPickerProps {
-    /// Exact airtime if known (preferred for the "Aired" option).
-    pub(super) aired_at: Option<api::Timestamp>,
-    /// Civil air date used when `aired_at` is absent.
-    pub(super) aired: Option<api::Date>,
-    /// Emits `None` for "now", `Some(ts)` for the air timestamp.
+    pub(super) aired_timestamp: Option<api::Timestamp>,
+    pub(super) aired_date: Option<api::Date>,
     pub(super) on_confirm: Callback<Option<api::Timestamp>>,
     pub(super) on_cancel: Callback<()>,
 }
@@ -105,8 +102,8 @@ pub(super) struct MarkWatchedPickerProps {
 #[function_component]
 pub(super) fn MarkWatchedPicker(props: &MarkWatchedPickerProps) -> Html {
     let aired_ts = props
-        .aired_at
-        .or_else(|| props.aired.map(|d| d.to_timestamp()));
+        .aired_timestamp
+        .or_else(|| props.aired_date.map(|d| d.to_timestamp()));
 
     let on_now = {
         let cb = props.on_confirm.clone();

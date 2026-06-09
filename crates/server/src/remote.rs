@@ -30,19 +30,32 @@ impl RemoteClients {
         }
     }
 
-    pub(crate) fn configure(&self, config: &api::Config) {
+    pub(crate) fn configure(&self, config: &api::Config) -> Result<()> {
         let mut inner = self.inner.lock();
 
-        inner.tmdb = (!config.tmdb_api_key.is_empty())
-            .then(|| crate::tmdb::Client::new(self.http.clone(), config.tmdb_api_key.clone()));
+        inner.tmdb = if config.tmdb_api_key.is_empty() {
+            None
+        } else {
+            Some(crate::tmdb::Client::new(
+                self.http.clone(),
+                config.tmdb_api_key.clone(),
+            )?)
+        };
 
-        inner.tvdb = (!config.tvdb_legacy_apikey.is_empty()).then(|| {
-            crate::tvdb::Client::new(self.http.clone(), config.tvdb_legacy_apikey.clone())
-        });
+        inner.tvdb = if config.tvdb_legacy_apikey.is_empty() {
+            None
+        } else {
+            Some(crate::tvdb::Client::new(
+                self.http.clone(),
+                config.tvdb_legacy_apikey.clone(),
+            )?)
+        };
 
         if inner.tvmaze.is_none() {
             inner.tvmaze = Some(crate::tvmaze::Client::new(self.http.clone()));
         }
+
+        Ok(())
     }
 
     fn tmdb(&self) -> Option<crate::tmdb::Client> {

@@ -1,25 +1,32 @@
 use anyhow::{Context as _, Result};
-use api::{Date, Image, ReleaseType, RemoteId, SeasonNumber};
+use api::{Date, Image, ReleaseType, RemoteId, SeasonNumber, Timestamp};
 use serde::Deserialize;
+use serde::de::DeserializeOwned;
 
 const BASE: &str = "https://api.themoviedb.org/3";
 
 #[derive(Clone)]
 pub(crate) struct Client {
+    base: reqwest::Url,
     http: reqwest::Client,
     api_key: String,
 }
 
 impl Client {
-    pub(crate) fn new(http: reqwest::Client, api_key: String) -> Self {
-        Self { http, api_key }
+    pub(crate) fn new(http: reqwest::Client, api_key: String) -> Result<Self> {
+        Ok(Self {
+            base: reqwest::Url::parse(BASE)?,
+            http,
+            api_key,
+        })
     }
 
-    async fn get_json<T: serde::de::DeserializeOwned>(
-        &self,
-        url: &str,
-        language: Option<&str>,
-    ) -> Result<T> {
+    async fn get_json<T>(&self, url: impl AsRef<str>, language: Option<&str>) -> Result<T>
+    where
+        T: DeserializeOwned,
+    {
+        let url = self.base.join(url.as_ref())?;
+
         let mut req = self
             .http
             .get(url)
@@ -38,6 +45,7 @@ impl Client {
             .bytes()
             .await
             .context("reading body")?;
+
         serde_json::from_slice(&bytes).context("deserializing JSON")
     }
 
@@ -56,6 +64,7 @@ impl Client {
             #[serde(default)]
             first_air_date: Option<String>,
         }
+
         #[derive(Deserialize)]
         struct Resp {
             results: Vec<Row>,
@@ -63,13 +72,14 @@ impl Client {
 
         let bytes = self
             .http
-            .get(format!("{BASE}/search/tv"))
+            .get(self.base.join("search/tv")?)
             .query(&[("api_key", self.api_key.as_str()), ("query", query)])
             .send()
             .await?
             .error_for_status()?
             .bytes()
             .await?;
+
         let resp: Resp = serde_json::from_slice(&bytes)?;
 
         Ok(resp
@@ -107,7 +117,7 @@ impl Client {
 
         let bytes = self
             .http
-            .get(format!("{BASE}/search/movie"))
+            .get(self.base.join("search/movie")?)
             .query(&[("api_key", self.api_key.as_str()), ("query", query)])
             .send()
             .await?
@@ -171,10 +181,7 @@ impl Client {
         }
 
         let d: Details = self
-            .get_json(
-                &format!("{BASE}/tv/{id}?append_to_response=external_ids"),
-                language,
-            )
+            .get_json(format!("tv/{id}?append_to_response=external_ids"), language)
             .await?;
 
         let seasons = d
@@ -240,10 +247,7 @@ impl Client {
         }
 
         let resp: SeasonResp = self
-            .get_json(
-                &format!("{BASE}/tv/{series_id}/season/{season_number}"),
-                language,
-            )
+            .get_json(format!("tv/{series_id}/season/{season_number}"), language)
             .await?;
 
         let season = if season_number == 0 {
@@ -260,7 +264,7 @@ impl Client {
                 number: e.episode_number,
                 name: e.name.filter(|s| !s.is_empty()),
                 overview: e.overview.unwrap_or_default(),
-                aired: opt_date(e.air_date.as_deref()),
+                aired_date: opt_date(e.air_date.as_deref()),
                 filename: opt_image(e.still_path.as_deref()),
                 remote_id: RemoteId::tmdb(e.id),
             })
@@ -268,15 +272,15 @@ impl Client {
     }
 
     pub(crate) async fn fetch_movie_releases(&self, id: u32) -> Result<Vec<MovieReleaseInfo>> {
-        pub fn release_type_from_tmdb(n: u8) -> Option<ReleaseType> {
+        pub fn release_type_from_tmdb(n: u8) -> ReleaseType {
             match n {
-                1 => Some(ReleaseType::Premiere),
-                2 => Some(ReleaseType::TheatricalLimited),
-                3 => Some(ReleaseType::Theatrical),
-                4 => Some(ReleaseType::Digital),
-                5 => Some(ReleaseType::Physical),
-                6 => Some(ReleaseType::Tv),
-                _ => None,
+                1 => ReleaseType::Premiere,
+                2 => ReleaseType::TheatricalLimited,
+                3 => ReleaseType::Theatrical,
+                4 => ReleaseType::Digital,
+                5 => ReleaseType::Physical,
+                6 => ReleaseType::Tv,
+                _ => ReleaseType::Unknown,
             }
         }
 
@@ -302,25 +306,23 @@ impl Client {
         }
 
         let d: Resp = self
-            .get_json(&format!("{BASE}/movie/{id}/release_dates"), None)
+            .get_json(format!("movie/{id}/release_dates"), None)
             .await?;
 
         let mut out = Vec::new();
 
         for block in d.results {
             for e in block.release_dates {
-                let Some(release_type) = release_type_from_tmdb(e.type_) else {
-                    continue;
-                };
+                let release_type = release_type_from_tmdb(e.type_);
 
-                let Some(date) = parse_release_date(e.release_date.as_deref()) else {
+                let Some(release_date) = parse_release_date(e.release_date.as_deref()) else {
                     continue;
                 };
 
                 out.push(MovieReleaseInfo {
                     country: block.iso_3166_1.clone(),
                     release_type,
-                    date,
+                    release_date,
                 });
             }
         }
@@ -354,7 +356,7 @@ impl Client {
 
         let d: Details = self
             .get_json(
-                &format!("{BASE}/movie/{id}?append_to_response=external_ids"),
+                format!("movie/{id}?append_to_response=external_ids"),
                 language,
             )
             .await?;
@@ -403,7 +405,7 @@ pub(crate) struct EpisodeInfo {
     pub number: u32,
     pub name: Option<String>,
     pub overview: String,
-    pub aired: Option<Date>,
+    pub aired_date: Option<Date>,
     pub filename: Option<Image>,
     pub remote_id: RemoteId,
 }
@@ -436,7 +438,7 @@ pub(crate) struct SearchMovieResult {
 pub(crate) struct MovieReleaseInfo {
     pub country: String,
     pub release_type: ReleaseType,
-    pub date: Date,
+    pub release_date: Timestamp,
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -445,14 +447,8 @@ fn opt_date(s: Option<&str>) -> Option<Date> {
     s.filter(|s| !s.is_empty()).and_then(|s| s.parse().ok())
 }
 
-fn parse_release_date(s: Option<&str>) -> Option<Date> {
-    let s = s?.trim();
-    if s.is_empty() {
-        return None;
-    }
-    // TMDB returns e.g. "2024-02-20T00:00:00.000Z"; take the date prefix.
-    let date_part = s.get(..10).unwrap_or(s);
-    date_part.parse().ok()
+fn parse_release_date(s: Option<&str>) -> Option<Timestamp> {
+    s?.trim().parse().ok()
 }
 
 fn opt_image(s: Option<&str>) -> Option<Image> {

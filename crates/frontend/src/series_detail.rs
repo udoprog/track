@@ -961,8 +961,8 @@ impl SeriesDetail {
                     let expanded = self.episode_histories.contains_key(&episode_id);
                     let confirming_mark = self.confirming_mark_watch == Some(episode_id);
                     let on_ask_mark = link.callback(move |_| Msg::AskMarkWatched(episode_id));
-                    let aired_at = ep.aired_at;
-                    let aired = ep.aired;
+                    let aired_timestamp = ep.aired_timestamp;
+                    let aired_date = ep.aired_date;
                     let on_remove_confirm = last_watched_id.map(|wid| {
                         link.callback(move |_| Msg::ConfirmRemoveWatch(wid))
                     });
@@ -979,8 +979,8 @@ impl SeriesDetail {
                         if confirming_mark {
                             break 'actions html! {
                                 <MarkWatchedPicker
-                                    {aired_at}
-                                    {aired}
+                                    {aired_timestamp}
+                                    {aired_date}
                                     on_confirm={link.callback(move |ts| Msg::MarkWatched(series_id, episode_id, ts))}
                                     on_cancel={link.callback(|_| Msg::CancelMarkWatch)}
                                 />

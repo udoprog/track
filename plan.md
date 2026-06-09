@@ -17,7 +17,7 @@ crate-by-crate blueprint is complete and is not repeated here — read the sourc
 - `api::Episode.aired_at: Option<Timestamp>` carried on wire.
 - `crates/server/src/tvmaze.rs` — keyless client: lookup by tvdb/imdb, fetch episodes with `airstamp`.
 - `sync_series` calls `enrich_with_tvmaze` (best-effort) after primary sync; logs structured fields.
-- `series_detail.rs` prefers `aired_at` over `aired` for episode display.
+- `series_detail.rs` prefers `aired_at` over `aired_date` for episode display.
 
 ### Background sync + movie release tracking — DONE
 - `series` and `movies` tables have `last_synced_at INTEGER` (epoch ms, NULL = never).

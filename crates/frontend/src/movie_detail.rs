@@ -589,8 +589,8 @@ impl MovieDetail {
                 break 'actions html! {
                     <div class="row actions">
                         <MarkWatchedPicker
-                            aired_at={None::<api::Timestamp>}
-                            aired={release_date}
+                            aired_timestamp={None::<api::Timestamp>}
+                            aired_date={release_date}
                             on_confirm={link.callback(Msg::MarkWatched)}
                             on_cancel={link.callback(|_| Msg::CancelMarkWatch)}
                         />

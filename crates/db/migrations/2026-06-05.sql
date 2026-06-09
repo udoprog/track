@@ -31,20 +31,20 @@ CREATE TABLE
         absolute_number INTEGER,
         name TEXT,
         overview TEXT,
-        aired INTEGER,
-        aired_at INTEGER,
+        aired_date INTEGER,
+        aired_timestamp INTEGER,
         filename TEXT,
         remote_id TEXT,
         UNIQUE (series_id, season, number)
     );
 
-CREATE INDEX idx_episodes_aired ON episodes (aired)
+CREATE INDEX idx_episodes_aired_date ON episodes (aired_date)
 WHERE
-    aired IS NOT NULL;
+    aired_date IS NOT NULL;
 
-CREATE INDEX idx_episodes_aired_at ON episodes (aired_at)
+CREATE INDEX idx_episodes_aired_timestamp ON episodes (aired_timestamp)
 WHERE
-    aired_at IS NOT NULL;
+    aired_timestamp IS NOT NULL;
 
 CREATE TABLE
     movies (
@@ -68,13 +68,13 @@ CREATE TABLE
         movie_id INTEGER NOT NULL REFERENCES movies (id) ON DELETE CASCADE,
         country TEXT NOT NULL,
         release_type TEXT NOT NULL,
-        date INTEGER NOT NULL,
+        timestamp INTEGER NOT NULL,
         UNIQUE (movie_id, country, release_type)
     );
 
 CREATE INDEX idx_movie_releases_movie ON movie_releases (movie_id);
 
-CREATE INDEX idx_movie_releases_digital ON movie_releases (date)
+CREATE INDEX idx_movie_releases_digital ON movie_releases (timestamp)
 WHERE
     release_type = 'digital';
 
@@ -98,12 +98,11 @@ CREATE TABLE
         episode_id INTEGER REFERENCES episodes (id) ON DELETE CASCADE,
         movie_id INTEGER REFERENCES movies (id) ON DELETE CASCADE,
         CHECK (
-            (episode_id IS NOT NULL)
+            (
+                episode_id IS NULL
+                AND series_id IS NOT NULL
+            )
             OR (movie_id IS NOT NULL)
-        ),
-        CHECK (
-            episode_id IS NULL
-            OR series_id IS NOT NULL
         )
     );
 

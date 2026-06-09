@@ -158,7 +158,7 @@ async fn sync_series_tmdb(
                 None,
                 ep.name.as_deref(),
                 &ep.overview,
-                ep.aired.as_ref(),
+                ep.aired_date.as_ref(),
                 ep.filename.as_ref(),
                 Some(&ep.remote_id),
             )
@@ -241,7 +241,7 @@ async fn sync_series_tvdb(
     for ep in &episodes {
         seasons_seen.insert(ep.season);
 
-        if let Some(date) = ep.aired {
+        if let Some(date) = ep.aired_date {
             let entry = season_air_dates.entry(ep.season).or_insert(date);
             if date < *entry {
                 *entry = date;
@@ -255,7 +255,7 @@ async fn sync_series_tvdb(
             ep.absolute_number,
             ep.name.as_deref(),
             &ep.overview,
-            ep.aired.as_ref(),
+            ep.aired_date.as_ref(),
             ep.filename.as_ref(),
             Some(&ep.remote_id),
         )
@@ -331,8 +331,13 @@ pub(crate) async fn sync_movie(
                     info!(count = releases.len(), "fetched tmdb movie releases");
 
                     for r in releases {
-                        db.upsert_movie_release(movie_id, &r.country, r.release_type, &r.date)
-                            .await?;
+                        db.upsert_movie_release(
+                            movie_id,
+                            &r.country,
+                            r.release_type,
+                            &r.release_date,
+                        )
+                        .await?;
                     }
                 }
                 Err(e) => warn!(movie_id = %movie_id, "movie release dates skipped: {e:#}"),
@@ -401,7 +406,8 @@ async fn enrich_with_tvmaze(
         "updating episodes with exact airtimes"
     );
 
-    db.update_episodes_aired_at(series_id, updates).await?;
+    db.update_episodes_aired_timestamp(series_id, updates)
+        .await?;
 
     for season in seasons_updated {
         broadcast.broadcast_event(api::AppEventKind::EpisodesChanged { series_id, season });

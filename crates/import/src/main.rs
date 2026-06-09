@@ -92,7 +92,7 @@ struct YamlEpisode {
     season: YamlSeasonNumber,
     number: u32,
     #[serde(default)]
-    aired: Option<NaiveDate>,
+    aired_date: Option<NaiveDate>,
     #[serde(default)]
     graphics: YamlEpisodeGraphics,
     #[serde(default)]
@@ -504,7 +504,7 @@ async fn main() -> Result<()> {
                         ep.absolute_number,
                         ep.name.as_deref(),
                         &ep.overview,
-                        ep.aired.as_ref().map(|d| naive_to_date(*d)).as_ref(),
+                        ep.aired_date.as_ref().map(|d| naive_to_date(*d)).as_ref(),
                         image(ep.graphics.filename.as_ref()).as_ref(),
                         remote_id(ep.remote_id.as_ref()).as_ref(),
                     )
