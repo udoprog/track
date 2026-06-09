@@ -373,7 +373,8 @@ impl ::sqll::BindValue for Date {
 }
 
 /// The source of a remote identifier.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+#[musli(crate = musli_core)]
 pub enum RemoteSource {
     Tvdb,
     Tmdb,
@@ -408,7 +409,8 @@ impl fmt::Display for RemoteSource {
 }
 
 /// The value part of a remote identifier — either an integer or a string.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+#[musli(crate = musli_core)]
 pub enum RemoteValue {
     Int(u32),
     Str(String),
@@ -447,7 +449,8 @@ impl fmt::Display for RemoteValue {
 }
 
 /// Remote identifier: "tvdb:123", "tmdb:456", "imdb:tt0001234".
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize)]
+#[musli(crate = musli_core)]
 #[serde(from = "String", into = "String")]
 pub struct RemoteId {
     source: RemoteSource,
@@ -498,21 +501,19 @@ impl RemoteId {
     }
 
     pub fn series_url(&self) -> Option<String> {
-        let v = &self.value;
         match &self.source {
-            RemoteSource::Tvdb => Some(format!("https://thetvdb.com/series/{v}")),
-            RemoteSource::Tmdb => Some(format!("https://www.themoviedb.org/tv/{v}")),
-            RemoteSource::Imdb => Some(format!("https://www.imdb.com/title/{v}/")),
+            RemoteSource::Tvdb => Some(format!("https://thetvdb.com/series/{}", self.value)),
+            RemoteSource::Tmdb => Some(format!("https://www.themoviedb.org/tv/{}", self.value)),
+            RemoteSource::Imdb => Some(format!("https://www.imdb.com/title/{}/", self.value)),
             RemoteSource::Other(_) => None,
         }
     }
 
     pub fn movie_url(&self) -> Option<String> {
-        let v = &self.value;
         match &self.source {
-            RemoteSource::Tvdb => Some(format!("https://thetvdb.com/movies/{v}")),
-            RemoteSource::Tmdb => Some(format!("https://www.themoviedb.org/movie/{v}")),
-            RemoteSource::Imdb => Some(format!("https://www.imdb.com/title/{v}/")),
+            RemoteSource::Tvdb => Some(format!("https://thetvdb.com/movies/{}", self.value)),
+            RemoteSource::Tmdb => Some(format!("https://www.themoviedb.org/movie/{}", self.value)),
+            RemoteSource::Imdb => Some(format!("https://www.imdb.com/title/{}/", self.value)),
             RemoteSource::Other(_) => None,
         }
     }
@@ -533,33 +534,6 @@ impl From<String> for RemoteId {
 impl From<RemoteId> for String {
     fn from(r: RemoteId) -> String {
         r.to_string()
-    }
-}
-
-impl<M> musli_core::Encode<M> for RemoteId {
-    type Encode = Self;
-
-    fn encode<E>(&self, encoder: E) -> Result<(), E::Error>
-    where
-        E: musli_core::Encoder<Mode = M>,
-    {
-        encoder.collect_string(self)
-    }
-
-    fn as_encode(&self) -> &Self::Encode {
-        self
-    }
-}
-
-impl<'de, M, A> musli_core::Decode<'de, M, A> for RemoteId
-where
-    A: musli_core::Allocator,
-{
-    fn decode<D>(decoder: D) -> Result<Self, D::Error>
-    where
-        D: musli_core::Decoder<'de, Mode = M, Allocator = A>,
-    {
-        decoder.decode_unsized(|s: &str| Ok::<_, D::Error>(RemoteId::from_raw(s)))
     }
 }
 
