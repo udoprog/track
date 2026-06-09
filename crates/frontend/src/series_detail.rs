@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
@@ -22,7 +22,8 @@ pub(super) struct SeriesDetail {
     syncing: bool,
     confirm_remove_watch: Option<api::WatchedId>,
     confirming_mark_watch: Option<api::EpisodeId>,
-    episode_histories: HashMap<api::EpisodeId, Vec<api::Watched>>,
+    watched: HashMap<api::EpisodeId, Vec<api::WatchedEpisode>>,
+    expanded: HashSet<api::EpisodeId>,
     image_modal: Option<api::ImageKind>,
     tz: TimeZone,
     _tz_handle: ContextHandle<TimeZone>,
@@ -37,7 +38,7 @@ pub(super) struct SeriesDetail {
     _remove_req: ws::Request,
     _sync_req: ws::Request,
     _watch_remaining_reqs: Vec<ws::Request>,
-    _history_reqs: HashMap<api::EpisodeId, ws::Request>,
+    _watched_req: ws::Request,
     _set_next_req: ws::Request,
     _select_image_req: ws::Request,
     _clear_image_req: ws::Request,
@@ -71,10 +72,7 @@ pub(super) enum Msg {
     SyncSeries,
     SyncDone(Result<ws::Packet<api::SyncSeries>, ws::Error>),
     ToggleHistory(api::EpisodeId),
-    HistoryLoaded(
-        api::EpisodeId,
-        Result<ws::Packet<api::ListWatched>, ws::Error>,
-    ),
+    WatchedLoaded(Result<ws::Packet<api::ListEpisodesWatched>, ws::Error>),
     AddPending(api::EpisodeId),
     AddPendingDone(Result<ws::Packet<api::AddPending>, ws::Error>),
     RemovePending(api::EpisodeId),
@@ -136,7 +134,8 @@ impl Component for SeriesDetail {
             syncing: false,
             confirm_remove_watch: None,
             confirming_mark_watch: None,
-            episode_histories: HashMap::new(),
+            watched: HashMap::new(),
+            expanded: HashSet::new(),
             image_modal: None,
             tz,
             _tz_handle,
@@ -151,7 +150,7 @@ impl Component for SeriesDetail {
             _remove_req: ws::Request::default(),
             _sync_req: ws::Request::default(),
             _watch_remaining_reqs: Vec::new(),
-            _history_reqs: HashMap::new(),
+            _watched_req: ws::Request::default(),
             _set_next_req: ws::Request::default(),
             _select_image_req: ws::Request::default(),
             _clear_image_req: ws::Request::default(),
@@ -264,7 +263,7 @@ impl Component for SeriesDetail {
 
                     <div class="detail-layout">
                         { self.view_sidebar(ctx, series) }
-                        { self.view_episodes(ctx, series) }
+                        { self.view_episodes(ctx) }
                     </div>
 
                     if let Some(kind) = self.image_modal {
@@ -284,11 +283,12 @@ impl Component for SeriesDetail {
             self.confirm_remove = false;
             self.syncing = false;
             self.confirm_remove_watch = None;
-            self.episode_histories.clear();
-            self._history_reqs.clear();
+            self.watched.clear();
+
             if self.channel.id() != ws::ChannelId::NONE {
                 self.load_series(ctx);
                 self.load_seasons(ctx);
+                self.load_history(ctx);
             }
         } else if ctx.props().initial_season != old_props.initial_season {
             if let Some(season) = ctx.props().initial_season {
@@ -296,10 +296,11 @@ impl Component for SeriesDetail {
                     self.selected = Some(season);
                     self.episodes.clear();
                     self.confirm_remove_watch = None;
-                    self.episode_histories.clear();
-                    self._history_reqs.clear();
+                    self.watched.clear();
+
                     if self.channel.id() != ws::ChannelId::NONE {
                         self.load_episodes(ctx, season);
+                        self.load_history(ctx);
                     }
                 }
             }
@@ -389,10 +390,7 @@ impl SeriesDetail {
 
                         if relevant && let Some(season) = self.selected {
                             self.load_episodes(ctx, season);
-                            let expanded: Vec<_> = self.episode_histories.keys().copied().collect();
-                            for ep_id in expanded {
-                                self.load_episode_history(ctx, ep_id);
-                            }
+                            self.load_history(ctx);
                         }
 
                         Ok(false)
@@ -407,6 +405,7 @@ impl SeriesDetail {
                         .decode()
                         .context(Message::LoadingSeries)?,
                 );
+
                 Ok(true)
             }
             Msg::SeasonsLoaded(result) => {
@@ -415,19 +414,23 @@ impl SeriesDetail {
                     .decode()
                     .context(Message::LoadingSeasons)?
                     .seasons;
+
                 if self.selected.is_none() {
                     let initial = ctx
                         .props()
                         .initial_season
                         .and_then(|n| self.seasons.iter().find(|s| s.number == n));
+
                     self.selected = initial
                         .or_else(|| self.seasons.iter().find(|s| !s.number.is_special()))
                         .or_else(|| self.seasons.first())
                         .map(|s| s.number);
+
                     if let Some(season) = self.selected {
                         self.load_episodes(ctx, season);
                     }
                 }
+
                 Ok(true)
             }
             Msg::SelectSeason(season) => {
@@ -445,11 +448,25 @@ impl SeriesDetail {
                 Ok(false)
             }
             Msg::EpisodesLoaded(result) => {
-                self.episodes = result
+                let result = result
                     .context(Message::LoadingEpisodes)?
                     .decode()
-                    .context(Message::LoadingEpisodes)?
-                    .episodes;
+                    .context(Message::LoadingEpisodes)?;
+
+                self.watched.clear();
+
+                self.episodes = result.episodes;
+
+                for w in result.watched {
+                    self.watched.entry(w.episode_id).or_default().push(w);
+                }
+
+                self.expanded.retain(|episode_id| {
+                    self.watched
+                        .get(episode_id)
+                        .is_some_and(|watched| !watched.is_empty())
+                });
+
                 Ok(true)
             }
             Msg::AskMarkWatched(episode_id) => {
@@ -476,13 +493,12 @@ impl SeriesDetail {
             }
             Msg::MarkWatchedDone(result) => {
                 result.context(Message::MarkingWatched)?;
+
                 if let Some(season) = self.selected {
                     self.load_episodes(ctx, season);
                 }
-                let expanded: Vec<_> = self.episode_histories.keys().copied().collect();
-                for ep_id in expanded {
-                    self.load_episode_history(ctx, ep_id);
-                }
+
+                self.load_history(ctx);
                 Ok(false)
             }
             Msg::RemoveWatched(id, kind) => {
@@ -492,18 +508,18 @@ impl SeriesDetail {
                     .body(api::RemoveWatchedRequest { id, kind })
                     .on_packet(ctx.link().callback(Msg::RemoveWatchedDone))
                     .send();
+
                 Ok(false)
             }
             Msg::RemoveWatchedDone(result) => {
                 result.context(Message::RemovingWatched)?;
                 self.confirm_remove_watch = None;
+
                 if let Some(season) = self.selected {
                     self.load_episodes(ctx, season);
                 }
-                let expanded: Vec<_> = self.episode_histories.keys().copied().collect();
-                for ep_id in expanded {
-                    self.load_episode_history(ctx, ep_id);
-                }
+
+                self.load_history(ctx);
                 Ok(false)
             }
             Msg::ConfirmRemoveWatch(episode_id) => {
@@ -519,7 +535,10 @@ impl SeriesDetail {
                 let reqs: Vec<ws::Request> = self
                     .episodes
                     .iter()
-                    .filter(|ep| ep.season == season && !ep.watched)
+                    .filter(|ep| {
+                        ep.season == season
+                            && self.watched.get(&ep.id).map(Vec::len).unwrap_or_default() == 0
+                    })
                     .map(|ep| {
                         let episode_id = ep.id;
                         self.channel
@@ -540,17 +559,17 @@ impl SeriesDetail {
             }
             Msg::WatchRemainingDone(result) => {
                 result.context(Message::MarkingWatched)?;
+
                 if let Some(season) = self.selected {
                     self.load_episodes(ctx, season);
                 }
-                let expanded: Vec<_> = self.episode_histories.keys().copied().collect();
-                for ep_id in expanded {
-                    self.load_episode_history(ctx, ep_id);
-                }
+
+                self.load_history(ctx);
                 Ok(false)
             }
             Msg::SetTracked(tracked) => {
                 let id = ctx.props().series_id;
+
                 self._untrack_req = self
                     .channel
                     .request()
@@ -560,6 +579,7 @@ impl SeriesDetail {
                             .callback(move |r| Msg::SetTrackedDone(tracked, r)),
                     )
                     .send();
+
                 Ok(false)
             }
             Msg::SetTrackedDone(tracked, result) => {
@@ -611,21 +631,31 @@ impl SeriesDetail {
                 Ok(false)
             }
             Msg::ToggleHistory(id) => {
-                if self.episode_histories.contains_key(&id) {
-                    self.episode_histories.remove(&id);
-                    self._history_reqs.remove(&id);
-                } else {
-                    self.load_episode_history(ctx, id);
+                if !self.expanded.insert(id) {
+                    self.expanded.remove(&id);
                 }
+
                 Ok(true)
             }
-            Msg::HistoryLoaded(episode_id, result) => {
+            Msg::WatchedLoaded(result) => {
                 let watched = result
                     .context(Message::LoadingWatched)?
                     .decode()
                     .context(Message::LoadingWatched)?
                     .watched;
-                self.episode_histories.insert(episode_id, watched);
+
+                self.watched.clear();
+
+                for w in watched {
+                    self.watched.entry(w.episode_id).or_default().push(w);
+                }
+
+                self.expanded.retain(|episode_id| {
+                    self.watched
+                        .get(episode_id)
+                        .is_some_and(|watched| !watched.is_empty())
+                });
+
                 Ok(true)
             }
             Msg::AddPending(episode_id) => {
@@ -645,9 +675,11 @@ impl SeriesDetail {
             }
             Msg::AddPendingDone(result) => {
                 result.context(Message::SyncingSeries)?;
+
                 if let Some(season) = self.selected {
                     self.load_episodes(ctx, season);
                 }
+
                 Ok(false)
             }
             Msg::RemovePending(episode_id) => {
@@ -810,17 +842,15 @@ impl SeriesDetail {
             .send();
     }
 
-    fn load_episode_history(&mut self, ctx: &Context<Self>, episode: api::EpisodeId) {
-        let series = ctx.props().series_id;
-        let req = self
+    fn load_history(&mut self, ctx: &Context<Self>) {
+        let series_id = ctx.props().series_id;
+
+        self._watched_req = self
             .channel
             .request()
-            .body(api::ListWatchedRequest {
-                kind: api::WatchedKind::Episode { series, episode },
-            })
-            .on_packet(ctx.link().callback(move |r| Msg::HistoryLoaded(episode, r)))
+            .body(api::ListEpisodesWatchedRequest { series_id })
+            .on_packet(ctx.link().callback(Msg::WatchedLoaded))
             .send();
-        self._history_reqs.insert(episode, req);
     }
 
     fn view_header(&self, ctx: &Context<Self>) -> Html {
@@ -930,11 +960,14 @@ impl SeriesDetail {
         }
     }
 
-    fn view_episodes(&self, ctx: &Context<Self>, series: &api::Series) -> Html {
-        let series_id = ctx.props().series_id;
+    fn view_episodes(&self, ctx: &Context<Self>) -> Html {
         let link = ctx.link();
 
-        let watched_count = self.episodes.iter().filter(|ep| ep.watched).count();
+        let watched_count = self
+            .episodes
+            .iter()
+            .filter(|ep| self.watched.get(&ep.id).map(Vec::len).unwrap_or_default() > 0)
+            .count();
         let total = self.episodes.len();
 
         html! {
@@ -959,139 +992,146 @@ impl SeriesDetail {
                     <div class="empty text-muted">{"No episodes."}</div>
                 }
 
-                { for self.episodes.iter().map(|ep| {
-                    let episode_id = ep.id;
-                    let watched = ep.watched;
-                    let last_watched_id = ep.last_watched_id;
-                    let expanded = self.episode_histories.contains_key(&episode_id);
-                    let confirming_mark = self.confirming_mark_watch == Some(episode_id);
-                    let on_ask_mark = link.callback(move |_| Msg::AskMarkWatched(episode_id));
-                    let aired = ep.aired;
-                    let on_remove_confirm = last_watched_id.map(|wid| {
-                        link.callback(move |_| Msg::ConfirmRemoveWatch(wid))
-                    });
-                    let confirming_remove_watch = last_watched_id
-                        .map_or(false, |wid| self.confirm_remove_watch == Some(wid));
-                    let series_title = series.title.clone();
-                    let on_toggle_history = watched.then(|| {
-                        link.callback(move |_| Msg::ToggleHistory(episode_id))
-                    });
-                    let on_add_pending = link.callback(move |_| Msg::AddPending(episode_id));
-                    let on_remove_pending = link.callback(move |_| Msg::RemovePending(episode_id));
+                { for self.episodes.iter().map(|ep| self.view_episode(ctx, ep)) }
+            </div>
+        }
+    }
 
-                    let actions = 'actions: {
-                        if confirming_mark {
-                            break 'actions html! {
-                                <MarkWatchedPicker
-                                    {aired}
-                                    on_confirm={link.callback(move |ts| Msg::MarkWatched(series_id, episode_id, ts))}
-                                    on_cancel={link.callback(|_| Msg::CancelMarkWatch)}
-                                />
-                            };
+    fn view_episode(&self, ctx: &Context<Self>, ep: &api::Episode) -> Html {
+        let link = ctx.link();
+
+        let series_id = ctx.props().series_id;
+        let episode_id = ep.id;
+
+        let watched = self
+            .watched
+            .get(&episode_id)
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+
+        let expanded = self.expanded.contains(&episode_id);
+        let confirming_mark = self.confirming_mark_watch == Some(episode_id);
+        let on_ask_mark = link.callback(move |_| Msg::AskMarkWatched(episode_id));
+        let aired = ep.aired;
+        let on_remove_confirm = watched.last().map(|w| {
+            let id = w.id;
+            link.callback(move |_| Msg::ConfirmRemoveWatch(id))
+        });
+        let on_toggle_history =
+            (!watched.is_empty()).then(|| link.callback(move |_| Msg::ToggleHistory(episode_id)));
+        let on_add_pending = link.callback(move |_| Msg::AddPending(episode_id));
+        let on_remove_pending = link.callback(move |_| Msg::RemovePending(episode_id));
+
+        let actions = 'actions: {
+            if confirming_mark {
+                break 'actions html! {
+                    <MarkWatchedPicker
+                        {aired}
+                        on_confirm={link.callback(move |ts| Msg::MarkWatched(series_id, episode_id, ts))}
+                        on_cancel={link.callback(|_| Msg::CancelMarkWatch)}
+                    />
+                };
+            }
+
+            html! {
+                <div class="actions row-fill">
+                    <div class="row fill">
+                        <span class="episode-code">
+                            { format!("S{:02}E{:02}", ep.season.to_u32(), ep.number) }
+                        </span>
+
+                        <span class="fill">
+                            { ep.name.as_deref().unwrap_or("—") }
+                        </span>
+                    </div>
+
+                    <div class="row end">
+                        if let Some(s) = ep.display_at(self.tz.clone()) {
+                            <span class="text-muted">{s}</span>
                         }
 
-                        html! {
-                            <div class="actions row-fill">
-                                <div class="row fill">
-                                    <span class="episode-code">
-                                        { format!("S{:02}E{:02}", ep.season.to_u32(), ep.number) }
-                                    </span>
+                        if !watched.is_empty() {
+                            if let Some(on_toggle) = on_toggle_history {
+                                <button class="btn-icon" onclick={on_toggle}
+                                    title={if expanded { "Hide watch history" } else { "Show watch history" }}>
+                                    <span class={if expanded { "icon chevron-up" } else { "icon clock" }} />
+                                </button>
+                            }
 
-                                    <span class="fill">
-                                        { ep.name.as_deref().unwrap_or("—") }
-                                    </span>
-                                </div>
+                            <button class="btn-icon-success" onclick={on_ask_mark.clone()} title="Watch again">
+                                <span class="icon check" />
+                            </button>
 
-                                <div class="row end">
-                                    if let Some(s) = ep.display_at(self.tz.clone()) {
-                                        <span class="text-muted">{s}</span>
-                                    }
-
-                                    if watched {
-                                        if let Some(on_toggle) = on_toggle_history {
-                                            <button class="btn-icon" onclick={on_toggle}
-                                                title={if expanded { "Hide watch history" } else { "Show watch history" }}>
-                                                <span class={if expanded { "icon chevron-up" } else { "icon clock" }} />
-                                            </button>
-                                        }
-
-                                        <button class="btn-icon-success" onclick={on_ask_mark.clone()} title="Watch again">
-                                            <span class="icon check" />
-                                        </button>
-
-                                        if let Some(on_remove) = on_remove_confirm {
-                                            <button class="btn-icon" onclick={on_remove} title="Remove last watch">
-                                                <span class="icon check-circle" />
-                                            </button>
-                                        } else {
-                                            <span class="icon-inline" title="Watched"><span class="icon check-circle" /></span>
-                                        }
-                                    } else {
-                                        <button class="btn-icon-success" onclick={on_ask_mark} title="Mark watched">
-                                            <span class="icon check" />
-                                        </button>
-                                    }
-
-                                    if ep.pending {
-                                        <button class="btn-icon" onclick={on_remove_pending} title="Remove from pending">
-                                            <span class="icon bookmark-slash" />
-                                        </button>
-                                    } else {
-                                        <button class="btn-icon" onclick={on_add_pending} title="Add to pending">
-                                            <span class="icon bookmark" />
-                                        </button>
-                                    }
-                                </div>
-                            </div>
+                            if let Some(on_remove) = on_remove_confirm {
+                                <button class="btn-icon" onclick={on_remove} title="Remove last watch">
+                                    <span class="icon check-circle" />
+                                </button>
+                            } else {
+                                <span class="icon-inline" title="Watched"><span class="icon check-circle" /></span>
+                            }
+                        } else {
+                            <button class="btn-icon-success" onclick={on_ask_mark} title="Mark watched">
+                                <span class="icon check" />
+                            </button>
                         }
-                    };
 
-                    html! {
-                        <div class={classes!("section", watched.then_some("watched"))}>
-                            {actions}
+                        if ep.pending {
+                            <button class="btn-icon" onclick={on_remove_pending} title="Remove from watch next">
+                                <span class="icon bookmark-slash" />
+                            </button>
+                        } else {
+                            <button class="btn-icon" onclick={on_add_pending} title="Watch next">
+                                <span class="icon bookmark" />
+                            </button>
+                        }
+                    </div>
+                </div>
+            }
+        };
 
-                            if let Some(ref overview) = ep.overview {
-                                <p class="overview">{overview}</p>
-                            }
+        html! {
+            <div class={classes!("section", (!watched.is_empty()).then_some("watched"))}>
+                {actions}
 
-                            if expanded {
-                                if let Some(ref img) = ep.filename {
-                                    <img src={img.proxy_url()} />
-                                }
+                if let Some(ref overview) = ep.overview {
+                    <p class="overview">{overview}</p>
+                }
 
-                                <div class="table">
-                                    { for self.episode_histories.get(&episode_id).map(Vec::as_slice).unwrap_or_default().iter().map(|w| {
-                                        let wid = w.id;
-                                        let kind = api::WatchedKind::Episode { series: series_id, episode: episode_id };
-
-                                        if self.confirm_remove_watch == Some(wid) {
-                                            html! {
-                                                <div class="table-entry">
-                                                    <ConfirmDanger
-                                                        prompt="Remove watch"
-                                                        label={w.timestamp.display(self.tz.clone())}
-                                                        on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, kind))}
-                                                        on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
-                                                    />
-                                                </div>
-                                            }
-                                        } else {
-                                            html! {
-                                                <div class="table-entry row">
-                                                    <span class="fill">{w.timestamp.display(self.tz.clone())}</span>
-
-                                                    <button class="btn-icon" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
-                                                        <span class="icon x-mark" />
-                                                    </button>
-                                                </div>
-                                            }
-                                        }
-                                    }) }
-                                </div>
-                            }
-                        </div>
+                if expanded {
+                    if let Some(ref img) = ep.filename {
+                        <img src={img.proxy_url()} />
                     }
-                }) }
+
+                    <div class="table">
+                        { for watched.iter().map(|w| {
+                            let wid = w.id;
+                            let kind = api::WatchedKind::Episode { series: series_id, episode: episode_id };
+
+                            if self.confirm_remove_watch == Some(wid) {
+                                html! {
+                                    <div class="table-entry">
+                                        <ConfirmDanger
+                                            prompt="Remove watch"
+                                            label={w.timestamp.display(self.tz.clone())}
+                                            on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, kind))}
+                                            on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
+                                        />
+                                    </div>
+                                }
+                            } else {
+                                html! {
+                                    <div class="table-entry row">
+                                        <span class="fill">{w.timestamp.display(self.tz.clone())}</span>
+
+                                        <button class="btn-icon" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
+                                            <span class="icon x-mark" />
+                                        </button>
+                                    </div>
+                                }
+                            }
+                        }) }
+                    </div>
+                }
             </div>
         }
     }

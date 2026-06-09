@@ -592,6 +592,7 @@ impl MovieDetail {
         let link = ctx.link();
 
         let release_date = movie.release_date;
+        let watched_count = self.watched.len();
 
         let actions = 'actions: {
             if self.confirm_mark_watch {
@@ -608,14 +609,14 @@ impl MovieDetail {
 
             html! {
                 <div class="row actions">
-                    if movie.watched {
+                    if watched_count > 0 {
                         <span class="icon-inline" title="Watched"><span class="icon check-circle" /></span>
 
                         <span class="text-muted fill">
-                            if movie.watched_count == 1 {
+                            if watched_count == 1 {
                                 {"Watched once"}
                             } else {
-                                {format!("Watched {} times", movie.watched_count)}
+                                {format!("Watched {} times", watched_count)}
                             }
                         </span>
 

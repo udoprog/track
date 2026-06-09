@@ -100,31 +100,21 @@ pub(super) struct MarkWatchedPickerProps {
 
 #[function_component]
 pub(super) fn MarkWatchedPicker(props: &MarkWatchedPickerProps) -> Html {
-    let aired = props.aired;
+    let on_now = props.on_confirm.reform(|e: MouseEvent| {
+        e.stop_propagation();
+        None
+    });
 
-    let on_now = {
-        let cb = props.on_confirm.clone();
-        Callback::from(move |e: MouseEvent| {
+    let on_aired = props.aired.map(|ts| {
+        props.on_confirm.reform(move |e: MouseEvent| {
             e.stop_propagation();
-            cb.emit(None);
-        })
-    };
-
-    let on_aired = aired.map(|ts| {
-        let cb = props.on_confirm.clone();
-        Callback::from(move |e: MouseEvent| {
-            e.stop_propagation();
-            cb.emit(Some(ts));
+            Some(ts)
         })
     });
 
-    let on_cancel = {
-        let cb = props.on_cancel.clone();
-        Callback::from(move |e: MouseEvent| {
-            e.stop_propagation();
-            cb.emit(());
-        })
-    };
+    let on_cancel = props.on_cancel.reform(move |e: MouseEvent| {
+        e.stop_propagation();
+    });
 
     html! {
         <div class="row-fill fill">

@@ -1130,10 +1130,15 @@ pub struct Episode {
     pub aired: Option<Timestamp>,
     pub filename: Option<Image>,
     pub remote_id: Option<RemoteId>,
-    pub watched: bool,
-    pub watched_count: u32,
-    pub last_watched_id: Option<WatchedId>,
     pub pending: bool,
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct WatchedEpisode {
+    pub id: WatchedId,
+    pub timestamp: Timestamp,
+    pub episode_id: EpisodeId,
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
@@ -1145,8 +1150,6 @@ pub struct Movie {
     pub overview: Option<String>,
     pub remotes: Vec<RemoteId>,
     pub sync_source: Option<SyncSource>,
-    pub watched: bool,
-    pub watched_count: u32,
     pub tracked: bool,
     pub pending: bool,
     pub images: Vec<MediaImage>,
@@ -1441,6 +1444,7 @@ pub struct ListEpisodesRequest {
 #[musli(crate = musli_core)]
 pub struct ListEpisodesResponse {
     pub episodes: Vec<Episode>,
+    pub watched: Vec<WatchedEpisode>,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -1496,6 +1500,18 @@ pub struct MarkWatchedResponse {
 pub struct RemoveWatchedRequest {
     pub id: WatchedId,
     pub kind: WatchedKind,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct ListEpisodesWatchedRequest {
+    pub series_id: SeriesId,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct ListEpisodesWatchedResponse {
+    pub watched: Vec<WatchedEpisode>,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -1805,6 +1821,12 @@ api::define! {
     impl Endpoint for RemoveWatched {
         impl Request for RemoveWatchedRequest;
         type Response<'de> = Empty;
+    }
+
+    pub type ListEpisodesWatched;
+    impl Endpoint for ListEpisodesWatched {
+        impl Request for ListEpisodesWatchedRequest;
+        type Response<'de> = ListEpisodesWatchedResponse;
     }
 
     pub type ListWatched;

@@ -82,9 +82,6 @@ struct EpisodeRow {
     aired: Option<Timestamp>,
     filename: Option<Image>,
     remote_id: Option<RemoteId>,
-    watched: bool,
-    watched_count: i64,
-    last_watched_id: Option<WatchedId>,
     pending: bool,
 }
 
@@ -94,8 +91,6 @@ struct MovieRow {
     title: Option<String>,
     release_date: Option<Timestamp>,
     overview: Option<String>,
-    watched: bool,
-    watched_count: i64,
     tracked: bool,
     sync_source: Option<SyncSource>,
     last_synced_at: Option<Timestamp>,
@@ -116,6 +111,13 @@ struct WatchedRow {
     episode_id: Option<EpisodeId>,
     movie_id: Option<MovieId>,
     series_id: Option<SeriesId>,
+}
+
+#[derive(Row)]
+struct WatchedEpisodeRow {
+    id: WatchedId,
+    timestamp: Timestamp,
+    episode_id: EpisodeId,
 }
 
 #[derive(Row)]
@@ -335,26 +337,29 @@ statements! {
                 aired           = excluded.aired,
                 filename        = excluded.filename,
                 remote_id       = excluded.remote_id
-            RETURNING id, series_id, season, number, absolute_number, name, overview, aired, filename, remote_id,
-                      0 AS watched, 0 AS watched_count, NULL AS last_watched_id, 0 AS pending
+            RETURNING id, series_id, season, number, absolute_number, name, overview, aired, filename, remote_id, 0 AS pending
         "#,
         list_episodes: r#"
             SELECT e.id, e.series_id, e.season, e.number, e.absolute_number, e.name, e.overview, e.aired, e.filename, e.remote_id,
-                   (SELECT COUNT(*) FROM watched w WHERE w.episode_id = e.id) > 0 AS watched,
-                   (SELECT COUNT(*) FROM watched w WHERE w.episode_id = e.id) AS watched_count,
-                   (SELECT w.id FROM watched w WHERE w.episode_id = e.id ORDER BY w.id DESC LIMIT 1) AS last_watched_id,
                    EXISTS(SELECT 1 FROM pending p WHERE p.episode_id = e.id) AS pending
             FROM episodes e
             WHERE e.series_id = ? AND e.season = ?
             ORDER BY e.number
         "#,
+        list_episodes_watched: r#"
+            SELECT w.id, w.timestamp, w.episode_id
+            FROM watched w
+            JOIN episodes e ON e.id = w.episode_id
+            WHERE e.series_id = ?
+            ORDER BY w.timestamp DESC
+        "#,
         episode_by_id: r#"
             SELECT e.id, e.series_id, e.season, e.number, e.absolute_number, e.name, e.overview, e.aired, e.filename, e.remote_id,
-                   (SELECT COUNT(*) FROM watched w WHERE w.episode_id = e.id) > 0 AS watched,
-                   (SELECT COUNT(*) FROM watched w WHERE w.episode_id = e.id) AS watched_count,
-                   (SELECT w.id FROM watched w WHERE w.episode_id = e.id ORDER BY w.id DESC LIMIT 1) AS last_watched_id,
                    EXISTS(SELECT 1 FROM pending p WHERE p.episode_id = e.id) AS pending
             FROM episodes e WHERE e.id = ?
+        "#,
+        episode_aired_by_id: r#"
+            SELECT aired FROM episodes WHERE id = ?
         "#,
         update_episode_aired: r#"
             UPDATE episodes SET aired = ? WHERE series_id = ? AND season = ? AND number = ?
@@ -364,27 +369,18 @@ statements! {
         insert_movie: r#"
             INSERT INTO movies (title, release_date, overview, tracked)
             VALUES (?, ?, ?, ?)
-            RETURNING id, title, release_date, overview, 0 AS watched, 0 AS watched_count, tracked, sync_source, last_synced_at, language
+            RETURNING id, title, release_date, overview, tracked, sync_source, last_synced_at, language
         "#,
         list_movies: r#"
-            SELECT m.id, m.title, m.release_date, m.overview,
-                   (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) > 0 AS watched,
-                   (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) AS watched_count,
-                   m.tracked, m.sync_source, m.last_synced_at, m.language
+            SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.sync_source, m.last_synced_at, m.language
             FROM movies m ORDER BY m.title
         "#,
         movie_by_id: r#"
-            SELECT m.id, m.title, m.release_date, m.overview,
-                   (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) > 0 AS watched,
-                   (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) AS watched_count,
-                   m.tracked, m.sync_source, m.last_synced_at, m.language
+            SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.sync_source, m.last_synced_at, m.language
             FROM movies m WHERE m.id = ?
         "#,
         movie_by_remote: r#"
-            SELECT m.id, m.title, m.release_date, m.overview,
-                   (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) > 0 AS watched,
-                   (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) AS watched_count,
-                   m.tracked, m.sync_source, m.last_synced_at, m.language
+            SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.sync_source, m.last_synced_at, m.language
             FROM movies m
             JOIN remotes r ON r.movie_id = m.id
             WHERE r.remote_id = ?
@@ -448,7 +444,7 @@ statements! {
         "#,
         delete_pending_episode: r#"DELETE FROM pending WHERE series_id = ?"#,
         next_episode_after: r#"
-            SELECT e.id FROM episodes e
+            SELECT e.id, e.aired FROM episodes e
             JOIN episodes curr ON curr.id = ?2
             WHERE e.series_id = ?1
               AND (e.season > curr.season OR (e.season = curr.season AND e.number > curr.number))
@@ -477,9 +473,10 @@ statements! {
               AND NOT EXISTS (SELECT 1 FROM watched w WHERE w.movie_id = m.id)
               AND NOT EXISTS (SELECT 1 FROM pending p WHERE p.movie_id = m.id)
         "#,
-        list_pending: r#"
+        list_pending_before: r#"
             SELECT episode_id, movie_id
             FROM pending
+            WHERE timestamp <= ?
             ORDER BY timestamp DESC
         "#,
         pending_episode_detail: r#"
@@ -547,10 +544,7 @@ statements! {
             ORDER BY last_synced_at IS NOT NULL, last_synced_at
         "#,
         movies_needing_sync: r#"
-            SELECT m.id, m.title, m.release_date, m.overview,
-                   (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) > 0 AS watched,
-                   (SELECT COUNT(*) FROM watched w WHERE w.movie_id = m.id) AS watched_count,
-                   m.tracked, m.sync_source, m.last_synced_at, m.language
+            SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.sync_source, m.last_synced_at, m.language
             FROM movies m
             WHERE m.tracked = 1
               AND (m.last_synced_at IS NULL OR m.last_synced_at < ?)
@@ -568,6 +562,12 @@ statements! {
             SELECT country, release_type, timestamp
             FROM movie_releases
             WHERE movie_id = ?
+            ORDER BY timestamp, country, release_type
+        "#,
+        movie_release_by_type: r#"
+            SELECT country, release_type, timestamp
+            FROM movie_releases
+            WHERE movie_id = ? AND release_type = ?
             ORDER BY timestamp, country, release_type
         "#,
 
@@ -949,9 +949,28 @@ impl Database {
         let result = spawn_blocking(move || {
             s.list_episodes.bind((series_id, season.to_u32()))?;
             let mut out = Vec::new();
+
             while let Some(r) = s.list_episodes.next::<EpisodeRow>()? {
                 out.push(episode_from_row(r));
             }
+
+            Ok(out)
+        });
+
+        result.await?
+    }
+
+    pub async fn episodes_watched(&self, series_id: SeriesId) -> Result<Vec<api::WatchedEpisode>> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        let result = spawn_blocking(move || {
+            s.list_episodes_watched.bind((series_id,))?;
+            let mut out = Vec::new();
+
+            while let Some(r) = s.list_episodes_watched.next::<WatchedEpisodeRow>()? {
+                out.push(watched_episode_from_row(r));
+            }
+
             Ok(out)
         });
 
@@ -964,6 +983,17 @@ impl Database {
         let result = spawn_blocking(move || {
             s.episode_by_id.bind((id,))?;
             Ok(s.episode_by_id.next::<EpisodeRow>()?.map(episode_from_row))
+        });
+
+        result.await?
+    }
+
+    pub async fn episode_aired_by_id(&self, id: EpisodeId) -> Result<Option<Timestamp>> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        let result = spawn_blocking(move || {
+            s.episode_aired_by_id.bind((id,))?;
+            Ok(s.episode_aired_by_id.next::<Option<Timestamp>>()?.flatten())
         });
 
         result.await?
@@ -1107,6 +1137,26 @@ impl Database {
             s.has_pending_movie.bind((movie_id,))?;
             movie.pending = s.has_pending_movie.next::<(i64,)>()?.is_some();
             Ok(Some(movie))
+        });
+
+        result.await?
+    }
+
+    pub async fn movie_release_by_type(
+        &self,
+        id: MovieId,
+        ty: ReleaseType,
+    ) -> Result<Option<Timestamp>> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        let result = spawn_blocking(move || {
+            s.movie_release_by_type.bind((id, ty))?;
+
+            let Some(timestamp) = s.movie_release_by_type.next::<Option<Timestamp>>()? else {
+                return Ok(None);
+            };
+
+            Ok(timestamp)
         });
 
         result.await?
@@ -1540,9 +1590,10 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.next_episode_after.bind((series_id, episode_id))?;
+
             let next_id = s
                 .next_episode_after
-                .next::<(api::EpisodeId,)>()?
+                .next::<(api::EpisodeId, Timestamp)>()?
                 .map(|r| r.0);
 
             match next_id {
@@ -1607,9 +1658,50 @@ impl Database {
                 return Ok(());
             };
 
-            let now = row.aired.unwrap_or(now);
+            let now = row.aired.unwrap_or(now).max(now);
 
             s.upsert_pending_episode.bind((now, series_id, row.id))?;
+            ensure!(
+                s.upsert_pending_episode.step()?.is_done(),
+                "upsert_pending_episode"
+            );
+
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    /// Fill the pending slot for a series, but ONLY if it currently has no pending episode.
+    /// Called after sync upserts episodes, and after MarkWatched clears the old pending row.
+    pub async fn fill_pending_for_series_from(
+        &self,
+        series_id: api::SeriesId,
+        episode_id: api::EpisodeId,
+        now: Timestamp,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        let result = spawn_blocking(move || {
+            s.has_pending_episode_for_series.bind((series_id,))?;
+            let already_has = s.has_pending_episode_for_series.next::<(i64,)>()?.is_some();
+
+            if already_has {
+                return Ok(());
+            }
+
+            s.next_episode_after.bind((series_id, episode_id))?;
+
+            let Some((next_id, aired)) = s
+                .next_episode_after
+                .next::<(api::EpisodeId, Option<Timestamp>)>()?
+            else {
+                return Ok(());
+            };
+
+            let now = aired.unwrap_or(now).max(now);
+
+            s.upsert_pending_episode.bind((now, series_id, next_id))?;
             ensure!(
                 s.upsert_pending_episode.step()?.is_done(),
                 "upsert_pending_episode"
@@ -1757,15 +1849,15 @@ impl Database {
     }
 
     /// Unified pending list replacing pending_episodes + pending_movies.
-    pub async fn pending(&self) -> Result<Vec<api::Pending>> {
+    pub async fn pending(&self, now: Timestamp) -> Result<Vec<api::Pending>> {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
             let mut out = Vec::new();
 
-            s.list_pending.reset()?;
+            s.list_pending_before.bind((now,))?;
 
-            'outer: while let Some(r) = s.list_pending.next::<PendingBaseRow>()? {
+            'outer: while let Some(r) = s.list_pending_before.next::<PendingBaseRow>()? {
                 let pending = 'pending: {
                     if let Some(episode_id) = r.episode_id {
                         s.pending_episode_detail.bind((episode_id,))?;
@@ -1869,9 +1961,6 @@ impl Database {
                     aired: r.aired,
                     filename: r.filename,
                     remote_id: r.remote_id,
-                    watched: false,
-                    watched_count: 0,
-                    last_watched_id: None,
                     pending: false,
                 };
 
@@ -2113,10 +2202,15 @@ fn episode_from_row(r: EpisodeRow) -> api::Episode {
         aired: r.aired,
         filename: r.filename,
         remote_id: r.remote_id,
-        watched: r.watched,
-        watched_count: r.watched_count as u32,
-        last_watched_id: r.last_watched_id,
         pending: r.pending,
+    }
+}
+
+fn watched_episode_from_row(r: WatchedEpisodeRow) -> api::WatchedEpisode {
+    api::WatchedEpisode {
+        id: r.id,
+        timestamp: r.timestamp,
+        episode_id: r.episode_id,
     }
 }
 
@@ -2128,9 +2222,7 @@ fn movie_from_row(r: MovieRow) -> api::Movie {
         overview: r.overview,
         remotes: Vec::new(),
         sync_source: r.sync_source,
-        watched: r.watched,
         tracked: r.tracked,
-        watched_count: r.watched_count as u32,
         pending: false,
         images: Vec::new(),
         last_synced_at: r.last_synced_at,

@@ -320,13 +320,9 @@ impl MoviesList {
                                     <span class="text-muted">{date.date(self.tz.clone()).year()}</span>
                                 }
 
-                                if m.watched {
-                                    <span class="icon-inline" title="Watched"><span class="icon check-circle" /></span>
-                                } else {
-                                    <button class="btn-icon-success" title="Mark watched" onclick={ctx.link().callback(move |_| Msg::AskMarkWatched(movie_id))}>
-                                        <span class="icon check" />
-                                    </button>
-                                }
+                                <button class="btn-icon-success" title="Mark watched" onclick={ctx.link().callback(move |_| Msg::AskMarkWatched(movie_id))}>
+                                    <span class="icon check" />
+                                </button>
 
                                 if !m.tracked {
                                     <span class="end icon-inline" title="Untracked movie">

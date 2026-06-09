@@ -201,7 +201,8 @@ impl WsHandler {
                     .read::<api::ListEpisodesRequest>()
                     .context("missing request")?;
                 let episodes = self.db.episodes(req.series_id, req.season).await?;
-                outgoing.write(api::ListEpisodesResponse { episodes });
+                let watched = self.db.episodes_watched(req.series_id).await?;
+                outgoing.write(api::ListEpisodesResponse { episodes, watched });
             }
             api::Request::ListMovies => {
                 let _req = incoming
@@ -316,11 +317,14 @@ impl WsHandler {
                     .read::<api::MarkWatchedRequest>()
                     .context("missing request")?;
 
-                let now = req.timestamp.unwrap_or_else(api::Timestamp::now);
-                let watched = self.db.mark_watched(req.kind, now).await?;
+                let now = api::Timestamp::now();
+                let at = req.timestamp.unwrap_or(now);
+                let watched = self.db.mark_watched(req.kind, at).await?;
 
-                if let api::WatchedKind::Episode { series, .. } = req.kind {
-                    self.pending.on_episode_watched(series, now).await?;
+                if let api::WatchedKind::Episode { series, episode } = req.kind {
+                    self.pending
+                        .on_episode_watched_from(series, episode, now)
+                        .await?;
                 }
 
                 self.broadcast.emit(
@@ -358,6 +362,14 @@ impl WsHandler {
 
                 outgoing.write(api::Empty);
             }
+            api::Request::ListEpisodesWatched => {
+                let req = incoming
+                    .read::<api::ListEpisodesWatchedRequest>()
+                    .context("missing request")?;
+
+                let watched = self.db.episodes_watched(req.series_id).await?;
+                outgoing.write(api::ListEpisodesWatchedResponse { watched });
+            }
             api::Request::ListWatched => {
                 let req = incoming
                     .read::<api::ListWatchedRequest>()
@@ -377,7 +389,8 @@ impl WsHandler {
                     .read::<api::ListPendingRequest>()
                     .context("missing request")?;
 
-                let pending = self.db.pending().await.context("loading pending")?;
+                let now = api::Timestamp::now();
+                let pending = self.db.pending(now).await.context("loading pending")?;
                 outgoing.write(api::ListPendingResponse { pending });
             }
             api::Request::ListSchedule => {
@@ -401,7 +414,8 @@ impl WsHandler {
                     .read::<api::ListWatchNextRequest>()
                     .context("missing request")?;
 
-                let pending = self.db.pending().await.context("loading watch next")?;
+                let now = api::Timestamp::now();
+                let pending = self.db.pending(now).await.context("loading watch next")?;
                 outgoing.write(api::ListWatchNextResponse { pending });
             }
             api::Request::Search => {
@@ -676,13 +690,29 @@ impl WsHandler {
                     .read::<api::AddPendingRequest>()
                     .context("missing request")?;
 
-                let ts = api::Timestamp::now();
-
                 match req.kind {
                     api::PendingKind::Episode { series, episode } => {
+                        let now = api::Timestamp::now();
+
+                        let Some(ts) = self.db.episode_aired_by_id(episode).await? else {
+                            anyhow::bail!("episode does not have aired date");
+                        };
+
+                        let ts = ts.max(now);
                         self.db.add_pending_episode(series, episode, ts).await?;
                     }
                     api::PendingKind::Movie { movie } => {
+                        let now = api::Timestamp::now();
+
+                        let Some(released) = self
+                            .db
+                            .movie_release_by_type(movie, api::ReleaseType::Digital)
+                            .await?
+                        else {
+                            anyhow::bail!("movie does not have release date");
+                        };
+
+                        let ts = released.max(now);
                         self.db.add_pending_movie(movie, ts).await?;
                     }
                 }
