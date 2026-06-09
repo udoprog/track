@@ -378,7 +378,6 @@ impl WsHandler {
                     .context("missing request")?;
 
                 let pending = self.db.pending().await.context("loading pending")?;
-
                 outgoing.write(api::ListPendingResponse { pending });
             }
             api::Request::ListSchedule => {
@@ -391,7 +390,10 @@ impl WsHandler {
                     .as_deref()
                     .and_then(TimeZone::get)
                     .unwrap_or(TimeZone::UTC);
-                let days = self.db.schedule(req.days, &tz).await?;
+
+                let now = api::Timestamp::now();
+
+                let days = self.db.schedule(req.days, now, tz).await?;
                 outgoing.write(api::ListScheduleResponse { days });
             }
             api::Request::ListWatchNext => {
@@ -399,10 +401,7 @@ impl WsHandler {
                     .read::<api::ListWatchNextRequest>()
                     .context("missing request")?;
 
-                let mut pending = self.db.pending().await.context("loading watch next")?;
-
-                pending.retain(|p| matches!(p.kind, api::PendingKind::Episode { .. }));
-
+                let pending = self.db.pending().await.context("loading watch next")?;
                 outgoing.write(api::ListWatchNextResponse { pending });
             }
             api::Request::Search => {

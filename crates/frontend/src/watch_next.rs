@@ -209,7 +209,7 @@ impl WatchNext {
                                 {&p.label}
                             </span>
 
-                            if let Some(s) = p.display_at(&self.tz) {
+                            if let Some(s) = p.display_at(self.tz.clone()) {
                                 <span class="text-muted">{s}</span>
                             }
                         </div>

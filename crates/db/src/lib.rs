@@ -1761,19 +1761,16 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.list_pending.reset()?;
-            let mut base: Vec<PendingBaseRow> = Vec::new();
-            while let Some(r) = s.list_pending.next::<PendingBaseRow>()? {
-                base.push(r);
-            }
-
             let mut out = Vec::new();
 
-            'outer: for r in base {
+            s.list_pending.reset()?;
+
+            'outer: while let Some(r) = s.list_pending.next::<PendingBaseRow>()? {
                 let pending = 'pending: {
                     if let Some(episode_id) = r.episode_id {
                         s.pending_episode_detail.bind((episode_id,))?;
                         let detail = s.pending_episode_detail.next::<PendingEpisodeDetailRow>()?;
+
                         let Some(d) = detail else {
                             continue 'outer;
                         };
@@ -1837,11 +1834,21 @@ impl Database {
 
     // ── Dashboard queries ──
 
-    pub async fn schedule(&self, days: u32, tz: &api::TimeZone) -> Result<Vec<api::ScheduledDay>> {
-        let today = Date::today();
-        let end = today.checked_add_days(days as i32);
+    pub async fn schedule(
+        &self,
+        days: u32,
+        now: Timestamp,
+        tz: api::TimeZone,
+    ) -> Result<Vec<api::ScheduledDay>> {
+        let today = now.date(tz.clone());
+
+        let Some(end) = today.checked_add_days(days) else {
+            return Ok(vec![]);
+        };
+
+        let end = end.to_timestamp_at_midnight_zoned(tz.clone())?;
+
         let mut s = self.inner.clone().lock_owned().await;
-        let tz = tz.clone();
 
         let result = spawn_blocking(move || {
             s.list_schedule.bind((today, end))?;
@@ -1850,7 +1857,6 @@ impl Database {
 
             while let Some(r) = s.list_schedule.next::<ScheduleRow>()? {
                 let Some(day) = r.aired else { continue };
-                let day = day.date(&tz);
 
                 let ep = api::Episode {
                     id: r.episode_id,
@@ -1868,6 +1874,8 @@ impl Database {
                     last_watched_id: None,
                     pending: false,
                 };
+
+                let day = day.date(tz.clone());
 
                 if let Some(day_entry) = days_map.iter_mut().find(|(d, _)| d == &day) {
                     if let Some(series_entry) =

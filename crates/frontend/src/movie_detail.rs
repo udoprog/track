@@ -693,7 +693,7 @@ impl MovieDetail {
 
                     if let Some(ts) = movie.last_synced_at {
                         <span class="text-muted hide-mobile" title="Last synced at">
-                            {ts.display(&self.tz)}
+                            {ts.display(self.tz.clone())}
                         </span>
                     }
                 </div>
@@ -754,27 +754,32 @@ impl MovieDetail {
 
                     if !self.watched.is_empty() {
                         <div class="section">
-                            <div class="text-muted">{"Watch history"}</div>
+                            <h4>{"Watch history"}</h4>
+
                             <div class="table">
                                 { for self.watched.iter().map(|w| {
                                     let wid = w.id;
-                                    let wkind = api::WatchedKind::Movie { movie: movie_id };
+                                    let kind = api::WatchedKind::Movie { movie: movie_id };
+
                                     if self.confirm_remove_watch == Some(wid) {
                                         html! {
                                             <div class="table-entry">
                                                 <ConfirmDanger
                                                     prompt="Remove watch"
-                                                    label={w.timestamp.display(&self.tz)}
-                                                    on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, wkind))}
+                                                    label={w.timestamp.display(self.tz.clone())}
+                                                    on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, kind))}
                                                     on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
                                                 />
                                             </div>
                                         }
                                     } else {
                                         html! {
-                                            <div class="table-entry text-muted">
-                                                <span class="fill">{w.timestamp.display(&self.tz)}</span>
-                                                <button class="btn-icon" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
+                                            <div class="table-entry row">
+                                                <div class="row fill">
+                                                    <span>{w.timestamp.display(self.tz.clone())}</span>
+                                                </div>
+
+                                                <button class="btn-icon end" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
                                                     <span class="icon x-mark" />
                                                 </button>
                                             </div>

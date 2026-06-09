@@ -1,3 +1,4 @@
+use core::array;
 use std::collections::HashMap;
 
 use api::TimeZone;
@@ -228,24 +229,30 @@ fn build_weeks(
     today: api::Date,
 ) -> Vec<(Option<(&'static str, i16)>, [api::Date; 7])> {
     // Start on Monday of today's week (may include past days)
-    let start = today.checked_add_days(-today.weekday().from_monday());
+    let Some(start) = today.checked_sub_days(today.weekday().from_monday()) else {
+        return Vec::new();
+    };
 
     // End on Sunday of the week containing the last scheduled date; always
     // extend to at least 4 weeks from today so the grid is never empty.
-    let floor = today.checked_add_days(27);
+    let Some(floor) = today.checked_add_days(27) else {
+        return Vec::new();
+    };
+
     let last_date = schedule.last().map(|d| d.date).unwrap_or(today);
     let last_date = if last_date > floor { last_date } else { floor };
-    let end = last_date.checked_add_days(6 - last_date.weekday().from_monday());
+
+    let Some(end) = last_date.checked_add_days(6 - last_date.weekday().from_monday()) else {
+        return Vec::new();
+    };
 
     let mut weeks = Vec::new();
     let mut d = start;
     let mut last_shown_month: Option<u8> = None;
 
     while d <= end {
-        let days: [api::Date; 7] = std::array::from_fn(|i| d.checked_add_days(i as i32));
+        let days: [api::Date; 7] = array::from_fn(|i| d.checked_add_days(i as u32).unwrap_or(d));
 
-        // Show a month band when the month changes. A week that CONTAINS a
-        // 1st-of-month triggers the band for that new month, not the Monday.
         let band_day = days.iter().find(|day| day.day() == 1).unwrap_or(&days[0]);
 
         let month_band = if last_shown_month != Some(band_day.month()) {
@@ -256,7 +263,12 @@ fn build_weeks(
         };
 
         weeks.push((month_band, days));
-        d = d.checked_add_days(7);
+
+        let Some(next) = d.checked_add_days(7) else {
+            break;
+        };
+
+        d = next;
     }
 
     weeks

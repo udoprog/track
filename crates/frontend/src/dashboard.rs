@@ -6,6 +6,7 @@ use api::{HasAired, TimeZone};
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{DashboardQuery, Route, SeriesDetailQuery};
 use crate::ui::{ConfirmDanger, MarkWatchedPicker, PaginationButtons};
+use crate::{Calendar, SetupChannel};
 
 pub(super) struct Dashboard {
     channel: ws::Channel,
@@ -13,7 +14,7 @@ pub(super) struct Dashboard {
     config: api::Config,
     tz: TimeZone,
     _tz_handle: ContextHandle<TimeZone>,
-    _setup: crate::SetupChannel,
+    _setup: SetupChannel,
     _broadcast: ws::Listener,
     _pending_req: ws::Request,
     _config_req: ws::Request,
@@ -61,7 +62,7 @@ impl Component for Dashboard {
             .context::<ws::Handle>(Callback::noop())
             .expect("ws::Handle context not found");
 
-        let _setup = crate::SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
+        let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
         let (tz, _tz_handle) = ctx
@@ -103,8 +104,9 @@ impl Component for Dashboard {
                 { self.view_pending(ctx) }
 
                 <div class="section">
-                    <div class="row"><h2>{"Coming Up"}</h2></div>
-                    <crate::Calendar
+                    <h2>{"Coming Up"}</h2>
+
+                    <Calendar
                         on_navigate={ctx.props().on_navigate.clone()}
                         onerror={ctx.props().onerror.clone()}
                     />
@@ -123,12 +125,14 @@ impl Dashboard {
         match msg {
             Msg::Channel(result) => {
                 self.channel = result?;
+
                 if self.channel.id() != ws::ChannelId::NONE {
                     self.load_pending(ctx);
                     self.load_config(ctx);
                 } else {
                     self.pending.clear();
                 }
+
                 Ok(true)
             }
             Msg::AppBroadcast(packet) => {
@@ -429,7 +433,7 @@ impl Dashboard {
                             <span class="pending-label">{&p.label}</span>
                         }
 
-                        if let Some(s) = p.display_at(&self.tz) {
+                        if let Some(s) = p.display_at(self.tz.clone()) {
                             <span class="pending-date">{s}</span>
                         }
                     </div>

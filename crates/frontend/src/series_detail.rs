@@ -219,7 +219,7 @@ impl Component for SeriesDetail {
 
                             if let Some(ts) = series.last_synced_at {
                                 <span class="text-muted hide-mobile" title="Last synced at">
-                                    {ts.display(&self.tz)}
+                                    {ts.display(self.tz.clone())}
                                 </span>
                             }
                         </div>
@@ -918,7 +918,7 @@ impl SeriesDetail {
                 <span class="fill">{label}</span>
 
                 if let Some(ts) = season.air_date {
-                    <span class="text-muted">{ts.date(&self.tz).year().to_string()}</span>
+                    <span class="text-muted">{ts.date(self.tz.clone()).year().to_string()}</span>
                 }
 
                 <span class="icon-inline">
@@ -1012,7 +1012,7 @@ impl SeriesDetail {
                                 </div>
 
                                 <div class="row end">
-                                    if let Some(s) = ep.display_at(&self.tz) {
+                                    if let Some(s) = ep.display_at(self.tz.clone()) {
                                         <span class="text-muted">{s}</span>
                                     }
 
@@ -1076,7 +1076,7 @@ impl SeriesDetail {
                                                 <div class="table-entry">
                                                     <ConfirmDanger
                                                         prompt="Remove watch"
-                                                        label={w.timestamp.display(&self.tz)}
+                                                        label={w.timestamp.display(self.tz.clone())}
                                                         on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, wkind))}
                                                         on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
                                                     />
@@ -1085,7 +1085,7 @@ impl SeriesDetail {
                                         } else {
                                             html! {
                                                 <div class="table-entry text-muted">
-                                                    <span class="fill">{w.timestamp.display(&self.tz)}</span>
+                                                    <span class="fill">{w.timestamp.display(self.tz.clone())}</span>
                                                     <button class="btn-icon" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
                                                         <span class="icon x-mark" />
                                                     </button>

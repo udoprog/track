@@ -82,7 +82,7 @@ define_id!(TaskId);
 define_id!(ImageId);
 define_id!(PendingId);
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TimeZone(JiffTimeZone);
 
 impl TimeZone {
@@ -92,6 +92,11 @@ impl TimeZone {
     #[inline]
     pub fn from_jiff(tz: JiffTimeZone) -> Self {
         Self(tz)
+    }
+
+    #[inline]
+    pub fn into_jiff(self) -> JiffTimeZone {
+        self.0
     }
 
     #[inline]
@@ -128,16 +133,16 @@ impl Timestamp {
     /// The timezone suffix is the IANA abbreviation (e.g. `CEST`, `EST`) when
     /// available, or the numeric offset (e.g. `+05:30`) for fixed-offset zones.
     #[inline]
-    pub fn display(&self, tz: &TimeZone) -> String {
+    pub fn display(&self, tz: TimeZone) -> String {
         self.0
-            .to_zoned(tz.0.clone())
+            .to_zoned(tz.0)
             .strftime("%Y-%m-%d %H:%M %Z")
             .to_string()
     }
 
     #[inline]
-    pub fn date(&self, tz: &TimeZone) -> Date {
-        Date(self.0.to_zoned(tz.0.clone()).date())
+    pub fn date(&self, tz: TimeZone) -> Date {
+        Date(self.0.to_zoned(tz.0).date())
     }
 }
 
@@ -209,6 +214,7 @@ impl ::sqll::BindValue for Timestamp {
 
 /// Day of the week, Monday-anchored.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u32)]
 pub enum Weekday {
     Monday,
     Tuesday,
@@ -231,8 +237,8 @@ impl Weekday {
     ];
 
     /// Days since Monday (0 = Monday … 6 = Sunday).
-    pub fn from_monday(self) -> i32 {
-        self as i32
+    pub fn from_monday(self) -> u32 {
+        self as u32
     }
 
     pub fn short_name(self) -> &'static str {
@@ -299,10 +305,14 @@ impl Date {
     }
 
     pub fn to_timestamp_at_midnight_utc(self) -> Result<Timestamp, DateError> {
+        self.to_timestamp_at_midnight_zoned(TimeZone::UTC)
+    }
+
+    pub fn to_timestamp_at_midnight_zoned(self, tz: TimeZone) -> Result<Timestamp, DateError> {
         let zoned = self
             .0
             .at(0, 0, 0, 0)
-            .to_zoned(JiffTimeZone::UTC)
+            .to_zoned(tz.into_jiff())
             .map_err(InnerDateError::ToUtc)?;
 
         Ok(Timestamp(zoned.timestamp()))
@@ -357,12 +367,14 @@ impl Date {
         }
     }
 
-    pub fn checked_add_days(self, days: i32) -> Self {
-        Self(
-            self.0
-                .checked_add(jiff::Span::new().days(days))
-                .unwrap_or(self.0),
-        )
+    pub fn checked_sub_days(self, days: u32) -> Option<Self> {
+        let days = i32::try_from(days).ok()?.checked_neg()?;
+        Some(Self(self.0.checked_add(jiff::Span::new().days(days)).ok()?))
+    }
+
+    pub fn checked_add_days(self, days: u32) -> Option<Self> {
+        let days = i32::try_from(days).ok()?;
+        Some(Self(self.0.checked_add(jiff::Span::new().days(days)).ok()?))
     }
 }
 
@@ -1221,7 +1233,7 @@ pub struct Pending {
 pub trait HasAired {
     fn aired(&self) -> Option<Timestamp>;
 
-    fn display_at(&self, tz: &TimeZone) -> Option<String> {
+    fn display_at(&self, tz: TimeZone) -> Option<String> {
         let ts = self.aired()?;
         Some(ts.display(tz))
     }

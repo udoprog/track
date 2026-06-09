@@ -336,6 +336,18 @@ body {
         font-size: $font-base;
         font-weight: 600;
     }
+
+    h4 {
+        margin: $gap-sm 0;
+        font-size: $font-sm;
+        font-weight: 600;
+    }
+
+    h5 {
+        margin: $gap-sm 0;
+        font-size: $font-xs;
+        font-weight: 600;
+    }
 }
 
 .text-muted {
@@ -682,6 +694,10 @@ body {
     &.row {
         flex-direction: row;
         align-items: center;
+    }
+
+    .row-fill {
+        flex-direction: row;
     }
 
     &:first-child {

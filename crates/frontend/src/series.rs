@@ -270,7 +270,7 @@ impl SeriesList {
 
                         <div class="row top">
                             if let Some(date) = s.first_air_date {
-                                <span class="text-muted end">{date.date(&self.tz).year().to_string()}</span>
+                                <span class="text-muted end">{date.date(self.tz.clone()).year().to_string()}</span>
                             }
 
                             if !s.tracked {

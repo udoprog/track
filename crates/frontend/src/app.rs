@@ -14,7 +14,7 @@ use crate::{
 pub(super) struct App {
     channel: ws::Channel,
     ws: ws::Service,
-    tz: TimeZone,
+    tz: Option<TimeZone>,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
     _config_req: ws::Request,
@@ -55,7 +55,7 @@ impl Component for App {
         Self {
             channel: ws::Channel::default(),
             ws,
-            tz: TimeZone::from_jiff(JiffTimeZone::system()),
+            tz: None,
             _setup,
             _broadcast,
             _config_req: ws::Request::default(),
@@ -73,11 +73,15 @@ impl Component for App {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
+        let Some(tz) = &self.tz else {
+            return html! { <div class="app"><p>{"Loading..."}</p></div> };
+        };
+
         let link = ctx.link();
         let on_nav = |route: Route| link.callback(move |_| Msg::Navigate(route.clone()));
 
         html! {
-            <ContextProvider<TimeZone> context={self.tz.clone()}>
+            <ContextProvider<TimeZone> context={tz.clone()}>
             <ContextProvider<ws::Handle> context={self.ws.handle()}>
             <div class="app">
                 <div class="toolbar">
@@ -133,6 +137,7 @@ impl App {
         match msg {
             Msg::Channel(result) => {
                 self.channel = result?;
+
                 if self.channel.id() != ws::ChannelId::NONE {
                     self._config_req = self
                         .channel
@@ -141,6 +146,7 @@ impl App {
                         .on_packet(ctx.link().callback(Msg::ConfigLoaded))
                         .send();
                 }
+
                 Ok(true)
             }
             Msg::AppBroadcast(result) => {
@@ -149,8 +155,8 @@ impl App {
                 if let api::AppEventKind::ConfigChanged { config } = event.kind {
                     let new_tz = Self::tz_from_config(&config);
 
-                    if new_tz != self.tz {
-                        self.tz = new_tz;
+                    if Some(&new_tz) != self.tz.as_ref() {
+                        self.tz = Some(new_tz);
                         return Ok(true);
                     }
                 }
@@ -163,11 +169,14 @@ impl App {
                     .decode()
                     .context(Message::LoadingConfig)?
                     .config;
+
                 let new_tz = Self::tz_from_config(&config);
-                if new_tz != self.tz {
-                    self.tz = new_tz;
+
+                if Some(&new_tz) != self.tz.as_ref() {
+                    self.tz = Some(new_tz);
                     return Ok(true);
                 }
+
                 Ok(false)
             }
             Msg::WsError(e) => Err(e.into()),

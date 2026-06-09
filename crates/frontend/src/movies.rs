@@ -317,7 +317,7 @@ impl MoviesList {
                         } else {
                             <div class="row end top">
                                 if let Some(date) = m.release_date {
-                                    <span class="text-muted">{date.date(&self.tz).year().to_string()}</span>
+                                    <span class="text-muted">{date.date(self.tz.clone()).year()}</span>
                                 }
 
                                 if m.watched {
