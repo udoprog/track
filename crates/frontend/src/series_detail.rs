@@ -5,6 +5,7 @@ use yew::prelude::*;
 
 use api::{HasAired, TimeZone};
 
+use crate::SetupChannel;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{PagedQuery, Route, SeriesDetailQuery};
 use crate::ui::{
@@ -28,7 +29,7 @@ pub(super) struct SeriesDetail {
     image_modal: Option<api::ImageKind>,
     tz: TimeZone,
     _tz_handle: ContextHandle<TimeZone>,
-    _setup: crate::SetupChannel,
+    _setup: SetupChannel,
     _broadcast: ws::Listener,
     _series_req: ws::Request,
     _seasons_req: ws::Request,
@@ -119,7 +120,7 @@ impl Component for SeriesDetail {
             .context::<ws::Handle>(Callback::noop())
             .expect("ws::Handle context not found");
 
-        let _setup = crate::SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
+        let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
         let (tz, _tz_handle) = ctx

@@ -265,6 +265,7 @@ pub(super) fn ImageGallery(props: &ImageGalleryProps) -> Html {
                             let selected = img.selected;
                             let on_select = on_select.clone();
                             let title = img.source.to_string();
+
                             html! {
                                 <div
                                     class={classes!("image-thumb", selected.then_some("image-thumb-selected"))}

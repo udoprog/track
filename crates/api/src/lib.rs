@@ -852,7 +852,7 @@ impl ::sqll::BindValue for ImageKind {
 pub enum ImageSource {
     Tvdb,
     Tmdb,
-    Local,
+    Unknown,
 }
 
 impl ImageSource {
@@ -860,7 +860,7 @@ impl ImageSource {
         match self {
             ImageSource::Tvdb => "tvdb",
             ImageSource::Tmdb => "tmdb",
-            ImageSource::Local => "local",
+            ImageSource::Unknown => "unknown",
         }
     }
 }
@@ -876,14 +876,12 @@ impl ::sqll::FromColumn<'_> for ImageSource {
     type Type = ::sqll::ty::Text;
 
     fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Text) -> ::sqll::Result<Self> {
-        let s = String::from_column(stmt, index)?;
-        match s.as_str() {
+        let s = <str as ::sqll::FromUnsizedColumn>::from_unsized_column(stmt, index)?;
+
+        match s {
             "tvdb" => Ok(ImageSource::Tvdb),
             "tmdb" => Ok(ImageSource::Tmdb),
-            "local" => Ok(ImageSource::Local),
-            other => Err(::sqll::Error::custom(format!(
-                "unknown image source: {other}"
-            ))),
+            _ => Ok(ImageSource::Unknown),
         }
     }
 }

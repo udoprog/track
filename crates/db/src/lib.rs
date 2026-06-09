@@ -42,21 +42,39 @@ struct SeriesRow {
 }
 
 #[derive(Row)]
-struct RemoteRow {
-    series_id: Option<SeriesId>,
-    movie_id: Option<MovieId>,
-    remote_id: RemoteId,
-}
-
-#[derive(Row)]
 struct ImageRow {
     id: ImageId,
     kind: ImageKind,
     source: ImageSource,
     path: String,
     selected: bool,
+}
+
+#[derive(Row)]
+struct FullImageRow {
+    kind: ImageKind,
     series_id: Option<SeriesId>,
     movie_id: Option<MovieId>,
+}
+
+#[derive(Row)]
+struct SeriesImageRow {
+    id: ImageId,
+    kind: ImageKind,
+    source: ImageSource,
+    path: String,
+    selected: bool,
+    series_id: SeriesId,
+}
+
+#[derive(Row)]
+struct MovieImageRow {
+    id: ImageId,
+    kind: ImageKind,
+    source: ImageSource,
+    path: String,
+    selected: bool,
+    movie_id: MovieId,
 }
 
 #[derive(Row)]
@@ -259,10 +277,10 @@ statements! {
 
         // remotes (series and movies share one table)
         list_series_remotes: r#"
-            SELECT series_id, movie_id, remote_id FROM remotes WHERE series_id = ? ORDER BY id
+            SELECT remote_id FROM remotes WHERE series_id = ? ORDER BY id
         "#,
         list_all_series_remotes: r#"
-            SELECT series_id, movie_id, remote_id FROM remotes WHERE series_id IS NOT NULL ORDER BY series_id, id
+            SELECT series_id, remote_id FROM remotes WHERE series_id IS NOT NULL ORDER BY series_id, id
         "#,
         insert_series_remote: r#"
             INSERT OR IGNORE INTO remotes (series_id, remote_id) VALUES (?, ?)
@@ -270,33 +288,33 @@ statements! {
 
         // images (series and movies share one table)
         list_series_images: r#"
-            SELECT id, kind, source, path, selected, series_id, movie_id FROM images
+            SELECT id, kind, source, path, selected FROM images
             WHERE series_id = ? ORDER BY kind, selected DESC, id
         "#,
         list_all_series_images: r#"
-            SELECT id, kind, source, path, selected, series_id, movie_id FROM images
+            SELECT id, kind, source, path, selected, series_id FROM images
             WHERE series_id IS NOT NULL ORDER BY series_id, kind, selected DESC, id
         "#,
         insert_series_image: r#"
             INSERT INTO images (series_id, kind, source, path, selected) VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(series_id, kind, path) WHERE series_id IS NOT NULL DO UPDATE SET source = excluded.source
-            RETURNING id, kind, source, path, selected, series_id, movie_id
+            RETURNING id, kind, source, path, selected
         "#,
         list_movie_images: r#"
-            SELECT id, kind, source, path, selected, series_id, movie_id FROM images
+            SELECT id, kind, source, path, selected FROM images
             WHERE movie_id = ? ORDER BY kind, selected DESC, id
         "#,
         list_all_movie_images: r#"
-            SELECT id, kind, source, path, selected, series_id, movie_id FROM images
+            SELECT id, kind, source, path, selected, movie_id FROM images
             WHERE movie_id IS NOT NULL ORDER BY movie_id, kind, selected DESC, id
         "#,
         insert_movie_image: r#"
             INSERT INTO images (movie_id, kind, source, path, selected) VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(movie_id, kind, path) WHERE movie_id IS NOT NULL DO UPDATE SET source = excluded.source
-            RETURNING id, kind, source, path, selected, series_id, movie_id
+            RETURNING id, kind, source, path, selected
         "#,
         image_by_id: r#"
-            SELECT id, kind, source, path, selected, series_id, movie_id FROM images WHERE id = ?
+            SELECT kind, series_id, movie_id FROM images WHERE id = ?
         "#,
         deselect_series_images: r#"
             UPDATE images SET selected = 0 WHERE series_id = ? AND kind = ?
@@ -403,10 +421,10 @@ statements! {
             DELETE FROM movies WHERE id = ?
         "#,
         list_movie_remotes: r#"
-            SELECT series_id, movie_id, remote_id FROM remotes WHERE movie_id = ? ORDER BY id
+            SELECT remote_id FROM remotes WHERE movie_id = ? ORDER BY id
         "#,
         list_all_movie_remotes: r#"
-            SELECT series_id, movie_id, remote_id FROM remotes WHERE movie_id IS NOT NULL ORDER BY movie_id, id
+            SELECT movie_id, remote_id FROM remotes WHERE movie_id IS NOT NULL ORDER BY movie_id, id
         "#,
         insert_movie_remote: r#"
             INSERT OR IGNORE INTO remotes (movie_id, remote_id) VALUES (?, ?)
@@ -719,22 +737,23 @@ impl Database {
                 id_to_idx.insert(r.id, idx);
                 out.push(series_from_row(r));
             }
+
             s.list_all_series_remotes.reset()?;
-            while let Some(r) = s.list_all_series_remotes.next::<RemoteRow>()? {
-                if let Some(sid) = r.series_id
-                    && let Some(&idx) = id_to_idx.get(&sid)
-                {
-                    out[idx].remotes.push(r.remote_id);
+            while let Some((series_id, remote_id)) =
+                s.list_all_series_remotes.next::<(SeriesId, RemoteId)>()?
+            {
+                if let Some(o) = id_to_idx.get(&series_id).and_then(|&i| out.get_mut(i)) {
+                    o.remotes.push(remote_id);
                 }
             }
+
             s.list_all_series_images.reset()?;
-            while let Some(r) = s.list_all_series_images.next::<ImageRow>()? {
-                if let Some(sid) = r.series_id
-                    && let Some(&idx) = id_to_idx.get(&sid)
-                {
-                    out[idx].images.push(image_from_row(r));
+            while let Some(r) = s.list_all_series_images.next::<SeriesImageRow>()? {
+                if let Some(o) = id_to_idx.get(&r.series_id).and_then(|&i| out.get_mut(i)) {
+                    o.images.push(series_image_from_row(r));
                 }
             }
+
             Ok(out)
         });
 
@@ -749,15 +768,19 @@ impl Database {
             let Some(r) = s.series_by_id.next::<SeriesRow>()? else {
                 return Ok(None);
             };
+
             let mut series = series_from_row(r);
+
             s.list_series_remotes.bind((id,))?;
-            while let Some(r) = s.list_series_remotes.next::<RemoteRow>()? {
-                series.remotes.push(r.remote_id);
+            while let Some(remote_id) = s.list_series_remotes.next::<RemoteId>()? {
+                series.remotes.push(remote_id);
             }
+
             s.list_series_images.bind((id,))?;
-            while let Some(r) = s.list_series_images.next::<ImageRow>()? {
-                series.images.push(image_from_row(r));
+            while let Some(row) = s.list_series_images.next::<ImageRow>()? {
+                series.images.push(image_from_row(row));
             }
+
             Ok(Some(series))
         });
 
@@ -1143,30 +1166,34 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.list_movies.reset()?;
             let mut out: Vec<api::Movie> = Vec::new();
             let mut id_to_idx: HashMap<MovieId, usize> = HashMap::new();
+
+            s.list_movies.reset()?;
             while let Some(r) = s.list_movies.next::<MovieRow>()? {
-                let idx = out.len();
-                id_to_idx.insert(r.id, idx);
+                let index = out.len();
+                id_to_idx.insert(r.id, index);
                 out.push(movie_from_row(r));
             }
+
             s.list_all_movie_remotes.reset()?;
-            while let Some(r) = s.list_all_movie_remotes.next::<RemoteRow>()? {
-                if let Some(mid) = r.movie_id
-                    && let Some(&idx) = id_to_idx.get(&mid)
+            while let Some((movie_id, remote_id)) =
+                s.list_all_movie_remotes.next::<(MovieId, RemoteId)>()?
+            {
+                if let Some(&index) = id_to_idx.get(&movie_id)
+                    && let Some(o) = out.get_mut(index)
                 {
-                    out[idx].remotes.push(r.remote_id);
+                    o.remotes.push(remote_id);
                 }
             }
+
             s.list_all_movie_images.reset()?;
-            while let Some(r) = s.list_all_movie_images.next::<ImageRow>()? {
-                if let Some(mid) = r.movie_id
-                    && let Some(&idx) = id_to_idx.get(&mid)
-                {
-                    out[idx].images.push(image_from_row(r));
+            while let Some(r) = s.list_all_movie_images.next::<MovieImageRow>()? {
+                if let Some(o) = id_to_idx.get(&r.movie_id).and_then(|&i| out.get_mut(i)) {
+                    o.images.push(movie_image_from_row(r));
                 }
             }
+
             Ok(out)
         });
 
@@ -1178,15 +1205,17 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.movie_by_id.bind((id,))?;
+
             let Some(r) = s.movie_by_id.next::<MovieRow>()? else {
                 return Ok(None);
             };
+
             let movie_id = r.id;
             let mut movie = movie_from_row(r);
 
             s.list_movie_remotes.bind((movie_id,))?;
-            while let Some(r) = s.list_movie_remotes.next::<RemoteRow>()? {
-                movie.remotes.push(r.remote_id);
+            while let Some(remote_id) = s.list_movie_remotes.next::<RemoteId>()? {
+                movie.remotes.push(remote_id);
             }
 
             s.list_movie_images.bind((movie_id,))?;
@@ -1240,12 +1269,15 @@ impl Database {
             let Some(r) = s.series_by_remote.next::<SeriesRow>()? else {
                 return Ok(None);
             };
+
             let series_id = r.id;
             let mut series = series_from_row(r);
+
             s.list_series_remotes.bind((series_id,))?;
-            while let Some(r) = s.list_series_remotes.next::<RemoteRow>()? {
-                series.remotes.push(r.remote_id);
+            while let Some(remote_id) = s.list_series_remotes.next::<RemoteId>()? {
+                series.remotes.push(remote_id);
             }
+
             s.list_series_images.bind((series_id,))?;
             while let Some(r) = s.list_series_images.next::<ImageRow>()? {
                 series.images.push(image_from_row(r));
@@ -1269,8 +1301,8 @@ impl Database {
             let movie_id = r.id;
             let mut movie = movie_from_row(r);
             s.list_movie_remotes.bind((movie_id,))?;
-            while let Some(r) = s.list_movie_remotes.next::<RemoteRow>()? {
-                movie.remotes.push(r.remote_id);
+            while let Some(remote_id) = s.list_movie_remotes.next::<RemoteId>()? {
+                movie.remotes.push(remote_id);
             }
 
             s.list_movie_images.bind((movie_id,))?;
@@ -1389,10 +1421,12 @@ impl Database {
 
             s.insert_series_image
                 .bind((series_id, kind, source, &path[..], is_first))?;
+
             let r = s
                 .insert_series_image
                 .next::<ImageRow>()?
                 .context("insert_series_image returned no row")?;
+
             ensure!(
                 s.insert_series_image.step()?.is_done(),
                 "insert_series_image"
@@ -1418,21 +1452,26 @@ impl Database {
             let is_first = {
                 s.list_movie_images.bind((movie_id,))?;
                 let mut found = false;
+
                 while let Some(r) = s.list_movie_images.next::<ImageRow>()? {
                     if r.kind == kind {
                         found = true;
                         break;
                     }
                 }
+
                 !found
             };
+
             s.insert_movie_image
                 .bind((movie_id, kind, source, &path[..], is_first))?;
+
             let r = s
                 .insert_movie_image
                 .next::<ImageRow>()?
                 .context("insert_movie_image returned no row")?;
             ensure!(s.insert_movie_image.step()?.is_done(), "insert_movie_image");
+
             Ok(image_from_row(r))
         });
 
@@ -1446,27 +1485,30 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.image_by_id.bind((id,))?;
+
             let r = s
                 .image_by_id
-                .next::<ImageRow>()?
+                .next::<FullImageRow>()?
                 .context("image not found")?;
+
             let kind = r.kind;
+
             let owner = match (r.series_id, r.movie_id) {
-                (Some(sid), _) => {
-                    s.deselect_series_images.bind((sid, kind))?;
+                (Some(series_id), _) => {
+                    s.deselect_series_images.bind((series_id, kind))?;
                     ensure!(
                         s.deselect_series_images.step()?.is_done(),
                         "deselect_series_images"
                     );
-                    api::ImageOwner::Series(sid)
+                    api::ImageOwner::Series(series_id)
                 }
-                (_, Some(mid)) => {
-                    s.deselect_movie_images.bind((mid, kind))?;
+                (_, Some(movie_id)) => {
+                    s.deselect_movie_images.bind((movie_id, kind))?;
                     ensure!(
                         s.deselect_movie_images.step()?.is_done(),
                         "deselect_movie_images"
                     );
-                    api::ImageOwner::Movie(mid)
+                    api::ImageOwner::Movie(movie_id)
                 }
                 _ => anyhow::bail!("image has no owner"),
             };
@@ -2261,6 +2303,26 @@ fn series_from_row(r: SeriesRow) -> api::Series {
 }
 
 fn image_from_row(r: ImageRow) -> api::MediaImage {
+    api::MediaImage {
+        id: r.id,
+        kind: r.kind,
+        source: r.source,
+        image: Image::from_raw(format!("{}:{}", r.source.as_str(), r.path)),
+        selected: r.selected,
+    }
+}
+
+fn series_image_from_row(r: SeriesImageRow) -> api::MediaImage {
+    api::MediaImage {
+        id: r.id,
+        kind: r.kind,
+        source: r.source,
+        image: Image::from_raw(format!("{}:{}", r.source.as_str(), r.path)),
+        selected: r.selected,
+    }
+}
+
+fn movie_image_from_row(r: MovieImageRow) -> api::MediaImage {
     api::MediaImage {
         id: r.id,
         kind: r.kind,

@@ -2,6 +2,7 @@ use api::TimeZone;
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
+use crate::SetupChannel;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{PagedQuery, Route};
 use crate::ui::MarkWatchedPicker;
@@ -15,7 +16,7 @@ pub(super) struct MoviesList {
     page: usize,
     tz: TimeZone,
     _tz_handle: ContextHandle<TimeZone>,
-    _setup: crate::SetupChannel,
+    _setup: SetupChannel,
     _broadcast: ws::Listener,
     _list_req: ws::Request,
     _mark_req: ws::Request,
@@ -54,7 +55,7 @@ impl Component for MoviesList {
             .context::<ws::Handle>(Callback::noop())
             .expect("ws::Handle context not found");
 
-        let _setup = crate::SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
+        let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
         let (tz, _tz_handle) = ctx

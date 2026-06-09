@@ -1,6 +1,7 @@
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
+use crate::SetupChannel;
 use crate::error::{CustomContext, Error, Message};
 use crate::ui::LanguagePicker;
 
@@ -11,7 +12,7 @@ fn tz_is_valid(name: &str) -> bool {
 pub(super) struct Settings {
     channel: ws::Channel,
     config: api::Config,
-    _setup: crate::SetupChannel,
+    _setup: SetupChannel,
     _broadcast: ws::Listener,
     _config_req: ws::Request,
     _save_req: ws::Request,
@@ -50,7 +51,7 @@ impl Component for Settings {
             .context::<ws::Handle>(Callback::noop())
             .expect("ws::Handle context not found");
 
-        let _setup = crate::SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
+        let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
         Self {

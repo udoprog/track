@@ -1,24 +1,23 @@
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
+use crate::SetupChannel;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{Route, SeriesDetailQuery};
 use crate::ui::PaginationButtons;
 
 const PAGE_SIZE: usize = 20;
-
 pub(super) struct Queue {
     channel: ws::Channel,
     pending: Vec<api::Task>,
     running: Vec<api::Task>,
     completed: Vec<api::CompletedTask>,
     page: usize,
-    _setup: crate::SetupChannel,
+    _setup: SetupChannel,
     _broadcast: ws::Listener,
     _list_req: ws::Request,
     _sync_req: ws::Request,
 }
-
 pub(super) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
@@ -45,7 +44,7 @@ impl Component for Queue {
             .context::<ws::Handle>(Callback::noop())
             .expect("ws::Handle context not found");
 
-        let _setup = crate::SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
+        let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
         Self {
@@ -98,7 +97,9 @@ impl Component for Queue {
                         <span class="hide-mobile">{"Sync All"}</span>
                     </button>
                 </div>
+
                 { self.view_section(ctx, "Running", &self.running, true) }
+
                 if !page_pending.is_empty() {
                     <div class="section">
                         <div class="row"><h3>{"Pending"}</h3></div>
@@ -108,11 +109,7 @@ impl Component for Queue {
                         </div>
 
                         <div class="row center">
-                            <PaginationButtons
-                                {page}
-                                {total_pages}
-                                on_page={link.callback(Msg::SetPage)}
-                            />
+                            <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
                         </div>
                     </div>
                 }

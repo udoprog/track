@@ -2,6 +2,7 @@ use musli_web::web03::prelude::*;
 use wasm_bindgen::JsCast as _;
 use yew::prelude::*;
 
+use crate::SetupChannel;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{Route, SeriesDetailQuery};
 
@@ -11,7 +12,7 @@ pub(super) struct Search {
     kind: api::SearchKind,
     series: Vec<api::SearchSeries>,
     movies: Vec<api::SearchMovie>,
-    _setup: crate::SetupChannel,
+    _setup: SetupChannel,
     _broadcast: ws::Listener,
     _search_req: ws::Request,
     _track_req: ws::Request,
@@ -47,7 +48,7 @@ impl Component for Search {
             .context::<ws::Handle>(Callback::noop())
             .expect("ws::Handle context not found");
 
-        let _setup = crate::SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
+        let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
         Self {

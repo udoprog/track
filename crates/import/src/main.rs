@@ -208,7 +208,7 @@ fn image_source(img: &api::Image) -> api::ImageSource {
     match img.source() {
         "tvdb" => api::ImageSource::Tvdb,
         "tmdb" => api::ImageSource::Tmdb,
-        _ => api::ImageSource::Local,
+        _ => api::ImageSource::Unknown,
     }
 }
 
