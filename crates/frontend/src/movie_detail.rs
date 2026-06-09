@@ -606,21 +606,6 @@ impl MovieDetail {
                 };
             }
 
-            if let Some(wid) = last_watched_id
-                && self.confirm_remove_watch == Some(wid)
-            {
-                break 'actions html! {
-                    <div class="row actions">
-                        <ConfirmDanger
-                            prompt="Remove watch for"
-                            label={movie.title.clone()}
-                            on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, api::WatchedKind::Movie { movie: movie_id }))}
-                            on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
-                        />
-                    </div>
-                };
-            }
-
             html! {
                 <div class="row actions">
                     if movie.watched {

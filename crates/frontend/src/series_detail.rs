@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
@@ -20,7 +22,7 @@ pub(super) struct SeriesDetail {
     syncing: bool,
     confirm_remove_watch: Option<api::WatchedId>,
     confirming_mark_watch: Option<api::EpisodeId>,
-    episode_histories: std::collections::HashMap<api::EpisodeId, Vec<api::Watched>>,
+    episode_histories: HashMap<api::EpisodeId, Vec<api::Watched>>,
     image_modal: Option<api::ImageKind>,
     tz: TimeZone,
     _tz_handle: ContextHandle<TimeZone>,
@@ -35,7 +37,7 @@ pub(super) struct SeriesDetail {
     _remove_req: ws::Request,
     _sync_req: ws::Request,
     _watch_remaining_reqs: Vec<ws::Request>,
-    _history_reqs: std::collections::HashMap<api::EpisodeId, ws::Request>,
+    _history_reqs: HashMap<api::EpisodeId, ws::Request>,
     _set_next_req: ws::Request,
     _select_image_req: ws::Request,
     _clear_image_req: ws::Request,
@@ -134,7 +136,7 @@ impl Component for SeriesDetail {
             syncing: false,
             confirm_remove_watch: None,
             confirming_mark_watch: None,
-            episode_histories: std::collections::HashMap::new(),
+            episode_histories: HashMap::new(),
             image_modal: None,
             tz,
             _tz_handle,
@@ -149,7 +151,7 @@ impl Component for SeriesDetail {
             _remove_req: ws::Request::default(),
             _sync_req: ws::Request::default(),
             _watch_remaining_reqs: Vec::new(),
-            _history_reqs: std::collections::HashMap::new(),
+            _history_reqs: HashMap::new(),
             _set_next_req: ws::Request::default(),
             _select_image_req: ws::Request::default(),
             _clear_image_req: ws::Request::default(),
@@ -988,17 +990,6 @@ impl SeriesDetail {
                             };
                         }
 
-                        if let Some(wid) = last_watched_id && confirming_remove_watch {
-                            break 'actions html! {
-                                <ConfirmDanger
-                                    prompt="Remove watch for"
-                                    label={series_title}
-                                    on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, api::WatchedKind::Episode { series: series_id, episode: episode_id }))}
-                                    on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
-                                />
-                            };
-                        }
-
                         html! {
                             <div class="actions row-fill">
                                 <div class="row fill">
@@ -1065,27 +1056,30 @@ impl SeriesDetail {
 
                             if expanded {
                                 if let Some(ref img) = ep.filename {
-                                    <img class="poster-sm" src={img.proxy_url()} />
+                                    <img src={img.proxy_url()} />
                                 }
+
                                 <div class="table">
                                     { for self.episode_histories.get(&episode_id).map(Vec::as_slice).unwrap_or_default().iter().map(|w| {
                                         let wid = w.id;
-                                        let wkind = api::WatchedKind::Episode { series: series_id, episode: episode_id };
+                                        let kind = api::WatchedKind::Episode { series: series_id, episode: episode_id };
+
                                         if self.confirm_remove_watch == Some(wid) {
                                             html! {
                                                 <div class="table-entry">
                                                     <ConfirmDanger
                                                         prompt="Remove watch"
                                                         label={w.timestamp.display(self.tz.clone())}
-                                                        on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, wkind))}
+                                                        on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, kind))}
                                                         on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
                                                     />
                                                 </div>
                                             }
                                         } else {
                                             html! {
-                                                <div class="table-entry text-muted">
+                                                <div class="table-entry row">
                                                     <span class="fill">{w.timestamp.display(self.tz.clone())}</span>
+
                                                     <button class="btn-icon" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
                                                         <span class="icon x-mark" />
                                                     </button>
