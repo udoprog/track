@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use anyhow::Result;
+use musli_web::api::ChannelId;
 use tokio::sync::{Mutex, Notify};
 use tokio::time::Instant;
 
@@ -80,9 +81,11 @@ impl TaskQueue {
                         .is_some_and(|t| matches!(&t.kind, api::TaskKind::SyncMovie { movie_id: id, .. } if id == movie_id))
             }
         };
+
         if already_queued {
             return false;
         }
+
         info!(task_kind = ?kind, "task queued");
 
         let run_at = if immediate {
@@ -96,6 +99,7 @@ impl TaskQueue {
         };
 
         let id = self.next_id();
+
         match &kind {
             api::TaskKind::SyncSeries { series_id, .. } => {
                 inner.series_pending.insert(*series_id, id);
@@ -117,7 +121,7 @@ impl TaskQueue {
         });
 
         broadcast.emit(
-            musli_web::api::ChannelId::NONE,
+            ChannelId::NONE,
             api::AppEventKind::TaskAdded { task },
             "task queue task added",
         );
@@ -128,6 +132,7 @@ impl TaskQueue {
 
     pub(crate) async fn list(&self) -> api::ListTasksResponse {
         let inner = self.inner.lock().await;
+
         api::ListTasksResponse {
             pending: inner.pending.iter().map(|s| s.task.clone()).collect(),
             running: inner.running.iter().cloned().collect(),
@@ -135,6 +140,7 @@ impl TaskQueue {
         }
     }
 
+    #[tracing::instrument(skip_all)]
     pub(crate) async fn run(
         self,
         db: Database,
@@ -147,6 +153,7 @@ impl TaskQueue {
             // Determine how long to sleep until the next task is ready.
             let sleep_until = {
                 let inner = self.inner.lock().await;
+
                 match inner.pending.front() {
                     None => Instant::now() + Duration::from_secs(3600),
                     Some(t) => t.run_at,
@@ -163,6 +170,7 @@ impl TaskQueue {
             let task = {
                 let mut inner = self.inner.lock().await;
                 let now = Instant::now();
+
                 if inner.pending.front().is_some_and(|t| t.run_at <= now) {
                     let mut t = inner.pending.pop_front().unwrap().task;
                     t.status = api::TaskStatus::Running;
@@ -176,7 +184,7 @@ impl TaskQueue {
             let Some(task) = task else { continue };
 
             broadcast.emit(
-                musli_web::api::ChannelId::NONE,
+                ChannelId::NONE,
                 api::AppEventKind::TaskStarted { task: task.clone() },
                 "task queue task started",
             );
@@ -193,13 +201,14 @@ impl TaskQueue {
                         api::TaskKind::SyncSeries { series_id, .. } => {
                             if let Ok(Some(series)) = db.series_by_id(*series_id).await {
                                 broadcast.emit(
-                                    musli_web::api::ChannelId::NONE,
+                                    ChannelId::NONE,
                                     api::AppEventKind::SeriesChanged { series },
                                     "task queue series changed",
                                 );
                             }
+
                             broadcast.emit(
-                                musli_web::api::ChannelId::NONE,
+                                ChannelId::NONE,
                                 api::AppEventKind::PendingChanged,
                                 "task queue pending changed",
                             );
@@ -207,13 +216,13 @@ impl TaskQueue {
                         api::TaskKind::SyncMovie { movie_id, .. } => {
                             if let Ok(Some(movie)) = db.movie_by_id(*movie_id).await {
                                 broadcast.emit(
-                                    musli_web::api::ChannelId::NONE,
+                                    ChannelId::NONE,
                                     api::AppEventKind::MovieChanged { movie },
                                     "task queue movie changed",
                                 );
                             }
                             broadcast.emit(
-                                musli_web::api::ChannelId::NONE,
+                                ChannelId::NONE,
                                 api::AppEventKind::PendingChanged,
                                 "task queue pending changed",
                             );
@@ -246,7 +255,7 @@ impl TaskQueue {
             }
 
             broadcast.emit(
-                musli_web::api::ChannelId::NONE,
+                ChannelId::NONE,
                 api::AppEventKind::TaskCompleted { task: completed },
                 "task queue task completed",
             );

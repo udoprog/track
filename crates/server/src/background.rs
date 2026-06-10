@@ -6,6 +6,7 @@ use tokio::sync::Notify;
 use tracing::info;
 
 use crate::app_broadcast::Broadcaster;
+use crate::shutdown::Shutdown;
 use crate::task_queue::TaskQueue;
 
 const POLL: Duration = Duration::from_secs(15 * 60);
@@ -33,23 +34,28 @@ pub(crate) async fn run(
     queue: TaskQueue,
     broadcast: Broadcaster,
     config_changed: Arc<Notify>,
-    shutdown: crate::shutdown::Shutdown,
+    shutdown: Shutdown,
 ) -> anyhow::Result<()> {
     discover_pending_movies(&db).await?;
 
     let mut interval = tokio::time::interval(POLL);
+    let mut config = db.load_config().await?;
 
     loop {
-        tokio::select! {
-            _ = interval.tick() => {}
-            _ = config_changed.notified() => {}
-            _ = shutdown.cancelled() => { return Ok(()); }
+        if !config.auto_sync_enabled {
+            tracing::warn!("automatic sync is not enabled");
+            config_changed.notified().await;
+            config = db.load_config().await?;
+            continue;
         }
 
-        let config = db.load_config().await?;
-
-        if !config.auto_sync_enabled {
-            continue;
+        tokio::select! {
+            _ = interval.tick() => {}
+            _ = config_changed.notified() => {
+                config = db.load_config().await?;
+                continue;
+            }
+            _ = shutdown.cancelled() => { return Ok(()); }
         }
 
         tracing::info!("starting background sync poll");
