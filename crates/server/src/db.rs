@@ -769,14 +769,14 @@ impl Inner {
 
 // ── Database ─────────────────────────────────────────────────────────────────
 
-pub enum OpenMode {
+pub(crate) enum OpenMode {
     /// Full synchronization — safe for the server.
     Normal,
     /// No journaling or fsync — fast for bulk import; not crash-safe.
     Bulk,
 }
 
-pub struct Database {
+pub(crate) struct Database {
     inner: Arc<Mutex<Inner>>,
 }
 
@@ -789,7 +789,7 @@ impl Clone for Database {
 }
 
 impl Database {
-    pub fn open(path: impl AsRef<Path>, mode: OpenMode) -> Result<Self> {
+    pub(crate) fn open(path: impl AsRef<Path>, mode: OpenMode) -> Result<Self> {
         let path = path.as_ref();
 
         let c = OpenOptions::new()
@@ -812,7 +812,7 @@ impl Database {
 
     // ── Series ──
 
-    pub async fn create_series(
+    pub(crate) async fn create_series(
         &self,
         id: SeriesId,
         title: &str,
@@ -833,7 +833,10 @@ impl Database {
         result.await?
     }
 
-    pub async fn series_id_by_remote(&self, remote_id: &RemoteId) -> Result<Option<SeriesId>> {
+    pub(crate) async fn series_id_by_remote(
+        &self,
+        remote_id: &RemoteId,
+    ) -> Result<Option<SeriesId>> {
         let remote_id = remote_id.clone();
         let mut s = self.inner.clone().lock_owned().await;
 
@@ -845,7 +848,11 @@ impl Database {
         result.await?
     }
 
-    pub async fn add_series_remote(&self, series_id: SeriesId, remote_id: &RemoteId) -> Result<()> {
+    pub(crate) async fn add_series_remote(
+        &self,
+        series_id: SeriesId,
+        remote_id: &RemoteId,
+    ) -> Result<()> {
         let remote_id = remote_id.clone();
         let mut s = self.inner.clone().lock_owned().await;
 
@@ -861,7 +868,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn series(&self) -> Result<Vec<api::Series>> {
+    pub(crate) async fn series(&self) -> Result<Vec<api::Series>> {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
@@ -913,7 +920,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn series_by_id(&self, id: SeriesId) -> Result<Option<api::Series>> {
+    pub(crate) async fn series_by_id(&self, id: SeriesId) -> Result<Option<api::Series>> {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
@@ -945,7 +952,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn update_series(
+    pub(crate) async fn update_series(
         &self,
         id: SeriesId,
         title: Option<&str>,
@@ -972,7 +979,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn delete_series(&self, id: SeriesId) -> Result<()> {
+    pub(crate) async fn delete_series(&self, id: SeriesId) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
@@ -984,7 +991,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn set_series_tracked(&self, id: SeriesId, tracked: bool) -> Result<()> {
+    pub(crate) async fn set_series_tracked(&self, id: SeriesId, tracked: bool) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
@@ -996,7 +1003,11 @@ impl Database {
         result.await?
     }
 
-    pub async fn set_series_sync_source(&self, id: SeriesId, source: SyncSource) -> Result<()> {
+    pub(crate) async fn set_series_sync_source(
+        &self,
+        id: SeriesId,
+        source: SyncSource,
+    ) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
@@ -1011,7 +1022,11 @@ impl Database {
         result.await?
     }
 
-    pub async fn set_series_language(&self, id: SeriesId, language: Option<String>) -> Result<()> {
+    pub(crate) async fn set_series_language(
+        &self,
+        id: SeriesId,
+        language: Option<String>,
+    ) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
@@ -1028,7 +1043,7 @@ impl Database {
 
     // ── Seasons ──
 
-    pub async fn upsert_season(
+    pub(crate) async fn upsert_season(
         &self,
         series_id: SeriesId,
         number: SeasonNumber,
@@ -1059,7 +1074,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn seasons(&self, series_id: SeriesId) -> Result<Vec<api::Season>> {
+    pub(crate) async fn seasons(&self, series_id: SeriesId) -> Result<Vec<api::Season>> {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
@@ -1074,7 +1089,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn prune_seasons(
+    pub(crate) async fn prune_seasons(
         &self,
         series_id: SeriesId,
         kept: &HashSet<SeasonNumber>,
@@ -1109,7 +1124,7 @@ impl Database {
         Ok(removed)
     }
 
-    pub async fn prune_season_episodes(
+    pub(crate) async fn prune_season_episodes(
         &self,
         series_id: SeriesId,
         season: SeasonNumber,
@@ -1147,7 +1162,7 @@ impl Database {
 
     // ── Episodes ──
 
-    pub async fn upsert_episode(
+    pub(crate) async fn upsert_episode(
         &self,
         id: EpisodeId,
         series_id: SeriesId,
@@ -1186,7 +1201,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn episodes(
+    pub(crate) async fn episodes(
         &self,
         series_id: SeriesId,
         season: SeasonNumber,
@@ -1207,7 +1222,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn mark_watched_remaining(
+    pub(crate) async fn mark_watched_remaining(
         &self,
         series_id: SeriesId,
         season: SeasonNumber,
@@ -1249,7 +1264,10 @@ impl Database {
         result.await?
     }
 
-    pub async fn episodes_watched(&self, series_id: SeriesId) -> Result<Vec<api::WatchedEpisode>> {
+    pub(crate) async fn episodes_watched(
+        &self,
+        series_id: SeriesId,
+    ) -> Result<Vec<api::WatchedEpisode>> {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
@@ -1266,7 +1284,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn episode_by_id(&self, id: EpisodeId) -> Result<Option<api::Episode>> {
+    pub(crate) async fn episode_by_id(&self, id: EpisodeId) -> Result<Option<api::Episode>> {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
@@ -1277,7 +1295,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn episode_id_by_place(
+    pub(crate) async fn episode_id_by_place(
         &self,
         series_id: SeriesId,
         season: api::SeasonNumber,
@@ -1295,7 +1313,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn episode_aired_by_id(&self, id: EpisodeId) -> Result<Option<Timestamp>> {
+    pub(crate) async fn episode_aired_by_id(&self, id: EpisodeId) -> Result<Option<Timestamp>> {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
@@ -1306,7 +1324,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn update_episodes_aired(
+    pub(crate) async fn update_episodes_aired(
         &self,
         series_id: SeriesId,
         updates: Vec<(SeasonNumber, u32, Timestamp)>,
@@ -1334,7 +1352,7 @@ impl Database {
 
     // ── Movies ──
 
-    pub async fn create_movie(
+    pub(crate) async fn create_movie(
         &self,
         id: MovieId,
         title: &str,
@@ -1356,7 +1374,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn movie_id_by_remote(&self, remote_id: &RemoteId) -> Result<Option<MovieId>> {
+    pub(crate) async fn movie_id_by_remote(&self, remote_id: &RemoteId) -> Result<Option<MovieId>> {
         let remote_id = remote_id.clone();
         let mut s = self.inner.clone().lock_owned().await;
 
@@ -1368,7 +1386,11 @@ impl Database {
         result.await?
     }
 
-    pub async fn add_movie_remote(&self, movie_id: MovieId, remote_id: &RemoteId) -> Result<()> {
+    pub(crate) async fn add_movie_remote(
+        &self,
+        movie_id: MovieId,
+        remote_id: &RemoteId,
+    ) -> Result<()> {
         let remote_id = remote_id.clone();
         let mut s = self.inner.clone().lock_owned().await;
 
@@ -1384,7 +1406,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn movies(&self) -> Result<Vec<api::Movie>> {
+    pub(crate) async fn movies(&self) -> Result<Vec<api::Movie>> {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
@@ -1439,7 +1461,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn movie_by_id(&self, id: MovieId) -> Result<Option<api::Movie>> {
+    pub(crate) async fn movie_by_id(&self, id: MovieId) -> Result<Option<api::Movie>> {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
@@ -1484,7 +1506,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn movie_release_by_type(
+    pub(crate) async fn movie_release_by_type(
         &self,
         id: MovieId,
         ty: ReleaseType,
@@ -1504,7 +1526,10 @@ impl Database {
         result.await?
     }
 
-    pub async fn series_by_remote_id(&self, remote_id: &RemoteId) -> Result<Option<api::Series>> {
+    pub(crate) async fn series_by_remote_id(
+        &self,
+        remote_id: &RemoteId,
+    ) -> Result<Option<api::Series>> {
         let remote_id = remote_id.clone();
         let mut s = self.inner.clone().lock_owned().await;
 
@@ -1538,7 +1563,10 @@ impl Database {
         result.await?
     }
 
-    pub async fn movie_by_remote_id(&self, remote_id: &RemoteId) -> Result<Option<api::Movie>> {
+    pub(crate) async fn movie_by_remote_id(
+        &self,
+        remote_id: &RemoteId,
+    ) -> Result<Option<api::Movie>> {
         let remote_id = remote_id.clone();
         let mut s = self.inner.clone().lock_owned().await;
 
@@ -1571,7 +1599,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn update_movie(
+    pub(crate) async fn update_movie(
         &self,
         id: MovieId,
         title: Option<&str>,
@@ -1596,7 +1624,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn delete_movie(&self, id: MovieId) -> Result<()> {
+    pub(crate) async fn delete_movie(&self, id: MovieId) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
@@ -1608,7 +1636,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn set_movie_tracked(&self, id: MovieId, tracked: bool) -> Result<()> {
+    pub(crate) async fn set_movie_tracked(&self, id: MovieId, tracked: bool) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
@@ -1620,7 +1648,11 @@ impl Database {
         result.await?
     }
 
-    pub async fn set_movie_sync_source(&self, id: MovieId, source: SyncSource) -> Result<()> {
+    pub(crate) async fn set_movie_sync_source(
+        &self,
+        id: MovieId,
+        source: SyncSource,
+    ) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
@@ -1635,7 +1667,11 @@ impl Database {
         result.await?
     }
 
-    pub async fn set_movie_language(&self, id: MovieId, language: Option<String>) -> Result<()> {
+    pub(crate) async fn set_movie_language(
+        &self,
+        id: MovieId,
+        language: Option<String>,
+    ) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
@@ -1649,7 +1685,7 @@ impl Database {
 
     // ── Images ──
 
-    pub async fn clear_series_images(
+    pub(crate) async fn clear_series_images(
         &self,
         series_id: SeriesId,
         kind: ImageKind,
@@ -1667,7 +1703,7 @@ impl Database {
         .await?
     }
 
-    pub async fn clear_movie_images(
+    pub(crate) async fn clear_movie_images(
         &self,
         movie_id: MovieId,
         kind: ImageKind,
@@ -1685,7 +1721,7 @@ impl Database {
         .await?
     }
 
-    pub async fn upsert_series_image(
+    pub(crate) async fn upsert_series_image(
         &self,
         id: ImageId,
         series_id: SeriesId,
@@ -1716,7 +1752,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn upsert_movie_image(
+    pub(crate) async fn upsert_movie_image(
         &self,
         id: ImageId,
         movie_id: MovieId,
@@ -1744,7 +1780,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn set_series_image_selection(
+    pub(crate) async fn set_series_image_selection(
         &self,
         series_id: SeriesId,
         kind: ImageKind,
@@ -1765,7 +1801,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn set_movie_image_selection(
+    pub(crate) async fn set_movie_image_selection(
         &self,
         movie_id: MovieId,
         kind: ImageKind,
@@ -1788,7 +1824,7 @@ impl Database {
 
     /// Selects the given image for its owning entity + kind, replacing any
     /// prior selection. Returns which entity owns the image.
-    pub async fn select_image(&self, id: ImageId) -> Result<api::ImageOwner> {
+    pub(crate) async fn select_image(&self, id: ImageId) -> Result<api::ImageOwner> {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
@@ -1829,7 +1865,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn clear_selected_image(
+    pub(crate) async fn clear_selected_image(
         &self,
         owner: api::ImageOwner,
         kind: ImageKind,
@@ -1862,7 +1898,7 @@ impl Database {
 
     // ── Watched ──
 
-    pub async fn mark_watched(
+    pub(crate) async fn mark_watched(
         &self,
         id: WatchedId,
         kind: WatchedKind,
@@ -1932,7 +1968,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn insert_watched_episode(
+    pub(crate) async fn insert_watched_episode(
         &self,
         id: WatchedId,
         timestamp: Timestamp,
@@ -1955,7 +1991,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn insert_watched_movie(
+    pub(crate) async fn insert_watched_movie(
         &self,
         id: WatchedId,
         timestamp: Timestamp,
@@ -1975,7 +2011,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn move_watched_episode(
+    pub(crate) async fn move_watched_episode(
         &self,
         id: WatchedId,
         season: api::SeasonNumber,
@@ -1996,7 +2032,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn orphaned_for_series(
+    pub(crate) async fn orphaned_for_series(
         &self,
         series_id: SeriesId,
     ) -> Result<Vec<api::OrphanedWatched>> {
@@ -2020,7 +2056,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn remove_watched(&self, id: WatchedId) -> Result<()> {
+    pub(crate) async fn remove_watched(&self, id: WatchedId) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
@@ -2040,7 +2076,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn all_watched(&self) -> Result<Vec<api::Watched>> {
+    pub(crate) async fn all_watched(&self) -> Result<Vec<api::Watched>> {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
@@ -2061,7 +2097,10 @@ impl Database {
         result.await?
     }
 
-    pub async fn watched_for_episode(&self, episode_id: EpisodeId) -> Result<Vec<api::Watched>> {
+    pub(crate) async fn watched_for_episode(
+        &self,
+        episode_id: EpisodeId,
+    ) -> Result<Vec<api::Watched>> {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
@@ -2076,7 +2115,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn watched_for_movie(&self, movie_id: MovieId) -> Result<Vec<api::Watched>> {
+    pub(crate) async fn watched_for_movie(&self, movie_id: MovieId) -> Result<Vec<api::Watched>> {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
@@ -2093,7 +2132,7 @@ impl Database {
 
     // ── Pending table ──
 
-    pub async fn add_pending_episode(
+    pub(crate) async fn add_pending_episode(
         &self,
         series_id: api::SeriesId,
         episode_id: api::EpisodeId,
@@ -2114,7 +2153,11 @@ impl Database {
         result.await?
     }
 
-    pub async fn add_pending_movie(&self, movie_id: api::MovieId, ts: Timestamp) -> Result<()> {
+    pub(crate) async fn add_pending_movie(
+        &self,
+        movie_id: api::MovieId,
+        ts: Timestamp,
+    ) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
@@ -2130,7 +2173,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn remove_pending_episode(&self, series_id: api::SeriesId) -> Result<()> {
+    pub(crate) async fn remove_pending_episode(&self, series_id: api::SeriesId) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
@@ -2145,7 +2188,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn skip_pending_episode(
+    pub(crate) async fn skip_pending_episode(
         &self,
         series_id: api::SeriesId,
         episode_id: api::EpisodeId,
@@ -2185,7 +2228,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn remove_pending_movie(&self, movie_id: api::MovieId) -> Result<()> {
+    pub(crate) async fn remove_pending_movie(&self, movie_id: api::MovieId) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
@@ -2202,7 +2245,7 @@ impl Database {
 
     /// Fill the pending slot for a series, but ONLY if it currently has no pending episode.
     /// Called after sync upserts episodes, and after MarkWatched clears the old pending row.
-    pub async fn fill_pending_for_series(
+    pub(crate) async fn fill_pending_for_series(
         &self,
         series_id: api::SeriesId,
         now: Timestamp,
@@ -2240,7 +2283,7 @@ impl Database {
 
     /// Fill the pending slot for a series, but ONLY if it currently has no pending episode.
     /// Called after sync upserts episodes, and after MarkWatched clears the old pending row.
-    pub async fn fill_pending_for_series_from(
+    pub(crate) async fn fill_pending_for_series_from(
         &self,
         series_id: api::SeriesId,
         episode_id: api::EpisodeId,
@@ -2284,7 +2327,10 @@ impl Database {
     /// regardless of whether it has aired, and uses the actual aired timestamp rather than
     /// clamping to `now`. This preserves the episode's original air date as the pending
     /// timestamp so dashboard ordering reflects episode order rather than import time.
-    pub async fn fill_pending_for_series_import(&self, series_id: api::SeriesId) -> Result<()> {
+    pub(crate) async fn fill_pending_for_series_import(
+        &self,
+        series_id: api::SeriesId,
+    ) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
@@ -2322,7 +2368,7 @@ impl Database {
     }
 
     /// Tracked movies with a passed theatrical release date that are not yet pending or watched.
-    pub async fn theatrical_movie_candidates(
+    pub(crate) async fn theatrical_movie_candidates(
         &self,
         now: Timestamp,
     ) -> Result<Vec<(MovieId, Option<Timestamp>)>> {
@@ -2347,7 +2393,7 @@ impl Database {
     }
 
     /// Tracked movies with a passed digital release date (type 4) that are not yet pending or watched.
-    pub async fn digital_movie_candidates(
+    pub(crate) async fn digital_movie_candidates(
         &self,
         now: Timestamp,
     ) -> Result<Vec<(MovieId, Option<Timestamp>)>> {
@@ -2371,7 +2417,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn set_series_synced_at(&self, id: SeriesId, at: Timestamp) -> Result<()> {
+    pub(crate) async fn set_series_synced_at(&self, id: SeriesId, at: Timestamp) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
         let result = spawn_blocking(move || {
             s.set_series_synced_at.bind((at, id))?;
@@ -2385,7 +2431,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn set_movie_synced_at(&self, id: MovieId, at: Timestamp) -> Result<()> {
+    pub(crate) async fn set_movie_synced_at(&self, id: MovieId, at: Timestamp) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
         let result = spawn_blocking(move || {
             s.set_movie_synced_at.bind((at, id))?;
@@ -2399,7 +2445,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn upsert_movie_release(
+    pub(crate) async fn upsert_movie_release(
         &self,
         movie_id: MovieId,
         country: &str,
@@ -2429,7 +2475,10 @@ impl Database {
         result.await?
     }
 
-    pub async fn series_needing_sync(&self, interval_hours: u32) -> Result<Vec<api::Series>> {
+    pub(crate) async fn series_needing_sync(
+        &self,
+        interval_hours: u32,
+    ) -> Result<Vec<api::Series>> {
         let cutoff = cutoff_timestamp(interval_hours);
         let mut s = self.inner.clone().lock_owned().await;
         let result = spawn_blocking(move || {
@@ -2446,7 +2495,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn movies_needing_sync(&self, interval_hours: u32) -> Result<Vec<api::Movie>> {
+    pub(crate) async fn movies_needing_sync(&self, interval_hours: u32) -> Result<Vec<api::Movie>> {
         let cutoff = cutoff_timestamp(interval_hours);
         let mut s = self.inner.clone().lock_owned().await;
         let result = spawn_blocking(move || {
@@ -2462,7 +2511,7 @@ impl Database {
     }
 
     /// Unified pending list replacing pending_episodes + pending_movies.
-    pub async fn pending(&self, now: Timestamp) -> Result<Vec<api::Pending>> {
+    pub(crate) async fn pending(&self, now: Timestamp) -> Result<Vec<api::Pending>> {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
@@ -2541,7 +2590,7 @@ impl Database {
 
     // ── Dashboard queries ──
 
-    pub async fn schedule(
+    pub(crate) async fn schedule(
         &self,
         days: u32,
         now: Timestamp,
@@ -2617,7 +2666,7 @@ impl Database {
 
     // ── Config ──
 
-    pub async fn get_config(&self, key: &str) -> Result<Option<String>> {
+    pub(crate) async fn get_config(&self, key: &str) -> Result<Option<String>> {
         let key = key.to_owned();
         let mut s = self.inner.clone().lock_owned().await;
 
@@ -2629,7 +2678,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn set_config(&self, key: &str, value: &str) -> Result<()> {
+    pub(crate) async fn set_config(&self, key: &str, value: &str) -> Result<()> {
         let key = key.to_owned();
         let value = value.to_owned();
         let mut s = self.inner.clone().lock_owned().await;
@@ -2643,7 +2692,7 @@ impl Database {
         result.await?
     }
 
-    pub async fn load_config(&self) -> Result<Config> {
+    pub(crate) async fn load_config(&self) -> Result<Config> {
         let theme = self
             .get_config("theme")
             .await?
@@ -2709,7 +2758,7 @@ impl Database {
         })
     }
 
-    pub async fn save_config(&self, config: &Config) -> Result<()> {
+    pub(crate) async fn save_config(&self, config: &Config) -> Result<()> {
         self.set_config("theme", config.theme.to_string().as_str())
             .await?;
 

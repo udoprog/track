@@ -8,21 +8,21 @@ use tower_http::cors::CorsLayer;
 
 use crate::app_broadcast::Broadcaster;
 use crate::cache::ImageCache;
+use crate::db::Database;
 use crate::pending::PendingSystem;
 use crate::remote::RemoteClients;
 use crate::task_queue::TaskQueue;
-use db::Database;
 
 #[derive(Clone)]
 pub(crate) struct AppState {
-    pub db: Database,
-    pub broadcast: Broadcaster,
-    pub channels: Channels,
-    pub cache: ImageCache,
-    pub queue: TaskQueue,
-    pub remote: RemoteClients,
-    pub pending: PendingSystem,
-    pub config_changed: Arc<Notify>,
+    pub(crate) db: Database,
+    pub(crate) broadcast: Broadcaster,
+    pub(crate) channels: Channels,
+    pub(crate) cache: ImageCache,
+    pub(crate) queue: TaskQueue,
+    pub(crate) remote: RemoteClients,
+    pub(crate) pending: PendingSystem,
+    pub(crate) config_changed: Arc<Notify>,
 }
 
 pub(crate) fn router(state: AppState) -> Router {

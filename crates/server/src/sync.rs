@@ -2,10 +2,10 @@ use std::collections::{HashMap, HashSet};
 
 use anyhow::{Context as _, Result};
 use api::{EpisodeId, ImageId, ImageKind, ImageSource, SeasonNumber};
-use db::Database;
 use tracing::{info, warn};
 
 use crate::app_broadcast::Broadcaster;
+use crate::db::Database;
 use crate::remote::RemoteClients;
 
 pub(crate) async fn sync_series(

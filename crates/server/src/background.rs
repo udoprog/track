@@ -1,11 +1,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use db::Database;
 use tokio::sync::Notify;
 use tracing::info;
 
 use crate::app_broadcast::Broadcaster;
+use crate::db::Database;
 use crate::shutdown::Shutdown;
 use crate::task_queue::TaskQueue;
 

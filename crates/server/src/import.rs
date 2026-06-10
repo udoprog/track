@@ -7,6 +7,8 @@ use clap::Parser;
 use serde::Deserialize;
 use uuid::Uuid;
 
+use crate::db::{Database, OpenMode};
+
 fn uuid_to_u64(uuid: Uuid) -> u64 {
     let n = uuid.as_u128();
     ((n >> 64) as u64) ^ (n as u64)
@@ -216,7 +218,7 @@ fn image_source(img: &api::Image) -> api::ImageSource {
 }
 
 async fn import_series_image(
-    db: &db::Database,
+    db: &Database,
     series_id: api::SeriesId,
     kind: api::ImageKind,
     img: &api::Image,
@@ -236,7 +238,7 @@ async fn import_series_image(
 }
 
 async fn import_series_images(
-    db: &db::Database,
+    db: &Database,
     series_id: api::SeriesId,
     g: &YamlSeriesGraphics,
 ) -> Result<()> {
@@ -253,7 +255,7 @@ async fn import_series_images(
 }
 
 async fn import_movie_image(
-    db: &db::Database,
+    db: &Database,
     movie_id: api::MovieId,
     kind: api::ImageKind,
     img: &api::Image,
@@ -273,7 +275,7 @@ async fn import_movie_image(
 }
 
 async fn import_movie_images(
-    db: &db::Database,
+    db: &Database,
     movie_id: api::MovieId,
     g: &YamlMovieGraphics,
 ) -> Result<()> {
@@ -345,8 +347,7 @@ where
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-#[tokio::main]
-async fn main() -> Result<()> {
+pub async fn import() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env().add_directive("info".parse()?),
@@ -357,7 +358,7 @@ async fn main() -> Result<()> {
     let source = expand_tilde(&args.source);
 
     tracing::info!("opening database at {}", args.db.display());
-    let db = db::Database::open(&args.db, db::OpenMode::Bulk).context("opening database")?;
+    let db = Database::open(&args.db, OpenMode::Bulk).context("opening database")?;
 
     // Maps from old UUID → new SQLite rowid
     let mut series_map: HashMap<Uuid, api::SeriesId> = HashMap::new();

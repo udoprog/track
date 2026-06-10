@@ -7,12 +7,12 @@ use anyhow::Result;
 use musli_web::api::ChannelId;
 use tokio::sync::{Mutex, Notify};
 use tokio::time::Instant;
+use tracing::{error, info};
 
 use crate::app_broadcast::Broadcaster;
+use crate::db::Database;
 use crate::remote::RemoteClients;
 use crate::sync;
-use db::Database;
-use tracing::{error, info};
 
 const TASK_DELAY: Duration = Duration::from_secs(5);
 const MAX_COMPLETED: usize = 20;

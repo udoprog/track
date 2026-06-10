@@ -1,18 +1,21 @@
 use core::iter;
 
+use std::sync::Arc;
+
 use anyhow::{Context as _, Result};
 use api::{MovieId, SeriesId, TimeZone};
-use db::Database;
+use axum::extract::State;
+use axum::extract::WebSocketUpgrade;
 use musli_web::axum08;
 use musli_web::ws;
 use tokio::sync::broadcast;
 
-use std::sync::Arc;
-
 use crate::app_broadcast::Broadcaster;
+use crate::db::Database;
 use crate::pending::PendingSystem;
 use crate::remote::RemoteClients;
 use crate::task_queue::TaskQueue;
+use crate::web::AppState;
 
 #[derive(Clone)]
 pub(super) struct WsHandler {
@@ -925,8 +928,8 @@ impl WsHandler {
 }
 
 pub(super) async fn ws_handler(
-    ws: axum::extract::WebSocketUpgrade,
-    axum::extract::State(state): axum::extract::State<crate::AppState>,
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
 ) -> axum::response::Response {
     ws.on_upgrade(move |socket| async move {
         let handler = WsHandler {

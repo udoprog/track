@@ -3,7 +3,7 @@ use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
 
-use crate::AppState;
+use crate::web::AppState;
 
 pub(super) async fn image_handler(
     State(state): State<AppState>,
