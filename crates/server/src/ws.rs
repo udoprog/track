@@ -428,6 +428,36 @@ impl WsHandler {
 
                 outgoing.write(api::ListWatchedResponse { watched });
             }
+            api::Request::MoveWatchedEpisode => {
+                let req = incoming
+                    .read::<api::MoveWatchedEpisodeRequest>()
+                    .context("missing request")?;
+
+                self.db
+                    .move_watched_episode(req.id, req.season, req.episode)
+                    .await?;
+
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::WatchedChanged {
+                        event: api::WatchedEvent::Episode {
+                            series: req.series_id,
+                            episode: api::EpisodeId::new(0),
+                        },
+                    },
+                    "ws move watched episode changed",
+                );
+
+                outgoing.write(api::Empty);
+            }
+            api::Request::ListOrphanedWatched => {
+                let req = incoming
+                    .read::<api::ListOrphanedWatchedRequest>()
+                    .context("missing request")?;
+
+                let watched = self.db.orphaned_for_series(req.series_id).await?;
+                outgoing.write(api::ListOrphanedWatchedResponse { watched });
+            }
             api::Request::ListPending => {
                 let _req = incoming
                     .read::<api::ListPendingRequest>()

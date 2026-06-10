@@ -139,6 +139,15 @@ struct WatchedEpisodeRow {
 }
 
 #[derive(Row)]
+struct OrphanedWatchedRow {
+    id: WatchedId,
+    timestamp: Timestamp,
+    series_id: SeriesId,
+    season: SeasonNumber,
+    episode: u32,
+}
+
+#[derive(Row)]
 struct EpisodeNaturalKeyRow {
     series_id: SeriesId,
     season: SeasonNumber,
@@ -478,6 +487,17 @@ statements! {
             SELECT we.id, we.timestamp, e.id AS episode_id, NULL AS movie_id, e.series_id
             FROM watched_episodes we
             LEFT JOIN episodes e ON e.series_id = we.series_id AND e.season = we.season AND e.number = we.episode
+        "#,
+        move_watched_episode: r#"
+            UPDATE watched_episodes SET season = ?, episode = ? WHERE id = ?
+        "#,
+        list_orphaned_for_series: r#"
+            SELECT we.id, we.timestamp, we.series_id, we.season, we.episode
+            FROM watched_episodes we
+            LEFT JOIN episodes e
+                ON e.series_id = we.series_id AND e.season = we.season AND e.number = we.episode
+            WHERE we.series_id = ? AND e.id IS NULL
+            ORDER BY we.timestamp DESC
         "#,
         list_all_watched_movies: r#"
             SELECT id, timestamp, NULL AS episode_id, movie_id, NULL AS series_id
@@ -1688,6 +1708,50 @@ impl Database {
                 "add_watched_movie"
             );
             Ok(())
+        });
+
+        result.await?
+    }
+
+    pub async fn move_watched_episode(
+        &self,
+        id: WatchedId,
+        season: api::SeasonNumber,
+        episode: u32,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        let result = spawn_blocking(move || {
+            s.move_watched_episode.bind((season.to_u32(), episode as i64, id))?;
+            ensure!(
+                s.move_watched_episode.step()?.is_done(),
+                "move_watched_episode"
+            );
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    pub async fn orphaned_for_series(
+        &self,
+        series_id: SeriesId,
+    ) -> Result<Vec<api::OrphanedWatched>> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        let result = spawn_blocking(move || {
+            s.list_orphaned_for_series.bind((series_id,))?;
+            let mut out = Vec::new();
+            while let Some(r) = s.list_orphaned_for_series.next::<OrphanedWatchedRow>()? {
+                out.push(api::OrphanedWatched {
+                    id: r.id,
+                    timestamp: r.timestamp,
+                    series_id: r.series_id,
+                    season: r.season,
+                    episode: r.episode,
+                });
+            }
+            Ok(out)
         });
 
         result.await?

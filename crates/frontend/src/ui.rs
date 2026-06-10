@@ -1,7 +1,10 @@
-use web_sys::MouseEvent;
+use web_sys::{Event, MouseEvent};
 use yew::prelude::*;
 
 use iso639::{LanguageToCountry, Languages};
+use musli_web::web03::prelude::*;
+
+use crate::SetupChannel;
 
 #[derive(Properties, PartialEq)]
 pub(super) struct PaginationButtonsProps {
@@ -465,5 +468,183 @@ impl Component for LanguagePicker {
                 </div>
             </>
         }
+    }
+}
+
+// ── EpisodePicker ─────────────────────────────────────────────────────────────
+
+/// Inline season + episode picker used for moving or fixing watched entries.
+/// Renders two `<select>` elements and confirm/cancel buttons, fitting inside
+/// a `row` or `table-entry` without taking up extra vertical space.
+pub(super) struct EpisodePicker {
+    channel: ws::Channel,
+    selected_season: Option<api::SeasonNumber>,
+    episodes: Vec<api::Episode>,
+    selected_episode: Option<u32>,
+    _setup: SetupChannel,
+    _req: ws::Request,
+}
+
+pub(super) enum EpisodePickerMsg {
+    Channel(Result<ws::Channel, ws::Error>),
+    SelectSeason(api::SeasonNumber),
+    EpisodesLoaded(Result<ws::Packet<api::ListEpisodes>, ws::Error>),
+    SelectEpisode(u32),
+    Confirm,
+    Cancel,
+}
+
+#[derive(Properties, PartialEq)]
+pub(super) struct EpisodePickerProps {
+    pub(super) series_id: api::SeriesId,
+    pub(super) seasons: Vec<api::Season>,
+    pub(super) on_confirm: Callback<(api::SeasonNumber, u32)>,
+    pub(super) on_cancel: Callback<()>,
+}
+
+impl Component for EpisodePicker {
+    type Message = EpisodePickerMsg;
+    type Properties = EpisodePickerProps;
+
+    fn create(ctx: &Context<Self>) -> Self {
+        let (ws, _) = ctx
+            .link()
+            .context::<ws::Handle>(Callback::noop())
+            .expect("ws::Handle context not found");
+
+        let initial = ctx
+            .props()
+            .seasons
+            .iter()
+            .find(|s| !s.number.is_special())
+            .or_else(|| ctx.props().seasons.first())
+            .map(|s| s.number);
+
+        let _setup = SetupChannel::new(ws, ctx.link().callback(EpisodePickerMsg::Channel));
+
+        Self {
+            channel: ws::Channel::default(),
+            selected_season: initial,
+            episodes: Vec::new(),
+            selected_episode: None,
+            _setup,
+            _req: ws::Request::default(),
+        }
+    }
+
+    fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
+        match msg {
+            EpisodePickerMsg::Channel(result) => {
+                self.channel = result.unwrap_or_default();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    if let Some(season) = self.selected_season {
+                        self.load_episodes(ctx, season);
+                    }
+                }
+                false
+            }
+            EpisodePickerMsg::SelectSeason(season) => {
+                self.selected_season = Some(season);
+                self.episodes.clear();
+                self.selected_episode = None;
+                self.load_episodes(ctx, season);
+                true
+            }
+            EpisodePickerMsg::EpisodesLoaded(result) => {
+                if let Ok(packet) = result
+                    && let Ok(resp) = packet.decode()
+                {
+                    self.episodes = resp.episodes;
+                    self.selected_episode = self.episodes.first().map(|e| e.number);
+                }
+                true
+            }
+            EpisodePickerMsg::SelectEpisode(n) => {
+                self.selected_episode = Some(n);
+                false
+            }
+            EpisodePickerMsg::Confirm => {
+                if let (Some(season), Some(episode)) = (self.selected_season, self.selected_episode)
+                {
+                    ctx.props().on_confirm.emit((season, episode));
+                }
+                false
+            }
+            EpisodePickerMsg::Cancel => {
+                ctx.props().on_cancel.emit(());
+                false
+            }
+        }
+    }
+
+    fn view(&self, ctx: &Context<Self>) -> Html {
+        let link = ctx.link();
+
+        let on_season_change = link.callback(|e: Event| {
+            let select: web_sys::HtmlSelectElement = e.target_unchecked_into();
+            let n: u32 = select.value().parse().unwrap_or(0);
+            EpisodePickerMsg::SelectSeason(api::SeasonNumber::from_u32(n))
+        });
+
+        let on_episode_change = link.callback(|e: Event| {
+            let select: web_sys::HtmlSelectElement = e.target_unchecked_into();
+            let n: u32 = select.value().parse().unwrap_or(1);
+            EpisodePickerMsg::SelectEpisode(n)
+        });
+
+        let can_confirm = self.selected_season.is_some() && self.selected_episode.is_some();
+
+        html! {
+            <div class="row-fill fill">
+                <div class="row fill">
+                    <select class="input-select" onchange={on_season_change}>
+                        { for ctx.props().seasons.iter().map(|s| {
+                            let value = s.number.to_u32().to_string();
+                            let label = match s.number {
+                                api::SeasonNumber::Specials => "Specials".to_string(),
+                                api::SeasonNumber::Number(n) => format!("S{n:02}"),
+                            };
+                            let selected = self.selected_season == Some(s.number);
+                            html! { <option {value} {selected}>{label}</option> }
+                        }) }
+                    </select>
+
+                    <select class="input-select" onchange={on_episode_change}
+                        disabled={self.episodes.is_empty()}>
+                        { for self.episodes.iter().map(|ep| {
+                            let value = ep.number.to_string();
+                            let label = format!("E{:02}", ep.number);
+                            let selected = self.selected_episode == Some(ep.number);
+                            html! { <option {value} {selected}>{label}</option> }
+                        }) }
+                    </select>
+                </div>
+
+                <div class="input-group end">
+                    <button class="btn-icon" onclick={link.callback(|_| EpisodePickerMsg::Cancel)}
+                        title="Cancel">
+                        <span class="icon x-mark" />
+                    </button>
+                    <button class="btn-icon-success" onclick={link.callback(|_| EpisodePickerMsg::Confirm)}
+                        title="Confirm" disabled={!can_confirm}>
+                        <span class="icon check" />
+                    </button>
+                </div>
+            </div>
+        }
+    }
+}
+
+impl EpisodePicker {
+    fn load_episodes(&mut self, ctx: &Context<Self>, season: api::SeasonNumber) {
+        self._req = self
+            .channel
+            .request()
+            .body(api::ListEpisodesRequest {
+                series_id: ctx.props().series_id,
+                season,
+            })
+            .on_packet(ctx.link().callback(EpisodePickerMsg::EpisodesLoaded))
+            .send();
     }
 }

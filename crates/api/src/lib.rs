@@ -1145,7 +1145,7 @@ impl Series {
     }
 }
 
-#[derive(Debug, Clone, Encode, Decode)]
+#[derive(Debug, Clone, PartialEq, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct Season {
     pub id: SeasonId,
@@ -1606,6 +1606,37 @@ pub struct ListWatchedResponse {
     pub watched: Vec<Watched>,
 }
 
+#[derive(Debug, Clone, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct OrphanedWatched {
+    pub id: WatchedId,
+    pub timestamp: Timestamp,
+    pub series_id: SeriesId,
+    pub season: SeasonNumber,
+    pub episode: u32,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct MoveWatchedEpisodeRequest {
+    pub id: WatchedId,
+    pub series_id: SeriesId,
+    pub season: SeasonNumber,
+    pub episode: u32,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct ListOrphanedWatchedRequest {
+    pub series_id: SeriesId,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct ListOrphanedWatchedResponse {
+    pub watched: Vec<OrphanedWatched>,
+}
+
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct ListPendingRequest;
@@ -1919,6 +1950,18 @@ api::define! {
     impl Endpoint for ListWatched {
         impl Request for ListWatchedRequest;
         type Response<'de> = ListWatchedResponse;
+    }
+
+    pub type MoveWatchedEpisode;
+    impl Endpoint for MoveWatchedEpisode {
+        impl Request for MoveWatchedEpisodeRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type ListOrphanedWatched;
+    impl Endpoint for ListOrphanedWatched {
+        impl Request for ListOrphanedWatchedRequest;
+        type Response<'de> = ListOrphanedWatchedResponse;
     }
 
     pub type ListPending;

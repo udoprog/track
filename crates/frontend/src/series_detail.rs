@@ -9,8 +9,8 @@ use crate::SetupChannel;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{PagedQuery, Route, SeriesDetailQuery};
 use crate::ui::{
-    ConfirmDanger, ImageGallery, ImageItem, LanguagePicker, MarkWatchedPicker, RemoteSourceKind,
-    RemoteSourceSelect,
+    ConfirmDanger, EpisodePicker, ImageGallery, ImageItem, LanguagePicker, MarkWatchedPicker,
+    RemoteSourceKind, RemoteSourceSelect,
 };
 
 pub(super) struct SeriesDetail {
@@ -26,6 +26,8 @@ pub(super) struct SeriesDetail {
     select_mark_remaining: bool,
     watched: HashMap<api::EpisodeId, Vec<api::WatchedEpisode>>,
     expanded: HashSet<api::EpisodeId>,
+    orphaned: Vec<api::OrphanedWatched>,
+    fixing_watched: Option<api::WatchedId>,
     image_modal: Option<api::ImageKind>,
     tz: TimeZone,
     _tz_handle: ContextHandle<TimeZone>,
@@ -46,6 +48,8 @@ pub(super) struct SeriesDetail {
     _clear_image_req: ws::Request,
     _set_sync_source_req: ws::Request,
     _set_language_req: ws::Request,
+    _orphaned_req: ws::Request,
+    _move_req: ws::Request,
 }
 
 pub(super) enum Msg {
@@ -99,6 +103,11 @@ pub(super) enum Msg {
     CloseImageModal,
     Back,
     SetTz(TimeZone),
+    FixWatched(api::WatchedId),
+    CancelFixWatched,
+    MoveWatched(api::WatchedId, api::SeasonNumber, u32),
+    MoveWatchedDone(Result<ws::Packet<api::MoveWatchedEpisode>, ws::Error>),
+    OrphanedLoaded(Result<ws::Packet<api::ListOrphanedWatched>, ws::Error>),
 }
 
 #[derive(Properties, PartialEq)]
@@ -141,6 +150,8 @@ impl Component for SeriesDetail {
             select_mark_remaining: false,
             watched: HashMap::new(),
             expanded: HashSet::new(),
+            orphaned: Vec::new(),
+            fixing_watched: None,
             image_modal: None,
             tz,
             _tz_handle,
@@ -161,6 +172,8 @@ impl Component for SeriesDetail {
             _clear_image_req: ws::Request::default(),
             _set_sync_source_req: ws::Request::default(),
             _set_language_req: ws::Request::default(),
+            _orphaned_req: ws::Request::default(),
+            _move_req: ws::Request::default(),
         }
     }
 
@@ -329,10 +342,12 @@ impl SeriesDetail {
                 if self.channel.id() != ws::ChannelId::NONE {
                     self.load_series(ctx);
                     self.load_seasons(ctx);
+                    self.load_orphaned(ctx);
                 } else {
                     self.series = None;
                     self.seasons.clear();
                     self.episodes.clear();
+                    self.orphaned.clear();
                 }
                 Ok(true)
             }
@@ -403,9 +418,12 @@ impl SeriesDetail {
                             api::WatchedEvent::Movie { .. } => false,
                         };
 
-                        if relevant && let Some(season) = self.selected {
-                            self.load_episodes(ctx, season);
-                            self.load_history(ctx);
+                        if relevant {
+                            if let Some(season) = self.selected {
+                                self.load_episodes(ctx, season);
+                                self.load_history(ctx);
+                            }
+                            self.load_orphaned(ctx);
                         }
 
                         Ok(false)
@@ -818,6 +836,48 @@ impl SeriesDetail {
                 self.tz = tz;
                 Ok(true)
             }
+            Msg::FixWatched(id) => {
+                self.fixing_watched = Some(id);
+                self.confirm_remove_watch = None;
+                Ok(true)
+            }
+            Msg::CancelFixWatched => {
+                self.fixing_watched = None;
+                Ok(true)
+            }
+            Msg::MoveWatched(id, season, episode) => {
+                self.fixing_watched = None;
+                let series_id = ctx.props().series_id;
+                self._move_req = self
+                    .channel
+                    .request()
+                    .body(api::MoveWatchedEpisodeRequest {
+                        id,
+                        series_id,
+                        season,
+                        episode,
+                    })
+                    .on_packet(ctx.link().callback(Msg::MoveWatchedDone))
+                    .send();
+                Ok(false)
+            }
+            Msg::MoveWatchedDone(result) => {
+                result.context(Message::MarkingWatched)?;
+                if let Some(season) = self.selected {
+                    self.load_episodes(ctx, season);
+                    self.load_history(ctx);
+                }
+                self.load_orphaned(ctx);
+                Ok(false)
+            }
+            Msg::OrphanedLoaded(result) => {
+                self.orphaned = result
+                    .context(Message::LoadingWatched)?
+                    .decode()
+                    .context(Message::LoadingWatched)?
+                    .watched;
+                Ok(true)
+            }
         }
     }
 
@@ -863,6 +923,17 @@ impl SeriesDetail {
             .request()
             .body(api::ListEpisodesWatchedRequest { series_id })
             .on_packet(ctx.link().callback(Msg::WatchedLoaded))
+            .send();
+    }
+
+    fn load_orphaned(&mut self, ctx: &Context<Self>) {
+        let series_id = ctx.props().series_id;
+
+        self._orphaned_req = self
+            .channel
+            .request()
+            .body(api::ListOrphanedWatchedRequest { series_id })
+            .on_packet(ctx.link().callback(Msg::OrphanedLoaded))
             .send();
     }
 
@@ -1014,6 +1085,8 @@ impl SeriesDetail {
                 }
 
                 { for self.episodes.iter().map(|ep| self.view_episode(ctx, ep)) }
+
+                { self.view_orphaned(ctx) }
             </div>
         }
     }
@@ -1137,10 +1210,25 @@ impl SeriesDetail {
                                         />
                                     </div>
                                 }
+                            } else if self.fixing_watched == Some(wid) {
+                                html! {
+                                    <div class="table-entry">
+                                        <EpisodePicker
+                                            series_id={series_id}
+                                            seasons={self.seasons.clone()}
+                                            on_confirm={link.callback(move |(season, ep)| Msg::MoveWatched(wid, season, ep))}
+                                            on_cancel={link.callback(|_| Msg::CancelFixWatched)}
+                                        />
+                                    </div>
+                                }
                             } else {
                                 html! {
                                     <div class="table-entry row">
                                         <span class="fill">{w.timestamp.display(self.tz.clone())}</span>
+
+                                        <button class="btn-icon" onclick={link.callback(move |_| Msg::FixWatched(wid))} title="Move to different episode">
+                                            <span class="icon pencil-square" />
+                                        </button>
 
                                         <button class="btn-icon" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
                                             <span class="icon x-mark" />
@@ -1151,6 +1239,71 @@ impl SeriesDetail {
                         }) }
                     </div>
                 }
+            </div>
+        }
+    }
+
+    fn view_orphaned(&self, ctx: &Context<Self>) -> Html {
+        if self.orphaned.is_empty() {
+            return html! {};
+        }
+
+        let link = ctx.link();
+        let series_id = ctx.props().series_id;
+
+        html! {
+            <div class="section">
+                <div class="outline-title">{"Unrecognized watch entries"}</div>
+
+                <div class="table">
+                    { for self.orphaned.iter().map(|w| {
+                        let wid = w.id;
+                        let season_label = match w.season {
+                            api::SeasonNumber::Specials => format!("Sx{:02}", w.episode),
+                            api::SeasonNumber::Number(n) => format!("{}x{:02}", n, w.episode),
+                        };
+                        let kind = api::WatchedKind::Episode { series: series_id, episode: api::EpisodeId::new(0) };
+
+                        if self.fixing_watched == Some(wid) {
+                            html! {
+                                <div class="table-entry">
+                                    <EpisodePicker
+                                        {series_id}
+                                        seasons={self.seasons.clone()}
+                                        on_confirm={link.callback(move |(season, ep)| Msg::MoveWatched(wid, season, ep))}
+                                        on_cancel={link.callback(|_| Msg::CancelFixWatched)}
+                                    />
+                                </div>
+                            }
+                        } else if self.confirm_remove_watch == Some(wid) {
+                            html! {
+                                <div class="table-entry">
+                                    <ConfirmDanger
+                                        prompt="Remove watch"
+                                        label={w.timestamp.display(self.tz.clone())}
+                                        on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, kind))}
+                                        on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
+                                    />
+                                </div>
+                            }
+                        } else {
+                            html! {
+                                <div class="table-entry row">
+                                    <span class="text-muted">{season_label}</span>
+                                    <span class="fill">{w.timestamp.display(self.tz.clone())}</span>
+
+                                    <button class="btn-icon" onclick={link.callback(move |_| Msg::FixWatched(wid))} title="Move to episode">
+                                        <span class="icon pencil-square" />
+                                    </button>
+
+                                    <button class="btn-icon" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
+                                        <span class="icon x-mark" />
+                                    </button>
+                                </div>
+                            }
+                        }
+                    }) }
+                </div>
             </div>
         }
     }
