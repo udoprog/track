@@ -1,7 +1,7 @@
 use core::iter;
 
 use anyhow::{Context as _, Result};
-use api::TimeZone;
+use api::{MovieId, SeriesId, TimeZone};
 use db::Database;
 use musli_web::axum08;
 use musli_web::ws;
@@ -120,9 +120,14 @@ impl WsHandler {
                     .read::<api::TrackSeriesRequest>()
                     .context("missing request")?;
 
+                let series_id = match self.db.series_id_by_remote(&req.remote_id).await? {
+                    Some(id) => id,
+                    None => SeriesId::random(),
+                };
+
                 let series = self
                     .db
-                    .create_series(&req.remote_id.value().to_string(), None, "")
+                    .create_series(series_id, &req.remote_id.value().to_string(), None, "")
                     .await?;
 
                 self.db.add_series_remote(series.id, &req.remote_id).await?;
@@ -228,9 +233,14 @@ impl WsHandler {
                     .read::<api::TrackMovieRequest>()
                     .context("missing request")?;
 
+                let movie_id = match self.db.movie_id_by_remote(&req.remote_id).await? {
+                    Some(id) => id,
+                    None => MovieId::random(),
+                };
+
                 let movie = self
                     .db
-                    .create_movie(&req.remote_id.value().to_string(), None, "", true)
+                    .create_movie(movie_id, &req.remote_id.value().to_string(), None, "", true)
                     .await?;
 
                 self.db.add_movie_remote(movie.id, &req.remote_id).await?;
@@ -319,7 +329,15 @@ impl WsHandler {
                     .context("missing request")?;
 
                 let now = api::Timestamp::now();
-                let watched = self.db.mark_watched(req.kind, req.mark_time, now).await?;
+                let watched = self
+                    .db
+                    .mark_watched(
+                        api::WatchedId::random(),
+                        req.kind,
+                        req.mark_time,
+                        now,
+                    )
+                    .await?;
 
                 if let api::WatchedKind::Episode { series, episode } = req.kind {
                     self.pending

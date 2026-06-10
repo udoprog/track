@@ -37,11 +37,33 @@ macro_rules! define_id {
             pub fn get(self) -> u64 {
                 self.0
             }
+
+            #[cfg(feature = "rand")]
+            #[inline]
+            pub fn random() -> Self {
+                Self(rand::random())
+            }
         }
 
         impl fmt::Display for $name {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                write!(f, "{:x}", self.0)
+                base64::display::Base64Display::new(
+                    &self.0.to_be_bytes(),
+                    &base64::engine::general_purpose::URL_SAFE_NO_PAD,
+                )
+                .fmt(f)
+            }
+        }
+
+        impl core::str::FromStr for $name {
+            type Err = base64::DecodeSliceError;
+
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                use base64::Engine as _;
+                let mut bytes = [0u8; 8];
+                base64::engine::general_purpose::URL_SAFE_NO_PAD
+                    .decode_slice(s.as_bytes(), &mut bytes)?;
+                Ok($name(u64::from_be_bytes(bytes)))
             }
         }
 
@@ -77,6 +99,7 @@ define_id!(SeriesId);
 define_id!(SeasonId);
 define_id!(EpisodeId);
 define_id!(MovieId);
+define_id!(MovieReleaseId);
 define_id!(WatchedId);
 define_id!(TaskId);
 define_id!(ImageId);

@@ -74,16 +74,24 @@ WHERE
     release_type = 'digital';
 
 CREATE TABLE
-    watched (
-        id INTEGER PRIMARY KEY,
+    watched_episodes (
+        id        INTEGER PRIMARY KEY,
         timestamp INTEGER NOT NULL,
-        episode_id INTEGER REFERENCES episodes (id) ON DELETE CASCADE,
-        movie_id INTEGER REFERENCES movies (id) ON DELETE CASCADE,
-        CHECK (
-            (episode_id IS NOT NULL)
-            OR (movie_id IS NOT NULL)
-        )
+        series_id INTEGER,
+        season    INTEGER NOT NULL,
+        episode   INTEGER NOT NULL
     );
+
+CREATE INDEX idx_watched_episodes_series ON watched_episodes (series_id);
+
+CREATE TABLE
+    watched_movies (
+        id        INTEGER PRIMARY KEY,
+        timestamp INTEGER NOT NULL,
+        movie_id  INTEGER
+    );
+
+CREATE INDEX idx_watched_movies_movie ON watched_movies (movie_id);
 
 CREATE TABLE
     pending (
@@ -136,15 +144,14 @@ WHERE
 
 CREATE TABLE
     remotes (
-        id INTEGER PRIMARY KEY,
         remote_id TEXT NOT NULL,
-        series_id INTEGER REFERENCES series (id) ON DELETE CASCADE,
-        movie_id INTEGER REFERENCES movies (id) ON DELETE CASCADE,
+        series_id INTEGER,
+        movie_id INTEGER,
         CHECK (
             (series_id IS NOT NULL)
             OR (movie_id IS NOT NULL)
         ),
-        UNIQUE (remote_id)
+        PRIMARY KEY (remote_id)
     );
 
 CREATE INDEX idx_remotes_series ON remotes (series_id)

@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use anyhow::{Context as _, Result};
-use api::{ImageKind, ImageSource, SeasonNumber};
+use api::{EpisodeId, ImageKind, ImageSource, SeasonNumber};
 use db::Database;
 use tracing::{info, warn};
 
@@ -147,6 +147,7 @@ async fn sync_series_tmdb(
             .await?
         {
             db.upsert_episode(
+                EpisodeId::random(),
                 series_id,
                 ep.season,
                 ep.number,
@@ -266,6 +267,7 @@ async fn sync_series_tvdb(
         }
 
         db.upsert_episode(
+            EpisodeId::random(),
             series_id,
             ep.season,
             ep.number,

@@ -4,7 +4,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
-api = { path = "../api", features = ["sqll"] }
+api = { path = "../api", features = ["sqll", "rand"] }
 
 anyhow = "1"
 jiff = "0.2"

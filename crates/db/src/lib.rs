@@ -8,8 +8,8 @@ use std::collections::HashMap;
 
 use api::{
     Config, Date, EpisodeId, Image, ImageId, ImageKind, ImageSource, MarkTime, MovieId,
-    ReleaseType, RemoteId, SeasonId, SeasonNumber, SeriesId, SyncSource, ThemeType, Timestamp,
-    WatchedId, WatchedKind,
+    MovieReleaseId, PendingId, ReleaseType, RemoteId, SeasonId, SeasonNumber, SeriesId,
+    SyncSource, ThemeType, Timestamp, WatchedId, WatchedKind,
 };
 use rust_embed::RustEmbed;
 use sqll::{OpenOptions, Row, SendStatement};
@@ -139,9 +139,18 @@ struct WatchedEpisodeRow {
 }
 
 #[derive(Row)]
-struct InsertWatchedRow {
-    id: WatchedId,
-    timestamp: Timestamp,
+struct EpisodeNaturalKeyRow {
+    series_id: SeriesId,
+    season: SeasonNumber,
+    number: u32,
+}
+
+#[derive(Row)]
+struct UnwatchedEpisodeRow {
+    id: EpisodeId,
+    series_id: SeriesId,
+    season: SeasonNumber,
+    number: u32,
 }
 
 #[derive(Row)]
@@ -239,8 +248,8 @@ statements! {
     struct Inner {
         // series
         insert_series: r#"
-            INSERT INTO series (title, first_air, overview, tracked)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO series (id, title, first_air, overview, tracked)
+            VALUES (?, ?, ?, ?, ?)
             RETURNING id, title, first_air, overview, tracked, sync_source, last_synced_at, language
         "#,
         list_series: r#"
@@ -277,13 +286,16 @@ statements! {
 
         // remotes (series and movies share one table)
         list_series_remotes: r#"
-            SELECT remote_id FROM remotes WHERE series_id = ? ORDER BY id
+            SELECT remote_id FROM remotes WHERE series_id = ? ORDER BY rowid
         "#,
         list_all_series_remotes: r#"
-            SELECT series_id, remote_id FROM remotes WHERE series_id IS NOT NULL ORDER BY series_id, id
+            SELECT series_id, remote_id FROM remotes WHERE series_id IS NOT NULL ORDER BY series_id, rowid
         "#,
         insert_series_remote: r#"
             INSERT OR IGNORE INTO remotes (series_id, remote_id) VALUES (?, ?)
+        "#,
+        series_id_by_remote: r#"
+            SELECT series_id FROM remotes WHERE remote_id = ? LIMIT 1
         "#,
 
         // images (series and movies share one table)
@@ -296,7 +308,7 @@ statements! {
             WHERE series_id IS NOT NULL ORDER BY series_id, kind, path, id
         "#,
         insert_series_image: r#"
-            INSERT INTO images (series_id, kind, source, path, selected) VALUES (?, ?, ?, ?, ?)
+            INSERT INTO images (id, series_id, kind, source, path, selected) VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(series_id, kind, path) WHERE series_id IS NOT NULL DO UPDATE SET source = excluded.source
             RETURNING id, kind, source, path, selected
         "#,
@@ -309,7 +321,7 @@ statements! {
             WHERE movie_id IS NOT NULL ORDER BY movie_id, kind, path, id
         "#,
         insert_movie_image: r#"
-            INSERT INTO images (movie_id, kind, source, path, selected) VALUES (?, ?, ?, ?, ?)
+            INSERT INTO images (id, movie_id, kind, source, path, selected) VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(movie_id, kind, path) WHERE movie_id IS NOT NULL DO UPDATE SET source = excluded.source
             RETURNING id, kind, source, path, selected
         "#,
@@ -328,8 +340,8 @@ statements! {
 
         // seasons
         upsert_season: r#"
-            INSERT INTO seasons (series_id, number, air_date, name, overview, poster)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO seasons (id, series_id, number, air_date, name, overview, poster)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(series_id, number) DO UPDATE SET
                 air_date  = excluded.air_date,
                 name      = excluded.name,
@@ -346,8 +358,8 @@ statements! {
 
         // episodes
         upsert_episode: r#"
-            INSERT INTO episodes (series_id, season, number, absolute_number, name, overview, aired, filename, remote_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO episodes (id, series_id, season, number, absolute_number, name, overview, aired, filename, remote_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(series_id, season, number) DO UPDATE SET
                 absolute_number = excluded.absolute_number,
                 name            = excluded.name,
@@ -357,6 +369,9 @@ statements! {
                 remote_id       = excluded.remote_id
             RETURNING id, series_id, season, number, absolute_number, name, overview, aired, filename, remote_id, 0 AS pending
         "#,
+        episode_natural_key: r#"
+            SELECT series_id, season, number FROM episodes WHERE id = ?
+        "#,
         list_episodes: r#"
             SELECT e.id, e.series_id, e.season, e.number, e.absolute_number, e.name, e.overview, e.aired, e.filename, e.remote_id,
                    EXISTS(SELECT 1 FROM pending p WHERE p.episode_id = e.id) AS pending
@@ -365,11 +380,11 @@ statements! {
             ORDER BY e.number
         "#,
         list_episodes_watched: r#"
-            SELECT w.id, w.timestamp, w.episode_id
-            FROM watched w
-            JOIN episodes e ON e.id = w.episode_id
-            WHERE e.series_id = ?
-            ORDER BY w.timestamp DESC
+            SELECT we.id, we.timestamp, e.id AS episode_id
+            FROM watched_episodes we
+            JOIN episodes e ON e.series_id = we.series_id AND e.season = we.season AND e.number = we.episode
+            WHERE we.series_id = ?
+            ORDER BY we.timestamp DESC
         "#,
         episode_by_id: r#"
             SELECT e.id, e.series_id, e.season, e.number, e.absolute_number, e.name, e.overview, e.aired, e.filename, e.remote_id,
@@ -385,8 +400,8 @@ statements! {
 
         // movies
         insert_movie: r#"
-            INSERT INTO movies (title, release_date, overview, tracked)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO movies (id, title, release_date, overview, tracked)
+            VALUES (?, ?, ?, ?, ?)
             RETURNING id, title, release_date, overview, tracked, sync_source, last_synced_at, language
         "#,
         list_movies: r#"
@@ -421,51 +436,76 @@ statements! {
             DELETE FROM movies WHERE id = ?
         "#,
         list_movie_remotes: r#"
-            SELECT remote_id FROM remotes WHERE movie_id = ? ORDER BY id
+            SELECT remote_id FROM remotes WHERE movie_id = ? ORDER BY rowid
         "#,
         list_all_movie_remotes: r#"
-            SELECT movie_id, remote_id FROM remotes WHERE movie_id IS NOT NULL ORDER BY movie_id, id
+            SELECT movie_id, remote_id FROM remotes WHERE movie_id IS NOT NULL ORDER BY movie_id, rowid
         "#,
         insert_movie_remote: r#"
             INSERT OR IGNORE INTO remotes (movie_id, remote_id) VALUES (?, ?)
+        "#,
+        movie_id_by_remote: r#"
+            SELECT movie_id FROM remotes WHERE remote_id = ? LIMIT 1
         "#,
         movie_released_by_id: r#"
             SELECT release_date FROM movies WHERE id = ?
         "#,
 
         // watched
-        insert_watched: r#"
-            INSERT INTO watched (timestamp, episode_id, movie_id)
+        insert_watched_episode: r#"
+            INSERT OR IGNORE INTO watched_episodes (id, timestamp, series_id, season, episode)
+            VALUES (?, ?, ?, ?, ?)
+        "#,
+        insert_watched_movie: r#"
+            INSERT OR IGNORE INTO watched_movies (id, timestamp, movie_id)
             VALUES (?, ?, ?)
-            RETURNING id, timestamp
         "#,
-        delete_watched: r#"
-            DELETE FROM watched WHERE id = ?
+        delete_watched_episode: r#"
+            DELETE FROM watched_episodes WHERE id = ?
         "#,
-        list_watched_episode: r#"
-            SELECT w.id, w.timestamp, w.episode_id, w.movie_id, e.series_id
-            FROM watched w JOIN episodes e ON e.id = w.episode_id
-            WHERE w.episode_id = ? ORDER BY w.timestamp DESC
+        delete_watched_movie: r#"
+            DELETE FROM watched_movies WHERE id = ?
         "#,
-        list_watched_movie: r#"
-            SELECT id, timestamp, episode_id, movie_id, NULL AS series_id
-            FROM watched WHERE movie_id = ? ORDER BY timestamp DESC
+        list_watched_by_episode: r#"
+            SELECT we.id, we.timestamp, e.id AS episode_id, NULL AS movie_id, e.series_id
+            FROM watched_episodes we
+            JOIN episodes e ON e.series_id = we.series_id AND e.season = we.season AND e.number = we.episode
+            WHERE e.id = ?
+            ORDER BY we.timestamp DESC
+        "#,
+        list_watched_by_movie: r#"
+            SELECT id, timestamp, NULL AS episode_id, movie_id, NULL AS series_id
+            FROM watched_movies WHERE movie_id = ? ORDER BY timestamp DESC
+        "#,
+        list_all_watched_episodes: r#"
+            SELECT we.id, we.timestamp, e.id AS episode_id, NULL AS movie_id, e.series_id
+            FROM watched_episodes we
+            LEFT JOIN episodes e ON e.series_id = we.series_id AND e.season = we.season AND e.number = we.episode
+        "#,
+        list_all_watched_movies: r#"
+            SELECT id, timestamp, NULL AS episode_id, movie_id, NULL AS series_id
+            FROM watched_movies
         "#,
         // select episodes which have 0 watched by series and season.
         select_unwatched_by_series_season: r#"
-            SELECT id FROM episodes
+            SELECT id, series_id, season, number FROM episodes
             WHERE series_id = ? AND season = ?
-              AND NOT EXISTS (SELECT 1 FROM watched w WHERE w.episode_id = episodes.id)
+              AND NOT EXISTS (
+                  SELECT 1 FROM watched_episodes we
+                  WHERE we.series_id = episodes.series_id
+                    AND we.season = episodes.season
+                    AND we.episode = episodes.number
+              )
         "#,
 
         // pending table management
         upsert_pending_episode: r#"
-            INSERT INTO pending (timestamp, series_id, episode_id) VALUES (?, ?, ?)
+            INSERT INTO pending (id, timestamp, series_id, episode_id) VALUES (?, ?, ?, ?)
             ON CONFLICT(series_id) WHERE series_id IS NOT NULL
                 DO UPDATE SET episode_id = excluded.episode_id, timestamp = excluded.timestamp
         "#,
         upsert_pending_movie: r#"
-            INSERT INTO pending (timestamp, movie_id) VALUES (?, ?)
+            INSERT INTO pending (id, timestamp, movie_id) VALUES (?, ?, ?)
             ON CONFLICT(movie_id) WHERE movie_id IS NOT NULL
                 DO UPDATE SET timestamp = excluded.timestamp
         "#,
@@ -488,7 +528,10 @@ statements! {
             FROM episodes e
             WHERE e.series_id = ?
               AND (e.aired IS NOT NULL AND e.aired <= ?)
-              AND NOT EXISTS (SELECT 1 FROM watched w WHERE w.episode_id = e.id)
+              AND NOT EXISTS (
+                  SELECT 1 FROM watched_episodes we
+                  WHERE we.series_id = e.series_id AND we.season = e.season AND we.episode = e.number
+              )
             ORDER BY e.season, e.number
             LIMIT 1
         "#,
@@ -497,7 +540,7 @@ statements! {
             FROM movies m
             WHERE m.tracked = 1
               AND (m.release_date IS NOT NULL AND m.release_date <= ?)
-              AND NOT EXISTS (SELECT 1 FROM watched w WHERE w.movie_id = m.id)
+              AND NOT EXISTS (SELECT 1 FROM watched_movies wm WHERE wm.movie_id = m.id)
               AND NOT EXISTS (SELECT 1 FROM pending p WHERE p.movie_id = m.id)
         "#,
         list_pending_before: r#"
@@ -539,11 +582,7 @@ statements! {
             ORDER BY e.aired, s.title, e.season, e.number
         "#,
 
-        // all watched (for import dedup)
-        list_all_watched: r#"
-            SELECT w.id, w.timestamp, w.episode_id, w.movie_id, e.series_id
-            FROM watched w LEFT JOIN episodes e ON e.id = w.episode_id
-        "#,
+        // all watched (for import dedup) — see list_all_watched_episodes / list_all_watched_movies
 
         // config
         get_config: r#"
@@ -580,8 +619,8 @@ statements! {
 
         // movie releases
         upsert_movie_release: r#"
-            INSERT INTO movie_releases (movie_id, country, release_type, timestamp)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO movie_releases (id, movie_id, country, release_type, timestamp)
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(movie_id, country, release_type)
                 DO UPDATE SET timestamp = excluded.timestamp
         "#,
@@ -605,7 +644,7 @@ statements! {
             JOIN movie_releases mr ON mr.movie_id = m.id AND mr.release_type = 'digital'
             WHERE m.tracked = 1
               AND mr.timestamp <= ?
-              AND NOT EXISTS (SELECT 1 FROM watched w WHERE w.movie_id = m.id)
+              AND NOT EXISTS (SELECT 1 FROM watched_movies wm WHERE wm.movie_id = m.id)
               AND NOT EXISTS (SELECT 1 FROM pending p WHERE p.movie_id = m.id)
             GROUP BY m.id
         "#,
@@ -685,6 +724,7 @@ impl Database {
 
     pub async fn create_series(
         &self,
+        id: SeriesId,
         title: &str,
         first_air: Option<Timestamp>,
         overview: &str,
@@ -695,7 +735,7 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.insert_series
-                .bind((&title[..], first_air.as_ref(), &overview[..], true))?;
+                .bind((id, &title[..], first_air.as_ref(), &overview[..], true))?;
 
             let r = s
                 .insert_series
@@ -704,6 +744,18 @@ impl Database {
 
             ensure!(s.insert_series.step()?.is_done(), "insert_series");
             Ok(series_from_row(r))
+        });
+
+        result.await?
+    }
+
+    pub async fn series_id_by_remote(&self, remote_id: &RemoteId) -> Result<Option<SeriesId>> {
+        let remote_id = remote_id.clone();
+        let mut s = self.inner.clone().lock_owned().await;
+
+        let result = spawn_blocking(move || {
+            s.series_id_by_remote.bind((&remote_id,))?;
+            Ok(s.series_id_by_remote.next::<Option<SeriesId>>()?.flatten())
         });
 
         result.await?
@@ -886,6 +938,7 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.upsert_season.bind((
+                SeasonId::random(),
                 series_id,
                 number.to_u32(),
                 air_date.as_ref(),
@@ -958,6 +1011,7 @@ impl Database {
 
     pub async fn upsert_episode(
         &self,
+        id: EpisodeId,
         series_id: SeriesId,
         season: SeasonNumber,
         number: u32,
@@ -976,6 +1030,7 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.upsert_episode.bind((
+                id,
                 series_id,
                 season.to_u32(),
                 number as i64,
@@ -1031,18 +1086,21 @@ impl Database {
             s.select_unwatched_by_series_season
                 .bind((series_id, season))?;
 
-            while let Some(id) = s.select_unwatched_by_series_season.next::<EpisodeId>()? {
-                let timestamp = s.episode_mark_time(id, mark_time, now)?;
-                s.insert_watched.bind((timestamp, id, None::<MovieId>))?;
+            let mut unwatched = Vec::new();
+            while let Some(r) = s
+                .select_unwatched_by_series_season
+                .next::<UnwatchedEpisodeRow>()?
+            {
+                unwatched.push(r);
+            }
 
-                _ = s
-                    .insert_watched
-                    .next::<InsertWatchedRow>()?
-                    .context("insert_watched returned no row")?;
-
+            for r in unwatched {
+                let timestamp = s.episode_mark_time(r.id, mark_time, now)?;
+                s.insert_watched_episode
+                    .bind((WatchedId::random(), timestamp, r.series_id, r.season, r.number))?;
                 ensure!(
-                    s.insert_watched.step()?.is_done(),
-                    "mark_watched_remaining/insert_watched"
+                    s.insert_watched_episode.step()?.is_done(),
+                    "mark_watched_remaining/insert_watched_episode"
                 );
             }
 
@@ -1121,6 +1179,7 @@ impl Database {
 
     pub async fn create_movie(
         &self,
+        id: MovieId,
         title: &str,
         release_date: Option<Timestamp>,
         overview: &str,
@@ -1132,7 +1191,7 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.insert_movie
-                .bind((&title[..], release_date, &overview[..], tracked))?;
+                .bind((id, &title[..], release_date, &overview[..], tracked))?;
 
             let r = s
                 .insert_movie
@@ -1141,6 +1200,18 @@ impl Database {
 
             ensure!(s.insert_movie.step()?.is_done(), "insert_movie");
             Ok(movie_from_row(r))
+        });
+
+        result.await?
+    }
+
+    pub async fn movie_id_by_remote(&self, remote_id: &RemoteId) -> Result<Option<MovieId>> {
+        let remote_id = remote_id.clone();
+        let mut s = self.inner.clone().lock_owned().await;
+
+        let result = spawn_blocking(move || {
+            s.movie_id_by_remote.bind((&remote_id,))?;
+            Ok(s.movie_id_by_remote.next::<Option<MovieId>>()?.flatten())
         });
 
         result.await?
@@ -1407,7 +1478,7 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.insert_series_image
-                .bind((series_id, kind, source, &path[..], selected))?;
+                .bind((ImageId::random(), series_id, kind, source, &path[..], selected))?;
 
             let r = s
                 .insert_series_image
@@ -1438,7 +1509,7 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.insert_movie_image
-                .bind((movie_id, kind, source, &path[..], selected))?;
+                .bind((ImageId::random(), movie_id, kind, source, &path[..], selected))?;
 
             let r = s
                 .insert_movie_image
@@ -1528,6 +1599,7 @@ impl Database {
 
     pub async fn mark_watched(
         &self,
+        id: WatchedId,
         kind: WatchedKind,
         mark_time: MarkTime,
         now: Timestamp,
@@ -1535,10 +1607,28 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            let (episode_id, movie_id, timestamp) = match kind {
+            let (watched_id, timestamp) = match kind {
                 WatchedKind::Episode { episode, .. } => {
                     let timestamp = s.episode_mark_time(episode, mark_time, now)?;
-                    (Some(episode), None, timestamp)
+
+                    s.episode_natural_key.bind((episode,))?;
+                    let key = s
+                        .episode_natural_key
+                        .next::<EpisodeNaturalKeyRow>()?
+                        .context("episode not found")?;
+
+                    s.insert_watched_episode.bind((
+                        id,
+                        timestamp,
+                        key.series_id,
+                        key.season,
+                        key.number,
+                    ))?;
+                    ensure!(
+                        s.insert_watched_episode.step()?.is_done(),
+                        "insert_watched_episode"
+                    );
+                    (id, timestamp)
                 }
                 WatchedKind::Movie { movie } => {
                     let timestamp = match mark_time {
@@ -1558,20 +1648,18 @@ impl Database {
                         }
                     };
 
-                    (None, Some(movie), timestamp)
+                    s.insert_watched_movie.bind((id, timestamp, movie))?;
+                    ensure!(
+                        s.insert_watched_movie.step()?.is_done(),
+                        "insert_watched_movie"
+                    );
+                    (id, timestamp)
                 }
             };
 
-            s.insert_watched.bind((timestamp, episode_id, movie_id))?;
-            let r = s
-                .insert_watched
-                .next::<InsertWatchedRow>()?
-                .context("insert_watched returned no row")?;
-            ensure!(s.insert_watched.step()?.is_done(), "insert_watched");
-
             Ok(api::Watched {
-                id: r.id,
-                timestamp: r.timestamp,
+                id: watched_id,
+                timestamp,
                 kind,
             })
         });
@@ -1583,8 +1671,16 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.delete_watched.bind((id,))?;
-            ensure!(s.delete_watched.step()?.is_done(), "delete_watched");
+            s.delete_watched_episode.bind((id,))?;
+            ensure!(
+                s.delete_watched_episode.step()?.is_done(),
+                "delete_watched_episode"
+            );
+            s.delete_watched_movie.bind((id,))?;
+            ensure!(
+                s.delete_watched_movie.step()?.is_done(),
+                "delete_watched_movie"
+            );
             Ok(())
         });
 
@@ -1595,9 +1691,15 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.list_all_watched.reset()?;
+            s.list_all_watched_episodes.reset()?;
             let mut out = Vec::new();
-            while let Some(r) = s.list_all_watched.next::<WatchedRow>()? {
+            while let Some(r) = s.list_all_watched_episodes.next::<WatchedRow>()? {
+                if let Ok(w) = watched_from_row(r) {
+                    out.push(w);
+                }
+            }
+            s.list_all_watched_movies.reset()?;
+            while let Some(r) = s.list_all_watched_movies.next::<WatchedRow>()? {
                 out.push(watched_from_row(r)?);
             }
             Ok(out)
@@ -1610,9 +1712,9 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.list_watched_episode.bind((episode_id,))?;
+            s.list_watched_by_episode.bind((episode_id,))?;
             let mut out = Vec::new();
-            while let Some(r) = s.list_watched_episode.next::<WatchedRow>()? {
+            while let Some(r) = s.list_watched_by_episode.next::<WatchedRow>()? {
                 out.push(watched_from_row(r)?);
             }
             Ok(out)
@@ -1625,9 +1727,9 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.list_watched_movie.bind((movie_id,))?;
+            s.list_watched_by_movie.bind((movie_id,))?;
             let mut out = Vec::new();
-            while let Some(r) = s.list_watched_movie.next::<WatchedRow>()? {
+            while let Some(r) = s.list_watched_by_movie.next::<WatchedRow>()? {
                 out.push(watched_from_row(r)?);
             }
             Ok(out)
@@ -1647,7 +1749,8 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.upsert_pending_episode.bind((ts, series_id, episode_id))?;
+            s.upsert_pending_episode
+                .bind((PendingId::random(),ts, series_id, episode_id))?;
             ensure!(
                 s.upsert_pending_episode.step()?.is_done(),
                 "upsert_pending_episode"
@@ -1662,7 +1765,7 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.upsert_pending_movie.bind((ts, movie_id))?;
+            s.upsert_pending_movie.bind((PendingId::random(), ts, movie_id))?;
             ensure!(
                 s.upsert_pending_movie.step()?.is_done(),
                 "upsert_pending_movie"
@@ -1706,7 +1809,7 @@ impl Database {
             match next_id {
                 Some(next) => {
                     let ts = Timestamp::now();
-                    s.upsert_pending_episode.bind((ts, series_id, next))?;
+                    s.upsert_pending_episode.bind((PendingId::random(),ts, series_id, next))?;
                     ensure!(
                         s.upsert_pending_episode.step()?.is_done(),
                         "upsert_pending_episode"
@@ -1767,7 +1870,8 @@ impl Database {
 
             let now = row.aired.unwrap_or(now).max(now);
 
-            s.upsert_pending_episode.bind((now, series_id, row.id))?;
+            s.upsert_pending_episode
+                .bind((PendingId::random(),now, series_id, row.id))?;
             ensure!(
                 s.upsert_pending_episode.step()?.is_done(),
                 "upsert_pending_episode"
@@ -1808,7 +1912,8 @@ impl Database {
 
             let now = aired.unwrap_or(now).max(now);
 
-            s.upsert_pending_episode.bind((now, series_id, next_id))?;
+            s.upsert_pending_episode
+                .bind((PendingId::random(),now, series_id, next_id))?;
             ensure!(
                 s.upsert_pending_episode.step()?.is_done(),
                 "upsert_pending_episode"
@@ -1911,7 +2016,7 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.upsert_movie_release
-                .bind((movie_id, country.as_str(), release_type, timestamp))?;
+                .bind((MovieReleaseId::random(), movie_id, country.as_str(), release_type, timestamp))?;
             ensure!(
                 s.upsert_movie_release.step()?.is_done(),
                 "upsert_movie_release"

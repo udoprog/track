@@ -8,7 +8,7 @@ default = ["bundle"]
 bundle = ["dep:rust-embed", "dep:mime_guess"]
 
 [dependencies]
-api = { path = "../api" }
+api = { path = "../api", features = ["rand"] }
 db = { path = "../db" }
 
 anyhow = "1"

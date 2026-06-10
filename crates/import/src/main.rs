@@ -7,6 +7,11 @@ use clap::Parser;
 use serde::Deserialize;
 use uuid::Uuid;
 
+fn uuid_to_u64(uuid: Uuid) -> u64 {
+    let n = uuid.as_u128();
+    ((n >> 64) as u64) ^ (n as u64)
+}
+
 // ── Minimal YAML-compatible types mirroring the ontv model ───────────────────
 
 #[derive(Debug, Deserialize)]
@@ -126,14 +131,12 @@ impl From<YamlSeasonNumber> for api::SeasonNumber {
 #[serde(untagged)]
 enum YamlWatched {
     Episode {
-        #[allow(dead_code)]
         id: Uuid,
         timestamp: chrono::DateTime<chrono::Utc>,
         series: Uuid,
         episode: Uuid,
     },
     Movie {
-        #[allow(dead_code)]
         id: Uuid,
         timestamp: chrono::DateTime<chrono::Utc>,
         movie: Uuid,
@@ -443,7 +446,12 @@ async fn main() -> Result<()> {
                 .and_then(|d| naive_to_date(*d).to_timestamp_at_midnight_utc().ok());
 
             let inserted = db
-                .create_series(&s.title, first_air, &s.overview)
+                .create_series(
+                    api::SeriesId::new(uuid_to_u64(s.id)),
+                    &s.title,
+                    first_air,
+                    &s.overview,
+                )
                 .await
                 .with_context(|| format!("inserting series '{}'", s.title))?;
 
@@ -513,6 +521,7 @@ async fn main() -> Result<()> {
 
                 let inserted = db
                     .upsert_episode(
+                        api::EpisodeId::new(uuid_to_u64(ep.id)),
                         series_id,
                         ep.season.into(),
                         ep.number,
@@ -564,7 +573,13 @@ async fn main() -> Result<()> {
                 .transpose()?;
 
             let inserted = db
-                .create_movie(&m.title, release_date, &m.overview, true)
+                .create_movie(
+                    api::MovieId::new(uuid_to_u64(m.id)),
+                    &m.title,
+                    release_date,
+                    &m.overview,
+                    true,
+                )
                 .await
                 .with_context(|| format!("inserting movie '{}'", m.title))?;
 
@@ -594,65 +609,59 @@ async fn main() -> Result<()> {
     let total_watched = all_watched.len();
     tracing::info!("importing {total_watched} watched entries");
 
-    let mut skipped = 0usize;
-
     for (i, w) in all_watched.into_iter().enumerate() {
         match w {
             YamlWatched::Episode {
+                id,
                 timestamp,
                 series,
                 episode,
-                ..
             } => {
-                let Some(&series_id) = series_map.get(&series) else {
-                    skipped += 1;
-                    continue;
-                };
-
-                let Some(&episode_id) = episode_map.get(&episode) else {
-                    skipped += 1;
-                    continue;
-                };
+                let series_id = api::SeriesId::new(uuid_to_u64(series));
+                let episode_id = api::EpisodeId::new(uuid_to_u64(episode));
 
                 let timestamp =
                     chrono_to_timestamp(timestamp).context("parsing watched timestamp")?;
                 let key = (episode_id.get(), timestamp.to_string());
 
                 if episodes_watched_seen.contains(&key) {
-                    skipped += 1;
+                    tracing::debug!("skipping duplicate watched episode {episode}");
                     continue;
                 }
 
-                db.mark_watched(
-                    api::WatchedKind::Episode {
-                        series: series_id,
-                        episode: episode_id,
-                    },
-                    api::MarkTime::Now,
-                    timestamp,
-                )
-                .await
-                .context("inserting watched episode")?;
-
-                episodes_watched_seen.insert(key);
+                match db
+                    .mark_watched(
+                        api::WatchedId::new(uuid_to_u64(id)),
+                        api::WatchedKind::Episode {
+                            series: series_id,
+                            episode: episode_id,
+                        },
+                        api::MarkTime::Now,
+                        timestamp,
+                    )
+                    .await
+                {
+                    Ok(_) => {
+                        episodes_watched_seen.insert(key);
+                    }
+                    Err(e) => {
+                        tracing::warn!("skipping watched episode {episode}: {e}");
+                    }
+                }
             }
-            YamlWatched::Movie {
-                timestamp, movie, ..
-            } => {
-                let Some(&movie_id) = movie_map.get(&movie) else {
-                    skipped += 1;
-                    continue;
-                };
+            YamlWatched::Movie { id, timestamp, movie } => {
+                let movie_id = api::MovieId::new(uuid_to_u64(movie));
 
                 let ts = chrono_to_timestamp(timestamp).context("parsing watched timestamp")?;
                 let key = (movie_id.get(), ts.to_string());
 
                 if movies_watched_seen.contains(&key) {
-                    skipped += 1;
+                    tracing::debug!("skipping duplicate watched movie {movie}");
                     continue;
                 }
 
                 db.mark_watched(
+                    api::WatchedId::new(uuid_to_u64(id)),
                     api::WatchedKind::Movie { movie: movie_id },
                     api::MarkTime::Now,
                     ts,
@@ -669,12 +678,6 @@ async fn main() -> Result<()> {
         }
     }
 
-    if skipped > 0 {
-        tracing::warn!(
-            "{skipped} watched entries skipped (referencing missing series/episodes/movies)"
-        );
-    }
-
     // ── Remotes ───────────────────────────────────────────────────────────────
     let remotes_path = source.join("remotes.yaml");
     if remotes_path.exists() {
@@ -687,9 +690,7 @@ async fn main() -> Result<()> {
         for entry in &all_remotes {
             match entry.kind.as_str() {
                 "series" => {
-                    let Some(&series_id) = series_map.get(&entry.uuid) else {
-                        continue;
-                    };
+                    let series_id = api::SeriesId::new(uuid_to_u64(entry.uuid));
                     for rid in &entry.remotes {
                         let remote = api::RemoteId::from_raw(rid.as_str());
                         db.add_series_remote(series_id, &remote)
@@ -701,9 +702,7 @@ async fn main() -> Result<()> {
                     }
                 }
                 "movie" => {
-                    let Some(&movie_id) = movie_map.get(&entry.uuid) else {
-                        continue;
-                    };
+                    let movie_id = api::MovieId::new(uuid_to_u64(entry.uuid));
                     for rid in &entry.remotes {
                         let remote = api::RemoteId::from_raw(rid.as_str());
                         db.add_movie_remote(movie_id, &remote)
