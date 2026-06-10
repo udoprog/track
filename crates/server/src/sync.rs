@@ -74,6 +74,7 @@ async fn sync_series_tmdb(
         .series_by_id(series_id)
         .await?
         .context("series not found")?;
+
     info!(tmdb_id, "fetching tmdb series");
     let info = remote.fetch_tmdb_series(tmdb_id, language).await?;
 
@@ -146,7 +147,7 @@ async fn sync_series_tmdb(
         .context("series not found after update")?;
     broadcast.broadcast_event(api::AppEventKind::SeriesChanged { series: updated });
 
-    let mut synced_seasons: Vec<SeasonNumber> = Vec::new();
+    let mut synced_seasons = HashSet::new();
 
     for info in &info.seasons {
         db.upsert_season(
@@ -192,7 +193,7 @@ async fn sync_series_tmdb(
             season: info.number,
         });
 
-        synced_seasons.push(info.number);
+        synced_seasons.insert(info.number);
     }
 
     db.prune_seasons(series_id, &synced_seasons).await?;
@@ -364,8 +365,7 @@ async fn sync_series_tvdb(
         broadcast.broadcast_event(api::AppEventKind::EpisodesChanged { series_id, season });
     }
 
-    let synced_seasons: Vec<SeasonNumber> = seasons_seen.into_iter().collect();
-    db.prune_seasons(series_id, &synced_seasons).await?;
+    db.prune_seasons(series_id, &seasons_seen).await?;
 
     let seasons = db.seasons(series_id).await?;
     broadcast.broadcast_event(api::AppEventKind::SeasonsChanged { series_id, seasons });

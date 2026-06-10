@@ -4,7 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{Context as _, Result, ensure};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use api::{
     Config, Date, EpisodeId, Image, ImageId, ImageKind, ImageSource, MarkTime, MovieId,
@@ -1077,7 +1077,7 @@ impl Database {
     pub async fn prune_seasons(
         &self,
         series_id: SeriesId,
-        kept: &[SeasonNumber],
+        kept: &HashSet<SeasonNumber>,
     ) -> Result<Vec<SeasonNumber>> {
         let existing = self.seasons(series_id).await?;
         let mut removed = Vec::new();
@@ -1113,7 +1113,7 @@ impl Database {
         &self,
         series_id: SeriesId,
         season: SeasonNumber,
-        kept: &std::collections::HashSet<u32>,
+        kept: &HashSet<u32>,
     ) -> Result<()> {
         let season_n = season.to_u32();
         let kept = kept.clone();
