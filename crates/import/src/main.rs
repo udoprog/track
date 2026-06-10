@@ -221,10 +221,17 @@ async fn import_series_image(
     kind: api::ImageKind,
     img: &api::Image,
 ) -> Result<()> {
-    let id = api::ImageId::random();
-    db.upsert_series_image(id, series_id, kind, image_source(img), img.path())
+    let actual_id = db
+        .upsert_series_image(
+            api::ImageId::random(),
+            series_id,
+            kind,
+            image_source(img),
+            img.path(),
+        )
         .await?;
-    db.set_series_image_selection(series_id, kind, id).await?;
+    db.set_series_image_selection(series_id, kind, actual_id)
+        .await?;
     Ok(())
 }
 
@@ -251,10 +258,17 @@ async fn import_movie_image(
     kind: api::ImageKind,
     img: &api::Image,
 ) -> Result<()> {
-    let id = api::ImageId::random();
-    db.upsert_movie_image(id, movie_id, kind, image_source(img), img.path())
+    let actual_id = db
+        .upsert_movie_image(
+            api::ImageId::random(),
+            movie_id,
+            kind,
+            image_source(img),
+            img.path(),
+        )
         .await?;
-    db.set_movie_image_selection(movie_id, kind, id).await?;
+    db.set_movie_image_selection(movie_id, kind, actual_id)
+        .await?;
     Ok(())
 }
 
@@ -410,8 +424,8 @@ async fn main() -> Result<()> {
     tracing::info!("importing {total_series} series");
 
     for (i, s) in all_series.iter().enumerate() {
-        let series_id = if let Some(rid) = &s.remote_id
-            && let Some(&existing_id) = series_by_remote.get(rid.as_str())
+        let series_id = if let Some(ref remote_id) = s.remote_id
+            && let Some(&existing_id) = series_by_remote.get(remote_id)
         {
             existing_id
         } else {
@@ -431,10 +445,10 @@ async fn main() -> Result<()> {
             }
             import_series_images(&db, series_id, &s.graphics).await?;
 
-            if let Some(rid) = &s.remote_id {
-                let remote = api::RemoteId::from_raw(rid.as_str());
+            if let Some(remote_id) = &s.remote_id {
+                let remote = api::RemoteId::from_raw(remote_id);
                 db.add_series_remote(series_id, &remote).await?;
-                series_by_remote.insert(rid.clone(), series_id);
+                series_by_remote.insert(remote_id.clone(), series_id);
             }
 
             series_id

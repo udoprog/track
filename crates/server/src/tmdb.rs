@@ -402,12 +402,13 @@ impl Client {
     }
 
     pub(crate) async fn fetch_movie(&self, id: u32, language: Option<&str>) -> Result<MovieInfo> {
-        #[derive(Deserialize, Default)]
+        #[derive(Debug, Deserialize, Default)]
         struct ExternalIds {
             #[serde(default)]
             imdb_id: Option<String>,
         }
-        #[derive(Deserialize)]
+
+        #[derive(Debug, Deserialize)]
         struct Details {
             #[serde(default)]
             title: Option<String>,
@@ -439,26 +440,32 @@ impl Client {
 
         let mut remotes = vec![RemoteId::tmdb(id)];
 
+        tracing::warn!(?details.external_ids);
+
         if let Some(ref imdb_id) = details.external_ids.imdb_id {
             if !imdb_id.is_empty() {
                 remotes.push(RemoteId::imdb(imdb_id));
             }
         }
 
-        let mut posters = images
-            .posters
+        let mut posters = details
+            .poster_path
+            .as_ref()
             .into_iter()
-            .map(|img| Image::tmdb(&img.file_path))
+            .chain(images.posters.iter().map(|img| &img.file_path))
+            .map(|path| Image::tmdb(path))
             .collect::<Vec<_>>();
 
         let selected_poster = details.poster_path.as_ref().map(|path| Image::tmdb(path));
 
         posters.extend(selected_poster.clone());
 
-        let mut backdrops = images
-            .backdrops
+        let mut backdrops = details
+            .backdrop_path
+            .as_ref()
             .into_iter()
-            .map(|img| Image::tmdb(&img.file_path))
+            .chain(images.backdrops.iter().map(|img| &img.file_path))
+            .map(|path| Image::tmdb(path))
             .collect::<Vec<_>>();
 
         let selected_backdrop = details.backdrop_path.as_ref().map(|path| Image::tmdb(path));

@@ -96,20 +96,18 @@ async fn sync_series_tmdb(
     let mut selected_poster_id = None;
 
     for image in &info.posters {
-        let id = ImageId::random();
-
+        let actual_id = db
+            .upsert_series_image(
+                ImageId::random(),
+                series_id,
+                ImageKind::Poster,
+                ImageSource::Tmdb,
+                image.path(),
+            )
+            .await?;
         if info.selected_poster.as_ref() == Some(image) {
-            selected_poster_id = Some(id);
+            selected_poster_id = Some(actual_id);
         }
-
-        db.upsert_series_image(
-            id,
-            series_id,
-            ImageKind::Poster,
-            ImageSource::Tmdb,
-            image.path(),
-        )
-        .await?;
     }
 
     if let Some(id) = selected_poster_id {
@@ -123,20 +121,18 @@ async fn sync_series_tmdb(
     let mut selected_backdrop_id = None;
 
     for image in &info.backdrops {
-        let id = ImageId::random();
-
+        let actual_id = db
+            .upsert_series_image(
+                ImageId::random(),
+                series_id,
+                ImageKind::Backdrop,
+                ImageSource::Tmdb,
+                image.path(),
+            )
+            .await?;
         if info.selected_backdrop.as_ref() == Some(image) {
-            selected_backdrop_id = Some(id);
+            selected_backdrop_id = Some(actual_id);
         }
-
-        db.upsert_series_image(
-            id,
-            series_id,
-            ImageKind::Backdrop,
-            ImageSource::Tmdb,
-            image.path(),
-        )
-        .await?;
     }
 
     if let Some(id) = selected_backdrop_id {
@@ -241,20 +237,18 @@ async fn sync_series_tvdb(
     let mut selected_poster_id = None;
 
     for poster in &info.poster {
-        let id = ImageId::random();
-
+        let actual_id = db
+            .upsert_series_image(
+                ImageId::random(),
+                series_id,
+                ImageKind::Poster,
+                ImageSource::Tvdb,
+                poster.path(),
+            )
+            .await?;
         if info.selected_poster.as_ref() == Some(poster) {
-            selected_poster_id = Some(id);
+            selected_poster_id = Some(actual_id);
         }
-
-        db.upsert_series_image(
-            id,
-            series_id,
-            ImageKind::Poster,
-            ImageSource::Tvdb,
-            poster.path(),
-        )
-        .await?;
     }
 
     if let Some(id) = selected_poster_id {
@@ -268,20 +262,18 @@ async fn sync_series_tvdb(
     let mut selected_banner_id = None;
 
     for banner in &info.banner {
-        let id = ImageId::random();
-
+        let actual_id = db
+            .upsert_series_image(
+                ImageId::random(),
+                series_id,
+                ImageKind::Banner,
+                ImageSource::Tvdb,
+                banner.path(),
+            )
+            .await?;
         if info.selected_banner.as_ref() == Some(banner) {
-            selected_banner_id = Some(id);
+            selected_banner_id = Some(actual_id);
         }
-
-        db.upsert_series_image(
-            id,
-            series_id,
-            ImageKind::Banner,
-            ImageSource::Tvdb,
-            banner.path(),
-        )
-        .await?;
     }
 
     if let Some(id) = selected_banner_id {
@@ -295,20 +287,18 @@ async fn sync_series_tvdb(
     let mut selected_fanart_id = None;
 
     for fanart in &info.fanart {
-        let id = ImageId::random();
-
+        let actual_id = db
+            .upsert_series_image(
+                ImageId::random(),
+                series_id,
+                ImageKind::Fanart,
+                ImageSource::Tvdb,
+                fanart.path(),
+            )
+            .await?;
         if info.selected_fanart.as_ref() == Some(fanart) {
-            selected_fanart_id = Some(id);
+            selected_fanart_id = Some(actual_id);
         }
-
-        db.upsert_series_image(
-            id,
-            series_id,
-            ImageKind::Fanart,
-            ImageSource::Tvdb,
-            fanart.path(),
-        )
-        .await?;
     }
 
     if let Some(id) = selected_fanart_id {
@@ -426,18 +416,18 @@ pub(crate) async fn sync_movie(
                 .await?;
             let mut selected_poster_id = None;
             for img in &info.posters {
-                let id = ImageId::random();
+                let actual_id = db
+                    .upsert_movie_image(
+                        ImageId::random(),
+                        movie_id,
+                        ImageKind::Poster,
+                        ImageSource::Tmdb,
+                        img.path(),
+                    )
+                    .await?;
                 if info.selected_poster.as_ref() == Some(img) {
-                    selected_poster_id = Some(id);
+                    selected_poster_id = Some(actual_id);
                 }
-                db.upsert_movie_image(
-                    id,
-                    movie_id,
-                    ImageKind::Poster,
-                    ImageSource::Tmdb,
-                    img.path(),
-                )
-                .await?;
             }
             if let Some(id) = selected_poster_id {
                 db.set_movie_image_selection(movie_id, ImageKind::Poster, id)
@@ -448,18 +438,18 @@ pub(crate) async fn sync_movie(
                 .await?;
             let mut selected_backdrop_id = None;
             for img in &info.backdrops {
-                let id = ImageId::random();
+                let actual_id = db
+                    .upsert_movie_image(
+                        ImageId::random(),
+                        movie_id,
+                        ImageKind::Backdrop,
+                        ImageSource::Tmdb,
+                        img.path(),
+                    )
+                    .await?;
                 if info.selected_backdrop.as_ref() == Some(img) {
-                    selected_backdrop_id = Some(id);
+                    selected_backdrop_id = Some(actual_id);
                 }
-                db.upsert_movie_image(
-                    id,
-                    movie_id,
-                    ImageKind::Backdrop,
-                    ImageSource::Tmdb,
-                    img.path(),
-                )
-                .await?;
             }
             if let Some(id) = selected_backdrop_id {
                 db.set_movie_image_selection(movie_id, ImageKind::Backdrop, id)

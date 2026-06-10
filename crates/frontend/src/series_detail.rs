@@ -210,10 +210,10 @@ impl Component for SeriesDetail {
         let link = ctx.link();
 
         let url = series
-            .images
-            .iter()
-            .find(|i| matches!(i.kind, api::ImageKind::Backdrop))
-            .map(|image| image.image.proxy_url());
+            .backdrop
+            .as_ref()
+            .or(series.fanart.as_ref())
+            .map(|i| i.proxy_url());
 
         let style = url
             .as_ref()

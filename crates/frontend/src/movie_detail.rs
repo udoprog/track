@@ -156,11 +156,7 @@ impl Component for MovieDetail {
             };
         };
 
-        let url = movie
-            .images
-            .iter()
-            .find(|i| matches!(i.kind, api::ImageKind::Backdrop))
-            .map(|image| image.image.proxy_url());
+        let url = movie.backdrop.as_ref().map(|i| i.proxy_url());
 
         let style = url
             .as_ref()

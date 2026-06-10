@@ -192,7 +192,7 @@ struct PendingBaseRow {
 struct PendingEpisodeDetailRow {
     series_id: api::SeriesId,
     series_title: String,
-    season: i64,
+    season: SeasonNumber,
     number: i64,
     episode_name: Option<String>,
     aired: Option<Timestamp>,
@@ -359,6 +359,13 @@ statements! {
         "#,
         image_by_id: r#"
             SELECT kind, series_id, movie_id FROM images WHERE id = ?
+        "#,
+
+        image_id_for_series_path: r#"
+            SELECT id FROM images WHERE series_id = ? AND kind = ? AND path = ?
+        "#,
+        image_id_for_movie_path: r#"
+            SELECT id FROM images WHERE movie_id = ? AND kind = ? AND path = ?
         "#,
 
         // selection tables
@@ -1674,7 +1681,7 @@ impl Database {
         kind: ImageKind,
         source: ImageSource,
         path: &str,
-    ) -> Result<()> {
+    ) -> Result<ImageId> {
         let path = path.to_owned();
         let mut s = self.inner.clone().lock_owned().await;
 
@@ -1685,7 +1692,14 @@ impl Database {
                 s.insert_series_image.step()?.is_done(),
                 "insert_series_image"
             );
-            Ok(())
+
+            s.image_id_for_series_path
+                .bind((series_id, kind, &path[..]))?;
+            let actual_id = s
+                .image_id_for_series_path
+                .next::<ImageId>()?
+                .context("image not found after upsert")?;
+            Ok(actual_id)
         });
 
         result.await?
@@ -1698,7 +1712,7 @@ impl Database {
         kind: ImageKind,
         source: ImageSource,
         path: &str,
-    ) -> Result<()> {
+    ) -> Result<ImageId> {
         let path = path.to_owned();
         let mut s = self.inner.clone().lock_owned().await;
 
@@ -1706,7 +1720,14 @@ impl Database {
             s.insert_movie_image
                 .bind((id, movie_id, kind, source, &path[..]))?;
             ensure!(s.insert_movie_image.step()?.is_done(), "insert_movie_image");
-            Ok(())
+
+            s.image_id_for_movie_path
+                .bind((movie_id, kind, &path[..]))?;
+            let actual_id = s
+                .image_id_for_movie_path
+                .next::<ImageId>()?
+                .context("image not found after upsert")?;
+            Ok(actual_id)
         });
 
         result.await?
@@ -2415,9 +2436,9 @@ impl Database {
 
                         let label = match d.episode_name {
                             Some(ref name) => {
-                                format!("S{:02}E{:02} \u{2013} {name}", d.season, d.number)
+                                format!("{}E{:02} \u{2013} {name}", d.season.short(), d.number)
                             }
-                            None => format!("S{:02}E{:02}", d.season, d.number),
+                            None => format!("{}E{:02}", d.season.short(), d.number),
                         };
 
                         break 'pending api::Pending {
