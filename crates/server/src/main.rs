@@ -104,7 +104,6 @@ async fn main() -> Result<ExitCode> {
         db,
         broadcast,
         channels: Channels::default(),
-        http,
         cache,
         queue,
         remote,

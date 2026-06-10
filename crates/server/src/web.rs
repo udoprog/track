@@ -18,7 +18,6 @@ pub(crate) struct AppState {
     pub db: Database,
     pub broadcast: Broadcaster,
     pub channels: Channels,
-    pub http: reqwest::Client,
     pub cache: ImageCache,
     pub queue: TaskQueue,
     pub remote: RemoteClients,

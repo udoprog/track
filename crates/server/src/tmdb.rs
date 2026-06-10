@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::{Context as _, Result};
 use api::{Date, Image, ReleaseType, RemoteId, SeasonNumber, Timestamp};
 use reqwest::{Method, RequestBuilder};
@@ -5,30 +7,40 @@ use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
 const BASE: &str = "https://api.themoviedb.org/3/";
+const IMAGE_BASE: &str = "https://image.tmdb.org/t/p/original/";
+
+struct Inner {
+    base: reqwest::Url,
+    image_base: reqwest::Url,
+    http: reqwest::Client,
+    api_key: String,
+}
 
 #[derive(Clone)]
 pub(crate) struct Client {
-    base: reqwest::Url,
-    http: reqwest::Client,
-    api_key: String,
+    inner: Arc<Inner>,
 }
 
 impl Client {
     pub(crate) fn new(http: reqwest::Client, api_key: String) -> Result<Self> {
         Ok(Self {
-            base: reqwest::Url::parse(BASE)?,
-            http,
-            api_key,
+            inner: Arc::new(Inner {
+                base: reqwest::Url::parse(BASE)?,
+                image_base: reqwest::Url::parse(IMAGE_BASE)?,
+                http,
+                api_key,
+            }),
         })
     }
 
     fn request(&self, method: Method, path: impl AsRef<str>) -> Result<RequestBuilder> {
-        let url = self.base.join(path.as_ref())?;
+        let url = self.inner.base.join(path.as_ref())?;
 
         let req = self
+            .inner
             .http
             .request(method, url)
-            .query(&[("api_key", self.api_key.as_str())]);
+            .query(&[("api_key", self.inner.api_key.as_str())]);
 
         Ok(req)
     }
@@ -55,6 +67,15 @@ impl Client {
             .context("reading body")?;
 
         serde_json::from_slice(&bytes).context("deserializing JSON")
+    }
+
+    pub(crate) async fn fetch_image(&self, path: &str) -> Result<Option<bytes::Bytes>> {
+        let url = self.inner.image_base.join(path.trim_start_matches('/'))?;
+        let resp = self.inner.http.get(url).send().await?;
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        Ok(Some(resp.error_for_status()?.bytes().await?))
     }
 
     pub(crate) async fn search_series(&self, query: &str) -> Result<Vec<SearchSeriesResult>> {

@@ -68,6 +68,20 @@ impl RemoteClients {
         self.inner.lock().tvdb.clone()
     }
 
+    pub(crate) async fn fetch_tmdb_image(&self, path: &str) -> Result<Option<bytes::Bytes>> {
+        self.tmdb()
+            .context("no tmdb client configured")?
+            .fetch_image(path)
+            .await
+    }
+
+    pub(crate) async fn fetch_tvdb_image(&self, path: &str) -> Result<Option<bytes::Bytes>> {
+        self.tvdb()
+            .context("no tvdb client configured")?
+            .fetch_image(path)
+            .await
+    }
+
     fn tvmaze(&self) -> Option<crate::tvmaze::Client> {
         self.inner.lock().tvmaze.clone()
     }

@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, MutexGuard};
 
 const BASE: &str = "https://api.thetvdb.com/";
+const IMAGE_BASE: &str = "https://artworks.thetvdb.com/";
+const IMAGE_BASE_LEGACY: &str = "https://artworks.thetvdb.com/banners/";
 const EXPIRATION_SECONDS: u64 = 3600 * 24;
 
 struct Credentials {
@@ -18,6 +20,8 @@ struct Credentials {
 
 struct Inner {
     base: reqwest::Url,
+    image_base: reqwest::Url,
+    image_base_legacy: reqwest::Url,
     http: reqwest::Client,
     api_key: String,
     credentials: Mutex<Credentials>,
@@ -33,6 +37,8 @@ impl Client {
         Ok(Self {
             inner: Arc::new(Inner {
                 base: reqwest::Url::parse(BASE)?,
+                image_base: reqwest::Url::parse(IMAGE_BASE)?,
+                image_base_legacy: reqwest::Url::parse(IMAGE_BASE_LEGACY)?,
                 http,
                 api_key,
                 credentials: Mutex::new(Credentials {
@@ -41,6 +47,35 @@ impl Client {
                 }),
             }),
         })
+    }
+
+    pub(crate) async fn fetch_image(&self, path: &str) -> Result<Option<bytes::Bytes>> {
+        let path = path.trim_start_matches('/');
+
+        let (base, token) = if path.starts_with("v4/") {
+            (
+                &self.inner.image_base,
+                Some(self.login().await?.token.clone()),
+            )
+        } else {
+            (&self.inner.image_base_legacy, None)
+        };
+
+        let url = base.join(path)?;
+
+        let mut req = self.inner.http.get(url);
+
+        if let Some(token) = token {
+            req = req.bearer_auth(&token);
+        }
+
+        let resp = req.send().await?;
+
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+
+        Ok(Some(resp.error_for_status()?.bytes().await?))
     }
 
     async fn login(&self) -> Result<MutexGuard<'_, Credentials>> {

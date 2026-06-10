@@ -562,10 +562,8 @@ h5 {
 
 .poster {
     width: 100%;
-    object-fit: cover;
     border-radius: $radius-sm;
     background: $bg-surface;
-    min-height: $poster-height;
 }
 
 .poster-sm {

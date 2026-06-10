@@ -9,23 +9,14 @@ pub(super) async fn image_handler(
     State(state): State<AppState>,
     Path((source, path)): Path<(String, String)>,
 ) -> Response {
-    let url = match source.as_str() {
-        "tmdb" => format!("https://image.tmdb.org/t/p/original/{path}"),
-        "tvdb" => format!("https://artworks.thetvdb.com/{path}"),
-        _ => return (StatusCode::BAD_REQUEST, "unknown image source").into_response(),
-    };
-
-    let http = state.http.clone();
     let cache = state.cache.clone();
+    let remote = state.remote.clone();
 
     let result = cache
-        .get_or_fetch(&source, &path, async || {
-            let resp = http.get(&url).send().await?;
-            if resp.status() == reqwest::StatusCode::NOT_FOUND {
-                return Ok(None);
-            }
-            let bytes = resp.error_for_status()?.bytes().await?;
-            Ok(Some(bytes))
+        .get_or_fetch(&source, &path, async || match source.as_str() {
+            "tmdb" => remote.fetch_tmdb_image(&path).await,
+            "tvdb" => remote.fetch_tvdb_image(&path).await,
+            _ => anyhow::bail!("unknown image source: {source}"),
         })
         .await;
 
