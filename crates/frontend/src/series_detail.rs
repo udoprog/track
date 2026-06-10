@@ -21,6 +21,7 @@ pub(super) struct SeriesDetail {
     episodes: Vec<api::Episode>,
     confirm_remove: bool,
     syncing: bool,
+    actions_expanded: bool,
     confirm_remove_watch: Option<api::WatchedId>,
     confirming_mark_watch: Option<api::EpisodeId>,
     select_mark_remaining: bool,
@@ -108,6 +109,7 @@ pub(super) enum Msg {
     MoveWatched(api::WatchedId, api::SeasonNumber, u32),
     MoveWatchedDone(Result<ws::Packet<api::MoveWatchedEpisode>, ws::Error>),
     OrphanedLoaded(Result<ws::Packet<api::ListOrphanedWatched>, ws::Error>),
+    ToggleActionsExpanded,
 }
 
 #[derive(Properties, PartialEq)]
@@ -145,6 +147,7 @@ impl Component for SeriesDetail {
             episodes: Vec::new(),
             confirm_remove: false,
             syncing: false,
+            actions_expanded: false,
             confirm_remove_watch: None,
             confirming_mark_watch: None,
             select_mark_remaining: false,
@@ -214,8 +217,16 @@ impl Component for SeriesDetail {
                 <div class="page">
                     { self.view_header(ctx) }
 
-                    <div class="row-fill actions">
-                        <div class="row fill start">
+                    <div class="hide-desktop row">
+                        <span class="fill" />
+
+                        <button class="btn" onclick={link.callback(|_| Msg::ToggleActionsExpanded)}>
+                            <span class="icon-inline"><span class={classes!("icon", if self.actions_expanded { "ellipsis-horizontal" } else { "bars-3" })} /></span>
+                        </button>
+                    </div>
+
+                    <div class={classes!("desktop-row-fill", "mobile-column", "actions", (!self.actions_expanded).then_some("hide-mobile"))}>
+                        <div class="desktop-row mobile-column fill start">
                             <RemoteSourceSelect
                                 kind={RemoteSourceKind::Series}
                                 remotes={series.remotes.clone()}
@@ -232,55 +243,53 @@ impl Component for SeriesDetail {
                             if series.images.iter().any(|i| matches!(i.kind, api::ImageKind::Poster)) {
                                 <button class="btn" onclick={link.callback(|_| Msg::OpenImageModal(api::ImageKind::Poster))}>
                                     <span class="icon-inline"><span class="icon photo" /></span>
-                                    <span class="hide-mobile">{"Poster"}</span>
+                                    <span>{"Poster"}</span>
                                 </button>
                             }
 
                             if series.images.iter().any(|i| matches!(i.kind, api::ImageKind::Backdrop)) {
                                 <button class="btn" onclick={link.callback(|_| Msg::OpenImageModal(api::ImageKind::Backdrop))}>
                                     <span class="icon-inline"><span class="icon photo" /></span>
-                                    <span class="hide-mobile">{"Backdrop"}</span>
+                                    <span>{"Backdrop"}</span>
                                 </button>
                             }
 
                             if let Some(ts) = series.last_synced_at {
-                                <span class="text-muted hide-mobile" title="Last synced at">
-                                    {ts.display(self.tz.clone())}
-                                </span>
+                                <div class="input-group">
+                                    <div class="input-label">{"Sync"}</div>
+                                    <div class="input-text fill" title="Last synced at">
+                                        <span>{ts.display(self.tz.clone())}</span>
+                                    </div>
+                                </div>
                             }
                         </div>
 
-                        <div class="row end">
+                        <div class="desktop-row mobile-column end">
                             if series.tracked {
                                 <button class="btn" onclick={link.callback(|_| Msg::SetTracked(false))} title="Untrack series">
                                     <span class="icon-inline"><span class="icon eye-slash" /></span>
-                                    <span class="hide-mobile">{"Untrack"}</span>
+                                    <span class="hide-desktop">{"Untrack"}</span>
                                 </button>
                             } else {
                                 <button class="btn" onclick={link.callback(|_| Msg::SetTracked(true))} title="Track series">
                                     <span class="icon-inline"><span class="icon eye" /></span>
-                                    <span class="hide-mobile">{"Track"}</span>
+                                    <span class="hide-desktop">{"Track"}</span>
                                 </button>
                             }
 
                             if !series.remotes.is_empty() {
                                 <button class="btn" onclick={link.callback(|_| Msg::SyncSeries)} title="Sync from remote">
                                     <span class="icon-inline"><span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} /></span>
-                                    <span class="hide-mobile">{"Sync"}</span>
+                                    <span class="hide-desktop">{"Sync"}</span>
                                 </button>
                             }
 
                             if self.confirm_remove {
-                                <ConfirmDanger
-                                    prompt="Remove series"
-                                    label={series.title.clone()}
-                                    on_confirm={link.callback(|_| Msg::RemoveSeries)}
-                                    on_cancel={link.callback(|_| Msg::CancelRemove)}
-                                />
+                                <ConfirmDanger prompt="Remove series" label={series.title.clone()} on_confirm={link.callback(|_| Msg::RemoveSeries)} on_cancel={link.callback(|_| Msg::CancelRemove)} />
                             } else {
                                 <button class="btn btn-danger" onclick={link.callback(|_| Msg::ConfirmRemove)} title="Remove series">
                                     <span class="icon-inline"><span class="icon trash" /></span>
-                                    <span class="hide-mobile">{"Remove"}</span>
+                                    <span class="hide-desktop">{"Remove"}</span>
                                 </button>
                             }
                         </div>
@@ -876,6 +885,10 @@ impl SeriesDetail {
                     .decode()
                     .context(Message::LoadingWatched)?
                     .watched;
+                Ok(true)
+            }
+            Msg::ToggleActionsExpanded => {
+                self.actions_expanded = !self.actions_expanded;
                 Ok(true)
             }
         }

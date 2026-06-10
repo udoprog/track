@@ -213,15 +213,8 @@ impl Component for Settings {
                         <div class={classes!("field", (!tz_is_valid(&self.config.timezone)).then_some("error"))}>
                             <label>{"Timezone (IANA name)"}</label>
 
-                            <input
-                                type="text"
-                                class="input-text"
-                                placeholder="Leave empty to use browser timezone"
-                                value={self.config.timezone.clone()}
-                                oninput={on_timezone}
-                                list="tz-datalist"
-                                autocomplete="off"
-                            />
+                            <input type="text" class="input-text" placeholder="Leave empty to use browser timezone" value={self.config.timezone.clone()} oninput={on_timezone} list="tz-datalist" autocomplete="off" />
+
                             <datalist id="tz-datalist">
                                 { for jiff_tzdb::available().map(|name| html! {
                                     <option value={name} />

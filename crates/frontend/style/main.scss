@@ -122,7 +122,7 @@ body {
     }
 }
 
-.row {
+@mixin row-base {
     display: flex;
     align-items: center;
     gap: $gap-sm;
@@ -132,7 +132,17 @@ body {
     }
 }
 
-.column {
+.row {
+    @include row-base;
+}
+
+@include g.from-desktop {
+    .desktop-row {
+        @include row-base;
+    }
+}
+
+@mixin column-base {
     display: flex;
     flex-direction: column;
     gap: $gap-sm;
@@ -142,7 +152,17 @@ body {
     }
 }
 
-.row-fill {
+.column {
+    @include column-base;
+}
+
+@include g.until-mobile {
+    .mobile-column {
+        @include column-base;
+    }
+}
+
+@mixin row-fill-base {
     display: flex;
     flex-direction: row;
     flex-wrap: wrap;
@@ -160,6 +180,16 @@ body {
 
     .end {
         margin-left: auto;
+    }
+}
+
+.row-fill {
+    @include row-fill-base;
+}
+
+@include g.from-desktop {
+    .desktop-row-fill {
+        @include row-fill-base;
     }
 }
 
@@ -284,6 +314,12 @@ body {
 
 .hide-mobile {
     @include g.until-mobile {
+        display: none;
+    }
+}
+
+.hide-desktop {
+    @include g.from-desktop {
         display: none;
     }
 }
@@ -560,8 +596,9 @@ body {
 }
 
 .actions {
-    padding: $padding-row $gap-sm;
     border-bottom: 1px solid $border-subtle;
+    padding-bottom: $padding-row;
+    padding-top: $padding-row;
 }
 
 .overview {
@@ -710,10 +747,15 @@ body {
 }
 
 @mixin input-base {
+    display: flex;
+    align-items: center;
+
     background: $bg-surface;
     color: $text-primary;
-    border: 1px solid $border-input;
+    border-width: 1px;
+    border-style: solid;
     border-radius: $radius-sm;
+    border-color: $border-input;
     padding: 0 $padding-row;
     height: $input-height;
     font-size: $font-sm;
@@ -732,6 +774,12 @@ body {
 
 .input-number {
     @include input-base;
+}
+
+.input-label {
+    @include input-base;
+    font-weight: bold;
+    background-color: $bg-panel;
 }
 
 .input-text {
@@ -754,7 +802,9 @@ body {
     height: $input-height;
     width: $input-height;
 
-    border: 1px solid $border-input;
+    border-width: 1px;
+    border-style: solid;
+    border-color: $border-input;
     background: $bg-surface;
     padding: $gap-sm;
 
