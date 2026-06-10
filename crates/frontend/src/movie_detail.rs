@@ -19,6 +19,7 @@ pub(super) struct MovieDetail {
     confirm_remove_watch: Option<api::WatchedId>,
     syncing: bool,
     actions_expanded: bool,
+    detailed_expand: bool,
     image_modal: Option<api::ImageKind>,
     tz: TimeZone,
     _tz_handle: ContextHandle<TimeZone>,
@@ -75,12 +76,13 @@ pub(super) enum Msg {
     ),
     SetTracked(bool),
     SetTrackedDone(bool, Result<ws::Packet<api::UntrackMovie>, ws::Error>),
-    AddPending,
+    OnWatchNext,
     AddPendingDone(Result<ws::Packet<api::AddPending>, ws::Error>),
-    RemovePending,
+    OnRemoveNext,
     RemovePendingDone(Result<ws::Packet<api::RemovePending>, ws::Error>),
     SetTz(TimeZone),
     ToggleActionsExpanded,
+    ToggleDetailedActionsExpanded,
 }
 
 #[derive(Properties, PartialEq)]
@@ -117,6 +119,7 @@ impl Component for MovieDetail {
             confirm_remove_watch: None,
             syncing: false,
             actions_expanded: false,
+            detailed_expand: false,
             image_modal: None,
             tz,
             _tz_handle,
@@ -442,7 +445,7 @@ impl MovieDetail {
                 }
                 Ok(true)
             }
-            Msg::AddPending => {
+            Msg::OnWatchNext => {
                 let movie = ctx.props().movie_id;
                 self._pending_req = self
                     .channel
@@ -461,7 +464,7 @@ impl MovieDetail {
                 }
                 Ok(true)
             }
-            Msg::RemovePending => {
+            Msg::OnRemoveNext => {
                 let movie = ctx.props().movie_id;
                 self._pending_req = self
                     .channel
@@ -529,6 +532,10 @@ impl MovieDetail {
                 self.actions_expanded = !self.actions_expanded;
                 Ok(true)
             }
+            Msg::ToggleDetailedActionsExpanded => {
+                self.detailed_expand = !self.detailed_expand;
+                Ok(true)
+            }
         }
     }
 
@@ -582,6 +589,27 @@ impl MovieDetail {
         let movie_id = ctx.props().movie_id;
         let link = ctx.link();
 
+        let toggle_pending = move |mobile: bool| {
+            let on_remove_next = link.callback(move |_| Msg::OnRemoveNext);
+            let on_watch_next = link.callback(move |_| Msg::OnWatchNext);
+
+            html! {
+                if movie.pending {
+                    <button class="btn" onclick={on_remove_next} title="Remove from watch next">
+                        <span class="icon bookmark-slash" />
+                        <span class={classes!(mobile.then_some("hide-mobile"), "hide-desktop")}>{"Remove watch next"}</span>
+                    </button>
+                } else {
+                    <button class="btn" onclick={on_watch_next} title="Watch next">
+                        <span class="icon bookmark" />
+                        <span class={classes!(mobile.then_some("hide-mobile"), "hide-desktop")}>{"Watch next"}</span>
+                    </button>
+                }
+            }
+        };
+
+        let on_ask_mark = link.callback(|_| Msg::AskMarkWatched);
+
         let actions = 'actions: {
             if self.confirm_mark_watch {
                 break 'actions html! {
@@ -595,41 +623,45 @@ impl MovieDetail {
             }
 
             html! {
-                <div class="row-fill actions">
-                    <div class="row">
-                        if self.watched.len() > 0 {
-                            <span class="icon-inline" title="Watched"><span class="icon check-circle" /></span>
-                        } else {
-                            <span class="icon-inline" title="Not watched"><span class="icon x-circle" /></span>
-                        }
+                <div class="actions desktop-row-fill mobile-column align-top">
+                    <div class="row-fill fill">
+                        <div class="row">
+                            if self.watched.len() > 0 {
+                                <span class="icon-inline" title="Watched"><span class="icon check-circle" /></span>
+                            } else {
+                                <span class="icon-inline" title="Not watched"><span class="icon x-circle" /></span>
+                            }
 
-                        <span class="text-muted">
-                            {match self.watched.len() {
-                                0 => "Not watched".to_string(),
-                                1 => "Watched once".to_string(),
-                                _ => format!("Watched {} times", self.watched.len()),
-                            }}
-                        </span>
+                            <span class="text-muted">
+                                {match &self.watched[..] {
+                                    [] => "Not watched".to_string(),
+                                    [w] => format!("Watched once at {}", w.timestamp.display(self.tz.clone())),
+                                    [first, ..] => format!("Watched {} times, first at {}", self.watched.len(), first.timestamp.display(self.tz.clone())),
+                                }}
+                            </span>
+                        </div>
+
+                        <div class="row end">
+                            <div class="hide-desktop row top">
+                                <div class="input-group">
+                                    {toggle_pending(true)}
+
+                                    <button class="btn" onclick={link.callback(move |_| Msg::ToggleDetailedActionsExpanded)}>
+                                        <span class="icon-inline"><span class={classes!("icon", if self.detailed_expand { "ellipsis-horizontal" } else { "bars-3" })} /></span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
-                    <div class="row end">
-                        <div class="input-group">
-                            <button class="btn-success" onclick={link.callback(|_| Msg::AskMarkWatched)} title="Mark watched">
-                                <span class="icon-inline"><span class="icon check" /></span>
+                    <div class={classes!("desktop-row", "mobile-column", "end", (!self.detailed_expand).then_some("hide-mobile"))}>
+                        <div class="desktop-row mobile-column desktop-input-group">
+                            <button class="btn-success" onclick={on_ask_mark} title="Mark watched">
+                                <span class="icon check" />
                                 <span class="hide-desktop">{"Mark watched"}</span>
                             </button>
 
-                            if movie.pending {
-                                <button class="btn" onclick={link.callback(|_| Msg::RemovePending)} title="Remove from pending">
-                                    <span class="icon-inline"><span class="icon bookmark-slash" /></span>
-                                    <span class="hide-desktop">{"Remove pending"}</span>
-                                </button>
-                            } else {
-                                <button class="btn" onclick={link.callback(|_| Msg::AddPending)} title="Mark as pending">
-                                    <span class="icon-inline"><span class="icon bookmark" /></span>
-                                    <span class="hide-desktop">{"Mark pending"}</span>
-                                </button>
-                            }
+                            {toggle_pending(false)}
                         </div>
                     </div>
                 </div>

@@ -82,7 +82,7 @@ CREATE TABLE
         episode INTEGER NOT NULL
     );
 
-CREATE INDEX idx_watched_episodes_series ON watched_episodes (series_id);
+CREATE INDEX idx_watched_episodes_series ON watched_episodes (series_id, season, episode);
 
 CREATE TABLE
     watched_movies (

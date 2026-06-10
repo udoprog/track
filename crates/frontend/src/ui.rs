@@ -96,6 +96,8 @@ pub(super) fn ConfirmDanger(props: &ConfirmDangerProps) -> Html {
 /// Renders as a `row-fill fill` that can replace the watch button's action area.
 #[derive(Properties, PartialEq)]
 pub(super) struct MarkWatchedPickerProps {
+    #[prop_or_default]
+    pub(super) class: Classes,
     pub(super) on_confirm: Callback<api::MarkTime>,
     pub(super) on_cancel: Callback<()>,
 }
@@ -117,7 +119,7 @@ pub(super) fn MarkWatchedPicker(props: &MarkWatchedPickerProps) -> Html {
     });
 
     html! {
-        <div class="row-fill fill">
+        <div class={classes!("row-fill", "fill", &props.class)}>
             <span class="fill">{"Watched when?"}</span>
 
             <div class="input-group end">

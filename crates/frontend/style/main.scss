@@ -135,6 +135,10 @@ body {
     &.align-top {
         align-items: start;
     }
+
+    &.no-gap {
+        gap: 0;
+    }
 }
 
 .row {
@@ -154,6 +158,10 @@ body {
 
     &.center {
         justify-content: center;
+    }
+
+    &.no-gap {
+        gap: 0;
     }
 }
 
@@ -491,6 +499,20 @@ h5 {
     color: $text-muted;
 }
 
+.percentage-container {
+    display: block;
+    background: $bg-surface;
+    width: 100%;
+    height: 4px;
+    overflow: hidden;
+}
+
+.percentage-fill {
+    display: block;
+    background: $color-primary;
+    height: 100%;
+}
+
 .schedule-day {
     margin-bottom: $gap;
 }
@@ -632,6 +654,7 @@ h5 {
     font-family: $monospace-font;
     font-size: $font-lg;
     color: $text-muted;
+    text-decoration: none;
 }
 
 .error-page {

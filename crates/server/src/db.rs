@@ -106,8 +106,8 @@ struct SeasonRow {
     name: Option<String>,
     overview: Option<String>,
     poster: Option<Image>,
-    watched_episodes: usize,
-    total_episodes: usize,
+    watched_count: u32,
+    total_count: u32,
 }
 
 #[derive(Row)]
@@ -415,8 +415,10 @@ statements! {
                 poster    = excluded.poster
         "#,
         list_seasons: r#"
-            SELECT id, series_id, number, air_date, name, overview, poster
-            FROM seasons WHERE series_id = ? ORDER BY number
+            SELECT s.id, s.series_id, s.number, s.air_date, s.name, s.overview, s.poster,
+                (SELECT COUNT(DISTINCT we.episode) FROM watched_episodes we WHERE we.series_id = s.series_id AND we.season = s.number) AS watched_count,
+                (SELECT COUNT(*) FROM episodes e WHERE e.series_id = s.series_id AND e.season = s.number) AS total_count
+            FROM seasons s WHERE s.series_id = ? ORDER BY s.number
         "#,
         delete_season: r#"DELETE FROM seasons WHERE series_id = ?1 AND number = ?2"#,
         delete_season_episodes: r#"DELETE FROM episodes WHERE series_id = ?1 AND season = ?2"#,
@@ -2841,8 +2843,8 @@ fn season_from_row(r: SeasonRow) -> api::Season {
         name: r.name,
         overview: r.overview,
         poster: r.poster,
-        watched_episodes: r.watched_episodes,
-        total_episodes: r.total_episodes,
+        watched_count: r.watched_count,
+        total_count: r.total_count,
     }
 }
 

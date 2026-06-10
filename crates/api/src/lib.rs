@@ -1163,8 +1163,8 @@ pub struct Season {
     pub name: Option<String>,
     pub overview: Option<String>,
     pub poster: Option<Image>,
-    pub watched_episodes: usize,
-    pub total_episodes: usize,
+    pub watched_count: u32,
+    pub total_count: u32,
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
