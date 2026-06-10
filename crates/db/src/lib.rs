@@ -614,6 +614,17 @@ statements! {
             ORDER BY e.season, e.number
             LIMIT 1
         "#,
+        first_unwatched_episode_for_series: r#"
+            SELECT e.id, e.aired
+            FROM episodes e
+            WHERE e.series_id = ?
+              AND NOT EXISTS (
+                  SELECT 1 FROM watched_episodes we
+                  WHERE we.series_id = e.series_id AND we.season = e.season AND we.episode = e.number
+              )
+            ORDER BY e.season, e.number
+            LIMIT 1
+        "#,
         movies_needing_pending: r#"
             SELECT m.id, m.release_date
             FROM movies m
@@ -2258,6 +2269,47 @@ impl Database {
 
             s.upsert_pending_episode
                 .bind((PendingId::random(), now, series_id, next_id))?;
+            ensure!(
+                s.upsert_pending_episode.step()?.is_done(),
+                "upsert_pending_episode"
+            );
+
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    /// Like `fill_pending_for_series` but for bulk import: finds the first unwatched episode
+    /// regardless of whether it has aired, and uses the actual aired timestamp rather than
+    /// clamping to `now`. This preserves the episode's original air date as the pending
+    /// timestamp so dashboard ordering reflects episode order rather than import time.
+    pub async fn fill_pending_for_series_import(&self, series_id: api::SeriesId) -> Result<()> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        let result = spawn_blocking(move || {
+            s.has_pending_episode_for_series.bind((series_id,))?;
+            let already_has = s.has_pending_episode_for_series.next::<(i64,)>()?.is_some();
+
+            if already_has {
+                return Ok(());
+            }
+
+            s.first_unwatched_episode_for_series.bind((series_id,))?;
+
+            let Some(row) = s
+                .first_unwatched_episode_for_series
+                .next::<NextEpisodeRow>()?
+            else {
+                return Ok(());
+            };
+
+            let Some(ts) = row.aired else {
+                return Ok(());
+            };
+
+            s.upsert_pending_episode
+                .bind((PendingId::random(), ts, series_id, row.id))?;
             ensure!(
                 s.upsert_pending_episode.step()?.is_done(),
                 "upsert_pending_episode"

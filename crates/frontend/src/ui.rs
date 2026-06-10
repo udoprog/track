@@ -233,11 +233,26 @@ pub(super) struct ImageGalleryProps {
 
 #[function_component]
 pub(super) fn ImageGallery(props: &ImageGalleryProps) -> Html {
+    let page = use_state(|| 0usize);
+
     let images: Vec<_> = props
         .items
         .iter()
         .filter(|img| img.kind == props.kind)
         .collect();
+
+    let selected_item = images.iter().find(|img| img.selected).copied().cloned();
+
+    let total_pages = images.len().div_ceil(GALLERY_PAGE_SIZE);
+    let cur_page = (*page).min(total_pages.saturating_sub(1));
+    let start = cur_page * GALLERY_PAGE_SIZE;
+    let end = (start + GALLERY_PAGE_SIZE).min(images.len());
+    let page_images = &images[start..end];
+
+    let on_page = {
+        let page = page.clone();
+        Callback::from(move |p| page.set(p))
+    };
     let on_select = props.on_select.clone();
     let on_close = props.on_close.clone();
 
@@ -259,11 +274,26 @@ pub(super) fn ImageGallery(props: &ImageGalleryProps) -> Html {
                     </button>
                 </div>
 
+                if let Some(ref sel) = selected_item {
+                    <div class="section">
+                        <span class="text-muted">{"Current selection"}</span>
+                        <div class="image-thumb selected">
+                            <img src={sel.image.proxy_url()} style="max-height: 200px;" />
+                            <div class="image-thumb-source">{sel.source.to_string()}</div>
+                            <span class="image-thumb-check">{"✓"}</span>
+                        </div>
+                    </div>
+                }
+
                 if images.is_empty() {
                     <div class="empty text-muted">{"No images"}</div>
                 } else {
+                    <div class="row">
+                        <PaginationButtons page={cur_page} {total_pages} on_page={on_page} />
+                    </div>
+
                     <div class={classes!("image-gallery", props.kind.as_str())}>
-                        { for images.iter().map(|img| {
+                        { for page_images.iter().map(|img| {
                             let id = img.id;
                             let selected = img.selected;
                             let on_select = on_select.clone();
@@ -293,6 +323,7 @@ pub(super) fn ImageGallery(props: &ImageGalleryProps) -> Html {
 // ── LanguagePicker ────────────────────────────────────────────────────────────
 
 const LANGUAGE_PAGE_SIZE: usize = 5;
+const GALLERY_PAGE_SIZE: usize = 20;
 
 #[derive(Properties, PartialEq)]
 pub(super) struct LanguagePickerProps {

@@ -672,7 +672,7 @@ async fn main() -> Result<()> {
     let mut pending_filled = 0usize;
 
     for &series_id in series_map.values() {
-        db.fill_pending_for_series(series_id, now).await?;
+        db.fill_pending_for_series_import(series_id).await?;
         pending_filled += 1;
     }
 
