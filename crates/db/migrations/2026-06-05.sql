@@ -146,18 +146,17 @@ CREATE TABLE
     remotes (
         remote_id TEXT NOT NULL,
         series_id INTEGER,
-        movie_id INTEGER,
+        movie_id  INTEGER,
         CHECK (
             (series_id IS NOT NULL)
             OR (movie_id IS NOT NULL)
-        ),
-        PRIMARY KEY (remote_id)
+        )
     );
 
-CREATE INDEX idx_remotes_series ON remotes (series_id)
+CREATE UNIQUE INDEX idx_remotes_series ON remotes (series_id, remote_id)
 WHERE
     series_id IS NOT NULL;
 
-CREATE INDEX idx_remotes_movie ON remotes (movie_id)
+CREATE UNIQUE INDEX idx_remotes_movie ON remotes (movie_id, remote_id)
 WHERE
     movie_id IS NOT NULL;

@@ -250,7 +250,6 @@ statements! {
         insert_series: r#"
             INSERT INTO series (id, title, first_air, overview, tracked)
             VALUES (?, ?, ?, ?, ?)
-            RETURNING id, title, first_air, overview, tracked, sync_source, last_synced_at, language
         "#,
         list_series: r#"
             SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at, language
@@ -310,7 +309,6 @@ statements! {
         insert_series_image: r#"
             INSERT INTO images (id, series_id, kind, source, path, selected) VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(series_id, kind, path) WHERE series_id IS NOT NULL DO UPDATE SET source = excluded.source
-            RETURNING id, kind, source, path, selected
         "#,
         list_movie_images: r#"
             SELECT id, kind, source, path, selected FROM images
@@ -323,7 +321,6 @@ statements! {
         insert_movie_image: r#"
             INSERT INTO images (id, movie_id, kind, source, path, selected) VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(movie_id, kind, path) WHERE movie_id IS NOT NULL DO UPDATE SET source = excluded.source
-            RETURNING id, kind, source, path, selected
         "#,
         image_by_id: r#"
             SELECT kind, series_id, movie_id FROM images WHERE id = ?
@@ -347,7 +344,6 @@ statements! {
                 name      = excluded.name,
                 overview  = excluded.overview,
                 poster    = excluded.poster
-            RETURNING id, series_id, number, air_date, name, overview, poster
         "#,
         list_seasons: r#"
             SELECT id, series_id, number, air_date, name, overview, poster
@@ -367,7 +363,6 @@ statements! {
                 aired           = excluded.aired,
                 filename        = excluded.filename,
                 remote_id       = excluded.remote_id
-            RETURNING id, series_id, season, number, absolute_number, name, overview, aired, filename, remote_id, 0 AS pending
         "#,
         episode_natural_key: r#"
             SELECT series_id, season, number FROM episodes WHERE id = ?
@@ -394,6 +389,9 @@ statements! {
         episode_aired_by_id: r#"
             SELECT aired FROM episodes WHERE id = ?
         "#,
+        episode_id_by_place: r#"
+            SELECT id FROM episodes WHERE series_id = ? AND season = ? AND number = ?
+        "#,
         update_episode_aired: r#"
             UPDATE episodes SET aired = ? WHERE series_id = ? AND season = ? AND number = ?
         "#,
@@ -402,7 +400,6 @@ statements! {
         insert_movie: r#"
             INSERT INTO movies (id, title, release_date, overview, tracked)
             VALUES (?, ?, ?, ?, ?)
-            RETURNING id, title, release_date, overview, tracked, sync_source, last_synced_at, language
         "#,
         list_movies: r#"
             SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.sync_source, m.last_synced_at, m.language
@@ -728,7 +725,7 @@ impl Database {
         title: &str,
         first_air: Option<Timestamp>,
         overview: &str,
-    ) -> Result<api::Series> {
+    ) -> Result<()> {
         let title = title.to_owned();
         let overview = overview.to_owned();
         let mut s = self.inner.clone().lock_owned().await;
@@ -736,14 +733,8 @@ impl Database {
         let result = spawn_blocking(move || {
             s.insert_series
                 .bind((id, &title[..], first_air.as_ref(), &overview[..], true))?;
-
-            let r = s
-                .insert_series
-                .next::<SeriesRow>()?
-                .context("insert_series returned no row")?;
-
             ensure!(s.insert_series.step()?.is_done(), "insert_series");
-            Ok(series_from_row(r))
+            Ok(())
         });
 
         result.await?
@@ -930,7 +921,7 @@ impl Database {
         name: Option<&str>,
         overview: Option<&str>,
         poster: Option<&Image>,
-    ) -> Result<api::Season> {
+    ) -> Result<()> {
         let name = name.map(str::to_owned);
         let overview = overview.map(str::to_owned);
         let poster = poster.cloned();
@@ -946,12 +937,8 @@ impl Database {
                 overview.as_deref(),
                 poster.as_ref(),
             ))?;
-            let r = s
-                .upsert_season
-                .next::<SeasonRow>()?
-                .context("upsert_season returned no row")?;
             ensure!(s.upsert_season.step()?.is_done(), "upsert_season");
-            Ok(season_from_row(r))
+            Ok(())
         });
 
         result.await?
@@ -1021,7 +1008,7 @@ impl Database {
         aired: Option<Timestamp>,
         filename: Option<&Image>,
         remote_id: Option<&RemoteId>,
-    ) -> Result<api::Episode> {
+    ) -> Result<()> {
         let name = name.map(str::to_owned);
         let overview = overview.map(str::to_owned);
         let filename = filename.cloned();
@@ -1041,12 +1028,8 @@ impl Database {
                 filename.as_ref(),
                 remote_id.as_ref(),
             ))?;
-            let r = s
-                .upsert_episode
-                .next::<EpisodeRow>()?
-                .context("upsert_episode returned no row")?;
             ensure!(s.upsert_episode.step()?.is_done(), "upsert_episode");
-            Ok(episode_from_row(r))
+            Ok(())
         });
 
         result.await?
@@ -1138,6 +1121,24 @@ impl Database {
         result.await?
     }
 
+    pub async fn episode_id_by_place(
+        &self,
+        series_id: SeriesId,
+        season: api::SeasonNumber,
+        number: u32,
+    ) -> Result<Option<EpisodeId>> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        let result = spawn_blocking(move || {
+            s.episode_id_by_place.bind((series_id, season, number))?;
+            Ok(s.episode_id_by_place
+                .next::<(EpisodeId,)>()?
+                .map(|(id,)| id))
+        });
+
+        result.await?
+    }
+
     pub async fn episode_aired_by_id(&self, id: EpisodeId) -> Result<Option<Timestamp>> {
         let mut s = self.inner.clone().lock_owned().await;
 
@@ -1184,7 +1185,7 @@ impl Database {
         release_date: Option<Timestamp>,
         overview: &str,
         tracked: bool,
-    ) -> Result<api::Movie> {
+    ) -> Result<()> {
         let title = title.to_owned();
         let overview = overview.to_owned();
         let mut s = self.inner.clone().lock_owned().await;
@@ -1192,14 +1193,8 @@ impl Database {
         let result = spawn_blocking(move || {
             s.insert_movie
                 .bind((id, &title[..], release_date, &overview[..], tracked))?;
-
-            let r = s
-                .insert_movie
-                .next::<MovieRow>()?
-                .context("insert_movie returned no row")?;
-
             ensure!(s.insert_movie.step()?.is_done(), "insert_movie");
-            Ok(movie_from_row(r))
+            Ok(())
         });
 
         result.await?
@@ -1472,25 +1467,18 @@ impl Database {
         source: ImageSource,
         path: &str,
         selected: bool,
-    ) -> Result<api::MediaImage> {
+    ) -> Result<()> {
         let path = path.to_owned();
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
             s.insert_series_image
                 .bind((ImageId::random(), series_id, kind, source, &path[..], selected))?;
-
-            let r = s
-                .insert_series_image
-                .next::<ImageRow>()?
-                .context("insert_series_image returned no row")?;
-
             ensure!(
                 s.insert_series_image.step()?.is_done(),
                 "insert_series_image"
             );
-
-            Ok(image_from_row(r))
+            Ok(())
         });
 
         result.await?
@@ -1503,20 +1491,15 @@ impl Database {
         source: ImageSource,
         path: &str,
         selected: bool,
-    ) -> Result<api::MediaImage> {
+    ) -> Result<()> {
         let path = path.to_owned();
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
             s.insert_movie_image
                 .bind((ImageId::random(), movie_id, kind, source, &path[..], selected))?;
-
-            let r = s
-                .insert_movie_image
-                .next::<ImageRow>()?
-                .context("insert_movie_image returned no row")?;
             ensure!(s.insert_movie_image.step()?.is_done(), "insert_movie_image");
-            Ok(image_from_row(r))
+            Ok(())
         });
 
         result.await?
@@ -1662,6 +1645,49 @@ impl Database {
                 timestamp,
                 kind,
             })
+        });
+
+        result.await?
+    }
+
+    pub async fn insert_watched_episode(
+        &self,
+        id: WatchedId,
+        timestamp: Timestamp,
+        series_id: SeriesId,
+        season: api::SeasonNumber,
+        episode: u32,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        let result = spawn_blocking(move || {
+            s.insert_watched_episode
+                .bind((id, timestamp, series_id, season.to_u32(), episode as i64))?;
+            ensure!(
+                s.insert_watched_episode.step()?.is_done(),
+                "add_watched_episode"
+            );
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    pub async fn insert_watched_movie(
+        &self,
+        id: WatchedId,
+        timestamp: Timestamp,
+        movie_id: MovieId,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        let result = spawn_blocking(move || {
+            s.insert_watched_movie.bind((id, timestamp, movie_id))?;
+            ensure!(
+                s.insert_watched_movie.step()?.is_done(),
+                "add_watched_movie"
+            );
+            Ok(())
         });
 
         result.await?

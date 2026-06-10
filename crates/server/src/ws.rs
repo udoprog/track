@@ -125,20 +125,19 @@ impl WsHandler {
                     None => SeriesId::random(),
                 };
 
-                let series = self
-                    .db
+                self.db
                     .create_series(series_id, &req.remote_id.value().to_string(), None, "")
                     .await?;
 
-                self.db.add_series_remote(series.id, &req.remote_id).await?;
+                self.db.add_series_remote(series_id, &req.remote_id).await?;
 
                 if let Some(source) = api::SyncSource::from_remote_source(req.remote_id.source()) {
-                    self.db.set_series_sync_source(series.id, source).await?;
+                    self.db.set_series_sync_source(series_id, source).await?;
                 }
 
                 let series = self
                     .db
-                    .series_by_id(series.id)
+                    .series_by_id(series_id)
                     .await?
                     .context("series not found")?;
 
@@ -238,20 +237,19 @@ impl WsHandler {
                     None => MovieId::random(),
                 };
 
-                let movie = self
-                    .db
+                self.db
                     .create_movie(movie_id, &req.remote_id.value().to_string(), None, "", true)
                     .await?;
 
-                self.db.add_movie_remote(movie.id, &req.remote_id).await?;
+                self.db.add_movie_remote(movie_id, &req.remote_id).await?;
 
                 if let Some(source) = api::SyncSource::from_remote_source(req.remote_id.source()) {
-                    self.db.set_movie_sync_source(movie.id, source).await?;
+                    self.db.set_movie_sync_source(movie_id, source).await?;
                 }
 
                 let movie = self
                     .db
-                    .movie_by_id(movie.id)
+                    .movie_by_id(movie_id)
                     .await?
                     .context("movie not found")?;
 
