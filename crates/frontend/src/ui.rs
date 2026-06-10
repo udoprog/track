@@ -42,10 +42,10 @@ pub(super) fn PaginationButtons(props: &PaginationButtonsProps) -> Html {
 
 #[derive(Properties, PartialEq)]
 pub(super) struct ConfirmDangerProps {
+    pub(super) prompt: AttrValue,
     pub(super) label: Option<AttrValue>,
     pub(super) on_confirm: Callback<()>,
     pub(super) on_cancel: Callback<()>,
-    pub(super) prompt: AttrValue,
     #[prop_or_default]
     pub(super) btn_class: Classes,
 }
@@ -78,11 +78,11 @@ pub(super) fn ConfirmDanger(props: &ConfirmDangerProps) -> Html {
             }
 
             <div class="input-group end">
-                <button onclick={on_cancel} class={classes!("btn-icon", &props.btn_class)} title="No">
+                <button onclick={on_cancel} class={classes!("btn", &props.btn_class)} title="No">
                     <span class="icon x-mark" />
                 </button>
 
-                <button onclick={on_confirm} class={classes!("btn-icon-danger", &props.btn_class)} title="Yes">
+                <button onclick={on_confirm} class={classes!("btn-danger", &props.btn_class)} title="Yes">
                     <span class="icon check" />
                 </button>
             </div>
@@ -370,7 +370,7 @@ impl Component for LanguagePicker {
             Some((label, code)) => html! {
                 <button class="btn" onclick={link.callback(|_| Msg::Open)} title="Select language">
                     <span class="icon-inline"><span class="icon language" /></span>
-                    <span class="hide-mobile">{label}</span>
+                    <span>{label}</span>
 
 
                     if let Some(code) = self.language_to_country.get_by_part1(code) {
@@ -381,7 +381,7 @@ impl Component for LanguagePicker {
             None => html! {
                 <button class="btn" onclick={link.callback(|_| Msg::Open)} title="Select language">
                     <span class="icon-inline"><span class="icon language" /></span>
-                    <span class="hide-mobile">{props.placeholder}</span>
+                    <span>{props.placeholder}</span>
                 </button>
             },
         };
@@ -496,8 +496,14 @@ pub(super) enum EpisodePickerMsg {
 
 #[derive(Properties, PartialEq)]
 pub(super) struct EpisodePickerProps {
+    pub(super) prompt: AttrValue,
+    pub(super) label: Option<AttrValue>,
     pub(super) series_id: api::SeriesId,
     pub(super) seasons: Vec<api::Season>,
+    #[prop_or_default]
+    pub(super) selected_season: Option<api::SeasonNumber>,
+    #[prop_or_default]
+    pub(super) selected_episode: Option<u32>,
     pub(super) on_confirm: Callback<(api::SeasonNumber, u32)>,
     pub(super) on_cancel: Callback<()>,
 }
@@ -512,21 +518,24 @@ impl Component for EpisodePicker {
             .context::<ws::Handle>(Callback::noop())
             .expect("ws::Handle context not found");
 
-        let initial = ctx
-            .props()
-            .seasons
-            .iter()
-            .find(|s| !s.number.is_special())
-            .or_else(|| ctx.props().seasons.first())
-            .map(|s| s.number);
+        let selected_season = match ctx.props().selected_season {
+            Some(selected_season) => Some(selected_season),
+            None => ctx
+                .props()
+                .seasons
+                .iter()
+                .find(|s| !s.number.is_special())
+                .or_else(|| ctx.props().seasons.first())
+                .map(|s| s.number),
+        };
 
         let _setup = SetupChannel::new(ws, ctx.link().callback(EpisodePickerMsg::Channel));
 
         Self {
             channel: ws::Channel::default(),
-            selected_season: initial,
+            selected_season,
             episodes: Vec::new(),
-            selected_episode: None,
+            selected_episode: ctx.props().selected_episode,
             _setup,
             _req: ws::Request::default(),
         }
@@ -555,8 +564,14 @@ impl Component for EpisodePicker {
                     && let Ok(resp) = packet.decode()
                 {
                     self.episodes = resp.episodes;
-                    self.selected_episode = self.episodes.first().map(|e| e.number);
+
+                    if let Some(selected_episode) = self.selected_episode
+                        && !self.episodes.iter().any(|ep| ep.number == selected_episode)
+                    {
+                        self.selected_episode = None;
+                    }
                 }
+
                 true
             }
             EpisodePickerMsg::SelectEpisode(n) => {
@@ -568,6 +583,7 @@ impl Component for EpisodePicker {
                 {
                     ctx.props().on_confirm.emit((season, episode));
                 }
+
                 false
             }
             EpisodePickerMsg::Cancel => {
@@ -597,20 +613,27 @@ impl Component for EpisodePicker {
         html! {
             <div class="row-fill fill">
                 <div class="row fill">
+                    if let Some(ref label) = ctx.props().label {
+                        <span class="fill">{&ctx.props().prompt}{" "}{label}{"?"}</span>
+                    } else {
+                        <span class="fill">{&ctx.props().prompt}{"?"}</span>
+                    }
+
                     <select class="input-select" onchange={on_season_change}>
                         { for ctx.props().seasons.iter().map(|s| {
                             let value = s.number.to_u32().to_string();
+
                             let label = match s.number {
                                 api::SeasonNumber::Specials => "Specials".to_string(),
                                 api::SeasonNumber::Number(n) => format!("S{n:02}"),
                             };
+
                             let selected = self.selected_season == Some(s.number);
                             html! { <option {value} {selected}>{label}</option> }
                         }) }
                     </select>
 
-                    <select class="input-select" onchange={on_episode_change}
-                        disabled={self.episodes.is_empty()}>
+                    <select class="input-select" onchange={on_episode_change} disabled={self.episodes.is_empty()}>
                         { for self.episodes.iter().map(|ep| {
                             let value = ep.number.to_string();
                             let label = format!("E{:02}", ep.number);

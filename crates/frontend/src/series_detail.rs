@@ -18,6 +18,7 @@ pub(super) struct SeriesDetail {
     series: Option<api::Series>,
     seasons: Vec<api::Season>,
     selected: Option<api::SeasonNumber>,
+    expanded_seasons: bool,
     episodes: Vec<api::Episode>,
     confirm_remove: bool,
     syncing: bool,
@@ -60,6 +61,7 @@ pub(super) enum Msg {
     SeriesLoaded(Result<ws::Packet<api::GetSeries>, ws::Error>),
     SeasonsLoaded(Result<ws::Packet<api::ListSeasons>, ws::Error>),
     SelectSeason(api::SeasonNumber),
+    ToggleExpandSeasons,
     EpisodesLoaded(Result<ws::Packet<api::ListEpisodes>, ws::Error>),
     AskMarkWatched(api::EpisodeId),
     MarkWatched(api::SeriesId, api::EpisodeId, api::MarkTime),
@@ -145,6 +147,7 @@ impl Component for SeriesDetail {
             series: None,
             seasons: Vec::new(),
             selected: None,
+            expanded_seasons: false,
             episodes: Vec::new(),
             confirm_remove: false,
             syncing: false,
@@ -256,14 +259,23 @@ impl Component for SeriesDetail {
                                 </button>
                             }
 
-                            if let Some(ts) = series.last_synced_at {
-                                <div class="input-group">
-                                    <div class="input-label">{"Sync"}</div>
+                            <div class="input-group">
+                                <div class="input-label">{"Last sync"}</div>
+
+                                if let Some(ts) = series.last_synced_at {
                                     <div class="input-text fill" title="Last synced at">
                                         <span>{ts.display(self.tz.clone())}</span>
                                     </div>
-                                </div>
-                            }
+                                } else {
+                                    <div class="input-text fill">{"Never"}</div>
+                                }
+
+                                if !series.remotes.is_empty() {
+                                    <button class="btn" onclick={link.callback(|_| Msg::SyncSeries)} title="Sync now">
+                                        <span class="icon-inline"><span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} /></span>
+                                    </button>
+                                }
+                            </div>
                         </div>
 
                         <div class="desktop-row mobile-column end desktop-input-group">
@@ -276,13 +288,6 @@ impl Component for SeriesDetail {
                                 <button class="btn" onclick={link.callback(|_| Msg::SetTracked(true))} title="Track series">
                                     <span class="icon-inline"><span class="icon eye" /></span>
                                     <span class="hide-desktop">{"Track"}</span>
-                                </button>
-                            }
-
-                            if !series.remotes.is_empty() {
-                                <button class="btn" onclick={link.callback(|_| Msg::SyncSeries)} title="Sync from remote">
-                                    <span class="icon-inline"><span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} /></span>
-                                    <span class="hide-desktop">{"Sync"}</span>
                                 </button>
                             }
 
@@ -315,6 +320,7 @@ impl Component for SeriesDetail {
             self.series = None;
             self.seasons.clear();
             self.selected = None;
+            self.expanded_seasons = false;
             self.episodes.clear();
             self.confirm_remove = false;
             self.syncing = false;
@@ -489,7 +495,12 @@ impl SeriesDetail {
                     ));
                 }
 
+                self.expanded_seasons = false;
                 Ok(false)
+            }
+            Msg::ToggleExpandSeasons => {
+                self.expanded_seasons = !self.expanded_seasons;
+                Ok(true)
             }
             Msg::EpisodesLoaded(result) => {
                 let result = result
@@ -1037,7 +1048,11 @@ impl SeriesDetail {
     fn view_season_item(&self, ctx: &Context<Self>, season: &api::Season) -> Html {
         let number = season.number;
         let active = self.selected == Some(number);
-        let onclick = ctx.link().callback(move |_| Msg::SelectSeason(number));
+        let onclick = if active {
+            ctx.link().callback(move |_| Msg::ToggleExpandSeasons)
+        } else {
+            ctx.link().callback(move |_| Msg::SelectSeason(number))
+        };
 
         let label = match season.number {
             api::SeasonNumber::Specials => "Specials".to_string(),
@@ -1045,7 +1060,7 @@ impl SeriesDetail {
         };
 
         html! {
-            <div class={classes!("table-entry", "row", "clickable", active.then_some("active"), (!active).then_some("hide-mobile"))} {onclick}>
+            <div class={classes!("table-entry", "row", "clickable", active.then_some("active"), (!active && !self.expanded_seasons).then_some("hide-mobile"))} {onclick}>
                 <span class="fill">{label}</span>
 
                 if let Some(ts) = season.air_date {
@@ -1161,7 +1176,7 @@ impl SeriesDetail {
                         <div class="row">
                             <div class="column fill">
                                 <div class="row">
-                                    if self.watched.len() > 0 {
+                                    if watched.len() > 0 {
                                         <span class="icon-inline" title="Watched"><span class="icon check-circle" /></span>
                                     } else {
                                         <span class="icon-inline" title="Not watched"><span class="icon x-circle" /></span>
@@ -1176,16 +1191,12 @@ impl SeriesDetail {
                                     </span>
                                 </div>
 
-                                <span class="episode-code">
-                                    { format!("{}E{:02}", episode.season.short(), episode.number) }
-                                </span>
-
-                                <span class="fill">
+                                <span class={classes!("fill", actions_expanded.then_some("hide-mobile"))}>
                                     { episode.name.as_deref().unwrap_or("—") }
                                 </span>
 
                                 if let Some(s) = episode.display_at(self.tz.clone()) {
-                                    <span class="text-muted">{s}</span>
+                                    <span class={classes!("text-muted", actions_expanded.then_some("hide-mobile"))}>{s}</span>
                                 }
                             </div>
 
@@ -1224,60 +1235,75 @@ impl SeriesDetail {
 
         html! {
             <div class={classes!("column", (!watched.is_empty()).then_some("watched"))}>
-                {actions}
-
-                if let Some(ref overview) = episode.overview {
-                    <p class="overview">{overview}</p>
-                }
+                <span class="episode-code">
+                    { format!("{}E{:02}", episode.season.short(), episode.number) }
+                </span>
 
                 if let Some(ref img) = episode.filename {
                     <img src={img.proxy_url()} />
                 }
 
-                if history_expanded {
-                    <div class="table">
-                        { for watched.iter().map(|w| {
-                            let wid = w.id;
-                            let kind = api::WatchedKind::Episode { series: series_id, episode: episode_id };
+                {actions}
 
-                            if self.confirm_remove_watch == Some(wid) {
-                                html! {
-                                    <div class="table-entry">
+                if let Some(ref overview) = episode.overview {
+                    <p class={classes!("overview", actions_expanded.then_some("hide-mobile"))}>{overview}</p>
+                }
+
+                if history_expanded {
+                    <div class="column">
+                        <h4>{"Watch history"}</h4>
+
+                        <div class="column">
+                            { for watched.iter().map(|w| {
+                                let wid = w.id;
+                                let kind = api::WatchedKind::Episode { series: series_id, episode: episode_id };
+
+                                if self.confirm_remove_watch == Some(wid) {
+                                    html! {
                                         <ConfirmDanger
-                                            prompt="Remove watch"
+                                            prompt="Remove watch at"
                                             label={w.timestamp.display(self.tz.clone())}
                                             on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, kind))}
                                             on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
                                         />
-                                    </div>
-                                }
-                            } else if self.fixing_watched == Some(wid) {
-                                html! {
-                                    <div class="table-entry">
+                                    }
+                                } else if self.fixing_watched == Some(wid) {
+                                    html! {
                                         <EpisodePicker
+                                            prompt="Move watch at"
+                                            label={w.timestamp.display(self.tz.clone())}
                                             series_id={series_id}
                                             seasons={self.seasons.clone()}
+                                            selected_season={episode.season}
+                                            selected_episode={episode.number}
                                             on_confirm={link.callback(move |(season, ep)| Msg::MoveWatched(wid, season, ep))}
                                             on_cancel={link.callback(|_| Msg::CancelFixWatched)}
                                         />
-                                    </div>
-                                }
-                            } else {
-                                html! {
-                                    <div class="table-entry row">
-                                        <span class="fill">{w.timestamp.display(self.tz.clone())}</span>
+                                    }
+                                } else {
+                                    html! {
+                                        <div class="row-fill">
+                                            <div class="row">
+                                                <span>{w.timestamp.display(self.tz.clone())}</span>
+                                            </div>
 
-                                        <button class="btn-icon" onclick={link.callback(move |_| Msg::FixWatched(wid))} title="Move to different episode">
-                                            <span class="icon pencil-square" />
-                                        </button>
+                                            <div class="row end">
+                                                <div class="input-group">
+                                                    <button class="btn" onclick={link.callback(move |_| Msg::FixWatched(wid))} title="Move to different episode">
+                                                        <span class="icon pencil-square" />
+                                                        <span>{"Move"}</span>
+                                                    </button>
 
-                                        <button class="btn-icon" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
-                                            <span class="icon x-mark" />
-                                        </button>
-                                    </div>
+                                                    <button class="btn-danger" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
+                                                        <span class="icon trash" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
                                 }
-                            }
-                        }) }
+                            }) }
+                        </div>
                     </div>
                 }
             </div>
@@ -1299,16 +1325,20 @@ impl SeriesDetail {
                 <div class="table">
                     { for self.orphaned.iter().map(|w| {
                         let wid = w.id;
+
                         let season_label = match w.season {
                             api::SeasonNumber::Specials => format!("Sx{:02}", w.episode),
                             api::SeasonNumber::Number(n) => format!("{}x{:02}", n, w.episode),
                         };
+
                         let kind = api::WatchedKind::Episode { series: series_id, episode: api::EpisodeId::new(0) };
 
                         if self.fixing_watched == Some(wid) {
                             html! {
                                 <div class="table-entry">
                                     <EpisodePicker
+                                        prompt="Move watch at"
+                                        label={w.timestamp.display(self.tz.clone())}
                                         {series_id}
                                         seasons={self.seasons.clone()}
                                         on_confirm={link.callback(move |(season, ep)| Msg::MoveWatched(wid, season, ep))}
@@ -1320,7 +1350,7 @@ impl SeriesDetail {
                             html! {
                                 <div class="table-entry">
                                     <ConfirmDanger
-                                        prompt="Remove watch"
+                                        prompt="Remove watch at"
                                         label={w.timestamp.display(self.tz.clone())}
                                         on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, kind))}
                                         on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}

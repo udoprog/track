@@ -369,30 +369,34 @@ body {
     &.row-fill {
         flex-direction: row;
     }
+}
 
-    h2 {
-        margin: $gap-sm 0;
-        font-size: $font-lg;
-        font-weight: 600;
-    }
+h2 {
+    margin: 0;
+    padding: 0;
+    font-size: $font-lg;
+    font-weight: 600;
+}
 
-    h3 {
-        margin: $gap-sm 0;
-        font-size: $font-base;
-        font-weight: 600;
-    }
+h3 {
+    margin: 0;
+    padding: 0;
+    font-size: $font-base;
+    font-weight: 600;
+}
 
-    h4 {
-        margin: $gap-sm 0;
-        font-size: $font-sm;
-        font-weight: 600;
-    }
+h4 {
+    margin: 0;
+    padding: 0;
+    font-size: $font-sm;
+    font-weight: 600;
+}
 
-    h5 {
-        margin: $gap-sm 0;
-        font-size: $font-xs;
-        font-weight: 600;
-    }
+h5 {
+    margin: 0;
+    padding: 0;
+    font-size: $font-xs;
+    font-weight: 600;
 }
 
 .text-muted {
@@ -793,7 +797,7 @@ body {
 .input-label {
     @include input-base;
     font-weight: bold;
-    background-color: $bg-panel;
+    background-color: $color-secondary;
 }
 
 .input-text {

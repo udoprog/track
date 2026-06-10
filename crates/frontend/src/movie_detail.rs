@@ -679,14 +679,25 @@ impl MovieDetail {
                         </button>
                     }
 
-                    if let Some(ts) = movie.last_synced_at {
-                        <div class="input-group">
-                            <div class="input-label">{"Sync"}</div>
+                    <div class="input-group">
+                        <div class="input-label">{"Last sync"}</div>
+
+                        if let Some(ts) = movie.last_synced_at {
                             <div class="input-text fill" title="Last synced at">
                                 <span>{ts.display(self.tz.clone())}</span>
                             </div>
-                        </div>
-                    }
+                        } else {
+                            <div class="input-text fill text-muted" title="Never synced">
+                                <span>{"Never"}</span>
+                            </div>
+                        }
+
+                        if !movie.remotes.is_empty() {
+                            <button class="btn" onclick={link.callback(|_| Msg::SyncMovie)} title="Sync now">
+                                <span class="icon-inline"><span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} /></span>
+                            </button>
+                        }
+                    </div>
                 </div>
 
                 <div class="desktop-row mobile-column end desktop-input-group">
@@ -699,13 +710,6 @@ impl MovieDetail {
                         <button class="btn" onclick={link.callback(|_| Msg::SetTracked(true))} title="Track movie">
                             <span class="icon-inline"><span class="icon eye" /></span>
                             <span class="hide-desktop">{"Track"}</span>
-                        </button>
-                    }
-
-                    if !movie.remotes.is_empty() {
-                        <button class="btn" onclick={link.callback(|_| Msg::SyncMovie)} title="Sync from remote">
-                            <span class="icon-inline"><span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} /></span>
-                            <span class="hide-desktop">{"Sync"}</span>
                         </button>
                     }
 
@@ -747,31 +751,29 @@ impl MovieDetail {
                         <div class="column">
                             <h4>{"Watch history"}</h4>
 
-                            <div class="table">
+                            <div class="column">
                                 { for self.watched.iter().map(|w| {
                                     let wid = w.id;
                                     let kind = api::WatchedKind::Movie { movie: movie_id };
 
                                     if self.confirm_remove_watch == Some(wid) {
                                         html! {
-                                            <div class="table-entry">
-                                                <ConfirmDanger
-                                                    prompt="Remove watch"
-                                                    label={w.timestamp.display(self.tz.clone())}
-                                                    on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, kind))}
-                                                    on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
-                                                />
-                                            </div>
+                                            <ConfirmDanger
+                                                prompt="Remove watch at"
+                                                label={w.timestamp.display(self.tz.clone())}
+                                                on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, kind))}
+                                                on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
+                                            />
                                         }
                                     } else {
                                         html! {
-                                            <div class="table-entry row">
+                                            <div class="row-fill">
                                                 <div class="row fill">
                                                     <span>{w.timestamp.display(self.tz.clone())}</span>
                                                 </div>
 
-                                                <button class="btn-icon end" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
-                                                    <span class="icon x-mark" />
+                                                <button class="btn-danger end" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
+                                                    <span class="icon trash" />
                                                 </button>
                                             </div>
                                         }
