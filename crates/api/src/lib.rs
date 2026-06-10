@@ -844,15 +844,14 @@ impl fmt::Display for ImageKind {
 
 #[cfg(feature = "sqll")]
 impl ::sqll::FromColumn<'_> for ImageKind {
-    type Type = ::sqll::ty::Text;
+    type Type = ::sqll::ty::Integer;
 
-    fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Text) -> ::sqll::Result<Self> {
-        let s = String::from_column(stmt, index)?;
-        match s.as_str() {
-            "poster" => Ok(ImageKind::Poster),
-            "banner" => Ok(ImageKind::Banner),
-            "fanart" => Ok(ImageKind::Fanart),
-            "backdrop" => Ok(ImageKind::Backdrop),
+    fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Integer) -> ::sqll::Result<Self> {
+        match i64::from_column(stmt, index)? {
+            0 => Ok(ImageKind::Poster),
+            1 => Ok(ImageKind::Banner),
+            2 => Ok(ImageKind::Fanart),
+            3 => Ok(ImageKind::Backdrop),
             other => Err(::sqll::Error::custom(format!(
                 "unknown image kind: {other}"
             ))),
@@ -863,7 +862,13 @@ impl ::sqll::FromColumn<'_> for ImageKind {
 #[cfg(feature = "sqll")]
 impl ::sqll::BindValue for ImageKind {
     fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
-        self.as_str().bind_value(stmt, index)
+        let n: i64 = match self {
+            ImageKind::Poster => 0,
+            ImageKind::Banner => 1,
+            ImageKind::Fanart => 2,
+            ImageKind::Backdrop => 3,
+        };
+        n.bind_value(stmt, index)
     }
 }
 
@@ -1096,7 +1101,6 @@ pub struct MediaImage {
     pub kind: ImageKind,
     pub source: ImageSource,
     pub image: Image,
-    pub selected: bool,
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
@@ -1110,18 +1114,15 @@ pub struct Series {
     pub sync_source: Option<SyncSource>,
     pub remotes: Vec<RemoteId>,
     pub images: Vec<MediaImage>,
+    pub poster: Option<Image>,
+    pub banner: Option<Image>,
+    pub fanart: Option<Image>,
+    pub backdrop: Option<Image>,
     pub last_synced_at: Option<Timestamp>,
     pub language: Option<String>,
 }
 
 impl Series {
-    pub fn selected_image(&self, kind: ImageKind) -> Option<&Image> {
-        self.images
-            .iter()
-            .find(|img| img.kind == kind && img.selected)
-            .map(|img| &img.image)
-    }
-
     pub fn remote_by_source(&self, source: &str) -> Option<&RemoteId> {
         self.remotes.iter().find(|r| r.source().as_str() == source)
     }
@@ -1193,19 +1194,14 @@ pub struct Movie {
     pub tracked: bool,
     pub pending: bool,
     pub images: Vec<MediaImage>,
+    pub poster: Option<Image>,
+    pub backdrop: Option<Image>,
     pub last_synced_at: Option<Timestamp>,
     pub releases: Vec<MovieRelease>,
     pub language: Option<String>,
 }
 
 impl Movie {
-    pub fn selected_image(&self, kind: ImageKind) -> Option<&Image> {
-        self.images
-            .iter()
-            .find(|img| img.kind == kind && img.selected)
-            .map(|img| &img.image)
-    }
-
     pub fn remote_by_source(&self, source: &str) -> Option<&RemoteId> {
         self.remotes.iter().find(|r| r.source().as_str() == source)
     }

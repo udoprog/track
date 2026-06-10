@@ -731,7 +731,7 @@ impl MovieDetail {
 
             <div class="detail-layout">
                 <div class="detail-sidebar">
-                    if let Some(poster) = movie.selected_image(api::ImageKind::Poster) {
+                    if let Some(poster) = movie.poster.as_ref() {
                         <img class="poster hide-mobile" src={poster.proxy_url()} />
                     }
                 </div>
@@ -798,6 +798,11 @@ impl MovieDetail {
         movie: &api::Movie,
         kind: api::ImageKind,
     ) -> Html {
+        let selected_for_kind = match kind {
+            api::ImageKind::Poster => movie.poster.as_ref(),
+            api::ImageKind::Backdrop => movie.backdrop.as_ref(),
+            _ => None,
+        };
         let items: Vec<ImageItem> = movie
             .images
             .iter()
@@ -806,7 +811,7 @@ impl MovieDetail {
                 kind: img.kind,
                 source: img.source,
                 image: img.image.clone(),
-                selected: img.selected,
+                selected: Some(&img.image) == selected_for_kind,
             })
             .collect();
 

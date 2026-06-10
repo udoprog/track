@@ -999,7 +999,7 @@ impl SeriesDetail {
     fn view_sidebar(&self, ctx: &Context<Self>, series: &api::Series) -> Html {
         html! {
             <div class="detail-sidebar">
-                if let Some(poster) = series.selected_image(api::ImageKind::Poster) {
+                if let Some(poster) = series.poster.as_ref() {
                     <img class="poster hide-mobile" src={poster.proxy_url()} />
                 }
 
@@ -1016,6 +1016,12 @@ impl SeriesDetail {
         kind: api::ImageKind,
         series: &api::Series,
     ) -> Html {
+        let selected_for_kind = match kind {
+            api::ImageKind::Poster => series.poster.as_ref(),
+            api::ImageKind::Banner => series.banner.as_ref(),
+            api::ImageKind::Fanart => series.fanart.as_ref(),
+            api::ImageKind::Backdrop => series.backdrop.as_ref(),
+        };
         let items: Vec<ImageItem> = series
             .images
             .iter()
@@ -1024,7 +1030,7 @@ impl SeriesDetail {
                 kind: img.kind,
                 source: img.source,
                 image: img.image.clone(),
-                selected: img.selected,
+                selected: Some(&img.image) == selected_for_kind,
             })
             .collect();
 

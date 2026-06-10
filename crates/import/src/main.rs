@@ -215,41 +215,46 @@ fn image_source(img: &api::Image) -> api::ImageSource {
     }
 }
 
+async fn import_series_image(
+    db: &db::Database,
+    series_id: api::SeriesId,
+    kind: api::ImageKind,
+    img: &api::Image,
+) -> Result<()> {
+    let id = api::ImageId::random();
+    db.upsert_series_image(id, series_id, kind, image_source(img), img.path())
+        .await?;
+    db.set_series_image_selection(series_id, kind, id).await?;
+    Ok(())
+}
+
 async fn import_series_images(
     db: &db::Database,
     series_id: api::SeriesId,
     g: &YamlSeriesGraphics,
 ) -> Result<()> {
     if let Some(img) = image(g.poster.as_ref()) {
-        db.upsert_series_image(
-            series_id,
-            api::ImageKind::Poster,
-            image_source(&img),
-            img.path(),
-            true,
-        )
-        .await?;
+        import_series_image(db, series_id, api::ImageKind::Poster, &img).await?;
     }
     if let Some(img) = image(g.banner.as_ref()) {
-        db.upsert_series_image(
-            series_id,
-            api::ImageKind::Banner,
-            image_source(&img),
-            img.path(),
-            true,
-        )
-        .await?;
+        import_series_image(db, series_id, api::ImageKind::Banner, &img).await?;
     }
     if let Some(img) = image(g.fanart.as_ref()) {
-        db.upsert_series_image(
-            series_id,
-            api::ImageKind::Fanart,
-            image_source(&img),
-            img.path(),
-            true,
-        )
-        .await?;
+        import_series_image(db, series_id, api::ImageKind::Fanart, &img).await?;
     }
+    Ok(())
+}
+
+async fn import_movie_image(
+    db: &db::Database,
+    movie_id: api::MovieId,
+    kind: api::ImageKind,
+    img: &api::Image,
+) -> Result<()> {
+    let id = api::ImageId::random();
+    db.upsert_movie_image(id, movie_id, kind, image_source(img), img.path())
+        .await?;
+    db.set_movie_image_selection(movie_id, kind, id).await?;
     Ok(())
 }
 
@@ -259,34 +264,13 @@ async fn import_movie_images(
     g: &YamlMovieGraphics,
 ) -> Result<()> {
     if let Some(img) = image(g.poster.as_ref()) {
-        db.upsert_movie_image(
-            movie_id,
-            api::ImageKind::Poster,
-            image_source(&img),
-            img.path(),
-            true,
-        )
-        .await?;
+        import_movie_image(db, movie_id, api::ImageKind::Poster, &img).await?;
     }
     if let Some(img) = image(g.banner.as_ref()) {
-        db.upsert_movie_image(
-            movie_id,
-            api::ImageKind::Banner,
-            image_source(&img),
-            img.path(),
-            true,
-        )
-        .await?;
+        import_movie_image(db, movie_id, api::ImageKind::Banner, &img).await?;
     }
     if let Some(img) = image(g.fanart.as_ref()) {
-        db.upsert_movie_image(
-            movie_id,
-            api::ImageKind::Fanart,
-            image_source(&img),
-            img.path(),
-            true,
-        )
-        .await?;
+        import_movie_image(db, movie_id, api::ImageKind::Fanart, &img).await?;
     }
     Ok(())
 }

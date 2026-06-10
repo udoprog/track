@@ -122,10 +122,9 @@ CREATE TABLE
 CREATE TABLE
     images (
         id INTEGER PRIMARY KEY,
-        kind TEXT NOT NULL,
+        kind INTEGER NOT NULL,
         source TEXT NOT NULL,
         path TEXT NOT NULL,
-        selected INTEGER NOT NULL DEFAULT 0,
         series_id INTEGER REFERENCES series (id) ON DELETE CASCADE,
         movie_id INTEGER REFERENCES movies (id) ON DELETE CASCADE,
         CHECK (
@@ -141,6 +140,22 @@ WHERE
 CREATE UNIQUE INDEX idx_images_movie ON images (movie_id, kind, path)
 WHERE
     movie_id IS NOT NULL;
+
+CREATE TABLE
+    series_images (
+        series_id INTEGER NOT NULL REFERENCES series (id) ON DELETE CASCADE,
+        kind      INTEGER NOT NULL,
+        image_id  INTEGER NOT NULL REFERENCES images (id) ON DELETE CASCADE,
+        PRIMARY KEY (series_id, kind)
+    );
+
+CREATE TABLE
+    movie_images (
+        movie_id INTEGER NOT NULL REFERENCES movies (id) ON DELETE CASCADE,
+        kind     INTEGER NOT NULL,
+        image_id INTEGER NOT NULL REFERENCES images (id) ON DELETE CASCADE,
+        PRIMARY KEY (movie_id, kind)
+    );
 
 CREATE TABLE
     remotes (

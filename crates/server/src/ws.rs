@@ -847,6 +847,7 @@ impl WsHandler {
                             .series_by_id(series_id)
                             .await?
                             .context("series not found")?;
+
                         self.broadcast.emit(
                             incoming.channel(),
                             api::AppEventKind::SeriesChanged {
@@ -861,6 +862,7 @@ impl WsHandler {
                             .movie_by_id(movie_id)
                             .await?
                             .context("movie not found")?;
+
                         self.broadcast.emit(
                             incoming.channel(),
                             api::AppEventKind::MovieChanged {

@@ -47,11 +47,10 @@ struct ImageRow {
     kind: ImageKind,
     source: ImageSource,
     path: String,
-    selected: bool,
 }
 
 #[derive(Row)]
-struct FullImageRow {
+struct ImageMetaRow {
     kind: ImageKind,
     series_id: Option<SeriesId>,
     movie_id: Option<MovieId>,
@@ -63,7 +62,6 @@ struct SeriesImageRow {
     kind: ImageKind,
     source: ImageSource,
     path: String,
-    selected: bool,
     series_id: SeriesId,
 }
 
@@ -73,8 +71,30 @@ struct MovieImageRow {
     kind: ImageKind,
     source: ImageSource,
     path: String,
-    selected: bool,
     movie_id: MovieId,
+}
+
+#[derive(Row)]
+struct ImageSelectionRow {
+    kind: ImageKind,
+    source: ImageSource,
+    path: String,
+}
+
+#[derive(Row)]
+struct AllSeriesImageSelectionRow {
+    series_id: SeriesId,
+    kind: ImageKind,
+    source: ImageSource,
+    path: String,
+}
+
+#[derive(Row)]
+struct AllMovieImageSelectionRow {
+    movie_id: MovieId,
+    kind: ImageKind,
+    source: ImageSource,
+    path: String,
 }
 
 #[derive(Row)]
@@ -308,46 +328,69 @@ statements! {
 
         // images (series and movies share one table)
         list_series_images: r#"
-            SELECT id, kind, source, path, selected FROM images
+            SELECT id, kind, source, path FROM images
             WHERE series_id = ? ORDER BY kind, path, id
         "#,
         list_all_series_images: r#"
-            SELECT id, kind, source, path, selected, series_id FROM images
+            SELECT id, kind, source, path, series_id FROM images
             WHERE series_id IS NOT NULL ORDER BY series_id, kind, path, id
         "#,
         delete_series_images: r#"
             DELETE FROM images WHERE series_id = ? AND kind = ? AND source = ?
         "#,
         insert_series_image: r#"
-            INSERT INTO images (id, series_id, kind, source, path, selected) VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(series_id, kind, path) WHERE series_id IS NOT NULL DO UPDATE SET source = excluded.source, selected = excluded.selected
+            INSERT INTO images (id, series_id, kind, source, path) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(series_id, kind, path) WHERE series_id IS NOT NULL DO NOTHING
         "#,
         list_movie_images: r#"
-            SELECT id, kind, source, path, selected FROM images
+            SELECT id, kind, source, path FROM images
             WHERE movie_id = ? ORDER BY kind, path, id
         "#,
         list_all_movie_images: r#"
-            SELECT id, kind, source, path, selected, movie_id FROM images
+            SELECT id, kind, source, path, movie_id FROM images
             WHERE movie_id IS NOT NULL ORDER BY movie_id, kind, path, id
         "#,
         delete_movie_images: r#"
             DELETE FROM images WHERE movie_id = ? AND kind = ? AND source = ?
         "#,
         insert_movie_image: r#"
-            INSERT INTO images (id, movie_id, kind, source, path, selected) VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(movie_id, kind, path) WHERE movie_id IS NOT NULL DO UPDATE SET source = excluded.source, selected = excluded.selected
+            INSERT INTO images (id, movie_id, kind, source, path) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(movie_id, kind, path) WHERE movie_id IS NOT NULL DO NOTHING
         "#,
         image_by_id: r#"
             SELECT kind, series_id, movie_id FROM images WHERE id = ?
         "#,
-        deselect_series_images: r#"
-            UPDATE images SET selected = 0 WHERE series_id = ? AND kind = ?
+
+        // selection tables
+        set_series_image_selection: r#"
+            INSERT OR REPLACE INTO series_images (series_id, kind, image_id) VALUES (?, ?, ?)
         "#,
-        deselect_movie_images: r#"
-            UPDATE images SET selected = 0 WHERE movie_id = ? AND kind = ?
+        delete_series_image_selection: r#"
+            DELETE FROM series_images WHERE series_id = ? AND kind = ?
         "#,
-        select_image: r#"
-            UPDATE images SET selected = 1 WHERE id = ?
+        set_movie_image_selection: r#"
+            INSERT OR REPLACE INTO movie_images (movie_id, kind, image_id) VALUES (?, ?, ?)
+        "#,
+        delete_movie_image_selection: r#"
+            DELETE FROM movie_images WHERE movie_id = ? AND kind = ?
+        "#,
+        list_series_image_selections: r#"
+            SELECT si.kind, i.source, i.path
+            FROM series_images si JOIN images i ON i.id = si.image_id
+            WHERE si.series_id = ?
+        "#,
+        list_all_series_image_selections: r#"
+            SELECT si.series_id, si.kind, i.source, i.path
+            FROM series_images si JOIN images i ON i.id = si.image_id
+        "#,
+        list_movie_image_selections: r#"
+            SELECT mi.kind, i.source, i.path
+            FROM movie_images mi JOIN images i ON i.id = mi.image_id
+            WHERE mi.movie_id = ?
+        "#,
+        list_all_movie_image_selections: r#"
+            SELECT mi.movie_id, mi.kind, i.source, i.path
+            FROM movie_images mi JOIN images i ON i.id = mi.image_id
         "#,
 
         // seasons
@@ -366,6 +409,12 @@ statements! {
         "#,
         delete_season: r#"DELETE FROM seasons WHERE series_id = ?1 AND number = ?2"#,
         delete_season_episodes: r#"DELETE FROM episodes WHERE series_id = ?1 AND season = ?2"#,
+        episode_numbers_for_season: r#"
+            SELECT number FROM episodes WHERE series_id = ? AND season = ?
+        "#,
+        delete_episode_by_place: r#"
+            DELETE FROM episodes WHERE series_id = ? AND season = ? AND number = ?
+        "#,
 
         // episodes
         upsert_episode: r#"
@@ -581,15 +630,15 @@ statements! {
         pending_movie_detail: r#"
             SELECT title, release_date FROM movies WHERE id = ?
         "#,
-        pending_series_poster: r#"
-            SELECT source, path FROM images
-            WHERE series_id = ? AND kind = 'poster' AND selected = 1
-            LIMIT 1
+        pending_image_for_series_by_kind: r#"
+            SELECT i.source, i.path
+            FROM series_images si JOIN images i ON i.id = si.image_id
+            WHERE si.series_id = ? AND si.kind = ?
         "#,
-        pending_movie_poster: r#"
-            SELECT source, path FROM images
-            WHERE movie_id = ? AND kind = 'poster' AND selected = 1
-            LIMIT 1
+        pending_image_for_movie_by_kind: r#"
+            SELECT i.source, i.path
+            FROM movie_images mi JOIN images i ON i.id = mi.image_id
+            WHERE mi.movie_id = ? AND mi.kind = ?
         "#,
 
         // schedule: episodes airing in the next N days
@@ -823,6 +872,23 @@ impl Database {
                 }
             }
 
+            s.list_all_series_image_selections.reset()?;
+            while let Some(r) = s
+                .list_all_series_image_selections
+                .next::<AllSeriesImageSelectionRow>()?
+            {
+                if let Some(o) = id_to_idx.get(&r.series_id).and_then(|&i| out.get_mut(i)) {
+                    apply_image_selection(
+                        o,
+                        ImageSelectionRow {
+                            kind: r.kind,
+                            source: r.source,
+                            path: r.path,
+                        },
+                    );
+                }
+            }
+
             Ok(out)
         });
 
@@ -848,6 +914,11 @@ impl Database {
             s.list_series_images.bind((id,))?;
             while let Some(row) = s.list_series_images.next::<ImageRow>()? {
                 series.images.push(image_from_row(row));
+            }
+
+            s.list_series_image_selections.bind((id,))?;
+            while let Some(sel) = s.list_series_image_selections.next::<ImageSelectionRow>()? {
+                apply_image_selection(&mut series, sel);
             }
 
             Ok(Some(series))
@@ -1020,6 +1091,42 @@ impl Database {
         Ok(removed)
     }
 
+    pub async fn prune_season_episodes(
+        &self,
+        series_id: SeriesId,
+        season: SeasonNumber,
+        kept: &std::collections::HashSet<u32>,
+    ) -> Result<()> {
+        let season_n = season.to_u32();
+        let kept = kept.clone();
+        let mut s = self.inner.clone().lock_owned().await;
+
+        let result = spawn_blocking(move || {
+            let mut to_delete = Vec::new();
+
+            s.episode_numbers_for_season.bind((series_id, season_n))?;
+
+            while let Some(number) = s.episode_numbers_for_season.next::<u32>()? {
+                if !kept.contains(&number) {
+                    to_delete.push(number);
+                }
+            }
+
+            for number in to_delete {
+                s.delete_episode_by_place
+                    .bind((series_id, season_n, number))?;
+                ensure!(
+                    s.delete_episode_by_place.step()?.is_done(),
+                    "delete_episode_by_place"
+                );
+            }
+
+            Ok(())
+        });
+
+        result.await?
+    }
+
     // ── Episodes ──
 
     pub async fn upsert_episode(
@@ -1046,8 +1153,8 @@ impl Database {
                 id,
                 series_id,
                 season.to_u32(),
-                number as i64,
-                absolute_number.map(|n| n as i64),
+                number,
+                absolute_number,
                 name.as_deref(),
                 overview.as_deref(),
                 aired.as_ref(),
@@ -1195,7 +1302,7 @@ impl Database {
         let result = spawn_blocking(move || {
             for &(season, number, aired) in &updates {
                 s.update_episode_aired
-                    .bind((aired, series_id, season.to_u32(), number as i64))?;
+                    .bind((aired, series_id, season.to_u32(), number))?;
                 ensure!(
                     s.update_episode_aired.step()?.is_done(),
                     "update_episode_aired"
@@ -1291,6 +1398,23 @@ impl Database {
                 }
             }
 
+            s.list_all_movie_image_selections.reset()?;
+            while let Some(r) = s
+                .list_all_movie_image_selections
+                .next::<AllMovieImageSelectionRow>()?
+            {
+                if let Some(o) = id_to_idx.get(&r.movie_id).and_then(|&i| out.get_mut(i)) {
+                    apply_movie_image_selection(
+                        o,
+                        ImageSelectionRow {
+                            kind: r.kind,
+                            source: r.source,
+                            path: r.path,
+                        },
+                    );
+                }
+            }
+
             Ok(out)
         });
 
@@ -1318,6 +1442,11 @@ impl Database {
             s.list_movie_images.bind((movie_id,))?;
             while let Some(r) = s.list_movie_images.next::<ImageRow>()? {
                 movie.images.push(image_from_row(r));
+            }
+
+            s.list_movie_image_selections.bind((movie_id,))?;
+            while let Some(sel) = s.list_movie_image_selections.next::<ImageSelectionRow>()? {
+                apply_movie_image_selection(&mut movie, sel);
             }
 
             s.list_movie_releases.bind((movie_id,))?;
@@ -1379,6 +1508,12 @@ impl Database {
             while let Some(r) = s.list_series_images.next::<ImageRow>()? {
                 series.images.push(image_from_row(r));
             }
+
+            s.list_series_image_selections.bind((series_id,))?;
+            while let Some(sel) = s.list_series_image_selections.next::<ImageSelectionRow>()? {
+                apply_image_selection(&mut series, sel);
+            }
+
             Ok(Some(series))
         });
 
@@ -1405,6 +1540,11 @@ impl Database {
             s.list_movie_images.bind((movie_id,))?;
             while let Some(r) = s.list_movie_images.next::<ImageRow>()? {
                 movie.images.push(image_from_row(r));
+            }
+
+            s.list_movie_image_selections.bind((movie_id,))?;
+            while let Some(sel) = s.list_movie_image_selections.next::<ImageSelectionRow>()? {
+                apply_movie_image_selection(&mut movie, sel);
             }
 
             Ok(Some(movie))
@@ -1500,7 +1640,10 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
         spawn_blocking(move || {
             s.delete_series_images.bind((series_id, kind, source))?;
-            s.delete_series_images.step()?;
+            ensure!(
+                s.delete_series_images.step()?.is_done(),
+                "clear_series_images"
+            );
             Ok(())
         })
         .await?
@@ -1515,7 +1658,10 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
         spawn_blocking(move || {
             s.delete_movie_images.bind((movie_id, kind, source))?;
-            s.delete_movie_images.step()?;
+            ensure!(
+                s.delete_movie_images.step()?.is_done(),
+                "clear_movie_images"
+            );
             Ok(())
         })
         .await?
@@ -1523,24 +1669,18 @@ impl Database {
 
     pub async fn upsert_series_image(
         &self,
+        id: ImageId,
         series_id: SeriesId,
         kind: ImageKind,
         source: ImageSource,
         path: &str,
-        selected: bool,
     ) -> Result<()> {
         let path = path.to_owned();
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.insert_series_image.bind((
-                ImageId::random(),
-                series_id,
-                kind,
-                source,
-                &path[..],
-                selected,
-            ))?;
+            s.insert_series_image
+                .bind((id, series_id, kind, source, &path[..]))?;
             ensure!(
                 s.insert_series_image.step()?.is_done(),
                 "insert_series_image"
@@ -1553,24 +1693,18 @@ impl Database {
 
     pub async fn upsert_movie_image(
         &self,
+        id: ImageId,
         movie_id: MovieId,
         kind: ImageKind,
         source: ImageSource,
         path: &str,
-        selected: bool,
     ) -> Result<()> {
         let path = path.to_owned();
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.insert_movie_image.bind((
-                ImageId::random(),
-                movie_id,
-                kind,
-                source,
-                &path[..],
-                selected,
-            ))?;
+            s.insert_movie_image
+                .bind((id, movie_id, kind, source, &path[..]))?;
             ensure!(s.insert_movie_image.step()?.is_done(), "insert_movie_image");
             Ok(())
         });
@@ -1578,42 +1712,85 @@ impl Database {
         result.await?
     }
 
-    /// Deselects all images of the same kind for the owning entity, then
-    /// selects the given image. Returns which entity owns the image.
+    pub async fn set_series_image_selection(
+        &self,
+        series_id: SeriesId,
+        kind: ImageKind,
+        image_id: ImageId,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        let result = spawn_blocking(move || {
+            s.set_series_image_selection
+                .bind((series_id, kind, image_id))?;
+            ensure!(
+                s.set_series_image_selection.step()?.is_done(),
+                "set_series_image_selection"
+            );
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    pub async fn set_movie_image_selection(
+        &self,
+        movie_id: MovieId,
+        kind: ImageKind,
+        image_id: ImageId,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        let result = spawn_blocking(move || {
+            s.set_movie_image_selection
+                .bind((movie_id, kind, image_id))?;
+            ensure!(
+                s.set_movie_image_selection.step()?.is_done(),
+                "set_movie_image_selection"
+            );
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    /// Selects the given image for its owning entity + kind, replacing any
+    /// prior selection. Returns which entity owns the image.
     pub async fn select_image(&self, id: ImageId) -> Result<api::ImageOwner> {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
             s.image_by_id.bind((id,))?;
 
-            let r = s
+            let row = s
                 .image_by_id
-                .next::<FullImageRow>()?
+                .next::<ImageMetaRow>()?
                 .context("image not found")?;
 
-            let kind = r.kind;
+            let kind = row.kind;
 
-            let owner = match (r.series_id, r.movie_id) {
+            let owner = match (row.series_id, row.movie_id) {
                 (Some(series_id), _) => {
-                    s.deselect_series_images.bind((series_id, kind))?;
+                    s.set_series_image_selection.bind((series_id, kind, id))?;
                     ensure!(
-                        s.deselect_series_images.step()?.is_done(),
-                        "deselect_series_images"
+                        s.set_series_image_selection.step()?.is_done(),
+                        "set_series_image_selection"
                     );
+
                     api::ImageOwner::Series(series_id)
                 }
                 (_, Some(movie_id)) => {
-                    s.deselect_movie_images.bind((movie_id, kind))?;
+                    s.set_movie_image_selection.bind((movie_id, kind, id))?;
                     ensure!(
-                        s.deselect_movie_images.step()?.is_done(),
-                        "deselect_movie_images"
+                        s.set_movie_image_selection.step()?.is_done(),
+                        "set_movie_image_selection"
                     );
+
                     api::ImageOwner::Movie(movie_id)
                 }
                 _ => anyhow::bail!("image has no owner"),
             };
-            s.select_image.bind((id,))?;
-            ensure!(s.select_image.step()?.is_done(), "select_image");
+
             Ok(owner)
         });
 
@@ -1630,17 +1807,17 @@ impl Database {
         let result = spawn_blocking(move || {
             match owner {
                 api::ImageOwner::Series(series_id) => {
-                    s.deselect_series_images.bind((series_id, kind))?;
+                    s.delete_series_image_selection.bind((series_id, kind))?;
                     ensure!(
-                        s.deselect_series_images.step()?.is_done(),
-                        "deselect_series_images"
+                        s.delete_series_image_selection.step()?.is_done(),
+                        "delete_series_image_selection"
                     );
                 }
                 api::ImageOwner::Movie(movie_id) => {
-                    s.deselect_movie_images.bind((movie_id, kind))?;
+                    s.delete_movie_image_selection.bind((movie_id, kind))?;
                     ensure!(
-                        s.deselect_movie_images.step()?.is_done(),
-                        "deselect_movie_images"
+                        s.delete_movie_image_selection.step()?.is_done(),
+                        "delete_movie_image_selection"
                     );
                 }
             }
@@ -1734,13 +1911,8 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.insert_watched_episode.bind((
-                id,
-                timestamp,
-                series_id,
-                season.to_u32(),
-                episode as i64,
-            ))?;
+            s.insert_watched_episode
+                .bind((id, timestamp, series_id, season.to_u32(), episode))?;
             ensure!(
                 s.insert_watched_episode.step()?.is_done(),
                 "add_watched_episode"
@@ -1781,7 +1953,7 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.move_watched_episode
-                .bind((season.to_u32(), episode as i64, id))?;
+                .bind((season.to_u32(), episode, id))?;
             ensure!(
                 s.move_watched_episode.step()?.is_done(),
                 "move_watched_episode"
@@ -2235,8 +2407,9 @@ impl Database {
                             continue 'outer;
                         };
 
-                        s.pending_series_poster.bind((d.series_id,))?;
-                        let poster_row = s.pending_series_poster.next::<PosterRow>()?;
+                        s.pending_image_for_series_by_kind
+                            .bind((d.series_id, ImageKind::Poster))?;
+                        let poster_row = s.pending_image_for_series_by_kind.next::<PosterRow>()?;
                         let poster = poster_row
                             .map(|p| api::Image::from_raw(format!("{}:{}", p.source, p.path)));
 
@@ -2266,8 +2439,9 @@ impl Database {
                             continue 'outer;
                         };
 
-                        s.pending_movie_poster.bind((movie_id,))?;
-                        let poster_row = s.pending_movie_poster.next::<PosterRow>()?;
+                        s.pending_image_for_movie_by_kind
+                            .bind((movie_id, ImageKind::Poster))?;
+                        let poster_row = s.pending_image_for_movie_by_kind.next::<PosterRow>()?;
                         let poster = poster_row
                             .map(|p| api::Image::from_raw(format!("{}:{}", p.source, p.path)));
 
@@ -2511,7 +2685,7 @@ impl Database {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 fn cutoff_timestamp(interval_hours: u32) -> Timestamp {
-    let hours = interval_hours.max(1) as i64;
+    let hours = interval_hours.max(1);
     let inner = Timestamp::now().inner();
     let ts = inner
         .checked_sub(jiff::Span::new().hours(hours))
@@ -2531,6 +2705,10 @@ fn series_from_row(r: SeriesRow) -> api::Series {
         sync_source: r.sync_source,
         remotes: Vec::new(),
         images: Vec::new(),
+        poster: None,
+        banner: None,
+        fanart: None,
+        backdrop: None,
         last_synced_at: r.last_synced_at,
         language: r.language,
     }
@@ -2542,7 +2720,6 @@ fn image_from_row(r: ImageRow) -> api::MediaImage {
         kind: r.kind,
         source: r.source,
         image: Image::from_raw(format!("{}:{}", r.source.as_str(), r.path)),
-        selected: r.selected,
     }
 }
 
@@ -2552,7 +2729,6 @@ fn series_image_from_row(r: SeriesImageRow) -> api::MediaImage {
         kind: r.kind,
         source: r.source,
         image: Image::from_raw(format!("{}:{}", r.source.as_str(), r.path)),
-        selected: r.selected,
     }
 }
 
@@ -2562,7 +2738,25 @@ fn movie_image_from_row(r: MovieImageRow) -> api::MediaImage {
         kind: r.kind,
         source: r.source,
         image: Image::from_raw(format!("{}:{}", r.source.as_str(), r.path)),
-        selected: r.selected,
+    }
+}
+
+fn apply_image_selection(target: &mut api::Series, sel: ImageSelectionRow) {
+    let image = Image::from_raw(format!("{}:{}", sel.source.as_str(), sel.path));
+    match sel.kind {
+        api::ImageKind::Poster => target.poster = Some(image),
+        api::ImageKind::Banner => target.banner = Some(image),
+        api::ImageKind::Fanart => target.fanart = Some(image),
+        api::ImageKind::Backdrop => target.backdrop = Some(image),
+    }
+}
+
+fn apply_movie_image_selection(target: &mut api::Movie, sel: ImageSelectionRow) {
+    let image = Image::from_raw(format!("{}:{}", sel.source.as_str(), sel.path));
+    match sel.kind {
+        api::ImageKind::Poster => target.poster = Some(image),
+        api::ImageKind::Backdrop => target.backdrop = Some(image),
+        _ => {}
     }
 }
 
@@ -2613,6 +2807,8 @@ fn movie_from_row(r: MovieRow) -> api::Movie {
         tracked: r.tracked,
         pending: false,
         images: Vec::new(),
+        poster: None,
+        backdrop: None,
         last_synced_at: r.last_synced_at,
         releases: Vec::new(),
         language: r.language,
