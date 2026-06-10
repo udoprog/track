@@ -698,14 +698,14 @@ impl MovieDetail {
 
                 <div class="desktop-row mobile-column end desktop-input-group">
                     if movie.tracked {
-                        <button class="btn" onclick={link.callback(|_| Msg::SetTracked(false))} title="Untrack movie">
-                            <span class="icon-inline"><span class="icon eye-slash" /></span>
-                            <span class="hide-desktop">{"Untrack"}</span>
-                        </button>
-                    } else {
-                        <button class="btn" onclick={link.callback(|_| Msg::SetTracked(true))} title="Track movie">
+                        <button class="btn" onclick={link.callback(|_| Msg::SetTracked(false))} title="Track movie">
                             <span class="icon-inline"><span class="icon eye" /></span>
                             <span class="hide-desktop">{"Track"}</span>
+                        </button>
+                    } else {
+                        <button class="btn" onclick={link.callback(|_| Msg::SetTracked(true))} title="Untrack movie">
+                            <span class="icon-inline"><span class="icon eye-slash" /></span>
+                            <span class="hide-desktop">{"Untrack"}</span>
                         </button>
                     }
 

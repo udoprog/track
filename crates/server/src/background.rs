@@ -41,18 +41,20 @@ pub(crate) async fn run(
     let mut interval = tokio::time::interval(POLL);
     let mut config = db.load_config().await?;
 
-    loop {
-        if !config.auto_sync_enabled {
-            tracing::warn!("automatic sync is not enabled");
-            config_changed.notified().await;
-            config = db.load_config().await?;
-            continue;
-        }
+    if !config.auto_sync_enabled {
+        info!("background sync disabled, skipping");
+    }
 
+    loop {
         tokio::select! {
-            _ = interval.tick() => {}
+            _ = interval.tick(), if config.auto_sync_enabled => {}
             _ = config_changed.notified() => {
                 config = db.load_config().await?;
+
+                if !config.auto_sync_enabled {
+                    info!("background sync disabled, skipping");
+                }
+
                 continue;
             }
             _ = shutdown.cancelled() => { return Ok(()); }
@@ -61,15 +63,15 @@ pub(crate) async fn run(
         tracing::info!("starting background sync poll");
         discover_pending_movies(&db).await?;
 
-        let hours = config.auto_sync_interval_hours.max(1);
+        let interval_hours = config.auto_sync_interval_hours.max(1);
 
-        let stale_series = db.series_needing_sync(hours).await?;
-        let stale_movies = db.movies_needing_sync(hours).await?;
+        let stale_series = db.series_needing_sync(interval_hours).await?;
+        let stale_movies = db.movies_needing_sync(interval_hours).await?;
 
         info!(
             series = stale_series.len(),
             movies = stale_movies.len(),
-            interval_hours = hours,
+            interval_hours,
             "background sync poll"
         );
 

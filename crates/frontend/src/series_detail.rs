@@ -28,7 +28,8 @@ pub(super) struct SeriesDetail {
     confirm_remove_watch: Option<api::WatchedId>,
     confirming_mark_watch: Option<api::EpisodeId>,
     select_mark_remaining: bool,
-    watched: HashMap<api::EpisodeId, Vec<api::WatchedEpisode>>,
+    watched_by_season: HashMap<api::SeasonNumber, HashSet<u32>>,
+    watched_by_episode: HashMap<api::EpisodeId, Vec<api::WatchedEpisode>>,
     expanded: HashSet<api::EpisodeId>,
     orphaned: Vec<api::OrphanedWatched>,
     fixing_watched: Option<api::WatchedId>,
@@ -159,7 +160,8 @@ impl Component for SeriesDetail {
             confirm_remove_watch: None,
             confirming_mark_watch: None,
             select_mark_remaining: false,
-            watched: HashMap::new(),
+            watched_by_season: HashMap::new(),
+            watched_by_episode: HashMap::new(),
             expanded: HashSet::new(),
             orphaned: Vec::new(),
             fixing_watched: None,
@@ -283,14 +285,14 @@ impl Component for SeriesDetail {
 
                         <div class="desktop-row mobile-column end desktop-input-group">
                             if series.tracked {
-                                <button class="btn" onclick={link.callback(|_| Msg::SetTracked(false))} title="Untrack series">
-                                    <span class="icon-inline"><span class="icon eye-slash" /></span>
-                                    <span class="hide-desktop">{"Untrack"}</span>
-                                </button>
-                            } else {
-                                <button class="btn" onclick={link.callback(|_| Msg::SetTracked(true))} title="Track series">
+                                <button class="btn" onclick={link.callback(|_| Msg::SetTracked(false))} title="Track series">
                                     <span class="icon-inline"><span class="icon eye" /></span>
                                     <span class="hide-desktop">{"Track"}</span>
+                                </button>
+                            } else {
+                                <button class="btn" onclick={link.callback(|_| Msg::SetTracked(true))} title="Untrack series">
+                                    <span class="icon-inline"><span class="icon eye-slash" /></span>
+                                    <span class="hide-desktop">{"Untrack"}</span>
                                 </button>
                             }
 
@@ -328,7 +330,8 @@ impl Component for SeriesDetail {
             self.confirm_remove = false;
             self.syncing = false;
             self.confirm_remove_watch = None;
-            self.watched.clear();
+            self.watched_by_season.clear();
+            self.watched_by_episode.clear();
 
             if self.channel.id() != ws::ChannelId::NONE {
                 self.load_series(ctx);
@@ -341,7 +344,8 @@ impl Component for SeriesDetail {
                     self.selected = Some(season);
                     self.episodes.clear();
                     self.confirm_remove_watch = None;
-                    self.watched.clear();
+                    self.watched_by_season.clear();
+                    self.watched_by_episode.clear();
 
                     if self.channel.id() != ws::ChannelId::NONE {
                         self.load_episodes(ctx, season);
@@ -523,16 +527,21 @@ impl SeriesDetail {
                     .decode()
                     .context(Message::LoadingEpisodes)?;
 
-                self.watched.clear();
+                self.watched_by_season.clear();
+                self.watched_by_episode.clear();
 
                 self.episodes = result.episodes;
 
                 for w in result.watched {
-                    self.watched.entry(w.episode_id).or_default().push(w);
+                    self.watched_by_season
+                        .entry(w.season)
+                        .or_default()
+                        .insert(w.number);
+                    self.watched_by_episode.entry(w.episode_id).or_default().push(w);
                 }
 
                 self.expanded.retain(|episode_id| {
-                    self.watched
+                    self.watched_by_episode
                         .get(episode_id)
                         .is_some_and(|watched| !watched.is_empty())
                 });
@@ -715,14 +724,19 @@ impl SeriesDetail {
                     .context(Message::LoadingWatched)?
                     .watched;
 
-                self.watched.clear();
+                self.watched_by_season.clear();
+                self.watched_by_episode.clear();
 
                 for w in watched {
-                    self.watched.entry(w.episode_id).or_default().push(w);
+                    self.watched_by_season
+                        .entry(w.season)
+                        .or_default()
+                        .insert(w.number);
+                    self.watched_by_episode.entry(w.episode_id).or_default().push(w);
                 }
 
                 self.expanded.retain(|episode_id| {
-                    self.watched
+                    self.watched_by_episode
                         .get(episode_id)
                         .is_some_and(|watched| !watched.is_empty())
                 });
@@ -1032,7 +1046,7 @@ impl SeriesDetail {
                 }
 
                 <div class="table table-striped">
-                    { for self.seasons.iter().map(|s| self.view_season_item(ctx, s)) }
+                    { for self.seasons.iter().map(|s| self.view_season(ctx, s)) }
                 </div>
             </div>
         }
@@ -1079,14 +1093,17 @@ impl SeriesDetail {
         }
     }
 
-    fn view_season_item(&self, ctx: &Context<Self>, season: &api::Season) -> Html {
+    fn view_season(&self, ctx: &Context<Self>, season: &api::Season) -> Html {
         let number = season.number;
         let active = self.selected == Some(number);
+
         let onclick = if active {
             ctx.link().callback(move |_| Msg::ToggleExpandSeasons)
         } else {
             ctx.link().callback(move |_| Msg::SelectSeason(number))
         };
+
+        let count = self.watched_by_season.get(&season.number).map_or(0, |episodes| episodes.len());
 
         html! {
             <div class={classes!("table-entry", "row", "clickable", active.then_some("active"), (!active && !self.expanded_seasons).then_some("hide-mobile"))} {onclick}>
@@ -1095,6 +1112,8 @@ impl SeriesDetail {
                 if let Some(ts) = season.air_date {
                     <span class="text-muted">{ts.date(self.tz.clone()).year().to_string()}</span>
                 }
+
+                <span>{format!("{count}")}</span>
 
                 <span class="icon-inline">
                     <span class={classes!("icon", if active { "ellipsis-horizontal" } else { "chevron-right" })} />
@@ -1109,8 +1128,9 @@ impl SeriesDetail {
         let watched_count = self
             .episodes
             .iter()
-            .filter(|ep| self.watched.get(&ep.id).map(Vec::len).unwrap_or_default() > 0)
+            .filter(|ep| self.watched_by_episode.get(&ep.id).map(Vec::len).unwrap_or_default() > 0)
             .count();
+
         let total = self.episodes.len();
 
         html! {
@@ -1166,7 +1186,7 @@ impl SeriesDetail {
         let episode_id = episode.id;
 
         let watched = self
-            .watched
+            .watched_by_episode
             .get(&episode_id)
             .map(Vec::as_slice)
             .unwrap_or_default();

@@ -28,7 +28,6 @@ pub(super) enum Msg {
     TimezoneChanged(String),
     LanguageChanged(Option<String>),
     ScheduleDaysChanged(String),
-    DashboardLimitChanged(String),
     DashboardPageChanged(String),
     AutoSyncEnabledToggle,
     AutoSyncIntervalChanged(String),
@@ -101,11 +100,6 @@ impl Component for Settings {
             Msg::ScheduleDaysChanged(input.value())
         });
 
-        let on_dashboard_limit = link.callback(|e: InputEvent| {
-            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
-            Msg::DashboardLimitChanged(input.value())
-        });
-
         let on_dashboard_page = link.callback(|e: InputEvent| {
             let input: web_sys::HtmlInputElement = e.target_unchecked_into();
             Msg::DashboardPageChanged(input.value())
@@ -166,15 +160,15 @@ impl Component for Settings {
 
                     <div class="form">
                         <div class="field fill">
-                            <label>{"Pending limit"}</label>
+                            <label>{"Pending size"}</label>
 
                             <input
                                 type="number"
                                 class="input-number"
                                 min="1"
                                 max="100"
-                                value={self.config.dashboard_limit.to_string()}
-                                oninput={on_dashboard_limit}
+                                value={self.config.dashboard_page.to_string()}
+                                oninput={on_dashboard_page}
                             />
                         </div>
 
@@ -188,19 +182,6 @@ impl Component for Settings {
                                 max="90"
                                 value={self.config.schedule_duration_days.to_string()}
                                 oninput={on_schedule_days}
-                            />
-                        </div>
-
-                        <div class="field fill">
-                            <label>{"Page size"}</label>
-
-                            <input
-                                type="number"
-                                class="input-number"
-                                min="1"
-                                max="100"
-                                value={self.config.dashboard_page.to_string()}
-                                oninput={on_dashboard_page}
                             />
                         </div>
                     </div>
@@ -248,11 +229,7 @@ impl Component for Settings {
                         <div class="field">
                             <label class="clickable" onclick={&on_auto_sync_toggle}>{"Auto-sync enabled"}</label>
 
-                            <span
-                                class={classes!("input-checkbox", self.config.auto_sync_enabled.then_some("checked"))}
-                                id="auto-sync-enabled"
-                                onclick={on_auto_sync_toggle}
-                            >
+                            <span class={classes!("input-checkbox", self.config.auto_sync_enabled.then_some("checked"))} id="auto-sync-enabled" onclick={on_auto_sync_toggle}>
                                 <span class="mark" />
                             </span>
                         </div>
@@ -333,12 +310,6 @@ impl Settings {
             Msg::ScheduleDaysChanged(val) => {
                 if let Ok(n) = val.parse::<u32>() {
                     self.config.schedule_duration_days = n;
-                }
-                Ok(false)
-            }
-            Msg::DashboardLimitChanged(val) => {
-                if let Ok(n) = val.parse::<u32>() {
-                    self.config.dashboard_limit = n;
                 }
                 Ok(false)
             }

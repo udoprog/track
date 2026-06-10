@@ -37,7 +37,7 @@ $input-height: 32px;
 $input-height-sm: 24px;
 $input-height-touch: 44px;
 $icon-padding: 8px;
-$inline-icon-padding: 4px;
+$icon-inline-padding: 4px;
 
 $poster-height: 240px;
 $poster-width-sm: 64px;
@@ -214,8 +214,8 @@ body {
     display: inline-flex;
     width: $input-height;
     height: $input-height;
-    padding: $inline-icon-padding;
-    margin: -$inline-icon-padding;
+    padding: $icon-inline-padding;
+    margin: -$icon-inline-padding;
     vertical-align: middle;
 
     @include g.until-mobile {
@@ -228,8 +228,8 @@ body {
     display: inline-flex;
     width: $input-height;
     height: $input-height;
-    padding: $inline-icon-padding;
-    margin: -$inline-icon-padding;
+    padding: $icon-inline-padding;
+    margin: -$icon-inline-padding;
     vertical-align: middle;
 
     @include g.until-mobile {
@@ -460,13 +460,30 @@ h5 {
     justify-content: flex-end;
 }
 
+.pending-title {
+    font-size: $font-lg;
+    font-weight: 600;
+    color: $text-primary;
+    white-space: wrap;
+
+    @include g.from-desktop {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+}
+
 .pending-label {
     font-size: $font-sm;
     font-weight: 600;
     color: $text-primary;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: wrap;
+
+    @include g.from-desktop {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
 }
 
 .pending-date {
@@ -812,6 +829,10 @@ h5 {
 }
 
 .input-checkbox {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
     color: $text-primary;
     border: 1px solid $border-input;
     border-radius: $radius-sm;
@@ -822,14 +843,12 @@ h5 {
     border-style: solid;
     border-color: $border-input;
     background: $bg-surface;
-    padding: $gap-sm;
 
     cursor: pointer;
 
     >.mark {
-        display: flex;
-        width: 100%;
-        height: 100%;
+        width: $input-height * 0.8;
+        height: $input-height * 0.8;
     }
 
     &.checked>.mark {

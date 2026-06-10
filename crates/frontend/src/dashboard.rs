@@ -346,34 +346,90 @@ impl Dashboard {
     fn view_pending_item(&self, ctx: &Context<Self>, p: &api::Pending) -> Html {
         let pending_kind = p.kind.clone();
         let confirming_watch = self.confirming_watch.as_ref() == Some(&p.kind);
-        let route = match p.kind {
-            api::PendingKind::Episode { series, .. } => {
+
+        let route = match (p.kind, &p.info) {
+            (
+                api::PendingKind::Episode { series, .. },
+                api::PendingInfo::Episode { season, .. },
+            ) => Route::SeriesDetail(
+                series,
+                SeriesDetailQuery {
+                    season: Some(*season),
+                },
+            ),
+            (api::PendingKind::Episode { series, .. }, _) => {
                 Route::SeriesDetail(series, SeriesDetailQuery::default())
             }
-            api::PendingKind::Movie { movie } => Route::MovieDetail(movie),
+            (api::PendingKind::Movie { movie }, _) => Route::MovieDetail(movie),
         };
+
         let kind = match p.kind {
             api::PendingKind::Episode { series, episode } => {
                 api::WatchedKind::Episode { series, episode }
             }
             api::PendingKind::Movie { movie } => api::WatchedKind::Movie { movie },
         };
-        let route_poster = route.clone();
-        let on_navigate = ctx.link().callback(move |_| Msg::Navigate(route.clone()));
-        let on_navigate_series = on_navigate.clone();
-        let on_navigate_poster = ctx
-            .link()
-            .callback(move |_| Msg::Navigate(route_poster.clone()));
+
+        let on_navigate = ctx.link().callback({
+            let route = route.clone();
+            move |_| Msg::Navigate(route.clone())
+        });
+
         let on_ask_mark = ctx
             .link()
             .callback(move |_| Msg::AskMarkWatched(pending_kind.clone()));
+
         let skip_ids = if let api::PendingKind::Episode { series, episode } = p.kind {
             Some((series, episode))
         } else {
             None
         };
+
         let confirming_skip = self.confirming_skip == skip_ids;
-        let label = p.label.clone();
+
+        let label = match &p.info {
+            api::PendingInfo::Movie {
+                title: Some(title), ..
+            } => Some(title.clone()),
+            api::PendingInfo::Episode {
+                season,
+                number,
+                episode: Some(title),
+                ..
+            } => Some(format!("{}E{number:02} ─ {title}", season.short())),
+            api::PendingInfo::Episode { season, number, .. } => {
+                Some(format!("{}E{number:02}", season.short()))
+            }
+            _ => None,
+        };
+
+        let title = match &p.info {
+            api::PendingInfo::Movie { title, .. } => {
+                html! {
+                    <span class="pending-title clickable" onclick={on_navigate.clone()} title={title.clone()}>
+                        {title.as_deref().unwrap_or("Untitled Movie")}
+                    </span>
+                }
+            }
+            api::PendingInfo::Episode {
+                series,
+                episode,
+                season,
+                number,
+                ..
+            } => {
+                html! {
+                    <>
+                        <span class="pending-title clickable" onclick={on_navigate.clone()} title={series.clone()}>
+                            {series.as_deref().unwrap_or("Untitled Series")}
+                        </span>
+                        <span class="pending-label clickable" onclick={on_navigate.clone()}>
+                            {format!("{}E{number:02} ─ {}", season.short(), episode.as_deref().unwrap_or("Untitled Episode"))}
+                        </span>
+                    </>
+                }
+            }
+        };
 
         let actions = 'actions: {
             if confirming_watch {
@@ -414,22 +470,20 @@ impl Dashboard {
         html! {
             <div class="pending-item">
                 if let Some(ref poster) = p.poster {
-                    <img class="pending-poster clickable" src={poster.proxy_url()} onclick={on_navigate_poster} />
-                } else {
+                    <img class="pending-poster clickable hide-mobile" src={poster.proxy_url()} onclick={on_navigate.clone()} />
+                }
+
+                if let Some(ref banner) = p.banner {
+                    <img class="pending-banner clickable hide-desktop" src={banner.proxy_url()} onclick={on_navigate.clone()} />
+                }
+
+                if p.poster.is_none() && p.banner.is_none() {
                     <div class="pending-poster pending-poster-placeholder" />
                 }
 
                 <div class="pending-info">
                     <div class="pending-content">
-                        if let Some(ref title) = p.series_title {
-                            <span class="pending-label clickable" onclick={on_navigate_series}>{title}</span>
-                        }
-
-                        if matches!(p.kind, api::PendingKind::Movie { .. }) {
-                            <span class="pending-label clickable" onclick={on_navigate.clone()}>{&p.label}</span>
-                        } else {
-                            <span class="pending-label">{&p.label}</span>
-                        }
+                        {title}
 
                         if let Some(s) = p.display_at(self.tz.clone()) {
                             <span class="pending-date">{s}</span>

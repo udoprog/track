@@ -114,7 +114,6 @@ impl SeriesDetailQuery {
 pub(super) enum Route {
     Dashboard(DashboardQuery),
     Queue,
-    WatchNext,
     Series(PagedQuery),
     SeriesDetail(api::SeriesId, SeriesDetailQuery),
     Movies(PagedQuery),
@@ -143,7 +142,6 @@ impl fmt::Display for Route {
                 }
             }
             Route::Queue => f.write_str("/queue"),
-            Route::WatchNext => f.write_str("/watch-next"),
             Route::Series(q) => {
                 let qs = q.to_query_string();
 
@@ -185,7 +183,6 @@ impl Route {
 
         match parts.next() {
             Some("queue") => Route::Queue,
-            Some("watch-next") => Route::WatchNext,
             Some("series") => match parts.next() {
                 Some(id) => id
                     .parse()

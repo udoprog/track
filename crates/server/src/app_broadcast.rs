@@ -15,12 +15,9 @@ impl Broadcaster {
         self.tx.subscribe()
     }
 
-    pub(crate) fn emit(&self, channel: ChannelId, kind: api::AppEventKind, context: &str) {
+    pub(crate) fn emit(&self, channel: ChannelId, kind: api::AppEventKind, _context: &str) {
         let event = api::AppEvent { channel, kind };
-
-        if let Err(error) = self.tx.send(event) {
-            tracing::warn!(%error, %context, "broadcast failed");
-        }
+        _ = self.tx.send(event);
     }
 
     pub(crate) fn broadcast_event(&self, kind: api::AppEventKind) {

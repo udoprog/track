@@ -13,7 +13,6 @@ mod series_detail;
 mod settings;
 mod setup_channel;
 mod ui;
-mod watch_next;
 
 use self::app::App;
 use self::calendar::Calendar;
@@ -26,7 +25,6 @@ use self::series::SeriesList;
 use self::series_detail::SeriesDetail;
 use self::settings::Settings;
 use self::setup_channel::SetupChannel;
-use self::watch_next::WatchNext;
 
 use tracing::Level;
 use tracing_wasm::WASMLayerConfigBuilder;

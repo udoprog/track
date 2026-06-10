@@ -678,6 +678,10 @@ impl ::sqll::BindValue for RemoteId {
 pub struct Image(String);
 
 impl Image {
+    pub fn new(source: ImageSource, path: &str) -> Self {
+        Self(format!("{source}:{path}"))
+    }
+
     pub fn tvdb(path: &str) -> Self {
         let path = path.trim_start_matches('/');
         Self(format!("tvdb:{path}"))
@@ -1159,6 +1163,8 @@ pub struct Season {
     pub name: Option<String>,
     pub overview: Option<String>,
     pub poster: Option<Image>,
+    pub watched_episodes: usize,
+    pub total_episodes: usize,
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
@@ -1182,6 +1188,8 @@ pub struct Episode {
 pub struct WatchedEpisode {
     pub id: WatchedId,
     pub timestamp: Timestamp,
+    pub season: SeasonNumber,
+    pub number: u32,
     pub episode_id: EpisodeId,
 }
 
@@ -1273,13 +1281,15 @@ pub struct Watched {
 
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 #[musli(crate = musli_core)]
-pub enum PendingKind {
+pub enum PendingInfo {
     Episode {
-        series: SeriesId,
-        episode: EpisodeId,
+        series: Option<String>,
+        episode: Option<String>,
+        season: SeasonNumber,
+        number: u32,
     },
     Movie {
-        movie: MovieId,
+        title: Option<String>,
     },
 }
 
@@ -1288,10 +1298,10 @@ pub enum PendingKind {
 #[musli(crate = musli_core)]
 pub struct Pending {
     pub kind: PendingKind,
+    pub info: PendingInfo,
     pub aired: Option<Timestamp>,
-    pub series_title: Option<String>,
-    pub label: String,
     pub poster: Option<Image>,
+    pub banner: Option<Image>,
 }
 
 /// Implemented by types that carry both a civil air date and an optional
@@ -1340,7 +1350,6 @@ pub struct Config {
     pub tvdb_legacy_apikey: String,
     pub tmdb_api_key: String,
     pub schedule_duration_days: u32,
-    pub dashboard_limit: u32,
     pub dashboard_page: u32,
     pub auto_sync_enabled: bool,
     pub auto_sync_interval_hours: u32,
@@ -1355,8 +1364,7 @@ impl Default for Config {
             tvdb_legacy_apikey: String::new(),
             tmdb_api_key: String::new(),
             schedule_duration_days: 7,
-            dashboard_limit: 6,
-            dashboard_page: 6,
+            dashboard_page: 5,
             auto_sync_enabled: false,
             auto_sync_interval_hours: 24,
             timezone: String::new(),
@@ -1753,6 +1761,18 @@ pub struct GetConfigResponse {
 #[musli(crate = musli_core)]
 pub struct SetConfigRequest {
     pub config: Config,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub enum PendingKind {
+    Episode {
+        series: SeriesId,
+        episode: EpisodeId,
+    },
+    Movie {
+        movie: MovieId,
+    },
 }
 
 #[derive(Debug, Encode, Decode)]

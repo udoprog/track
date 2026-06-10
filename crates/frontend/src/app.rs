@@ -8,7 +8,6 @@ use crate::router::{DashboardQuery, PagedQuery, Route};
 use crate::setup_channel::SetupChannel;
 use crate::{
     Dashboard, MovieDetail, MoviesList, Queue, Search, SeriesDetail, SeriesList, Settings,
-    WatchNext,
 };
 
 pub(super) struct App {
@@ -98,10 +97,6 @@ impl Component for App {
                             <button onclick={on_nav(Route::Queue)} class="btn" title="Queue">
                                 <span class="icon-inline"><span class="icon queue-list" /></span>
                                 <span class="hide-mobile">{"Queue"}</span>
-                            </button>
-                            <button onclick={on_nav(Route::WatchNext)} class="btn" title="Watch Next">
-                                <span class="icon-inline"><span class="icon play" /></span>
-                                <span class="hide-mobile">{"Watch Next"}</span>
                             </button>
                             <button onclick={on_nav(Route::Series(PagedQuery::default()))} class="btn" title="Series">
                                 <span class="icon-inline"><span class="icon tv" /></span>
@@ -206,7 +201,6 @@ impl App {
                 html! { <Dashboard {onerror} {on_navigate} page={query.page} /> }
             }
             Route::Queue => html! { <Queue {onerror} {on_navigate} /> },
-            Route::WatchNext => html! { <WatchNext {onerror} {on_navigate} /> },
             Route::Series(query) => html! {
                 <SeriesList {onerror} {on_navigate} page={query.page} filter={query.filter.clone()} />
             },

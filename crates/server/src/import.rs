@@ -155,8 +155,6 @@ struct YamlConfig {
     tmdb_api_key: String,
     #[serde(default = "default_days")]
     schedule_duration_days: u32,
-    #[serde(default = "default_limit")]
-    dashboard_limit: u32,
     #[serde(default = "default_page")]
     dashboard_page: u32,
 }
@@ -164,11 +162,9 @@ struct YamlConfig {
 fn default_days() -> u32 {
     7
 }
-fn default_limit() -> u32 {
-    1
-}
+
 fn default_page() -> u32 {
-    6
+    5
 }
 
 // ── CLI ───────────────────────────────────────────────────────────────────────
@@ -405,7 +401,6 @@ pub async fn import() -> Result<()> {
             tvdb_legacy_apikey: cfg.tvdb_legacy_apikey,
             tmdb_api_key: cfg.tmdb_api_key,
             schedule_duration_days: cfg.schedule_duration_days,
-            dashboard_limit: cfg.dashboard_limit,
             dashboard_page: cfg.dashboard_page,
             auto_sync_enabled: false,
             auto_sync_interval_hours: 24,
