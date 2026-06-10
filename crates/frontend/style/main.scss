@@ -867,42 +867,43 @@ h5 {
     flex-wrap: wrap;
     justify-content: space-between;
     gap: $gap-sm;
-    padding: $gap-sm 0;
-
-    &.poster {
-        img {
-            width: 80px;
-        }
-    }
-
-    &.backdrop {
-        img {
-            width: 160px;
-        }
-    }
+    padding: $gap-sm;
 }
 
 .image-thumb {
     position: relative;
     cursor: pointer;
-    border-radius: $radius-sm;
     overflow: hidden;
-    border: 2px solid transparent;
-    opacity: 0.7;
     transition: opacity 0.15s, border-color 0.15s;
     flex-shrink: 0;
 
     img {
         display: block;
+        opacity: 0.7;
+        max-height: 120px;
+
+        border-width: 2px;
+        border-style: solid;
+        border-color: transparent;
+        border-radius: $radius-sm;
     }
 
     &:hover {
-        opacity: 1;
+        img {
+            opacity: 1;
+        }
     }
 
-    &.image-thumb-selected {
-        border-color: $color-primary;
-        opacity: 1;
+    &.selected {
+        img {
+            border-color: $color-primary !important;
+            opacity: 1;
+        }
+    }
+
+    &-source {
+        display: flex;
+        justify-content: center;
     }
 }
 

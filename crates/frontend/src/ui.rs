@@ -233,7 +233,7 @@ pub(super) struct ImageGalleryProps {
 
 #[function_component]
 pub(super) fn ImageGallery(props: &ImageGalleryProps) -> Html {
-    let imgs: Vec<_> = props
+    let images: Vec<_> = props
         .items
         .iter()
         .filter(|img| img.kind == props.kind)
@@ -259,23 +259,24 @@ pub(super) fn ImageGallery(props: &ImageGalleryProps) -> Html {
                     </button>
                 </div>
 
-                if imgs.is_empty() {
-                    <div class="empty text-muted">{"No images available."}</div>
+                if images.is_empty() {
+                    <div class="empty text-muted">{"No images"}</div>
                 } else {
                     <div class={classes!("image-gallery", props.kind.as_str())}>
-                        { for imgs.iter().map(|img| {
+                        { for images.iter().map(|img| {
                             let id = img.id;
                             let selected = img.selected;
                             let on_select = on_select.clone();
                             let title = img.source.to_string();
 
                             html! {
-                                <div
-                                    class={classes!("image-thumb", selected.then_some("image-thumb-selected"))}
-                                    onclick={Callback::from(move |_| on_select.emit(id))}
-                                    {title}
-                                >
-                                    <img src={img.image.proxy_url()} alt="" />
+                                <div class={classes!("image-thumb", selected.then_some("selected"))} onclick={Callback::from(move |_| on_select.emit(id))} {title}>
+                                    <img src={img.image.proxy_url()} />
+
+                                    <div class="image-thumb-source">
+                                        {img.source.to_string()}
+                                    </div>
+
                                     if selected {
                                         <span class="image-thumb-check">{"✓"}</span>
                                     }

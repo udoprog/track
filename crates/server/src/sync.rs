@@ -90,9 +90,10 @@ async fn sync_series_tmdb(
         db.add_series_remote(series_id, remote).await?;
     }
 
+    db.clear_series_images(series_id, ImageKind::Poster, ImageSource::Tmdb)
+        .await?;
     for image in info.posters {
         let selected = Some(&image) == info.selected_poster.as_ref();
-
         db.upsert_series_image(
             series_id,
             ImageKind::Poster,
@@ -103,9 +104,10 @@ async fn sync_series_tmdb(
         .await?;
     }
 
+    db.clear_series_images(series_id, ImageKind::Backdrop, ImageSource::Tmdb)
+        .await?;
     for image in info.backdrops {
         let selected = Some(&image) == info.selected_backdrop.as_ref();
-
         db.upsert_series_image(
             series_id,
             ImageKind::Backdrop,
@@ -205,6 +207,8 @@ async fn sync_series_tvdb(
         db.add_series_remote(series_id, remote).await?;
     }
 
+    db.clear_series_images(series_id, ImageKind::Poster, ImageSource::Tvdb)
+        .await?;
     for poster in info.poster {
         let selected = Some(&poster) == info.selected_poster.as_ref();
         db.upsert_series_image(
@@ -217,6 +221,8 @@ async fn sync_series_tvdb(
         .await?;
     }
 
+    db.clear_series_images(series_id, ImageKind::Banner, ImageSource::Tvdb)
+        .await?;
     for banner in info.banner {
         let selected = Some(&banner) == info.selected_banner.as_ref();
         db.upsert_series_image(
@@ -229,6 +235,8 @@ async fn sync_series_tvdb(
         .await?;
     }
 
+    db.clear_series_images(series_id, ImageKind::Fanart, ImageSource::Tvdb)
+        .await?;
     for fanart in info.fanart {
         let selected = Some(&fanart) == info.selected_fanart.as_ref();
         db.upsert_series_image(
@@ -338,6 +346,8 @@ pub(crate) async fn sync_movie(
                 db.add_movie_remote(movie_id, remote).await?;
             }
 
+            db.clear_movie_images(movie_id, ImageKind::Poster, ImageSource::Tmdb)
+                .await?;
             for img in info.posters {
                 let selected = Some(&img) == info.selected_poster.as_ref();
                 db.upsert_movie_image(
@@ -350,6 +360,8 @@ pub(crate) async fn sync_movie(
                 .await?;
             }
 
+            db.clear_movie_images(movie_id, ImageKind::Backdrop, ImageSource::Tmdb)
+                .await?;
             for img in info.backdrops {
                 let selected = Some(&img) == info.selected_backdrop.as_ref();
                 db.upsert_movie_image(

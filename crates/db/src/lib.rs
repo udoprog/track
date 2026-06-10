@@ -315,9 +315,12 @@ statements! {
             SELECT id, kind, source, path, selected, series_id FROM images
             WHERE series_id IS NOT NULL ORDER BY series_id, kind, path, id
         "#,
+        delete_series_images: r#"
+            DELETE FROM images WHERE series_id = ? AND kind = ? AND source = ?
+        "#,
         insert_series_image: r#"
             INSERT INTO images (id, series_id, kind, source, path, selected) VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(series_id, kind, path) WHERE series_id IS NOT NULL DO UPDATE SET source = excluded.source
+            ON CONFLICT(series_id, kind, path) WHERE series_id IS NOT NULL DO UPDATE SET source = excluded.source, selected = excluded.selected
         "#,
         list_movie_images: r#"
             SELECT id, kind, source, path, selected FROM images
@@ -327,9 +330,12 @@ statements! {
             SELECT id, kind, source, path, selected, movie_id FROM images
             WHERE movie_id IS NOT NULL ORDER BY movie_id, kind, path, id
         "#,
+        delete_movie_images: r#"
+            DELETE FROM images WHERE movie_id = ? AND kind = ? AND source = ?
+        "#,
         insert_movie_image: r#"
             INSERT INTO images (id, movie_id, kind, source, path, selected) VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(movie_id, kind, path) WHERE movie_id IS NOT NULL DO UPDATE SET source = excluded.source
+            ON CONFLICT(movie_id, kind, path) WHERE movie_id IS NOT NULL DO UPDATE SET source = excluded.source, selected = excluded.selected
         "#,
         image_by_id: r#"
             SELECT kind, series_id, movie_id FROM images WHERE id = ?
@@ -1484,6 +1490,36 @@ impl Database {
     }
 
     // ── Images ──
+
+    pub async fn clear_series_images(
+        &self,
+        series_id: SeriesId,
+        kind: ImageKind,
+        source: ImageSource,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().lock_owned().await;
+        spawn_blocking(move || {
+            s.delete_series_images.bind((series_id, kind, source))?;
+            s.delete_series_images.step()?;
+            Ok(())
+        })
+        .await?
+    }
+
+    pub async fn clear_movie_images(
+        &self,
+        movie_id: MovieId,
+        kind: ImageKind,
+        source: ImageSource,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().lock_owned().await;
+        spawn_blocking(move || {
+            s.delete_movie_images.bind((movie_id, kind, source))?;
+            s.delete_movie_images.step()?;
+            Ok(())
+        })
+        .await?
+    }
 
     pub async fn upsert_series_image(
         &self,
