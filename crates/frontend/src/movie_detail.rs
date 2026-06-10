@@ -18,6 +18,7 @@ pub(super) struct MovieDetail {
     confirm_mark_watch: bool,
     confirm_remove_watch: Option<api::WatchedId>,
     syncing: bool,
+    actions_expanded: bool,
     image_modal: Option<api::ImageKind>,
     tz: TimeZone,
     _tz_handle: ContextHandle<TimeZone>,
@@ -78,8 +79,8 @@ pub(super) enum Msg {
     AddPendingDone(Result<ws::Packet<api::AddPending>, ws::Error>),
     RemovePending,
     RemovePendingDone(Result<ws::Packet<api::RemovePending>, ws::Error>),
-    Back,
     SetTz(TimeZone),
+    ToggleActionsExpanded,
 }
 
 #[derive(Properties, PartialEq)]
@@ -115,6 +116,7 @@ impl Component for MovieDetail {
             confirm_mark_watch: false,
             confirm_remove_watch: None,
             syncing: false,
+            actions_expanded: false,
             image_modal: None,
             tz,
             _tz_handle,
@@ -168,7 +170,7 @@ impl Component for MovieDetail {
         html! {
             <div class="page-container" {style}>
                 <div class="page">
-                    { self.view_header(ctx, movie) }
+                    { self.view_header(movie) }
 
                     { self.view_body(ctx, movie) }
                 </div>
@@ -523,14 +525,12 @@ impl MovieDetail {
                 self.image_modal = None;
                 Ok(true)
             }
-            Msg::Back => {
-                ctx.props()
-                    .on_navigate
-                    .emit(Route::Movies(PagedQuery::default()));
-                Ok(false)
-            }
             Msg::SetTz(tz) => {
                 self.tz = tz;
+                Ok(true)
+            }
+            Msg::ToggleActionsExpanded => {
+                self.actions_expanded = !self.actions_expanded;
                 Ok(true)
             }
         }
@@ -559,16 +559,9 @@ impl MovieDetail {
             .send();
     }
 
-    fn view_header(&self, ctx: &Context<Self>, movie: &api::Movie) -> Html {
-        let link = ctx.link();
-
+    fn view_header(&self, movie: &api::Movie) -> Html {
         html! {
             <div class="row page-title">
-                <button class="btn" onclick={link.callback(|_| Msg::Back)}>
-                    <span class="icon-inline"><span class="icon arrow-left" /></span>
-                    {"Movies"}
-                </button>
-
                 if let Some(ref title) = movie.title {
                     <span class="fill">{title}</span>
                 } else {
@@ -590,11 +583,8 @@ impl MovieDetail {
     }
 
     fn view_body(&self, ctx: &Context<Self>, movie: &api::Movie) -> Html {
-        let last_watched_id = self.watched.first().map(|w| w.id);
         let movie_id = ctx.props().movie_id;
         let link = ctx.link();
-
-        let watched_count = self.watched.len();
 
         let actions = 'actions: {
             if self.confirm_mark_watch {
@@ -609,55 +599,59 @@ impl MovieDetail {
             }
 
             html! {
-                <div class="row actions">
-                    if watched_count > 0 {
-                        <span class="icon-inline" title="Watched"><span class="icon check-circle" /></span>
-
-                        <span class="text-muted fill">
-                            if watched_count == 1 {
-                                {"Watched once"}
-                            } else {
-                                {format!("Watched {} times", watched_count)}
-                            }
-                        </span>
-
-                        <button class="btn" onclick={link.callback(|_| Msg::AskMarkWatched)} title="Watch again">
-                            <span class="icon-inline"><span class="icon check" /></span>
-                            {"Watch again"}
-                        </button>
-
-                        if let Some(last_watched_id) = last_watched_id {
-                            <button class="btn btn-danger" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(last_watched_id))} title="Remove last watch">
-                                <span class="icon-inline"><span class="icon x-mark" /></span>
-                                {"Remove watch"}
-                            </button>
-                        }
-
-                        if movie.pending {
-                            <button class="btn" onclick={link.callback(|_| Msg::RemovePending)} title="Remove from pending">
-                                <span class="icon-inline"><span class="icon bookmark-slash" /></span>
-                                {"Remove pending"}
-                            </button>
+                <div class="row-fill actions">
+                    <div class="row">
+                        if self.watched.len() > 0 {
+                            <span class="icon-inline" title="Watched"><span class="icon check-circle" /></span>
                         } else {
-                            <button class="btn" onclick={link.callback(|_| Msg::AddPending)} title="Mark as pending">
-                                <span class="icon-inline"><span class="icon bookmark" /></span>
-                                {"Mark pending"}
-                            </button>
+                            <span class="icon-inline" title="Not watched"><span class="icon x-circle" /></span>
                         }
-                    } else {
-                        <button class="btn btn-success" onclick={link.callback(|_| Msg::AskMarkWatched)} title="Mark watched">
-                            <span class="icon-inline"><span class="icon check" /></span>
-                            {"Mark watched"}
-                        </button>
-                    }
+
+                        <span class="text-muted">
+                            {match self.watched.len() {
+                                0 => "Not watched".to_string(),
+                                1 => "Watched once".to_string(),
+                                _ => format!("Watched {} times", self.watched.len()),
+                            }}
+                        </span>
+                    </div>
+
+                    <div class="row end">
+                        <div class="input-group">
+                            <button class="btn-success" onclick={link.callback(|_| Msg::AskMarkWatched)} title="Mark watched">
+                                <span class="icon-inline"><span class="icon check" /></span>
+                                <span class="hide-desktop">{"Mark watched"}</span>
+                            </button>
+
+                            if movie.pending {
+                                <button class="btn" onclick={link.callback(|_| Msg::RemovePending)} title="Remove from pending">
+                                    <span class="icon-inline"><span class="icon bookmark-slash" /></span>
+                                    <span class="hide-desktop">{"Remove pending"}</span>
+                                </button>
+                            } else {
+                                <button class="btn" onclick={link.callback(|_| Msg::AddPending)} title="Mark as pending">
+                                    <span class="icon-inline"><span class="icon bookmark" /></span>
+                                    <span class="hide-desktop">{"Mark pending"}</span>
+                                </button>
+                            }
+                        </div>
+                    </div>
                 </div>
             }
         };
 
         html! {
             <>
-            <div class="row-fill actions">
-                <div class="row fill start">
+            <div class="hide-desktop row">
+                <span class="fill" />
+
+                <button class="btn" onclick={link.callback(|_| Msg::ToggleActionsExpanded)}>
+                    <span class="icon-inline"><span class={classes!("icon", if self.actions_expanded { "ellipsis-horizontal" } else { "bars-3" })} /></span>
+                </button>
+            </div>
+
+            <div class={classes!("desktop-row-fill", "mobile-column", "actions", (!self.actions_expanded).then_some("hide-mobile"))}>
+                <div class="desktop-row mobile-column fill start">
                     <RemoteSourceSelect
                         kind={RemoteSourceKind::Movie}
                         remotes={movie.remotes.clone()}
@@ -674,41 +668,44 @@ impl MovieDetail {
                     if movie.images.iter().any(|i| matches!(i.kind, api::ImageKind::Poster)) {
                         <button class="btn" onclick={link.callback(|_| Msg::OpenImageModal(api::ImageKind::Poster))} title="Change poster">
                             <span class="icon-inline"><span class="icon photo" /></span>
-                            <span class="hide-mobile">{"Poster"}</span>
+                            <span>{"Poster"}</span>
                         </button>
                     }
 
                     if movie.images.iter().any(|i| matches!(i.kind, api::ImageKind::Backdrop)) {
                         <button class="btn" onclick={link.callback(|_| Msg::OpenImageModal(api::ImageKind::Backdrop))} title="Change backdrop">
                             <span class="icon-inline"><span class="icon photo" /></span>
-                            <span class="hide-mobile">{"Backdrop"}</span>
+                            <span>{"Backdrop"}</span>
                         </button>
                     }
 
                     if let Some(ts) = movie.last_synced_at {
-                        <span class="text-muted hide-mobile" title="Last synced at">
-                            {ts.display(self.tz.clone())}
-                        </span>
+                        <div class="input-group">
+                            <div class="input-label">{"Sync"}</div>
+                            <div class="input-text fill" title="Last synced at">
+                                <span>{ts.display(self.tz.clone())}</span>
+                            </div>
+                        </div>
                     }
                 </div>
 
-                <div class="row end">
+                <div class="desktop-row mobile-column end desktop-input-group">
                     if movie.tracked {
                         <button class="btn" onclick={link.callback(|_| Msg::SetTracked(false))} title="Untrack movie">
                             <span class="icon-inline"><span class="icon eye-slash" /></span>
-                            <span class="hide-mobile">{"Untrack"}</span>
+                            <span class="hide-desktop">{"Untrack"}</span>
                         </button>
                     } else {
                         <button class="btn" onclick={link.callback(|_| Msg::SetTracked(true))} title="Track movie">
                             <span class="icon-inline"><span class="icon eye" /></span>
-                            <span class="hide-mobile">{"Track"}</span>
+                            <span class="hide-desktop">{"Track"}</span>
                         </button>
                     }
 
                     if !movie.remotes.is_empty() {
                         <button class="btn" onclick={link.callback(|_| Msg::SyncMovie)} title="Sync from remote">
                             <span class="icon-inline"><span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} /></span>
-                            <span class="hide-mobile">{"Sync"}</span>
+                            <span class="hide-desktop">{"Sync"}</span>
                         </button>
                     }
 
@@ -722,22 +719,22 @@ impl MovieDetail {
                     } else {
                         <button class="btn btn-danger" onclick={link.callback(|_| Msg::ConfirmRemove)} title="Remove movie">
                             <span class="icon-inline"><span class="icon trash" /></span>
-                            <span class="hide-mobile">{"Remove"}</span>
+                            <span class="hide-desktop">{"Remove"}</span>
                         </button>
                     }
                 </div>
             </div>
 
             <div class="detail-layout">
-                <div class="detail-sidebar section">
+                <div class="detail-sidebar">
                     if let Some(poster) = movie.selected_image(api::ImageKind::Poster) {
                         <img class="poster hide-mobile" src={poster.proxy_url()} />
                     }
                 </div>
 
-                <div class="detail-content section">
+                <div class="detail-content">
                     if let Some(date) = movie.release_date {
-                        <div class="section text-muted">{date.display(self.tz.clone())}</div>
+                        <div class="text-muted">{date.display(self.tz.clone())}</div>
                     }
 
                     if let Some(ref overview) = movie.overview {
@@ -747,7 +744,7 @@ impl MovieDetail {
                     {actions}
 
                     if !self.watched.is_empty() {
-                        <div class="section">
+                        <div class="column">
                             <h4>{"Watch history"}</h4>
 
                             <div class="table">

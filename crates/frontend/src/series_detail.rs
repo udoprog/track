@@ -22,6 +22,7 @@ pub(super) struct SeriesDetail {
     confirm_remove: bool,
     syncing: bool,
     actions_expanded: bool,
+    episode_actions_expanded: HashSet<api::EpisodeId>,
     confirm_remove_watch: Option<api::WatchedId>,
     confirming_mark_watch: Option<api::EpisodeId>,
     select_mark_remaining: bool,
@@ -102,7 +103,6 @@ pub(super) enum Msg {
     ),
     OpenImageModal(api::ImageKind),
     CloseImageModal,
-    Back,
     SetTz(TimeZone),
     FixWatched(api::WatchedId),
     CancelFixWatched,
@@ -110,6 +110,7 @@ pub(super) enum Msg {
     MoveWatchedDone(Result<ws::Packet<api::MoveWatchedEpisode>, ws::Error>),
     OrphanedLoaded(Result<ws::Packet<api::ListOrphanedWatched>, ws::Error>),
     ToggleActionsExpanded,
+    ToggleEpisodeActionsExpanded(api::EpisodeId),
 }
 
 #[derive(Properties, PartialEq)]
@@ -148,6 +149,7 @@ impl Component for SeriesDetail {
             confirm_remove: false,
             syncing: false,
             actions_expanded: false,
+            episode_actions_expanded: HashSet::new(),
             confirm_remove_watch: None,
             confirming_mark_watch: None,
             select_mark_remaining: false,
@@ -215,7 +217,7 @@ impl Component for SeriesDetail {
         html! {
             <div class="page-container" {style}>
                 <div class="page">
-                    { self.view_header(ctx) }
+                    { self.view_header() }
 
                     <div class="hide-desktop row">
                         <span class="fill" />
@@ -264,7 +266,7 @@ impl Component for SeriesDetail {
                             }
                         </div>
 
-                        <div class="desktop-row mobile-column end">
+                        <div class="desktop-row mobile-column end desktop-input-group">
                             if series.tracked {
                                 <button class="btn" onclick={link.callback(|_| Msg::SetTracked(false))} title="Untrack series">
                                     <span class="icon-inline"><span class="icon eye-slash" /></span>
@@ -835,12 +837,6 @@ impl SeriesDetail {
                 self.image_modal = None;
                 Ok(true)
             }
-            Msg::Back => {
-                ctx.props()
-                    .on_navigate
-                    .emit(Route::Series(PagedQuery::default()));
-                Ok(false)
-            }
             Msg::SetTz(tz) => {
                 self.tz = tz;
                 Ok(true)
@@ -889,6 +885,13 @@ impl SeriesDetail {
             }
             Msg::ToggleActionsExpanded => {
                 self.actions_expanded = !self.actions_expanded;
+                Ok(true)
+            }
+            Msg::ToggleEpisodeActionsExpanded(episode_id) => {
+                if !self.episode_actions_expanded.insert(episode_id) {
+                    self.episode_actions_expanded.remove(&episode_id);
+                }
+
                 Ok(true)
             }
         }
@@ -950,15 +953,9 @@ impl SeriesDetail {
             .send();
     }
 
-    fn view_header(&self, ctx: &Context<Self>) -> Html {
-        let link = ctx.link();
-
+    fn view_header(&self) -> Html {
         html! {
             <div class="row page-title">
-                <button class="btn" onclick={link.callback(|_| Msg::Back)}>
-                    <span class="icon-inline"><span class="icon arrow-left" /></span>
-                    {"Series"}
-                </button>
                 if let Some(ref s) = self.series {
                     if let Some(ref title) = s.title {
                         <span class="fill">{title}</span>
@@ -966,16 +963,21 @@ impl SeriesDetail {
                         <span class="fill text-muted">{"Untitled Series"}</span>
                     }
 
-                    { for s.remotes.iter().filter_map(|r| {
-                        let url = r.series_url()?;
-                        let label = r.source().as_str().to_uppercase();
-                        Some(html! {
-                            <a class="btn" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
-                                <span class="icon-inline"><span class="icon arrow-top-right-on-square" /></span>
-                                <span class="hide-mobile">{label}</span>
-                            </a>
-                        })
-                    }) }
+                    <div class="row mobile-input-group">
+                        {
+                            for s.remotes.iter().filter_map(|r| {
+                                let url = r.series_url()?;
+                                let label = r.source().as_str().to_uppercase();
+
+                                Some(html! {
+                                    <a class="btn" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
+                                        <span class="icon-inline"><span class="icon arrow-top-right-on-square" /></span>
+                                        <span class="hide-mobile">{label}</span>
+                                    </a>
+                                })
+                            })
+                        }
+                    </div>
                 } else {
                     <span class="fill" />
                 }
@@ -985,7 +987,7 @@ impl SeriesDetail {
 
     fn view_sidebar(&self, ctx: &Context<Self>, series: &api::Series) -> Html {
         html! {
-            <div class="detail-sidebar section">
+            <div class="detail-sidebar">
                 if let Some(poster) = series.selected_image(api::ImageKind::Poster) {
                     <img class="poster hide-mobile" src={poster.proxy_url()} />
                 }
@@ -1043,7 +1045,7 @@ impl SeriesDetail {
         };
 
         html! {
-            <div class={classes!("table-entry", "row", "clickable", active.then_some("active"))} {onclick}>
+            <div class={classes!("table-entry", "row", "clickable", active.then_some("active"), (!active).then_some("hide-mobile"))} {onclick}>
                 <span class="fill">{label}</span>
 
                 if let Some(ts) = season.air_date {
@@ -1068,7 +1070,7 @@ impl SeriesDetail {
         let total = self.episodes.len();
 
         html! {
-            <div class="detail-content section">
+            <div class="detail-content">
                 if let Some(season) = self.selected {
                     <div class="row-fill actions">
                         if self.select_mark_remaining {
@@ -1104,11 +1106,11 @@ impl SeriesDetail {
         }
     }
 
-    fn view_episode(&self, ctx: &Context<Self>, ep: &api::Episode) -> Html {
+    fn view_episode(&self, ctx: &Context<Self>, episode: &api::Episode) -> Html {
         let link = ctx.link();
 
         let series_id = ctx.props().series_id;
-        let episode_id = ep.id;
+        let episode_id = episode.id;
 
         let watched = self
             .watched
@@ -1116,17 +1118,32 @@ impl SeriesDetail {
             .map(Vec::as_slice)
             .unwrap_or_default();
 
-        let expanded = self.expanded.contains(&episode_id);
+        let history_expanded = self.expanded.contains(&episode_id);
         let confirming_mark = self.confirming_mark_watch == Some(episode_id);
         let on_ask_mark = link.callback(move |_| Msg::AskMarkWatched(episode_id));
-        let on_remove_confirm = watched.last().map(|w| {
-            let id = w.id;
-            link.callback(move |_| Msg::ConfirmRemoveWatch(id))
-        });
         let on_toggle_history =
             (!watched.is_empty()).then(|| link.callback(move |_| Msg::ToggleHistory(episode_id)));
-        let on_add_pending = link.callback(move |_| Msg::AddPending(episode_id));
-        let on_remove_pending = link.callback(move |_| Msg::RemovePending(episode_id));
+
+        let actions_expanded = self.episode_actions_expanded.contains(&episode_id);
+
+        let toggle_pending = move |mobile: bool| {
+            let on_remove_pending = link.callback(move |_| Msg::RemovePending(episode_id));
+            let on_add_pending = link.callback(move |_| Msg::AddPending(episode_id));
+
+            html! {
+                if episode.pending {
+                    <button class="btn" onclick={on_remove_pending} title="Remove from watch next">
+                        <span class="icon bookmark-slash" />
+                        <span class={classes!(mobile.then_some("hide-mobile"), "hide-desktop")}>{"Remove watch next"}</span>
+                    </button>
+                } else {
+                    <button class="btn" onclick={on_add_pending} title="Watch next">
+                        <span class="icon bookmark" />
+                        <span class={classes!(mobile.then_some("hide-mobile"), "hide-desktop")}>{"Watch next"}</span>
+                    </button>
+                }
+            }
+        };
 
         let actions = 'actions: {
             if confirming_mark {
@@ -1139,73 +1156,85 @@ impl SeriesDetail {
             }
 
             html! {
-                <div class="actions row-fill">
-                    <div class="row">
-                        <span class="episode-code">
-                            { format!("S{:02}E{:02}", ep.season.to_u32(), ep.number) }
-                        </span>
+                <div class="actions desktop-row-fill mobile-column align-top">
+                    <div class="desktop-row mobile-column">
+                        <div class="row">
+                            <div class="column fill">
+                                <div class="row">
+                                    if self.watched.len() > 0 {
+                                        <span class="icon-inline" title="Watched"><span class="icon check-circle" /></span>
+                                    } else {
+                                        <span class="icon-inline" title="Not watched"><span class="icon x-circle" /></span>
+                                    }
 
-                        <span class="fill">
-                            { ep.name.as_deref().unwrap_or("—") }
-                        </span>
+                                    <span class="text-muted fill">
+                                        {match watched.len() {
+                                            0 => "Not watched".to_string(),
+                                            1 => "Watched once".to_string(),
+                                            _ => format!("Watched {} times", watched.len()),
+                                        }}
+                                    </span>
+                                </div>
+
+                                <span class="episode-code">
+                                    { format!("{}E{:02}", episode.season.short(), episode.number) }
+                                </span>
+
+                                <span class="fill">
+                                    { episode.name.as_deref().unwrap_or("—") }
+                                </span>
+
+                                if let Some(s) = episode.display_at(self.tz.clone()) {
+                                    <span class="text-muted">{s}</span>
+                                }
+                            </div>
+
+                            <div class="hide-desktop row top">
+                                <div class="input-group">
+                                    {toggle_pending(true)}
+
+                                    <button class="btn" onclick={link.callback(move |_| Msg::ToggleEpisodeActionsExpanded(episode_id))}>
+                                        <span class="icon-inline"><span class={classes!("icon", if actions_expanded { "ellipsis-horizontal" } else { "bars-3" })} /></span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
-                    <div class="row end">
-                        if let Some(s) = ep.display_at(self.tz.clone()) {
-                            <span class="text-muted">{s}</span>
-                        }
-
-                        if !watched.is_empty() {
+                    <div class={classes!("desktop-row", "mobile-column", "end", (!actions_expanded).then_some("hide-mobile"))}>
+                        <div class="desktop-row mobile-column desktop-input-group">
                             if let Some(on_toggle) = on_toggle_history {
-                                <button class="btn-icon" onclick={on_toggle} title={if expanded { "Hide watch history" } else { "Show watch history" }}>
-                                    <span class={if expanded { "icon chevron-up" } else { "icon clock" }} />
+                                <button class="btn" onclick={on_toggle} title={if history_expanded { "Hide watch history" } else { "Show watch history" }}>
+                                    <span class={if history_expanded { "icon chevron-up" } else { "icon clock" }} />
+                                    <span class="hide-desktop">{if history_expanded { "History" } else { "Show history" }}</span>
                                 </button>
                             }
 
-                            <button class="btn-icon-success" onclick={on_ask_mark.clone()} title="Watch again">
+                            <button class="btn-success" onclick={on_ask_mark.clone()} title="Mark watched">
                                 <span class="icon check" />
+                                <span class="hide-desktop">{"Mark watched"}</span>
                             </button>
 
-                            if let Some(on_remove) = on_remove_confirm {
-                                <button class="btn-icon" onclick={on_remove} title="Remove last watch">
-                                    <span class="icon check-circle" />
-                                </button>
-                            } else {
-                                <span class="icon-inline" title="Watched"><span class="icon check-circle" /></span>
-                            }
-                        } else {
-                            <button class="btn-icon-success" onclick={on_ask_mark} title="Mark watched">
-                                <span class="icon check" />
-                            </button>
-                        }
-
-                        if ep.pending {
-                            <button class="btn-icon" onclick={on_remove_pending} title="Remove from watch next">
-                                <span class="icon bookmark-slash" />
-                            </button>
-                        } else {
-                            <button class="btn-icon" onclick={on_add_pending} title="Watch next">
-                                <span class="icon bookmark" />
-                            </button>
-                        }
+                            {toggle_pending(false)}
+                        </div>
                     </div>
                 </div>
             }
         };
 
         html! {
-            <div class={classes!("section", (!watched.is_empty()).then_some("watched"))}>
+            <div class={classes!("column", (!watched.is_empty()).then_some("watched"))}>
                 {actions}
 
-                if let Some(ref overview) = ep.overview {
+                if let Some(ref overview) = episode.overview {
                     <p class="overview">{overview}</p>
                 }
 
-                if let Some(ref img) = ep.filename {
+                if let Some(ref img) = episode.filename {
                     <img src={img.proxy_url()} />
                 }
 
-                if expanded {
+                if history_expanded {
                     <div class="table">
                         { for watched.iter().map(|w| {
                             let wid = w.id;

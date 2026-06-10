@@ -11,7 +11,7 @@ $bg-surface: #333;;
 $bg-item: #2e2e2e;
 $text-primary: #eee;
 $text-muted: #aaa;
-$border-subtle: #444;
+$border-subtle: #333;
 $border-input: #555;
 $color-primary: #46a;
 $color-secondary: #555;
@@ -30,6 +30,7 @@ $padding: 4px;
 $padding-sm: 6px;
 $padding-row: 8px;
 $padding-row-sm: 4px;
+$gap-xs: 8px;
 $gap-sm: 12px;
 $gap: 16px;
 $input-height: 32px;
@@ -130,6 +131,10 @@ body {
     &.center {
         justify-content: center;
     }
+
+    &.align-top {
+        align-items: start;
+    }
 }
 
 .row {
@@ -180,6 +185,10 @@ body {
 
     .end {
         margin-left: auto;
+    }
+
+    &.align-top {
+        align-items: start;
     }
 }
 
@@ -567,6 +576,7 @@ body {
     display: flex;
     flex: 1;
     overflow: hidden;
+    gap: $gap;
 
     @include g.until-mobile {
         flex-direction: column;
@@ -574,31 +584,23 @@ body {
 }
 
 .detail-sidebar {
-    width: $sidebar-width;
+    display: flex;
+    flex-direction: column;
+    gap: $gap;
     overflow-y: auto;
 
-    @include g.until-mobile {
-        width: 100%;
-        border-right: none;
-        border-bottom: 1px solid $border-subtle;
-        max-height: 160px;
+    @include g.from-desktop {
+        width: $sidebar-width;
+        height: 100%;
     }
 }
 
 .detail-content {
+    display: flex;
+    flex-direction: column;
+    gap: $gap;
     flex: 1;
     overflow-y: auto;
-    padding: 0 $gap;
-
-    @include g.until-mobile {
-        padding: 0;
-    }
-}
-
-.actions {
-    border-bottom: 1px solid $border-subtle;
-    padding-bottom: $padding-row;
-    padding-top: $padding-row;
 }
 
 .overview {
@@ -609,7 +611,7 @@ body {
 
 .episode-code {
     font-family: $monospace-font;
-    font-size: $font-xs;
+    font-size: $font-lg;
     color: $text-muted;
 }
 
@@ -683,7 +685,7 @@ body {
     z-index: 1;
 }
 
-.input-group {
+@mixin input-group-base {
     display: inline-flex !important;
     gap: 0 !important;
 
@@ -708,8 +710,27 @@ body {
     }
 }
 
+.input-group {
+    @include input-group-base;
+}
+
+@include g.from-desktop {
+    .desktop-input-group {
+        @include input-group-base;
+    }
+}
+
+@include g.until-mobile {
+    .mobile-input-group {
+        @include input-group-base;
+    }
+}
+
 .table {
+    display: flex;
+    flex-direction: column;
     font-size: $font-sm;
+    gap: $gap-xs;
 
     &:not(.table-striped) >.table-entry {
         background: $bg-panel;
@@ -723,10 +744,7 @@ body {
     padding: $gap-sm;
     border-style: solid;
     border-color: $border-subtle;
-    border-width: 0;
-    border-bottom-width: 1px;
-    border-left-width: 1px;
-    border-right-width: 1px;
+    border-width: 1px;
 
     &.row {
         flex-direction: row;
@@ -735,10 +753,6 @@ body {
 
     .row-fill {
         flex-direction: row;
-    }
-
-    &:first-child {
-        border-top-width: 1px;
     }
 
     &.clickable:hover {

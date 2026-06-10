@@ -758,6 +758,13 @@ pub enum SeasonNumber {
 }
 
 impl SeasonNumber {
+    pub fn short(&self) -> impl fmt::Display + '_ {
+        fmt::from_fn(|f| match self {
+            SeasonNumber::Specials => write!(f, "Sp"),
+            SeasonNumber::Number(n) => write!(f, "S{n}"),
+        })
+    }
+
     pub fn to_u32(self) -> u32 {
         match self {
             SeasonNumber::Specials => 0,
@@ -775,13 +782,6 @@ impl SeasonNumber {
 
     pub fn is_special(&self) -> bool {
         matches!(self, SeasonNumber::Specials)
-    }
-
-    pub fn short(&self) -> String {
-        match self {
-            SeasonNumber::Specials => "S".to_string(),
-            SeasonNumber::Number(n) => n.to_string(),
-        }
     }
 }
 
