@@ -187,19 +187,16 @@ impl Route {
             Some("queue") => Route::Queue,
             Some("watch-next") => Route::WatchNext,
             Some("series") => match parts.next() {
-                Some(id) => u64::from_str_radix(id, 16)
-                    .map(|n| {
-                        Route::SeriesDetail(
-                            api::SeriesId::new(n),
-                            SeriesDetailQuery::from_search(search),
-                        )
-                    })
+                Some(id) => id
+                    .parse()
+                    .map(|id| Route::SeriesDetail(id, SeriesDetailQuery::from_search(search)))
                     .unwrap_or(Route::Series(PagedQuery::default())),
                 None => Route::Series(PagedQuery::from_search(search)),
             },
             Some("movies") => match parts.next() {
-                Some(id) => u64::from_str_radix(id, 16)
-                    .map(|n| Route::MovieDetail(api::MovieId::new(n)))
+                Some(id) => id
+                    .parse()
+                    .map(|id| Route::MovieDetail(id))
                     .unwrap_or(Route::Movies(PagedQuery::default())),
                 None => Route::Movies(PagedQuery::from_search(search)),
             },

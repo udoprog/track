@@ -329,12 +329,7 @@ impl WsHandler {
                 let now = api::Timestamp::now();
                 let watched = self
                     .db
-                    .mark_watched(
-                        api::WatchedId::random(),
-                        req.kind,
-                        req.mark_time,
-                        now,
-                    )
+                    .mark_watched(api::WatchedId::random(), req.kind, req.mark_time, now)
                     .await?;
 
                 if let api::WatchedKind::Episode { series, episode } = req.kind {

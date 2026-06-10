@@ -1127,7 +1127,7 @@ impl SeriesDetail {
 
             html! {
                 <div class="actions row-fill">
-                    <div class="row fill">
+                    <div class="row">
                         <span class="episode-code">
                             { format!("S{:02}E{:02}", ep.season.to_u32(), ep.number) }
                         </span>
@@ -1144,8 +1144,7 @@ impl SeriesDetail {
 
                         if !watched.is_empty() {
                             if let Some(on_toggle) = on_toggle_history {
-                                <button class="btn-icon" onclick={on_toggle}
-                                    title={if expanded { "Hide watch history" } else { "Show watch history" }}>
+                                <button class="btn-icon" onclick={on_toggle} title={if expanded { "Hide watch history" } else { "Show watch history" }}>
                                     <span class={if expanded { "icon chevron-up" } else { "icon clock" }} />
                                 </button>
                             }
@@ -1189,11 +1188,11 @@ impl SeriesDetail {
                     <p class="overview">{overview}</p>
                 }
 
-                if expanded {
-                    if let Some(ref img) = ep.filename {
-                        <img src={img.proxy_url()} />
-                    }
+                if let Some(ref img) = ep.filename {
+                    <img src={img.proxy_url()} />
+                }
 
+                if expanded {
                     <div class="table">
                         { for watched.iter().map(|w| {
                             let wid = w.id;

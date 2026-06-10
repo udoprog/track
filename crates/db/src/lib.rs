@@ -8,8 +8,8 @@ use std::collections::HashMap;
 
 use api::{
     Config, Date, EpisodeId, Image, ImageId, ImageKind, ImageSource, MarkTime, MovieId,
-    MovieReleaseId, PendingId, ReleaseType, RemoteId, SeasonId, SeasonNumber, SeriesId,
-    SyncSource, ThemeType, Timestamp, WatchedId, WatchedKind,
+    MovieReleaseId, PendingId, ReleaseType, RemoteId, SeasonId, SeasonNumber, SeriesId, SyncSource,
+    ThemeType, Timestamp, WatchedId, WatchedKind,
 };
 use rust_embed::RustEmbed;
 use sqll::{OpenOptions, Row, SendStatement};
@@ -1099,8 +1099,13 @@ impl Database {
 
             for r in unwatched {
                 let timestamp = s.episode_mark_time(r.id, mark_time, now)?;
-                s.insert_watched_episode
-                    .bind((WatchedId::random(), timestamp, r.series_id, r.season, r.number))?;
+                s.insert_watched_episode.bind((
+                    WatchedId::random(),
+                    timestamp,
+                    r.series_id,
+                    r.season,
+                    r.number,
+                ))?;
                 ensure!(
                     s.insert_watched_episode.step()?.is_done(),
                     "mark_watched_remaining/insert_watched_episode"
@@ -1492,8 +1497,14 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.insert_series_image
-                .bind((ImageId::random(), series_id, kind, source, &path[..], selected))?;
+            s.insert_series_image.bind((
+                ImageId::random(),
+                series_id,
+                kind,
+                source,
+                &path[..],
+                selected,
+            ))?;
             ensure!(
                 s.insert_series_image.step()?.is_done(),
                 "insert_series_image"
@@ -1516,8 +1527,14 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.insert_movie_image
-                .bind((ImageId::random(), movie_id, kind, source, &path[..], selected))?;
+            s.insert_movie_image.bind((
+                ImageId::random(),
+                movie_id,
+                kind,
+                source,
+                &path[..],
+                selected,
+            ))?;
             ensure!(s.insert_movie_image.step()?.is_done(), "insert_movie_image");
             Ok(())
         });
@@ -1681,8 +1698,13 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.insert_watched_episode
-                .bind((id, timestamp, series_id, season.to_u32(), episode as i64))?;
+            s.insert_watched_episode.bind((
+                id,
+                timestamp,
+                series_id,
+                season.to_u32(),
+                episode as i64,
+            ))?;
             ensure!(
                 s.insert_watched_episode.step()?.is_done(),
                 "add_watched_episode"
@@ -1722,7 +1744,8 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.move_watched_episode.bind((season.to_u32(), episode as i64, id))?;
+            s.move_watched_episode
+                .bind((season.to_u32(), episode as i64, id))?;
             ensure!(
                 s.move_watched_episode.step()?.is_done(),
                 "move_watched_episode"
@@ -1840,7 +1863,7 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.upsert_pending_episode
-                .bind((PendingId::random(),ts, series_id, episode_id))?;
+                .bind((PendingId::random(), ts, series_id, episode_id))?;
             ensure!(
                 s.upsert_pending_episode.step()?.is_done(),
                 "upsert_pending_episode"
@@ -1855,7 +1878,8 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.upsert_pending_movie.bind((PendingId::random(), ts, movie_id))?;
+            s.upsert_pending_movie
+                .bind((PendingId::random(), ts, movie_id))?;
             ensure!(
                 s.upsert_pending_movie.step()?.is_done(),
                 "upsert_pending_movie"
@@ -1899,7 +1923,8 @@ impl Database {
             match next_id {
                 Some(next) => {
                     let ts = Timestamp::now();
-                    s.upsert_pending_episode.bind((PendingId::random(),ts, series_id, next))?;
+                    s.upsert_pending_episode
+                        .bind((PendingId::random(), ts, series_id, next))?;
                     ensure!(
                         s.upsert_pending_episode.step()?.is_done(),
                         "upsert_pending_episode"
@@ -1961,7 +1986,7 @@ impl Database {
             let now = row.aired.unwrap_or(now).max(now);
 
             s.upsert_pending_episode
-                .bind((PendingId::random(),now, series_id, row.id))?;
+                .bind((PendingId::random(), now, series_id, row.id))?;
             ensure!(
                 s.upsert_pending_episode.step()?.is_done(),
                 "upsert_pending_episode"
@@ -2003,7 +2028,7 @@ impl Database {
             let now = aired.unwrap_or(now).max(now);
 
             s.upsert_pending_episode
-                .bind((PendingId::random(),now, series_id, next_id))?;
+                .bind((PendingId::random(), now, series_id, next_id))?;
             ensure!(
                 s.upsert_pending_episode.step()?.is_done(),
                 "upsert_pending_episode"
@@ -2105,8 +2130,13 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.upsert_movie_release
-                .bind((MovieReleaseId::random(), movie_id, country.as_str(), release_type, timestamp))?;
+            s.upsert_movie_release.bind((
+                MovieReleaseId::random(),
+                movie_id,
+                country.as_str(),
+                release_type,
+                timestamp,
+            ))?;
             ensure!(
                 s.upsert_movie_release.step()?.is_done(),
                 "upsert_movie_release"

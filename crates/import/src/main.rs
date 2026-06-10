@@ -519,9 +519,7 @@ async fn main() -> Result<()> {
                     remote_id(ep.remote_id.as_ref()).as_ref(),
                 )
                 .await
-                .with_context(|| {
-                    format!("inserting episode {} for series {}", ep.number, s.id)
-                })?;
+                .with_context(|| format!("inserting episode {} for series {}", ep.number, s.id))?;
             }
         }
 
@@ -605,7 +603,11 @@ async fn main() -> Result<()> {
                 .await
                 .with_context(|| format!("inserting watched episode {place}"))?;
             }
-            YamlWatched::Movie { id, timestamp, movie } => {
+            YamlWatched::Movie {
+                id,
+                timestamp,
+                movie,
+            } => {
                 let timestamp =
                     chrono_to_timestamp(timestamp).context("parsing watched timestamp")?;
 
