@@ -75,20 +75,20 @@ WHERE
 
 CREATE TABLE
     watched_episodes (
-        id        INTEGER PRIMARY KEY,
+        id INTEGER PRIMARY KEY,
         timestamp INTEGER NOT NULL,
         series_id INTEGER,
-        season    INTEGER NOT NULL,
-        episode   INTEGER NOT NULL
+        season INTEGER NOT NULL,
+        episode INTEGER NOT NULL
     );
 
 CREATE INDEX idx_watched_episodes_series ON watched_episodes (series_id);
 
 CREATE TABLE
     watched_movies (
-        id        INTEGER PRIMARY KEY,
+        id INTEGER PRIMARY KEY,
         timestamp INTEGER NOT NULL,
-        movie_id  INTEGER
+        movie_id INTEGER
     );
 
 CREATE INDEX idx_watched_movies_movie ON watched_movies (movie_id);
@@ -101,7 +101,10 @@ CREATE TABLE
         episode_id INTEGER REFERENCES episodes (id) ON DELETE CASCADE,
         movie_id INTEGER REFERENCES movies (id) ON DELETE CASCADE,
         CHECK (
-            (series_id IS NOT NULL AND episode_id IS NOT NULL)
+            (
+                series_id IS NOT NULL
+                AND episode_id IS NOT NULL
+            )
             OR (movie_id IS NOT NULL)
         )
     );
@@ -144,15 +147,15 @@ WHERE
 CREATE TABLE
     series_images (
         series_id INTEGER NOT NULL REFERENCES series (id) ON DELETE CASCADE,
-        kind      INTEGER NOT NULL,
-        image_id  INTEGER NOT NULL REFERENCES images (id) ON DELETE CASCADE,
+        kind INTEGER NOT NULL,
+        image_id INTEGER NOT NULL REFERENCES images (id) ON DELETE CASCADE,
         PRIMARY KEY (series_id, kind)
     );
 
 CREATE TABLE
     movie_images (
         movie_id INTEGER NOT NULL REFERENCES movies (id) ON DELETE CASCADE,
-        kind     INTEGER NOT NULL,
+        kind INTEGER NOT NULL,
         image_id INTEGER NOT NULL REFERENCES images (id) ON DELETE CASCADE,
         PRIMARY KEY (movie_id, kind)
     );
@@ -161,7 +164,7 @@ CREATE TABLE
     remotes (
         remote_id TEXT NOT NULL,
         series_id INTEGER,
-        movie_id  INTEGER,
+        movie_id INTEGER,
         CHECK (
             (series_id IS NOT NULL)
             OR (movie_id IS NOT NULL)

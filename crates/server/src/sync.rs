@@ -92,12 +92,16 @@ async fn sync_series_tmdb(
 
     db.clear_series_images(series_id, ImageKind::Poster, ImageSource::Tmdb)
         .await?;
+
     let mut selected_poster_id = None;
+
     for image in &info.posters {
         let id = ImageId::random();
+
         if info.selected_poster.as_ref() == Some(image) {
             selected_poster_id = Some(id);
         }
+
         db.upsert_series_image(
             id,
             series_id,
@@ -107,6 +111,7 @@ async fn sync_series_tmdb(
         )
         .await?;
     }
+
     if let Some(id) = selected_poster_id {
         db.set_series_image_selection(series_id, ImageKind::Poster, id)
             .await?;
@@ -114,12 +119,16 @@ async fn sync_series_tmdb(
 
     db.clear_series_images(series_id, ImageKind::Backdrop, ImageSource::Tmdb)
         .await?;
+
     let mut selected_backdrop_id = None;
+
     for image in &info.backdrops {
         let id = ImageId::random();
+
         if info.selected_backdrop.as_ref() == Some(image) {
             selected_backdrop_id = Some(id);
         }
+
         db.upsert_series_image(
             id,
             series_id,
@@ -129,6 +138,7 @@ async fn sync_series_tmdb(
         )
         .await?;
     }
+
     if let Some(id) = selected_backdrop_id {
         db.set_series_image_selection(series_id, ImageKind::Backdrop, id)
             .await?;
@@ -142,30 +152,27 @@ async fn sync_series_tmdb(
 
     let mut synced_seasons: Vec<SeasonNumber> = Vec::new();
 
-    for season_info in &info.seasons {
+    for info in &info.seasons {
         db.upsert_season(
             series_id,
-            season_info.number,
-            season_info.air_date,
-            season_info.name.as_deref(),
-            season_info.overview.as_deref(),
-            season_info.poster.as_ref(),
+            info.number,
+            info.air_date,
+            info.name.as_deref(),
+            info.overview.as_deref(),
+            info.poster.as_ref(),
         )
         .await?;
 
-        let season = match season_info.number {
-            SeasonNumber::Specials => 0,
-            SeasonNumber::Number(n) => n,
-        };
+        info!(tmdb_id, season = ?info.number, "fetching tmdb season episodes");
 
-        info!(tmdb_id, season, "fetching tmdb season episodes");
+        let mut fetched_numbers = HashSet::new();
 
-        let mut fetched_numbers = std::collections::HashSet::new();
         for ep in remote
-            .fetch_tmdb_season_episodes(tmdb_id, season, language)
+            .fetch_tmdb_season_episodes(tmdb_id, info.number, language)
             .await?
         {
             fetched_numbers.insert(ep.number);
+
             db.upsert_episode(
                 EpisodeId::random(),
                 series_id,
@@ -180,15 +187,16 @@ async fn sync_series_tmdb(
             )
             .await?;
         }
-        db.prune_season_episodes(series_id, season_info.number, &fetched_numbers)
+
+        db.prune_season_episodes(series_id, info.number, &fetched_numbers)
             .await?;
 
         broadcast.broadcast_event(api::AppEventKind::EpisodesChanged {
             series_id,
-            season: season_info.number,
+            season: info.number,
         });
 
-        synced_seasons.push(season_info.number);
+        synced_seasons.push(info.number);
     }
 
     db.prune_seasons(series_id, &synced_seasons).await?;
@@ -229,12 +237,16 @@ async fn sync_series_tvdb(
 
     db.clear_series_images(series_id, ImageKind::Poster, ImageSource::Tvdb)
         .await?;
+
     let mut selected_poster_id = None;
+
     for poster in &info.poster {
         let id = ImageId::random();
+
         if info.selected_poster.as_ref() == Some(poster) {
             selected_poster_id = Some(id);
         }
+
         db.upsert_series_image(
             id,
             series_id,
@@ -244,6 +256,7 @@ async fn sync_series_tvdb(
         )
         .await?;
     }
+
     if let Some(id) = selected_poster_id {
         db.set_series_image_selection(series_id, ImageKind::Poster, id)
             .await?;
@@ -251,12 +264,16 @@ async fn sync_series_tvdb(
 
     db.clear_series_images(series_id, ImageKind::Banner, ImageSource::Tvdb)
         .await?;
+
     let mut selected_banner_id = None;
+
     for banner in &info.banner {
         let id = ImageId::random();
+
         if info.selected_banner.as_ref() == Some(banner) {
             selected_banner_id = Some(id);
         }
+
         db.upsert_series_image(
             id,
             series_id,
@@ -266,6 +283,7 @@ async fn sync_series_tvdb(
         )
         .await?;
     }
+
     if let Some(id) = selected_banner_id {
         db.set_series_image_selection(series_id, ImageKind::Banner, id)
             .await?;
@@ -273,12 +291,16 @@ async fn sync_series_tvdb(
 
     db.clear_series_images(series_id, ImageKind::Fanart, ImageSource::Tvdb)
         .await?;
+
     let mut selected_fanart_id = None;
+
     for fanart in &info.fanart {
         let id = ImageId::random();
+
         if info.selected_fanart.as_ref() == Some(fanart) {
             selected_fanart_id = Some(id);
         }
+
         db.upsert_series_image(
             id,
             series_id,
@@ -288,6 +310,7 @@ async fn sync_series_tvdb(
         )
         .await?;
     }
+
     if let Some(id) = selected_fanart_id {
         db.set_series_image_selection(series_id, ImageKind::Fanart, id)
             .await?;

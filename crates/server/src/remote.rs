@@ -156,7 +156,7 @@ impl RemoteClients {
     pub(crate) async fn fetch_tmdb_season_episodes(
         &self,
         series_id: u32,
-        season: u32,
+        season: api::SeasonNumber,
         language: Option<&str>,
     ) -> Result<Vec<tmdb::EpisodeInfo>> {
         self.tmdb()

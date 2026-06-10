@@ -758,39 +758,42 @@ pub enum SeasonNumber {
 }
 
 impl SeasonNumber {
+    #[inline]
     pub fn short(&self) -> impl fmt::Display + '_ {
         fmt::from_fn(|f| match self {
-            SeasonNumber::Specials => write!(f, "Sp"),
-            SeasonNumber::Number(n) => write!(f, "S{n}"),
+            Self::Specials => write!(f, "Sp"),
+            Self::Number(n) => write!(f, "S{n:02}"),
         })
     }
 
+    #[inline]
+    pub fn long(&self) -> impl fmt::Display + '_ {
+        fmt::from_fn(|f| match self {
+            Self::Specials => write!(f, "Specials"),
+            Self::Number(n) => write!(f, "Season {n}"),
+        })
+    }
+
+    #[inline]
     pub fn to_u32(self) -> u32 {
         match self {
-            SeasonNumber::Specials => 0,
-            SeasonNumber::Number(n) => n,
+            Self::Specials => 0,
+            Self::Number(n) => n,
         }
     }
 
+    #[inline]
     pub fn from_u32(n: u32) -> Self {
         if n == 0 {
-            SeasonNumber::Specials
+            Self::Specials
         } else {
-            SeasonNumber::Number(n)
+            Self::Number(n)
         }
     }
 
+    #[inline]
     pub fn is_special(&self) -> bool {
         matches!(self, SeasonNumber::Specials)
-    }
-}
-
-impl fmt::Display for SeasonNumber {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            SeasonNumber::Specials => write!(f, "Specials"),
-            SeasonNumber::Number(n) => write!(f, "Season {n}"),
-        }
     }
 }
 

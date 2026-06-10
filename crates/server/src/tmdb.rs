@@ -292,7 +292,7 @@ impl Client {
     pub(crate) async fn fetch_season_episodes(
         &self,
         series_id: u32,
-        season_number: u32,
+        season: api::SeasonNumber,
         language: Option<&str>,
     ) -> Result<Vec<EpisodeInfo>> {
         #[derive(Debug, Deserialize)]
@@ -317,14 +317,11 @@ impl Client {
         }
 
         let resp: SeasonResponse = self
-            .get_json(format!("tv/{series_id}/season/{season_number}"), language)
+            .get_json(
+                format!("tv/{series_id}/season/{}", season.to_u32()),
+                language,
+            )
             .await?;
-
-        let season = if season_number == 0 {
-            SeasonNumber::Specials
-        } else {
-            SeasonNumber::Number(season_number)
-        };
 
         let mut updates = Vec::new();
 

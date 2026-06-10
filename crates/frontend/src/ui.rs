@@ -623,14 +623,8 @@ impl Component for EpisodePicker {
                     <select class="input-select" onchange={on_season_change}>
                         { for ctx.props().seasons.iter().map(|s| {
                             let value = s.number.to_u32().to_string();
-
-                            let label = match s.number {
-                                api::SeasonNumber::Specials => "Specials".to_string(),
-                                api::SeasonNumber::Number(n) => format!("S{n:02}"),
-                            };
-
                             let selected = self.selected_season == Some(s.number);
-                            html! { <option {value} {selected}>{label}</option> }
+                            html! { <option {value} {selected}>{s.number.long().to_string()}</option> }
                         }) }
                     </select>
 

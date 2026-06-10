@@ -552,7 +552,7 @@ statements! {
             LEFT JOIN episodes e
                 ON e.series_id = we.series_id AND e.season = we.season AND e.number = we.episode
             WHERE we.series_id = ? AND e.id IS NULL
-            ORDER BY we.timestamp DESC
+            ORDER BY we.season, we.episode, we.timestamp DESC
         "#,
         list_all_watched_movies: r#"
             SELECT id, timestamp, NULL AS episode_id, movie_id, NULL AS series_id
