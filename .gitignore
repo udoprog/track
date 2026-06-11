@@ -1,5 +1,5 @@
 /Cargo.lock
-/ontv.db*
+/*.db*
 /target/
 /dist/
 /image-cache/

@@ -438,6 +438,22 @@ h5 {
     min-width: 0;
 }
 
+image {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 1;
+
+    &.loading {
+        background-color: $bg-surface;
+    }
+
+    .icon {
+        height: $input-height-touch;
+        width: $input-height-touch;
+    }
+}
+
 .pending-poster {
     width: 100%;
     object-fit: cover;
@@ -685,14 +701,6 @@ h5 {
     p {
         margin: 0 0 $gap-sm;
     }
-}
-
-.loading {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    color: $text-muted;
 }
 
 .page-container {

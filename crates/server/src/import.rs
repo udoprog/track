@@ -177,7 +177,7 @@ struct Args {
     source: String,
 
     /// Path to the output SQLite database.
-    #[arg(long, default_value = "ontv.db")]
+    #[arg(long, default_value = "track.db")]
     db: PathBuf,
 }
 
@@ -199,18 +199,12 @@ fn dirs_home() -> Option<PathBuf> {
 
 fn image(s: Option<&String>) -> Option<api::Image> {
     let s = s?;
+
     if s.is_empty() {
         return None;
     }
-    Some(api::Image::from_raw(s.as_str()))
-}
 
-fn image_source(img: &api::Image) -> api::ImageSource {
-    match img.source() {
-        "tvdb" => api::ImageSource::Tvdb,
-        "tmdb" => api::ImageSource::Tmdb,
-        _ => api::ImageSource::Unknown,
-    }
+    Some(api::Image::from_raw(s.as_str()))
 }
 
 async fn import_series_image(
@@ -219,17 +213,9 @@ async fn import_series_image(
     kind: api::ImageKind,
     img: &api::Image,
 ) -> Result<()> {
-    let actual_id = db
-        .upsert_series_image(
-            api::ImageId::random(),
-            series_id,
-            kind,
-            image_source(img),
-            img.path(),
-        )
-        .await?;
-    db.set_series_image_selection(series_id, kind, actual_id)
-        .await?;
+    let id = api::ImageId::random();
+    db.upsert_series_image(id, series_id, kind, img).await?;
+    db.set_series_image_selection(series_id, kind, id).await?;
     Ok(())
 }
 
@@ -241,12 +227,15 @@ async fn import_series_images(
     if let Some(img) = image(g.poster.as_ref()) {
         import_series_image(db, series_id, api::ImageKind::Poster, &img).await?;
     }
+
     if let Some(img) = image(g.banner.as_ref()) {
         import_series_image(db, series_id, api::ImageKind::Banner, &img).await?;
     }
+
     if let Some(img) = image(g.fanart.as_ref()) {
         import_series_image(db, series_id, api::ImageKind::Fanart, &img).await?;
     }
+
     Ok(())
 }
 
@@ -256,17 +245,9 @@ async fn import_movie_image(
     kind: api::ImageKind,
     img: &api::Image,
 ) -> Result<()> {
-    let actual_id = db
-        .upsert_movie_image(
-            api::ImageId::random(),
-            movie_id,
-            kind,
-            image_source(img),
-            img.path(),
-        )
-        .await?;
-    db.set_movie_image_selection(movie_id, kind, actual_id)
-        .await?;
+    let id = api::ImageId::random();
+    db.upsert_movie_image(id, movie_id, kind, img).await?;
+    db.set_movie_image_selection(movie_id, kind, id).await?;
     Ok(())
 }
 
@@ -481,7 +462,6 @@ pub async fn import() -> Result<()> {
                     air_date,
                     season.name.as_deref().filter(|s| !s.trim().is_empty()),
                     season.overview.as_deref().filter(|s| !s.trim().is_empty()),
-                    image(season.graphics.poster.as_ref()).as_ref(),
                 )
                 .await
                 .with_context(|| format!("inserting season for series {}", s.id))?;
@@ -509,7 +489,6 @@ pub async fn import() -> Result<()> {
                     ep.name.as_deref().filter(|s| !s.trim().is_empty()),
                     ep.overview.as_deref().filter(|s| !s.trim().is_empty()),
                     aired,
-                    image(ep.graphics.filename.as_ref()).as_ref(),
                     remote_id(ep.remote_id.as_ref()).as_ref(),
                 )
                 .await

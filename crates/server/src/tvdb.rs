@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{Context as _, Result};
-use api::{Date, Image, RemoteId, SeasonNumber, Timestamp};
+use api::{Date, Image, ImageSource, RemoteId, SeasonNumber, Timestamp};
 use reqwest::{Method, header};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, MutexGuard};
@@ -371,7 +371,7 @@ pub(crate) struct EpisodeInfo {
     pub name: Option<String>,
     pub overview: Option<String>,
     pub aired: Option<Timestamp>,
-    pub filename: Option<Image>,
+    pub filename: Option<(ImageSource, String)>,
     pub remote_id: RemoteId,
 }
 
@@ -380,8 +380,8 @@ pub(crate) struct SearchSeriesResult {
     pub title: Option<String>,
     pub overview: Option<String>,
     pub first_air_date: Option<Date>,
-    pub poster: Option<Image>,
-    pub banner: Option<Image>,
+    pub poster: Option<(ImageSource, String)>,
+    pub banner: Option<(ImageSource, String)>,
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -390,6 +390,7 @@ fn opt_date(s: Option<&str>) -> Option<Date> {
     s.filter(|s| !s.is_empty()).and_then(|s| s.parse().ok())
 }
 
-fn opt_image(s: Option<&str>) -> Option<Image> {
-    s.filter(|s| !s.is_empty()).map(Image::tvdb)
+fn opt_image(s: Option<&str>) -> Option<(ImageSource, String)> {
+    s.filter(|s| !s.is_empty())
+        .map(|s| (ImageSource::Tvdb, s.to_string()))
 }

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
-use api::{Date, Image, ReleaseType, RemoteId, SeasonNumber, Timestamp};
+use api::{Date, Image, ImageSource, ReleaseType, RemoteId, SeasonNumber, Timestamp};
 use reqwest::{Method, RequestBuilder};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
@@ -263,22 +263,46 @@ impl Client {
         let mut posters = Vec::new();
 
         for img in images.posters {
-            posters.push(Image::tmdb(&img.file_path));
+            posters.push(Image::new_with_dims(
+                ImageSource::Tmdb,
+                &img.file_path,
+                img.width,
+                img.height,
+            ));
         }
 
-        let selected_poster = details.poster_path.as_ref().map(|path| Image::tmdb(path));
+        let selected_poster = details
+            .poster_path
+            .as_ref()
+            .map(|path| (ImageSource::Tmdb, path.clone()));
 
-        posters.extend(selected_poster.clone());
+        posters.extend(
+            selected_poster
+                .as_ref()
+                .map(|(source, path)| Image::new(*source, path)),
+        );
 
         let mut backdrops = Vec::new();
 
         for img in images.backdrops {
-            backdrops.push(Image::tmdb(&img.file_path));
+            backdrops.push(Image::new_with_dims(
+                ImageSource::Tmdb,
+                &img.file_path,
+                img.width,
+                img.height,
+            ));
         }
 
-        let selected_backdrop = details.backdrop_path.as_ref().map(|path| Image::tmdb(path));
+        let selected_backdrop = details
+            .backdrop_path
+            .as_ref()
+            .map(|path| (ImageSource::Tmdb, path.clone()));
 
-        backdrops.extend(selected_backdrop.clone());
+        backdrops.extend(
+            selected_backdrop
+                .as_ref()
+                .map(|(source, path)| Image::new(*source, path)),
+        );
 
         Ok(SeriesInfo {
             title: details.name.or(details.original_name),
@@ -498,9 +522,9 @@ pub(crate) struct SeriesInfo {
     pub overview: Option<String>,
     pub first_air_date: Option<Timestamp>,
     pub posters: Vec<Image>,
-    pub selected_poster: Option<Image>,
+    pub selected_poster: Option<(ImageSource, String)>,
     pub backdrops: Vec<Image>,
-    pub selected_backdrop: Option<Image>,
+    pub selected_backdrop: Option<(ImageSource, String)>,
     pub seasons: Vec<SeasonInfo>,
     pub remotes: Vec<RemoteId>,
 }
@@ -510,7 +534,7 @@ pub(crate) struct SeasonInfo {
     pub air_date: Option<Timestamp>,
     pub name: Option<String>,
     pub overview: Option<String>,
-    pub poster: Option<Image>,
+    pub poster: Option<(ImageSource, String)>,
 }
 
 pub(crate) struct EpisodeInfo {
@@ -519,7 +543,7 @@ pub(crate) struct EpisodeInfo {
     pub name: Option<String>,
     pub overview: Option<String>,
     pub aired: Option<Timestamp>,
-    pub filename: Option<Image>,
+    pub filename: Option<(ImageSource, String)>,
     pub remote_id: RemoteId,
 }
 
@@ -539,8 +563,8 @@ pub(crate) struct SearchSeriesResult {
     pub title: Option<String>,
     pub overview: Option<String>,
     pub first_air_date: Option<Date>,
-    pub poster: Option<Image>,
-    pub banner: Option<Image>,
+    pub poster: Option<(ImageSource, String)>,
+    pub banner: Option<(ImageSource, String)>,
 }
 
 pub(crate) struct SearchMovieResult {
@@ -548,8 +572,8 @@ pub(crate) struct SearchMovieResult {
     pub title: Option<String>,
     pub overview: Option<String>,
     pub release_date: Option<Date>,
-    pub poster: Option<Image>,
-    pub banner: Option<Image>,
+    pub poster: Option<(ImageSource, String)>,
+    pub banner: Option<(ImageSource, String)>,
 }
 
 pub(crate) struct MovieReleaseInfo {
@@ -568,14 +592,16 @@ fn parse_release_date(s: Option<&str>) -> Option<Timestamp> {
     s?.trim().parse().ok()
 }
 
-fn opt_image(s: Option<&str>) -> Option<Image> {
-    s.filter(|s| !s.is_empty()).map(Image::tmdb)
+fn opt_image(s: Option<&str>) -> Option<(ImageSource, String)> {
+    s.filter(|s| !s.is_empty())
+        .map(|s| (ImageSource::Tmdb, s.to_string()))
 }
 
 #[derive(Deserialize)]
 struct ImageResponse {
-    #[serde(default)]
     file_path: String,
+    width: u32,
+    height: u32,
 }
 
 #[derive(Deserialize)]

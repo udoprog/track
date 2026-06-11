@@ -29,21 +29,23 @@ pub(crate) async fn sync_series(
     match source {
         Some(api::SyncSource::Tmdb) => {
             let remote_id = series
-                .remote_by_source("tmdb")
+                .remote_by_source(api::SyncSource::Tmdb)
                 .context("series has no tmdb remote")?;
+
             let tmdb_id: u32 = remote_id.value().as_u32().context("invalid tmdb id")?;
 
             sync_series_tmdb(series_id, tmdb_id, language, remote, db, broadcast).await?;
         }
         Some(api::SyncSource::Tvdb) => {
             let remote_id = series
-                .remote_by_source("tvdb")
+                .remote_by_source(api::SyncSource::Tvdb)
                 .context("series has no tvdb remote")?;
+
             let tvdb_id: u32 = remote_id.value().as_u32().context("invalid tvdb id")?;
 
             sync_series_tvdb(series_id, tvdb_id, language, remote, db, broadcast).await?;
         }
-        None => anyhow::bail!("series has no syncable remote (tmdb or tvdb)"),
+        _ => anyhow::bail!("series has no syncable remote (tmdb or tvdb)"),
     }
 
     // Best-effort tvmaze enrichment for exact airtimes. Re-fetch so remotes are
@@ -96,18 +98,19 @@ async fn sync_series_tmdb(
 
     let mut selected_poster_id = None;
 
-    for image in &info.posters {
-        let actual_id = db
-            .upsert_series_image(
-                ImageId::random(),
-                series_id,
-                ImageKind::Poster,
-                ImageSource::Tmdb,
-                image.path(),
-            )
+    for img in &info.posters {
+        let id = ImageId::random();
+
+        db.upsert_series_image(id, series_id, ImageKind::Poster, img)
             .await?;
-        if info.selected_poster.as_ref() == Some(image) {
-            selected_poster_id = Some(actual_id);
+
+        if info
+            .selected_poster
+            .as_ref()
+            .map(|(source, path)| (*source, path.as_str()))
+            == Some(img.id())
+        {
+            selected_poster_id = Some(id);
         }
     }
 
@@ -121,18 +124,19 @@ async fn sync_series_tmdb(
 
     let mut selected_backdrop_id = None;
 
-    for image in &info.backdrops {
-        let actual_id = db
-            .upsert_series_image(
-                ImageId::random(),
-                series_id,
-                ImageKind::Backdrop,
-                ImageSource::Tmdb,
-                image.path(),
-            )
+    for img in &info.backdrops {
+        let id = ImageId::random();
+
+        db.upsert_series_image(id, series_id, ImageKind::Backdrop, img)
             .await?;
-        if info.selected_backdrop.as_ref() == Some(image) {
-            selected_backdrop_id = Some(actual_id);
+
+        if info
+            .selected_backdrop
+            .as_ref()
+            .map(|(source, path)| (*source, path.as_str()))
+            == Some(img.id())
+        {
+            selected_backdrop_id = Some(id);
         }
     }
 
@@ -156,7 +160,6 @@ async fn sync_series_tmdb(
             info.air_date,
             info.name.as_deref(),
             info.overview.as_deref(),
-            info.poster.as_ref(),
         )
         .await?;
 
@@ -179,7 +182,6 @@ async fn sync_series_tmdb(
                 ep.name.as_deref(),
                 ep.overview.as_deref(),
                 ep.aired,
-                ep.filename.as_ref(),
                 Some(&ep.remote_id),
             )
             .await?;
@@ -237,18 +239,14 @@ async fn sync_series_tvdb(
 
     let mut selected_poster_id = None;
 
-    for poster in &info.poster {
-        let actual_id = db
-            .upsert_series_image(
-                ImageId::random(),
-                series_id,
-                ImageKind::Poster,
-                ImageSource::Tvdb,
-                poster.path(),
-            )
+    for img in &info.poster {
+        let id = ImageId::random();
+
+        db.upsert_series_image(id, series_id, ImageKind::Poster, img)
             .await?;
-        if info.selected_poster.as_ref() == Some(poster) {
-            selected_poster_id = Some(actual_id);
+
+        if info.selected_poster.as_ref() == Some(img) {
+            selected_poster_id = Some(id);
         }
     }
 
@@ -262,18 +260,14 @@ async fn sync_series_tvdb(
 
     let mut selected_banner_id = None;
 
-    for banner in &info.banner {
-        let actual_id = db
-            .upsert_series_image(
-                ImageId::random(),
-                series_id,
-                ImageKind::Banner,
-                ImageSource::Tvdb,
-                banner.path(),
-            )
+    for img in &info.banner {
+        let id = ImageId::random();
+
+        db.upsert_series_image(id, series_id, ImageKind::Banner, img)
             .await?;
-        if info.selected_banner.as_ref() == Some(banner) {
-            selected_banner_id = Some(actual_id);
+
+        if info.selected_banner.as_ref() == Some(img) {
+            selected_banner_id = Some(id);
         }
     }
 
@@ -287,18 +281,14 @@ async fn sync_series_tvdb(
 
     let mut selected_fanart_id = None;
 
-    for fanart in &info.fanart {
-        let actual_id = db
-            .upsert_series_image(
-                ImageId::random(),
-                series_id,
-                ImageKind::Fanart,
-                ImageSource::Tvdb,
-                fanart.path(),
-            )
+    for img in &info.fanart {
+        let id = ImageId::random();
+
+        db.upsert_series_image(id, series_id, ImageKind::Fanart, img)
             .await?;
-        if info.selected_fanart.as_ref() == Some(fanart) {
-            selected_fanart_id = Some(actual_id);
+
+        if info.selected_fanart.as_ref() == Some(img) {
+            selected_fanart_id = Some(id);
         }
     }
 
@@ -346,7 +336,6 @@ async fn sync_series_tvdb(
             ep.name.as_deref(),
             ep.overview.as_deref(),
             ep.aired,
-            ep.filename.as_ref(),
             Some(&ep.remote_id),
         )
         .await?;
@@ -355,7 +344,7 @@ async fn sync_series_tvdb(
     for &season in &seasons_seen {
         let air_date = season_air_dates.get(&season).copied();
 
-        db.upsert_season(series_id, season, air_date, None, None, None)
+        db.upsert_season(series_id, season, air_date, None, None)
             .await?;
 
         if let Some(kept) = season_episode_numbers.get(&season) {
@@ -390,7 +379,7 @@ pub(crate) async fn sync_movie(
     match source {
         Some(api::SyncSource::Tmdb) => {
             let remote_id = movie
-                .remote_by_source("tmdb")
+                .remote_by_source(api::SyncSource::Tmdb)
                 .context("movie has no tmdb remote")?;
 
             let tmdb_id: u32 = remote_id.value().as_u32().context("invalid tmdb id")?;
@@ -414,21 +403,20 @@ pub(crate) async fn sync_movie(
 
             db.clear_movie_images(movie_id, ImageKind::Poster, ImageSource::Tmdb)
                 .await?;
+
             let mut selected_poster_id = None;
+
             for img in &info.posters {
-                let actual_id = db
-                    .upsert_movie_image(
-                        ImageId::random(),
-                        movie_id,
-                        ImageKind::Poster,
-                        ImageSource::Tmdb,
-                        img.path(),
-                    )
+                let id = ImageId::random();
+
+                db.upsert_movie_image(id, movie_id, ImageKind::Poster, img)
                     .await?;
+
                 if info.selected_poster.as_ref() == Some(img) {
-                    selected_poster_id = Some(actual_id);
+                    selected_poster_id = Some(id);
                 }
             }
+
             if let Some(id) = selected_poster_id {
                 db.set_movie_image_selection(movie_id, ImageKind::Poster, id)
                     .await?;
@@ -438,17 +426,13 @@ pub(crate) async fn sync_movie(
                 .await?;
             let mut selected_backdrop_id = None;
             for img in &info.backdrops {
-                let actual_id = db
-                    .upsert_movie_image(
-                        ImageId::random(),
-                        movie_id,
-                        ImageKind::Backdrop,
-                        ImageSource::Tmdb,
-                        img.path(),
-                    )
+                let id = ImageId::random();
+
+                db.upsert_movie_image(id, movie_id, ImageKind::Backdrop, img)
                     .await?;
+
                 if info.selected_backdrop.as_ref() == Some(img) {
-                    selected_backdrop_id = Some(actual_id);
+                    selected_backdrop_id = Some(id);
                 }
             }
             if let Some(id) = selected_backdrop_id {
@@ -477,10 +461,11 @@ pub(crate) async fn sync_movie(
                 .movie_by_id(movie_id)
                 .await?
                 .context("movie not found after update")?;
+
             broadcast.broadcast_event(api::AppEventKind::MovieChanged { movie: updated });
         }
         Some(api::SyncSource::Tvdb) => anyhow::bail!("unsupported movie sync source: tvdb"),
-        None => anyhow::bail!("movie has no syncable remote (tmdb)"),
+        _ => anyhow::bail!("movie has no syncable remote"),
     }
 
     crate::background::discover_pending_movies(db).await?;
@@ -499,15 +484,27 @@ async fn enrich_with_tvmaze(
     db: &Database,
     broadcast: &Broadcaster,
 ) -> Result<()> {
-    let tvmaze_id = if let Some(r) = series.remote_by_source("tvdb") {
-        let id: u32 = r.value().as_u32().context("invalid tvdb id")?;
-        info!(tvdb_id = id, "looking up tvmaze id via TVDB");
-        remote.lookup_tvmaze_by_tvdb(id).await?
-    } else if let Some(r) = series.remote_by_source("imdb") {
-        let imdb_id = r.value().as_str().context("invalid imdb id")?;
-        info!(imdb_id, "looking up tvmaze id via IMDB");
-        remote.lookup_tvmaze_by_imdb(imdb_id).await?
-    } else {
+    let tvmaze_id = 'id: {
+        if let Some(r) = series
+            .remotes
+            .iter()
+            .find(|r| *r.source() == api::RemoteSource::Tvdb)
+        {
+            let id: u32 = r.value().as_u32().context("invalid tvdb id")?;
+            info!(tvdb_id = id, "looking up tvmaze id via TVDB");
+            break 'id remote.lookup_tvmaze_by_tvdb(id).await?;
+        }
+
+        if let Some(r) = series
+            .remotes
+            .iter()
+            .find(|r| *r.source() == api::RemoteSource::Imdb)
+        {
+            let imdb_id = r.value().as_str().context("invalid imdb id")?;
+            info!(imdb_id, "looking up tvmaze id via IMDB");
+            break 'id remote.lookup_tvmaze_by_imdb(imdb_id).await?;
+        }
+
         info!(series_id = %series_id, "skipping tvmaze enrichment: no TVDB or IMDB remote");
         return Ok(());
     };

@@ -220,9 +220,11 @@ pub(super) fn RemoteSourceSelect(props: &RemoteSourceSelectProps) -> Html {
     let mut options: Vec<api::SyncSource> = Vec::new();
 
     for remote in &props.remotes {
-        let Some(source) = api::SyncSource::from_remote_source(remote.source()) else {
+        let source = api::SyncSource::from_remote_source(remote.source());
+
+        if source.is_unknown() {
             continue;
-        };
+        }
 
         if source == api::SyncSource::Tmdb
             || (matches!(props.kind, RemoteSourceKind::Series) && source == api::SyncSource::Tvdb)
@@ -251,7 +253,9 @@ pub(super) fn RemoteSourceSelect(props: &RemoteSourceSelectProps) -> Html {
 
         Callback::from(move |e: Event| {
             let input: web_sys::HtmlSelectElement = e.target_unchecked_into();
-            if let Some(source) = api::SyncSource::from_str(&input.value()) {
+            let source = api::SyncSource::from_str(&input.value());
+
+            if !source.is_unknown() {
                 cb.emit(source);
             }
         })

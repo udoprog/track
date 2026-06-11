@@ -93,6 +93,7 @@ impl RemoteClients {
     pub(crate) async fn search_series(&self, query: &str) -> Result<Vec<api::SearchSeries>> {
         let tmdb = self.tmdb();
         let tvdb = self.tvdb();
+
         let mut out = Vec::new();
 
         if let Some(client) = tmdb {
@@ -100,46 +101,62 @@ impl RemoteClients {
                 out.push(api::SearchSeries {
                     remote_id: r.remote_id,
                     title: r.title,
-                    poster: r.poster,
-                    banner: r.banner,
+                    poster: r
+                        .poster
+                        .map(|(source, path)| api::Image::new(source, &path)),
+                    banner: r
+                        .banner
+                        .map(|(source, path)| api::Image::new(source, &path)),
                     overview: r.overview,
                     first_air_date: r.first_air_date,
                     already_tracked: None,
                 });
             }
         }
+
         if let Some(client) = tvdb {
             for r in client.search_series(query).await? {
                 out.push(api::SearchSeries {
                     remote_id: r.remote_id,
                     title: r.title,
-                    poster: r.poster,
-                    banner: r.banner,
+                    poster: r
+                        .poster
+                        .map(|(source, path)| api::Image::new(source, &path)),
+                    banner: r
+                        .banner
+                        .map(|(source, path)| api::Image::new(source, &path)),
                     overview: r.overview,
                     first_air_date: r.first_air_date,
                     already_tracked: None,
                 });
             }
         }
+
         Ok(out)
     }
 
     /// Search movies (tmdb only). `already_tracked` is left as `None`.
     pub(crate) async fn search_movies(&self, query: &str) -> Result<Vec<api::SearchMovie>> {
         let mut out = Vec::new();
+
         if let Some(client) = self.tmdb() {
             for r in client.search_movies(query).await? {
                 out.push(api::SearchMovie {
                     remote_id: r.remote_id,
                     title: r.title,
-                    poster: r.poster,
-                    banner: r.banner,
+                    poster: r
+                        .poster
+                        .map(|(source, path)| api::Image::new(source, &path)),
+                    banner: r
+                        .banner
+                        .map(|(source, path)| api::Image::new(source, &path)),
                     overview: r.overview,
                     release_date: r.release_date,
                     already_tracked: None,
                 });
             }
         }
+
         Ok(out)
     }
 

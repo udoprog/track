@@ -496,6 +496,17 @@ pub enum RemoteSource {
     Other(String),
 }
 
+impl PartialEq<SyncSource> for RemoteSource {
+    #[inline]
+    fn eq(&self, other: &SyncSource) -> bool {
+        match (self, other) {
+            (RemoteSource::Tvdb, SyncSource::Tvdb) => true,
+            (RemoteSource::Tmdb, SyncSource::Tmdb) => true,
+            _ => false,
+        }
+    }
+}
+
 impl RemoteSource {
     pub fn as_str(&self) -> &str {
         match self {
@@ -673,67 +684,98 @@ impl ::sqll::BindValue for RemoteId {
 
 /// Image reference: "tvdb:/banners/abc.jpg", "tmdb:/xy.jpg".
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize)]
-#[musli(crate = musli_core, transparent)]
-#[serde(transparent)]
-pub struct Image(String);
+#[musli(crate = musli_core)]
+pub struct Image {
+    source: ImageSource,
+    path: String,
+    width: u32,
+    height: u32,
+}
 
 impl Image {
     pub fn new(source: ImageSource, path: &str) -> Self {
-        Self(format!("{source}:{path}"))
+        Self {
+            source,
+            path: path.to_owned(),
+            width: 0,
+            height: 0,
+        }
+    }
+
+    pub fn new_with_dims(source: ImageSource, path: &str, width: u32, height: u32) -> Self {
+        Self {
+            source,
+            path: path.to_owned(),
+            width,
+            height,
+        }
+    }
+
+    pub fn id(&self) -> (ImageSource, &str) {
+        (self.source, &self.path)
     }
 
     pub fn tvdb(path: &str) -> Self {
-        let path = path.trim_start_matches('/');
-        Self(format!("tvdb:{path}"))
+        Self {
+            source: ImageSource::Tvdb,
+            path: path.to_owned(),
+            width: 0,
+            height: 0,
+        }
     }
 
     pub fn tmdb(path: &str) -> Self {
-        let path = path.trim_start_matches('/');
-        Self(format!("tmdb:{path}"))
+        Self {
+            source: ImageSource::Tmdb,
+            path: path.to_owned(),
+            width: 0,
+            height: 0,
+        }
     }
 
-    pub fn from_raw(s: impl Into<String>) -> Self {
-        Self(s.into())
+    pub fn from_raw(s: impl AsRef<str>) -> Self {
+        let s = s.as_ref();
+
+        match s.split_once(':') {
+            Some((src, path)) => Self {
+                source: ImageSource::from_str(src),
+                path: path.to_owned(),
+                width: 0,
+                height: 0,
+            },
+            None => Self {
+                source: ImageSource::Unknown,
+                path: s.to_owned(),
+                width: 0,
+                height: 0,
+            },
+        }
     }
 
-    pub fn source(&self) -> &str {
-        self.0.split_once(':').map(|(s, _)| s).unwrap_or("")
+    pub fn source(&self) -> ImageSource {
+        self.source
     }
 
     pub fn path(&self) -> &str {
-        self.0.split_once(':').map(|(_, p)| p).unwrap_or("")
+        &self.path
+    }
+
+    pub fn width(&self) -> u32 {
+        self.width
+    }
+
+    pub fn height(&self) -> u32 {
+        self.height
     }
 
     pub fn proxy_url(&self) -> String {
-        format!("/api/image/{}/{}", self.source(), self.path())
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
+        format!("/api/image/{}/{}", self.source, self.path)
     }
 }
 
 impl fmt::Display for Image {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-#[cfg(feature = "sqll")]
-impl ::sqll::FromColumn<'_> for Image {
-    type Type = ::sqll::ty::Text;
-
-    #[inline]
-    fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Text) -> ::sqll::Result<Self> {
-        Ok(Image(String::from_column(stmt, index)?))
-    }
-}
-
-#[cfg(feature = "sqll")]
-impl ::sqll::BindValue for Image {
-    #[inline]
-    fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
-        self.0.as_str().bind_value(stmt, index)
+        write!(f, "{}:{}", self.source, self.path)
     }
 }
 
@@ -891,6 +933,14 @@ pub enum ImageSource {
 }
 
 impl ImageSource {
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "tvdb" => Self::Tvdb,
+            "tmdb" => Self::Tmdb,
+            _ => Self::Unknown,
+        }
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             ImageSource::Tvdb => "tvdb",
@@ -908,14 +958,14 @@ impl fmt::Display for ImageSource {
 
 #[cfg(feature = "sqll")]
 impl ::sqll::FromColumn<'_> for ImageSource {
-    type Type = ::sqll::ty::Text;
+    type Type = ::sqll::ty::Integer;
 
-    fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Text) -> ::sqll::Result<Self> {
-        let s = <str as ::sqll::FromUnsizedColumn>::from_unsized_column(stmt, index)?;
+    fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Integer) -> ::sqll::Result<Self> {
+        let s = u32::from_column(stmt, index)?;
 
         match s {
-            "tvdb" => Ok(ImageSource::Tvdb),
-            "tmdb" => Ok(ImageSource::Tmdb),
+            1 => Ok(ImageSource::Tvdb),
+            2 => Ok(ImageSource::Tmdb),
             _ => Ok(ImageSource::Unknown),
         }
     }
@@ -924,7 +974,13 @@ impl ::sqll::FromColumn<'_> for ImageSource {
 #[cfg(feature = "sqll")]
 impl ::sqll::BindValue for ImageSource {
     fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
-        self.as_str().bind_value(stmt, index)
+        let n: u32 = match self {
+            ImageSource::Unknown => 0,
+            ImageSource::Tvdb => 1,
+            ImageSource::Tmdb => 2,
+        };
+
+        n.bind_value(stmt, index)
     }
 }
 
@@ -936,29 +992,47 @@ impl ::sqll::BindValue for ImageSource {
 pub enum SyncSource {
     Tvdb,
     Tmdb,
+    Unknown,
 }
 
 impl SyncSource {
+    /// Test if the sync source is unknown.
+    pub fn is_unknown(&self) -> bool {
+        matches!(*self, Self::Unknown)
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Tvdb => "tvdb",
             Self::Tmdb => "tmdb",
+            Self::Unknown => "unknown",
         }
     }
 
-    pub fn from_remote_source(remote_source: &RemoteSource) -> Option<Self> {
+    pub fn from_remote_source(remote_source: &RemoteSource) -> Self {
         match remote_source {
-            RemoteSource::Tvdb => Some(Self::Tvdb),
-            RemoteSource::Tmdb => Some(Self::Tmdb),
-            _ => None,
+            RemoteSource::Tvdb => Self::Tvdb,
+            RemoteSource::Tmdb => Self::Tmdb,
+            _ => Self::Unknown,
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn from_str(s: &str) -> Self {
         match s {
-            "tvdb" => Some(SyncSource::Tvdb),
-            "tmdb" => Some(SyncSource::Tmdb),
-            _ => None,
+            "tvdb" => Self::Tvdb,
+            "tmdb" => Self::Tmdb,
+            _ => Self::Unknown,
+        }
+    }
+}
+
+impl PartialEq<RemoteSource> for SyncSource {
+    #[inline]
+    fn eq(&self, other: &RemoteSource) -> bool {
+        match (self, other) {
+            (SyncSource::Tvdb, RemoteSource::Tvdb) => true,
+            (SyncSource::Tmdb, RemoteSource::Tmdb) => true,
+            _ => false,
         }
     }
 }
@@ -971,20 +1045,29 @@ impl fmt::Display for SyncSource {
 
 #[cfg(feature = "sqll")]
 impl ::sqll::FromColumn<'_> for SyncSource {
-    type Type = ::sqll::ty::Text;
+    type Type = ::sqll::ty::Integer;
 
-    fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Text) -> ::sqll::Result<Self> {
-        let s = String::from_column(stmt, index)?;
+    fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Integer) -> ::sqll::Result<Self> {
+        let s = u32::from_column(stmt, index)?;
 
-        SyncSource::from_str(&s)
-            .ok_or_else(|| ::sqll::Error::custom(format!("unknown sync source: {s}")))
+        match s {
+            1 => Ok(SyncSource::Tvdb),
+            2 => Ok(SyncSource::Tmdb),
+            _ => Ok(SyncSource::Unknown),
+        }
     }
 }
 
 #[cfg(feature = "sqll")]
 impl ::sqll::BindValue for SyncSource {
     fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
-        self.as_str().bind_value(stmt, index)
+        let n: u32 = match self {
+            SyncSource::Unknown => 0,
+            SyncSource::Tvdb => 1,
+            SyncSource::Tmdb => 2,
+        };
+
+        n.bind_value(stmt, index)
     }
 }
 
@@ -1142,22 +1225,22 @@ pub struct Series {
 }
 
 impl Series {
-    pub fn remote_by_source(&self, source: &str) -> Option<&RemoteId> {
-        self.remotes.iter().find(|r| r.source().as_str() == source)
+    pub fn remote_by_source(&self, source: SyncSource) -> Option<&RemoteId> {
+        self.remotes.iter().find(|r| *r.source() == source)
     }
 
     pub fn effective_sync_source(&self) -> Option<SyncSource> {
         if let Some(source) = self.sync_source
-            && self.remote_by_source(source.as_str()).is_some()
+            && self.remote_by_source(source).is_some()
         {
             return Some(source);
         }
 
-        if self.remote_by_source("tmdb").is_some() {
+        if self.remote_by_source(SyncSource::Tmdb).is_some() {
             return Some(SyncSource::Tmdb);
         }
 
-        if self.remote_by_source("tvdb").is_some() {
+        if self.remote_by_source(SyncSource::Tvdb).is_some() {
             return Some(SyncSource::Tvdb);
         }
 
@@ -1174,7 +1257,6 @@ pub struct Season {
     pub air_date: Option<Timestamp>,
     pub name: Option<String>,
     pub overview: Option<String>,
-    pub poster: Option<Image>,
     pub watched_count: u32,
     pub total_count: u32,
 }
@@ -1190,9 +1272,9 @@ pub struct Episode {
     pub name: Option<String>,
     pub overview: Option<String>,
     pub aired: Option<Timestamp>,
-    pub filename: Option<Image>,
     pub remote_id: Option<RemoteId>,
     pub pending: bool,
+    pub screenshot: Option<Image>,
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
@@ -1226,15 +1308,26 @@ pub struct Movie {
 }
 
 impl Movie {
-    pub fn remote_by_source(&self, source: &str) -> Option<&RemoteId> {
-        self.remotes.iter().find(|r| r.source().as_str() == source)
+    pub fn remote_by_source(&self, source: SyncSource) -> Option<&RemoteId> {
+        self.remotes.iter().find(|r| *r.source() == source)
     }
 
     pub fn effective_sync_source(&self) -> Option<SyncSource> {
-        self.sync_source
-            .filter(|source| self.remote_by_source(source.as_str()).is_some())
-            .or_else(|| self.remote_by_source("tmdb").map(|_| SyncSource::Tmdb))
-            .or_else(|| self.remote_by_source("tvdb").map(|_| SyncSource::Tvdb))
+        if let Some(source) = self.sync_source
+            && self.remote_by_source(source).is_some()
+        {
+            return Some(source);
+        }
+
+        if self.remote_by_source(SyncSource::Tmdb).is_some() {
+            return Some(SyncSource::Tmdb);
+        }
+
+        if self.remote_by_source(SyncSource::Tvdb).is_some() {
+            return Some(SyncSource::Tvdb);
+        }
+
+        None
     }
 }
 

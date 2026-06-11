@@ -6,7 +6,7 @@ use api::{HasAired, TimeZone};
 use crate::error::{CustomContext, Error, Message, RcError};
 use crate::router::{DashboardQuery, Route, SeriesDetailQuery};
 use crate::ui::{ConfirmDanger, ErrorBox, MarkWatchedPicker, PaginationButtons};
-use crate::{Calendar, SetupChannel};
+use crate::{Calendar, Image, SetupChannel};
 
 pub(super) struct Dashboard {
     channel: ws::Channel,
@@ -482,11 +482,11 @@ impl Dashboard {
         html! {
             <div class="pending-item">
                 if let Some(ref poster) = p.poster {
-                    <img class="pending-poster clickable hide-mobile" src={poster.proxy_url()} onclick={on_navigate.clone()} />
+                    <Image class="pending-poster clickable hide-mobile" src={poster.clone()} onclick={on_navigate.clone()} />
                 }
 
                 if let Some(ref banner) = p.banner {
-                    <img class="pending-banner clickable hide-desktop" src={banner.proxy_url()} onclick={on_navigate.clone()} />
+                    <Image class="pending-banner clickable hide-desktop" src={banner.clone()} onclick={on_navigate.clone()} />
                 }
 
                 if p.poster.is_none() && p.banner.is_none() {

@@ -105,7 +105,6 @@ struct SeasonRow {
     air_date: Option<Timestamp>,
     name: Option<String>,
     overview: Option<String>,
-    poster: Option<Image>,
     watched_count: u32,
     total_count: u32,
 }
@@ -120,7 +119,6 @@ struct EpisodeRow {
     name: Option<String>,
     overview: Option<String>,
     aired: Option<Timestamp>,
-    filename: Option<Image>,
     remote_id: Option<RemoteId>,
     pending: bool,
 }
@@ -237,13 +235,7 @@ struct ScheduleRow {
     name: Option<String>,
     overview: Option<String>,
     aired: Option<Timestamp>,
-    filename: Option<Image>,
     remote_id: Option<RemoteId>,
-}
-
-#[derive(Row)]
-struct ConfigRow {
-    value: String,
 }
 
 // ── Statements ───────────────────────────────────────────────────────────────
@@ -343,7 +335,7 @@ statements! {
             DELETE FROM images WHERE series_id = ? AND kind = ? AND source = ?
         "#,
         insert_series_image: r#"
-            INSERT INTO images (id, series_id, kind, source, path) VALUES (?, ?, ?, ?, ?)
+            INSERT INTO images (id, series_id, kind, source, path, width, height) VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(series_id, kind, path) WHERE series_id IS NOT NULL DO NOTHING
         "#,
         list_movie_images: r#"
@@ -358,18 +350,11 @@ statements! {
             DELETE FROM images WHERE movie_id = ? AND kind = ? AND source = ?
         "#,
         insert_movie_image: r#"
-            INSERT INTO images (id, movie_id, kind, source, path) VALUES (?, ?, ?, ?, ?)
+            INSERT INTO images (id, movie_id, kind, source, path, width, height) VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(movie_id, kind, path) WHERE movie_id IS NOT NULL DO NOTHING
         "#,
         image_by_id: r#"
             SELECT kind, series_id, movie_id FROM images WHERE id = ?
-        "#,
-
-        image_id_for_series_path: r#"
-            SELECT id FROM images WHERE series_id = ? AND kind = ? AND path = ?
-        "#,
-        image_id_for_movie_path: r#"
-            SELECT id FROM images WHERE movie_id = ? AND kind = ? AND path = ?
         "#,
 
         // selection tables
@@ -406,16 +391,15 @@ statements! {
 
         // seasons
         upsert_season: r#"
-            INSERT INTO seasons (id, series_id, number, air_date, name, overview, poster)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO seasons (id, series_id, number, air_date, name, overview)
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(series_id, number) DO UPDATE SET
                 air_date  = excluded.air_date,
                 name      = excluded.name,
-                overview  = excluded.overview,
-                poster    = excluded.poster
+                overview  = excluded.overview
         "#,
         list_seasons: r#"
-            SELECT s.id, s.series_id, s.number, s.air_date, s.name, s.overview, s.poster,
+            SELECT s.id, s.series_id, s.number, s.air_date, s.name, s.overview,
                 (SELECT COUNT(DISTINCT we.episode) FROM watched_episodes we WHERE we.series_id = s.series_id AND we.season = s.number) AS watched_count,
                 (SELECT COUNT(*) FROM episodes e WHERE e.series_id = s.series_id AND e.season = s.number) AS total_count
             FROM seasons s WHERE s.series_id = ? ORDER BY s.number
@@ -431,21 +415,20 @@ statements! {
 
         // episodes
         upsert_episode: r#"
-            INSERT INTO episodes (id, series_id, season, number, absolute_number, name, overview, aired, filename, remote_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO episodes (id, series_id, season, number, absolute_number, name, overview, aired, remote_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(series_id, season, number) DO UPDATE SET
                 absolute_number = excluded.absolute_number,
                 name            = excluded.name,
                 overview        = excluded.overview,
                 aired           = excluded.aired,
-                filename        = excluded.filename,
                 remote_id       = excluded.remote_id
         "#,
         episode_natural_key: r#"
             SELECT series_id, season, number FROM episodes WHERE id = ?
         "#,
         list_episodes: r#"
-            SELECT e.id, e.series_id, e.season, e.number, e.absolute_number, e.name, e.overview, e.aired, e.filename, e.remote_id,
+            SELECT e.id, e.series_id, e.season, e.number, e.absolute_number, e.name, e.overview, e.aired, e.remote_id,
                    EXISTS(SELECT 1 FROM pending p WHERE p.episode_id = e.id) AS pending
             FROM episodes e
             WHERE e.series_id = ? AND e.season = ?
@@ -652,7 +635,7 @@ statements! {
         list_schedule: r#"
             SELECT e.series_id, s.title AS series_title,
                    e.id AS episode_id, e.season, e.number, e.absolute_number,
-                   e.name, e.overview, e.aired, e.filename, e.remote_id
+                   e.name, e.overview, e.aired, e.remote_id
             FROM episodes e
             JOIN series s ON s.id = e.series_id
             WHERE s.tracked = 1
@@ -727,6 +710,13 @@ statements! {
               AND NOT EXISTS (SELECT 1 FROM pending p WHERE p.movie_id = m.id)
             GROUP BY m.id
         "#,
+    }
+}
+
+impl Inner {
+    pub(crate) fn get_config<'this>(&'this mut self, key: &str) -> Result<Option<&'this str>> {
+        self.get_config.bind(key)?;
+        Ok(self.get_config.next::<&'this str>()?)
     }
 }
 
@@ -1069,11 +1059,9 @@ impl Database {
         air_date: Option<Timestamp>,
         name: Option<&str>,
         overview: Option<&str>,
-        poster: Option<&Image>,
     ) -> Result<()> {
         let name = name.map(str::to_owned);
         let overview = overview.map(str::to_owned);
-        let poster = poster.cloned();
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
@@ -1084,7 +1072,6 @@ impl Database {
                 air_date.as_ref(),
                 name.as_deref(),
                 overview.as_deref(),
-                poster.as_ref(),
             ))?;
             ensure!(s.upsert_season.step()?.is_done(), "upsert_season");
             Ok(())
@@ -1193,12 +1180,10 @@ impl Database {
         name: Option<&str>,
         overview: Option<&str>,
         aired: Option<Timestamp>,
-        filename: Option<&Image>,
         remote_id: Option<&RemoteId>,
     ) -> Result<()> {
         let name = name.map(str::to_owned);
         let overview = overview.map(str::to_owned);
-        let filename = filename.cloned();
         let remote_id = remote_id.cloned();
         let mut s = self.inner.clone().lock_owned().await;
 
@@ -1212,7 +1197,6 @@ impl Database {
                 name.as_deref(),
                 overview.as_deref(),
                 aired.as_ref(),
-                filename.as_ref(),
                 remote_id.as_ref(),
             ))?;
             ensure!(s.upsert_episode.step()?.is_done(), "upsert_episode");
@@ -1735,27 +1719,28 @@ impl Database {
         id: ImageId,
         series_id: SeriesId,
         kind: ImageKind,
-        source: ImageSource,
-        path: &str,
-    ) -> Result<ImageId> {
-        let path = path.to_owned();
+        image: &Image,
+    ) -> Result<()> {
+        let image = image.clone();
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.insert_series_image
-                .bind((id, series_id, kind, source, &path[..]))?;
+            s.insert_series_image.bind((
+                id,
+                series_id,
+                kind,
+                image.source(),
+                image.path(),
+                image.width(),
+                image.height(),
+            ))?;
+
             ensure!(
                 s.insert_series_image.step()?.is_done(),
                 "insert_series_image"
             );
 
-            s.image_id_for_series_path
-                .bind((series_id, kind, &path[..]))?;
-            let actual_id = s
-                .image_id_for_series_path
-                .next::<ImageId>()?
-                .context("image not found after upsert")?;
-            Ok(actual_id)
+            Ok(())
         });
 
         result.await?
@@ -1766,24 +1751,23 @@ impl Database {
         id: ImageId,
         movie_id: MovieId,
         kind: ImageKind,
-        source: ImageSource,
-        path: &str,
-    ) -> Result<ImageId> {
-        let path = path.to_owned();
+        image: &Image,
+    ) -> Result<()> {
+        let image = image.clone();
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.insert_movie_image
-                .bind((id, movie_id, kind, source, &path[..]))?;
+            s.insert_movie_image.bind((
+                id,
+                movie_id,
+                kind,
+                image.source(),
+                image.path(),
+                image.width(),
+                image.height(),
+            ))?;
             ensure!(s.insert_movie_image.step()?.is_done(), "insert_movie_image");
-
-            s.image_id_for_movie_path
-                .bind((movie_id, kind, &path[..]))?;
-            let actual_id = s
-                .image_id_for_movie_path
-                .next::<ImageId>()?
-                .context("image not found after upsert")?;
-            Ok(actual_id)
+            Ok(())
         });
 
         result.await?
@@ -2606,9 +2590,9 @@ impl Database {
                     name: r.name,
                     overview: r.overview,
                     aired: r.aired,
-                    filename: r.filename,
                     remote_id: r.remote_id,
                     pending: false,
+                    screenshot: None,
                 };
 
                 let day = day.date(tz.clone());
@@ -2649,18 +2633,6 @@ impl Database {
 
     // ── Config ──
 
-    pub(crate) async fn get_config(&self, key: &str) -> Result<Option<String>> {
-        let key = key.to_owned();
-        let mut s = self.inner.clone().lock_owned().await;
-
-        let result = spawn_blocking(move || {
-            s.get_config.bind((key.as_str(),))?;
-            Ok(s.get_config.next::<ConfigRow>()?.map(|r| r.value))
-        });
-
-        result.await?
-    }
-
     pub(crate) async fn set_config(&self, key: &str, value: &str) -> Result<()> {
         let key = key.to_owned();
         let value = value.to_owned();
@@ -2676,62 +2648,65 @@ impl Database {
     }
 
     pub(crate) async fn load_config(&self) -> Result<Config> {
-        let theme = self
-            .get_config("theme")
-            .await?
-            .and_then(|v| match v.as_str() {
-                "dark" => Some(ThemeType::Dark),
-                "light" => Some(ThemeType::Light),
-                _ => None,
+        let mut s = self.inner.clone().lock_owned().await;
+
+        let result = spawn_blocking(move || {
+            let theme = s
+                .get_config("theme")?
+                .and_then(|v| match v {
+                    "dark" => Some(ThemeType::Dark),
+                    "light" => Some(ThemeType::Light),
+                    _ => None,
+                })
+                .unwrap_or_default();
+
+            let tvdb_legacy_apikey = s
+                .get_config("tvdb_legacy_apikey")?
+                .unwrap_or_default()
+                .to_owned();
+
+            let tmdb_api_key = s.get_config("tmdb_api_key")?.unwrap_or_default().to_owned();
+
+            let dashboard_page = s
+                .get_config("dashboard_page")?
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(5);
+
+            let schedule_duration_days = s
+                .get_config("schedule_duration_days")?
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(7);
+
+            let auto_sync_enabled = s
+                .get_config("auto_sync_enabled")?
+                .map(|v| v == "true")
+                .unwrap_or(false);
+
+            let auto_sync_interval_hours = s
+                .get_config("auto_sync_interval_hours")?
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(24);
+
+            let timezone = s.get_config("timezone")?.unwrap_or_default().to_owned();
+            let language = s
+                .get_config("language")?
+                .filter(|v| !v.is_empty())
+                .map(|v| v.to_owned());
+
+            Ok(Config {
+                theme,
+                tvdb_legacy_apikey,
+                tmdb_api_key,
+                schedule_duration_days,
+                dashboard_page,
+                auto_sync_enabled,
+                auto_sync_interval_hours,
+                timezone,
+                language,
             })
-            .unwrap_or_default();
+        });
 
-        let tvdb_legacy_apikey = self
-            .get_config("tvdb_legacy_apikey")
-            .await?
-            .unwrap_or_default();
-
-        let tmdb_api_key = self.get_config("tmdb_api_key").await?.unwrap_or_default();
-
-        let dashboard_page = self
-            .get_config("dashboard_page")
-            .await?
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(5);
-
-        let schedule_duration_days = self
-            .get_config("schedule_duration_days")
-            .await?
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(7);
-
-        let auto_sync_enabled = self
-            .get_config("auto_sync_enabled")
-            .await?
-            .map(|v| v == "true")
-            .unwrap_or(false);
-
-        let auto_sync_interval_hours = self
-            .get_config("auto_sync_interval_hours")
-            .await?
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(24);
-
-        let timezone = self.get_config("timezone").await?.unwrap_or_default();
-
-        let language = self.get_config("language").await?.filter(|v| !v.is_empty());
-
-        Ok(Config {
-            theme,
-            tvdb_legacy_apikey,
-            tmdb_api_key,
-            schedule_duration_days,
-            dashboard_page,
-            auto_sync_enabled,
-            auto_sync_interval_hours,
-            timezone,
-            language,
-        })
+        result.await?
     }
 
     pub(crate) async fn save_config(&self, config: &Config) -> Result<()> {
@@ -2814,7 +2789,7 @@ fn image_from_row(r: ImageRow) -> api::MediaImage {
         id: r.id,
         kind: r.kind,
         source: r.source,
-        image: Image::from_raw(format!("{}:{}", r.source.as_str(), r.path)),
+        image: Image::new(r.source, &r.path),
     }
 }
 
@@ -2823,7 +2798,7 @@ fn series_image_from_row(r: SeriesImageRow) -> api::MediaImage {
         id: r.id,
         kind: r.kind,
         source: r.source,
-        image: Image::from_raw(format!("{}:{}", r.source.as_str(), r.path)),
+        image: Image::new(r.source, &r.path),
     }
 }
 
@@ -2832,13 +2807,14 @@ fn movie_image_from_row(r: MovieImageRow) -> api::MediaImage {
         id: r.id,
         kind: r.kind,
         source: r.source,
-        image: Image::from_raw(format!("{}:{}", r.source.as_str(), r.path)),
+        image: Image::new(r.source, &r.path),
     }
 }
 
-fn apply_image_selection(target: &mut api::Series, sel: ImageSelectionRow) {
-    let image = Image::from_raw(format!("{}:{}", sel.source.as_str(), sel.path));
-    match sel.kind {
+fn apply_image_selection(target: &mut api::Series, r: ImageSelectionRow) {
+    let image = Image::new(r.source, &r.path);
+
+    match r.kind {
         api::ImageKind::Poster => target.poster = Some(image),
         api::ImageKind::Banner => target.banner = Some(image),
         api::ImageKind::Fanart => target.fanart = Some(image),
@@ -2863,7 +2839,6 @@ fn season_from_row(r: SeasonRow) -> api::Season {
         air_date: r.air_date,
         name: r.name,
         overview: r.overview,
-        poster: r.poster,
         watched_count: r.watched_count,
         total_count: r.total_count,
     }
@@ -2879,9 +2854,9 @@ fn episode_from_row(r: EpisodeRow) -> api::Episode {
         name: r.name,
         overview: r.overview,
         aired: r.aired,
-        filename: r.filename,
         remote_id: r.remote_id,
         pending: r.pending,
+        screenshot: None,
     }
 }
 

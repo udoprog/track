@@ -1354,7 +1354,7 @@ impl SeriesDetail {
                     { format!("{}E{:02}", episode.season.short(), episode.number) }
                 </a>
 
-                if let Some(ref img) = episode.filename {
+                if let Some(ref img) = episode.screenshot {
                     <img src={img.proxy_url()} />
                 }
 

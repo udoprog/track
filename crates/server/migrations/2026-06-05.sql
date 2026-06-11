@@ -5,7 +5,7 @@ CREATE TABLE
         first_air INTEGER,
         overview TEXT,
         tracked INTEGER NOT NULL DEFAULT 1,
-        sync_source TEXT,
+        sync_source INTEGER,
         language TEXT,
         last_synced_at INTEGER
     );
@@ -18,7 +18,6 @@ CREATE TABLE
         air_date INTEGER,
         name TEXT,
         overview TEXT,
-        poster TEXT,
         UNIQUE (series_id, number)
     );
 
@@ -32,7 +31,6 @@ CREATE TABLE
         name TEXT,
         overview TEXT,
         aired INTEGER,
-        filename TEXT,
         remote_id TEXT,
         UNIQUE (series_id, season, number)
     );
@@ -48,7 +46,7 @@ CREATE TABLE
         release_date INTEGER,
         overview TEXT,
         tracked INTEGER NOT NULL DEFAULT 1,
-        sync_source TEXT,
+        sync_source INTEGER,
         language TEXT,
         last_synced_at INTEGER
     );
@@ -122,8 +120,10 @@ CREATE TABLE
     images (
         id INTEGER PRIMARY KEY,
         kind INTEGER NOT NULL,
-        source TEXT NOT NULL,
+        source INTEGER NOT NULL,
         path TEXT NOT NULL,
+        width INTEGER NOT NULL,
+        height INTEGER NOT NULL,
         series_id INTEGER REFERENCES series (id) ON DELETE CASCADE,
         movie_id INTEGER REFERENCES movies (id) ON DELETE CASCADE,
         CHECK (

@@ -134,7 +134,9 @@ impl WsHandler {
 
                 self.db.add_series_remote(series_id, &req.remote_id).await?;
 
-                if let Some(source) = api::SyncSource::from_remote_source(req.remote_id.source()) {
+                let source = api::SyncSource::from_remote_source(req.remote_id.source());
+
+                if !source.is_unknown() {
                     self.db.set_series_sync_source(series_id, source).await?;
                 }
 
@@ -246,7 +248,9 @@ impl WsHandler {
 
                 self.db.add_movie_remote(movie_id, &req.remote_id).await?;
 
-                if let Some(source) = api::SyncSource::from_remote_source(req.remote_id.source()) {
+                let source = api::SyncSource::from_remote_source(req.remote_id.source());
+
+                if !source.is_unknown() {
                     self.db.set_movie_sync_source(movie_id, source).await?;
                 }
 
@@ -573,7 +577,7 @@ impl WsHandler {
                     .await?
                     .context("series not found")?;
 
-                if series.remote_by_source(req.source.as_str()).is_none() {
+                if series.remote_by_source(req.source).is_none() {
                     anyhow::bail!("series does not have remote for source: {}", req.source);
                 }
 
@@ -619,7 +623,7 @@ impl WsHandler {
                     anyhow::bail!("unsupported movie sync source: {}", req.source);
                 }
 
-                if movie.remote_by_source(req.source.as_str()).is_none() {
+                if movie.remote_by_source(req.source).is_none() {
                     anyhow::bail!("movie does not have remote for source: {}", req.source);
                 }
 

@@ -12,6 +12,8 @@ pub(super) async fn image_handler(
     let cache = state.cache.clone();
     let remote = state.remote.clone();
 
+    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+
     let result = cache
         .get_or_fetch(&source, &path, async || match source.as_str() {
             "tmdb" => remote.fetch_tmdb_image(&path).await,
