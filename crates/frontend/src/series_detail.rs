@@ -216,11 +216,7 @@ impl Component for SeriesDetail {
 
         let link = ctx.link();
 
-        let url = series
-            .backdrop
-            .as_ref()
-            .or(series.fanart.as_ref())
-            .map(|i| i.proxy_url());
+        let url = series.backdrop.as_ref().map(|i| i.proxy_url());
 
         let style = url
             .as_ref()
@@ -1166,9 +1162,8 @@ impl SeriesDetail {
         let selected_for_kind = match kind {
             api::ImageKind::Poster => series.poster.as_ref(),
             api::ImageKind::Banner => series.banner.as_ref(),
-            api::ImageKind::Fanart => series.fanart.as_ref(),
             api::ImageKind::Backdrop => series.backdrop.as_ref(),
-            api::ImageKind::Screenshot => None,
+            _ => None,
         };
 
         let items: Vec<ImageItem> = series

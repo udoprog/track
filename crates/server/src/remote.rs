@@ -104,10 +104,16 @@ impl RemoteClients {
                     title: r.title,
                     poster: r
                         .poster
-                        .map(|(source, path)| api::Image::new(source, &path)),
+                        .as_ref()
+                        .map(|(source, path)| api::Image::new(*source, &path)),
                     banner: r
-                        .banner
-                        .map(|(source, path)| api::Image::new(source, &path)),
+                        .backdrop
+                        .as_ref()
+                        .map(|(source, path)| api::Image::new(*source, &path)),
+                    backdrop: r
+                        .backdrop
+                        .as_ref()
+                        .map(|(source, path)| api::Image::new(*source, &path)),
                     overview: r.overview,
                     first_air_date: r.first_air_date,
                     already_tracked: None,
@@ -125,6 +131,9 @@ impl RemoteClients {
                         .map(|(source, path)| api::Image::new(source, &path)),
                     banner: r
                         .banner
+                        .map(|(source, path)| api::Image::new(source, &path)),
+                    backdrop: r
+                        .fanart
                         .map(|(source, path)| api::Image::new(source, &path)),
                     overview: r.overview,
                     first_air_date: r.first_air_date,
@@ -147,10 +156,16 @@ impl RemoteClients {
                     title: r.title,
                     poster: r
                         .poster
-                        .map(|(source, path)| api::Image::new(source, &path)),
+                        .as_ref()
+                        .map(|(source, path)| api::Image::new(*source, &path)),
                     banner: r
-                        .banner
-                        .map(|(source, path)| api::Image::new(source, &path)),
+                        .backdrop
+                        .as_ref()
+                        .map(|(source, path)| api::Image::new(*source, &path)),
+                    backdrop: r
+                        .backdrop
+                        .as_ref()
+                        .map(|(source, path)| api::Image::new(*source, &path)),
                     overview: r.overview,
                     release_date: r.release_date,
                     already_tracked: None,

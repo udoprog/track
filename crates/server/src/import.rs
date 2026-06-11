@@ -76,14 +76,6 @@ struct YamlSeason {
     name: Option<String>,
     #[serde(default)]
     overview: Option<String>,
-    #[serde(default)]
-    graphics: YamlSeasonGraphics,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct YamlSeasonGraphics {
-    #[serde(default)]
-    poster: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -101,15 +93,7 @@ struct YamlEpisode {
     #[serde(default)]
     aired: Option<NaiveDate>,
     #[serde(default)]
-    graphics: YamlEpisodeGraphics,
-    #[serde(default)]
     remote_id: Option<String>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct YamlEpisodeGraphics {
-    #[serde(default)]
-    filename: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -235,7 +219,7 @@ async fn import_series_images(
     }
 
     if let Some(img) = image(g.fanart.as_ref()) {
-        import_series_image(db, series_id, api::ImageKind::Fanart, &img).await?;
+        import_series_image(db, series_id, api::ImageKind::Backdrop, &img).await?;
     }
 
     Ok(())
@@ -261,12 +245,15 @@ async fn import_movie_images(
     if let Some(img) = image(g.poster.as_ref()) {
         import_movie_image(db, movie_id, api::ImageKind::Poster, &img).await?;
     }
+
     if let Some(img) = image(g.banner.as_ref()) {
         import_movie_image(db, movie_id, api::ImageKind::Banner, &img).await?;
     }
+
     if let Some(img) = image(g.fanart.as_ref()) {
-        import_movie_image(db, movie_id, api::ImageKind::Fanart, &img).await?;
+        import_movie_image(db, movie_id, api::ImageKind::Backdrop, &img).await?;
     }
+
     Ok(())
 }
 

@@ -189,15 +189,18 @@ impl Client {
                 continue;
             };
 
-            let poster = row.poster.or(row.image_url).or(row.thumbnail);
+            let poster = opt_image(row.poster.as_deref());
+            let banner = opt_image(row.thumbnail.as_deref());
+            let fanart = opt_image(row.image_url.as_deref());
 
             out.push(SearchSeriesResult {
                 remote_id: RemoteId::tvdb(id),
                 title: row.name,
                 overview: row.overview,
                 first_air_date: opt_date(row.first_air_time.as_deref()),
-                poster: opt_image(poster.as_deref()),
-                banner: None,
+                poster,
+                banner,
+                fanart,
             });
         }
 
@@ -500,6 +503,7 @@ pub(crate) struct SearchSeriesResult {
     pub first_air_date: Option<Date>,
     pub poster: Option<(ImageSource, String)>,
     pub banner: Option<(ImageSource, String)>,
+    pub fanart: Option<(ImageSource, String)>,
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

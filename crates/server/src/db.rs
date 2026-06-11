@@ -3017,7 +3017,6 @@ fn series_from_row(r: SeriesRow) -> api::Series {
         images: Vec::new(),
         poster: None,
         banner: None,
-        fanart: None,
         backdrop: None,
         last_synced_at: r.last_synced_at,
         language: r.language,
@@ -3057,9 +3056,8 @@ fn apply_image_selection(target: &mut api::Series, r: ImageSelectionRow) {
     match r.kind {
         api::ImageKind::Poster => target.poster = Some(image),
         api::ImageKind::Banner => target.banner = Some(image),
-        api::ImageKind::Fanart => target.fanart = Some(image),
         api::ImageKind::Backdrop => target.backdrop = Some(image),
-        api::ImageKind::Screenshot => {}
+        _ => {}
     }
 }
 

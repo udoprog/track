@@ -886,9 +886,9 @@ impl ::sqll::BindValue for SeasonNumber {
 pub enum ImageKind {
     Poster,
     Banner,
-    Fanart,
     Backdrop,
     Screenshot,
+    Unknown,
 }
 
 impl ImageKind {
@@ -896,9 +896,9 @@ impl ImageKind {
         match self {
             ImageKind::Poster => "poster",
             ImageKind::Banner => "banner",
-            ImageKind::Fanart => "fanart",
             ImageKind::Backdrop => "backdrop",
             ImageKind::Screenshot => "screenshot",
+            ImageKind::Unknown => "unknown",
         }
     }
 }
@@ -914,15 +914,12 @@ impl ::sqll::FromColumn<'_> for ImageKind {
     type Type = ::sqll::ty::Integer;
 
     fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Integer) -> ::sqll::Result<Self> {
-        match i64::from_column(stmt, index)? {
-            0 => Ok(ImageKind::Poster),
-            1 => Ok(ImageKind::Banner),
-            2 => Ok(ImageKind::Fanart),
+        match u32::from_column(stmt, index)? {
+            1 => Ok(ImageKind::Poster),
+            2 => Ok(ImageKind::Banner),
             3 => Ok(ImageKind::Backdrop),
             4 => Ok(ImageKind::Screenshot),
-            other => Err(::sqll::Error::custom(format!(
-                "unknown image kind: {other}"
-            ))),
+            _ => Ok(ImageKind::Unknown),
         }
     }
 }
@@ -930,13 +927,14 @@ impl ::sqll::FromColumn<'_> for ImageKind {
 #[cfg(feature = "sqll")]
 impl ::sqll::BindValue for ImageKind {
     fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
-        let n: i64 = match self {
-            ImageKind::Poster => 0,
-            ImageKind::Banner => 1,
-            ImageKind::Fanart => 2,
+        let n: u32 = match self {
+            ImageKind::Poster => 1,
+            ImageKind::Banner => 2,
             ImageKind::Backdrop => 3,
             ImageKind::Screenshot => 4,
+            ImageKind::Unknown => 0,
         };
+
         n.bind_value(stmt, index)
     }
 }
@@ -1246,7 +1244,6 @@ pub struct Series {
     pub images: Vec<MediaImage>,
     pub poster: Option<Image>,
     pub banner: Option<Image>,
-    pub fanart: Option<Image>,
     pub backdrop: Option<Image>,
     pub last_synced_at: Option<Timestamp>,
     pub language: Option<String>,
@@ -1529,6 +1526,7 @@ pub struct SearchSeries {
     pub title: Option<String>,
     pub poster: Option<Image>,
     pub banner: Option<Image>,
+    pub backdrop: Option<Image>,
     pub overview: Option<String>,
     pub first_air_date: Option<Date>,
     pub already_tracked: Option<SeriesId>,
@@ -1541,6 +1539,7 @@ pub struct SearchMovie {
     pub title: Option<String>,
     pub poster: Option<Image>,
     pub banner: Option<Image>,
+    pub backdrop: Option<Image>,
     pub overview: Option<String>,
     pub release_date: Option<Date>,
     pub already_tracked: Option<MovieId>,
