@@ -1847,6 +1847,34 @@ pub struct SetMovieLanguageRequest {
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
+pub struct AddSeriesRemoteRequest {
+    pub id: SeriesId,
+    pub remote_id: RemoteId,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct RemoveSeriesRemoteRequest {
+    pub id: SeriesId,
+    pub remote_id: RemoteId,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct AddMovieRemoteRequest {
+    pub id: MovieId,
+    pub remote_id: RemoteId,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct RemoveMovieRemoteRequest {
+    pub id: MovieId,
+    pub remote_id: RemoteId,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
 pub struct SyncAllRequest;
 
 #[derive(Debug, Encode, Decode)]
@@ -2154,6 +2182,30 @@ api::define! {
     pub type SetMovieLanguage;
     impl Endpoint for SetMovieLanguage {
         impl Request for SetMovieLanguageRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type AddSeriesRemote;
+    impl Endpoint for AddSeriesRemote {
+        impl Request for AddSeriesRemoteRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type RemoveSeriesRemote;
+    impl Endpoint for RemoveSeriesRemote {
+        impl Request for RemoveSeriesRemoteRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type AddMovieRemote;
+    impl Endpoint for AddMovieRemote {
+        impl Request for AddMovieRemoteRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type RemoveMovieRemote;
+    impl Endpoint for RemoveMovieRemote {
+        impl Request for RemoveMovieRemoteRequest;
         type Response<'de> = Empty;
     }
 

@@ -5,13 +5,13 @@ use yew::prelude::*;
 
 use api::{HasAired, TimeZone};
 
-use crate::SetupChannel;
 use crate::error::{CustomContext, Error, Message, RcError};
 use crate::router::{PagedQuery, Route, SeriesDetailQuery};
 use crate::ui::{
     ConfirmDanger, EpisodePicker, ErrorBox, ImageGallery, ImageItem, LanguagePicker, LoadingPage,
-    MarkWatchedPicker, RemoteSourceKind, RemoteSourceSelect, Tracked,
+    MarkWatchedPicker, RemoteEditor, RemoteSourceKind, RemoteSourceSelect, Tracked,
 };
+use crate::{Image, SetupChannel};
 
 pub(super) struct SeriesDetail {
     channel: ws::Channel,
@@ -33,6 +33,7 @@ pub(super) struct SeriesDetail {
     orphaned: Vec<api::OrphanedWatched>,
     fixing_watched: Option<api::WatchedId>,
     image_modal: Option<api::ImageKind>,
+    remote_editor: bool,
     tz: TimeZone,
     _tz_handle: ContextHandle<TimeZone>,
     _setup: SetupChannel,
@@ -54,6 +55,7 @@ pub(super) struct SeriesDetail {
     _set_language_req: ws::Request,
     _orphaned_req: ws::Request,
     _move_req: ws::Request,
+    _remote_req: ws::Request,
 }
 
 pub(super) enum Msg {
@@ -106,6 +108,11 @@ pub(super) enum Msg {
     ),
     OpenImageModal(api::ImageKind),
     CloseImageModal,
+    OpenRemoteEditor,
+    CloseRemoteEditor,
+    AddRemote(api::RemoteId),
+    RemoveRemote(api::RemoteId),
+    RemoteDone(Result<(), ws::Error>),
     SetTz(TimeZone),
     FixWatched(api::WatchedId),
     CancelFixWatched,
@@ -165,6 +172,7 @@ impl Component for SeriesDetail {
             orphaned: Vec::new(),
             fixing_watched: None,
             image_modal: None,
+            remote_editor: false,
             tz,
             _tz_handle,
             _setup,
@@ -186,6 +194,7 @@ impl Component for SeriesDetail {
             _set_language_req: ws::Request::default(),
             _orphaned_req: ws::Request::default(),
             _move_req: ws::Request::default(),
+            _remote_req: ws::Request::default(),
         }
     }
 
@@ -272,6 +281,11 @@ impl Component for SeriesDetail {
                                     </button>
                                 }
                             </div>
+
+                            <button class="btn" onclick={link.callback(|_| Msg::OpenRemoteEditor)} title="Repair remote identifiers">
+                                <span class="icon-inline"><span class="icon identification" /></span>
+                                <span>{"Identifiers"}</span>
+                            </button>
                         </div>
 
                         <div class="desktop-row mobile-column end desktop-input-group">
@@ -305,7 +319,7 @@ impl Component for SeriesDetail {
                     </div>
 
                     <div class="detail-layout">
-                        <img class="banner hide-desktop" src={series.banner.as_ref().map(|p| p.proxy_url())} />
+                        <Image class="banner hide-desktop" src={series.banner.clone()} />
 
                         { self.view_sidebar(ctx, series) }
 
@@ -314,6 +328,16 @@ impl Component for SeriesDetail {
 
                     if let Some(kind) = self.image_modal {
                         { self.view_image_modal(ctx, kind, series) }
+                    }
+
+                    if self.remote_editor {
+                        <RemoteEditor
+                            title={format!("Identifiers — {}", series.title.as_deref().unwrap_or("Untitled Series"))}
+                            remotes={series.remotes.clone()}
+                            on_add={link.callback(Msg::AddRemote)}
+                            on_remove={link.callback(Msg::RemoveRemote)}
+                            on_close={link.callback(|_| Msg::CloseRemoteEditor)}
+                        />
                     }
                 </div>
             </div>
@@ -896,6 +920,51 @@ impl SeriesDetail {
                 self.image_modal = None;
                 Ok(true)
             }
+            Msg::OpenRemoteEditor => {
+                self.remote_editor = true;
+                Ok(true)
+            }
+            Msg::CloseRemoteEditor => {
+                self.remote_editor = false;
+                Ok(true)
+            }
+            Msg::AddRemote(remote_id) => {
+                let id = ctx.props().series_id;
+
+                self._remote_req = self
+                    .channel
+                    .request()
+                    .body(api::AddSeriesRemoteRequest { id, remote_id })
+                    .on_packet(ctx.link().callback(
+                        |r: Result<ws::Packet<api::AddSeriesRemote>, ws::Error>| {
+                            Msg::RemoteDone(r.map(|_| ()))
+                        },
+                    ))
+                    .send();
+
+                Ok(false)
+            }
+            Msg::RemoveRemote(remote_id) => {
+                let id = ctx.props().series_id;
+
+                self._remote_req = self
+                    .channel
+                    .request()
+                    .body(api::RemoveSeriesRemoteRequest { id, remote_id })
+                    .on_packet(ctx.link().callback(
+                        |r: Result<ws::Packet<api::RemoveSeriesRemote>, ws::Error>| {
+                            Msg::RemoteDone(r.map(|_| ()))
+                        },
+                    ))
+                    .send();
+
+                Ok(false)
+            }
+            Msg::RemoteDone(result) => {
+                result.context(Message::EditingRemotes)?;
+                self.load_series(ctx);
+                Ok(false)
+            }
             Msg::SetTz(tz) => {
                 self.tz = tz;
                 Ok(true)
@@ -1061,9 +1130,7 @@ impl SeriesDetail {
     fn view_sidebar(&self, ctx: &Context<Self>, series: &api::Series) -> Html {
         html! {
             <div class="detail-sidebar">
-                if let Some(poster) = series.poster.as_ref() {
-                    <img class="poster hide-mobile" src={poster.proxy_url()} />
-                }
+                <Image class="poster hide-mobile" src={series.poster.clone()} />
 
                 <div class="table table-striped">
                     { for self.seasons.iter().map(|s| self.view_season(ctx, s, self.seasons.len())) }
@@ -1355,9 +1422,7 @@ impl SeriesDetail {
                     { format!("{}E{:02}", episode.season.short(), episode.number) }
                 </a>
 
-                if let Some(ref img) = episode.screenshot {
-                    <img src={img.proxy_url()} />
-                }
+                <Image class="screenshot" src={episode.screenshot.clone()} />
 
                 {actions}
 

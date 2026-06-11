@@ -2,10 +2,10 @@ use api::TimeZone;
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
-use crate::SetupChannel;
 use crate::error::{CustomContext, Error, Message, RcError};
 use crate::router::{PagedQuery, Route};
 use crate::ui::{ErrorBox, MarkWatchedPicker, PaginationButtons};
+use crate::{Image, SetupChannel};
 
 const PAGE_SIZE: usize = 20;
 
@@ -285,8 +285,8 @@ impl MoviesList {
         html! {
             <div class="table-entry">
                 <div class="desktop-row mobile-column">
-                    <img class="banner clickable hide-desktop" onclick={&onclick} src={m.banner.as_ref().map(|p| p.proxy_url())} />
-                    <img class="poster-sm clickable hide-mobile" onclick={&onclick} src={m.poster.as_ref().map(|p| p.proxy_url())} />
+                    <Image class="banner clickable hide-desktop" onclick={&onclick} src={m.banner.clone()} />
+                    <Image class="poster-sm clickable hide-mobile" onclick={&onclick} src={m.poster.clone()} />
 
                     <div class="column fill top">
                         if self.confirming_watch == Some(movie_id) {

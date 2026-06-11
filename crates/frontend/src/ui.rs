@@ -4,8 +4,8 @@ use yew::prelude::*;
 use iso639::{LanguageToCountry, Languages};
 use musli_web::web03::prelude::*;
 
-use crate::SetupChannel;
 use crate::error::RcError;
+use crate::{Image, SetupChannel};
 
 #[function_component]
 pub(super) fn LoadingPage() -> Html {
@@ -276,6 +276,146 @@ pub(super) fn RemoteSourceSelect(props: &RemoteSourceSelectProps) -> Html {
     }
 }
 
+// ── RemoteEditor ──────────────────────────────────────────────────────────────
+
+/// Sources offered when adding a remote identifier, as `(value, label)`.
+const REMOTE_SOURCES: &[(&str, &str)] = &[("tmdb", "TMDB"), ("tvdb", "TVDB"), ("imdb", "IMDb")];
+
+/// Modal for adding and removing remote identifiers (e.g. `tvdb:123`,
+/// `imdb:tt0001234`) of a series or movie. The component is presentation-only:
+/// it emits `on_add`/`on_remove` and the caller performs the request, which
+/// makes it reusable wherever a remote needs to be repaired.
+#[derive(Properties, PartialEq)]
+pub(super) struct RemoteEditorProps {
+    pub(super) title: AttrValue,
+    pub(super) remotes: Vec<api::RemoteId>,
+    pub(super) on_add: Callback<api::RemoteId>,
+    pub(super) on_remove: Callback<api::RemoteId>,
+    pub(super) on_close: Callback<()>,
+}
+
+pub(super) enum RemoteEditorMsg {
+    SetSource(String),
+    SetValue(String),
+    Add,
+    Remove(api::RemoteId),
+    Close,
+}
+
+pub(super) struct RemoteEditor {
+    source: String,
+    value: String,
+}
+
+impl Component for RemoteEditor {
+    type Message = RemoteEditorMsg;
+    type Properties = RemoteEditorProps;
+
+    fn create(_ctx: &Context<Self>) -> Self {
+        Self {
+            source: REMOTE_SOURCES[0].0.to_string(),
+            value: String::new(),
+        }
+    }
+
+    fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
+        match msg {
+            RemoteEditorMsg::SetSource(source) => {
+                self.source = source;
+                true
+            }
+            RemoteEditorMsg::SetValue(value) => {
+                self.value = value;
+                true
+            }
+            RemoteEditorMsg::Add => {
+                let value = self.value.trim();
+
+                if value.is_empty() {
+                    return false;
+                }
+
+                let remote_id = api::RemoteId::from_raw(&format!("{}:{}", self.source, value));
+                ctx.props().on_add.emit(remote_id);
+                self.value.clear();
+                true
+            }
+            RemoteEditorMsg::Remove(remote_id) => {
+                ctx.props().on_remove.emit(remote_id);
+                false
+            }
+            RemoteEditorMsg::Close => {
+                ctx.props().on_close.emit(());
+                false
+            }
+        }
+    }
+
+    fn view(&self, ctx: &Context<Self>) -> Html {
+        let link = ctx.link();
+        let props = ctx.props();
+
+        let on_source = link.callback(|e: Event| {
+            let select: web_sys::HtmlSelectElement = e.target_unchecked_into();
+            RemoteEditorMsg::SetSource(select.value())
+        });
+
+        let on_value = link.callback(|e: InputEvent| {
+            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+            RemoteEditorMsg::SetValue(input.value())
+        });
+
+        html! {
+            <div class="modal-background" onclick={link.callback(|_| RemoteEditorMsg::Close)}>
+                <div class="modal" onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
+                    <div class="row">
+                        <span class="fill">{&props.title}</span>
+
+                        <button class="btn-icon" onclick={link.callback(|_| RemoteEditorMsg::Close)}>
+                            <span class="icon x-mark" />
+                        </button>
+                    </div>
+
+                    if props.remotes.is_empty() {
+                        <div class="empty text-muted">{"No remote identifiers"}</div>
+                    } else {
+                        { for props.remotes.iter().map(|r| {
+                            let remote_id = r.clone();
+
+                            html! {
+                                <div class="row-fill" key={r.to_string()}>
+                                    <span>{r.to_string()}</span>
+
+                                    <button class="btn-danger end" onclick={link.callback(move |_| RemoteEditorMsg::Remove(remote_id.clone()))} title="Remove identifier">
+                                        <span class="icon trash" />
+                                    </button>
+                                </div>
+                            }
+                        }) }
+                    }
+
+                    <div class="row">
+                        <div class="input-group fill">
+                            <select class="input-select" onchange={on_source} title="Source">
+                                { for REMOTE_SOURCES.iter().map(|(value, label)| html! {
+                                    <option value={*value} selected={self.source == *value}>{label}</option>
+                                }) }
+                            </select>
+
+                            <input type="text" class="input-text fill" placeholder="Identifier" value={self.value.clone()} oninput={on_value} />
+
+                            <button class="btn-success" onclick={link.callback(|_| RemoteEditorMsg::Add)} disabled={self.value.trim().is_empty()} title="Add identifier">
+                                <span class="icon-inline"><span class="icon plus" /></span>
+                                <span>{"Add"}</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+}
+
 // ── ImageGallery ──────────────────────────────────────────────────────────────
 
 /// A single entry shown in the image gallery.
@@ -345,7 +485,7 @@ pub(super) fn ImageGallery(props: &ImageGalleryProps) -> Html {
                         <span class="text-muted">{"Current selection"}</span>
 
                         <div class="image-thumb selected">
-                            <img src={sel.image.proxy_url()} style="max-height: 200px;" />
+                            <Image src={sel.image.clone()} style="max-height: 200px;" />
                             <div class="image-thumb-source">{sel.source.to_string()}</div>
                             <span class="image-thumb-check">{"✓"}</span>
                         </div>
@@ -368,7 +508,7 @@ pub(super) fn ImageGallery(props: &ImageGalleryProps) -> Html {
 
                             html! {
                                 <div class={classes!("image-thumb", selected.then_some("selected"))} onclick={Callback::from(move |_| on_select.emit(id))} {title}>
-                                    <img src={img.image.proxy_url()} />
+                                    <Image src={img.image.clone()} />
 
                                     <div class="image-thumb-source">
                                         {img.source.to_string()}

@@ -340,6 +340,9 @@ statements! {
         insert_series_remote: r#"
             INSERT OR IGNORE INTO remotes (series_id, remote_id) VALUES (?, ?)
         "#,
+        delete_series_remote: r#"
+            DELETE FROM remotes WHERE series_id = ? AND remote_id = ?
+        "#,
         series_id_by_remote: r#"
             SELECT series_id FROM remotes WHERE remote_id = ? LIMIT 1
         "#,
@@ -532,6 +535,9 @@ statements! {
         "#,
         insert_movie_remote: r#"
             INSERT OR IGNORE INTO remotes (movie_id, remote_id) VALUES (?, ?)
+        "#,
+        delete_movie_remote: r#"
+            DELETE FROM remotes WHERE movie_id = ? AND remote_id = ?
         "#,
         movie_id_by_remote: r#"
             SELECT movie_id FROM remotes WHERE remote_id = ? LIMIT 1
@@ -915,6 +921,26 @@ impl Database {
             ensure!(
                 s.insert_series_remote.step()?.is_done(),
                 "insert_series_remote"
+            );
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    pub(crate) async fn remove_series_remote(
+        &self,
+        series_id: SeriesId,
+        remote_id: &RemoteId,
+    ) -> Result<()> {
+        let remote_id = remote_id.clone();
+        let mut s = self.inner.clone().lock_owned().await;
+
+        let result = spawn_blocking(move || {
+            s.delete_series_remote.bind((series_id, &remote_id))?;
+            ensure!(
+                s.delete_series_remote.step()?.is_done(),
+                "delete_series_remote"
             );
             Ok(())
         });
@@ -1472,6 +1498,26 @@ impl Database {
             ensure!(
                 s.insert_movie_remote.step()?.is_done(),
                 "insert_movie_remote"
+            );
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    pub(crate) async fn remove_movie_remote(
+        &self,
+        movie_id: MovieId,
+        remote_id: &RemoteId,
+    ) -> Result<()> {
+        let remote_id = remote_id.clone();
+        let mut s = self.inner.clone().lock_owned().await;
+
+        let result = spawn_blocking(move || {
+            s.delete_movie_remote.bind((movie_id, &remote_id))?;
+            ensure!(
+                s.delete_movie_remote.step()?.is_done(),
+                "delete_movie_remote"
             );
             Ok(())
         });

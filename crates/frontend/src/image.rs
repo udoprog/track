@@ -4,8 +4,9 @@ use yew::prelude::*;
 
 enum State {
     Loading,
-    Loaded,
+    Loaded(String),
     Error,
+    Empty,
 }
 
 pub(super) struct Image {
@@ -16,15 +17,18 @@ pub(super) struct Image {
 }
 
 pub(super) enum Msg {
-    Loaded,
+    Loaded(String),
     Error,
 }
 
 #[derive(Properties, PartialEq)]
 pub(super) struct ImageProps {
-    pub(super) src: api::Image,
+    #[prop_or_default]
+    pub(super) src: Option<api::Image>,
     #[prop_or_default]
     pub(super) class: Classes,
+    #[prop_or_default]
+    pub(super) style: Option<String>,
     #[prop_or_default]
     pub(super) alt: AttrValue,
     #[prop_or_default]
@@ -59,10 +63,12 @@ impl Component for Image {
         self._img = None;
         self._load = None;
         self._error = None;
+
         self.state = match msg {
-            Msg::Loaded => State::Loaded,
+            Msg::Loaded(src) => State::Loaded(src),
             Msg::Error => State::Error,
         };
+
         true
     }
 
@@ -76,33 +82,45 @@ impl Component for Image {
 
         match self.state {
             State::Loading => html! {
-                <image {class} onclick={props.onclick.clone()}>
+                <image {class} style={props.style.clone()} onclick={props.onclick.clone()}>
                     <span class="icon arrow-path spin" />
                 </image>
             },
-            State::Loaded => html! {
-                <image {class} onclick={props.onclick.clone()}>
-                    <img src={props.src.proxy_url()} class={props.class.clone()} alt={props.alt.clone()} />
+            State::Loaded(ref src) => html! {
+                <image {class} style={props.style.clone()} onclick={props.onclick.clone()}>
+                    <img src={src.clone()} class={props.class.clone()} alt={props.alt.clone()} />
                 </image>
             },
             State::Error => html! {
-                <image {class} onclick={props.onclick.clone()}>
-                    <span class="icon x-mark" />
+                <image {class} style={props.style.clone()} onclick={props.onclick.clone()}>
+                    <span class="icon exclamation-triangle" />
                 </image>
             },
+            State::Empty => html!(),
         }
     }
 }
 
 impl Image {
     fn begin_load(&mut self, ctx: &Context<Self>) {
+        let Some(src) = &ctx.props().src else {
+            self.state = State::Empty;
+            return;
+        };
+
         let Ok(img) = HtmlImageElement::new() else {
             return;
         };
 
+        let url = src.proxy_url();
+
         let link = ctx.link().clone();
-        let load = EventListener::new(&img, "load", move |_| {
-            link.send_message(Msg::Loaded);
+        let load = EventListener::new(&img, "load", {
+            let url = url.clone();
+
+            move |_| {
+                link.send_message(Msg::Loaded(url.clone()));
+            }
         });
 
         let link = ctx.link().clone();
@@ -110,7 +128,7 @@ impl Image {
             link.send_message(Msg::Error);
         });
 
-        img.set_src(&ctx.props().src.proxy_url());
+        img.set_src(&url);
 
         self._img = Some(img);
         self._load = Some(load);

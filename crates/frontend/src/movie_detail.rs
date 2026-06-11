@@ -4,13 +4,13 @@ use musli_web::web03::prelude::*;
 use std::collections::{BTreeMap, HashSet};
 use yew::prelude::*;
 
-use crate::SetupChannel;
 use crate::error::{CustomContext, Error, Message, RcError};
 use crate::router::{PagedQuery, Route};
 use crate::ui::{
     ConfirmDanger, ErrorBox, ImageGallery, ImageItem, LanguagePicker, LoadingPage,
-    MarkWatchedPicker, RemoteSourceKind, RemoteSourceSelect, Tracked,
+    MarkWatchedPicker, RemoteEditor, RemoteSourceKind, RemoteSourceSelect, Tracked,
 };
+use crate::{Image, SetupChannel};
 
 pub(super) struct MovieDetail {
     countries: Countries,
@@ -26,6 +26,7 @@ pub(super) struct MovieDetail {
     releases_expanded: HashSet<api::ReleaseType>,
     movie_releases: Vec<(api::ReleaseType, Vec<api::MovieRelease>)>,
     image_modal: Option<api::ImageKind>,
+    remote_editor: bool,
     tz: TimeZone,
     _tz_handle: ContextHandle<TimeZone>,
     _setup: SetupChannel,
@@ -42,6 +43,7 @@ pub(super) struct MovieDetail {
     _clear_image_req: ws::Request,
     _set_sync_source_req: ws::Request,
     _set_language_req: ws::Request,
+    _remote_req: ws::Request,
 }
 
 pub(super) enum Msg {
@@ -63,6 +65,11 @@ pub(super) enum Msg {
     ClearSelectedImageDone(Result<ws::Packet<api::ClearSelectedImage>, ws::Error>),
     OpenImageModal(api::ImageKind),
     CloseImageModal,
+    OpenRemoteEditor,
+    CloseRemoteEditor,
+    AddRemote(api::RemoteId),
+    RemoveRemote(api::RemoteId),
+    RemoteDone(Result<(), ws::Error>),
     ConfirmRemove,
     CancelRemove,
     RemoveMovie,
@@ -131,6 +138,7 @@ impl Component for MovieDetail {
             releases_expanded: HashSet::new(),
             movie_releases: Vec::new(),
             image_modal: None,
+            remote_editor: false,
             tz,
             _tz_handle,
             _setup,
@@ -147,6 +155,7 @@ impl Component for MovieDetail {
             _clear_image_req: ws::Request::default(),
             _set_sync_source_req: ws::Request::default(),
             _set_language_req: ws::Request::default(),
+            _remote_req: ws::Request::default(),
         }
     }
 
@@ -539,6 +548,51 @@ impl MovieDetail {
                 self.image_modal = None;
                 Ok(true)
             }
+            Msg::OpenRemoteEditor => {
+                self.remote_editor = true;
+                Ok(true)
+            }
+            Msg::CloseRemoteEditor => {
+                self.remote_editor = false;
+                Ok(true)
+            }
+            Msg::AddRemote(remote_id) => {
+                let id = ctx.props().movie_id;
+
+                self._remote_req = self
+                    .channel
+                    .request()
+                    .body(api::AddMovieRemoteRequest { id, remote_id })
+                    .on_packet(ctx.link().callback(
+                        |r: Result<ws::Packet<api::AddMovieRemote>, ws::Error>| {
+                            Msg::RemoteDone(r.map(|_| ()))
+                        },
+                    ))
+                    .send();
+
+                Ok(false)
+            }
+            Msg::RemoveRemote(remote_id) => {
+                let id = ctx.props().movie_id;
+
+                self._remote_req = self
+                    .channel
+                    .request()
+                    .body(api::RemoveMovieRemoteRequest { id, remote_id })
+                    .on_packet(ctx.link().callback(
+                        |r: Result<ws::Packet<api::RemoveMovieRemote>, ws::Error>| {
+                            Msg::RemoteDone(r.map(|_| ()))
+                        },
+                    ))
+                    .send();
+
+                Ok(false)
+            }
+            Msg::RemoteDone(result) => {
+                result.context(Message::EditingRemotes)?;
+                self.load_movie(ctx);
+                Ok(false)
+            }
             Msg::SetTz(tz) => {
                 self.tz = tz;
                 Ok(true)
@@ -776,6 +830,11 @@ impl MovieDetail {
                             </button>
                         }
                     </div>
+
+                    <button class="btn" onclick={link.callback(|_| Msg::OpenRemoteEditor)} title="Repair remote identifiers">
+                        <span class="icon-inline"><span class="icon identification" /></span>
+                        <span>{"Identifiers"}</span>
+                    </button>
                 </div>
 
                 <div class="desktop-row mobile-column end desktop-input-group">
@@ -814,10 +873,10 @@ impl MovieDetail {
             </div>
 
             <div class="detail-layout">
-                <img class="banner hide-desktop" src={movie.banner.as_ref().map(|p| p.proxy_url())} />
+                <Image class="banner hide-desktop" src={movie.banner.clone()} />
 
                 <div class="detail-sidebar">
-                    <img class="poster hide-mobile" src={movie.poster.as_ref().map(|p| p.proxy_url())} />
+                    <Image class="poster hide-mobile" src={movie.poster.clone()} />
                 </div>
 
                 <div class="detail-content">
@@ -873,6 +932,16 @@ impl MovieDetail {
 
             if let Some(kind) = self.image_modal {
                 { self.view_image_modal(ctx, movie, kind) }
+            }
+
+            if self.remote_editor {
+                <RemoteEditor
+                    title={format!("Identifiers — {}", movie.title.as_deref().unwrap_or("Untitled Movie"))}
+                    remotes={movie.remotes.clone()}
+                    on_add={link.callback(Msg::AddRemote)}
+                    on_remove={link.callback(Msg::RemoveRemote)}
+                    on_close={link.callback(|_| Msg::CloseRemoteEditor)}
+                />
             }
             </>
         }

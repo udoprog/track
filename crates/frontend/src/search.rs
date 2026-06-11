@@ -2,10 +2,10 @@ use musli_web::web03::prelude::*;
 use wasm_bindgen::JsCast as _;
 use yew::prelude::*;
 
-use crate::SetupChannel;
 use crate::error::{CustomContext, Error, Message, RcError};
 use crate::router::{Route, SeriesDetailQuery};
 use crate::ui::ErrorBox;
+use crate::{Image, SetupChannel};
 
 pub(super) struct Search {
     channel: ws::Channel,
@@ -283,7 +283,7 @@ impl Search {
         html! {
             <div class="row">
                 if let Some(ref poster) = r.poster {
-                    <img class="poster-sm" src={poster.proxy_url()} />
+                    <Image class="poster-sm" src={poster.clone()} />
                 } else {
                     <div class="poster-sm" />
                 }
@@ -334,7 +334,7 @@ impl Search {
         html! {
             <div class="row">
                 if let Some(ref poster) = r.poster {
-                    <img class="poster-sm" src={poster.proxy_url()} />
+                    <Image class="poster-sm" src={poster.clone()} />
                 } else {
                     <div class="poster-sm" />
                 }

@@ -2,10 +2,10 @@ use api::TimeZone;
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
-use crate::SetupChannel;
 use crate::error::{CustomContext, Error, Message, RcError};
 use crate::router::{PagedQuery, Route, SeriesDetailQuery};
 use crate::ui::{ErrorBox, PaginationButtons};
+use crate::{Image, SetupChannel};
 
 const PAGE_SIZE: usize = 20;
 
@@ -244,8 +244,8 @@ impl SeriesList {
         html! {
             <div class="table-entry">
                 <div class="desktop-row mobile-column">
-                    <img class="poster-sm hide-mobile clickable" src={s.poster.as_ref().map(|p| p.proxy_url())} onclick={&onclick} />
-                    <img class="banner hide-desktop clickable" src={s.banner.as_ref().map(|p| p.proxy_url())} onclick={&onclick} />
+                    <Image class="poster-sm hide-mobile clickable" src={s.poster.clone()} onclick={&onclick} />
+                    <Image class="banner hide-desktop clickable" src={s.banner.clone()} onclick={&onclick} />
 
                     <div class="column fill top">
                         <div class="row-fill fill">
