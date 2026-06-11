@@ -289,11 +289,17 @@ impl MoviesList {
 
         html! {
             <div class="table-entry clickable" {onclick}>
-                <div class="row">
+                <div class="desktop-row mobile-column">
                     if let Some(poster) = m.poster.as_ref() {
-                        <img class="poster-sm" src={poster.proxy_url()} />
+                        <img class="poster-sm hide-mobile" src={poster.proxy_url()} />
                     } else {
-                        <div class="poster-sm" />
+                        <div class="poster-sm hide-mobile" />
+                    }
+
+                    if let Some(banner) = m.banner.as_ref() {
+                        <img class="banner hide-desktop" src={banner.proxy_url()} />
+                    } else {
+                        <div class="banner hide-desktop" />
                     }
 
                     <div class="row-fill fill top">

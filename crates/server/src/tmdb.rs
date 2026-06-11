@@ -91,6 +91,8 @@ impl Client {
             #[serde(default)]
             poster_path: Option<String>,
             #[serde(default)]
+            backdrop_path: Option<String>,
+            #[serde(default)]
             first_air_date: Option<String>,
         }
 
@@ -120,6 +122,7 @@ impl Client {
                 overview: r.overview.filter(|s| !s.trim().is_empty()),
                 first_air_date: opt_date(r.first_air_date.as_deref()),
                 poster: opt_image(r.poster_path.as_deref()),
+                banner: opt_image(r.backdrop_path.as_deref()),
             });
         }
 
@@ -138,6 +141,8 @@ impl Client {
             overview: Option<String>,
             #[serde(default)]
             poster_path: Option<String>,
+            #[serde(default)]
+            backdrop_path: Option<String>,
             #[serde(default)]
             release_date: Option<String>,
         }
@@ -167,6 +172,7 @@ impl Client {
                 overview: r.overview.filter(|s| !s.trim().is_empty()),
                 release_date: opt_date(r.release_date.as_deref()),
                 poster: opt_image(r.poster_path.as_deref()),
+                banner: opt_image(r.backdrop_path.as_deref()),
             });
         }
 
@@ -536,6 +542,7 @@ pub(crate) struct SearchSeriesResult {
     pub overview: Option<String>,
     pub first_air_date: Option<Date>,
     pub poster: Option<Image>,
+    pub banner: Option<Image>,
 }
 
 pub(crate) struct SearchMovieResult {
@@ -544,6 +551,7 @@ pub(crate) struct SearchMovieResult {
     pub overview: Option<String>,
     pub release_date: Option<Date>,
     pub poster: Option<Image>,
+    pub banner: Option<Image>,
 }
 
 pub(crate) struct MovieReleaseInfo {

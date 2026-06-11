@@ -175,6 +175,12 @@ body {
     }
 }
 
+@include g.from-desktop {
+    .desktop-column {
+        @include column-base;
+    }
+}
+
 @mixin row-fill-base {
     display: flex;
     flex-direction: row;
@@ -901,7 +907,6 @@ h5 {
     object-fit: cover;
     border-radius: $radius-sm;
     background: $bg-surface;
-    display: block;
 }
 
 .image-gallery {

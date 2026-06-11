@@ -156,6 +156,8 @@ impl Client {
             #[serde(default)]
             poster: Option<String>,
             #[serde(default)]
+            banner: Option<String>,
+            #[serde(default)]
             overview: Option<String>,
             #[serde(default)]
             first_aired: Option<String>,
@@ -189,6 +191,7 @@ impl Client {
                 overview: row.overview,
                 first_air_date: opt_date(row.first_aired.as_deref()),
                 poster: opt_image(row.poster.as_deref()),
+                banner: opt_image(row.banner.as_deref()),
             });
         }
 
@@ -212,6 +215,7 @@ impl Client {
             #[serde(default)]
             imdb_id: Option<String>,
         }
+
         #[derive(Deserialize)]
         struct Resp {
             data: Value,
@@ -377,6 +381,7 @@ pub(crate) struct SearchSeriesResult {
     pub overview: Option<String>,
     pub first_air_date: Option<Date>,
     pub poster: Option<Image>,
+    pub banner: Option<Image>,
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

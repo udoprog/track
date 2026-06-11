@@ -637,12 +637,12 @@ statements! {
         pending_movie_detail: r#"
             SELECT title, release_date FROM movies WHERE id = ?
         "#,
-        pending_image_for_series_by_kind: r#"
+        image_for_series: r#"
             SELECT i.source, i.path
             FROM series_images si JOIN images i ON i.id = si.image_id
             WHERE si.series_id = ? AND si.kind = ?
         "#,
-        pending_image_for_movie_by_kind: r#"
+        image_for_movie: r#"
             SELECT i.source, i.path
             FROM movie_images mi JOIN images i ON i.id = mi.image_id
             WHERE mi.movie_id = ? AND mi.kind = ?
@@ -755,29 +755,23 @@ impl Inner {
         }
     }
 
-    fn pending_image_for_series(
+    fn image_for_series(
         &mut self,
         series_id: SeriesId,
         kind: ImageKind,
     ) -> Result<Option<api::Image>> {
-        self.pending_image_for_series_by_kind
-            .bind((series_id, kind))?;
-        let poster_row = self
-            .pending_image_for_series_by_kind
-            .next::<PendingImageRow>()?;
+        self.image_for_series.bind((series_id, kind))?;
+        let poster_row = self.image_for_series.next::<PendingImageRow>()?;
         Ok(poster_row.map(|p| api::Image::new(p.source, &p.path)))
     }
 
-    fn pending_image_for_movie(
+    fn image_for_movie(
         &mut self,
         movie_id: MovieId,
         kind: ImageKind,
     ) -> Result<Option<api::Image>> {
-        self.pending_image_for_movie_by_kind
-            .bind((movie_id, kind))?;
-        let poster_row = self
-            .pending_image_for_movie_by_kind
-            .next::<PendingImageRow>()?;
+        self.image_for_movie.bind((movie_id, kind))?;
+        let poster_row = self.image_for_movie.next::<PendingImageRow>()?;
         Ok(poster_row.map(|p| api::Image::new(p.source, &p.path)))
     }
 }
@@ -887,13 +881,20 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.list_series.reset()?;
             let mut out: Vec<api::Series> = Vec::new();
             let mut id_to_idx: HashMap<SeriesId, usize> = HashMap::new();
-            while let Some(r) = s.list_series.next::<SeriesRow>()? {
+
+            s.list_series.reset()?;
+            while let Some(row) = s.list_series.next::<SeriesRow>()? {
                 let idx = out.len();
-                id_to_idx.insert(r.id, idx);
-                out.push(series_from_row(r));
+                id_to_idx.insert(row.id, idx);
+
+                let mut series = series_from_row(row);
+
+                series.poster = s.image_for_series(series.id, ImageKind::Poster)?;
+                series.banner = s.image_for_series(series.id, ImageKind::Banner)?;
+
+                out.push(series);
             }
 
             s.list_all_series_remotes.reset()?;
@@ -960,6 +961,9 @@ impl Database {
             while let Some(sel) = s.list_series_image_selections.next::<ImageSelectionRow>()? {
                 apply_image_selection(&mut series, sel);
             }
+
+            series.poster = s.image_for_series(series.id, ImageKind::Poster)?;
+            series.banner = s.image_for_series(series.id, ImageKind::Banner)?;
 
             Ok(Some(series))
         });
@@ -1402,10 +1406,16 @@ impl Database {
             let mut id_to_idx: HashMap<MovieId, usize> = HashMap::new();
 
             s.list_movies.reset()?;
-            while let Some(r) = s.list_movies.next::<MovieRow>()? {
+            while let Some(row) = s.list_movies.next::<MovieRow>()? {
                 let index = out.len();
-                id_to_idx.insert(r.id, index);
-                out.push(movie_from_row(r));
+                id_to_idx.insert(row.id, index);
+
+                let mut movie = movie_from_row(row);
+
+                movie.banner = s.image_for_movie(movie.id, ImageKind::Banner)?;
+                movie.poster = s.image_for_movie(movie.id, ImageKind::Poster)?;
+
+                out.push(movie);
             }
 
             s.list_all_movie_remotes.reset()?;
@@ -1488,6 +1498,10 @@ impl Database {
 
             s.has_pending_movie.bind((movie_id,))?;
             movie.pending = s.has_pending_movie.next::<(i64,)>()?.is_some();
+
+            movie.poster = s.image_for_movie(movie_id, ImageKind::Poster)?;
+            movie.banner = s.image_for_movie(movie_id, ImageKind::Banner)?;
+
             Ok(Some(movie))
         });
 
@@ -1523,12 +1537,12 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.series_by_remote.bind((remote_id,))?;
-            let Some(r) = s.series_by_remote.next::<SeriesRow>()? else {
+            let Some(row) = s.series_by_remote.next::<SeriesRow>()? else {
                 return Ok(None);
             };
 
-            let series_id = r.id;
-            let mut series = series_from_row(r);
+            let series_id = row.id;
+            let mut series = series_from_row(row);
 
             s.list_series_remotes.bind((series_id,))?;
             while let Some(remote_id) = s.list_series_remotes.next::<RemoteId>()? {
@@ -1545,6 +1559,9 @@ impl Database {
                 apply_image_selection(&mut series, sel);
             }
 
+            series.poster = s.image_for_series(series_id, ImageKind::Poster)?;
+            series.banner = s.image_for_series(series_id, ImageKind::Banner)?;
+
             Ok(Some(series))
         });
 
@@ -1560,12 +1577,13 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.movie_by_remote.bind((remote_id,))?;
-            let Some(r) = s.movie_by_remote.next::<MovieRow>()? else {
+            let Some(row) = s.movie_by_remote.next::<MovieRow>()? else {
                 return Ok(None);
             };
 
-            let movie_id = r.id;
-            let mut movie = movie_from_row(r);
+            let movie_id = row.id;
+            let mut movie = movie_from_row(row);
+
             s.list_movie_remotes.bind((movie_id,))?;
             while let Some(remote_id) = s.list_movie_remotes.next::<RemoteId>()? {
                 movie.remotes.push(remote_id);
@@ -1580,6 +1598,9 @@ impl Database {
             while let Some(sel) = s.list_movie_image_selections.next::<ImageSelectionRow>()? {
                 apply_movie_image_selection(&mut movie, sel);
             }
+
+            movie.poster = s.image_for_movie(movie_id, ImageKind::Poster)?;
+            movie.banner = s.image_for_movie(movie_id, ImageKind::Banner)?;
 
             Ok(Some(movie))
         });
@@ -2452,8 +2473,8 @@ impl Database {
             s.series_needing_sync.bind((cutoff,))?;
             let mut out = Vec::new();
 
-            while let Some(r) = s.series_needing_sync.next::<SeriesRow>()? {
-                out.push(series_from_row(r));
+            while let Some(row) = s.series_needing_sync.next::<SeriesRow>()? {
+                out.push(series_from_row(row));
             }
 
             Ok(out)
@@ -2499,8 +2520,8 @@ impl Database {
                             continue 'outer;
                         };
 
-                        let poster = s.pending_image_for_series(d.series_id, ImageKind::Poster)?;
-                        let banner = s.pending_image_for_series(d.series_id, ImageKind::Banner)?;
+                        let poster = s.image_for_series(d.series_id, ImageKind::Poster)?;
+                        let banner = s.image_for_series(d.series_id, ImageKind::Banner)?;
 
                         break 'pending api::Pending {
                             kind: api::PendingKind::Episode {
@@ -2526,8 +2547,8 @@ impl Database {
                             continue 'outer;
                         };
 
-                        let poster = s.pending_image_for_movie(movie_id, ImageKind::Poster)?;
-                        let banner = s.pending_image_for_movie(movie_id, ImageKind::Banner)?;
+                        let poster = s.image_for_movie(movie_id, ImageKind::Poster)?;
+                        let banner = s.image_for_movie(movie_id, ImageKind::Banner)?;
 
                         break 'pending api::Pending {
                             kind: api::PendingKind::Movie { movie: movie_id },
@@ -2886,6 +2907,7 @@ fn movie_from_row(r: MovieRow) -> api::Movie {
         pending: false,
         images: Vec::new(),
         poster: None,
+        banner: None,
         backdrop: None,
         last_synced_at: r.last_synced_at,
         releases: Vec::new(),
