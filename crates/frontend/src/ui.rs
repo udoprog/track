@@ -900,9 +900,9 @@ impl Component for EpisodePicker {
                 .props()
                 .seasons
                 .iter()
-                .find(|s| !s.number.is_special())
+                .find(|s| !s.season.is_special())
                 .or_else(|| ctx.props().seasons.first())
-                .map(|s| s.number),
+                .map(|s| s.season),
         };
 
         let _setup = SetupChannel::new(ws, ctx.link().callback(EpisodePickerMsg::Channel));
@@ -942,7 +942,10 @@ impl Component for EpisodePicker {
                     self.episodes = resp.episodes;
 
                     if let Some(selected_episode) = self.selected_episode
-                        && !self.episodes.iter().any(|ep| ep.number == selected_episode)
+                        && !self
+                            .episodes
+                            .iter()
+                            .any(|ep| ep.episode == selected_episode)
                     {
                         self.selected_episode = None;
                     }
@@ -999,17 +1002,17 @@ impl Component for EpisodePicker {
                 <div class="row end">
                     <select class="input-select" onchange={on_season_change}>
                         { for ctx.props().seasons.iter().map(|s| {
-                            let value = s.number.to_u32().to_string();
-                            let selected = self.selected_season == Some(s.number);
-                            html! { <option {value} {selected}>{s.number.long().to_string()}</option> }
+                            let value = s.season.to_u32().to_string();
+                            let selected = self.selected_season == Some(s.season);
+                            html! { <option {value} {selected}>{s.season.long().to_string()}</option> }
                         }) }
                     </select>
 
                     <select class="input-select" onchange={on_episode_change} disabled={self.episodes.is_empty()}>
                         { for self.episodes.iter().map(|ep| {
-                            let value = ep.number.to_string();
-                            let label = format!("E{:02}", ep.number);
-                            let selected = self.selected_episode == Some(ep.number);
+                            let value = ep.episode.to_string();
+                            let label = format!("E{:02}", ep.episode);
+                            let selected = self.selected_episode == Some(ep.episode);
                             html! { <option {value} {selected}>{label}</option> }
                         }) }
                     </select>

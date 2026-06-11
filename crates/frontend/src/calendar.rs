@@ -128,7 +128,7 @@ impl Component for Calendar {
                                                     );
 
                                                     let codes = entry.episodes.iter()
-                                                        .map(|ep| format!("{}E{:02}", ep.season.short(), ep.number))
+                                                        .map(|ep| format!("{}E{:02}", ep.season.short(), ep.episode))
                                                         .collect::<Vec<_>>()
                                                         .join(" ");
 

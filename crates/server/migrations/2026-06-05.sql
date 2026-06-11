@@ -14,11 +14,11 @@ CREATE TABLE
     seasons (
         id INTEGER PRIMARY KEY,
         series_id INTEGER NOT NULL REFERENCES series (id) ON DELETE CASCADE,
-        number INTEGER NOT NULL,
+        season INTEGER NOT NULL,
         air_date INTEGER,
         name TEXT,
         overview TEXT,
-        UNIQUE (series_id, number)
+        UNIQUE (series_id, season)
     );
 
 CREATE TABLE
@@ -26,13 +26,13 @@ CREATE TABLE
         id INTEGER PRIMARY KEY,
         series_id INTEGER NOT NULL REFERENCES series (id) ON DELETE CASCADE,
         season INTEGER NOT NULL,
-        number INTEGER NOT NULL,
+        episode INTEGER NOT NULL,
         absolute_number INTEGER,
         name TEXT,
         overview TEXT,
         aired INTEGER,
         remote_id TEXT,
-        UNIQUE (series_id, season, number)
+        UNIQUE (series_id, season, episode)
     );
 
 CREATE INDEX idx_episodes_aired ON episodes (aired)

@@ -505,12 +505,12 @@ impl SeriesDetail {
                     let initial = ctx
                         .props()
                         .initial_season
-                        .and_then(|n| self.seasons.iter().find(|s| s.number == n));
+                        .and_then(|n| self.seasons.iter().find(|s| s.season == n));
 
                     self.selected = initial
-                        .or_else(|| self.seasons.iter().find(|s| !s.number.is_special()))
+                        .or_else(|| self.seasons.iter().find(|s| !s.season.is_special()))
                         .or_else(|| self.seasons.first())
-                        .map(|s| s.number);
+                        .map(|s| s.season);
 
                     if let Some(season) = self.selected {
                         self.load_episodes(ctx, season);
@@ -1195,9 +1195,9 @@ impl SeriesDetail {
         }
     }
 
-    fn view_season(&self, ctx: &Context<Self>, season: &api::Season, total: usize) -> Html {
-        let number = season.number;
-        let active = self.selected == Some(number);
+    fn view_season(&self, ctx: &Context<Self>, s: &api::Season, total: usize) -> Html {
+        let season = s.season;
+        let active = self.selected == Some(season);
         let clickable = total > 1;
 
         let onclick = if !clickable {
@@ -1205,12 +1205,12 @@ impl SeriesDetail {
         } else if active {
             ctx.link().callback(move |_| Msg::ToggleExpandSeasons)
         } else {
-            ctx.link().callback(move |_| Msg::SelectSeason(number))
+            ctx.link().callback(move |_| Msg::SelectSeason(season))
         };
 
-        let style = if season.total_count > 0 {
-            let frac = (season.watched_count.min(season.total_count) as f64 * 100.0)
-                / season.total_count as f64;
+        let style = if s.total_count > 0 {
+            let frac = (s.watched_count.min(s.total_count) as f64 * 100.0)
+                / s.total_count as f64;
 
             Some(format!("width: {frac:.0}%"))
         } else {
@@ -1220,10 +1220,10 @@ impl SeriesDetail {
         html! {
             <div class={classes!("table-entry", "column", (!active && clickable).then_some("clickable"), active.then_some("active"), (!active && !self.expanded_seasons).then_some("hide-mobile"))} {onclick}>
                 <div class="row-fill fill">
-                    <span>{season.number.long().to_string()}</span>
+                    <span>{s.season.long().to_string()}</span>
 
                     <div class="row">
-                        if let Some(ts) = season.air_date {
+                        if let Some(ts) = s.air_date {
                             <span class="text-muted">{ts.date(self.tz.clone()).year().to_string()}</span>
                         }
 
@@ -1432,7 +1432,7 @@ impl SeriesDetail {
         html! {
             <div class={classes!("column", (!watched.is_empty()).then_some("watched"))}>
                 <a class="episode-code">
-                    { format!("{}E{:02}", episode.season.short(), episode.number) }
+                    { format!("{}E{:02}", episode.season.short(), episode.episode) }
                 </a>
 
                 <Image class="screenshot" src={episode.screenshot.clone()} />
@@ -1469,7 +1469,7 @@ impl SeriesDetail {
                                             series_id={series_id}
                                             seasons={self.seasons.clone()}
                                             selected_season={episode.season}
-                                            selected_episode={episode.number}
+                                            selected_episode={episode.episode}
                                             on_confirm={link.callback(move |(season, ep)| Msg::MoveWatched(wid, season, ep))}
                                             on_cancel={link.callback(|_| Msg::CancelFixWatched)}
                                         />

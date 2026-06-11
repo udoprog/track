@@ -1278,7 +1278,7 @@ impl Series {
 pub struct Season {
     pub id: SeasonId,
     pub series_id: SeriesId,
-    pub number: SeasonNumber,
+    pub season: SeasonNumber,
     pub air_date: Option<Timestamp>,
     pub name: Option<String>,
     pub overview: Option<String>,
@@ -1292,7 +1292,7 @@ pub struct Episode {
     pub id: EpisodeId,
     pub series_id: SeriesId,
     pub season: SeasonNumber,
-    pub number: u32,
+    pub episode: u32,
     pub absolute_number: Option<u32>,
     pub name: Option<String>,
     pub overview: Option<String>,

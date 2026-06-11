@@ -116,7 +116,7 @@ struct AllMovieImageSelectionRow {
 struct SeasonRow {
     id: SeasonId,
     series_id: SeriesId,
-    number: SeasonNumber,
+    season: SeasonNumber,
     air_date: Option<Timestamp>,
     name: Option<String>,
     overview: Option<String>,
@@ -434,33 +434,33 @@ statements! {
 
         // seasons
         upsert_season: r#"
-            INSERT INTO seasons (id, series_id, number, air_date, name, overview)
+            INSERT INTO seasons (id, series_id, season, air_date, name, overview)
             VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(series_id, number) DO UPDATE SET
+            ON CONFLICT(series_id, season) DO UPDATE SET
                 air_date  = excluded.air_date,
                 name      = excluded.name,
                 overview  = excluded.overview
         "#,
         list_seasons: r#"
-            SELECT s.id, s.series_id, s.number, s.air_date, s.name, s.overview,
-                (SELECT COUNT(DISTINCT we.episode) FROM watched_episodes we WHERE we.series_id = s.series_id AND we.season = s.number) AS watched_count,
-                (SELECT COUNT(*) FROM episodes e WHERE e.series_id = s.series_id AND e.season = s.number) AS total_count
-            FROM seasons s WHERE s.series_id = ? ORDER BY s.number
+            SELECT s.id, s.series_id, s.season, s.air_date, s.name, s.overview,
+                (SELECT COUNT(DISTINCT we.episode) FROM watched_episodes we WHERE we.series_id = s.series_id AND we.season = s.season) AS watched_count,
+                (SELECT COUNT(*) FROM episodes e WHERE e.series_id = s.series_id AND e.season = s.season) AS total_count
+            FROM seasons s WHERE s.series_id = ? ORDER BY s.season
         "#,
-        delete_season: r#"DELETE FROM seasons WHERE series_id = ?1 AND number = ?2"#,
+        delete_season: r#"DELETE FROM seasons WHERE series_id = ?1 AND season = ?2"#,
         delete_season_episodes: r#"DELETE FROM episodes WHERE series_id = ?1 AND season = ?2"#,
         episode_numbers_for_season: r#"
-            SELECT number FROM episodes WHERE series_id = ? AND season = ?
+            SELECT episode FROM episodes WHERE series_id = ? AND season = ?
         "#,
         delete_episode_by_place: r#"
-            DELETE FROM episodes WHERE series_id = ? AND season = ? AND number = ?
+            DELETE FROM episodes WHERE series_id = ? AND season = ? AND episode = ?
         "#,
 
         // episodes
         upsert_episode: r#"
-            INSERT INTO episodes (id, series_id, season, number, absolute_number, name, overview, aired, remote_id)
+            INSERT INTO episodes (id, series_id, season, episode, absolute_number, name, overview, aired, remote_id)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(series_id, season, number) DO UPDATE SET
+            ON CONFLICT(series_id, season, episode) DO UPDATE SET
                 absolute_number = excluded.absolute_number,
                 name            = excluded.name,
                 overview        = excluded.overview,
@@ -468,22 +468,22 @@ statements! {
                 remote_id       = excluded.remote_id
         "#,
         episode_natural_key: r#"
-            SELECT series_id, season, number FROM episodes WHERE id = ?
+            SELECT series_id, season, episode FROM episodes WHERE id = ?
         "#,
         list_episode_ids_for_series: r#"
-            SELECT id, season, number FROM episodes WHERE series_id = ?
+            SELECT id, season, episode FROM episodes WHERE series_id = ?
         "#,
         list_episodes: r#"
-            SELECT e.id, e.series_id, e.season, e.number, e.absolute_number, e.name, e.overview, e.aired, e.remote_id,
+            SELECT e.id, e.series_id, e.season, e.episode, e.absolute_number, e.name, e.overview, e.aired, e.remote_id,
                    EXISTS(SELECT 1 FROM pending p WHERE p.episode_id = e.id) AS pending
             FROM episodes e
             WHERE e.series_id = ? AND e.season = ?
-            ORDER BY e.number
+            ORDER BY e.episode
         "#,
         list_episodes_watched: r#"
             SELECT we.id, we.timestamp, we.season, we.episode, e.id AS episode_id
             FROM watched_episodes we
-            JOIN episodes e ON e.series_id = we.series_id AND e.season = we.season AND e.number = we.episode
+            JOIN episodes e ON e.series_id = we.series_id AND e.season = we.season AND e.episode = we.episode
             WHERE we.series_id = ?
             ORDER BY we.timestamp DESC
         "#,
@@ -491,7 +491,7 @@ statements! {
             SELECT aired FROM episodes WHERE id = ?
         "#,
         update_episode_aired: r#"
-            UPDATE episodes SET aired = ? WHERE series_id = ? AND season = ? AND number = ?
+            UPDATE episodes SET aired = ? WHERE series_id = ? AND season = ? AND episode = ?
         "#,
 
         // movies
@@ -570,7 +570,7 @@ statements! {
         list_watched_by_episode: r#"
             SELECT we.id, we.timestamp, e.id AS episode_id, NULL AS movie_id, e.series_id
             FROM watched_episodes we
-            JOIN episodes e ON e.series_id = we.series_id AND e.season = we.season AND e.number = we.episode
+            JOIN episodes e ON e.series_id = we.series_id AND e.season = we.season AND e.episode = we.episode
             WHERE e.id = ?
             ORDER BY we.timestamp DESC
         "#,
@@ -585,19 +585,19 @@ statements! {
             SELECT we.id, we.timestamp, we.series_id, we.season, we.episode
             FROM watched_episodes we
             LEFT JOIN episodes e
-                ON e.series_id = we.series_id AND e.season = we.season AND e.number = we.episode
+                ON e.series_id = we.series_id AND e.season = we.season AND e.episode = we.episode
             WHERE we.series_id = ? AND e.id IS NULL
             ORDER BY we.season, we.episode, we.timestamp DESC
         "#,
         // select episodes which have 0 watched by series and season.
         select_unwatched_by_series_season: r#"
-            SELECT id, series_id, season, number FROM episodes
+            SELECT id, series_id, season, episode FROM episodes
             WHERE series_id = ? AND season = ?
               AND NOT EXISTS (
                   SELECT 1 FROM watched_episodes we
                   WHERE we.series_id = episodes.series_id
                     AND we.season = episodes.season
-                    AND we.episode = episodes.number
+                    AND we.episode = episodes.episode
               )
         "#,
 
@@ -615,10 +615,10 @@ statements! {
         delete_pending_episode: r#"DELETE FROM pending WHERE series_id = ?"#,
         next_episode_after: r#"
             SELECT e.id, e.aired FROM episodes e
-            JOIN episodes curr ON curr.id = ?2
+            JOIN episodes c ON c.id = ?2
             WHERE e.series_id = ?1
-              AND (e.season > curr.season OR (e.season = curr.season AND e.number > curr.number))
-            ORDER BY e.season, e.number
+              AND (e.season > c.season OR (e.season = c.season AND e.episode > c.episode))
+            ORDER BY e.season, e.episode
             LIMIT 1
         "#,
         delete_pending_movie: r#"DELETE FROM pending WHERE movie_id = ?"#,
@@ -633,9 +633,9 @@ statements! {
               AND (e.aired IS NOT NULL AND e.aired <= ?)
               AND NOT EXISTS (
                   SELECT 1 FROM watched_episodes we
-                  WHERE we.series_id = e.series_id AND we.season = e.season AND we.episode = e.number
+                  WHERE we.series_id = e.series_id AND we.season = e.season AND we.episode = e.episode
               )
-            ORDER BY e.season, e.number
+            ORDER BY e.season, e.episode
             LIMIT 1
         "#,
         first_unwatched_episode_for_series: r#"
@@ -644,9 +644,9 @@ statements! {
             WHERE e.series_id = ?
               AND NOT EXISTS (
                   SELECT 1 FROM watched_episodes we
-                  WHERE we.series_id = e.series_id AND we.season = e.season AND we.episode = e.number
+                  WHERE we.series_id = e.series_id AND we.season = e.season AND we.episode = e.episode
               )
-            ORDER BY e.season, e.number
+            ORDER BY e.season, e.episode
             LIMIT 1
         "#,
         movies_needing_pending: r#"
@@ -664,7 +664,7 @@ statements! {
             ORDER BY timestamp DESC
         "#,
         pending_episode_detail: r#"
-            SELECT e.series_id, s.title AS series_title, e.season, e.number, e.name AS episode_name, e.aired
+            SELECT e.series_id, s.title AS series_title, e.season, e.episode, e.name AS episode_name, e.aired
             FROM episodes e
             JOIN series s ON s.id = e.series_id
             WHERE e.id = ?
@@ -686,14 +686,14 @@ statements! {
         // schedule: episodes airing in the next N days
         list_schedule: r#"
             SELECT e.series_id, s.title AS series_title,
-                   e.id AS episode_id, e.season, e.number, e.absolute_number,
+                   e.id AS episode_id, e.season, e.episode, e.absolute_number,
                    e.name, e.overview, e.aired, e.remote_id
             FROM episodes e
             JOIN series s ON s.id = e.series_id
             WHERE s.tracked = 1
               AND e.aired > ?
               AND e.aired <= ?
-            ORDER BY e.aired, s.title, e.season, e.number
+            ORDER BY e.aired, s.title, e.season, e.episode
         "#,
 
         // all watched (for import dedup) — see list_all_watched_episodes / list_all_watched_movies
@@ -865,6 +865,10 @@ impl Database {
             .no_mutex()
             .open(path.as_os_str())
             .with_context(|| path.display().to_string())?;
+
+        // Enforce foreign keys so ON DELETE CASCADE actually fires. Must run
+        // outside any transaction.
+        c.execute("PRAGMA foreign_keys = ON;")?;
 
         do_migrations(&c).context("running migrations")?;
         ensure_mode(&c, mode).context("setting database mode")?;
@@ -1217,11 +1221,11 @@ impl Database {
         let mut removed = Vec::new();
 
         for season in existing {
-            if kept.contains(&season.number) {
+            if kept.contains(&season.season) {
                 continue;
             }
 
-            let n = season.number.to_u32();
+            let n = season.season.to_u32();
             let mut s = self.inner.clone().lock_owned().await;
 
             let result = spawn_blocking(move || {
@@ -1237,7 +1241,7 @@ impl Database {
             });
 
             result.await??;
-            removed.push(season.number);
+            removed.push(season.season);
         }
 
         Ok(removed)
@@ -2834,7 +2838,7 @@ impl Database {
                     id: r.episode_id,
                     series_id: r.series_id,
                     season: r.season,
-                    number: r.number,
+                    episode: r.number,
                     absolute_number: r.absolute_number,
                     name: r.name,
                     overview: r.overview,
@@ -3075,7 +3079,7 @@ fn season_from_row(r: SeasonRow) -> api::Season {
     api::Season {
         id: r.id,
         series_id: r.series_id,
-        number: r.number,
+        season: r.season,
         air_date: r.air_date,
         name: r.name,
         overview: r.overview,
@@ -3089,7 +3093,7 @@ fn episode_from_row(r: EpisodeRow) -> api::Episode {
         id: r.id,
         series_id: r.series_id,
         season: r.season,
-        number: r.number as u32,
+        episode: r.number as u32,
         absolute_number: r.absolute_number,
         name: r.name,
         overview: r.overview,
