@@ -93,9 +93,11 @@ impl Component for Queue {
 
                 <div class="page-title row">
                     <span class="fill">{"Sync Queue"}</span>
+
                     if total_pending > 0 {
                         <span class="text-muted">{format!("{} pending", total_pending)}</span>
                     }
+
                     <button class="btn" onclick={link.callback(|_| Msg::SyncAll)}
                         title="Queue sync for all series and movies">
                         <span class="icon-inline"><span class="icon arrow-path" /></span>
@@ -106,8 +108,12 @@ impl Component for Queue {
                 { self.view_section(ctx, "Running", &self.running, true) }
 
                 if !page_pending.is_empty() {
-                    <div class="section">
-                        <div class="row"><h3>{"Pending"}</h3></div>
+                    <div class="column">
+                        <h3>{"Pending"}</h3>
+
+                        <div class="row center">
+                            <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
+                        </div>
 
                         <div class="table">
                             { for page_pending.iter().map(|t| self.view_task_row(ctx, t, false)) }
@@ -212,9 +218,10 @@ impl Queue {
         if tasks.is_empty() {
             return html! {};
         }
+
         html! {
-            <div class="section">
-                <div class="row"><h3>{title}</h3></div>
+            <div class="column">
+                <h3>{title}</h3>
 
                 <div class="table">
                     { for tasks.iter().map(|t| self.view_task_row(ctx, t, spinning)) }
@@ -231,6 +238,7 @@ impl Queue {
             )),
             api::TaskKind::SyncMovie { movie_id, .. } => Some(Route::MovieDetail(*movie_id)),
         };
+
         let on_navigate = route.map(|r| ctx.link().callback(move |_| Msg::Navigate(r.clone())));
 
         html! {
@@ -239,6 +247,7 @@ impl Queue {
                     <span class="icon-inline">
                         <span class={if spinning { "icon arrow-path" } else { "icon clock" }} />
                     </span>
+
                     <span class="fill">
                         { self.view_task_label(task, on_navigate) }
                     </span>
@@ -272,9 +281,10 @@ impl Queue {
         if self.completed.is_empty() {
             return html! {};
         }
+
         html! {
-            <div class="section">
-                <div class="row"><h3>{"Completed"}</h3></div>
+            <div class="column">
+                <h3>{"Completed"}</h3>
 
                 <div class="table">
                     { for self.completed.iter().map(|t| self.view_completed_row(ctx, t)) }

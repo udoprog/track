@@ -176,20 +176,24 @@ pub(super) fn MarkWatchedPicker(props: &MarkWatchedPickerProps) -> Html {
 
     html! {
         <div class={classes!("row-fill", "fill", &props.class)}>
-            <span class="fill">{"Watched when?"}</span>
+            <span>{"Watched when?"}</span>
 
-            <div class="input-group end">
-                <button class="btn-icon" onclick={on_cancel} title="Cancel">
-                    <span class="icon x-mark" />
-                </button>
-                <button class="btn-success" onclick={on_now} title="Watched now">
-                    <span class="icon-inline"><span class="icon check" /></span>
-                    {"Now"}
-                </button>
-                <button class="btn" onclick={on_aired} title="Watched when aired">
-                    <span class="icon-inline"><span class="icon clock" /></span>
-                    {"Aired"}
-                </button>
+            <div class="end">
+                <div class="input-group">
+                    <button class="btn-icon" onclick={on_cancel} title="Cancel">
+                        <span class="icon x-mark" />
+                    </button>
+
+                    <button class="btn-success" onclick={on_now} title="Watched now">
+                        <span class="icon-inline"><span class="icon check" /></span>
+                        {"Now"}
+                    </button>
+
+                    <button class="btn" onclick={on_aired} title="Watched when aired">
+                        <span class="icon-inline"><span class="icon clock" /></span>
+                        {"Aired"}
+                    </button>
+                </div>
             </div>
         </div>
     }
@@ -333,7 +337,7 @@ pub(super) fn ImageGallery(props: &ImageGalleryProps) -> Html {
                 </div>
 
                 if let Some(ref sel) = selected_item {
-                    <div class="section">
+                    <div class="column">
                         <span class="text-muted">{"Current selection"}</span>
 
                         <div class="image-thumb selected">

@@ -384,21 +384,6 @@ p {
     }
 }
 
-.section {
-    display: flex;
-    flex-direction: column;
-    padding: $gap-sm;
-    gap: $gap-sm;
-
-    &.row {
-        flex-direction: row;
-    }
-
-    &.row-fill {
-        flex-direction: row;
-    }
-}
-
 h2 {
     margin: 0;
     padding: 0;

@@ -109,7 +109,7 @@ impl Component for Dashboard {
                 { self.view_pending(ctx) }
 
                 <div class="column">
-                    <h2>{"Coming Up"}</h2>
+                    <h2>{"Schedule"}</h2>
 
                     <Calendar
                         onerror={ctx.props().onerror.clone()}
@@ -322,9 +322,7 @@ impl Dashboard {
         html! {
             <div class="column">
                 <div class="row-fill">
-                    <div class="row">
-                        <h2>{"Pending"}</h2>
-                    </div>
+                    <h2>{"Next"}</h2>
 
                     <div class="row end">
                         <div class="input-group">

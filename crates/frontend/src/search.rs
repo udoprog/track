@@ -121,7 +121,7 @@ impl Component for Search {
 
                 <div class="page-title">{"Search"}</div>
 
-                <div class="section row">
+                <div class="row">
                     <select class="input-select" onchange={on_kind} value={kind_val}>
                         <option value="series" selected={matches!(self.kind, api::SearchKind::Series)}>
                             {"Series"}
@@ -131,6 +131,7 @@ impl Component for Search {
                             {"Movies"}
                         </option>
                     </select>
+
                     <input
                         class="input-text fill"
                         type="text"
@@ -139,8 +140,10 @@ impl Component for Search {
                         oninput={on_input}
                         onkeydown={on_keydown}
                     />
+
                     <button class="btn" onclick={on_submit}>{"Search"}</button>
                 </div>
+
                 { self.view_results(ctx) }
             </div>
         }
@@ -278,12 +281,13 @@ impl Search {
         let series_id = r.already_tracked;
 
         html! {
-            <div class="section row">
+            <div class="row">
                 if let Some(ref poster) = r.poster {
                     <img class="poster-sm" src={poster.proxy_url()} />
                 } else {
                     <div class="poster-sm" />
                 }
+
                 <div class="fill">
                     <div class="row">
                         if let Some(ref title) = r.title {
@@ -299,6 +303,7 @@ impl Search {
                         <p class="overview text-muted">{overview}</p>
                     }
                 </div>
+
                 {
                     if let Some(id) = series_id {
                         let on_nav = ctx.link().callback(move |_| Msg::Navigate(Route::SeriesDetail(id, SeriesDetailQuery::default())));
@@ -327,12 +332,13 @@ impl Search {
         let movie_id = r.already_tracked;
 
         html! {
-            <div class="section row">
+            <div class="row">
                 if let Some(ref poster) = r.poster {
                     <img class="poster-sm" src={poster.proxy_url()} />
                 } else {
                     <div class="poster-sm" />
                 }
+
                 <div class="fill">
                     <div class="row">
                         if let Some(ref title) = r.title {
@@ -348,6 +354,7 @@ impl Search {
                         <p class="overview text-muted">{overview}</p>
                     }
                 </div>
+
                 {
                     if let Some(id) = movie_id {
                         let on_nav = ctx.link().callback(move |_| Msg::Navigate(Route::MovieDetail(id)));
