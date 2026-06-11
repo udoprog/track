@@ -710,10 +710,11 @@ statements! {
             ORDER BY timestamp, country, release_type
         "#,
         movie_release_by_type: r#"
-            SELECT country, release_type, timestamp
+            SELECT timestamp
             FROM movie_releases
             WHERE movie_id = ? AND release_type = ?
-            ORDER BY timestamp, country, release_type
+            ORDER BY timestamp
+            LIMIT 1
         "#,
 
         // digital-release pending discovery
@@ -1518,11 +1519,11 @@ impl Database {
         let result = spawn_blocking(move || {
             s.movie_release_by_type.bind((id, ty))?;
 
-            let Some(timestamp) = s.movie_release_by_type.next::<Option<Timestamp>>()? else {
+            let Some(timestamp) = s.movie_release_by_type.next::<Timestamp>()? else {
                 return Ok(None);
             };
 
-            Ok(timestamp)
+            Ok(Some(timestamp))
         });
 
         result.await?

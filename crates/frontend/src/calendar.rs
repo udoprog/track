@@ -29,8 +29,8 @@ pub(super) enum Msg {
 
 #[derive(Properties, PartialEq)]
 pub(super) struct Props {
+    pub(super) onerror: Callback<Option<Error>>,
     pub(super) on_navigate: Callback<Route>,
-    pub(super) onerror: Callback<Error>,
 }
 
 impl Component for Calendar {
@@ -66,7 +66,7 @@ impl Component for Calendar {
         match self.try_update(ctx, msg) {
             Ok(render) => render,
             Err(e) => {
-                ctx.props().onerror.emit(e);
+                ctx.props().onerror.emit(Some(e));
                 false
             }
         }

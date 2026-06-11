@@ -5,6 +5,41 @@ use iso639::{LanguageToCountry, Languages};
 use musli_web::web03::prelude::*;
 
 use crate::SetupChannel;
+use crate::error::RcError;
+
+#[function_component]
+pub(super) fn LoadingPage() -> Html {
+    html! {
+        <div class="page">
+            <div class="box info">
+                <span class="icon-inline"><span class="icon arrow-path spin" /></span>
+                <span>{"Loading…"}</span>
+            </div>
+        </div>
+    }
+}
+
+#[derive(Properties, PartialEq)]
+pub(super) struct ErrorBoxProps {
+    pub(super) error: RcError,
+    pub(super) onclearerror: Callback<()>,
+}
+
+#[function_component]
+pub(super) fn ErrorBox(props: &ErrorBoxProps) -> Html {
+    html! {
+        <div class="box error">
+            <div class="column fill">
+                { for props.error.sources().map(|e| html! { <p>{e.to_string()}</p> }) }
+
+                <button class="btn-danger" onclick={props.onclearerror.reform(|_| ())}>
+                    <span class="icon-inline"><span class="icon x-mark" /></span>
+                    <span>{"Dismiss"}</span>
+                </button>
+            </div>
+        </div>
+    }
+}
 
 #[derive(Properties, PartialEq)]
 pub(super) struct TrackedProps {

@@ -6,11 +6,11 @@ use yew::prelude::*;
 use api::{HasAired, TimeZone};
 
 use crate::SetupChannel;
-use crate::error::{CustomContext, Error, Message};
+use crate::error::{CustomContext, Error, Message, RcError};
 use crate::router::{PagedQuery, Route, SeriesDetailQuery};
 use crate::ui::{
-    ConfirmDanger, EpisodePicker, ImageGallery, ImageItem, LanguagePicker, MarkWatchedPicker,
-    RemoteSourceKind, RemoteSourceSelect, Tracked,
+    ConfirmDanger, EpisodePicker, ErrorBox, ImageGallery, ImageItem, LanguagePicker, LoadingPage,
+    MarkWatchedPicker, RemoteSourceKind, RemoteSourceSelect, Tracked,
 };
 
 pub(super) struct SeriesDetail {
@@ -119,10 +119,11 @@ pub(super) enum Msg {
 
 #[derive(Properties, PartialEq)]
 pub(super) struct Props {
+    pub(super) error: Option<RcError>,
+    pub(super) onerror: Callback<Option<Error>>,
     pub(super) series_id: api::SeriesId,
     #[prop_or_default]
     pub(super) initial_season: Option<api::SeasonNumber>,
-    pub(super) onerror: Callback<Error>,
     pub(super) on_navigate: Callback<Route>,
 }
 
@@ -192,7 +193,7 @@ impl Component for SeriesDetail {
         match self.try_update(ctx, msg) {
             Ok(render) => render,
             Err(e) => {
-                ctx.props().onerror.emit(e);
+                ctx.props().onerror.emit(Some(e));
                 false
             }
         }
@@ -200,11 +201,7 @@ impl Component for SeriesDetail {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let Some(ref series) = self.series else {
-            return html! {
-                <div class="page">
-                    <div class="empty text-muted">{"Loading…"}</div>
-                </div>
-            };
+            return html!(<LoadingPage />);
         };
 
         let link = ctx.link();
@@ -223,6 +220,10 @@ impl Component for SeriesDetail {
         html! {
             <div class="page-container" {style}>
                 <div class="page">
+                    if let Some(ref error) = ctx.props().error {
+                        <ErrorBox error={error.clone()} onclearerror={ctx.props().onerror.reform(|()| None)} />
+                    }
+
                     { self.view_header(ctx, series) }
 
                     <div class={classes!("desktop-row-fill", "mobile-column", "actions", (!self.actions_expanded).then_some("hide-mobile"))}>

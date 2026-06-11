@@ -3,9 +3,10 @@ use jiff::tz::TimeZone as JiffTimeZone;
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
-use crate::error::{CustomContext, Error, Message};
+use crate::error::{CustomContext, Error, Message, RcError};
 use crate::router::{DashboardQuery, PagedQuery, Route};
 use crate::setup_channel::SetupChannel;
+use crate::ui::LoadingPage;
 use crate::{
     Dashboard, MovieDetail, MoviesList, Queue, Search, SeriesDetail, SeriesList, Settings,
 };
@@ -29,8 +30,9 @@ pub(super) enum Msg {
 
 #[derive(Properties, PartialEq)]
 pub(super) struct Props {
+    pub(super) error: Option<RcError>,
+    pub(super) onerror: Callback<Option<Error>>,
     pub(super) route: Route,
-    pub(super) onerror: Callback<Error>,
     pub(super) on_navigate: Callback<Route>,
 }
 
@@ -65,7 +67,7 @@ impl Component for App {
         match self.try_update(ctx, msg) {
             Ok(render) => render,
             Err(e) => {
-                ctx.props().onerror.emit(e);
+                ctx.props().onerror.emit(Some(e));
                 false
             }
         }
@@ -73,7 +75,9 @@ impl Component for App {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let Some(tz) = &self.tz else {
-            return html! { <div class="app"><p>{"Loading..."}</p></div> };
+            return html! {
+                <LoadingPage />
+            };
         };
 
         let link = ctx.link();
@@ -81,15 +85,13 @@ impl Component for App {
 
         html! {
             <ContextProvider<TimeZone> context={tz.clone()}>
-            <ContextProvider<ws::Handle> context={self.ws.handle()}>
-            <div class="app">
-                <Toolbar on_navigate={on_nav} />
+                <ContextProvider<ws::Handle> context={self.ws.handle()}>
+                    <div class="app">
+                        <Toolbar on_navigate={on_nav} />
 
-                <div class="app-body">
-                    { self.view_page(ctx) }
-                </div>
-            </div>
-            </ContextProvider<ws::Handle>>
+                        { self.view_page(ctx) }
+                    </div>
+                </ContextProvider<ws::Handle>>
             </ContextProvider<TimeZone>>
         }
     }
@@ -161,34 +163,36 @@ impl App {
     }
 
     fn view_page(&self, ctx: &Context<Self>) -> Html {
-        let onerror = ctx.props().onerror.clone();
         let on_navigate = ctx.link().callback(Msg::Navigate);
+
+        let error = ctx.props().error.clone();
+        let onerror = ctx.props().onerror.clone();
 
         match &ctx.props().route {
             Route::Dashboard(query) => {
-                html! { <Dashboard {onerror} {on_navigate} page={query.page} /> }
+                html! { <Dashboard {error} {onerror} {on_navigate} page={query.page} /> }
             }
-            Route::Queue => html! { <Queue {onerror} {on_navigate} /> },
+            Route::Queue => html! { <Queue {error} {onerror} {on_navigate} /> },
             Route::Series(query) => html! {
-                <SeriesList {onerror} {on_navigate} page={query.page} filter={query.filter.clone()} />
+                <SeriesList {error} {onerror} {on_navigate} page={query.page} filter={query.filter.clone()} />
             },
             Route::SeriesDetail(series_id, query) => {
                 let series_id = *series_id;
                 let initial_season = query.season;
 
                 html! {
-                    <SeriesDetail {series_id} {initial_season} {onerror} {on_navigate} />
+                    <SeriesDetail {error} {onerror} {series_id} {initial_season} {on_navigate} />
                 }
             }
             Route::Movies(query) => html! {
-                <MoviesList {onerror} {on_navigate} page={query.page} filter={query.filter.clone()} />
+                <MoviesList {error} {onerror} {on_navigate} page={query.page} filter={query.filter.clone()} />
             },
             Route::MovieDetail(movie_id) => {
                 let movie_id = *movie_id;
-                html! { <MovieDetail {movie_id} {onerror} {on_navigate} /> }
+                html! { <MovieDetail {error} {onerror} {movie_id} {on_navigate} /> }
             }
-            Route::Search => html! { <Search {onerror} {on_navigate} /> },
-            Route::Settings => html! { <Settings {onerror} /> },
+            Route::Search => html! { <Search {error} {onerror} {on_navigate} /> },
+            Route::Settings => html! { <Settings {error} {onerror} /> },
         }
     }
 }

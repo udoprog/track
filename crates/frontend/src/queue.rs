@@ -2,9 +2,9 @@ use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
 use crate::SetupChannel;
-use crate::error::{CustomContext, Error, Message};
+use crate::error::{CustomContext, Error, Message, RcError};
 use crate::router::{Route, SeriesDetailQuery};
-use crate::ui::PaginationButtons;
+use crate::ui::{ErrorBox, PaginationButtons};
 
 const PAGE_SIZE: usize = 20;
 pub(super) struct Queue {
@@ -30,7 +30,8 @@ pub(super) enum Msg {
 
 #[derive(Properties, PartialEq)]
 pub(super) struct Props {
-    pub(super) onerror: Callback<Error>,
+    pub(super) error: Option<RcError>,
+    pub(super) onerror: Callback<Option<Error>>,
     pub(super) on_navigate: Callback<Route>,
 }
 
@@ -64,7 +65,7 @@ impl Component for Queue {
         match self.try_update(ctx, msg) {
             Ok(render) => render,
             Err(e) => {
-                ctx.props().onerror.emit(e);
+                ctx.props().onerror.emit(Some(e));
                 false
             }
         }
@@ -86,6 +87,10 @@ impl Component for Queue {
 
         html! {
             <div class="page">
+                if let Some(ref error) = ctx.props().error {
+                    <ErrorBox error={error.clone()} onclearerror={ctx.props().onerror.reform(|()| None)} />
+                }
+
                 <div class="page-title row">
                     <span class="fill">{"Sync Queue"}</span>
                     if total_pending > 0 {

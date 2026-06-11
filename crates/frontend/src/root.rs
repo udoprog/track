@@ -4,6 +4,7 @@ use yew::prelude::*;
 use crate::App;
 use crate::error::{Error, RcError};
 use crate::router::{Route, RouterState};
+use crate::ui::LoadingPage;
 
 pub(super) struct Root {
     router: Option<RouterState>,
@@ -14,8 +15,7 @@ pub(super) struct Root {
 pub(super) enum Msg {
     Navigate(Route),
     PopState,
-    Error(Error),
-    ClearError,
+    Error(Option<Error>),
 }
 
 impl Component for Root {
@@ -62,11 +62,7 @@ impl Component for Root {
                 true
             }
             Msg::Error(e) => {
-                self.error = Some(RcError::from(e));
-                true
-            }
-            Msg::ClearError => {
-                self.error = None;
+                self.error = e.map(RcError::from);
                 true
             }
         }
@@ -75,22 +71,8 @@ impl Component for Root {
     fn view(&self, ctx: &Context<Self>) -> Html {
         let link = ctx.link();
 
-        if let Some(ref err) = self.error {
-            return html! {
-                <div class="error-page">
-                    <div class="error-box">
-                        { for err.sources().map(|e| html! { <p>{e.to_string()}</p> }) }
-
-                        <button onclick={link.callback(|_| Msg::ClearError)} class="btn">
-                            {"Dismiss"}
-                        </button>
-                    </div>
-                </div>
-            };
-        }
-
         let Some(ref router) = self.router else {
-            return html! { <div class="loading">{"Loading…"}</div> };
+            return html!(<LoadingPage />);
         };
 
         let route = router.route.clone();
@@ -98,7 +80,9 @@ impl Component for Root {
         let on_navigate = link.callback(Msg::Navigate);
 
         html! {
-            <App {route} {onerror} {on_navigate} />
+            <>
+                <App error={self.error.clone()} {route} {onerror} {on_navigate} />
+            </>
         }
     }
 }

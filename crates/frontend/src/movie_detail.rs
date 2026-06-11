@@ -3,11 +3,11 @@ use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
 use crate::SetupChannel;
-use crate::error::{CustomContext, Error, Message};
+use crate::error::{CustomContext, Error, Message, RcError};
 use crate::router::{PagedQuery, Route};
 use crate::ui::{
-    ConfirmDanger, ImageGallery, ImageItem, LanguagePicker, MarkWatchedPicker, RemoteSourceKind,
-    RemoteSourceSelect, Tracked,
+    ConfirmDanger, ErrorBox, ImageGallery, ImageItem, LanguagePicker, LoadingPage,
+    MarkWatchedPicker, RemoteSourceKind, RemoteSourceSelect, Tracked,
 };
 
 pub(super) struct MovieDetail {
@@ -87,8 +87,9 @@ pub(super) enum Msg {
 
 #[derive(Properties, PartialEq)]
 pub(super) struct Props {
+    pub(super) error: Option<RcError>,
+    pub(super) onerror: Callback<Option<Error>>,
     pub(super) movie_id: api::MovieId,
-    pub(super) onerror: Callback<Error>,
     pub(super) on_navigate: Callback<Route>,
 }
 
@@ -144,7 +145,7 @@ impl Component for MovieDetail {
         match self.try_update(ctx, msg) {
             Ok(render) => render,
             Err(e) => {
-                ctx.props().onerror.emit(e);
+                ctx.props().onerror.emit(Some(e));
                 false
             }
         }
@@ -152,11 +153,7 @@ impl Component for MovieDetail {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let Some(ref movie) = self.movie else {
-            return html! {
-                <div class="page">
-                    <div class="empty text-muted">{"Loading…"}</div>
-                </div>
-            };
+            return html!(<LoadingPage />);
         };
 
         let url = movie.backdrop.as_ref().map(|i| i.proxy_url());
@@ -169,6 +166,10 @@ impl Component for MovieDetail {
         html! {
             <div class="page-container" {style}>
                 <div class="page">
+                    if let Some(ref error) = ctx.props().error {
+                        <ErrorBox error={error.clone()} onclearerror={ctx.props().onerror.reform(|()| None)} />
+                    }
+
                     { self.view_header(ctx, movie) }
 
                     { self.view_body(ctx, movie) }

@@ -3,8 +3,9 @@ use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
 use crate::SetupChannel;
-use crate::error::{CustomContext, Error, Message};
+use crate::error::{CustomContext, Error, Message, RcError};
 use crate::router::{PagedQuery, Route, SeriesDetailQuery};
+use crate::ui::ErrorBox;
 
 const PAGE_SIZE: usize = 20;
 
@@ -32,9 +33,10 @@ pub(super) enum Msg {
 
 #[derive(Properties, PartialEq)]
 pub(super) struct Props {
+    pub(super) error: Option<RcError>,
+    pub(super) onerror: Callback<Option<Error>>,
     pub(super) page: usize,
     pub(super) filter: String,
-    pub(super) onerror: Callback<Error>,
     pub(super) on_navigate: Callback<Route>,
 }
 
@@ -73,7 +75,7 @@ impl Component for SeriesList {
         match self.try_update(ctx, msg) {
             Ok(render) => render,
             Err(e) => {
-                ctx.props().onerror.emit(e);
+                ctx.props().onerror.emit(Some(e));
                 false
             }
         }
@@ -114,6 +116,10 @@ impl Component for SeriesList {
 
         html! {
             <div class="page">
+                if let Some(ref error) = ctx.props().error {
+                    <ErrorBox error={error.clone()} onclearerror={ctx.props().onerror.reform(|()| None)} />
+                }
+
                 <div class="page-title row">
                     <span class="fill">{"Series"}</span>
                     <span class="text-muted">{total}</span>

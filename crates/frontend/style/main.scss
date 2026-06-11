@@ -83,6 +83,11 @@ body {
     --icon-color-invert: #{$bg-dark};
 }
 
+p {
+    margin: 0;
+    padding: 0;
+}
+
 #app {
     height: 100%;
     overflow: hidden;
@@ -99,14 +104,14 @@ body {
     height: 100%;
 }
 
-.app-body {
-    flex: 1;
-    overflow: auto;
-}
-
 .toolbar {
     background: $bg-panel;
     border-bottom: 1px solid $border-subtle;
+    min-height: $input-height;
+
+    @include g.until-mobile {
+        min-height: $input-height-touch;
+    }
 }
 
 .toolbar-inner {
@@ -671,21 +676,26 @@ h5 {
     text-decoration: none;
 }
 
-.error-page {
+.box {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-}
-
-.error-box {
-    background: $color-danger-bg;
-    border: 1px solid $color-danger;
+    flex-direction: row;
+    gap: $gap;
     border-radius: $radius;
-    color: $color-danger;
     padding: $gap;
-    max-width: 480px;
+    align-items: center;
     width: 100%;
+    margin: 0 auto;
+
+    &.error {
+        background: $color-danger-bg;
+        border: 1px solid $color-danger;
+        color: $color-danger;
+    }
+
+    &.info {
+        background: $bg-highlight;
+        border: 1px solid $border-subtle;
+    }
 
     p {
         margin: 0 0 $gap-sm;
@@ -704,6 +714,7 @@ h5 {
     display: flex;
     flex-direction: column;
     max-width: 960px;
+    width: 100%;
     margin: 0 auto;
     padding: $gap;
     gap: $gap;

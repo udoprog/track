@@ -3,9 +3,9 @@ use yew::prelude::*;
 
 use api::{HasAired, TimeZone};
 
-use crate::error::{CustomContext, Error, Message};
+use crate::error::{CustomContext, Error, Message, RcError};
 use crate::router::{DashboardQuery, Route, SeriesDetailQuery};
-use crate::ui::{ConfirmDanger, MarkWatchedPicker, PaginationButtons};
+use crate::ui::{ConfirmDanger, ErrorBox, MarkWatchedPicker, PaginationButtons};
 use crate::{Calendar, SetupChannel};
 
 pub(super) struct Dashboard {
@@ -47,7 +47,8 @@ pub(super) enum Msg {
 
 #[derive(Properties, PartialEq)]
 pub(super) struct Props {
-    pub(super) onerror: Callback<Error>,
+    pub(super) error: Option<RcError>,
+    pub(super) onerror: Callback<Option<Error>>,
     pub(super) on_navigate: Callback<Route>,
     pub(super) page: usize,
 }
@@ -92,7 +93,7 @@ impl Component for Dashboard {
         match self.try_update(ctx, msg) {
             Ok(render) => render,
             Err(e) => {
-                ctx.props().onerror.emit(e);
+                ctx.props().onerror.emit(Some(e));
                 false
             }
         }
@@ -101,14 +102,18 @@ impl Component for Dashboard {
     fn view(&self, ctx: &Context<Self>) -> Html {
         html! {
             <div class="page">
+                if let Some(ref error) = ctx.props().error {
+                    <ErrorBox error={error.clone()} onclearerror={ctx.props().onerror.reform(|()| None)} />
+                }
+
                 { self.view_pending(ctx) }
 
                 <div class="section">
                     <h2>{"Coming Up"}</h2>
 
                     <Calendar
-                        on_navigate={ctx.props().on_navigate.clone()}
                         onerror={ctx.props().onerror.clone()}
+                        on_navigate={ctx.props().on_navigate.clone()}
                     />
                 </div>
             </div>
