@@ -872,6 +872,7 @@ pub enum ImageKind {
     Banner,
     Fanart,
     Backdrop,
+    Screenshot,
 }
 
 impl ImageKind {
@@ -881,6 +882,7 @@ impl ImageKind {
             ImageKind::Banner => "banner",
             ImageKind::Fanart => "fanart",
             ImageKind::Backdrop => "backdrop",
+            ImageKind::Screenshot => "screenshot",
         }
     }
 }
@@ -901,6 +903,7 @@ impl ::sqll::FromColumn<'_> for ImageKind {
             1 => Ok(ImageKind::Banner),
             2 => Ok(ImageKind::Fanart),
             3 => Ok(ImageKind::Backdrop),
+            4 => Ok(ImageKind::Screenshot),
             other => Err(::sqll::Error::custom(format!(
                 "unknown image kind: {other}"
             ))),
@@ -916,6 +919,7 @@ impl ::sqll::BindValue for ImageKind {
             ImageKind::Banner => 1,
             ImageKind::Fanart => 2,
             ImageKind::Backdrop => 3,
+            ImageKind::Screenshot => 4,
         };
         n.bind_value(stmt, index)
     }

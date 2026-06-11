@@ -126,9 +126,11 @@ CREATE TABLE
         height INTEGER NOT NULL,
         series_id INTEGER REFERENCES series (id) ON DELETE CASCADE,
         movie_id INTEGER REFERENCES movies (id) ON DELETE CASCADE,
+        episode_id INTEGER REFERENCES episodes (id) ON DELETE CASCADE,
         CHECK (
             (series_id IS NOT NULL)
             OR (movie_id IS NOT NULL)
+            OR (episode_id IS NOT NULL)
         )
     );
 
@@ -139,6 +141,10 @@ WHERE
 CREATE UNIQUE INDEX idx_images_movie ON images (movie_id, kind, path)
 WHERE
     movie_id IS NOT NULL;
+
+CREATE UNIQUE INDEX idx_images_episode ON images (episode_id, kind, path)
+WHERE
+    episode_id IS NOT NULL;
 
 CREATE TABLE
     series_images (
@@ -154,6 +160,14 @@ CREATE TABLE
         kind INTEGER NOT NULL,
         image_id INTEGER NOT NULL REFERENCES images (id) ON DELETE CASCADE,
         PRIMARY KEY (movie_id, kind)
+    );
+
+CREATE TABLE
+    episode_images (
+        episode_id INTEGER NOT NULL REFERENCES episodes (id) ON DELETE CASCADE,
+        kind INTEGER NOT NULL,
+        image_id INTEGER NOT NULL REFERENCES images (id) ON DELETE CASCADE,
+        PRIMARY KEY (episode_id, kind)
     );
 
 CREATE TABLE

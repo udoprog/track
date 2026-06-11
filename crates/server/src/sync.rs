@@ -149,6 +149,10 @@ async fn sync_series_tmdb(
 
     let mut synced_seasons = HashSet::new();
 
+    db.clear_episode_images(series_id).await?;
+
+    let existing_episode_ids = db.episode_ids(series_id).await?;
+
     for info in &info.seasons {
         db.upsert_season(
             series_id,
@@ -169,8 +173,13 @@ async fn sync_series_tmdb(
         {
             fetched_numbers.insert(ep.number);
 
+            let episode_id = existing_episode_ids
+                .get(&(ep.season, ep.number))
+                .copied()
+                .unwrap_or_else(EpisodeId::random);
+
             db.upsert_episode(
-                EpisodeId::random(),
+                episode_id,
                 series_id,
                 ep.season,
                 ep.number,
@@ -181,6 +190,21 @@ async fn sync_series_tmdb(
                 Some(&ep.remote_id),
             )
             .await?;
+
+            if let Some((source, path)) = &ep.filename {
+                let image_id = ImageId::random();
+
+                db.upsert_episode_image(
+                    image_id,
+                    episode_id,
+                    ImageKind::Screenshot,
+                    &api::Image::new(*source, path),
+                )
+                .await?;
+
+                db.set_episode_image_selection(episode_id, ImageKind::Screenshot, image_id)
+                    .await?;
+            }
         }
 
         db.prune_season_episodes(series_id, info.number, &fetched_numbers)
@@ -301,6 +325,10 @@ async fn sync_series_tvdb(
     let mut season_air_dates: HashMap<SeasonNumber, api::Timestamp> = HashMap::new();
     let mut season_episode_numbers: HashMap<SeasonNumber, HashSet<u32>> = HashMap::new();
 
+    db.clear_episode_images(series_id).await?;
+
+    let existing_episode_ids = db.episode_ids(series_id).await?;
+
     for ep in &episodes {
         seasons_seen.insert(ep.season);
         season_episode_numbers
@@ -316,8 +344,13 @@ async fn sync_series_tvdb(
             }
         }
 
+        let episode_id = existing_episode_ids
+            .get(&(ep.season, ep.number))
+            .copied()
+            .unwrap_or_else(EpisodeId::random);
+
         db.upsert_episode(
-            EpisodeId::random(),
+            episode_id,
             series_id,
             ep.season,
             ep.number,
@@ -328,6 +361,21 @@ async fn sync_series_tvdb(
             Some(&ep.remote_id),
         )
         .await?;
+
+        if let Some((source, path)) = &ep.image {
+            let image_id = ImageId::random();
+
+            db.upsert_episode_image(
+                image_id,
+                episode_id,
+                ImageKind::Screenshot,
+                &api::Image::new(*source, path),
+            )
+            .await?;
+
+            db.set_episode_image_selection(episode_id, ImageKind::Screenshot, image_id)
+                .await?;
+        }
     }
 
     for &season in &seasons_seen {

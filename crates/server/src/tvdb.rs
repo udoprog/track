@@ -205,6 +205,8 @@ impl Client {
     }
 
     pub(crate) async fn fetch_series(&self, id: u32, language: Option<&str>) -> Result<SeriesInfo> {
+        let language = language.and_then(tvdb_language);
+
         #[derive(Deserialize)]
         struct Resp {
             data: Extended,
@@ -264,7 +266,7 @@ impl Client {
         let mut overview = v.overview;
 
         // Override title/overview with the configured language's translation.
-        if let Some(language) = language {
+        if let Some(language) = &language {
             if let Some(tr) = self.fetch_series_translation(id, language).await? {
                 if tr.name.as_deref().is_some_and(|s| !s.trim().is_empty()) {
                     title = tr.name;
@@ -403,7 +405,8 @@ impl Client {
         }
 
         // Default (aired-order) season type, optionally translated to `language`.
-        let path = match language {
+        let language = language.and_then(tvdb_language);
+        let path = match &language {
             Some(language) => format!("series/{series_id}/episodes/default/{language}"),
             None => format!("series/{series_id}/episodes/default"),
         };
@@ -439,7 +442,7 @@ impl Client {
                     aired: opt_date(row.aired.as_deref())
                         .map(|d| d.to_timestamp_at_midnight_utc())
                         .transpose()?,
-                    filename: opt_image(row.image.as_deref()),
+                    image: opt_image(row.image.as_deref()),
                     remote_id: RemoteId::tvdb(row.id),
                 });
             }
@@ -486,7 +489,7 @@ pub(crate) struct EpisodeInfo {
     pub name: Option<String>,
     pub overview: Option<String>,
     pub aired: Option<Timestamp>,
-    pub filename: Option<(ImageSource, String)>,
+    pub image: Option<(ImageSource, String)>,
     pub remote_id: RemoteId,
 }
 
@@ -500,6 +503,22 @@ pub(crate) struct SearchSeriesResult {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/// Map a language code to the 3-letter (ISO 639-3) form the v4 API expects. The
+/// app stores ISO 639-1 (2-letter) codes; pass any already-3-letter code through.
+/// Returns `None` for unknown codes so the caller falls back to the default
+/// language rather than requesting a non-existent translation.
+fn tvdb_language(code: &str) -> Option<String> {
+    let code = code.trim().to_ascii_lowercase();
+
+    if code.len() == 3 {
+        return Some(code);
+    }
+
+    iso639::Languages::new()
+        .get_by_part1(&code)
+        .map(|e| e.id.to_string())
+}
 
 fn opt_date(s: Option<&str>) -> Option<Date> {
     s.filter(|s| !s.is_empty()).and_then(|s| s.parse().ok())

@@ -84,6 +84,15 @@ struct ImageSelectionRow {
 }
 
 #[derive(Row)]
+struct EpisodeScreenshotRow {
+    episode_id: EpisodeId,
+    source: ImageSource,
+    path: String,
+    width: u32,
+    height: u32,
+}
+
+#[derive(Row)]
 struct AllSeriesImageSelectionRow {
     series_id: SeriesId,
     kind: ImageKind,
@@ -127,6 +136,13 @@ struct EpisodeRow {
     aired: Option<Timestamp>,
     remote_id: Option<RemoteId>,
     pending: bool,
+}
+
+#[derive(Row)]
+struct EpisodeIdRow {
+    id: EpisodeId,
+    season: SeasonNumber,
+    number: u32,
 }
 
 #[derive(Row)]
@@ -344,6 +360,18 @@ statements! {
             INSERT INTO images (id, series_id, kind, source, path, width, height) VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(series_id, kind, path) WHERE series_id IS NOT NULL DO NOTHING
         "#,
+        insert_episode_image: r#"
+            INSERT INTO images (id, episode_id, kind, source, path, width, height) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(episode_id, kind, path) WHERE episode_id IS NOT NULL DO NOTHING
+        "#,
+        delete_episode_images_for_series: r#"
+            DELETE FROM images WHERE episode_id IN (SELECT id FROM episodes WHERE series_id = ?)
+        "#,
+        list_season_episode_screenshots: r#"
+            SELECT ei.episode_id, i.source, i.path, i.width, i.height
+            FROM episode_images ei JOIN images i ON i.id = ei.image_id
+            WHERE ei.kind = ? AND ei.episode_id IN (SELECT id FROM episodes WHERE series_id = ? AND season = ?)
+        "#,
         list_movie_images: r#"
             SELECT id, kind, source, path FROM images
             WHERE movie_id = ? ORDER BY kind, path, id
@@ -375,6 +403,9 @@ statements! {
         "#,
         delete_movie_image_selection: r#"
             DELETE FROM movie_images WHERE movie_id = ? AND kind = ?
+        "#,
+        set_episode_image_selection: r#"
+            INSERT OR REPLACE INTO episode_images (episode_id, kind, image_id) VALUES (?, ?, ?)
         "#,
         list_series_image_selections: r#"
             SELECT si.kind, i.source, i.path, i.width, i.height
@@ -432,6 +463,9 @@ statements! {
         "#,
         episode_natural_key: r#"
             SELECT series_id, season, number FROM episodes WHERE id = ?
+        "#,
+        list_episode_ids_for_series: r#"
+            SELECT id, season, number FROM episodes WHERE series_id = ?
         "#,
         list_episodes: r#"
             SELECT e.id, e.series_id, e.season, e.number, e.absolute_number, e.name, e.overview, e.aired, e.remote_id,
@@ -1229,6 +1263,28 @@ impl Database {
         result.await?
     }
 
+    /// Map of `(season, number)` to the existing episode id for a series, so a
+    /// re-sync can reuse stable ids rather than allocating new ones.
+    pub(crate) async fn episode_ids(
+        &self,
+        series_id: SeriesId,
+    ) -> Result<HashMap<(SeasonNumber, u32), EpisodeId>> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        let result = spawn_blocking(move || {
+            s.list_episode_ids_for_series.bind((series_id,))?;
+            let mut out = HashMap::new();
+
+            while let Some(r) = s.list_episode_ids_for_series.next::<EpisodeIdRow>()? {
+                out.insert((r.season, r.number), r.id);
+            }
+
+            Ok(out)
+        });
+
+        result.await?
+    }
+
     pub(crate) async fn episodes(
         &self,
         series_id: SeriesId,
@@ -1239,9 +1295,27 @@ impl Database {
         let result = spawn_blocking(move || {
             s.list_episodes.bind((series_id, season.to_u32()))?;
             let mut out = Vec::new();
+            let mut idx_by_id = HashMap::new();
 
             while let Some(r) = s.list_episodes.next::<EpisodeRow>()? {
+                idx_by_id.insert(r.id, out.len());
                 out.push(episode_from_row(r));
+            }
+
+            s.list_season_episode_screenshots.bind((
+                ImageKind::Screenshot,
+                series_id,
+                season.to_u32(),
+            ))?;
+
+            while let Some(r) = s
+                .list_season_episode_screenshots
+                .next::<EpisodeScreenshotRow>()?
+            {
+                if let Some(&i) = idx_by_id.get(&r.episode_id) {
+                    out[i].screenshot =
+                        Some(Image::new_with_dims(r.source, &r.path, r.width, r.height));
+                }
             }
 
             Ok(out)
@@ -1727,6 +1801,70 @@ impl Database {
             Ok(())
         })
         .await?
+    }
+
+    pub(crate) async fn clear_episode_images(&self, series_id: SeriesId) -> Result<()> {
+        let mut s = self.inner.clone().lock_owned().await;
+        spawn_blocking(move || {
+            s.delete_episode_images_for_series.bind((series_id,))?;
+            ensure!(
+                s.delete_episode_images_for_series.step()?.is_done(),
+                "clear_episode_images"
+            );
+            Ok(())
+        })
+        .await?
+    }
+
+    pub(crate) async fn upsert_episode_image(
+        &self,
+        id: ImageId,
+        episode_id: EpisodeId,
+        kind: ImageKind,
+        image: &Image,
+    ) -> Result<()> {
+        let image = image.clone();
+        let mut s = self.inner.clone().lock_owned().await;
+
+        let result = spawn_blocking(move || {
+            s.insert_episode_image.bind((
+                id,
+                episode_id,
+                kind,
+                image.source(),
+                image.path(),
+                image.width(),
+                image.height(),
+            ))?;
+            ensure!(
+                s.insert_episode_image.step()?.is_done(),
+                "insert_episode_image"
+            );
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    pub(crate) async fn set_episode_image_selection(
+        &self,
+        episode_id: EpisodeId,
+        kind: ImageKind,
+        image_id: ImageId,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().lock_owned().await;
+
+        let result = spawn_blocking(move || {
+            s.set_episode_image_selection
+                .bind((episode_id, kind, image_id))?;
+            ensure!(
+                s.set_episode_image_selection.step()?.is_done(),
+                "set_episode_image_selection"
+            );
+            Ok(())
+        });
+
+        result.await?
     }
 
     pub(crate) async fn upsert_series_image(
@@ -2825,6 +2963,7 @@ fn apply_image_selection(target: &mut api::Series, r: ImageSelectionRow) {
         api::ImageKind::Banner => target.banner = Some(image),
         api::ImageKind::Fanart => target.fanart = Some(image),
         api::ImageKind::Backdrop => target.backdrop = Some(image),
+        api::ImageKind::Screenshot => {}
     }
 }
 

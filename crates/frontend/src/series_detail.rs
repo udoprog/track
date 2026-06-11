@@ -1083,6 +1083,7 @@ impl SeriesDetail {
             api::ImageKind::Banner => series.banner.as_ref(),
             api::ImageKind::Fanart => series.fanart.as_ref(),
             api::ImageKind::Backdrop => series.backdrop.as_ref(),
+            api::ImageKind::Screenshot => None,
         };
 
         let items: Vec<ImageItem> = series
