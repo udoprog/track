@@ -7,7 +7,7 @@ use crate::error::{CustomContext, Error, Message};
 use crate::router::{PagedQuery, Route};
 use crate::ui::{
     ConfirmDanger, ImageGallery, ImageItem, LanguagePicker, MarkWatchedPicker, RemoteSourceKind,
-    RemoteSourceSelect,
+    RemoteSourceSelect, Tracked,
 };
 
 pub(super) struct MovieDetail {
@@ -426,7 +426,10 @@ impl MovieDetail {
                 Ok(true)
             }
             Msg::SetTracked(tracked) => {
+                self.actions_expanded = false;
+
                 let id = ctx.props().movie_id;
+
                 self._untrack_req = self
                     .channel
                     .request()
@@ -436,6 +439,7 @@ impl MovieDetail {
                             .callback(move |r| Msg::SetTrackedDone(tracked, r)),
                     )
                     .send();
+
                 Ok(false)
             }
             Msg::SetTrackedDone(tracked, result) => {
@@ -638,26 +642,26 @@ impl MovieDetail {
             }
 
             html! {
-                <div class="actions desktop-row-fill mobile-column align-top">
-                    <div class="row-fill fill">
-                        <div class="row">
-                            if self.watched.len() > 0 {
-                                <span class="icon-inline" title="Watched"><span class="icon check-circle" /></span>
-                            } else {
-                                <span class="icon-inline" title="Not watched"><span class="icon x-circle" /></span>
-                            }
+                <div class="actions row-fill">
+                    <div class="column fill">
+                        <div class="row-fill">
+                            <div class="row">
+                                if self.watched.len() > 0 {
+                                    <span class="icon-inline" title="Watched"><span class="icon check-circle" /></span>
+                                } else {
+                                    <span class="icon-inline" title="Not watched"><span class="icon x-circle" /></span>
+                                }
 
-                            <span class="text-muted">
-                                {match &self.watched[..] {
-                                    [] => "Not watched".to_string(),
-                                    [w] => format!("Watched once at {}", w.timestamp.display(self.tz.clone())),
-                                    [first, ..] => format!("Watched {} times, first at {}", self.watched.len(), first.timestamp.display(self.tz.clone())),
-                                }}
-                            </span>
-                        </div>
+                                <span class="text-muted">
+                                    {match &self.watched[..] {
+                                        [] => "Not watched".to_string(),
+                                        [w] => format!("Watched once at {}", w.timestamp.display(self.tz.clone())),
+                                        [first, ..] => format!("Watched {} times, first at {}", self.watched.len(), first.timestamp.display(self.tz.clone())),
+                                    }}
+                                </span>
+                            </div>
 
-                        <div class="row end">
-                            <div class="hide-desktop row top">
+                            <div class="hide-desktop row end">
                                 <div class="input-group">
                                     {toggle_pending(true)}
 
@@ -666,14 +670,23 @@ impl MovieDetail {
                                     </button>
                                 </div>
                             </div>
-                        </div>
-                    </div>
 
-                    <div class={classes!("desktop-row", "mobile-column", "end", (!self.detailed_expand).then_some("hide-mobile"))}>
-                        <div class="desktop-row mobile-column desktop-input-group">
-                            <button class="btn-success" onclick={on_ask_mark} title="Mark watched">
+                            <div class="hide-mobile row end">
+                                <div class="input-group">
+                                    <button class="btn-success" onclick={&on_ask_mark} title="Mark watched">
+                                        <span class="icon check" />
+                                        <span>{"Mark watched"}</span>
+                                    </button>
+
+                                    {toggle_pending(false)}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class={classes!("hide-desktop", "column", (!self.detailed_expand).then_some("hide-mobile"))}>
+                            <button class="btn-success" onclick={&on_ask_mark} title="Mark watched">
                                 <span class="icon check" />
-                                <span class="hide-desktop">{"Mark watched"}</span>
+                                <span>{"Mark watched"}</span>
                             </button>
 
                             {toggle_pending(false)}
@@ -736,17 +749,7 @@ impl MovieDetail {
                 </div>
 
                 <div class="desktop-row mobile-column end desktop-input-group">
-                    if movie.tracked {
-                        <button class="btn" onclick={link.callback(|_| Msg::SetTracked(false))} title="Track movie">
-                            <span class="icon-inline"><span class="icon eye" /></span>
-                            <span class="hide-desktop">{"Tracking"}</span>
-                        </button>
-                    } else {
-                        <button class="btn" onclick={link.callback(|_| Msg::SetTracked(true))} title="Untrack movie">
-                            <span class="icon-inline"><span class="icon eye-slash" /></span>
-                            <span class="hide-desktop">{"Not tracking"}</span>
-                        </button>
-                    }
+                    <Tracked tracked={movie.tracked} ontoggle={link.callback(Msg::SetTracked)} />
 
                     if self.confirm_remove {
                         <ConfirmDanger
@@ -781,10 +784,10 @@ impl MovieDetail {
             </div>
 
             <div class="detail-layout">
+                <img class="banner hide-desktop" src={movie.banner.as_ref().map(|p| p.proxy_url())} />
+
                 <div class="detail-sidebar">
-                    if let Some(poster) = movie.poster.as_ref() {
-                        <img class="poster hide-mobile" src={poster.proxy_url()} />
-                    }
+                    <img class="poster hide-mobile" src={movie.poster.as_ref().map(|p| p.proxy_url())} />
                 </div>
 
                 <div class="detail-content">

@@ -10,7 +10,7 @@ use crate::error::{CustomContext, Error, Message};
 use crate::router::{PagedQuery, Route, SeriesDetailQuery};
 use crate::ui::{
     ConfirmDanger, EpisodePicker, ImageGallery, ImageItem, LanguagePicker, MarkWatchedPicker,
-    RemoteSourceKind, RemoteSourceSelect,
+    RemoteSourceKind, RemoteSourceSelect, Tracked,
 };
 
 pub(super) struct SeriesDetail {
@@ -274,17 +274,7 @@ impl Component for SeriesDetail {
                         </div>
 
                         <div class="desktop-row mobile-column end desktop-input-group">
-                            if series.tracked {
-                                <button class="btn" onclick={link.callback(|_| Msg::SetTracked(false))} title="Track series">
-                                    <span class="icon-inline"><span class="icon eye" /></span>
-                                    <span class="hide-desktop">{"Tracking"}</span>
-                                </button>
-                            } else {
-                                <button class="btn" onclick={link.callback(|_| Msg::SetTracked(true))} title="Untrack series">
-                                    <span class="icon-inline"><span class="icon eye-slash" /></span>
-                                    <span class="hide-desktop">{"Not tracking"}</span>
-                                </button>
-                            }
+                            <Tracked tracked={series.tracked} ontoggle={link.callback(Msg::SetTracked)} />
 
                             if self.confirm_remove {
                                 <ConfirmDanger prompt="Remove series" label={series.title.clone()} on_confirm={link.callback(|_| Msg::RemoveSeries)} on_cancel={link.callback(|_| Msg::CancelRemove)} />
@@ -314,7 +304,10 @@ impl Component for SeriesDetail {
                     </div>
 
                     <div class="detail-layout">
+                        <img class="banner hide-desktop" src={series.banner.as_ref().map(|p| p.proxy_url())} />
+
                         { self.view_sidebar(ctx, series) }
+
                         { self.view_episodes(ctx) }
                     </div>
 
@@ -658,6 +651,8 @@ impl SeriesDetail {
                 Ok(false)
             }
             Msg::SetTracked(tracked) => {
+                self.actions_expanded = false;
+
                 let id = ctx.props().series_id;
 
                 self._untrack_req = self
@@ -1055,7 +1050,7 @@ impl SeriesDetail {
                     }
 
                     <button class="hide-desktop btn" onclick={link.callback(|_| Msg::ToggleActionsExpanded)}>
-                        <span class="icon-inline"><span class={classes!("icon", if self.actions_expanded { "ellipsis-horizontal" } else { "bars-3" })} /></span>
+                        <span class="icon-inline"><span class={classes!("icon", if self.actions_expanded { "ellipsis-horizontal" } else { "bars-2" })} /></span>
                     </button>
                 </div>
             </div>
@@ -1070,7 +1065,7 @@ impl SeriesDetail {
                 }
 
                 <div class="table table-striped">
-                    { for self.seasons.iter().map(|s| self.view_season(ctx, s)) }
+                    { for self.seasons.iter().map(|s| self.view_season(ctx, s, self.seasons.len())) }
                 </div>
             </div>
         }
@@ -1118,11 +1113,14 @@ impl SeriesDetail {
         }
     }
 
-    fn view_season(&self, ctx: &Context<Self>, season: &api::Season) -> Html {
+    fn view_season(&self, ctx: &Context<Self>, season: &api::Season, total: usize) -> Html {
         let number = season.number;
         let active = self.selected == Some(number);
+        let clickable = total > 1;
 
-        let onclick = if active {
+        let onclick = if !clickable {
+            Callback::noop()
+        } else if active {
             ctx.link().callback(move |_| Msg::ToggleExpandSeasons)
         } else {
             ctx.link().callback(move |_| Msg::SelectSeason(number))
@@ -1138,7 +1136,7 @@ impl SeriesDetail {
         };
 
         html! {
-            <div class={classes!("table-entry", "column", "clickable", active.then_some("active"), (!active && !self.expanded_seasons).then_some("hide-mobile"))} {onclick}>
+            <div class={classes!("table-entry", "column", (!active && clickable).then_some("clickable"), active.then_some("active"), (!active && !self.expanded_seasons).then_some("hide-mobile"))} {onclick}>
                 <div class="row-fill fill">
                     <span>{season.number.long().to_string()}</span>
 
@@ -1147,9 +1145,11 @@ impl SeriesDetail {
                             <span class="text-muted">{ts.date(self.tz.clone()).year().to_string()}</span>
                         }
 
-                        <span class="icon-inline">
-                            <span class={classes!("icon", if active { "ellipsis-horizontal" } else { "chevron-right" })} />
-                        </span>
+                        if clickable {
+                            <span class="icon-inline">
+                                <span class={classes!("icon", if active { "ellipsis-horizontal" } else { "chevron-right" })} />
+                            </span>
+                        }
                     </div>
                 </div>
 
@@ -1262,6 +1262,24 @@ impl SeriesDetail {
             }
         };
 
+        let main_actions = html! {
+            <>
+                if let Some(on_toggle) = on_toggle_history {
+                    <button class="btn" onclick={on_toggle} title={if history_expanded { "Hide watch history" } else { "Show watch history" }}>
+                        <span class={if history_expanded { "icon chevron-up" } else { "icon clock" }} />
+                        <span class="hide-desktop">{if history_expanded { "History" } else { "Show history" }}</span>
+                    </button>
+                }
+
+                <button class="btn-success" onclick={on_ask_mark.clone()} title="Mark watched">
+                    <span class="icon check" />
+                    <span class="hide-desktop">{"Mark watched"}</span>
+                </button>
+
+                {toggle_pending(false)}
+            </>
+        };
+
         let actions = 'actions: {
             if confirming_mark {
                 break 'actions html! {
@@ -1273,62 +1291,56 @@ impl SeriesDetail {
             }
 
             html! {
-                <div class="actions desktop-row-fill mobile-column align-top">
-                    <div class="desktop-row mobile-column">
-                        <div class="row">
-                            <div class="column fill">
-                                <div class="row">
-                                    if watched.len() > 0 {
-                                        <span class="icon-inline" title="Watched"><span class="icon check-circle" /></span>
-                                    } else {
-                                        <span class="icon-inline" title="Not watched"><span class="icon x-circle" /></span>
-                                    }
-
-                                    <span class="text-muted fill">
-                                        {match &watched[..] {
-                                            [] => "Not watched".to_string(),
-                                            [w] => format!("Watched at {}", w.timestamp.display(self.tz.clone())),
-                                            [first, ..] => format!("Watched {} times, first at {}", watched.len(), first.timestamp.display(self.tz.clone())),
-                                        }}
-                                    </span>
-                                </div>
-
-                                <span class={classes!("row", actions_expanded.then_some("hide-mobile"))}>
-                                    { episode.name.as_deref().unwrap_or("—") }
-                                </span>
-
-                                if let Some(s) = episode.display_at(self.tz.clone()) {
-                                    <span class={classes!("text-muted", actions_expanded.then_some("hide-mobile"))}>{s}</span>
+                <div class="actions row-fill">
+                    <div class="column fill">
+                        <div class="row-fill">
+                            <div class="row">
+                                if watched.len() > 0 {
+                                    <span class="icon-inline" title="Watched"><span class="icon check-circle" /></span>
+                                } else {
+                                    <span class="icon-inline" title="Not watched"><span class="icon x-circle" /></span>
                                 }
+
+                                <span class="text-muted fill">
+                                    {match &watched[..] {
+                                        [] => "Not watched".to_string(),
+                                        [w] => format!("Watched at {}", w.timestamp.display(self.tz.clone())),
+                                        [first, ..] => format!("Watched {} times, first at {}", watched.len(), first.timestamp.display(self.tz.clone())),
+                                    }}
+                                </span>
                             </div>
 
-                            <div class="hide-desktop row top">
-                                <div class="input-group">
-                                    {toggle_pending(true)}
+                            <div class="row end">
+                                <div class="hide-desktop">
+                                    <div class="input-group">
+                                        {toggle_pending(true)}
 
-                                    <button class="btn" onclick={link.callback(move |_| Msg::ToggleEpisodeActionsExpanded(episode_id))}>
-                                        <span class="icon-inline"><span class={classes!("icon", if actions_expanded { "ellipsis-horizontal" } else { "bars-3" })} /></span>
-                                    </button>
+                                        <button class="btn" onclick={link.callback(move |_| Msg::ToggleEpisodeActionsExpanded(episode_id))}>
+                                            <span class="icon-inline"><span class={classes!("icon", if actions_expanded { "ellipsis-horizontal" } else { "bars-2" })} /></span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="hide-mobile">
+                                    <div class="input-group">
+                                        {main_actions.clone()}
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
 
-                    <div class={classes!("desktop-row", "mobile-column", "end", (!actions_expanded).then_some("hide-mobile"))}>
-                        <div class="desktop-row mobile-column desktop-input-group">
-                            if let Some(on_toggle) = on_toggle_history {
-                                <button class="btn" onclick={on_toggle} title={if history_expanded { "Hide watch history" } else { "Show watch history" }}>
-                                    <span class={if history_expanded { "icon chevron-up" } else { "icon clock" }} />
-                                    <span class="hide-desktop">{if history_expanded { "History" } else { "Show history" }}</span>
-                                </button>
+                        <div class={classes!("column", "hide-desktop", (!actions_expanded).then_some("hide-mobile"))}>
+                            {main_actions.clone()}
+                        </div>
+
+                        <div class="column fill">
+                            <span class={classes!("row", actions_expanded.then_some("hide-mobile"))}>
+                                { episode.name.as_deref().unwrap_or("—") }
+                            </span>
+
+                            if let Some(s) = episode.display_at(self.tz.clone()) {
+                                <span class={classes!("text-muted", actions_expanded.then_some("hide-mobile"))}>{s}</span>
                             }
-
-                            <button class="btn-success" onclick={on_ask_mark.clone()} title="Mark watched">
-                                <span class="icon check" />
-                                <span class="hide-desktop">{"Mark watched"}</span>
-                            </button>
-
-                            {toggle_pending(false)}
                         </div>
                     </div>
                 </div>

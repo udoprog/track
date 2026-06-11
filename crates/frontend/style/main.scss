@@ -629,12 +629,12 @@ h5 {
 }
 
 .detail-layout {
-    display: flex;
-    flex: 1;
-    overflow: hidden;
+    display: grid;
+    grid-template-columns: $sidebar-width 1fr;
     gap: $gap;
 
     @include g.until-mobile {
+        display: flex;
         flex-direction: column;
     }
 }
@@ -655,8 +655,7 @@ h5 {
     display: flex;
     flex-direction: column;
     gap: $gap;
-    flex: 1;
-    overflow-y: auto;
+    min-width: 0;
 }
 
 .overview {

@@ -7,6 +7,24 @@ use musli_web::web03::prelude::*;
 use crate::SetupChannel;
 
 #[derive(Properties, PartialEq)]
+pub(super) struct TrackedProps {
+    pub(super) tracked: bool,
+    pub(super) ontoggle: Callback<bool>,
+}
+
+#[function_component]
+pub(super) fn Tracked(props: &TrackedProps) -> Html {
+    let tracked = !props.tracked;
+
+    html! {
+        <button class="btn" onclick={props.ontoggle.reform(move |_| tracked)} title="Track movie">
+            <span class="icon-inline"><span class={classes!("icon", if tracked { "eye" } else { "eye-slash" })} /></span>
+            <span class="hide-desktop">{if  tracked { "Tracking" } else { "Not tracking" }}</span>
+        </button>
+    }
+}
+
+#[derive(Properties, PartialEq)]
 pub(super) struct PaginationButtonsProps {
     pub(super) page: usize,
     pub(super) total_pages: usize,
