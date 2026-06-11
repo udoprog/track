@@ -587,7 +587,7 @@ statements! {
             LEFT JOIN episodes e
                 ON e.series_id = we.series_id AND e.season = we.season AND e.episode = we.episode
             WHERE we.series_id = ? AND e.id IS NULL
-            ORDER BY we.season, we.episode, we.timestamp DESC
+            ORDER BY we.timestamp ASC
         "#,
         // select episodes which have 0 watched by series and season.
         select_unwatched_by_series_season: r#"

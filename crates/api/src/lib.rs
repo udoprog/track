@@ -11,7 +11,6 @@ use musli_web::api::{self, ChannelId};
 macro_rules! define_id {
     ($name:ident) => {
         #[derive(
-            Debug,
             Copy,
             Clone,
             PartialEq,
@@ -46,24 +45,36 @@ macro_rules! define_id {
             }
         }
 
-        impl fmt::Display for $name {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                base64::display::Base64Display::new(
-                    &self.0.to_be_bytes(),
-                    &base64::engine::general_purpose::URL_SAFE_NO_PAD,
-                )
-                .fmt(f)
+        impl ::core::fmt::Display for $name {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let bytes = self.0.to_be_bytes();
+
+                let d = ::base64::display::Base64Display::new(
+                    &bytes,
+                    &::base64::engine::general_purpose::URL_SAFE_NO_PAD,
+                );
+
+                d.fmt(f)
             }
         }
 
-        impl core::str::FromStr for $name {
-            type Err = base64::DecodeSliceError;
+        impl ::core::fmt::Debug for $name {
+            #[inline]
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                ::core::fmt::Display::fmt(self, f)
+            }
+        }
+
+        impl ::core::str::FromStr for $name {
+            type Err = ::base64::DecodeSliceError;
 
             fn from_str(s: &str) -> Result<Self, Self::Err> {
-                use base64::Engine as _;
+                use ::base64::Engine as _;
                 let mut bytes = [0u8; 8];
-                base64::engine::general_purpose::URL_SAFE_NO_PAD
+
+                ::base64::engine::general_purpose::URL_SAFE_NO_PAD
                     .decode_slice(s.as_bytes(), &mut bytes)?;
+
                 Ok($name(u64::from_be_bytes(bytes)))
             }
         }

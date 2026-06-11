@@ -779,6 +779,8 @@ impl Component for EpisodePicker {
 
         let _setup = SetupChannel::new(ws, ctx.link().callback(EpisodePickerMsg::Channel));
 
+        tracing::warn!(selected_episode = ?ctx.props().selected_episode);
+
         Self {
             channel: ws::Channel::default(),
             selected_season,
@@ -825,8 +827,8 @@ impl Component for EpisodePicker {
 
                 true
             }
-            EpisodePickerMsg::SelectEpisode(n) => {
-                self.selected_episode = Some(n);
+            EpisodePickerMsg::SelectEpisode(episode) => {
+                self.selected_episode = Some(episode);
                 false
             }
             EpisodePickerMsg::Confirm => {

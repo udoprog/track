@@ -530,10 +530,12 @@ impl SeriesDetail {
                 }
 
                 self.expanded_seasons = false;
+                self.view_orphaned = false;
                 Ok(false)
             }
             Msg::ToggleExpandSeasons => {
                 self.expanded_seasons = !self.expanded_seasons;
+                self.view_orphaned = false;
                 Ok(true)
             }
             Msg::EpisodesLoaded(result) => {
@@ -922,6 +924,7 @@ impl SeriesDetail {
             }
             Msg::OpenImageModal => {
                 self.image_modal = true;
+                self.view_orphaned = false;
                 Ok(true)
             }
             Msg::CloseImageModal => {
@@ -930,6 +933,7 @@ impl SeriesDetail {
             }
             Msg::OpenRemoteEditor => {
                 self.remote_editor = true;
+                self.view_orphaned = false;
                 Ok(true)
             }
             Msg::CloseRemoteEditor => {
@@ -1026,6 +1030,8 @@ impl SeriesDetail {
                     self.load_history(ctx);
                 }
 
+                // Refresh season counts so the progress bars reflect the move.
+                self.load_seasons(ctx);
                 self.load_orphaned(ctx);
                 Ok(false)
             }
@@ -1040,6 +1046,7 @@ impl SeriesDetail {
             }
             Msg::ToggleActionsExpanded => {
                 self.actions_expanded = !self.actions_expanded;
+                self.view_orphaned = false;
                 Ok(true)
             }
             Msg::ToggleEpisodeActionsExpanded(episode_id) => {
@@ -1270,25 +1277,30 @@ impl SeriesDetail {
                             on_cancel={link.callback(|_| Msg::CancelMarkRemainingWatch)}
                         />
                     } else {
-                        <div class="page-sub-title">{season.long().to_string()}</div>
+                        if self.view_orphaned {
+                            <h2>{format!("{} orphaned episodes", self.orphaned.len())}</h2>
+                        } else {
+                            <h2>{season.long().to_string()}</h2>
 
-                        if total > 0 {
-                            <span>
-                                {format!("{watched_count} / {total} watched")}
-                            </span>
+                            if total > 0 {
+                                <h4>{format!("{watched_count} / {total} watched")}</h4>
+                            }
                         }
 
-                        if !self.orphaned.is_empty() || watched_count < total {
+                        if self.view_orphaned  || (!self.orphaned.is_empty() || watched_count < total) {
                             <div class="row end">
                                 <div class="input-group">
                                     if !self.orphaned.is_empty() {
                                         <button class="btn-danger" onclick={link.callback(|_| Msg::ToggleOrphaned)} title="View orphaned watched episodes">
-                                            <span class="icon-inline"><span class="icon exclamation-triangle" /></span>
-                                            <span class="hide-mobile">{if self.view_orphaned { "Hide orphaned watches" } else { "Show orphaned watches" }}</span>
+                                            <span class="icon-inline"><span class={classes!("icon", if self.view_orphaned { "ellipsis-horizontal" } else { "exclamation-triangle" })} /></span>
+
+                                            if !self.view_orphaned {
+                                                <span class="hide-mobile">{"Show orphaned watches"}</span>
+                                            }
                                         </button>
                                     }
 
-                                    if watched_count < total {
+                                    if !self.view_orphaned && watched_count < total {
                                         <button class="btn-success" onclick={link.callback(move |_| Msg::MarkRemainingWatch)} title="Mark remaining episodes as watched">
                                             <span class="icon-inline"><span class="icon check" /></span>
                                             <span class="hide-mobile">{"Remaining"}</span>
@@ -1520,6 +1532,24 @@ impl SeriesDetail {
         let link = ctx.link();
         let series_id = ctx.props().series_id;
 
+        // The first unwatched episode in the current season is the default
+        // selected value.
+        let selected_episode = || {
+            self.selected.and_then(|season| {
+                for e in self.episodes.iter().filter(|ep| ep.season == season) {
+                    let Some(watched) = self.watched_by_episode.get(&e.id) else {
+                        return Some(e.episode);
+                    };
+
+                    if watched.is_empty() {
+                        return Some(e.episode);
+                    }
+                }
+
+                None
+            })
+        };
+
         html! {
             <div class="column">
                 <div class="table">
@@ -1536,6 +1566,8 @@ impl SeriesDetail {
                                         label={w.timestamp.display(self.tz.clone())}
                                         {series_id}
                                         seasons={self.seasons.clone()}
+                                        selected_season={self.selected}
+                                        selected_episode={selected_episode()}
                                         on_confirm={link.callback(move |(season, ep)| Msg::MoveWatched(wid, season, ep))}
                                         on_cancel={link.callback(|_| Msg::CancelFixWatched)}
                                     />
