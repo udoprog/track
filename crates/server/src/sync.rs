@@ -50,10 +50,10 @@ pub(crate) async fn sync_series(
 
     // Best-effort tvmaze enrichment for exact airtimes. Re-fetch so remotes are
     // current.
-    if let Some(series) = db.series_by_id(series_id).await? {
-        if let Err(e) = enrich_with_tvmaze(series_id, &series, remote, db, broadcast).await {
-            warn!("tvmaze enrichment skipped for series {series_id}: {e:#}");
-        }
+    if let Some(series) = db.series_by_id(series_id).await?
+        && let Err(e) = enrich_with_tvmaze(series_id, &series, remote, db, broadcast).await
+    {
+        warn!("tvmaze enrichment skipped for series {series_id}: {e:#}");
     }
 
     let now = api::Timestamp::now();
@@ -411,9 +411,7 @@ pub(crate) async fn sync_movie(
             let tmdb_id: u32 = remote_id.value().as_u32().context("invalid tmdb id")?;
             info!(tmdb_id, "fetching tmdb movie");
 
-            let info = remote
-                .fetch_tmdb_movie(tmdb_id, language.as_deref())
-                .await?;
+            let info = remote.fetch_tmdb_movie(tmdb_id, language).await?;
 
             db.update_movie(
                 movie_id,

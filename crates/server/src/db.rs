@@ -3093,7 +3093,7 @@ fn episode_from_row(r: EpisodeRow) -> api::Episode {
         id: r.id,
         series_id: r.series_id,
         season: r.season,
-        episode: r.number as u32,
+        episode: r.number,
         absolute_number: r.absolute_number,
         name: r.name,
         overview: r.overview,

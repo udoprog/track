@@ -405,13 +405,10 @@ impl MovieDetail {
                 self._set_sync_source_req = self
                     .channel
                     .request()
-                    .body(api::SetMovieSyncSourceRequest {
-                        id,
-                        source: source.clone(),
-                    })
+                    .body(api::SetMovieSyncSourceRequest { id, source })
                     .on_packet(
                         ctx.link()
-                            .callback(move |r| Msg::SetSyncSourceDone(source.clone(), r)),
+                            .callback(move |r| Msg::SetSyncSourceDone(source, r)),
                     )
                     .send();
                 Ok(false)
@@ -680,16 +677,13 @@ impl MovieDetail {
 
         if let Some(ref movie) = self.movie {
             for i in &movie.images {
-                self.graphics
-                    .entry(i.kind)
-                    .or_insert_with(Vec::new)
-                    .push(ImageItem {
-                        selected: movie.is_selected(i.kind, i.image.key()),
-                        id: i.id,
-                        kind: i.kind,
-                        source: i.source,
-                        image: i.image.clone(),
-                    });
+                self.graphics.entry(i.kind).or_default().push(ImageItem {
+                    selected: movie.is_selected(i.kind, i.image.key()),
+                    id: i.id,
+                    kind: i.kind,
+                    source: i.source,
+                    image: i.image.clone(),
+                });
             }
         }
     }
@@ -797,7 +791,7 @@ impl MovieDetail {
                     <div class="column fill">
                         <div class="row-fill">
                             <div class="row">
-                                if self.watched.len() > 0 {
+                                if !self.watched.is_empty() {
                                     <span class="icon-inline" title="Watched"><span class="icon check-circle" /></span>
                                 } else {
                                     <span class="icon-inline" title="Not watched"><span class="icon x-circle" /></span>

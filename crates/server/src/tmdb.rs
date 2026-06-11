@@ -282,10 +282,10 @@ impl Client {
             remotes.push(RemoteId::tvdb(tvdb_id));
         }
 
-        if let Some(ref imdb_id) = details.external_ids.imdb_id {
-            if !imdb_id.is_empty() {
-                remotes.push(RemoteId::imdb(imdb_id));
-            }
+        if let Some(ref imdb_id) = details.external_ids.imdb_id
+            && !imdb_id.is_empty()
+        {
+            remotes.push(RemoteId::imdb(imdb_id));
         }
 
         let posters = to_images(images.posters);
@@ -465,10 +465,10 @@ impl Client {
 
         let mut remotes = vec![RemoteId::tmdb(id)];
 
-        if let Some(ref imdb_id) = details.external_ids.imdb_id {
-            if !imdb_id.is_empty() {
-                remotes.push(RemoteId::imdb(imdb_id));
-            }
+        if let Some(ref imdb_id) = details.external_ids.imdb_id
+            && !imdb_id.is_empty()
+        {
+            remotes.push(RemoteId::imdb(imdb_id));
         }
 
         let posters = to_images(images.posters);
@@ -516,6 +516,7 @@ pub(crate) struct SeasonInfo {
     pub air_date: Option<Timestamp>,
     pub name: Option<String>,
     pub overview: Option<String>,
+    #[allow(dead_code)]
     pub poster: Option<ImageKey>,
 }
 

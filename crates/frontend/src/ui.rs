@@ -298,7 +298,7 @@ fn parse_remote(source: &api::RemoteSource, value: &str) -> Result<api::RemoteId
         }
     };
 
-    Ok(api::RemoteId::new(source.clone(), value))
+    Ok(api::RemoteId::new(*source, value))
 }
 
 /// Modal for adding, editing and removing remote identifiers (e.g. `tvdb:123`,
@@ -343,7 +343,7 @@ pub(super) struct RemoteEditor {
 
 impl RemoteEditor {
     fn reset_form(&mut self) {
-        self.source = REMOTE_SOURCES[0].0.clone();
+        self.source = REMOTE_SOURCES[0].0;
         self.value.clear();
         self.editing = None;
         self.error = None;
@@ -356,7 +356,7 @@ impl Component for RemoteEditor {
 
     fn create(_ctx: &Context<Self>) -> Self {
         Self {
-            source: REMOTE_SOURCES[0].0.clone(),
+            source: REMOTE_SOURCES[0].0,
             value: String::new(),
             editing: None,
             confirming_remove: None,
@@ -408,7 +408,7 @@ impl Component for RemoteEditor {
                 true
             }
             RemoteEditorMsg::Edit(remote_id) => {
-                self.source = remote_id.source().clone();
+                self.source = *remote_id.source();
                 self.value = remote_id.value().to_string();
                 self.editing = Some(remote_id);
                 self.confirming_remove = None;
@@ -455,7 +455,7 @@ impl Component for RemoteEditor {
                 .find(|(source, _)| source.as_str() == value)
                 .map(|(source, _)| source)
                 .unwrap_or(&REMOTE_SOURCES[0].0);
-            RemoteEditorMsg::SetSource(source.clone())
+            RemoteEditorMsg::SetSource(*source)
         });
 
         let on_value = link.callback(|e: InputEvent| {
@@ -793,10 +793,10 @@ impl Component for EpisodePicker {
         match msg {
             EpisodePickerMsg::Channel(result) => {
                 self.channel = result.unwrap_or_default();
-                if self.channel.id() != ws::ChannelId::NONE {
-                    if let Some(season) = self.selected_season {
-                        self.load_episodes(ctx, season);
-                    }
+                if self.channel.id() != ws::ChannelId::NONE
+                    && let Some(season) = self.selected_season
+                {
+                    self.load_episodes(ctx, season);
                 }
                 false
             }

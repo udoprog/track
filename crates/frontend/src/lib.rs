@@ -1,3 +1,5 @@
+#![allow(clippy::type_complexity)]
+
 mod app;
 mod calendar;
 mod dashboard;

@@ -271,14 +271,14 @@ impl Client {
         let mut overview = v.overview;
 
         // Override title/overview with the configured language's translation.
-        if let Some(language) = &language {
-            if let Some(tr) = self.fetch_series_translation(id, language).await? {
-                if tr.name.as_deref().is_some_and(|s| !s.trim().is_empty()) {
-                    title = tr.name;
-                }
-                if tr.overview.as_deref().is_some_and(|s| !s.trim().is_empty()) {
-                    overview = tr.overview;
-                }
+        if let Some(language) = &language
+            && let Some(tr) = self.fetch_series_translation(id, language).await?
+        {
+            if tr.name.as_deref().is_some_and(|s| !s.trim().is_empty()) {
+                title = tr.name;
+            }
+            if tr.overview.as_deref().is_some_and(|s| !s.trim().is_empty()) {
+                overview = tr.overview;
             }
         }
 
@@ -321,10 +321,10 @@ impl Client {
         // the only poster when there are no poster artworks at all.
         let primary_poster = v.image.as_deref().and_then(image_path).map(ImageKey::tvdb);
 
-        if poster.is_empty() {
-            if let Some(image) = primary_poster.clone() {
-                poster.push(Image::from(image));
-            }
+        if poster.is_empty()
+            && let Some(image) = primary_poster.clone()
+        {
+            poster.push(Image::from(image));
         }
 
         // Banner and fanart have no primary in the base record, so they fall

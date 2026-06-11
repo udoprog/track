@@ -197,7 +197,7 @@ impl Route {
             Some("movies") => match parts.next() {
                 Some(id) => id
                     .parse()
-                    .map(|id| Route::MovieDetail(id))
+                    .map(Route::MovieDetail)
                     .unwrap_or(Route::Movies(PagedQuery::default())),
                 None => Route::Movies(PagedQuery::from_search(search)),
             },

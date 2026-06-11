@@ -11,10 +11,10 @@ use crate::{tmdb, tvdb};
 /// `images` is expected to be ordered best-first (highest score), so the
 /// fallback is the highest-scored image.
 pub(crate) fn best_image(images: &[Image], selected: Option<ImageKey>) -> Option<ImageKey> {
-    if let Some(ref selected) = selected {
-        if let Some(found) = images.iter().find(|image| image.key() == selected) {
-            return Some(found.key().clone());
-        }
+    if let Some(ref selected) = selected
+        && let Some(found) = images.iter().find(|image| image.key() == selected)
+    {
+        return Some(found.key().clone());
     }
 
     images.first().map(|image| image.key().clone())

@@ -26,6 +26,8 @@ pub(super) struct ImageProps {
     #[prop_or_default]
     pub(super) src: Option<api::Image>,
     #[prop_or_default]
+    pub(super) title: Option<String>,
+    #[prop_or_default]
     pub(super) class: Classes,
     #[prop_or_default]
     pub(super) style: Option<String>,
@@ -82,17 +84,17 @@ impl Component for Image {
 
         match self.state {
             State::Loading => html! {
-                <image {class} style={props.style.clone()} onclick={props.onclick.clone()}>
+                <image {class} style={props.style.clone()} onclick={props.onclick.clone()} title={props.title.clone()}>
                     <span class="icon arrow-path spin" />
                 </image>
             },
             State::Loaded(ref src) => html! {
-                <image {class} style={props.style.clone()} onclick={props.onclick.clone()}>
+                <image {class} style={props.style.clone()} onclick={props.onclick.clone()} title={props.title.clone()}>
                     <img src={src.clone()} class={props.class.clone()} alt={props.alt.clone()} />
                 </image>
             },
             State::Error => html! {
-                <image {class} style={props.style.clone()} onclick={props.onclick.clone()}>
+                <image {class} style={props.style.clone()} onclick={props.onclick.clone()} title={props.title.clone()}>
                     <span class="icon exclamation-triangle" />
                 </image>
             },

@@ -282,11 +282,7 @@ impl Search {
 
         html! {
             <div class="row">
-                if let Some(ref poster) = r.poster {
-                    <Image class="poster-sm" src={poster.clone()} />
-                } else {
-                    <div class="poster-sm" />
-                }
+                <Image class="poster-sm" src={r.poster.clone()} />
 
                 <div class="fill">
                     <div class="row">
@@ -333,11 +329,7 @@ impl Search {
 
         html! {
             <div class="row">
-                if let Some(ref poster) = r.poster {
-                    <Image class="poster-sm" src={poster.clone()} />
-                } else {
-                    <div class="poster-sm" />
-                }
+                <Image class="poster-sm" src={r.poster.clone()} />
 
                 <div class="fill">
                     <div class="row">

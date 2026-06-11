@@ -248,7 +248,7 @@ impl Dashboard {
                     .config
                     .dashboard_page
                     .saturating_add_signed(delta)
-                    .max(1) as u32;
+                    .max(1);
                 self.config.dashboard_page = new_size;
                 self.clamp_page(ctx);
 
@@ -356,7 +356,7 @@ impl Dashboard {
     }
 
     fn view_pending_item(&self, ctx: &Context<Self>, p: &api::Pending) -> Html {
-        let pending_kind = p.kind.clone();
+        let pending_kind = p.kind;
         let confirming_watch = self.confirming_watch.as_ref() == Some(&p.kind);
 
         let route = match (p.kind, &p.info) {
@@ -389,7 +389,7 @@ impl Dashboard {
 
         let on_ask_mark = ctx
             .link()
-            .callback(move |_| Msg::AskMarkWatched(pending_kind.clone()));
+            .callback(move |_| Msg::AskMarkWatched(pending_kind));
 
         let skip_ids = if let api::PendingKind::Episode { series, episode } = p.kind {
             Some((series, episode))

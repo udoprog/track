@@ -3,7 +3,7 @@ use yew::prelude::*;
 use crate::Image;
 use crate::ui::PaginationButtons;
 
-const GALLERY_PAGE_SIZE: usize = 20;
+const GALLERY_PAGE_SIZE: usize = 4;
 
 /// A single entry shown in the image gallery.
 #[derive(Clone, PartialEq)]
@@ -64,7 +64,7 @@ pub(super) fn ImageGallery(props: &ImageGalleryProps) -> Html {
                     </div>
                 }
 
-                <div class="image-gallery">
+                <div class={classes!("image-gallery", props.kind.as_str())}>
                     { for page_images.iter().map(|img| {
                         let id = img.id;
                         let selected = img.selected;
@@ -72,9 +72,7 @@ pub(super) fn ImageGallery(props: &ImageGalleryProps) -> Html {
                         let title = img.source.to_string();
 
                         html! {
-                            <div class={classes!("image-gallery-thumb", selected.then_some("selected"))} onclick={Callback::from(move |_| on_select.emit(id))} {title}>
-                                <Image class={props.kind.as_str()} src={img.image.clone()} />
-                            </div>
+                            <Image class={classes!("clickable", selected.then_some("selected"))} onclick={Callback::from(move |_| on_select.emit(id))} {title} src={img.image.clone()} />
                         }
                     })}
                 </div>

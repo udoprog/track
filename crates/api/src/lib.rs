@@ -500,11 +500,10 @@ pub enum RemoteSource {
 impl PartialEq<SyncSource> for RemoteSource {
     #[inline]
     fn eq(&self, other: &SyncSource) -> bool {
-        match (self, other) {
-            (RemoteSource::Tvdb, SyncSource::Tvdb) => true,
-            (RemoteSource::Tmdb, SyncSource::Tmdb) => true,
-            _ => false,
-        }
+        matches!(
+            (self, other),
+            (RemoteSource::Tvdb, SyncSource::Tvdb) | (RemoteSource::Tmdb, SyncSource::Tmdb)
+        )
     }
 }
 
@@ -781,7 +780,7 @@ impl Image {
         let s = s.as_ref();
 
         let path = match s.split_once(':') {
-            Some((src, path)) => ImageKey::new(ImageSource::from_str(src), path),
+            Some((src, path)) => ImageKey::new(ImageSource::parse(src), path),
             None => ImageKey::new(ImageSource::Unknown, s),
         };
 
@@ -1000,7 +999,7 @@ pub enum ImageSource {
 }
 
 impl ImageSource {
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s {
             "tvdb" => Self::Tvdb,
             "tmdb" => Self::Tmdb,
@@ -1078,6 +1077,14 @@ impl SyncSource {
         matches!(*self, Self::Unknown)
     }
 
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "tvdb" => Self::Tvdb,
+            "tmdb" => Self::Tmdb,
+            _ => Self::Unknown,
+        }
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Tvdb => "tvdb",
@@ -1094,14 +1101,6 @@ impl SyncSource {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
-        match s {
-            "tvdb" => Self::Tvdb,
-            "tmdb" => Self::Tmdb,
-            _ => Self::Unknown,
-        }
-    }
-
     pub fn into_remote_source(self) -> RemoteSource {
         match self {
             Self::Tvdb => RemoteSource::Tvdb,
@@ -1114,11 +1113,10 @@ impl SyncSource {
 impl PartialEq<RemoteSource> for SyncSource {
     #[inline]
     fn eq(&self, other: &RemoteSource) -> bool {
-        match (self, other) {
-            (SyncSource::Tvdb, RemoteSource::Tvdb) => true,
-            (SyncSource::Tmdb, RemoteSource::Tmdb) => true,
-            _ => false,
-        }
+        matches!(
+            (self, other),
+            (SyncSource::Tvdb, RemoteSource::Tvdb) | (SyncSource::Tmdb, RemoteSource::Tmdb)
+        )
     }
 }
 

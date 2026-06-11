@@ -354,20 +354,19 @@ impl Component for SeriesDetail {
                 self.load_seasons(ctx);
                 self.load_history(ctx);
             }
-        } else if ctx.props().initial_season != old_props.initial_season {
-            if let Some(season) = ctx.props().initial_season {
-                if self.selected != Some(season) {
-                    self.selected = Some(season);
-                    self.episodes.clear();
-                    self.confirm_remove_watch = None;
-                    self.watched_by_episode.clear();
+        } else if ctx.props().initial_season != old_props.initial_season
+            && let Some(season) = ctx.props().initial_season
+            && self.selected != Some(season)
+        {
+            self.selected = Some(season);
+            self.episodes.clear();
+            self.confirm_remove_watch = None;
+            self.watched_by_episode.clear();
 
-                    if self.channel.id() != ws::ChannelId::NONE {
-                        self.load_episodes(ctx, season);
-                        self.load_orphaned(ctx);
-                        self.load_history(ctx);
-                    }
-                }
+            if self.channel.id() != ws::ChannelId::NONE {
+                self.load_episodes(ctx, season);
+                self.load_orphaned(ctx);
+                self.load_history(ctx);
             }
         }
         true
@@ -601,6 +600,8 @@ impl SeriesDetail {
                     self.load_episodes(ctx, season);
                 }
 
+                // Refresh season counts so the progress bars reflect the mark.
+                self.load_seasons(ctx);
                 self.load_history(ctx);
                 self.load_orphaned(ctx);
                 Ok(false)
@@ -629,6 +630,8 @@ impl SeriesDetail {
                     self.load_episodes(ctx, season);
                 }
 
+                // Refresh season counts so the progress bars reflect the change.
+                self.load_seasons(ctx);
                 self.load_history(ctx);
                 self.load_orphaned(ctx);
                 Ok(false)
@@ -650,7 +653,7 @@ impl SeriesDetail {
                     .channel
                     .request()
                     .body(api::MarkWatchedRemainingRequest {
-                        series_id: series_id,
+                        series_id,
                         season,
                         mark_time,
                     })
@@ -665,6 +668,8 @@ impl SeriesDetail {
                     self.load_episodes(ctx, season);
                 }
 
+                // Refresh season counts so the progress bars reflect the marks.
+                self.load_seasons(ctx);
                 self.load_history(ctx);
                 self.load_orphaned(ctx);
                 Ok(false)
@@ -874,13 +879,10 @@ impl SeriesDetail {
                 self._set_sync_source_req = self
                     .channel
                     .request()
-                    .body(api::SetSeriesSyncSourceRequest {
-                        id,
-                        source: source.clone(),
-                    })
+                    .body(api::SetSeriesSyncSourceRequest { id, source })
                     .on_packet(
                         ctx.link()
-                            .callback(move |r| Msg::SetSyncSourceDone(source.clone(), r)),
+                            .callback(move |r| Msg::SetSyncSourceDone(source, r)),
                     )
                     .send();
 
@@ -1071,16 +1073,13 @@ impl SeriesDetail {
 
         if let Some(ref series) = self.series {
             for i in &series.images {
-                self.graphics
-                    .entry(i.kind)
-                    .or_insert_with(Vec::new)
-                    .push(ImageItem {
-                        selected: series.is_selected(i.kind, i.image.key()),
-                        id: i.id,
-                        kind: i.kind,
-                        source: i.source,
-                        image: i.image.clone(),
-                    });
+                self.graphics.entry(i.kind).or_default().push(ImageItem {
+                    selected: series.is_selected(i.kind, i.image.key()),
+                    id: i.id,
+                    kind: i.kind,
+                    source: i.source,
+                    image: i.image.clone(),
+                });
             }
         }
     }
@@ -1380,14 +1379,14 @@ impl SeriesDetail {
                     <div class="column fill">
                         <div class="row-fill">
                             <div class="row">
-                                if watched.len() > 0 {
+                                if !watched.is_empty() {
                                     <span class="icon-inline" title="Watched"><span class="icon check-circle" /></span>
                                 } else {
                                     <span class="icon-inline" title="Not watched"><span class="icon x-circle" /></span>
                                 }
 
                                 <span class="text-muted fill">
-                                    {match &watched[..] {
+                                    {match watched {
                                         [] => "Not watched".to_string(),
                                         [w] => format!("Watched at {}", w.timestamp.display(self.tz.clone())),
                                         [first, ..] => format!("Watched {} times, first at {}", watched.len(), first.timestamp.display(self.tz.clone())),

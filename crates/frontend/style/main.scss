@@ -479,6 +479,10 @@ h5 {
     min-width: 0;
 }
 
+img {
+    background-color: transparent;
+}
+
 image {
     display: flex;
     align-items: center;
@@ -487,6 +491,7 @@ image {
     >img {
         width: 100%;
         height: 100%;
+        display: flex;
         object-fit: cover;
     }
 
@@ -496,6 +501,24 @@ image {
 
     &.pending-poster, &.poster-sm, &.poster {
         aspect-ratio: 2 / 3;
+    }
+
+    &.banner {
+        aspect-ratio: 21 / 4;
+    }
+
+    image.poster {
+        width: 100%;
+        border-radius: $radius-sm;
+        background: $bg-surface;
+    }
+
+    image.poster-sm {
+        width: $poster-width-sm;
+        height: $poster-height-sm;
+        object-fit: cover;
+        border-radius: $radius-sm;
+        background: $bg-surface;
     }
 
     .icon {
@@ -639,20 +662,6 @@ image {
     padding: 1px $padding;
     color: $text-muted;
     white-space: nowrap;
-}
-
-.poster {
-    width: 100%;
-    border-radius: $radius-sm;
-    background: $bg-surface;
-}
-
-.poster-sm {
-    width: $poster-width-sm;
-    height: $poster-height-sm;
-    object-fit: cover;
-    border-radius: $radius-sm;
-    background: $bg-surface;
 }
 
 .detail-layout {
@@ -933,61 +942,48 @@ image {
     }
 }
 
-.banner {
-    width: 100%;
-    max-height: 220px;
-    object-fit: cover;
-    border-radius: $radius-sm;
-    background: $bg-surface;
-}
-
 .image-gallery {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    gap: $gap-sm;
+    display: grid;
+    gap: $gap;
+    background: $bg-surface;
+    padding: $gap;
 
-    &-thumb {
-        cursor: pointer;
+    grid-template-columns: repeat(2, 1fr);
 
-        image {
-            border: 2px solid transparent;
-            border-radius: $radius-sm;
-        }
+    &.poster {
+        grid-template-columns: repeat(4, 1fr);
+    }
 
-        &.selected {
-            image {
-                border-color: $color-primary;
-            }
-        }
+    &.banner {
+        grid-template-columns: 1fr;
+    }
 
-        >image.poster {
-            max-width: 120px;
-            aspect-ratio: 2 / 3;
-        }
+    @include g.until-mobile {
+        grid-template-columns: 1fr;
 
-        >image.banner {
-            max-width: 240px;
-        }
-
-        >image.backdrop {
-            max-width: 240px;
-            aspect-ratio: 16 / 9;
-        }
-
-        >image.screenshot {
-            max-width: 240px;
-            aspect-ratio: 16 / 9;
+        &.poster {
+            grid-template-columns: repeat(2, 1fr);
         }
     }
 
-    &-thumb-check {
-        position: absolute;
-        top: 2px;
-        right: 4px;
-        font-size: 12px;
-        color: $color-primary;
-        text-shadow: 0 0 2px #000;
+    &.poster > image {
+        aspect-ratio: 2 / 3;
+    }
+
+    &.backdrop > image {
+        aspect-ratio: 16 / 9;
+    }
+
+    &.screenshot > image {
+        aspect-ratio: 16 / 9;
+    }
+
+    &.banner > image {
+        aspect-ratio: 21 / 4;
+    }
+
+    image.selected {
+        outline: 2px solid $color-primary;
     }
 }
 
@@ -1012,6 +1008,15 @@ image {
     border-radius: $radius;
     width: min(600px, calc(100vw - #{$gap-sm * 2}));
     z-index: 401;
+
+    @include g.until-mobile {
+        width: 100%;
+        border-radius: 0;
+
+        &-header {
+            padding: $gap;
+        }
+    }
 
     &-background {
         position: fixed;

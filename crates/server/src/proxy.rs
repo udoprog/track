@@ -24,7 +24,7 @@ pub(super) async fn image_handler(
         .await;
 
     match result {
-        Ok(Some(data)) => image_response(&path, data),
+        Ok(Some(data)) => image_response(path, data),
         Ok(None) => StatusCode::NOT_FOUND.into_response(),
         Err(e) => {
             tracing::warn!(%source, %path, error = %e, "image proxy error");

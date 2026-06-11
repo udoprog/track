@@ -81,7 +81,7 @@ impl Component for App {
         };
 
         let link = ctx.link();
-        let on_nav = link.callback(move |route| Msg::Navigate(route));
+        let on_nav = link.callback(Msg::Navigate);
 
         html! {
             <ContextProvider<TimeZone> context={tz.clone()}>
@@ -153,10 +153,10 @@ impl App {
     }
 
     fn tz_from_config(config: &api::Config) -> TimeZone {
-        if !config.timezone.is_empty() {
-            if let Ok(tz) = JiffTimeZone::get(&config.timezone) {
-                return TimeZone::from_jiff(tz);
-            }
+        if !config.timezone.is_empty()
+            && let Ok(tz) = JiffTimeZone::get(&config.timezone)
+        {
+            return TimeZone::from_jiff(tz);
         }
 
         TimeZone::from_jiff(JiffTimeZone::system())

@@ -101,7 +101,7 @@ impl Component for MoviesList {
                 filter.is_empty()
                     || m.title
                         .as_ref()
-                        .map_or(false, |t| t.to_lowercase().contains(&filter))
+                        .is_some_and(|t| t.to_lowercase().contains(&filter))
             })
             .collect();
 
