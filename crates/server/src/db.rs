@@ -714,7 +714,6 @@ statements! {
             FROM movie_releases
             WHERE movie_id = ? AND release_type = ?
             ORDER BY timestamp
-            LIMIT 1
         "#,
 
         // digital-release pending discovery

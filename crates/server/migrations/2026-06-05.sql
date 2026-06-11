@@ -62,16 +62,12 @@ CREATE TABLE
         id INTEGER PRIMARY KEY,
         movie_id INTEGER NOT NULL REFERENCES movies (id) ON DELETE CASCADE,
         country TEXT NOT NULL,
-        release_type TEXT NOT NULL,
+        release_type INTEGER NOT NULL,
         timestamp INTEGER NOT NULL,
         UNIQUE (movie_id, country, release_type)
     );
 
-CREATE INDEX idx_movie_releases_movie ON movie_releases (movie_id);
-
-CREATE INDEX idx_movie_releases_digital ON movie_releases (timestamp)
-WHERE
-    release_type = 'digital';
+CREATE INDEX idx_movie_releases_movie ON movie_releases (movie_id, release_type, timestamp);
 
 CREATE TABLE
     watched_episodes (

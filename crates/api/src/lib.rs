@@ -1054,32 +1054,32 @@ pub enum ReleaseType {
 }
 
 impl ReleaseType {
-    pub fn as_id(self) -> &'static str {
+    pub fn as_u32(self) -> u32 {
         match self {
-            Self::Unknown => "unknown",
-            Self::Premiere => "premiere",
-            Self::TheatricalLimited => "theatrical-limited",
-            Self::Theatrical => "theatrical",
-            Self::Digital => "digital",
-            Self::Physical => "physical",
-            Self::Tv => "tv",
+            Self::Unknown => 0,
+            Self::Premiere => 1,
+            Self::TheatricalLimited => 2,
+            Self::Theatrical => 3,
+            Self::Digital => 4,
+            Self::Physical => 5,
+            Self::Tv => 6,
         }
     }
 }
 
 #[cfg(feature = "sqll")]
 impl ::sqll::FromColumn<'_> for ReleaseType {
-    type Type = ::sqll::ty::Text;
+    type Type = ::sqll::ty::Integer;
 
     #[inline]
-    fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Text) -> ::sqll::Result<Self> {
-        match <str as ::sqll::FromUnsizedColumn>::from_unsized_column(stmt, index)? {
-            "premiere" => Ok(Self::Premiere),
-            "theatrical-limited" => Ok(Self::TheatricalLimited),
-            "theatrical" => Ok(Self::Theatrical),
-            "digital" => Ok(Self::Digital),
-            "physical" => Ok(Self::Physical),
-            "tv" => Ok(Self::Tv),
+    fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Integer) -> ::sqll::Result<Self> {
+        match u32::from_column(stmt, index)? {
+            1 => Ok(Self::Premiere),
+            2 => Ok(Self::TheatricalLimited),
+            3 => Ok(Self::Theatrical),
+            4 => Ok(Self::Digital),
+            5 => Ok(Self::Physical),
+            6 => Ok(Self::Tv),
             _ => Ok(Self::Unknown),
         }
     }
@@ -1089,7 +1089,7 @@ impl ::sqll::FromColumn<'_> for ReleaseType {
 impl ::sqll::BindValue for ReleaseType {
     #[inline]
     fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
-        self.as_id().bind_value(stmt, index)
+        self.as_u32().bind_value(stmt, index)
     }
 }
 
