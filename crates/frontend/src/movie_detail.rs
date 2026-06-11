@@ -7,15 +7,16 @@ use yew::prelude::*;
 use crate::error::{CustomContext, Error, Message, RcError};
 use crate::router::{PagedQuery, Route};
 use crate::ui::{
-    ConfirmDanger, ErrorBox, ImageGallery, ImageItem, LanguagePicker, LoadingPage,
-    MarkWatchedPicker, RemoteEditor, RemoteSourceKind, RemoteSourceSelect, Tracked,
+    ConfirmDanger, ErrorBox, LanguagePicker, LoadingPage, MarkWatchedPicker, RemoteEditor,
+    RemoteSourceKind, RemoteSourceSelect, Tracked,
 };
-use crate::{Image, SetupChannel};
+use crate::{Image, ImageGallery, ImageItem, Modal, SetupChannel};
 
 pub(super) struct MovieDetail {
     countries: Countries,
     channel: ws::Channel,
     movie: Option<api::Movie>,
+    graphics: BTreeMap<api::ImageKind, Vec<ImageItem>>,
     watched: Vec<api::Watched>,
     confirm_remove: bool,
     confirm_mark_watch: bool,
@@ -25,7 +26,7 @@ pub(super) struct MovieDetail {
     detailed_expand: bool,
     releases_expanded: HashSet<api::ReleaseType>,
     movie_releases: Vec<(api::ReleaseType, Vec<api::MovieRelease>)>,
-    image_modal: Option<api::ImageKind>,
+    image_modal: bool,
     remote_editor: bool,
     tz: TimeZone,
     _tz_handle: ContextHandle<TimeZone>,
@@ -59,11 +60,11 @@ pub(super) enum Msg {
     RemoveWatchedDone(Result<ws::Packet<api::RemoveWatched>, ws::Error>),
     ConfirmRemoveWatch(api::WatchedId),
     CancelRemoveWatch,
-    SelectImage(api::ImageId),
+    SelectImage(api::ImageKind, api::ImageId),
     ClearSelectedImage(api::ImageKind),
     SelectImageDone(Result<ws::Packet<api::SelectImage>, ws::Error>),
     ClearSelectedImageDone(Result<ws::Packet<api::ClearSelectedImage>, ws::Error>),
-    OpenImageModal(api::ImageKind),
+    OpenImageModal,
     CloseImageModal,
     OpenRemoteEditor,
     CloseRemoteEditor,
@@ -129,6 +130,7 @@ impl Component for MovieDetail {
             countries: Countries::new(),
             channel: ws::Channel::default(),
             movie: None,
+            graphics: BTreeMap::new(),
             watched: Vec::new(),
             confirm_remove: false,
             confirm_mark_watch: false,
@@ -138,7 +140,7 @@ impl Component for MovieDetail {
             detailed_expand: false,
             releases_expanded: HashSet::new(),
             movie_releases: Vec::new(),
-            image_modal: None,
+            image_modal: false,
             remote_editor: false,
             tz,
             _tz_handle,
@@ -287,12 +289,12 @@ impl MovieDetail {
                 }
             }
             Msg::MovieLoaded(result) => {
-                self.set_movie(
-                    result
-                        .context(Message::LoadingMovies)?
-                        .decode()
-                        .context(Message::LoadingMovies)?,
-                );
+                let movie = result
+                    .context(Message::LoadingMovies)?
+                    .decode()
+                    .context(Message::LoadingMovies)?;
+
+                self.set_movie(movie);
                 Ok(true)
             }
             Msg::WatchedLoaded(result) => {
@@ -416,9 +418,11 @@ impl MovieDetail {
             }
             Msg::SetSyncSourceDone(source, result) => {
                 result.context(Message::SettingSyncSource)?;
+
                 if let Some(ref mut movie) = self.movie {
                     movie.sync_source = Some(source);
                 }
+
                 Ok(true)
             }
             Msg::SetLanguage(language) => {
@@ -441,9 +445,11 @@ impl MovieDetail {
             }
             Msg::SetLanguageDone(language, result) => {
                 result.context(Message::SettingLanguage)?;
+
                 if let Some(ref mut movie) = self.movie {
                     movie.language = language;
                 }
+
                 Ok(true)
             }
             Msg::SetTracked(tracked) => {
@@ -465,9 +471,11 @@ impl MovieDetail {
             }
             Msg::SetTrackedDone(tracked, result) => {
                 result.context(Message::UntrackingMovie)?;
+
                 if let Some(ref mut movie) = self.movie {
                     movie.tracked = tracked;
                 }
+
                 Ok(true)
             }
             Msg::OnWatchNext => {
@@ -484,9 +492,11 @@ impl MovieDetail {
             }
             Msg::AddPendingDone(result) => {
                 result.context(Message::SyncingSeries)?;
+
                 if let Some(ref mut movie) = self.movie {
                     movie.pending = true;
                 }
+
                 Ok(true)
             }
             Msg::OnRemoveNext => {
@@ -503,21 +513,36 @@ impl MovieDetail {
             }
             Msg::RemovePendingDone(result) => {
                 result.context(Message::SyncingSeries)?;
+
                 if let Some(ref mut movie) = self.movie {
                     movie.pending = false;
                 }
+
                 Ok(true)
             }
-            Msg::SelectImage(id) => {
+            Msg::SelectImage(kind, id) => {
+                if let Some(images) = self.graphics.get_mut(&kind) {
+                    for image in images {
+                        image.selected = image.id == id;
+                    }
+                }
+
                 self._select_image_req = self
                     .channel
                     .request()
                     .body(api::SelectImageRequest { id })
                     .on_packet(ctx.link().callback(Msg::SelectImageDone))
                     .send();
-                Ok(false)
+
+                Ok(true)
             }
             Msg::ClearSelectedImage(kind) => {
+                if let Some(images) = self.graphics.get_mut(&kind) {
+                    for image in images {
+                        image.selected = false;
+                    }
+                }
+
                 self._clear_image_req = self
                     .channel
                     .request()
@@ -527,26 +552,27 @@ impl MovieDetail {
                     })
                     .on_packet(ctx.link().callback(Msg::ClearSelectedImageDone))
                     .send();
+
                 Ok(false)
             }
             Msg::SelectImageDone(result) => {
                 result.context(Message::SyncingSeries)?;
-                self.image_modal = None;
+                self.image_modal = false;
                 self.load_movie(ctx);
                 Ok(true)
             }
             Msg::ClearSelectedImageDone(result) => {
                 result.context(Message::SyncingSeries)?;
-                self.image_modal = None;
+                self.image_modal = false;
                 self.load_movie(ctx);
                 Ok(true)
             }
-            Msg::OpenImageModal(kind) => {
-                self.image_modal = Some(kind);
+            Msg::OpenImageModal => {
+                self.image_modal = true;
                 Ok(true)
             }
             Msg::CloseImageModal => {
-                self.image_modal = None;
+                self.image_modal = false;
                 Ok(true)
             }
             Msg::OpenRemoteEditor => {
@@ -634,14 +660,38 @@ impl MovieDetail {
     fn set_movie(&mut self, movie: api::Movie) {
         let mut by_type: BTreeMap<u32, (api::ReleaseType, Vec<api::MovieRelease>)> =
             BTreeMap::new();
+
         for r in &movie.releases {
             let entry = by_type
                 .entry(r.release_type.as_u32())
                 .or_insert_with(|| (r.release_type, Vec::new()));
+
             entry.1.push(r.clone());
         }
+
         self.movie_releases = by_type.into_values().collect();
         self.movie = Some(movie);
+
+        self.update_graphics();
+    }
+
+    fn update_graphics(&mut self) {
+        self.graphics.clear();
+
+        if let Some(ref movie) = self.movie {
+            for i in &movie.images {
+                self.graphics
+                    .entry(i.kind)
+                    .or_insert_with(Vec::new)
+                    .push(ImageItem {
+                        selected: movie.is_selected(i.kind, i.image.key()),
+                        id: i.id,
+                        kind: i.kind,
+                        source: i.source,
+                        image: i.image.clone(),
+                    });
+            }
+        }
     }
 
     fn load_movie(&mut self, ctx: &Context<Self>) {
@@ -807,17 +857,10 @@ impl MovieDetail {
                         on_change={link.callback(Msg::SetLanguage)}
                     />
 
-                    if movie.images.iter().any(|i| matches!(i.kind, api::ImageKind::Poster)) {
-                        <button class="btn" onclick={link.callback(|_| Msg::OpenImageModal(api::ImageKind::Poster))} title="Change poster">
+                    if !movie.images.is_empty() {
+                        <button class="btn" onclick={link.callback(|_| Msg::OpenImageModal)} title="Change poster">
                             <span class="icon-inline"><span class="icon photo" /></span>
-                            <span>{"Poster"}</span>
-                        </button>
-                    }
-
-                    if movie.images.iter().any(|i| matches!(i.kind, api::ImageKind::Backdrop)) {
-                        <button class="btn" onclick={link.callback(|_| Msg::OpenImageModal(api::ImageKind::Backdrop))} title="Change backdrop">
-                            <span class="icon-inline"><span class="icon photo" /></span>
-                            <span>{"Backdrop"}</span>
+                            <span>{"Graphics"}</span>
                         </button>
                     }
 
@@ -947,8 +990,8 @@ impl MovieDetail {
                 </div>
             </div>
 
-            if let Some(kind) = self.image_modal {
-                { self.view_image_modal(ctx, movie, kind) }
+            if self.image_modal {
+                { self.view_image_modal(ctx) }
             }
 
             if self.remote_editor {
@@ -1025,43 +1068,22 @@ impl MovieDetail {
         }
     }
 
-    fn view_image_modal(
-        &self,
-        ctx: &Context<Self>,
-        movie: &api::Movie,
-        kind: api::ImageKind,
-    ) -> Html {
-        let selected_for_kind = match kind {
-            api::ImageKind::Poster => movie.poster.as_ref(),
-            api::ImageKind::Backdrop => movie.backdrop.as_ref(),
-            _ => None,
-        };
-        let items: Vec<ImageItem> = movie
-            .images
-            .iter()
-            .map(|img| ImageItem {
-                id: img.id,
-                kind: img.kind,
-                source: img.source,
-                image: img.image.clone(),
-                selected: Some(&img.image) == selected_for_kind,
-            })
-            .collect();
-
+    fn view_image_modal(&self, ctx: &Context<Self>) -> Html {
         let link = ctx.link();
 
         html! {
-            <ImageGallery
-                {items}
-                {kind}
-                on_select={link.callback(Msg::SelectImage)}
-                on_clear={if kind == api::ImageKind::Backdrop {
-                    Some(link.callback(move |_| Msg::ClearSelectedImage(kind)))
-                } else {
-                    None
-                }}
-                on_close={link.callback(|_| Msg::CloseImageModal)}
-            />
+            <Modal title="Movie Graphics" on_close={link.callback(|_| Msg::CloseImageModal)}>
+                {for self.graphics.iter().map(|(&kind, items)| {
+                    html! {
+                        <ImageGallery
+                            items={items.clone()}
+                            kind={kind}
+                            on_select={link.callback(move |id| Msg::SelectImage(kind, id))}
+                            on_clear={link.callback(move |_| Msg::ClearSelectedImage(kind))}
+                        />
+                    }
+                })}
+            </Modal>
         }
     }
 }

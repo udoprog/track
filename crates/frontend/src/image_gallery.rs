@@ -1,0 +1,84 @@
+use yew::prelude::*;
+
+use crate::Image;
+use crate::ui::PaginationButtons;
+
+const GALLERY_PAGE_SIZE: usize = 20;
+
+/// A single entry shown in the image gallery.
+#[derive(Clone, PartialEq)]
+pub(super) struct ImageItem {
+    pub(super) selected: bool,
+    pub(super) id: api::ImageId,
+    pub(super) kind: api::ImageKind,
+    pub(super) source: api::ImageSource,
+    pub(super) image: api::Image,
+}
+
+#[derive(Properties, PartialEq)]
+pub(super) struct ImageGalleryProps {
+    pub(super) items: Vec<ImageItem>,
+    pub(super) kind: api::ImageKind,
+    pub(super) on_select: Callback<api::ImageId>,
+    #[prop_or_default]
+    pub(super) on_clear: Callback<()>,
+}
+
+#[function_component]
+pub(super) fn ImageGallery(props: &ImageGalleryProps) -> Html {
+    let page = use_state(|| 0usize);
+
+    let total_pages = props.items.len().div_ceil(GALLERY_PAGE_SIZE);
+    let cur_page = (*page).min(total_pages.saturating_sub(1));
+    let start = cur_page * GALLERY_PAGE_SIZE;
+    let end = (start + GALLERY_PAGE_SIZE).min(props.items.len());
+    let page_images = props.items.get(start..end).unwrap_or_default();
+
+    let on_page = {
+        let page = page.clone();
+        Callback::from(move |p| page.set(p))
+    };
+
+    let on_select = props.on_select.clone();
+    let on_clear = props.on_clear.reform(|_| ());
+
+    html! {
+        <>
+            <div class="row-fill">
+                <h2>{format!("Select {}", props.kind)}</h2>
+
+                <div class="row end">
+                    <button class="btn-danger" onclick={on_clear}>
+                        <span class="icon x-mark" />
+                        {format!("Clear {}", props.kind)}
+                    </button>
+                </div>
+            </div>
+
+            if props.items.is_empty() {
+                <div class="empty text-muted">{"No images"}</div>
+            } else {
+                if total_pages > 1 {
+                    <div class="row center">
+                        <PaginationButtons page={cur_page} {total_pages} on_page={on_page} />
+                    </div>
+                }
+
+                <div class="image-gallery">
+                    { for page_images.iter().map(|img| {
+                        let id = img.id;
+                        let selected = img.selected;
+                        let on_select = on_select.clone();
+                        let title = img.source.to_string();
+
+                        html! {
+                            <div class={classes!("image-gallery-thumb", selected.then_some("selected"))} onclick={Callback::from(move |_| on_select.emit(id))} {title}>
+                                <Image class={props.kind.as_str()} src={img.image.clone()} />
+                            </div>
+                        }
+                    })}
+                </div>
+            }
+        </>
+    }
+}

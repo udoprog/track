@@ -286,7 +286,7 @@ p {
 
     box-sizing: border-box;
     display: inline-flex;
-    gap: $gap-sm;
+    gap: 0.25rem;
     align-items: center;
     justify-content: start;
     color: #fff;
@@ -946,53 +946,49 @@ image {
     flex-wrap: wrap;
     justify-content: space-between;
     gap: $gap-sm;
-    padding: $gap-sm;
-}
 
-.image-thumb {
-    position: relative;
-    cursor: pointer;
-    overflow: hidden;
-    transition: opacity 0.15s, border-color 0.15s;
-    flex-shrink: 0;
+    &-thumb {
+        cursor: pointer;
 
-    img {
-        display: block;
-        opacity: 0.7;
-        max-height: 120px;
+        image {
+            border: 2px solid transparent;
+            border-radius: $radius-sm;
+        }
 
-        border-width: 2px;
-        border-style: solid;
-        border-color: transparent;
-        border-radius: $radius-sm;
-    }
+        &.selected {
+            image {
+                border-color: $color-primary;
+            }
+        }
 
-    &:hover {
-        img {
-            opacity: 1;
+        >image.poster {
+            max-width: 120px;
+            aspect-ratio: 2 / 3;
+        }
+
+        >image.banner {
+            max-width: 240px;
+        }
+
+        >image.backdrop {
+            max-width: 240px;
+            aspect-ratio: 16 / 9;
+        }
+
+        >image.screenshot {
+            max-width: 240px;
+            aspect-ratio: 16 / 9;
         }
     }
 
-    &.selected {
-        img {
-            border-color: $color-primary !important;
-            opacity: 1;
-        }
+    &-thumb-check {
+        position: absolute;
+        top: 2px;
+        right: 4px;
+        font-size: 12px;
+        color: $color-primary;
+        text-shadow: 0 0 2px #000;
     }
-
-    &-source {
-        display: flex;
-        justify-content: center;
-    }
-}
-
-.image-thumb-check {
-    position: absolute;
-    top: 2px;
-    right: 4px;
-    font-size: 12px;
-    color: $color-primary;
-    text-shadow: 0 0 2px #000;
 }
 
 @keyframes spin {
@@ -1004,26 +1000,46 @@ image {
     animation: spin 1s linear infinite;
 }
 
-.modal-background {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.6);
-    z-index: 400;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+.remote-id {
+    font-family: $monospace-font;
 }
 
 .modal {
     display: flex;
     flex-direction: column;
-    gap: $gap-sm;
     background: $bg-panel;
     border: 1px solid $border-subtle;
     border-radius: $radius;
     width: min(600px, calc(100vw - #{$gap-sm * 2}));
-    overflow-y: auto;
     z-index: 401;
-    padding: $gap-sm;
-    max-height: 80vh;
+
+    &-background {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.6);
+        z-index: 400;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    &-header {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
+        gap: $gap-sm;
+        background: $bg-highlight;
+        padding: $gap-xs;
+    }
+
+    &-content {
+        display: flex;
+        flex-direction: column;
+        gap: $gap;
+        overflow-y: auto;
+        max-height: 80vh;
+        padding: $gap;
+    }
 }

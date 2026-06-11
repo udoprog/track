@@ -3069,6 +3069,7 @@ fn apply_movie_image_selection(target: &mut api::Movie, sel: ImageSelectionRow) 
 
     match sel.kind {
         api::ImageKind::Poster => target.poster = Some(image),
+        api::ImageKind::Banner => target.banner = Some(image),
         api::ImageKind::Backdrop => target.backdrop = Some(image),
         _ => {}
     }
@@ -3197,20 +3198,32 @@ fn ensure_mode(c: &sqll::Connection, mode: OpenMode) -> Result<()> {
                 .into_iter::<String>()
                 .next()
                 .transpose()?;
-            if journal.as_deref() != Some("delete") {
-                tracing::warn!(?journal, "switching journal mode to delete");
-                c.execute("PRAGMA journal_mode = delete;")?;
+
+            if journal.as_deref() != Some("wal") {
+                tracing::warn!(?journal, "switching journal mode to wal");
+                let applied = c
+                    .prepare("PRAGMA journal_mode = wal")?
+                    .into_iter::<String>()
+                    .next()
+                    .transpose()?;
+
+                ensure!(
+                    applied.as_deref() == Some("wal"),
+                    "failed to enable WAL journal mode, got {applied:?}"
+                );
             }
 
-            let synchronous = c
-                .prepare("PRAGMA synchronous")?
-                .into_iter::<i64>()
-                .next()
-                .transpose()?;
-            if synchronous != Some(2) {
-                tracing::warn!(?synchronous, "switching synchronous to full");
-                c.execute("PRAGMA synchronous = full;")?;
-            }
+            // NORMAL is the recommended companion to WAL: still crash-safe
+            // against corruption and application crashes, only fsyncing at
+            // checkpoints rather than on every commit. A committed transaction
+            // can be lost only on OS crash / power loss, never corrupting the db.
+            //
+            // Unlike journal_mode, synchronous is per-connection and not
+            // persisted in the database header, so it resets to the default
+            // (FULL) on every open and must simply be set unconditionally.
+            c.execute("PRAGMA synchronous = normal;")?;
+
+            c.execute("PRAGMA busy_timeout = 5000;")?;
         }
         OpenMode::Bulk => {
             c.execute("PRAGMA journal_mode = off; PRAGMA synchronous = off;")?;

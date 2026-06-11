@@ -5,7 +5,7 @@ use iso639::{LanguageToCountry, Languages};
 use musli_web::web03::prelude::*;
 
 use crate::error::RcError;
-use crate::{Image, SetupChannel};
+use crate::{Modal, SetupChannel};
 
 #[function_component]
 pub(super) fn LoadingPage() -> Html {
@@ -408,7 +408,6 @@ impl Component for RemoteEditor {
                 true
             }
             RemoteEditorMsg::Edit(remote_id) => {
-                tracing::warn!(?remote_id);
                 self.source = remote_id.source().clone();
                 self.value = remote_id.value().to_string();
                 self.editing = Some(remote_id);
@@ -466,209 +465,91 @@ impl Component for RemoteEditor {
 
         let editing = self.editing.is_some();
 
+        let title = html! {
+            <>
+                <span class="icon-inline"><span class="icon identification" /></span>
+                <span>{format!("Identifiers — {}", props.title)}</span>
+            </>
+        };
+
         html! {
-            <div class="modal-background" onclick={link.callback(|_| RemoteEditorMsg::Close)}>
-                <div class="modal" onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
-                    <div class="row-fill">
-                        <div class="row">
-                            <span class="icon-inline"><span class="icon identification" /></span>
-                            <span>{format!("Identifiers — {}", props.title)}</span>
-                        </div>
-
-                        <button class="btn end" onclick={link.callback(|_| RemoteEditorMsg::Close)}>
-                            <span class="icon x-mark" />
-                        </button>
-                    </div>
-
-                    if props.remotes.is_empty() {
-                        <div class="empty text-muted">{"No remote identifiers"}</div>
-                    } else {
-                        { for props.remotes.iter().map(|r| {
-                            if self.confirming_remove.as_ref() == Some(r) {
-                                let remote_id = r.clone();
-
-                                return html! {
-                                    <ConfirmDanger
-                                        key={r.to_string()}
-                                        prompt="Remove"
-                                        label={r.to_string()}
-                                        on_confirm={link.callback(move |_| RemoteEditorMsg::ConfirmRemove(remote_id.clone()))}
-                                        on_cancel={link.callback(|_| RemoteEditorMsg::CancelRemove)}
-                                    />
-                                };
-                            }
-
-                            let editing_this = self.editing.as_ref() == Some(r);
-                            let edit_id = r.clone();
-                            let remove_id = r.clone();
-
-                            html! {
-                                <div key={r.to_string()} class={classes!("row-fill", editing_this.then_some("active"))}>
-                                    <span>{r.to_string()}</span>
-
-                                    <div class="input-group end">
-                                        <button class="btn-icon" onclick={link.callback(move |_| RemoteEditorMsg::Edit(edit_id.clone()))} title="Edit identifier">
-                                            <span class="icon pencil-square" />
-                                        </button>
-
-                                        <button class="btn-icon-danger" onclick={link.callback(move |_| RemoteEditorMsg::AskRemove(remove_id.clone()))} title="Remove identifier">
-                                            <span class="icon trash" />
-                                        </button>
-                                    </div>
-                                </div>
-                            }
-                        }) }
-                    }
-
-                    <div class="form">
-                        <div class={classes!("field", self.error.is_some().then_some("error"))}>
-                            <div class="input-group fill">
-                                <select ref={self.source_ref.clone()} class="input-select" onchange={on_source} title="Source">
-                                    { for REMOTE_SOURCES.iter().map(|(value, label)| html! {
-                                        <option value={value.as_str()} selected={self.source == *value}>{label}</option>
-                                    }) }
-                                </select>
-
-                                <input type="text" class="input-text fill" placeholder="Identifier" value={self.value.clone()} oninput={on_value} />
-
-                                <button class="btn-success" onclick={link.callback(|_| RemoteEditorMsg::Submit)} disabled={self.value.trim().is_empty()} title={if editing { "Save identifier" } else { "Add identifier" }}>
-                                    <span class="icon-inline"><span class={classes!("icon", if editing { "check" } else { "plus" })} /></span>
-                                    <span>{if editing { "Save" } else { "Add" }}</span>
-                                </button>
-
-                                if editing {
-                                    <button class="btn-icon" onclick={link.callback(|_| RemoteEditorMsg::CancelEdit)} title="Cancel edit">
-                                        <span class="icon x-mark" />
-                                    </button>
-                                }
-                            </div>
-
-                            if let Some(ref error) = self.error {
-                                <label>{error}</label>
-                            }
-                        </div>
-                    </div>
-                </div>
-            </div>
-        }
-    }
-}
-
-// ── ImageGallery ──────────────────────────────────────────────────────────────
-
-/// A single entry shown in the image gallery.
-#[derive(Clone, PartialEq)]
-pub(super) struct ImageItem {
-    pub(super) id: api::ImageId,
-    pub(super) kind: api::ImageKind,
-    pub(super) source: api::ImageSource,
-    pub(super) image: api::Image,
-    pub(super) selected: bool,
-}
-
-#[derive(Properties, PartialEq)]
-pub(super) struct ImageGalleryProps {
-    pub(super) items: Vec<ImageItem>,
-    pub(super) kind: api::ImageKind,
-    pub(super) on_select: Callback<api::ImageId>,
-    pub(super) on_clear: Option<Callback<()>>,
-    pub(super) on_close: Callback<()>,
-}
-
-#[function_component]
-pub(super) fn ImageGallery(props: &ImageGalleryProps) -> Html {
-    let page = use_state(|| 0usize);
-
-    let images: Vec<_> = props
-        .items
-        .iter()
-        .filter(|img| img.kind == props.kind)
-        .collect();
-
-    let selected_item = images.iter().find(|img| img.selected).copied().cloned();
-
-    let total_pages = images.len().div_ceil(GALLERY_PAGE_SIZE);
-    let cur_page = (*page).min(total_pages.saturating_sub(1));
-    let start = cur_page * GALLERY_PAGE_SIZE;
-    let end = (start + GALLERY_PAGE_SIZE).min(images.len());
-    let page_images = &images[start..end];
-
-    let on_page = {
-        let page = page.clone();
-        Callback::from(move |p| page.set(p))
-    };
-    let on_select = props.on_select.clone();
-    let on_close = props.on_close.clone();
-
-    html! {
-        <div class="modal-background" onclick={Callback::from(move |_| on_close.emit(()))}>
-            <div class="modal" onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
-                <div class="row">
-                    <span class="fill">{format!("Select {}", props.kind)}</span>
-
-                    if let Some(on_clear) = props.on_clear.clone() {
-                        <button class="btn" onclick={Callback::from(move |_| on_clear.emit(()))}>
-                            <span class="icon-inline"><span class="icon x-mark" /></span>
-                            {"Clear"}
-                        </button>
-                    }
-
-                    <button class="btn-icon" onclick={props.on_close.reform(|_| ())}>
-                        <span class="icon x-mark" />
-                    </button>
-                </div>
-
-                if let Some(ref sel) = selected_item {
-                    <div class="column">
-                        <span class="text-muted">{"Current selection"}</span>
-
-                        <div class="image-thumb selected">
-                            <Image src={sel.image.clone()} style="max-height: 200px;" />
-                            <div class="image-thumb-source">{sel.source.to_string()}</div>
-                            <span class="image-thumb-check">{"✓"}</span>
-                        </div>
-                    </div>
-                }
-
-                if images.is_empty() {
-                    <div class="empty text-muted">{"No images"}</div>
+            <Modal {title} on_close={link.callback(|_| RemoteEditorMsg::Close)}>
+                if props.remotes.is_empty() {
+                    <div class="empty text-muted">{"No remote identifiers"}</div>
                 } else {
-                    <div class="row">
-                        <PaginationButtons page={cur_page} {total_pages} on_page={on_page} />
-                    </div>
+                    { for props.remotes.iter().map(|r| {
+                        if self.confirming_remove.as_ref() == Some(r) {
+                            let remote_id = r.clone();
 
-                    <div class={classes!("image-gallery", props.kind.as_str())}>
-                        { for page_images.iter().map(|img| {
-                            let id = img.id;
-                            let selected = img.selected;
-                            let on_select = on_select.clone();
-                            let title = img.source.to_string();
+                            return html! {
+                                <ConfirmDanger
+                                    key={r.to_string()}
+                                    prompt="Remove"
+                                    label={r.to_string()}
+                                    on_confirm={link.callback(move |_| RemoteEditorMsg::ConfirmRemove(remote_id.clone()))}
+                                    on_cancel={link.callback(|_| RemoteEditorMsg::CancelRemove)}
+                                />
+                            };
+                        }
 
-                            html! {
-                                <div class={classes!("image-thumb", selected.then_some("selected"))} onclick={Callback::from(move |_| on_select.emit(id))} {title}>
-                                    <Image src={img.image.clone()} />
+                        let editing_this = self.editing.as_ref() == Some(r);
+                        let edit_id = r.clone();
+                        let remove_id = r.clone();
 
-                                    <div class="image-thumb-source">
-                                        {img.source.to_string()}
-                                    </div>
+                        html! {
+                            <div key={r.to_string()} class={classes!("row-fill", editing_this.then_some("active"))}>
+                                <span class="remote-id">{r.to_string()}</span>
 
-                                    if selected {
-                                        <span class="image-thumb-check">{"✓"}</span>
-                                    }
+                                <div class="input-group end">
+                                    <button class="btn-icon" onclick={link.callback(move |_| RemoteEditorMsg::Edit(edit_id.clone()))} title="Edit identifier">
+                                        <span class="icon pencil-square" />
+                                    </button>
+
+                                    <button class="btn-icon-danger" onclick={link.callback(move |_| RemoteEditorMsg::AskRemove(remove_id.clone()))} title="Remove identifier">
+                                        <span class="icon trash" />
+                                    </button>
                                 </div>
-                            }
-                        })}
-                    </div>
+                            </div>
+                        }
+                    }) }
                 }
-            </div>
-        </div>
+
+                <div class="form">
+                    <div class={classes!("field", self.error.is_some().then_some("error"))}>
+                        <div class="input-group fill">
+                            <select ref={self.source_ref.clone()} class="input-select" onchange={on_source} title="Source">
+                                { for REMOTE_SOURCES.iter().map(|(value, label)| html! {
+                                    <option value={value.as_str()} selected={self.source == *value}>{label}</option>
+                                }) }
+                            </select>
+
+                            <input type="text" class="input-text fill" placeholder="Identifier" value={self.value.clone()} oninput={on_value} />
+
+                            <button class="btn-success" onclick={link.callback(|_| RemoteEditorMsg::Submit)} disabled={self.value.trim().is_empty()} title={if editing { "Save identifier" } else { "Add identifier" }}>
+                                <span class="icon-inline"><span class={classes!("icon", if editing { "check" } else { "plus" })} /></span>
+                                <span>{if editing { "Save" } else { "Add" }}</span>
+                            </button>
+
+                            if editing {
+                                <button class="btn-icon" onclick={link.callback(|_| RemoteEditorMsg::CancelEdit)} title="Cancel edit">
+                                    <span class="icon x-mark" />
+                                </button>
+                            }
+                        </div>
+
+                        if let Some(ref error) = self.error {
+                            <label>{error}</label>
+                        }
+                    </div>
+                </div>
+            </Modal>
+        }
     }
 }
 
 // ── LanguagePicker ────────────────────────────────────────────────────────────
 
 const LANGUAGE_PAGE_SIZE: usize = 5;
-const GALLERY_PAGE_SIZE: usize = 20;
 
 #[derive(Properties, PartialEq)]
 pub(super) struct LanguagePickerProps {
@@ -788,60 +669,51 @@ impl Component for LanguagePicker {
         html! {
             <>
                 {trigger}
-                <div class="modal-background" onclick={link.callback(|_| Msg::Close)}>
-                    <div class="modal" onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
-                        <div class="row">
-                            <span class="fill">{"Language"}</span>
 
-                            <button class="btn-icon" onclick={link.callback(|_| Msg::Close)}>
-                                <span class="icon x-mark" />
-                            </button>
-                        </div>
+                <Modal title="Select Language" on_close={link.callback(|_| Msg::Close)}>
+                    <div class="row">
+                        <input autofocus={true} type="text" class="input-text fill" placeholder="Filter" value={self.filter.clone()} oninput={on_filter} />
+                    </div>
 
-                        <div class="row">
-                            <input type="text" class="input-text fill" placeholder="Filter" value={self.filter.clone()} oninput={on_filter} />
-                        </div>
+                    <div class="table">
+                        <div class="table-entry row clickable" onclick={link.callback(|_| Msg::Pick(None))}>
+                            <span class="fill">{props.placeholder}</span>
 
-                        <div class="table">
-                            <div class="table-entry row clickable" onclick={link.callback(|_| Msg::Pick(None))}>
-                                <span class="fill">{props.placeholder}</span>
-
-                                if current.is_none() {
-                                    <span class="icon check" />
-                                }
-                            </div>
-
-                            {
-                                for filtered.iter()
-                                    .skip(page.saturating_mul(LANGUAGE_PAGE_SIZE))
-                                    .take(LANGUAGE_PAGE_SIZE)
-                                    .map(|&(part1, entry)| {
-                                        let selected = current.as_deref() == Some(part1);
-
-                                        html! {
-                                            <div key={part1} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| Msg::Pick(Some(part1.to_string())))}>
-                                                <span class="fill">{entry.ref_name}</span>
-
-                                                if let Some(code) = self.language_to_country.get_by_part1(part1) {
-                                                    <span class={classes!("flag-inline", "flag", code)} />
-                                                }
-
-                                                <span class="text-muted">{part1}</span>
-                                            </div>
-                                        }
-                                    })
+                            if current.is_none() {
+                                <span class="icon check" />
                             }
                         </div>
 
-                        <div class="row center">
-                            <PaginationButtons
-                                page={page}
-                                total_pages={total_pages}
-                                on_page={link.callback(Msg::Page)}
-                            />
-                        </div>
+                        {
+                            for filtered.iter()
+                                .skip(page.saturating_mul(LANGUAGE_PAGE_SIZE))
+                                .take(LANGUAGE_PAGE_SIZE)
+                                .map(|&(part1, entry)| {
+                                    let selected = current.as_deref() == Some(part1);
+
+                                    html! {
+                                        <div key={part1} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| Msg::Pick(Some(part1.to_string())))}>
+                                            <span class="fill">{entry.ref_name}</span>
+
+                                            if let Some(code) = self.language_to_country.get_by_part1(part1) {
+                                                <span class={classes!("flag-inline", "flag", code)} />
+                                            }
+
+                                            <span class="text-muted">{part1}</span>
+                                        </div>
+                                    }
+                                })
+                        }
                     </div>
-                </div>
+
+                    <div class="row center">
+                        <PaginationButtons
+                            page={page}
+                            total_pages={total_pages}
+                            on_page={link.callback(Msg::Page)}
+                        />
+                    </div>
+                </Modal>
             </>
         }
     }

@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
@@ -8,14 +8,15 @@ use api::{HasAired, TimeZone};
 use crate::error::{CustomContext, Error, Message, RcError};
 use crate::router::{PagedQuery, Route, SeriesDetailQuery};
 use crate::ui::{
-    ConfirmDanger, EpisodePicker, ErrorBox, ImageGallery, ImageItem, LanguagePicker, LoadingPage,
-    MarkWatchedPicker, RemoteEditor, RemoteSourceKind, RemoteSourceSelect, Tracked,
+    ConfirmDanger, EpisodePicker, ErrorBox, LanguagePicker, LoadingPage, MarkWatchedPicker,
+    RemoteEditor, RemoteSourceKind, RemoteSourceSelect, Tracked,
 };
-use crate::{Image, SetupChannel};
+use crate::{Image, ImageGallery, ImageItem, Modal, SetupChannel};
 
 pub(super) struct SeriesDetail {
     channel: ws::Channel,
     series: Option<api::Series>,
+    graphics: BTreeMap<api::ImageKind, Vec<ImageItem>>,
     seasons: Vec<api::Season>,
     selected: Option<api::SeasonNumber>,
     expanded_seasons: bool,
@@ -32,7 +33,7 @@ pub(super) struct SeriesDetail {
     history_expanded: HashSet<api::EpisodeId>,
     orphaned: Vec<api::OrphanedWatched>,
     fixing_watched: Option<api::WatchedId>,
-    image_modal: Option<api::ImageKind>,
+    image_modal: bool,
     remote_editor: bool,
     tz: TimeZone,
     _tz_handle: ContextHandle<TimeZone>,
@@ -92,7 +93,7 @@ pub(super) enum Msg {
     AddPendingDone(Result<ws::Packet<api::AddPending>, ws::Error>),
     OnRemoveNext(api::EpisodeId),
     RemovePendingDone(Result<ws::Packet<api::RemovePending>, ws::Error>),
-    SelectImage(api::ImageId),
+    SelectImage(api::ImageKind, api::ImageId),
     ClearSelectedImage(api::ImageKind),
     SelectImageDone(Result<ws::Packet<api::SelectImage>, ws::Error>),
     ClearSelectedImageDone(Result<ws::Packet<api::ClearSelectedImage>, ws::Error>),
@@ -106,7 +107,7 @@ pub(super) enum Msg {
         Option<String>,
         Result<ws::Packet<api::SetSeriesLanguage>, ws::Error>,
     ),
-    OpenImageModal(api::ImageKind),
+    OpenImageModal,
     CloseImageModal,
     OpenRemoteEditor,
     CloseRemoteEditor,
@@ -156,6 +157,7 @@ impl Component for SeriesDetail {
         Self {
             channel: ws::Channel::default(),
             series: None,
+            graphics: BTreeMap::new(),
             seasons: Vec::new(),
             selected: None,
             expanded_seasons: false,
@@ -172,7 +174,7 @@ impl Component for SeriesDetail {
             history_expanded: HashSet::new(),
             orphaned: Vec::new(),
             fixing_watched: None,
-            image_modal: None,
+            image_modal: false,
             remote_editor: false,
             tz,
             _tz_handle,
@@ -240,17 +242,10 @@ impl Component for SeriesDetail {
                                 on_change={link.callback(Msg::SetLanguage)}
                             />
 
-                            if series.images.iter().any(|i| matches!(i.kind, api::ImageKind::Poster)) {
-                                <button class="btn" onclick={link.callback(|_| Msg::OpenImageModal(api::ImageKind::Poster))}>
+                            if !series.images.is_empty() {
+                                <button class="btn" onclick={link.callback(|_| Msg::OpenImageModal)}>
                                     <span class="icon-inline"><span class="icon photo" /></span>
-                                    <span>{"Poster"}</span>
-                                </button>
-                            }
-
-                            if series.images.iter().any(|i| matches!(i.kind, api::ImageKind::Backdrop)) {
-                                <button class="btn" onclick={link.callback(|_| Msg::OpenImageModal(api::ImageKind::Backdrop))}>
-                                    <span class="icon-inline"><span class="icon photo" /></span>
-                                    <span>{"Backdrop"}</span>
+                                    <span>{"Graphics"}</span>
                                 </button>
                             }
 
@@ -323,8 +318,8 @@ impl Component for SeriesDetail {
                         { self.view_episodes(ctx, season) }
                     </div>
 
-                    if let Some(kind) = self.image_modal {
-                        { self.view_image_modal(ctx, kind, series) }
+                    if self.image_modal {
+                        { self.view_image_modal(ctx) }
                     }
 
                     if self.remote_editor {
@@ -406,6 +401,7 @@ impl SeriesDetail {
                         if series.id == ctx.props().series_id =>
                     {
                         self.series = Some(series.clone());
+                        self.update_graphics();
                         Ok(true)
                     }
                     api::AppEventKind::SeasonsChanged { series_id, .. }
@@ -485,13 +481,13 @@ impl SeriesDetail {
                 }
             }
             Msg::SeriesLoaded(result) => {
-                self.series = Some(
-                    result
-                        .context(Message::LoadingSeries)?
-                        .decode()
-                        .context(Message::LoadingSeries)?,
-                );
+                let series = result
+                    .context(Message::LoadingSeries)?
+                    .decode()
+                    .context(Message::LoadingSeries)?;
 
+                self.series = Some(series);
+                self.update_graphics();
                 Ok(true)
             }
             Msg::SeasonsLoaded(result) => {
@@ -825,7 +821,13 @@ impl SeriesDetail {
 
                 Ok(false)
             }
-            Msg::SelectImage(id) => {
+            Msg::SelectImage(kind, id) => {
+                if let Some(images) = self.graphics.get_mut(&kind) {
+                    for image in images {
+                        image.selected = image.id == id;
+                    }
+                }
+
                 self._select_image_req = self
                     .channel
                     .request()
@@ -833,9 +835,15 @@ impl SeriesDetail {
                     .on_packet(ctx.link().callback(Msg::SelectImageDone))
                     .send();
 
-                Ok(false)
+                Ok(true)
             }
             Msg::ClearSelectedImage(kind) => {
+                if let Some(images) = self.graphics.get_mut(&kind) {
+                    for image in images {
+                        image.selected = false;
+                    }
+                }
+
                 self._clear_image_req = self
                     .channel
                     .request()
@@ -850,13 +858,13 @@ impl SeriesDetail {
             }
             Msg::SelectImageDone(result) => {
                 result.context(Message::SyncingSeries)?;
-                self.image_modal = None;
+                self.image_modal = false;
                 self.load_series(ctx);
                 Ok(true)
             }
             Msg::ClearSelectedImageDone(result) => {
                 result.context(Message::SyncingSeries)?;
-                self.image_modal = None;
+                self.image_modal = false;
                 self.load_series(ctx);
                 Ok(true)
             }
@@ -910,12 +918,12 @@ impl SeriesDetail {
                 }
                 Ok(true)
             }
-            Msg::OpenImageModal(kind) => {
-                self.image_modal = Some(kind);
+            Msg::OpenImageModal => {
+                self.image_modal = true;
                 Ok(true)
             }
             Msg::CloseImageModal => {
-                self.image_modal = None;
+                self.image_modal = false;
                 Ok(true)
             }
             Msg::OpenRemoteEditor => {
@@ -1058,6 +1066,25 @@ impl SeriesDetail {
             .send();
     }
 
+    fn update_graphics(&mut self) {
+        self.graphics.clear();
+
+        if let Some(ref series) = self.series {
+            for i in &series.images {
+                self.graphics
+                    .entry(i.kind)
+                    .or_insert_with(Vec::new)
+                    .push(ImageItem {
+                        selected: series.is_selected(i.kind, i.image.key()),
+                        id: i.id,
+                        kind: i.kind,
+                        source: i.source,
+                        image: i.image.clone(),
+                    });
+            }
+        }
+    }
+
     fn load_seasons(&mut self, ctx: &Context<Self>) {
         self._seasons_req = self
             .channel
@@ -1153,45 +1180,22 @@ impl SeriesDetail {
         }
     }
 
-    fn view_image_modal(
-        &self,
-        ctx: &Context<Self>,
-        kind: api::ImageKind,
-        series: &api::Series,
-    ) -> Html {
-        let selected_for_kind = match kind {
-            api::ImageKind::Poster => series.poster.as_ref(),
-            api::ImageKind::Banner => series.banner.as_ref(),
-            api::ImageKind::Backdrop => series.backdrop.as_ref(),
-            _ => None,
-        };
-
-        let items: Vec<ImageItem> = series
-            .images
-            .iter()
-            .map(|img| ImageItem {
-                id: img.id,
-                kind: img.kind,
-                source: img.source,
-                image: img.image.clone(),
-                selected: Some(&img.image) == selected_for_kind,
-            })
-            .collect();
-
+    fn view_image_modal(&self, ctx: &Context<Self>) -> Html {
         let link = ctx.link();
 
         html! {
-            <ImageGallery
-                {items}
-                {kind}
-                on_select={link.callback(Msg::SelectImage)}
-                on_clear={if kind == api::ImageKind::Backdrop {
-                    Some(link.callback(move |_| Msg::ClearSelectedImage(kind)))
-                } else {
-                    None
-                }}
-                on_close={link.callback(|_| Msg::CloseImageModal)}
-            />
+            <Modal title="Series Graphics" on_close={link.callback(|_| Msg::CloseImageModal)}>
+                {for self.graphics.iter().map(|(&kind, items)| {
+                    html! {
+                        <ImageGallery
+                            items={items.clone()}
+                            {kind}
+                            on_select={link.callback(move |id| Msg::SelectImage(kind, id))}
+                            on_clear={link.callback(move |_| Msg::ClearSelectedImage(kind))}
+                        />
+                    }
+                })}
+            </Modal>
         }
     }
 

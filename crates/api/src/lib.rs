@@ -919,7 +919,18 @@ impl ::sqll::BindValue for SeasonNumber {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    Encode,
+    Decode,
+    serde::Serialize,
+    serde::Deserialize,
 )]
 #[musli(crate = musli_core)]
 #[serde(rename_all = "lowercase")]
@@ -1319,6 +1330,27 @@ impl Series {
 
         None
     }
+
+    pub fn is_selected(&self, kind: ImageKind, key: &ImageKey) -> bool {
+        match kind {
+            ImageKind::Poster => self
+                .poster
+                .as_ref()
+                .map(|i| i.key() == key)
+                .unwrap_or(false),
+            ImageKind::Banner => self
+                .banner
+                .as_ref()
+                .map(|i| i.key() == key)
+                .unwrap_or(false),
+            ImageKind::Backdrop => self
+                .backdrop
+                .as_ref()
+                .map(|i| i.key() == key)
+                .unwrap_or(false),
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
@@ -1401,6 +1433,27 @@ impl Movie {
         }
 
         None
+    }
+
+    pub fn is_selected(&self, kind: ImageKind, key: &ImageKey) -> bool {
+        match kind {
+            ImageKind::Poster => self
+                .poster
+                .as_ref()
+                .map(|i| i.key() == key)
+                .unwrap_or(false),
+            ImageKind::Banner => self
+                .banner
+                .as_ref()
+                .map(|i| i.key() == key)
+                .unwrap_or(false),
+            ImageKind::Backdrop => self
+                .backdrop
+                .as_ref()
+                .map(|i| i.key() == key)
+                .unwrap_or(false),
+            _ => false,
+        }
     }
 }
 
