@@ -3,10 +3,12 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{Context as _, Result};
-use api::{Date, Image, ImageSource, RemoteId, SeasonNumber, Timestamp};
+use api::{Date, Image, ImageKey, ImageSource, RemoteId, SeasonNumber, Timestamp};
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, MutexGuard};
+
+use crate::remote::best_image;
 
 const BASE: &str = "https://api4.thetvdb.com/v4/";
 const IMAGE_BASE: &str = "https://artworks.thetvdb.com/";
@@ -312,18 +314,24 @@ impl Client {
 
         let mut poster: Vec<Image> = posters.iter().map(|(_, i)| i.clone()).collect();
         let banner: Vec<Image> = banners.iter().map(|(_, i)| i.clone()).collect();
-        let fanart_imgs: Vec<Image> = fanart.iter().map(|(_, i)| i.clone()).collect();
+        let fanart: Vec<Image> = fanart.iter().map(|(_, i)| i.clone()).collect();
 
-        // Fall back to the base record image as a poster when no poster artwork exists.
+        // The series record's `image` is TVDB's primary poster (its analog of
+        // TMDB's poster_path). Prefer it when selecting, and fall back to it as
+        // the only poster when there are no poster artworks at all.
+        let primary_poster = v.image.as_deref().and_then(image_path).map(ImageKey::tvdb);
+
         if poster.is_empty() {
-            if let Some(path) = v.image.as_deref().and_then(image_path) {
-                poster.push(Image::tvdb(&path));
+            if let Some(image) = primary_poster.clone() {
+                poster.push(Image::from(image));
             }
         }
 
-        let selected_poster = poster.first().cloned();
-        let selected_banner = banner.first().cloned();
-        let selected_fanart = fanart_imgs.first().cloned();
+        // Banner and fanart have no primary in the base record, so they fall
+        // back to highest score.
+        let selected_poster = best_image(&poster, primary_poster);
+        let selected_banner = best_image(&banner, None);
+        let selected_fanart = best_image(&fanart, None);
 
         Ok(SeriesInfo {
             title,
@@ -332,7 +340,7 @@ impl Client {
             selected_poster,
             banner,
             selected_banner,
-            fanart: fanart_imgs,
+            fanart,
             selected_fanart,
             remotes,
         })
@@ -477,11 +485,11 @@ pub(crate) struct SeriesInfo {
     pub title: Option<String>,
     pub overview: Option<String>,
     pub poster: Vec<Image>,
-    pub selected_poster: Option<Image>,
+    pub selected_poster: Option<ImageKey>,
     pub banner: Vec<Image>,
-    pub selected_banner: Option<Image>,
+    pub selected_banner: Option<ImageKey>,
     pub fanart: Vec<Image>,
-    pub selected_fanart: Option<Image>,
+    pub selected_fanart: Option<ImageKey>,
     pub remotes: Vec<RemoteId>,
 }
 

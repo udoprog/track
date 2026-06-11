@@ -1,10 +1,12 @@
 use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
-use api::{Date, Image, ImageSource, ReleaseType, RemoteId, SeasonNumber, Timestamp};
+use api::{Date, Image, ImageKey, ImageSource, ReleaseType, RemoteId, SeasonNumber, Timestamp};
 use reqwest::{Method, RequestBuilder};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
+
+use crate::remote::best_image;
 
 const BASE: &str = "https://api.themoviedb.org/3/";
 const IMAGE_BASE: &str = "https://image.tmdb.org/t/p/original/";
@@ -56,6 +58,29 @@ impl Client {
             req = req.query(&[("language", language)]);
         }
 
+        Self::send_json(req).await
+    }
+
+    #[tracing::instrument(skip(self, url))]
+    async fn get_images<T>(&self, url: impl AsRef<str>, language: Option<&str>) -> Result<T>
+    where
+        T: DeserializeOwned,
+    {
+        let mut req = self.request(Method::GET, url.as_ref())?;
+
+        if let Some(language) = language {
+            req = req.query(&[("language", language)]);
+        } else {
+            req = req.query(&[("language", "en-US")]);
+        }
+
+        Self::send_json(req).await
+    }
+
+    async fn send_json<T>(req: RequestBuilder) -> Result<T>
+    where
+        T: DeserializeOwned,
+    {
         let bytes = req
             .send()
             .await
@@ -123,8 +148,8 @@ impl Client {
                 title: r.name.or(r.original_name),
                 overview: r.overview.filter(|s| !s.trim().is_empty()),
                 first_air_date: opt_date(r.first_air_date.as_deref()),
-                poster: opt_image(r.poster_path.as_deref()),
-                backdrop: opt_image(r.backdrop_path.as_deref()),
+                poster: r.poster_path.as_deref().map(ImageKey::tmdb),
+                backdrop: r.backdrop_path.as_deref().map(ImageKey::tmdb),
             });
         }
 
@@ -174,8 +199,8 @@ impl Client {
                 title: r.title.or(r.original_title),
                 overview: r.overview.filter(|s| !s.trim().is_empty()),
                 release_date: opt_date(r.release_date.as_deref()),
-                poster: opt_image(r.poster_path.as_deref()),
-                backdrop: opt_image(r.backdrop_path.as_deref()),
+                poster: r.poster_path.as_deref().map(ImageKey::tmdb),
+                backdrop: r.backdrop_path.as_deref().map(ImageKey::tmdb),
             });
         }
 
@@ -230,7 +255,7 @@ impl Client {
             .await?;
 
         let images: Images = self
-            .get_json(format!("tv/{id}/images"), language)
+            .get_images(format!("tv/{id}/images"), language)
             .await
             .context("fetching images")?;
 
@@ -247,7 +272,7 @@ impl Client {
                     .transpose()?,
                 name: s.name.filter(|s| !s.trim().is_empty()),
                 overview: s.overview.filter(|s| !s.trim().is_empty()),
-                poster: opt_image(s.poster_path.as_deref()),
+                poster: s.poster_path.as_deref().map(ImageKey::tmdb),
             })
         }
 
@@ -263,30 +288,16 @@ impl Client {
             }
         }
 
-        let mut posters = Vec::new();
+        let posters = to_images(images.posters);
+        let backdrops = to_images(images.backdrops);
 
-        for img in images.posters {
-            posters.push(Image::new_with_dims(
-                ImageSource::Tmdb,
-                &img.file_path,
-                img.width,
-                img.height,
-            ));
-        }
+        let selected_poster =
+            best_image(&posters, details.poster_path.as_deref().map(ImageKey::tmdb));
 
-        let mut backdrops = Vec::new();
-
-        for img in images.backdrops {
-            backdrops.push(Image::new_with_dims(
-                ImageSource::Tmdb,
-                &img.file_path,
-                img.width,
-                img.height,
-            ));
-        }
-
-        let selected_poster = opt_image(details.poster_path.as_deref());
-        let selected_backdrop = opt_image(details.backdrop_path.as_deref());
+        let selected_backdrop = best_image(
+            &backdrops,
+            details.backdrop_path.as_deref().map(ImageKey::tmdb),
+        );
 
         Ok(SeriesInfo {
             title: details.name.or(details.original_name),
@@ -348,7 +359,7 @@ impl Client {
                 aired: opt_date(e.air_date.as_deref())
                     .map(|d| d.to_timestamp_at_midnight_utc())
                     .transpose()?,
-                filename: opt_image(e.still_path.as_deref()),
+                filename: e.still_path.as_deref().map(ImageKey::tmdb),
                 remote_id: RemoteId::tmdb(e.id),
             });
         }
@@ -448,7 +459,7 @@ impl Client {
             .await?;
 
         let images: Images = self
-            .get_json(format!("movie/{id}/images"), language)
+            .get_images(format!("movie/{id}/images"), language)
             .await
             .context("fetching images")?;
 
@@ -460,30 +471,16 @@ impl Client {
             }
         }
 
-        let mut posters = Vec::new();
+        let posters = to_images(images.posters);
+        let backdrops = to_images(images.backdrops);
 
-        for img in images.posters {
-            posters.push(Image::new_with_dims(
-                ImageSource::Tmdb,
-                &img.file_path,
-                img.width,
-                img.height,
-            ));
-        }
+        let selected_poster =
+            best_image(&posters, details.poster_path.as_deref().map(ImageKey::tmdb));
 
-        let mut backdrops = Vec::new();
-
-        for img in images.backdrops {
-            backdrops.push(Image::new_with_dims(
-                ImageSource::Tmdb,
-                &img.file_path,
-                img.width,
-                img.height,
-            ));
-        }
-
-        let selected_poster = opt_image(details.poster_path.as_deref());
-        let selected_backdrop = opt_image(details.backdrop_path.as_deref());
+        let selected_backdrop = best_image(
+            &backdrops,
+            details.backdrop_path.as_deref().map(ImageKey::tmdb),
+        );
 
         Ok(MovieInfo {
             title: details.title.or(details.original_title),
@@ -508,8 +505,8 @@ pub(crate) struct SeriesInfo {
     pub first_air_date: Option<Timestamp>,
     pub posters: Vec<Image>,
     pub backdrops: Vec<Image>,
-    pub selected_poster: Option<(ImageSource, String)>,
-    pub selected_backdrop: Option<(ImageSource, String)>,
+    pub selected_poster: Option<ImageKey>,
+    pub selected_backdrop: Option<ImageKey>,
     pub seasons: Vec<SeasonInfo>,
     pub remotes: Vec<RemoteId>,
 }
@@ -519,7 +516,7 @@ pub(crate) struct SeasonInfo {
     pub air_date: Option<Timestamp>,
     pub name: Option<String>,
     pub overview: Option<String>,
-    pub poster: Option<(ImageSource, String)>,
+    pub poster: Option<ImageKey>,
 }
 
 pub(crate) struct EpisodeInfo {
@@ -528,7 +525,7 @@ pub(crate) struct EpisodeInfo {
     pub name: Option<String>,
     pub overview: Option<String>,
     pub aired: Option<Timestamp>,
-    pub filename: Option<(ImageSource, String)>,
+    pub filename: Option<ImageKey>,
     pub remote_id: RemoteId,
 }
 
@@ -538,8 +535,8 @@ pub(crate) struct MovieInfo {
     pub release_date: Option<Timestamp>,
     pub posters: Vec<Image>,
     pub backdrops: Vec<Image>,
-    pub selected_poster: Option<(ImageSource, String)>,
-    pub selected_backdrop: Option<(ImageSource, String)>,
+    pub selected_poster: Option<ImageKey>,
+    pub selected_backdrop: Option<ImageKey>,
     pub remotes: Vec<RemoteId>,
 }
 
@@ -548,8 +545,8 @@ pub(crate) struct SearchSeriesResult {
     pub title: Option<String>,
     pub overview: Option<String>,
     pub first_air_date: Option<Date>,
-    pub poster: Option<(ImageSource, String)>,
-    pub backdrop: Option<(ImageSource, String)>,
+    pub poster: Option<ImageKey>,
+    pub backdrop: Option<ImageKey>,
 }
 
 pub(crate) struct SearchMovieResult {
@@ -557,8 +554,8 @@ pub(crate) struct SearchMovieResult {
     pub title: Option<String>,
     pub overview: Option<String>,
     pub release_date: Option<Date>,
-    pub poster: Option<(ImageSource, String)>,
-    pub backdrop: Option<(ImageSource, String)>,
+    pub poster: Option<ImageKey>,
+    pub backdrop: Option<ImageKey>,
 }
 
 pub(crate) struct MovieReleaseInfo {
@@ -577,9 +574,39 @@ fn parse_release_date(s: Option<&str>) -> Option<Timestamp> {
     s?.trim().parse().ok()
 }
 
-fn opt_image(s: Option<&str>) -> Option<(ImageSource, String)> {
-    s.filter(|s| !s.is_empty())
-        .map(|s| (ImageSource::Tmdb, s.trim_start_matches('/').to_string()))
+/// Convert TMDB image entries to `Image`s, ordered best-first by a vote-weighted
+/// Bayesian rating (see [`weighted_rating`]) so an image with a high average but
+/// very few votes can't outrank a well-voted one.
+fn to_images(entries: Vec<ImageResponse>) -> Vec<Image> {
+    if entries.is_empty() {
+        return Vec::new();
+    }
+
+    let n = entries.len() as f64;
+    let mean_rating = entries.iter().map(|e| e.vote_average).sum::<f64>() / n;
+    let mean_votes = entries.iter().map(|e| e.vote_count as f64).sum::<f64>() / n;
+
+    let mut scored: Vec<(f64, Image)> = entries
+        .into_iter()
+        .map(|e| {
+            let score = weighted_rating(&e, mean_rating, mean_votes);
+            let image = Image::new_with_dims(ImageSource::Tmdb, &e.file_path, e.width, e.height);
+            (score, image)
+        })
+        .collect();
+
+    scored.sort_by(|a, b| b.0.total_cmp(&a.0));
+    scored.into_iter().map(|(_, image)| image).collect()
+}
+
+fn weighted_rating(img: &ImageResponse, mean_rating: f64, m: f64) -> f64 {
+    let v = img.vote_count as f64;
+
+    if v + m == 0.0 {
+        return mean_rating;
+    }
+
+    (v / (v + m)) * img.vote_average + (m / (v + m)) * mean_rating
 }
 
 #[derive(Debug, Deserialize)]
@@ -587,6 +614,8 @@ struct ImageResponse {
     file_path: String,
     width: u32,
     height: u32,
+    vote_average: f64,
+    vote_count: u32,
 }
 
 #[derive(Debug, Deserialize)]

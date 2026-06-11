@@ -700,11 +700,42 @@ impl ::sqll::BindValue for RemoteId {
 }
 
 /// Image reference: "tvdb:/banners/abc.jpg", "tmdb:/xy.jpg".
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Encode, Decode, serde::Serialize, serde::Deserialize)]
 #[musli(crate = musli_core)]
-pub struct Image {
+pub struct ImageKey {
     source: ImageSource,
     path: String,
+}
+
+impl ImageKey {
+    pub fn tmdb(path: impl AsRef<str>) -> Self {
+        Self::new(ImageSource::Tmdb, path)
+    }
+
+    pub fn tvdb(path: impl AsRef<str>) -> Self {
+        Self::new(ImageSource::Tvdb, path)
+    }
+
+    pub fn new(source: ImageSource, path: impl AsRef<str>) -> Self {
+        Self {
+            source,
+            path: path.as_ref().trim_start_matches('/').to_owned(),
+        }
+    }
+
+    pub fn source(&self) -> &ImageSource {
+        &self.source
+    }
+
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, Encode, Decode, serde::Serialize, serde::Deserialize)]
+#[musli(crate = musli_core)]
+pub struct Image {
+    path: ImageKey,
     width: u32,
     height: u32,
 }
@@ -712,8 +743,7 @@ pub struct Image {
 impl Image {
     pub fn new(source: ImageSource, path: &str) -> Self {
         Self {
-            source,
-            path: path.trim_start_matches('/').to_owned(),
+            path: ImageKey::new(source, path),
             width: 0,
             height: 0,
         }
@@ -721,21 +751,19 @@ impl Image {
 
     pub fn new_with_dims(source: ImageSource, path: &str, width: u32, height: u32) -> Self {
         Self {
-            source,
-            path: path.trim_start_matches('/').to_owned(),
+            path: ImageKey::new(source, path),
             width,
             height,
         }
     }
 
-    pub fn id(&self) -> (ImageSource, &str) {
-        (self.source, &self.path)
+    pub fn key(&self) -> &ImageKey {
+        &self.path
     }
 
     pub fn tvdb(path: &str) -> Self {
         Self {
-            source: ImageSource::Tvdb,
-            path: path.trim_start_matches('/').to_owned(),
+            path: ImageKey::new(ImageSource::Tvdb, path),
             width: 0,
             height: 0,
         }
@@ -743,8 +771,7 @@ impl Image {
 
     pub fn tmdb(path: &str) -> Self {
         Self {
-            source: ImageSource::Tmdb,
-            path: path.trim_start_matches('/').to_owned(),
+            path: ImageKey::new(ImageSource::Tmdb, path),
             width: 0,
             height: 0,
         }
@@ -753,28 +780,16 @@ impl Image {
     pub fn from_raw(s: impl AsRef<str>) -> Self {
         let s = s.as_ref();
 
-        match s.split_once(':') {
-            Some((src, path)) => Self {
-                source: ImageSource::from_str(src),
-                path: path.trim_start_matches('/').to_owned(),
-                width: 0,
-                height: 0,
-            },
-            None => Self {
-                source: ImageSource::Unknown,
-                path: s.trim_start_matches('/').to_owned(),
-                width: 0,
-                height: 0,
-            },
+        let path = match s.split_once(':') {
+            Some((src, path)) => ImageKey::new(ImageSource::from_str(src), path),
+            None => ImageKey::new(ImageSource::Unknown, s),
+        };
+
+        Self {
+            path,
+            width: 0,
+            height: 0,
         }
-    }
-
-    pub fn source(&self) -> ImageSource {
-        self.source
-    }
-
-    pub fn path(&self) -> &str {
-        &self.path
     }
 
     pub fn width(&self) -> u32 {
@@ -786,20 +801,30 @@ impl Image {
     }
 
     pub fn proxy_url(&self) -> String {
-        format!("/api/image/{}/{}", self.source, self.path)
+        format!("/api/image/{}/{}", self.path.source, self.path.path)
     }
 }
 
 impl fmt::Display for Image {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}", self.source, self.path)
+        write!(f, "{}:{}", self.path.source, self.path.path)
+    }
+}
+
+impl From<ImageKey> for Image {
+    #[inline]
+    fn from(path: ImageKey) -> Self {
+        Self {
+            path,
+            width: 0,
+            height: 0,
+        }
     }
 }
 
 /// Season number: Specials (stored as 0) or a regular numbered season.
 #[derive(
     Default,
-    Debug,
     Clone,
     Copy,
     PartialEq,
@@ -857,6 +882,15 @@ impl SeasonNumber {
     #[inline]
     pub fn is_special(&self) -> bool {
         matches!(self, SeasonNumber::Specials)
+    }
+}
+
+impl fmt::Debug for SeasonNumber {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Specials => f.write_str("Specials"),
+            Self::Number(n) => n.fmt(f),
+        }
     }
 }
 
@@ -945,9 +979,7 @@ impl ::sqll::BindValue for ImageKind {
     }
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, Copy, Encode, Decode, serde::Serialize, serde::Deserialize)]
 #[musli(crate = musli_core)]
 #[serde(rename_all = "lowercase")]
 pub enum ImageSource {
@@ -971,6 +1003,16 @@ impl ImageSource {
             ImageSource::Tmdb => "tmdb",
             ImageSource::Unknown => "unknown",
         }
+    }
+}
+
+impl PartialEq for ImageSource {
+    #[inline]
+    fn eq(&self, other: &ImageSource) -> bool {
+        matches!(
+            (self, other),
+            (ImageSource::Tvdb, ImageSource::Tvdb) | (ImageSource::Tmdb, ImageSource::Tmdb)
+        )
     }
 }
 

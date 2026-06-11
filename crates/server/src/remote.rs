@@ -1,9 +1,24 @@
 use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
+use api::{Image, ImageKey};
 use parking_lot::Mutex;
 
 use crate::{tmdb, tvdb};
+
+/// Choose the primary image for a kind: prefer the API's `selected` image when
+/// it's present in the gallery, otherwise fall back to the first entry.
+/// `images` is expected to be ordered best-first (highest score), so the
+/// fallback is the highest-scored image.
+pub(crate) fn best_image(images: &[Image], selected: Option<ImageKey>) -> Option<ImageKey> {
+    if let Some(ref selected) = selected {
+        if let Some(found) = images.iter().find(|image| image.key() == selected) {
+            return Some(found.key().clone());
+        }
+    }
+
+    images.first().map(|image| image.key().clone())
+}
 
 /// Holds tmdb and tvdb clients, constructed only when the relevant API key is
 /// configured. Call `configure` on startup and whenever `SetConfig` is handled.
@@ -102,18 +117,9 @@ impl RemoteClients {
                 out.push(api::SearchSeries {
                     remote_id: r.remote_id,
                     title: r.title,
-                    poster: r
-                        .poster
-                        .as_ref()
-                        .map(|(source, path)| api::Image::new(*source, &path)),
-                    banner: r
-                        .backdrop
-                        .as_ref()
-                        .map(|(source, path)| api::Image::new(*source, &path)),
-                    backdrop: r
-                        .backdrop
-                        .as_ref()
-                        .map(|(source, path)| api::Image::new(*source, &path)),
+                    poster: r.poster.clone().map(api::Image::from),
+                    banner: r.backdrop.clone().map(api::Image::from),
+                    backdrop: r.backdrop.clone().map(api::Image::from),
                     overview: r.overview,
                     first_air_date: r.first_air_date,
                     already_tracked: None,
@@ -154,18 +160,9 @@ impl RemoteClients {
                 out.push(api::SearchMovie {
                     remote_id: r.remote_id,
                     title: r.title,
-                    poster: r
-                        .poster
-                        .as_ref()
-                        .map(|(source, path)| api::Image::new(*source, &path)),
-                    banner: r
-                        .backdrop
-                        .as_ref()
-                        .map(|(source, path)| api::Image::new(*source, &path)),
-                    backdrop: r
-                        .backdrop
-                        .as_ref()
-                        .map(|(source, path)| api::Image::new(*source, &path)),
+                    poster: r.poster.clone().map(api::Image::from),
+                    banner: r.backdrop.clone().map(api::Image::from),
+                    backdrop: r.backdrop.clone().map(api::Image::from),
                     overview: r.overview,
                     release_date: r.release_date,
                     already_tracked: None,

@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
+use api::ImageSource;
 use bytes::Bytes;
 use lru::LruCache;
 use parking_lot::Mutex;
@@ -39,12 +40,12 @@ impl ImageCache {
         }
     }
 
-    fn disk_path(&self, source: &str, path: &str) -> Option<PathBuf> {
+    fn disk_path(&self, source: ImageSource, path: &str) -> Option<PathBuf> {
         if path.contains("..") || path.starts_with('/') {
             return None;
         }
 
-        Some(self.inner.root.join(source).join(path))
+        Some(self.inner.root.join(source.as_str()).join(path))
     }
 
     fn shard(key: &str) -> usize {
@@ -59,7 +60,7 @@ impl ImageCache {
 
     pub(super) async fn get_or_fetch(
         &self,
-        source: &str,
+        source: ImageSource,
         path: &str,
         fetch: impl AsyncFnOnce() -> Result<Option<Bytes>>,
     ) -> Result<Option<Bytes>> {

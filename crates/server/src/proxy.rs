@@ -1,3 +1,4 @@
+use api::ImageSource;
 use axum::extract::{Path, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
@@ -7,7 +8,7 @@ use crate::web::AppState;
 
 pub(super) async fn image_handler(
     State(state): State<AppState>,
-    Path((source, path)): Path<(String, String)>,
+    Path((source, path)): Path<(ImageSource, String)>,
 ) -> Response {
     let cache = state.cache.clone();
     let remote = state.remote.clone();
@@ -15,10 +16,10 @@ pub(super) async fn image_handler(
     let path = path.trim_start_matches('/');
 
     let result = cache
-        .get_or_fetch(&source, path, async || match source.as_str() {
-            "tmdb" => remote.fetch_tmdb_image(path).await,
-            "tvdb" => remote.fetch_tvdb_image(path).await,
-            _ => anyhow::bail!("unknown image source: {source}"),
+        .get_or_fetch(source, path, async || match source {
+            ImageSource::Tmdb => remote.fetch_tmdb_image(path).await,
+            ImageSource::Tvdb => remote.fetch_tvdb_image(path).await,
+            _ => Ok(None),
         })
         .await;
 

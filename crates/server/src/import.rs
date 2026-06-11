@@ -200,7 +200,7 @@ async fn import_series_image(
     img: &api::Image,
 ) -> Result<()> {
     let id = api::ImageId::random();
-    db.upsert_series_image(id, series_id, kind, img).await?;
+    db.upsert_series_image(id, series_id, kind, 0, img).await?;
     db.set_series_image_selection(series_id, kind, id).await?;
     Ok(())
 }
@@ -232,7 +232,7 @@ async fn import_movie_image(
     img: &api::Image,
 ) -> Result<()> {
     let id = api::ImageId::random();
-    db.upsert_movie_image(id, movie_id, kind, img).await?;
+    db.upsert_movie_image(id, movie_id, kind, 0, img).await?;
     db.set_movie_image_selection(movie_id, kind, id).await?;
     Ok(())
 }

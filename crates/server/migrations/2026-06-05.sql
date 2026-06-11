@@ -124,6 +124,7 @@ CREATE TABLE
         path TEXT NOT NULL,
         width INTEGER NOT NULL,
         height INTEGER NOT NULL,
+        rank INTEGER NOT NULL DEFAULT 0,
         series_id INTEGER REFERENCES series (id) ON DELETE CASCADE,
         movie_id INTEGER REFERENCES movies (id) ON DELETE CASCADE,
         episode_id INTEGER REFERENCES episodes (id) ON DELETE CASCADE,
@@ -145,6 +146,15 @@ WHERE
 CREATE UNIQUE INDEX idx_images_episode ON images (episode_id, kind, path)
 WHERE
     episode_id IS NOT NULL;
+
+-- Ordering galleries best-first (lowest rank) within a kind.
+CREATE INDEX idx_images_series_rank ON images (series_id, kind, rank)
+WHERE
+    series_id IS NOT NULL;
+
+CREATE INDEX idx_images_movie_rank ON images (movie_id, kind, rank)
+WHERE
+    movie_id IS NOT NULL;
 
 CREATE TABLE
     series_images (

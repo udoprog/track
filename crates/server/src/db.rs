@@ -353,17 +353,17 @@ statements! {
         // images (series and movies share one table)
         list_series_images: r#"
             SELECT id, kind, source, path FROM images
-            WHERE series_id = ? ORDER BY kind, path, id
+            WHERE series_id = ? ORDER BY kind, rank, id
         "#,
         list_all_series_images: r#"
             SELECT id, kind, source, path, series_id FROM images
-            WHERE series_id IS NOT NULL ORDER BY series_id, kind, path, id
+            WHERE series_id IS NOT NULL ORDER BY series_id, kind, rank, id
         "#,
         delete_series_images: r#"
             DELETE FROM images WHERE series_id = ?
         "#,
         insert_series_image: r#"
-            INSERT INTO images (id, series_id, kind, source, path, width, height) VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO images (id, series_id, kind, source, path, width, height, rank) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(series_id, kind, path) WHERE series_id IS NOT NULL DO NOTHING
         "#,
         insert_episode_image: r#"
@@ -380,17 +380,17 @@ statements! {
         "#,
         list_movie_images: r#"
             SELECT id, kind, source, path FROM images
-            WHERE movie_id = ? ORDER BY kind, path, id
+            WHERE movie_id = ? ORDER BY kind, rank, id
         "#,
         list_all_movie_images: r#"
             SELECT id, kind, source, path, movie_id FROM images
-            WHERE movie_id IS NOT NULL ORDER BY movie_id, kind, path, id
+            WHERE movie_id IS NOT NULL ORDER BY movie_id, kind, rank, id
         "#,
         delete_movie_images: r#"
             DELETE FROM images WHERE movie_id = ?
         "#,
         insert_movie_image: r#"
-            INSERT INTO images (id, movie_id, kind, source, path, width, height) VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO images (id, movie_id, kind, source, path, width, height, rank) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(movie_id, kind, path) WHERE movie_id IS NOT NULL DO NOTHING
         "#,
         image_by_id: r#"
@@ -1927,8 +1927,8 @@ impl Database {
                 id,
                 episode_id,
                 kind,
-                image.source(),
-                image.path(),
+                image.key().source(),
+                image.key().path(),
                 image.width(),
                 image.height(),
             ))?;
@@ -1968,6 +1968,7 @@ impl Database {
         id: ImageId,
         series_id: SeriesId,
         kind: ImageKind,
+        rank: u32,
         image: &Image,
     ) -> Result<()> {
         let image = image.clone();
@@ -1978,10 +1979,11 @@ impl Database {
                 id,
                 series_id,
                 kind,
-                image.source(),
-                image.path(),
+                image.key().source(),
+                image.key().path(),
                 image.width(),
                 image.height(),
+                rank,
             ))?;
 
             ensure!(
@@ -2000,6 +2002,7 @@ impl Database {
         id: ImageId,
         movie_id: MovieId,
         kind: ImageKind,
+        rank: u32,
         image: &Image,
     ) -> Result<()> {
         let image = image.clone();
@@ -2010,10 +2013,11 @@ impl Database {
                 id,
                 movie_id,
                 kind,
-                image.source(),
-                image.path(),
+                image.key().source(),
+                image.key().path(),
                 image.width(),
                 image.height(),
+                rank,
             ))?;
             ensure!(s.insert_movie_image.step()?.is_done(), "insert_movie_image");
             Ok(())

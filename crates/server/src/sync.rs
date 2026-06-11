@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use anyhow::{Context as _, Result};
-use api::{EpisodeId, ImageId, ImageKind, SeasonNumber};
+use api::{EpisodeId, Image, ImageId, ImageKind, SeasonNumber};
 use tracing::{info, warn};
 
 use crate::app_broadcast::Broadcaster;
@@ -99,34 +99,24 @@ async fn sync_series_tmdb(
     let mut selected_poster_id = None;
     let mut selected_backdrop_id = None;
 
-    for img in &info.posters {
+    for (rank, poster) in info.posters.iter().enumerate() {
         let id = ImageId::random();
 
-        db.upsert_series_image(id, series_id, ImageKind::Poster, img)
+        db.upsert_series_image(id, series_id, ImageKind::Poster, rank as u32, poster)
             .await?;
 
-        if info
-            .selected_poster
-            .as_ref()
-            .map(|(source, path)| (*source, path.as_str()))
-            == Some(img.id())
-        {
+        if info.selected_poster.as_ref() == Some(poster.key()) {
             selected_poster_id = Some(id);
         }
     }
 
-    for img in &info.backdrops {
+    for (rank, backdrop) in info.backdrops.iter().enumerate() {
         let id = ImageId::random();
 
-        db.upsert_series_image(id, series_id, ImageKind::Backdrop, img)
+        db.upsert_series_image(id, series_id, ImageKind::Backdrop, rank as u32, backdrop)
             .await?;
 
-        if info
-            .selected_backdrop
-            .as_ref()
-            .map(|(source, path)| (*source, path.as_str()))
-            == Some(img.id())
-        {
+        if info.selected_backdrop.as_ref() == Some(backdrop.key()) {
             selected_backdrop_id = Some(id);
         }
     }
@@ -138,6 +128,9 @@ async fn sync_series_tmdb(
 
     if let Some(id) = selected_backdrop_id {
         db.set_series_image_selection(series_id, ImageKind::Backdrop, id)
+            .await?;
+
+        db.set_series_image_selection(series_id, ImageKind::Banner, id)
             .await?;
     }
 
@@ -191,16 +184,12 @@ async fn sync_series_tmdb(
             )
             .await?;
 
-            if let Some((source, path)) = &ep.filename {
+            if let Some(path) = &ep.filename {
                 let image_id = ImageId::random();
+                let image = Image::from(path.clone());
 
-                db.upsert_episode_image(
-                    image_id,
-                    episode_id,
-                    ImageKind::Screenshot,
-                    &api::Image::new(*source, path),
-                )
-                .await?;
+                db.upsert_episode_image(image_id, episode_id, ImageKind::Screenshot, &image)
+                    .await?;
 
                 db.set_episode_image_selection(episode_id, ImageKind::Screenshot, image_id)
                     .await?;
@@ -262,35 +251,35 @@ async fn sync_series_tvdb(
     let mut selected_banner_id = None;
     let mut selected_fanart_id = None;
 
-    for img in &info.poster {
+    for (rank, poster) in info.poster.iter().enumerate() {
         let id = ImageId::random();
 
-        db.upsert_series_image(id, series_id, ImageKind::Poster, img)
+        db.upsert_series_image(id, series_id, ImageKind::Poster, rank as u32, poster)
             .await?;
 
-        if info.selected_poster.as_ref() == Some(img) {
+        if info.selected_poster.as_ref() == Some(poster.key()) {
             selected_poster_id = Some(id);
         }
     }
 
-    for img in &info.banner {
+    for (rank, banner) in info.banner.iter().enumerate() {
         let id = ImageId::random();
 
-        db.upsert_series_image(id, series_id, ImageKind::Banner, img)
+        db.upsert_series_image(id, series_id, ImageKind::Banner, rank as u32, banner)
             .await?;
 
-        if info.selected_banner.as_ref() == Some(img) {
+        if info.selected_banner.as_ref() == Some(banner.key()) {
             selected_banner_id = Some(id);
         }
     }
 
-    for img in &info.fanart {
+    for (rank, fanart) in info.fanart.iter().enumerate() {
         let id = ImageId::random();
 
-        db.upsert_series_image(id, series_id, ImageKind::Backdrop, img)
+        db.upsert_series_image(id, series_id, ImageKind::Backdrop, rank as u32, fanart)
             .await?;
 
-        if info.selected_fanart.as_ref() == Some(img) {
+        if info.selected_fanart.as_ref() == Some(fanart.key()) {
             selected_fanart_id = Some(id);
         }
     }
@@ -441,20 +430,27 @@ pub(crate) async fn sync_movie(
             db.clear_movie_images(movie_id).await?;
 
             let mut selected_poster_id = None;
+            let mut selected_backdrop_id = None;
 
-            for img in &info.posters {
+            for (rank, img) in info.posters.iter().enumerate() {
                 let id = ImageId::random();
 
-                db.upsert_movie_image(id, movie_id, ImageKind::Poster, img)
+                db.upsert_movie_image(id, movie_id, ImageKind::Poster, rank as u32, img)
                     .await?;
 
-                if info
-                    .selected_poster
-                    .as_ref()
-                    .map(|(source, path)| (*source, path.as_str()))
-                    == Some(img.id())
-                {
+                if info.selected_poster.as_ref() == Some(img.key()) {
                     selected_poster_id = Some(id);
+                }
+            }
+
+            for (rank, img) in info.backdrops.iter().enumerate() {
+                let id = ImageId::random();
+
+                db.upsert_movie_image(id, movie_id, ImageKind::Backdrop, rank as u32, img)
+                    .await?;
+
+                if info.selected_backdrop.as_ref() == Some(img.key()) {
+                    selected_backdrop_id = Some(id);
                 }
             }
 
@@ -463,26 +459,11 @@ pub(crate) async fn sync_movie(
                     .await?;
             }
 
-            let mut selected_backdrop_id = None;
-
-            for img in &info.backdrops {
-                let id = ImageId::random();
-
-                db.upsert_movie_image(id, movie_id, ImageKind::Backdrop, img)
-                    .await?;
-
-                if info
-                    .selected_backdrop
-                    .as_ref()
-                    .map(|(source, path)| (*source, path.as_str()))
-                    == Some(img.id())
-                {
-                    selected_backdrop_id = Some(id);
-                }
-            }
-
             if let Some(id) = selected_backdrop_id {
                 db.set_movie_image_selection(movie_id, ImageKind::Backdrop, id)
+                    .await?;
+
+                db.set_movie_image_selection(movie_id, ImageKind::Banner, id)
                     .await?;
             }
 
