@@ -244,7 +244,7 @@ impl SeriesList {
         html! {
             <div class="table-entry">
                 <div class="desktop-row mobile-column">
-                    <Image class="poster-sm hide-mobile clickable" src={s.poster.clone()} onclick={&onclick} />
+                    <Image class="poster poster-side hide-mobile clickable" src={s.poster.clone()} onclick={&onclick} />
                     <Image class="banner hide-desktop clickable" src={s.banner.clone()} onclick={&onclick} />
 
                     <div class="column fill top">

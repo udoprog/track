@@ -282,7 +282,7 @@ impl Search {
 
         html! {
             <div class="row">
-                <Image class="poster-sm" src={r.poster.clone()} />
+                <Image class="poster" src={r.poster.clone()} />
 
                 <div class="fill">
                     <div class="row">
@@ -329,9 +329,9 @@ impl Search {
 
         html! {
             <div class="row">
-                <Image class="poster-sm" src={r.poster.clone()} />
+                <Image class="poster poster-side" src={r.poster.clone()} />
 
-                <div class="fill">
+                <div class="fill top">
                     <div class="row">
                         if let Some(ref title) = r.title {
                             <span class="fill">{title}</span>

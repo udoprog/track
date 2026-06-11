@@ -481,17 +481,8 @@ impl Dashboard {
 
         html! {
             <div class="pending-item">
-                if let Some(ref poster) = p.poster {
-                    <Image class="pending-poster clickable hide-mobile" src={poster.clone()} onclick={on_navigate.clone()} />
-                }
-
-                if let Some(ref banner) = p.banner {
-                    <Image class="pending-banner clickable hide-desktop" src={banner.clone()} onclick={on_navigate.clone()} />
-                }
-
-                if p.poster.is_none() && p.banner.is_none() {
-                    <div class="pending-poster pending-poster-placeholder" />
-                }
+                <Image class="poster clickable hide-mobile" src={p.poster.clone()} onclick={on_navigate.clone()} />
+                <Image class="banner clickable hide-desktop" src={p.banner.clone()} onclick={on_navigate.clone()} />
 
                 <div class="pending-info">
                     <div class="pending-content">

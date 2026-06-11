@@ -286,7 +286,7 @@ impl MoviesList {
             <div class="table-entry">
                 <div class="desktop-row mobile-column">
                     <Image class="banner clickable hide-desktop" onclick={&onclick} src={m.banner.clone()} />
-                    <Image class="poster-sm clickable hide-mobile" onclick={&onclick} src={m.poster.clone()} />
+                    <Image class="poster poster-side clickable hide-mobile" onclick={&onclick} src={m.poster.clone()} />
 
                     <div class="column fill top">
                         if self.confirming_watch == Some(movie_id) {
