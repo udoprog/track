@@ -169,7 +169,7 @@ impl Component for MovieDetail {
         html! {
             <div class="page-container" {style}>
                 <div class="page">
-                    { self.view_header(movie) }
+                    { self.view_header(ctx, movie) }
 
                     { self.view_body(ctx, movie) }
                 </div>
@@ -562,25 +562,40 @@ impl MovieDetail {
             .send();
     }
 
-    fn view_header(&self, movie: &api::Movie) -> Html {
+    fn view_header(&self, ctx: &Context<Self>, movie: &api::Movie) -> Html {
+        let link = ctx.link();
+
         html! {
-            <div class="row page-title">
+            <div class="row-fill page-title">
                 if let Some(ref title) = movie.title {
                     <span class="fill">{title}</span>
                 } else {
                     <span class="fill text-muted">{"Untitled Movie"}</span>
                 }
 
-                { for movie.remotes.iter().filter_map(|r| {
-                    let url = r.movie_url()?;
-                    let label = r.source().as_str().to_uppercase();
-                    Some(html! {
-                        <a class="btn" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
-                            <span class="icon-inline"><span class="icon arrow-top-right-on-square" /></span>
-                            <span class="hide-mobile">{label}</span>
-                        </a>
-                    })
-                }) }
+                <div class="row end">
+                    if !movie.remotes.is_empty() {
+                        <div class="row hide-mobile">
+                            <div class="input-group">
+                                {for movie.remotes.iter().filter_map(|r| {
+                                    let url = r.movie_url()?;
+                                    let label = r.source().as_str().to_uppercase();
+
+                                    Some(html! {
+                                        <a class="btn" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
+                                            <span class="icon-inline"><span class="icon arrow-top-right-on-square" /></span>
+                                            <span>{label}</span>
+                                        </a>
+                                    })
+                                })}
+                            </div>
+                        </div>
+                    }
+
+                    <button class="btn hide-desktop" onclick={link.callback(|_| Msg::ToggleActionsExpanded)}>
+                        <span class="icon-inline"><span class={classes!("icon", if self.actions_expanded { "ellipsis-horizontal" } else { "bars-3" })} /></span>
+                    </button>
+                </div>
             </div>
         }
     }
@@ -670,23 +685,8 @@ impl MovieDetail {
 
         html! {
             <>
-            <div class="hide-desktop row">
-                <span class="fill" />
-
-                <button class="btn" onclick={link.callback(|_| Msg::ToggleActionsExpanded)}>
-                    <span class="icon-inline"><span class={classes!("icon", if self.actions_expanded { "ellipsis-horizontal" } else { "bars-3" })} /></span>
-                </button>
-            </div>
-
             <div class={classes!("desktop-row-fill", "mobile-column", "actions", (!self.actions_expanded).then_some("hide-mobile"))}>
                 <div class="desktop-row mobile-column fill start">
-                    <RemoteSourceSelect
-                        kind={RemoteSourceKind::Movie}
-                        remotes={movie.remotes.clone()}
-                        current_source={movie.effective_sync_source()}
-                        on_change={link.callback(Msg::SetSyncSource)}
-                    />
-
                     <LanguagePicker
                         current={movie.language.clone()}
                         placeholder="Default"
@@ -708,7 +708,14 @@ impl MovieDetail {
                     }
 
                     <div class="input-group">
-                        <div class="input-label">{"Last sync"}</div>
+                        <div class="input-label">{"Sync"}</div>
+
+                        <RemoteSourceSelect
+                            kind={RemoteSourceKind::Movie}
+                            remotes={movie.remotes.clone()}
+                            current_source={movie.effective_sync_source()}
+                            on_change={link.callback(Msg::SetSyncSource)}
+                        />
 
                         if let Some(ts) = movie.last_synced_at {
                             <div class="input-text fill" title="Last synced at">
@@ -716,7 +723,7 @@ impl MovieDetail {
                             </div>
                         } else {
                             <div class="input-text fill text-muted" title="Never synced">
-                                <span>{"Never"}</span>
+                                <span>{"Never synced"}</span>
                             </div>
                         }
 
@@ -753,6 +760,22 @@ impl MovieDetail {
                             <span class="icon-inline"><span class="icon trash" /></span>
                             <span class="hide-desktop">{"Remove"}</span>
                         </button>
+                    }
+
+                    if !movie.remotes.is_empty() {
+                        <div class="hide-desktop row">
+                            {for movie.remotes.iter().filter_map(|r| {
+                                let url = r.movie_url()?;
+                                let label = r.source().as_str().to_uppercase();
+
+                                Some(html! {
+                                    <a class="btn" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
+                                        <span class="icon-inline"><span class="icon arrow-top-right-on-square" /></span>
+                                        <span>{label}</span>
+                                    </a>
+                                })
+                            })}
+                        </div>
                     }
                 </div>
             </div>

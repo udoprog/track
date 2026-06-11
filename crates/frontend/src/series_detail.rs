@@ -223,25 +223,10 @@ impl Component for SeriesDetail {
         html! {
             <div class="page-container" {style}>
                 <div class="page">
-                    { self.view_header() }
-
-                    <div class="hide-desktop row">
-                        <span class="fill" />
-
-                        <button class="btn" onclick={link.callback(|_| Msg::ToggleActionsExpanded)}>
-                            <span class="icon-inline"><span class={classes!("icon", if self.actions_expanded { "ellipsis-horizontal" } else { "bars-3" })} /></span>
-                        </button>
-                    </div>
+                    { self.view_header(ctx, series) }
 
                     <div class={classes!("desktop-row-fill", "mobile-column", "actions", (!self.actions_expanded).then_some("hide-mobile"))}>
                         <div class="desktop-row mobile-column fill start">
-                            <RemoteSourceSelect
-                                kind={RemoteSourceKind::Series}
-                                remotes={series.remotes.clone()}
-                                current_source={series.effective_sync_source()}
-                                on_change={link.callback(Msg::SetSyncSource)}
-                            />
-
                             <LanguagePicker
                                 current={series.language.clone()}
                                 placeholder="Default"
@@ -263,14 +248,21 @@ impl Component for SeriesDetail {
                             }
 
                             <div class="input-group">
-                                <div class="input-label">{"Last sync"}</div>
+                                <div class="input-label">{"Sync"}</div>
+
+                                <RemoteSourceSelect
+                                    kind={RemoteSourceKind::Series}
+                                    remotes={series.remotes.clone()}
+                                    current_source={series.effective_sync_source()}
+                                    on_change={link.callback(Msg::SetSyncSource)}
+                                />
 
                                 if let Some(ts) = series.last_synced_at {
                                     <div class="input-text fill" title="Last synced at">
                                         <span>{ts.display(self.tz.clone())}</span>
                                     </div>
                                 } else {
-                                    <div class="input-text fill">{"Never"}</div>
+                                    <div class="input-text fill">{"Never synced"}</div>
                                 }
 
                                 if !series.remotes.is_empty() {
@@ -301,6 +293,22 @@ impl Component for SeriesDetail {
                                     <span class="icon-inline"><span class="icon trash" /></span>
                                     <span class="hide-desktop">{"Remove"}</span>
                                 </button>
+                            }
+
+                            if !series.remotes.is_empty() {
+                                <div class="hide-desktop row">
+                                    {for series.remotes.iter().filter_map(|r| {
+                                        let url = r.series_url()?;
+                                        let label = r.source().as_str().to_uppercase();
+
+                                        Some(html! {
+                                            <a class="btn" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
+                                                <span class="icon-inline"><span class="icon arrow-top-right-on-square" /></span>
+                                                <span>{label}</span>
+                                            </a>
+                                        })
+                                    })}
+                                </div>
                             }
                         </div>
                     </div>
@@ -1016,34 +1024,40 @@ impl SeriesDetail {
             .send();
     }
 
-    fn view_header(&self) -> Html {
+    fn view_header(&self, ctx: &Context<Self>, series: &api::Series) -> Html {
+        let link = ctx.link();
+
         html! {
-            <div class="row page-title">
-                if let Some(ref s) = self.series {
-                    if let Some(ref title) = s.title {
-                        <span class="fill">{title}</span>
-                    } else {
-                        <span class="fill text-muted">{"Untitled Series"}</span>
+            <div class="row-fill page-title">
+                if let Some(ref title) = series.title {
+                    <span class="fill">{title}</span>
+                } else {
+                    <span class="fill text-muted">{"Untitled Series"}</span>
+                }
+
+                <div class="row end">
+                    if !series.remotes.is_empty() {
+                        <div class="row hide-mobile">
+                            <div class="input-group">
+                                {for series.remotes.iter().filter_map(|r| {
+                                    let url = r.series_url()?;
+                                    let label = r.source().as_str().to_uppercase();
+
+                                    Some(html! {
+                                        <a class="btn" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
+                                            <span class="icon-inline"><span class="icon arrow-top-right-on-square" /></span>
+                                            <span>{label}</span>
+                                        </a>
+                                    })
+                                })}
+                            </div>
+                        </div>
                     }
 
-                    <div class="row mobile-input-group">
-                        {
-                            for s.remotes.iter().filter_map(|r| {
-                                let url = r.series_url()?;
-                                let label = r.source().as_str().to_uppercase();
-
-                                Some(html! {
-                                    <a class="btn" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
-                                        <span class="icon-inline"><span class="icon arrow-top-right-on-square" /></span>
-                                        <span class="hide-mobile">{label}</span>
-                                    </a>
-                                })
-                            })
-                        }
-                    </div>
-                } else {
-                    <span class="fill" />
-                }
+                    <button class="hide-desktop btn" onclick={link.callback(|_| Msg::ToggleActionsExpanded)}>
+                        <span class="icon-inline"><span class={classes!("icon", if self.actions_expanded { "ellipsis-horizontal" } else { "bars-3" })} /></span>
+                    </button>
+                </div>
             </div>
         }
     }

@@ -646,13 +646,15 @@ impl Component for EpisodePicker {
 
         html! {
             <div class="row-fill fill">
-                <div class="row fill">
+                <div class="row">
                     if let Some(ref label) = ctx.props().label {
                         <span class="fill">{&ctx.props().prompt}{" "}{label}{"?"}</span>
                     } else {
                         <span class="fill">{&ctx.props().prompt}{"?"}</span>
                     }
+                </div>
 
+                <div class="row end">
                     <select class="input-select" onchange={on_season_change}>
                         { for ctx.props().seasons.iter().map(|s| {
                             let value = s.number.to_u32().to_string();
@@ -669,17 +671,17 @@ impl Component for EpisodePicker {
                             html! { <option {value} {selected}>{label}</option> }
                         }) }
                     </select>
-                </div>
 
-                <div class="input-group end">
-                    <button class="btn-icon" onclick={link.callback(|_| EpisodePickerMsg::Cancel)}
-                        title="Cancel">
-                        <span class="icon x-mark" />
-                    </button>
-                    <button class="btn-icon-success" onclick={link.callback(|_| EpisodePickerMsg::Confirm)}
-                        title="Confirm" disabled={!can_confirm}>
-                        <span class="icon check" />
-                    </button>
+                    <div class="input-group">
+                        <button class="btn-icon" onclick={link.callback(|_| EpisodePickerMsg::Cancel)}
+                            title="Cancel">
+                            <span class="icon x-mark" />
+                        </button>
+                        <button class="btn-icon-success" onclick={link.callback(|_| EpisodePickerMsg::Confirm)}
+                            title="Confirm" disabled={!can_confirm}>
+                            <span class="icon check" />
+                        </button>
+                    </div>
                 </div>
             </div>
         }
