@@ -446,8 +446,6 @@ impl Client {
 
         let mut remotes = vec![RemoteId::tmdb(id)];
 
-        tracing::warn!(?details.external_ids);
-
         if let Some(ref imdb_id) = details.external_ids.imdb_id {
             if !imdb_id.is_empty() {
                 remotes.push(RemoteId::imdb(imdb_id));

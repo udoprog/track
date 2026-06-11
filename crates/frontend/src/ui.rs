@@ -332,6 +332,7 @@ pub(super) fn ImageGallery(props: &ImageGalleryProps) -> Html {
                 if let Some(ref sel) = selected_item {
                     <div class="section">
                         <span class="text-muted">{"Current selection"}</span>
+
                         <div class="image-thumb selected">
                             <img src={sel.image.proxy_url()} style="max-height: 200px;" />
                             <div class="image-thumb-source">{sel.source.to_string()}</div>
