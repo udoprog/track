@@ -660,6 +660,9 @@ statements! {
             INSERT INTO config (key, value) VALUES (?, ?)
             ON CONFLICT (key) DO UPDATE SET value = excluded.value
         "#,
+        delete_config: r#"
+            DELETE FROM config WHERE key = ?
+        "#,
 
         // last_synced_at stamping
         set_series_synced_at: r#"
@@ -720,9 +723,21 @@ statements! {
 }
 
 impl Inner {
-    pub(crate) fn get_config<'this>(&'this mut self, key: &str) -> Result<Option<&'this str>> {
+    fn get_config<'this>(&'this mut self, key: &str) -> Result<Option<&'this str>> {
         self.get_config.bind(key)?;
         Ok(self.get_config.next::<&'this str>()?)
+    }
+
+    fn set_config(&mut self, key: &str, value: &str) -> Result<()> {
+        self.set_config.bind((key, value))?;
+        ensure!(self.set_config.step()?.is_done(), "set_config");
+        Ok(())
+    }
+
+    fn delete_config(&mut self, key: &str) -> Result<()> {
+        self.delete_config.bind((key,))?;
+        ensure!(self.delete_config.step()?.is_done(), "delete_config");
+        Ok(())
     }
 }
 
@@ -2633,20 +2648,6 @@ impl Database {
 
     // ── Config ──
 
-    pub(crate) async fn set_config(&self, key: &str, value: &str) -> Result<()> {
-        let key = key.to_owned();
-        let value = value.to_owned();
-        let mut s = self.inner.clone().lock_owned().await;
-
-        let result = spawn_blocking(move || {
-            s.set_config.bind((key.as_str(), value.as_str()))?;
-            ensure!(s.set_config.step()?.is_done(), "set_config");
-            Ok(())
-        });
-
-        result.await?
-    }
-
     pub(crate) async fn load_config(&self) -> Result<Config> {
         let mut s = self.inner.clone().lock_owned().await;
 
@@ -2660,10 +2661,9 @@ impl Database {
                 })
                 .unwrap_or_default();
 
-            let tvdb_legacy_apikey = s
-                .get_config("tvdb_legacy_apikey")?
-                .unwrap_or_default()
-                .to_owned();
+            let tvdb_api_key = s.get_config("tvdb_api_key")?.unwrap_or_default().to_owned();
+
+            let tvdb_pin = s.get_config("tvdb_pin")?.map(str::to_owned);
 
             let tmdb_api_key = s.get_config("tmdb_api_key")?.unwrap_or_default().to_owned();
 
@@ -2695,7 +2695,8 @@ impl Database {
 
             Ok(Config {
                 theme,
-                tvdb_legacy_apikey,
+                tvdb_api_key,
+                tvdb_pin,
                 tmdb_api_key,
                 schedule_duration_days,
                 dashboard_page,
@@ -2710,45 +2711,50 @@ impl Database {
     }
 
     pub(crate) async fn save_config(&self, config: &Config) -> Result<()> {
-        self.set_config("theme", config.theme.to_string().as_str())
-            .await?;
+        let config = config.clone();
 
-        self.set_config("tvdb_legacy_apikey", &config.tvdb_legacy_apikey)
-            .await?;
+        let mut s = self.inner.clone().lock_owned().await;
 
-        self.set_config("tmdb_api_key", &config.tmdb_api_key)
-            .await?;
+        let result = spawn_blocking(move || {
+            s.set_config("theme", config.theme.to_string().as_str())?;
 
-        self.set_config(
-            "schedule_duration_days",
-            &config.schedule_duration_days.to_string(),
-        )
-        .await?;
+            s.set_config("tvdb_api_key", &config.tvdb_api_key)?;
 
-        self.set_config("dashboard_page", &config.dashboard_page.to_string())
-            .await?;
-
-        self.set_config(
-            "auto_sync_enabled",
-            if config.auto_sync_enabled {
-                "true"
+            if let Some(ref pin) = config.tvdb_pin {
+                s.set_config("tvdb_pin", pin)?;
             } else {
-                "false"
-            },
-        )
-        .await?;
+                s.delete_config("tvdb_pin")?;
+            }
 
-        self.set_config(
-            "auto_sync_interval_hours",
-            &config.auto_sync_interval_hours.to_string(),
-        )
-        .await?;
+            s.set_config("tmdb_api_key", &config.tmdb_api_key)?;
 
-        self.set_config("timezone", &config.timezone).await?;
+            s.set_config(
+                "schedule_duration_days",
+                &config.schedule_duration_days.to_string(),
+            )?;
 
-        self.set_config("language", config.language.as_deref().unwrap_or(""))
-            .await?;
-        Ok(())
+            s.set_config("dashboard_page", &config.dashboard_page.to_string())?;
+
+            s.set_config(
+                "auto_sync_enabled",
+                if config.auto_sync_enabled {
+                    "true"
+                } else {
+                    "false"
+                },
+            )?;
+
+            s.set_config(
+                "auto_sync_interval_hours",
+                &config.auto_sync_interval_hours.to_string(),
+            )?;
+
+            s.set_config("timezone", &config.timezone)?;
+            s.set_config("language", config.language.as_deref().unwrap_or(""))?;
+            Ok(())
+        });
+
+        result.await?
     }
 }
 

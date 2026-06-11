@@ -1453,7 +1453,8 @@ pub struct ScheduledDay {
 #[musli(crate = musli_core)]
 pub struct Config {
     pub theme: ThemeType,
-    pub tvdb_legacy_apikey: String,
+    pub tvdb_api_key: String,
+    pub tvdb_pin: Option<String>,
     pub tmdb_api_key: String,
     pub schedule_duration_days: u32,
     pub dashboard_page: u32,
@@ -1467,7 +1468,8 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             theme: ThemeType::Dark,
-            tvdb_legacy_apikey: String::new(),
+            tvdb_api_key: String::new(),
+            tvdb_pin: None,
             tmdb_api_key: String::new(),
             schedule_duration_days: 7,
             dashboard_page: 5,

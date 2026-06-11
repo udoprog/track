@@ -239,8 +239,6 @@ async fn sync_series_tvdb(
     let mut selected_fanart_id = None;
 
     for img in &info.poster {
-        tracing::warn!(?img);
-
         let id = ImageId::random();
 
         db.upsert_series_image(id, series_id, ImageKind::Poster, img)

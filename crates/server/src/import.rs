@@ -150,7 +150,9 @@ struct YamlConfig {
     #[serde(default)]
     theme: String,
     #[serde(default)]
-    tvdb_legacy_apikey: String,
+    tvdb_api_key: String,
+    #[serde(default)]
+    tvdb_pin: Option<String>,
     #[serde(default)]
     tmdb_api_key: String,
     #[serde(default = "default_days")]
@@ -365,24 +367,26 @@ pub async fn import() -> Result<()> {
 
     // ── Config ────────────────────────────────────────────────────────────────
     let config_path = source.join("config.yaml");
+
     if config_path.exists() {
         tracing::info!("importing config");
-        let cfg: YamlConfig = serde_yaml::from_str(
+        let config: YamlConfig = serde_yaml::from_str(
             &std::fs::read_to_string(&config_path).context("reading config.yaml")?,
         )
         .context("parsing config.yaml")?;
 
-        let theme = match cfg.theme.as_str() {
+        let theme = match config.theme.as_str() {
             "light" => api::ThemeType::Light,
             _ => api::ThemeType::Dark,
         };
 
         db.save_config(&api::Config {
             theme,
-            tvdb_legacy_apikey: cfg.tvdb_legacy_apikey,
-            tmdb_api_key: cfg.tmdb_api_key,
-            schedule_duration_days: cfg.schedule_duration_days,
-            dashboard_page: cfg.dashboard_page,
+            tvdb_api_key: config.tvdb_api_key,
+            tvdb_pin: config.tvdb_pin,
+            tmdb_api_key: config.tmdb_api_key,
+            schedule_duration_days: config.schedule_duration_days,
+            dashboard_page: config.dashboard_page,
             auto_sync_enabled: false,
             auto_sync_interval_hours: 24,
             timezone: String::new(),

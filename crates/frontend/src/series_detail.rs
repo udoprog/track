@@ -200,7 +200,7 @@ impl Component for SeriesDetail {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
-        let Some(ref series) = self.series else {
+        let (Some(series), Some(season)) = (&self.series, self.selected) else {
             return html!(<LoadingPage />);
         };
 
@@ -309,7 +309,7 @@ impl Component for SeriesDetail {
 
                         { self.view_sidebar(ctx, series) }
 
-                        { self.view_episodes(ctx) }
+                        { self.view_episodes(ctx, season) }
                     </div>
 
                     if let Some(kind) = self.image_modal {
@@ -1161,7 +1161,7 @@ impl SeriesDetail {
         }
     }
 
-    fn view_episodes(&self, ctx: &Context<Self>) -> Html {
+    fn view_episodes(&self, ctx: &Context<Self>, season: api::SeasonNumber) -> Html {
         let link = ctx.link();
 
         let watched_count = self
@@ -1180,36 +1180,36 @@ impl SeriesDetail {
 
         html! {
             <div class="detail-content">
-                if let Some(season) = self.selected {
-                    <div class="row-fill actions">
-                        if !self.orphaned.is_empty() {
-                            <button class="btn-danger" onclick={link.callback(|_| Msg::ToggleOrphaned)} title="View orphaned watched episodes">
-                                <span class="icon-inline"><span class="icon exclamation-triangle" /></span>
-                                <span class="hide-mobile">{if self.view_orphaned { "Hide orphaned watches" } else { "Show orphaned watches" }}</span>
+                <div class="row-fill actions">
+                    if !self.orphaned.is_empty() {
+                        <button class="btn-danger" onclick={link.callback(|_| Msg::ToggleOrphaned)} title="View orphaned watched episodes">
+                            <span class="icon-inline"><span class="icon exclamation-triangle" /></span>
+                            <span class="hide-mobile">{if self.view_orphaned { "Hide orphaned watches" } else { "Show orphaned watches" }}</span>
+                        </button>
+                    }
+
+                    if self.select_mark_remaining {
+                        <MarkWatchedPicker
+                            on_confirm={link.callback(move |mark_time| Msg::WatchRemaining(season, mark_time))}
+                            on_cancel={link.callback(|_| Msg::CancelMarkRemainingWatch)}
+                        />
+                    } else {
+                        <div class="page-sub-title">{season.long().to_string()}</div>
+
+                        if total > 0 {
+                            <span>
+                                {format!("{watched_count} / {total} watched")}
+                            </span>
+                        }
+
+                        if watched_count < total {
+                            <button class="btn-success end" onclick={link.callback(move |_| Msg::MarkRemainingWatch)} title="Mark remaining episodes as watched">
+                                <span class="icon-inline"><span class="icon check" /></span>
+                                <span class="hide-mobile">{"Remaining"}</span>
                             </button>
                         }
-
-                        if self.select_mark_remaining {
-                            <MarkWatchedPicker
-                                on_confirm={link.callback(move |mark_time| Msg::WatchRemaining(season, mark_time))}
-                                on_cancel={link.callback(|_| Msg::CancelMarkRemainingWatch)}
-                            />
-                        } else {
-                            if total > 0 {
-                                <span>
-                                    {format!("{watched_count} / {total} watched")}
-                                </span>
-                            }
-
-                            if watched_count < total {
-                                <button class="btn-success end" onclick={link.callback(move |_| Msg::MarkRemainingWatch)} title="Mark remaining episodes as watched">
-                                    <span class="icon-inline"><span class="icon check" /></span>
-                                    <span class="hide-mobile">{"Remaining"}</span>
-                                </button>
-                            }
-                        }
-                    </div>
-                }
+                    }
+                </div>
 
                 if self.episodes.is_empty() && self.selected.is_some() {
                     <div class="empty text-muted">{"No episodes."}</div>
@@ -1350,7 +1350,7 @@ impl SeriesDetail {
 
         html! {
             <div class={classes!("column", (!watched.is_empty()).then_some("watched"))}>
-                <a class="episode-code" id={format!("episode-{}-{}", episode.season.to_u32(), episode.number)} href={format!("#episode-{}-{}", episode.season.to_u32(), episode.number)}>
+                <a class="episode-code">
                     { format!("{}E{:02}", episode.season.short(), episode.number) }
                 </a>
 

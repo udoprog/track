@@ -44,12 +44,13 @@ impl RemoteClients {
             )?)
         };
 
-        inner.tvdb = if config.tvdb_legacy_apikey.is_empty() {
+        inner.tvdb = if config.tvdb_api_key.is_empty() {
             None
         } else {
             Some(tvdb::Client::new(
                 self.http.clone(),
-                config.tvdb_legacy_apikey.clone(),
+                config.tvdb_api_key.clone(),
+                config.tvdb_pin.clone(),
             )?)
         };
 

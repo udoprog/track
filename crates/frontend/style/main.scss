@@ -13,12 +13,14 @@ $text-primary: #eee;
 $text-muted: #aaa;
 $border-subtle: #333;
 $border-input: #555;
-$color-primary: #46a;
+$color-primary: #97d9e6;
 $color-secondary: #555;
 $color-danger: #c26969;
 $color-danger-bg: #5a1a1a;
 $color-success: #73b173;
+$color-title: #97d9e6;
 
+$font-title: 24px;
 $font-xl: 20px;
 $font-lg: 18px;
 $font-base: 16px;
@@ -384,32 +386,71 @@ p {
     }
 }
 
+.pending-title {
+    color: $color-title;
+    font-size: $font-lg;
+    font-weight: 600;
+    color: $text-primary;
+    white-space: wrap;
+
+    @include g.from-desktop {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+}
+
+.item-title {
+    color: $color-title;
+    font-size: $font-lg;
+}
+
+.site-title {
+    color: $color-title;
+    font-size: $font-title;
+    font-weight: 600;
+}
+
+.page-title {
+    color: $color-title;
+    font-size: $font-xl;
+}
+
+.page-sub-title {
+    color: $color-title;
+    font-size: $font-lg;
+}
+
 h2 {
+    color: $color-title;
     margin: 0;
     padding: 0;
     font-size: $font-lg;
-    font-weight: 600;
+    font-weight: 100;
 }
 
 h3 {
+    color: $color-title;
     margin: 0;
     padding: 0;
     font-size: $font-base;
-    font-weight: 600;
+    font-weight: 100;
 }
 
 h4 {
+    color: $color-title;
     margin: 0;
     padding: 0;
     font-size: $font-sm;
-    font-weight: 600;
+    font-weight: 100;
 }
 
 h5 {
+    color: $color-title;
     margin: 0;
     padding: 0;
     font-size: $font-xs;
-    font-weight: 600;
+    font-weight: 100;
 }
 
 .text-muted {
@@ -487,19 +528,6 @@ image {
     display: flex;
     gap: $gap-sm;
     justify-content: flex-end;
-}
-
-.pending-title {
-    font-size: $font-lg;
-    font-weight: 600;
-    color: $text-primary;
-    white-space: wrap;
-
-    @include g.from-desktop {
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
 }
 
 .pending-label {
@@ -583,22 +611,6 @@ image {
     font-size: $font-lg;
     font-weight: 600;
     color: $text-primary;
-}
-
-.item-title {
-    font-size: $font-lg;
-    color: $text-primary;
-}
-
-.site-title {
-    font-size: $font-xl;
-    font-weight: 600;
-    color: $text-primary;
-}
-
-.page-title {
-    font-size: $font-lg;
-    font-weight: 600;
 }
 
 .top {

@@ -10,6 +10,7 @@ fn tz_is_valid(name: &str) -> bool {
 }
 
 pub(super) struct Settings {
+    saving: bool,
     channel: ws::Channel,
     config: api::Config,
     _setup: SetupChannel,
@@ -24,6 +25,7 @@ pub(super) enum Msg {
     ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
     ThemeChanged(api::ThemeType),
     TvdbKeyChanged(String),
+    TvdbPinChanged(String),
     TmdbKeyChanged(String),
     TimezoneChanged(String),
     LanguageChanged(Option<String>),
@@ -55,6 +57,7 @@ impl Component for Settings {
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
         Self {
+            saving: false,
             channel: ws::Channel::default(),
             config: api::Config::default(),
             _setup,
@@ -89,6 +92,11 @@ impl Component for Settings {
         let on_tvdb = link.callback(|e: InputEvent| {
             let input: web_sys::HtmlInputElement = e.target_unchecked_into();
             Msg::TvdbKeyChanged(input.value())
+        });
+
+        let on_tvdb_pin = link.callback(|e: InputEvent| {
+            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+            Msg::TvdbPinChanged(input.value())
         });
 
         let on_tmdb = link.callback(|e: InputEvent| {
@@ -131,6 +139,13 @@ impl Component for Settings {
                     <ErrorBox error={error.clone()} onclearerror={ctx.props().onerror.reform(|()| None)} />
                 }
 
+                if self.saving {
+                    <div class="box info">
+                        <span class="icon-inline"><span class="icon arrow-path spin" /></span>
+                        <span>{"Loading…"}</span>
+                    </div>
+                }
+
                 <div class="column">
                     <h2>{"Appearance"}</h2>
 
@@ -150,8 +165,12 @@ impl Component for Settings {
 
                     <div class="form">
                         <div class="field">
-                            <label>{"TheTVDB Legacy API Key"}</label>
-                            <input type="text" class="input-text" placeholder="Enter TVDB API key" value={self.config.tvdb_legacy_apikey.clone()} oninput={on_tvdb} />
+                            <label>{"TheTVDB API Key"}</label>
+                            <input type="text" class="input-text" placeholder="Enter TVDB API key" value={self.config.tvdb_api_key.clone()} oninput={on_tvdb} />
+                        </div>
+                        <div class="field">
+                            <label>{"TheTVDB Subscriber PIN (optional)"}</label>
+                            <input type="text" class="input-text" placeholder="Enter TVDB subscriber PIN" value={self.config.tvdb_pin.clone().unwrap_or_default()} oninput={on_tvdb_pin} />
                         </div>
                         <div class="field">
                             <label>{"TheMovieDB API Key"}</label>
@@ -297,7 +316,18 @@ impl Settings {
                 Ok(true)
             }
             Msg::TvdbKeyChanged(val) => {
-                self.config.tvdb_legacy_apikey = val;
+                self.config.tvdb_api_key = val;
+                Ok(false)
+            }
+            Msg::TvdbPinChanged(val) => {
+                let val = val.trim();
+
+                if val.is_empty() {
+                    self.config.tvdb_pin = None;
+                } else {
+                    self.config.tvdb_pin = Some(val.to_owned());
+                }
+
                 Ok(false)
             }
             Msg::TmdbKeyChanged(val) => {
@@ -335,6 +365,8 @@ impl Settings {
                 Ok(false)
             }
             Msg::Save => {
+                self.saving = true;
+
                 self._save_req = self
                     .channel
                     .request()
@@ -343,11 +375,13 @@ impl Settings {
                     })
                     .on_packet(ctx.link().callback(Msg::SaveDone))
                     .send();
-                Ok(false)
+
+                Ok(true)
             }
             Msg::SaveDone(result) => {
+                self.saving = false;
                 result.context(Message::SavingConfig)?;
-                Ok(false)
+                Ok(true)
             }
         }
     }
