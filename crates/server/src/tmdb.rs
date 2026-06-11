@@ -70,11 +70,13 @@ impl Client {
     }
 
     pub(crate) async fn fetch_image(&self, path: &str) -> Result<Option<bytes::Bytes>> {
-        let url = self.inner.image_base.join(path.trim_start_matches('/'))?;
+        let url = self.inner.image_base.join(path)?;
         let resp = self.inner.http.get(url).send().await?;
+
         if resp.status() == reqwest::StatusCode::NOT_FOUND {
             return Ok(None);
         }
+
         Ok(Some(resp.error_for_status()?.bytes().await?))
     }
 
@@ -271,17 +273,6 @@ impl Client {
             ));
         }
 
-        let selected_poster = details
-            .poster_path
-            .as_ref()
-            .map(|path| (ImageSource::Tmdb, path.clone()));
-
-        posters.extend(
-            selected_poster
-                .as_ref()
-                .map(|(source, path)| Image::new(*source, path)),
-        );
-
         let mut backdrops = Vec::new();
 
         for img in images.backdrops {
@@ -293,16 +284,8 @@ impl Client {
             ));
         }
 
-        let selected_backdrop = details
-            .backdrop_path
-            .as_ref()
-            .map(|path| (ImageSource::Tmdb, path.clone()));
-
-        backdrops.extend(
-            selected_backdrop
-                .as_ref()
-                .map(|(source, path)| Image::new(*source, path)),
-        );
+        let selected_poster = opt_image(details.poster_path.as_deref());
+        let selected_backdrop = opt_image(details.backdrop_path.as_deref());
 
         Ok(SeriesInfo {
             title: details.name.or(details.original_name),
@@ -311,8 +294,8 @@ impl Client {
                 .map(|d| d.to_timestamp_at_midnight_utc())
                 .transpose()?,
             posters,
-            selected_poster,
             backdrops,
+            selected_poster,
             selected_backdrop,
             seasons,
             remotes,
@@ -476,29 +459,30 @@ impl Client {
             }
         }
 
-        let mut posters = details
-            .poster_path
-            .as_ref()
-            .into_iter()
-            .chain(images.posters.iter().map(|img| &img.file_path))
-            .map(|path| Image::tmdb(path))
-            .collect::<Vec<_>>();
+        let mut posters = Vec::new();
 
-        let selected_poster = details.poster_path.as_ref().map(|path| Image::tmdb(path));
+        for img in images.posters {
+            posters.push(Image::new_with_dims(
+                ImageSource::Tmdb,
+                &img.file_path,
+                img.width,
+                img.height,
+            ));
+        }
 
-        posters.extend(selected_poster.clone());
+        let mut backdrops = Vec::new();
 
-        let mut backdrops = details
-            .backdrop_path
-            .as_ref()
-            .into_iter()
-            .chain(images.backdrops.iter().map(|img| &img.file_path))
-            .map(|path| Image::tmdb(path))
-            .collect::<Vec<_>>();
+        for img in images.backdrops {
+            backdrops.push(Image::new_with_dims(
+                ImageSource::Tmdb,
+                &img.file_path,
+                img.width,
+                img.height,
+            ));
+        }
 
-        let selected_backdrop = details.backdrop_path.as_ref().map(|path| Image::tmdb(path));
-
-        backdrops.extend(selected_backdrop.clone());
+        let selected_poster = opt_image(details.poster_path.as_deref());
+        let selected_backdrop = opt_image(details.backdrop_path.as_deref());
 
         Ok(MovieInfo {
             title: details.title.or(details.original_title),
@@ -507,8 +491,8 @@ impl Client {
                 .map(|d| d.to_timestamp_at_midnight_utc())
                 .transpose()?,
             posters,
-            selected_poster,
             backdrops,
+            selected_poster,
             selected_backdrop,
             remotes,
         })
@@ -522,8 +506,8 @@ pub(crate) struct SeriesInfo {
     pub overview: Option<String>,
     pub first_air_date: Option<Timestamp>,
     pub posters: Vec<Image>,
-    pub selected_poster: Option<(ImageSource, String)>,
     pub backdrops: Vec<Image>,
+    pub selected_poster: Option<(ImageSource, String)>,
     pub selected_backdrop: Option<(ImageSource, String)>,
     pub seasons: Vec<SeasonInfo>,
     pub remotes: Vec<RemoteId>,
@@ -552,9 +536,9 @@ pub(crate) struct MovieInfo {
     pub overview: Option<String>,
     pub release_date: Option<Timestamp>,
     pub posters: Vec<Image>,
-    pub selected_poster: Option<Image>,
     pub backdrops: Vec<Image>,
-    pub selected_backdrop: Option<Image>,
+    pub selected_poster: Option<(ImageSource, String)>,
+    pub selected_backdrop: Option<(ImageSource, String)>,
     pub remotes: Vec<RemoteId>,
 }
 
@@ -594,17 +578,17 @@ fn parse_release_date(s: Option<&str>) -> Option<Timestamp> {
 
 fn opt_image(s: Option<&str>) -> Option<(ImageSource, String)> {
     s.filter(|s| !s.is_empty())
-        .map(|s| (ImageSource::Tmdb, s.to_string()))
+        .map(|s| (ImageSource::Tmdb, s.trim_start_matches('/').to_string()))
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct ImageResponse {
     file_path: String,
     width: u32,
     height: u32,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct Images {
     #[serde(default)]
     backdrops: Vec<ImageResponse>,

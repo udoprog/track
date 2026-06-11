@@ -50,8 +50,6 @@ impl Client {
     }
 
     pub(crate) async fn fetch_image(&self, path: &str) -> Result<Option<bytes::Bytes>> {
-        let path = path.trim_start_matches('/');
-
         let (base, token) = if path.starts_with("v4/") {
             (
                 &self.inner.image_base,
@@ -64,6 +62,8 @@ impl Client {
         let url = base.join(path)?;
 
         let mut req = self.inner.http.get(url);
+
+        tracing::warn!(?token);
 
         if let Some(token) = token {
             req = req.bearer_auth(&token);

@@ -696,7 +696,7 @@ impl Image {
     pub fn new(source: ImageSource, path: &str) -> Self {
         Self {
             source,
-            path: path.to_owned(),
+            path: path.trim_start_matches('/').to_owned(),
             width: 0,
             height: 0,
         }
@@ -705,7 +705,7 @@ impl Image {
     pub fn new_with_dims(source: ImageSource, path: &str, width: u32, height: u32) -> Self {
         Self {
             source,
-            path: path.to_owned(),
+            path: path.trim_start_matches('/').to_owned(),
             width,
             height,
         }
@@ -718,7 +718,7 @@ impl Image {
     pub fn tvdb(path: &str) -> Self {
         Self {
             source: ImageSource::Tvdb,
-            path: path.to_owned(),
+            path: path.trim_start_matches('/').to_owned(),
             width: 0,
             height: 0,
         }
@@ -727,7 +727,7 @@ impl Image {
     pub fn tmdb(path: &str) -> Self {
         Self {
             source: ImageSource::Tmdb,
-            path: path.to_owned(),
+            path: path.trim_start_matches('/').to_owned(),
             width: 0,
             height: 0,
         }
@@ -739,13 +739,13 @@ impl Image {
         match s.split_once(':') {
             Some((src, path)) => Self {
                 source: ImageSource::from_str(src),
-                path: path.to_owned(),
+                path: path.trim_start_matches('/').to_owned(),
                 width: 0,
                 height: 0,
             },
             None => Self {
                 source: ImageSource::Unknown,
-                path: s.to_owned(),
+                path: s.trim_start_matches('/').to_owned(),
                 width: 0,
                 height: 0,
             },

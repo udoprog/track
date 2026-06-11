@@ -43,6 +43,7 @@ impl ImageCache {
         if path.contains("..") || path.starts_with('/') {
             return None;
         }
+
         Some(self.inner.root.join(source).join(path))
     }
 

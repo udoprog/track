@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use anyhow::{Context as _, Result};
-use api::{EpisodeId, ImageId, ImageKind, ImageSource, SeasonNumber};
+use api::{EpisodeId, ImageId, ImageKind, SeasonNumber};
 use tracing::{info, warn};
 
 use crate::app_broadcast::Broadcaster;
@@ -78,6 +78,7 @@ async fn sync_series_tmdb(
         .context("series not found")?;
 
     info!(tmdb_id, "fetching tmdb series");
+
     let info = remote.fetch_tmdb_series(tmdb_id, language).await?;
 
     db.update_series(
@@ -93,10 +94,10 @@ async fn sync_series_tmdb(
         db.add_series_remote(series_id, remote).await?;
     }
 
-    db.clear_series_images(series_id, ImageKind::Poster, ImageSource::Tmdb)
-        .await?;
+    db.clear_series_images(series_id).await?;
 
     let mut selected_poster_id = None;
+    let mut selected_backdrop_id = None;
 
     for img in &info.posters {
         let id = ImageId::random();
@@ -114,16 +115,6 @@ async fn sync_series_tmdb(
         }
     }
 
-    if let Some(id) = selected_poster_id {
-        db.set_series_image_selection(series_id, ImageKind::Poster, id)
-            .await?;
-    }
-
-    db.clear_series_images(series_id, ImageKind::Backdrop, ImageSource::Tmdb)
-        .await?;
-
-    let mut selected_backdrop_id = None;
-
     for img in &info.backdrops {
         let id = ImageId::random();
 
@@ -138,6 +129,11 @@ async fn sync_series_tmdb(
         {
             selected_backdrop_id = Some(id);
         }
+    }
+
+    if let Some(id) = selected_poster_id {
+        db.set_series_image_selection(series_id, ImageKind::Poster, id)
+            .await?;
     }
 
     if let Some(id) = selected_backdrop_id {
@@ -218,7 +214,9 @@ async fn sync_series_tvdb(
         .series_by_id(series_id)
         .await?
         .context("series not found")?;
-    info!(tvdb_id, "fetching TVDB series");
+
+    info!(tvdb_id, "fetching tvdb series");
+
     let info = remote.fetch_tvdb_series(tvdb_id, language).await?;
 
     db.update_series(
@@ -234,12 +232,15 @@ async fn sync_series_tvdb(
         db.add_series_remote(series_id, remote).await?;
     }
 
-    db.clear_series_images(series_id, ImageKind::Poster, ImageSource::Tvdb)
-        .await?;
+    db.clear_series_images(series_id).await?;
 
     let mut selected_poster_id = None;
+    let mut selected_banner_id = None;
+    let mut selected_fanart_id = None;
 
     for img in &info.poster {
+        tracing::warn!(?img);
+
         let id = ImageId::random();
 
         db.upsert_series_image(id, series_id, ImageKind::Poster, img)
@@ -249,16 +250,6 @@ async fn sync_series_tvdb(
             selected_poster_id = Some(id);
         }
     }
-
-    if let Some(id) = selected_poster_id {
-        db.set_series_image_selection(series_id, ImageKind::Poster, id)
-            .await?;
-    }
-
-    db.clear_series_images(series_id, ImageKind::Banner, ImageSource::Tvdb)
-        .await?;
-
-    let mut selected_banner_id = None;
 
     for img in &info.banner {
         let id = ImageId::random();
@@ -271,20 +262,10 @@ async fn sync_series_tvdb(
         }
     }
 
-    if let Some(id) = selected_banner_id {
-        db.set_series_image_selection(series_id, ImageKind::Banner, id)
-            .await?;
-    }
-
-    db.clear_series_images(series_id, ImageKind::Fanart, ImageSource::Tvdb)
-        .await?;
-
-    let mut selected_fanart_id = None;
-
     for img in &info.fanart {
         let id = ImageId::random();
 
-        db.upsert_series_image(id, series_id, ImageKind::Fanart, img)
+        db.upsert_series_image(id, series_id, ImageKind::Backdrop, img)
             .await?;
 
         if info.selected_fanart.as_ref() == Some(img) {
@@ -292,8 +273,18 @@ async fn sync_series_tvdb(
         }
     }
 
+    if let Some(id) = selected_poster_id {
+        db.set_series_image_selection(series_id, ImageKind::Poster, id)
+            .await?;
+    }
+
+    if let Some(id) = selected_banner_id {
+        db.set_series_image_selection(series_id, ImageKind::Banner, id)
+            .await?;
+    }
+
     if let Some(id) = selected_fanart_id {
-        db.set_series_image_selection(series_id, ImageKind::Fanart, id)
+        db.set_series_image_selection(series_id, ImageKind::Backdrop, id)
             .await?;
     }
 
@@ -304,9 +295,9 @@ async fn sync_series_tvdb(
 
     broadcast.broadcast_event(api::AppEventKind::SeriesChanged { series: updated });
 
-    info!(tvdb_id, "fetching TVDB episodes");
+    info!(tvdb_id, "fetching tvdb episodes");
     let episodes = remote.fetch_tvdb_episodes(tvdb_id, language).await?;
-    info!(count = episodes.len(), "got episodes from TVDB");
+    info!(count = episodes.len(), "got episodes from tvdb");
 
     let mut seasons_seen: HashSet<SeasonNumber> = HashSet::new();
     let mut season_air_dates: HashMap<SeasonNumber, api::Timestamp> = HashMap::new();
@@ -401,8 +392,7 @@ pub(crate) async fn sync_movie(
                 db.add_movie_remote(movie_id, remote).await?;
             }
 
-            db.clear_movie_images(movie_id, ImageKind::Poster, ImageSource::Tmdb)
-                .await?;
+            db.clear_movie_images(movie_id).await?;
 
             let mut selected_poster_id = None;
 
@@ -412,7 +402,12 @@ pub(crate) async fn sync_movie(
                 db.upsert_movie_image(id, movie_id, ImageKind::Poster, img)
                     .await?;
 
-                if info.selected_poster.as_ref() == Some(img) {
+                if info
+                    .selected_poster
+                    .as_ref()
+                    .map(|(source, path)| (*source, path.as_str()))
+                    == Some(img.id())
+                {
                     selected_poster_id = Some(id);
                 }
             }
@@ -422,19 +417,24 @@ pub(crate) async fn sync_movie(
                     .await?;
             }
 
-            db.clear_movie_images(movie_id, ImageKind::Backdrop, ImageSource::Tmdb)
-                .await?;
             let mut selected_backdrop_id = None;
+
             for img in &info.backdrops {
                 let id = ImageId::random();
 
                 db.upsert_movie_image(id, movie_id, ImageKind::Backdrop, img)
                     .await?;
 
-                if info.selected_backdrop.as_ref() == Some(img) {
+                if info
+                    .selected_backdrop
+                    .as_ref()
+                    .map(|(source, path)| (*source, path.as_str()))
+                    == Some(img.id())
+                {
                     selected_backdrop_id = Some(id);
                 }
             }
+
             if let Some(id) = selected_backdrop_id {
                 db.set_movie_image_selection(movie_id, ImageKind::Backdrop, id)
                     .await?;
@@ -491,7 +491,7 @@ async fn enrich_with_tvmaze(
             .find(|r| *r.source() == api::RemoteSource::Tvdb)
         {
             let id: u32 = r.value().as_u32().context("invalid tvdb id")?;
-            info!(tvdb_id = id, "looking up tvmaze id via TVDB");
+            info!(tvdb_id = id, "looking up tvmaze id via tvdb");
             break 'id remote.lookup_tvmaze_by_tvdb(id).await?;
         }
 
@@ -505,7 +505,7 @@ async fn enrich_with_tvmaze(
             break 'id remote.lookup_tvmaze_by_imdb(imdb_id).await?;
         }
 
-        info!(series_id = %series_id, "skipping tvmaze enrichment: no TVDB or IMDB remote");
+        info!(series_id = %series_id, "skipping tvmaze enrichment: no tvdb or IMDB remote");
         return Ok(());
     };
 

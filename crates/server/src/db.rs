@@ -79,6 +79,8 @@ struct ImageSelectionRow {
     kind: ImageKind,
     source: ImageSource,
     path: String,
+    width: u32,
+    height: u32,
 }
 
 #[derive(Row)]
@@ -87,6 +89,8 @@ struct AllSeriesImageSelectionRow {
     kind: ImageKind,
     source: ImageSource,
     path: String,
+    width: u32,
+    height: u32,
 }
 
 #[derive(Row)]
@@ -95,6 +99,8 @@ struct AllMovieImageSelectionRow {
     kind: ImageKind,
     source: ImageSource,
     path: String,
+    width: u32,
+    height: u32,
 }
 
 #[derive(Row)]
@@ -332,7 +338,7 @@ statements! {
             WHERE series_id IS NOT NULL ORDER BY series_id, kind, path, id
         "#,
         delete_series_images: r#"
-            DELETE FROM images WHERE series_id = ? AND kind = ? AND source = ?
+            DELETE FROM images WHERE series_id = ?
         "#,
         insert_series_image: r#"
             INSERT INTO images (id, series_id, kind, source, path, width, height) VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -347,7 +353,7 @@ statements! {
             WHERE movie_id IS NOT NULL ORDER BY movie_id, kind, path, id
         "#,
         delete_movie_images: r#"
-            DELETE FROM images WHERE movie_id = ? AND kind = ? AND source = ?
+            DELETE FROM images WHERE movie_id = ?
         "#,
         insert_movie_image: r#"
             INSERT INTO images (id, movie_id, kind, source, path, width, height) VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -371,21 +377,21 @@ statements! {
             DELETE FROM movie_images WHERE movie_id = ? AND kind = ?
         "#,
         list_series_image_selections: r#"
-            SELECT si.kind, i.source, i.path
+            SELECT si.kind, i.source, i.path, i.width, i.height
             FROM series_images si JOIN images i ON i.id = si.image_id
             WHERE si.series_id = ?
         "#,
         list_all_series_image_selections: r#"
-            SELECT si.series_id, si.kind, i.source, i.path
+            SELECT si.series_id, si.kind, i.source, i.path, i.width, i.height
             FROM series_images si JOIN images i ON i.id = si.image_id
         "#,
         list_movie_image_selections: r#"
-            SELECT mi.kind, i.source, i.path
+            SELECT mi.kind, i.source, i.path, i.width, i.height
             FROM movie_images mi JOIN images i ON i.id = mi.image_id
             WHERE mi.movie_id = ?
         "#,
         list_all_movie_image_selections: r#"
-            SELECT mi.movie_id, mi.kind, i.source, i.path
+            SELECT mi.movie_id, mi.kind, i.source, i.path, i.width, i.height
             FROM movie_images mi JOIN images i ON i.id = mi.image_id
         "#,
 
@@ -904,17 +910,19 @@ impl Database {
             }
 
             s.list_all_series_image_selections.reset()?;
-            while let Some(r) = s
+            while let Some(row) = s
                 .list_all_series_image_selections
                 .next::<AllSeriesImageSelectionRow>()?
             {
-                if let Some(o) = id_to_idx.get(&r.series_id).and_then(|&i| out.get_mut(i)) {
+                if let Some(o) = id_to_idx.get(&row.series_id).and_then(|&i| out.get_mut(i)) {
                     apply_image_selection(
                         o,
                         ImageSelectionRow {
-                            kind: r.kind,
-                            source: r.source,
-                            path: r.path,
+                            kind: row.kind,
+                            source: row.source,
+                            path: row.path,
+                            width: row.width,
+                            height: row.height,
                         },
                     );
                 }
@@ -1421,17 +1429,19 @@ impl Database {
             }
 
             s.list_all_movie_image_selections.reset()?;
-            while let Some(r) = s
+            while let Some(row) = s
                 .list_all_movie_image_selections
                 .next::<AllMovieImageSelectionRow>()?
             {
-                if let Some(o) = id_to_idx.get(&r.movie_id).and_then(|&i| out.get_mut(i)) {
+                if let Some(o) = id_to_idx.get(&row.movie_id).and_then(|&i| out.get_mut(i)) {
                     apply_movie_image_selection(
                         o,
                         ImageSelectionRow {
-                            kind: r.kind,
-                            source: r.source,
-                            path: r.path,
+                            kind: row.kind,
+                            source: row.source,
+                            path: row.path,
+                            width: row.width,
+                            height: row.height,
                         },
                     );
                 }
@@ -1678,15 +1688,10 @@ impl Database {
 
     // ── Images ──
 
-    pub(crate) async fn clear_series_images(
-        &self,
-        series_id: SeriesId,
-        kind: ImageKind,
-        source: ImageSource,
-    ) -> Result<()> {
+    pub(crate) async fn clear_series_images(&self, series_id: SeriesId) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
         spawn_blocking(move || {
-            s.delete_series_images.bind((series_id, kind, source))?;
+            s.delete_series_images.bind((series_id,))?;
             ensure!(
                 s.delete_series_images.step()?.is_done(),
                 "clear_series_images"
@@ -1696,15 +1701,10 @@ impl Database {
         .await?
     }
 
-    pub(crate) async fn clear_movie_images(
-        &self,
-        movie_id: MovieId,
-        kind: ImageKind,
-        source: ImageSource,
-    ) -> Result<()> {
+    pub(crate) async fn clear_movie_images(&self, movie_id: MovieId) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
         spawn_blocking(move || {
-            s.delete_movie_images.bind((movie_id, kind, source))?;
+            s.delete_movie_images.bind((movie_id,))?;
             ensure!(
                 s.delete_movie_images.step()?.is_done(),
                 "clear_movie_images"
@@ -2812,7 +2812,7 @@ fn movie_image_from_row(r: MovieImageRow) -> api::MediaImage {
 }
 
 fn apply_image_selection(target: &mut api::Series, r: ImageSelectionRow) {
-    let image = Image::new(r.source, &r.path);
+    let image = Image::new_with_dims(r.source, &r.path, r.width, r.height);
 
     match r.kind {
         api::ImageKind::Poster => target.poster = Some(image),
@@ -2823,7 +2823,8 @@ fn apply_image_selection(target: &mut api::Series, r: ImageSelectionRow) {
 }
 
 fn apply_movie_image_selection(target: &mut api::Movie, sel: ImageSelectionRow) {
-    let image = Image::from_raw(format!("{}:{}", sel.source.as_str(), sel.path));
+    let image = Image::new_with_dims(sel.source, &sel.path, sel.width, sel.height);
+
     match sel.kind {
         api::ImageKind::Poster => target.poster = Some(image),
         api::ImageKind::Backdrop => target.backdrop = Some(image),
