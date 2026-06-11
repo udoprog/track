@@ -229,7 +229,7 @@ fn Toolbar(props: &ToolbarProps) -> Html {
             <div class="toolbar-inner desktop-row-fill mobile-column">
                 <div class="row-fill">
                     <div class="row">
-                        <span class="site-title">{"OnTV"}</span>
+                        <span class="site-title clickable" onclick={on_nav(Route::Dashboard(DashboardQuery::default()))}>{"Track"}</span>
                     </div>
 
                     <div class="row end hide-desktop">

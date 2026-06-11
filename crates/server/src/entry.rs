@@ -21,11 +21,11 @@ use crate::task_queue::TaskQueue;
 use crate::web::{self, AppState};
 
 #[derive(Parser)]
-#[command(version, about = "OnTV web server")]
+#[command(version, about = "Track web server")]
 struct Args {
     /// Path to the SQLite database file.
-    #[arg(long, default_value = "ontv.db")]
-    db_path: PathBuf,
+    #[arg(long, default_value = "track.db")]
+    db: PathBuf,
 
     /// Directory for the image proxy disk cache.
     #[arg(long, default_value = "image-cache")]
@@ -43,7 +43,7 @@ pub async fn server() -> Result<ExitCode> {
 
     let args = Args::parse();
 
-    let db = Database::open(&args.db_path, OpenMode::Normal).context("failed to open database")?;
+    let db = Database::open(&args.db, OpenMode::Normal).context("failed to open database")?;
 
     let http = reqwest::Client::builder()
         .user_agent("ontv-musli-web/0.1")

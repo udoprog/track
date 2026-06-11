@@ -108,7 +108,7 @@ impl Component for Dashboard {
 
                 { self.view_pending(ctx) }
 
-                <div class="section">
+                <div class="column">
                     <h2>{"Coming Up"}</h2>
 
                     <Calendar
@@ -320,23 +320,32 @@ impl Dashboard {
         let link = ctx.link();
 
         html! {
-            <div class="section">
-                <div class="row">
-                    <h2 class="fill">{"Up Next"}</h2>
-                    <button class="btn-icon" title="Show fewer"
-                        onclick={link.callback(|_| Msg::AdjustPageSize(-1))}>
-                        <span class="icon minus" />
-                    </button>
-                    <button class="btn-icon" title="Show more"
-                        onclick={link.callback(|_| Msg::AdjustPageSize(1))}>
-                        <span class="icon plus" />
-                    </button>
-                    <PaginationButtons
-                        {page}
-                        {total_pages}
-                        on_page={link.callback(Msg::SetPage)}
-                    />
+            <div class="column">
+                <div class="row-fill">
+                    <div class="row">
+                        <h2>{"Pending"}</h2>
+                    </div>
+
+                    <div class="row end">
+                        <div class="input-group">
+                            <button class="btn-icon" title="Show fewer"
+                                onclick={link.callback(|_| Msg::AdjustPageSize(-1))}>
+                                <span class="icon minus" />
+                            </button>
+                            <button class="btn-icon" title="Show more"
+                                onclick={link.callback(|_| Msg::AdjustPageSize(1))}>
+                                <span class="icon plus" />
+                            </button>
+                        </div>
+
+                        <PaginationButtons
+                            {page}
+                            {total_pages}
+                            on_page={link.callback(Msg::SetPage)}
+                        />
+                    </div>
                 </div>
+
                 if self.pending.is_empty() {
                     <p class="text-muted">{"Nothing pending."}</p>
                 } else {

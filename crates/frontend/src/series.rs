@@ -5,7 +5,7 @@ use yew::prelude::*;
 use crate::SetupChannel;
 use crate::error::{CustomContext, Error, Message, RcError};
 use crate::router::{PagedQuery, Route, SeriesDetailQuery};
-use crate::ui::ErrorBox;
+use crate::ui::{ErrorBox, PaginationButtons};
 
 const PAGE_SIZE: usize = 20;
 
@@ -100,14 +100,8 @@ impl Component for SeriesList {
         let total = filtered.len();
         let total_pages = total.div_ceil(PAGE_SIZE).max(1);
         let page = self.page.min(total_pages - 1);
-        let prev_page = page.checked_sub(1);
-        let next_page = (page + 1 < total_pages).then_some(page + 1);
 
-        let page_items: Vec<&api::Series> = filtered
-            .into_iter()
-            .skip(page * PAGE_SIZE)
-            .take(PAGE_SIZE)
-            .collect();
+        let items = filtered.iter().skip(page * PAGE_SIZE).take(PAGE_SIZE);
 
         let on_filter = link.callback(|e: InputEvent| {
             let input: web_sys::HtmlInputElement = e.target_unchecked_into();
@@ -144,26 +138,20 @@ impl Component for SeriesList {
                     </div>
                 </div>
 
-                if page_items.is_empty() {
+                <div class="row center">
+                    <PaginationButtons page={page} total_pages={total_pages} on_page={link.callback(Msg::SetPage)} />
+                </div>
+
+                if items.len() == 0 {
                     <div class="empty text-muted">{"No series tracked."}</div>
                 } else {
                     <div class="table">
-                        { for page_items.into_iter().map(|s| self.view_row(ctx, s)) }
+                        { for items.into_iter().map(|s| self.view_row(ctx, s)) }
                     </div>
 
-                    if total_pages > 1 {
-                        <div class="row center">
-                            <button class="btn-icon" disabled={prev_page.is_none()}
-                                onclick={link.callback(move |_| Msg::SetPage(prev_page.unwrap_or(0)))}>
-                                <span class="icon arrow-left" />
-                            </button>
-                            <span class="text-muted">{format!("{} / {}", page + 1, total_pages)}</span>
-                            <button class="btn-icon" disabled={next_page.is_none()}
-                                onclick={link.callback(move |_| Msg::SetPage(next_page.unwrap_or(page)))}>
-                                <span class="icon arrow-right" />
-                            </button>
-                        </div>
-                    }
+                    <div class="row center">
+                        <PaginationButtons page={page} total_pages={total_pages} on_page={link.callback(Msg::SetPage)} />
+                    </div>
                 }
             </div>
         }

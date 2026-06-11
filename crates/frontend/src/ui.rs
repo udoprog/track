@@ -70,7 +70,8 @@ pub(super) struct PaginationButtonsProps {
 pub(super) fn PaginationButtons(props: &PaginationButtonsProps) -> Html {
     let page = props.page.min(props.total_pages.saturating_sub(1));
     let prev = page.checked_sub(1);
-    let next = (page + 1 < props.total_pages).then_some(page + 1);
+    let next = page.checked_add(1).filter(|&v| v < props.total_pages);
+
     let on_page = props.on_page.clone();
     let on_page2 = props.on_page.clone();
 
@@ -79,17 +80,19 @@ pub(super) fn PaginationButtons(props: &PaginationButtonsProps) -> Html {
     }
 
     html! {
-        <>
+        <div class="input-group">
             <button class="btn-icon" disabled={prev.is_none()}
                 onclick={Callback::from(move |_| { if let Some(p) = prev { on_page.emit(p); } })}>
                 <span class="icon arrow-left" />
             </button>
-            <span class="text-muted">{format!("{} / {}", page + 1, props.total_pages)}</span>
+
+            <span class="input-text">{format!("{} / {}", page + 1, props.total_pages)}</span>
+
             <button class="btn-icon" disabled={next.is_none()}
                 onclick={Callback::from(move |_| { if let Some(p) = next { on_page2.emit(p); } })}>
                 <span class="icon arrow-right" />
             </button>
-        </>
+        </div>
     }
 }
 
