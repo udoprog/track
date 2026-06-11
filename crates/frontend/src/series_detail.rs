@@ -111,6 +111,7 @@ pub(super) enum Msg {
     OpenRemoteEditor,
     CloseRemoteEditor,
     AddRemote(api::RemoteId),
+    EditRemote(api::RemoteId, api::RemoteId),
     RemoveRemote(api::RemoteId),
     RemoteDone(Result<(), ws::Error>),
     SetTz(TimeZone),
@@ -263,8 +264,8 @@ impl Component for SeriesDetail {
                                 <RemoteSourceSelect
                                     kind={RemoteSourceKind::Series}
                                     remotes={series.remotes.clone()}
-                                    current_source={series.effective_sync_source()}
-                                    on_change={link.callback(Msg::SetSyncSource)}
+                                    current_source={series.effective_sync_source().map(|r| r.into_remote_source())}
+                                    on_change={link.callback(|s: api::RemoteSource| Msg::SetSyncSource(s.into_sync_source()))}
                                 />
 
                                 if let Some(ts) = series.last_synced_at {
@@ -332,9 +333,10 @@ impl Component for SeriesDetail {
 
                     if self.remote_editor {
                         <RemoteEditor
-                            title={format!("Identifiers — {}", series.title.as_deref().unwrap_or("Untitled Series"))}
+                            title={series.title.as_deref().unwrap_or("Untitled Series").to_owned()}
                             remotes={series.remotes.clone()}
                             on_add={link.callback(Msg::AddRemote)}
+                            on_edit={link.callback(|(old, new)| Msg::EditRemote(old, new))}
                             on_remove={link.callback(Msg::RemoveRemote)}
                             on_close={link.callback(|_| Msg::CloseRemoteEditor)}
                         />
@@ -937,6 +939,22 @@ impl SeriesDetail {
                     .body(api::AddSeriesRemoteRequest { id, remote_id })
                     .on_packet(ctx.link().callback(
                         |r: Result<ws::Packet<api::AddSeriesRemote>, ws::Error>| {
+                            Msg::RemoteDone(r.map(|_| ()))
+                        },
+                    ))
+                    .send();
+
+                Ok(false)
+            }
+            Msg::EditRemote(old, new) => {
+                let id = ctx.props().series_id;
+
+                self._remote_req = self
+                    .channel
+                    .request()
+                    .body(api::UpdateSeriesRemoteRequest { id, old, new })
+                    .on_packet(ctx.link().callback(
+                        |r: Result<ws::Packet<api::UpdateSeriesRemote>, ws::Error>| {
                             Msg::RemoteDone(r.map(|_| ()))
                         },
                     ))

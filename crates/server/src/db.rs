@@ -343,6 +343,9 @@ statements! {
         delete_series_remote: r#"
             DELETE FROM remotes WHERE series_id = ? AND remote_id = ?
         "#,
+        update_series_remote: r#"
+            UPDATE remotes SET remote_id = ? WHERE series_id = ? AND remote_id = ?
+        "#,
         series_id_by_remote: r#"
             SELECT series_id FROM remotes WHERE remote_id = ? LIMIT 1
         "#,
@@ -538,6 +541,9 @@ statements! {
         "#,
         delete_movie_remote: r#"
             DELETE FROM remotes WHERE movie_id = ? AND remote_id = ?
+        "#,
+        update_movie_remote: r#"
+            UPDATE remotes SET remote_id = ? WHERE movie_id = ? AND remote_id = ?
         "#,
         movie_id_by_remote: r#"
             SELECT movie_id FROM remotes WHERE remote_id = ? LIMIT 1
@@ -941,6 +947,28 @@ impl Database {
             ensure!(
                 s.delete_series_remote.step()?.is_done(),
                 "delete_series_remote"
+            );
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    pub(crate) async fn update_series_remote(
+        &self,
+        series_id: SeriesId,
+        old: &RemoteId,
+        new: &RemoteId,
+    ) -> Result<()> {
+        let old = old.clone();
+        let new = new.clone();
+        let mut s = self.inner.clone().lock_owned().await;
+
+        let result = spawn_blocking(move || {
+            s.update_series_remote.bind((&new, series_id, &old))?;
+            ensure!(
+                s.update_series_remote.step()?.is_done(),
+                "update_series_remote"
             );
             Ok(())
         });
@@ -1518,6 +1546,28 @@ impl Database {
             ensure!(
                 s.delete_movie_remote.step()?.is_done(),
                 "delete_movie_remote"
+            );
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    pub(crate) async fn update_movie_remote(
+        &self,
+        movie_id: MovieId,
+        old: &RemoteId,
+        new: &RemoteId,
+    ) -> Result<()> {
+        let old = old.clone();
+        let new = new.clone();
+        let mut s = self.inner.clone().lock_owned().await;
+
+        let result = spawn_blocking(move || {
+            s.update_movie_remote.bind((&new, movie_id, &old))?;
+            ensure!(
+                s.update_movie_remote.step()?.is_done(),
+                "update_movie_remote"
             );
             Ok(())
         });

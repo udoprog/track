@@ -487,13 +487,13 @@ impl ::sqll::BindValue for Date {
 }
 
 /// The source of a remote identifier.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub enum RemoteSource {
     Tvdb,
     Tmdb,
     Imdb,
-    Other(String),
+    Unknown,
 }
 
 impl PartialEq<SyncSource> for RemoteSource {
@@ -508,21 +508,33 @@ impl PartialEq<SyncSource> for RemoteSource {
 }
 
 impl RemoteSource {
+    pub fn is_unknown(&self) -> bool {
+        matches!(self, Self::Unknown)
+    }
+
     pub fn as_str(&self) -> &str {
         match self {
             Self::Tvdb => "tvdb",
             Self::Tmdb => "tmdb",
             Self::Imdb => "imdb",
-            Self::Other(s) => s.as_str(),
+            Self::Unknown => "unknown",
         }
     }
 
-    fn parse(s: &str) -> Self {
+    pub fn from_raw(s: &str) -> Self {
         match s {
             "tvdb" => Self::Tvdb,
             "tmdb" => Self::Tmdb,
             "imdb" => Self::Imdb,
-            other => Self::Other(other.to_owned()),
+            _ => Self::Unknown,
+        }
+    }
+
+    pub fn into_sync_source(self) -> SyncSource {
+        match self {
+            Self::Tvdb => SyncSource::Tvdb,
+            Self::Tmdb => SyncSource::Tmdb,
+            _ => SyncSource::Unknown,
         }
     }
 }
@@ -583,6 +595,10 @@ pub struct RemoteId {
 }
 
 impl RemoteId {
+    pub const fn new(source: RemoteSource, value: RemoteValue) -> Self {
+        Self { source, value }
+    }
+
     pub fn tvdb(id: u32) -> Self {
         Self {
             source: RemoteSource::Tvdb,
@@ -607,11 +623,11 @@ impl RemoteId {
     pub fn from_raw(s: &str) -> Self {
         match s.split_once(':') {
             Some((src, val)) => Self {
-                source: RemoteSource::parse(src),
+                source: RemoteSource::from_raw(src),
                 value: RemoteValue::parse(val),
             },
             None => Self {
-                source: RemoteSource::Other(String::new()),
+                source: RemoteSource::Unknown,
                 value: RemoteValue::Str(s.to_owned()),
             },
         }
@@ -630,7 +646,7 @@ impl RemoteId {
             RemoteSource::Tvdb => Some(format!("https://thetvdb.com/series/{}", self.value)),
             RemoteSource::Tmdb => Some(format!("https://www.themoviedb.org/tv/{}", self.value)),
             RemoteSource::Imdb => Some(format!("https://www.imdb.com/title/{}/", self.value)),
-            RemoteSource::Other(_) => None,
+            _ => None,
         }
     }
 
@@ -639,7 +655,7 @@ impl RemoteId {
             RemoteSource::Tvdb => Some(format!("https://thetvdb.com/movies/{}", self.value)),
             RemoteSource::Tmdb => Some(format!("https://www.themoviedb.org/movie/{}", self.value)),
             RemoteSource::Imdb => Some(format!("https://www.imdb.com/title/{}/", self.value)),
-            RemoteSource::Other(_) => None,
+            _ => None,
         }
     }
 }
@@ -1026,6 +1042,14 @@ impl SyncSource {
             "tvdb" => Self::Tvdb,
             "tmdb" => Self::Tmdb,
             _ => Self::Unknown,
+        }
+    }
+
+    pub fn into_remote_source(self) -> RemoteSource {
+        match self {
+            Self::Tvdb => RemoteSource::Tvdb,
+            Self::Tmdb => RemoteSource::Tmdb,
+            Self::Unknown => RemoteSource::Unknown,
         }
     }
 }
@@ -1875,6 +1899,22 @@ pub struct RemoveMovieRemoteRequest {
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
+pub struct UpdateSeriesRemoteRequest {
+    pub id: SeriesId,
+    pub old: RemoteId,
+    pub new: RemoteId,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct UpdateMovieRemoteRequest {
+    pub id: MovieId,
+    pub old: RemoteId,
+    pub new: RemoteId,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
 pub struct SyncAllRequest;
 
 #[derive(Debug, Encode, Decode)]
@@ -2206,6 +2246,18 @@ api::define! {
     pub type RemoveMovieRemote;
     impl Endpoint for RemoveMovieRemote {
         impl Request for RemoveMovieRemoteRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type UpdateSeriesRemote;
+    impl Endpoint for UpdateSeriesRemote {
+        impl Request for UpdateSeriesRemoteRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type UpdateMovieRemote;
+    impl Endpoint for UpdateMovieRemote {
+        impl Request for UpdateMovieRemoteRequest;
         type Response<'de> = Empty;
     }
 

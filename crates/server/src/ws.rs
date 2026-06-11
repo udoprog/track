@@ -789,6 +789,78 @@ impl WsHandler {
 
                 outgoing.write(api::Empty);
             }
+            api::Request::UpdateSeriesRemote => {
+                let req = incoming
+                    .read::<api::UpdateSeriesRemoteRequest>()
+                    .context("missing request")?;
+
+                self.db
+                    .series_by_id(req.id)
+                    .await?
+                    .context("series not found")?;
+
+                self.db
+                    .update_series_remote(req.id, &req.old, &req.new)
+                    .await?;
+
+                let series = self
+                    .db
+                    .series_by_id(req.id)
+                    .await?
+                    .context("series not found")?;
+
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::SeriesChanged {
+                        series: series.clone(),
+                    },
+                    "ws update series remote changed",
+                );
+
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::PendingChanged,
+                    "ws update series remote pending changed",
+                );
+
+                outgoing.write(api::Empty);
+            }
+            api::Request::UpdateMovieRemote => {
+                let req = incoming
+                    .read::<api::UpdateMovieRemoteRequest>()
+                    .context("missing request")?;
+
+                self.db
+                    .movie_by_id(req.id)
+                    .await?
+                    .context("movie not found")?;
+
+                self.db
+                    .update_movie_remote(req.id, &req.old, &req.new)
+                    .await?;
+
+                let movie = self
+                    .db
+                    .movie_by_id(req.id)
+                    .await?
+                    .context("movie not found")?;
+
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::MovieChanged {
+                        movie: movie.clone(),
+                    },
+                    "ws update movie remote changed",
+                );
+
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::PendingChanged,
+                    "ws update movie remote pending changed",
+                );
+
+                outgoing.write(api::Empty);
+            }
             api::Request::SetSeriesLanguage => {
                 let req = incoming
                     .read::<api::SetSeriesLanguageRequest>()
