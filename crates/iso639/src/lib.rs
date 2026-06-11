@@ -1,5 +1,5 @@
 use std::cell::LazyCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,6 +39,11 @@ mod generated {
 #[allow(dead_code)]
 mod generated_to_3166_1 {
     include!(concat!(env!("OUT_DIR"), "/generated_to_3166_1.rs"));
+}
+
+#[allow(dead_code)]
+mod generated_countries {
+    include!(concat!(env!("OUT_DIR"), "/generated_countries.rs"));
 }
 
 pub use generated::ENTRIES;
@@ -95,6 +100,7 @@ impl LanguageToCountry {
                     .collect::<BTreeMap<_, _>>(),
             )
         });
+
         Self {
             by_part1: (*by_part1).clone(),
         }
@@ -112,6 +118,45 @@ impl LanguageToCountry {
 }
 
 impl Default for LanguageToCountry {
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub struct Countries {
+    values: Arc<HashSet<&'static str>>,
+}
+
+impl Countries {
+    pub fn new() -> Self {
+        let values = LazyCell::new(|| {
+            Arc::new(
+                generated_countries::COUNTRIES
+                    .iter()
+                    .copied()
+                    .collect::<HashSet<_>>(),
+            )
+        });
+
+        Self {
+            values: (*values).clone(),
+        }
+    }
+
+    pub fn get(&self, country: &str) -> Option<String> {
+        let country = country.trim().to_lowercase();
+
+        if self.values.contains(country.as_str()) {
+            Some(country)
+        } else {
+            None
+        }
+    }
+}
+
+impl Default for Countries {
+    #[inline]
     fn default() -> Self {
         Self::new()
     }

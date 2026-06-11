@@ -1366,7 +1366,7 @@ impl SeriesDetail {
 
                 if history_expanded {
                     <div class="column">
-                        <h4>{"Watch history"}</h4>
+                        <h3>{"Watch history"}</h3>
 
                         <div class="column">
                             { for watched.iter().map(|w| {

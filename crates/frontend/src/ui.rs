@@ -459,7 +459,6 @@ impl Component for LanguagePicker {
                     <span class="icon-inline"><span class="icon language" /></span>
                     <span>{label}</span>
 
-
                     if let Some(code) = self.language_to_country.get_by_part1(code) {
                         <span class={classes!("flag", code)}></span>
                     }

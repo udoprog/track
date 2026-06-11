@@ -1,5 +1,7 @@
 use api::TimeZone;
+use iso639::Countries;
 use musli_web::web03::prelude::*;
+use std::collections::{BTreeMap, HashSet};
 use yew::prelude::*;
 
 use crate::SetupChannel;
@@ -11,6 +13,7 @@ use crate::ui::{
 };
 
 pub(super) struct MovieDetail {
+    countries: Countries,
     channel: ws::Channel,
     movie: Option<api::Movie>,
     watched: Vec<api::Watched>,
@@ -20,6 +23,8 @@ pub(super) struct MovieDetail {
     syncing: bool,
     actions_expanded: bool,
     detailed_expand: bool,
+    releases_expanded: HashSet<api::ReleaseType>,
+    movie_releases: Vec<(api::ReleaseType, Vec<api::MovieRelease>)>,
     image_modal: Option<api::ImageKind>,
     tz: TimeZone,
     _tz_handle: ContextHandle<TimeZone>,
@@ -83,6 +88,7 @@ pub(super) enum Msg {
     SetTz(TimeZone),
     ToggleActionsExpanded,
     ToggleDetailedActionsExpanded,
+    ToggleReleaseType(api::ReleaseType),
 }
 
 #[derive(Properties, PartialEq)]
@@ -112,6 +118,7 @@ impl Component for MovieDetail {
             .expect("time zone not found");
 
         Self {
+            countries: Countries::new(),
             channel: ws::Channel::default(),
             movie: None,
             watched: Vec::new(),
@@ -121,6 +128,8 @@ impl Component for MovieDetail {
             syncing: false,
             actions_expanded: false,
             detailed_expand: false,
+            releases_expanded: HashSet::new(),
+            movie_releases: Vec::new(),
             image_modal: None,
             tz,
             _tz_handle,
@@ -206,6 +215,7 @@ impl MovieDetail {
                     self.load_watched(ctx);
                 } else {
                     self.movie = None;
+                    self.movie_releases.clear();
                     self.watched.clear();
                 }
                 Ok(true)
@@ -221,7 +231,7 @@ impl MovieDetail {
                     api::AppEventKind::MovieChanged { movie }
                         if movie.id == ctx.props().movie_id =>
                     {
-                        self.movie = Some(movie.clone());
+                        self.set_movie(movie.clone());
                         Ok(true)
                     }
                     api::AppEventKind::MovieDeleted { movie_id }
@@ -267,7 +277,7 @@ impl MovieDetail {
                 }
             }
             Msg::MovieLoaded(result) => {
-                self.movie = Some(
+                self.set_movie(
                     result
                         .context(Message::LoadingMovies)?
                         .decode()
@@ -541,7 +551,26 @@ impl MovieDetail {
                 self.detailed_expand = !self.detailed_expand;
                 Ok(true)
             }
+            Msg::ToggleReleaseType(ty) => {
+                if !self.releases_expanded.remove(&ty) {
+                    self.releases_expanded.insert(ty);
+                }
+                Ok(true)
+            }
         }
+    }
+
+    fn set_movie(&mut self, movie: api::Movie) {
+        let mut by_type: BTreeMap<u32, (api::ReleaseType, Vec<api::MovieRelease>)> =
+            BTreeMap::new();
+        for r in &movie.releases {
+            let entry = by_type
+                .entry(r.release_type.as_u32())
+                .or_insert_with(|| (r.release_type, Vec::new()));
+            entry.1.push(r.clone());
+        }
+        self.movie_releases = by_type.into_values().collect();
+        self.movie = Some(movie);
     }
 
     fn load_movie(&mut self, ctx: &Context<Self>) {
@@ -804,7 +833,7 @@ impl MovieDetail {
 
                     if !self.watched.is_empty() {
                         <div class="column">
-                            <h4>{"Watch history"}</h4>
+                            <h3>{"Watch history"}</h3>
 
                             <div class="column">
                                 { for self.watched.iter().map(|w| {
@@ -837,6 +866,8 @@ impl MovieDetail {
                             </div>
                         </div>
                     }
+
+                    {self.view_releases(ctx)}
                 </div>
             </div>
 
@@ -844,6 +875,66 @@ impl MovieDetail {
                 { self.view_image_modal(ctx, movie, kind) }
             }
             </>
+        }
+    }
+
+    fn view_releases(&self, ctx: &Context<Self>) -> Html {
+        let link = ctx.link();
+
+        if self
+            .movie_releases
+            .iter()
+            .all(|(_, releases)| releases.is_empty())
+        {
+            return html! {};
+        }
+
+        html! {
+            <div class="column">
+                <h3>{"Releases"}</h3>
+
+                <div class="column">
+                    { for self.movie_releases.iter().map(|(ty, releases)| {
+                        let ty = *ty;
+                        let earliest = releases.iter().min_by_key(|r| r.timestamp).unwrap();
+                        let expanded = self.releases_expanded.contains(&ty);
+
+                        html! {
+                            <div class="column">
+                                <div class="row-fill clickable" onclick={link.callback(move |_| Msg::ToggleReleaseType(ty))}>
+                                    <span>{ty.as_str()}</span>
+                                    <div class="row">
+                                        <span class="text-muted">{earliest.timestamp.display(self.tz.clone())}</span>
+                                        <span class="icon-inline">
+                                            <span class={classes!("icon", if expanded { "ellipsis-horizontal" } else { "chevron-right" })} />
+                                        </span>
+                                    </div>
+                                </div>
+
+                                if expanded {
+                                    <div class="column">
+                                        { for releases.iter().map(|r| html! {
+                                            <div class="row-fill">
+                                                if let Some(code) = self.countries.get(&r.country) {
+                                                    <span class="flag-inline" title={r.country.clone()}>
+                                                        <span class={classes!("flag", code)}></span>
+                                                    </span>
+                                                } else {
+                                                    <span class="text-muted">
+                                                        {r.country.clone()}
+                                                    </span>
+                                                }
+
+                                                <span class="text-muted">{r.timestamp.display(self.tz.clone())}</span>
+                                            </div>
+                                        }) }
+                                    </div>
+                                }
+                            </div>
+                        }
+                    }) }
+                </div>
+            </div>
         }
     }
 

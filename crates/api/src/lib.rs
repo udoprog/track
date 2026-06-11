@@ -1038,7 +1038,7 @@ impl ::sqll::BindValue for ThemeType {
 // ── Core data types ──────────────────────────────────────────────────────────
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize,
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Encode, Decode, serde::Serialize, serde::Deserialize,
 )]
 #[musli(crate = musli_core)]
 #[serde(rename_all = "snake_case")]
@@ -1063,6 +1063,18 @@ impl ReleaseType {
             Self::Digital => 4,
             Self::Physical => 5,
             Self::Tv => 6,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Unknown => "Unknown",
+            Self::Premiere => "Premiere",
+            Self::TheatricalLimited => "Limited",
+            Self::Theatrical => "Theatrical",
+            Self::Digital => "Digital",
+            Self::Physical => "Physical",
+            Self::Tv => "TV",
         }
     }
 }

@@ -99,8 +99,8 @@ p {
 }
 
 .app {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-rows: auto 1fr;
     height: 100%;
 }
 
@@ -710,26 +710,12 @@ h5 {
     color: $text-muted;
 }
 
-.page {
-    display: flex;
-    flex-direction: column;
-    max-width: 960px;
-    width: 100%;
-    margin: 0 auto;
-    padding: $gap;
-    gap: $gap;
-    height: 100%;
-    overflow-y: auto;
-    background: $bg-dark-transparent;
-}
-
 .page-container {
     --background: none;
     position: relative;
     isolation: isolate;
     overflow: hidden;
     background: $bg-dark;
-    height: 100%;
 }
 
 .page-container::before {
@@ -750,6 +736,19 @@ h5 {
 .page-container > * {
     position: relative;
     z-index: 1;
+}
+
+.page {
+    display: flex;
+    flex-direction: column;
+    max-width: 960px;
+    width: 100%;
+    margin: 0 auto;
+    padding: $gap;
+    gap: $gap;
+    height: 100%;
+    overflow-y: auto;
+    background: $bg-dark-transparent;
 }
 
 @mixin input-group-base {
