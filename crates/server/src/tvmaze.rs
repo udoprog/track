@@ -87,8 +87,8 @@ impl Client {
                     .and_then(|s| s.parse::<Timestamp>().ok())?;
                 Some(EpisodeInfo {
                     season: match r.season {
-                        Some(n) if n > 0 => SeasonNumber::Number(n),
-                        _ => SeasonNumber::Specials,
+                        Some(n) => api::SeasonNumber::from_ordinal(n),
+                        _ => api::SeasonNumber::Specials,
                     },
                     number: r.number.unwrap_or(0),
                     aired_at,

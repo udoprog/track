@@ -88,7 +88,8 @@ impl SeriesDetailQuery {
         let mut s = form_urlencoded::Serializer::new(String::new());
 
         if let Some(season) = self.season {
-            s.append_pair("season", &season.to_u32().to_string());
+            let ordinal = season.ordinal().to_string();
+            s.append_pair("season", &ordinal);
         }
 
         s.finish()
@@ -100,7 +101,10 @@ impl SeriesDetailQuery {
         for (key, value) in form_urlencoded::parse(search.as_bytes()) {
             match key.as_ref() {
                 "season" => {
-                    this.season = value.parse::<u32>().ok().map(api::SeasonNumber::from_u32);
+                    this.season = value
+                        .parse::<u32>()
+                        .ok()
+                        .map(api::SeasonNumber::from_ordinal);
                 }
                 _ => continue,
             }

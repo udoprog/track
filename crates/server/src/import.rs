@@ -108,7 +108,7 @@ impl From<YamlSeasonNumber> for api::SeasonNumber {
     fn from(n: YamlSeasonNumber) -> Self {
         match n {
             YamlSeasonNumber::Specials => api::SeasonNumber::Specials,
-            YamlSeasonNumber::Number(n) => api::SeasonNumber::Number(n),
+            YamlSeasonNumber::Number(n) => api::SeasonNumber::from_ordinal(n),
         }
     }
 }

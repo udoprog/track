@@ -435,8 +435,8 @@ impl Client {
 
                 output.push(EpisodeInfo {
                     season: match row.season_number {
-                        Some(n) if n > 0 => SeasonNumber::Number(n),
-                        _ => SeasonNumber::Specials,
+                        Some(n) => api::SeasonNumber::from_ordinal(n),
+                        _ => api::SeasonNumber::Specials,
                     },
                     number: row.number,
                     absolute_number: row.absolute_number,

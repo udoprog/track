@@ -1183,7 +1183,7 @@ impl Database {
             s.upsert_season.bind((
                 SeasonId::random(),
                 series_id,
-                number.to_u32(),
+                number,
                 air_date.as_ref(),
                 name.as_deref(),
                 overview.as_deref(),
@@ -1225,7 +1225,7 @@ impl Database {
                 continue;
             }
 
-            let n = season.season.to_u32();
+            let n = season.season;
             let mut s = self.inner.clone().lock_owned().await;
 
             let result = spawn_blocking(move || {
@@ -1253,14 +1253,13 @@ impl Database {
         season: SeasonNumber,
         kept: &HashSet<u32>,
     ) -> Result<()> {
-        let season_n = season.to_u32();
         let kept = kept.clone();
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
             let mut to_delete = Vec::new();
 
-            s.episode_numbers_for_season.bind((series_id, season_n))?;
+            s.episode_numbers_for_season.bind((series_id, season))?;
 
             while let Some(number) = s.episode_numbers_for_season.next::<u32>()? {
                 if !kept.contains(&number) {
@@ -1270,7 +1269,7 @@ impl Database {
 
             for number in to_delete {
                 s.delete_episode_by_place
-                    .bind((series_id, season_n, number))?;
+                    .bind((series_id, season, number))?;
                 ensure!(
                     s.delete_episode_by_place.step()?.is_done(),
                     "delete_episode_by_place"
@@ -1306,7 +1305,7 @@ impl Database {
             s.upsert_episode.bind((
                 id,
                 series_id,
-                season.to_u32(),
+                season,
                 number,
                 absolute_number,
                 name.as_deref(),
@@ -1351,7 +1350,7 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.list_episodes.bind((series_id, season.to_u32()))?;
+            s.list_episodes.bind((series_id, season))?;
             let mut out = Vec::new();
             let mut idx_by_id = HashMap::new();
 
@@ -1360,11 +1359,8 @@ impl Database {
                 out.push(episode_from_row(r));
             }
 
-            s.list_season_episode_screenshots.bind((
-                ImageKind::Screenshot,
-                series_id,
-                season.to_u32(),
-            ))?;
+            s.list_season_episode_screenshots
+                .bind((ImageKind::Screenshot, series_id, season))?;
 
             while let Some(r) = s
                 .list_season_episode_screenshots
@@ -1469,7 +1465,7 @@ impl Database {
         let result = spawn_blocking(move || {
             for &(season, number, aired) in &updates {
                 s.update_episode_aired
-                    .bind((aired, series_id, season.to_u32(), number))?;
+                    .bind((aired, series_id, season, number))?;
                 ensure!(
                     s.update_episode_aired.step()?.is_done(),
                     "update_episode_aired"
@@ -2226,7 +2222,7 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.insert_watched_episode
-                .bind((id, timestamp, series_id, season.to_u32(), episode))?;
+                .bind((id, timestamp, series_id, season, episode))?;
             ensure!(
                 s.insert_watched_episode.step()?.is_done(),
                 "add_watched_episode"
@@ -2266,8 +2262,7 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.move_watched_episode
-                .bind((season.to_u32(), episode, id))?;
+            s.move_watched_episode.bind((season, episode, id))?;
             ensure!(
                 s.move_watched_episode.step()?.is_done(),
                 "move_watched_episode"

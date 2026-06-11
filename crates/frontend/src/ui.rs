@@ -978,7 +978,7 @@ impl Component for EpisodePicker {
         let on_season_change = link.callback(|e: Event| {
             let select: web_sys::HtmlSelectElement = e.target_unchecked_into();
             let n: u32 = select.value().parse().unwrap_or(0);
-            EpisodePickerMsg::SelectSeason(api::SeasonNumber::from_u32(n))
+            EpisodePickerMsg::SelectSeason(api::SeasonNumber::from_ordinal(n))
         });
 
         let on_episode_change = link.callback(|e: Event| {
@@ -1002,7 +1002,7 @@ impl Component for EpisodePicker {
                 <div class="row end">
                     <select class="input-select" onchange={on_season_change}>
                         { for ctx.props().seasons.iter().map(|s| {
-                            let value = s.season.to_u32().to_string();
+                            let value = s.season.ordinal().to_string();
                             let selected = self.selected_season == Some(s.season);
                             html! { <option {value} {selected}>{s.season.long().to_string()}</option> }
                         }) }

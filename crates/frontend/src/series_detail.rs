@@ -1209,8 +1209,7 @@ impl SeriesDetail {
         };
 
         let style = if s.total_count > 0 {
-            let frac = (s.watched_count.min(s.total_count) as f64 * 100.0)
-                / s.total_count as f64;
+            let frac = (s.watched_count.min(s.total_count) as f64 * 100.0) / s.total_count as f64;
 
             Some(format!("width: {frac:.0}%"))
         } else {

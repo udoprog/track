@@ -239,7 +239,7 @@ impl Client {
         for s in details.seasons {
             seasons.push(SeasonInfo {
                 number: match s.season_number {
-                    Some(n) if n > 0 => SeasonNumber::Number(n),
+                    Some(n) => SeasonNumber::from_ordinal(n),
                     _ => SeasonNumber::Specials,
                 },
                 air_date: opt_date(s.air_date.as_deref())
@@ -332,7 +332,7 @@ impl Client {
 
         let resp: SeasonResponse = self
             .get_json(
-                format!("tv/{series_id}/season/{}", season.to_u32()),
+                format!("tv/{series_id}/season/{}", season.ordinal()),
                 language,
             )
             .await?;

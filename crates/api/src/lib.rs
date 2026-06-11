@@ -1,4 +1,5 @@
 use core::fmt;
+use core::num::NonZero;
 use core::str::FromStr;
 
 use jiff::Timestamp as JiffTimestamp;
@@ -816,10 +817,19 @@ impl fmt::Display for Image {
 pub enum SeasonNumber {
     #[default]
     Specials,
-    Number(u32),
+    Number(NonZero<u32>),
 }
 
 impl SeasonNumber {
+    #[inline]
+    pub fn from_ordinal(n: u32) -> Self {
+        if let Some(n) = NonZero::new(n) {
+            Self::Number(n)
+        } else {
+            Self::Specials
+        }
+    }
+
     #[inline]
     pub fn short(&self) -> impl fmt::Display + '_ {
         fmt::from_fn(|f| match self {
@@ -837,20 +847,11 @@ impl SeasonNumber {
     }
 
     #[inline]
-    pub fn to_u32(self) -> u32 {
-        match self {
-            Self::Specials => 0,
-            Self::Number(n) => n,
-        }
-    }
-
-    #[inline]
-    pub fn from_u32(n: u32) -> Self {
-        if n == 0 {
-            Self::Specials
-        } else {
-            Self::Number(n)
-        }
+    pub fn ordinal(&self) -> impl fmt::Display + '_ {
+        fmt::from_fn(|f| match self {
+            Self::Specials => write!(f, "0"),
+            Self::Number(n) => write!(f, "{}", n.get()),
+        })
     }
 
     #[inline]
@@ -866,7 +867,7 @@ impl ::sqll::FromColumn<'_> for SeasonNumber {
     #[inline]
     fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Integer) -> ::sqll::Result<Self> {
         let n = u32::from_column(stmt, index)?;
-        Ok(SeasonNumber::from_u32(n))
+        Ok(SeasonNumber::from_ordinal(n))
     }
 }
 
@@ -874,7 +875,12 @@ impl ::sqll::FromColumn<'_> for SeasonNumber {
 impl ::sqll::BindValue for SeasonNumber {
     #[inline]
     fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
-        self.to_u32().bind_value(stmt, index)
+        let n = match self {
+            SeasonNumber::Specials => 0,
+            SeasonNumber::Number(n) => n.get(),
+        };
+
+        n.bind_value(stmt, index)
     }
 }
 
