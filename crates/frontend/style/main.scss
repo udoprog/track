@@ -40,8 +40,8 @@ $icon-padding: 8px;
 $icon-inline-padding: 4px;
 
 $poster-height: 240px;
-$poster-width-sm: 64px;
-$poster-height-sm: 96px;
+$poster-width-sm: 96px;
+$poster-height-sm: 144px;
 
 $sidebar-width: 240px;
 
@@ -175,6 +175,10 @@ body {
 
     &.no-gap {
         gap: 0;
+    }
+
+    &>.align-end {
+        align-self: end;
     }
 }
 

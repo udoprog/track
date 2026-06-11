@@ -248,47 +248,38 @@ impl SeriesList {
         });
 
         html! {
-            <div class="table-entry clickable" {onclick}>
+            <div class="table-entry">
                 <div class="desktop-row mobile-column">
-                    if let Some(poster) = s.poster.as_ref() {
-                        <img class="poster-sm hide-mobile" src={poster.proxy_url()} />
-                    } else {
-                        <div class="poster-sm hide-mobile" />
-                    }
+                    <img class="poster-sm hide-mobile clickable" src={s.poster.as_ref().map(|p| p.proxy_url())} onclick={&onclick} />
+                    <img class="banner hide-desktop clickable" src={s.banner.as_ref().map(|p| p.proxy_url())} onclick={&onclick} />
 
-                    if let Some(banner) = s.banner.as_ref() {
-                        <img class="banner hide-desktop" src={banner.proxy_url()} />
-                    } else {
-                        <div class="banner hide-desktop" />
-                    }
+                    <div class="column fill top">
+                        <div class="row-fill fill">
+                            <div class="column">
+                                <span class="item-title clickable" onclick={&onclick}>{s.title.as_deref().unwrap_or("Untitled Series")}</span>
 
-                    <div class="row-fill fill">
-                        <div class="column fill">
-                            if let Some(ref title) = s.title {
-                                <span class="item-title">{title}</span>
-                            } else {
-                                <span class="item-title text-muted">{"Untitled Series"}</span>
-                            }
+                                if let Some(date) = s.first_air_date {
+                                    <span class="text-muted">{date.date(self.tz.clone()).year().to_string()}</span>
+                                }
+                            </div>
 
-                            if let Some(ref overview) = s.overview {
-                                <div class="overview">{overview}</div>
-                            }
+                            <div class="row end top">
+                                if !s.tracked {
+                                    <span class="end icon-inline" title="Untracked series">
+                                        <span class="icon eye-slash" />
+                                    </span>
+                                }
+                            </div>
                         </div>
 
-                        <div class="row top">
-                            if let Some(date) = s.first_air_date {
-                                <span class="text-muted end">{date.date(self.tz.clone()).year().to_string()}</span>
-                            }
-
-                            if !s.tracked {
-                                <span class="end icon-inline" title="Untracked series">
-                                    <span class="icon eye-slash" />
-                                </span>
-                            }
-                        </div>
+                        if let Some(ref overview) = s.overview {
+                            <div class="overview">{overview}</div>
+                        }
                     </div>
 
-                    <span class="icon-inline"><span class="icon chevron-right" /></span>
+                    <span class="icon-inline align-end clickable" onclick={&onclick}>
+                        <span class="icon chevron-right" />
+                    </span>
                 </div>
             </div>
         }

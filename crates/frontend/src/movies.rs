@@ -288,58 +288,51 @@ impl MoviesList {
             .callback(move |_| Msg::Navigate(Route::MovieDetail(movie_id)));
 
         html! {
-            <div class="table-entry clickable" {onclick}>
+            <div class="table-entry">
                 <div class="desktop-row mobile-column">
-                    if let Some(poster) = m.poster.as_ref() {
-                        <img class="poster-sm hide-mobile" src={poster.proxy_url()} />
-                    } else {
-                        <div class="poster-sm hide-mobile" />
-                    }
+                    <img class="banner clickable hide-desktop" onclick={&onclick} src={m.banner.as_ref().map(|p| p.proxy_url())} />
+                    <img class="poster-sm clickable hide-mobile" onclick={&onclick} src={m.poster.as_ref().map(|p| p.proxy_url())} />
 
-                    if let Some(banner) = m.banner.as_ref() {
-                        <img class="banner hide-desktop" src={banner.proxy_url()} />
-                    } else {
-                        <div class="banner hide-desktop" />
-                    }
-
-                    <div class="row-fill fill top">
-                        <div class="column fill">
-                            if let Some(ref title) = m.title {
-                                <span class="item-title">{title}</span>
-                            }
-
-                            if let Some(ref overview) = m.overview {
-                                <div class="overview">
-                                    {overview}
-                                </div>
-                            }
-                        </div>
-
+                    <div class="column fill top">
                         if self.confirming_watch == Some(movie_id) {
                             <MarkWatchedPicker
                                 on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(movie_id, mark_time))}
                                 on_cancel={ctx.link().callback(|_| Msg::CancelMarkWatch)}
                             />
                         } else {
-                            <div class="row end top">
-                                if let Some(date) = m.release_date {
-                                    <span class="text-muted">{date.date(self.tz.clone()).year()}</span>
-                                }
+                            <div class="row-fill fill">
+                                <div class="column fill">
+                                    if let Some(ref title) = m.title {
+                                        <span class="item-title clickable" onclick={&onclick}>{title}</span>
+                                    }
 
-                                <button class="btn-icon-success" title="Mark watched" onclick={ctx.link().callback(move |_| Msg::AskMarkWatched(movie_id))}>
-                                    <span class="icon check" />
-                                </button>
+                                    if let Some(date) = m.release_date {
+                                        <span class="text-muted">{date.date(self.tz.clone()).year()}</span>
+                                    }
+                                </div>
 
-                                if !m.tracked {
-                                    <span class="end icon-inline" title="Untracked movie">
-                                        <span class="icon eye-slash" />
-                                    </span>
-                                }
+                                <div class="row end top">
+                                    <button class="btn-icon-success" title="Mark watched" onclick={ctx.link().callback(move |_| Msg::AskMarkWatched(movie_id))}>
+                                        <span class="icon check" />
+                                    </button>
+
+                                    if !m.tracked {
+                                        <span class="end icon-inline" title="Untracked movie">
+                                            <span class="icon eye-slash" />
+                                        </span>
+                                    }
+                                </div>
+                            </div>
+                        }
+
+                        if let Some(ref overview) = m.overview {
+                            <div class="overview">
+                                {overview}
                             </div>
                         }
                     </div>
 
-                    <span class="icon-inline"><span class="icon chevron-right" /></span>
+                    <span class="icon-inline align-end clickable"><span onclick={&onclick} class="icon chevron-right" /></span>
                 </div>
             </div>
         }
