@@ -1220,7 +1220,7 @@ impl SeriesDetail {
         };
 
         html! {
-            <div class={classes!("table-entry", "column", (!active && clickable).then_some("clickable"), active.then_some("active"), (!active && !self.expanded_seasons).then_some("hide-mobile"))} {onclick}>
+            <div class={classes!("table-entry", "column", clickable.then_some("clickable"), active.then_some("active"), (!active && !self.expanded_seasons).then_some("hide-mobile"))} {onclick}>
                 <div class="row-fill fill">
                     <span>{s.season.long().to_string()}</span>
 
@@ -1264,13 +1264,6 @@ impl SeriesDetail {
         html! {
             <div class="detail-content">
                 <div class="row-fill actions">
-                    if !self.orphaned.is_empty() {
-                        <button class="btn-danger" onclick={link.callback(|_| Msg::ToggleOrphaned)} title="View orphaned watched episodes">
-                            <span class="icon-inline"><span class="icon exclamation-triangle" /></span>
-                            <span class="hide-mobile">{if self.view_orphaned { "Hide orphaned watches" } else { "Show orphaned watches" }}</span>
-                        </button>
-                    }
-
                     if self.select_mark_remaining {
                         <MarkWatchedPicker
                             on_confirm={link.callback(move |mark_time| Msg::WatchRemaining(season, mark_time))}
@@ -1285,11 +1278,24 @@ impl SeriesDetail {
                             </span>
                         }
 
-                        if watched_count < total {
-                            <button class="btn-success end" onclick={link.callback(move |_| Msg::MarkRemainingWatch)} title="Mark remaining episodes as watched">
-                                <span class="icon-inline"><span class="icon check" /></span>
-                                <span class="hide-mobile">{"Remaining"}</span>
-                            </button>
+                        if !self.orphaned.is_empty() || watched_count < total {
+                            <div class="row end">
+                                <div class="input-group">
+                                    if !self.orphaned.is_empty() {
+                                        <button class="btn-danger" onclick={link.callback(|_| Msg::ToggleOrphaned)} title="View orphaned watched episodes">
+                                            <span class="icon-inline"><span class="icon exclamation-triangle" /></span>
+                                            <span class="hide-mobile">{if self.view_orphaned { "Hide orphaned watches" } else { "Show orphaned watches" }}</span>
+                                        </button>
+                                    }
+
+                                    if watched_count < total {
+                                        <button class="btn-success" onclick={link.callback(move |_| Msg::MarkRemainingWatch)} title="Mark remaining episodes as watched">
+                                            <span class="icon-inline"><span class="icon check" /></span>
+                                            <span class="hide-mobile">{"Remaining"}</span>
+                                        </button>
+                                    }
+                                </div>
+                            </div>
                         }
                     }
                 </div>
