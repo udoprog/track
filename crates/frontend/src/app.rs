@@ -77,46 +77,14 @@ impl Component for App {
         };
 
         let link = ctx.link();
-        let on_nav = |route: Route| link.callback(move |_| Msg::Navigate(route.clone()));
+        let on_nav = link.callback(move |route| Msg::Navigate(route));
 
         html! {
             <ContextProvider<TimeZone> context={tz.clone()}>
             <ContextProvider<ws::Handle> context={self.ws.handle()}>
             <div class="app">
-                <div class="toolbar">
-                    <div class="toolbar-inner row-fill">
-                        <div class="row start">
-                            <span class="site-title">{"OnTV"}</span>
-                        </div>
+                <Toolbar on_navigate={on_nav} />
 
-                        <div class="row end">
-                            <button onclick={on_nav(Route::Dashboard(DashboardQuery::default()))} class="btn" title="Dashboard">
-                                <span class="icon-inline"><span class="icon rectangle-stack" /></span>
-                                <span class="hide-mobile">{"Dashboard"}</span>
-                            </button>
-                            <button onclick={on_nav(Route::Queue)} class="btn" title="Queue">
-                                <span class="icon-inline"><span class="icon queue-list" /></span>
-                                <span class="hide-mobile">{"Queue"}</span>
-                            </button>
-                            <button onclick={on_nav(Route::Series(PagedQuery::default()))} class="btn" title="Series">
-                                <span class="icon-inline"><span class="icon tv" /></span>
-                                <span class="hide-mobile">{"Series"}</span>
-                            </button>
-                            <button onclick={on_nav(Route::Movies(PagedQuery::default()))} class="btn" title="Movies">
-                                <span class="icon-inline"><span class="icon film" /></span>
-                                <span class="hide-mobile">{"Movies"}</span>
-                            </button>
-                            <button onclick={on_nav(Route::Search)} class="btn" title="Search">
-                                <span class="icon-inline"><span class="icon magnifying-glass" /></span>
-                                <span class="hide-mobile">{"Search"}</span>
-                            </button>
-                            <button onclick={on_nav(Route::Settings)} class="btn" title="Settings">
-                                <span class="icon-inline"><span class="icon cog-6-tooth" /></span>
-                                <span class="hide-mobile">{"Settings"}</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
                 <div class="app-body">
                     { self.view_page(ctx) }
                 </div>
@@ -222,5 +190,78 @@ impl App {
             Route::Search => html! { <Search {onerror} {on_navigate} /> },
             Route::Settings => html! { <Settings {onerror} /> },
         }
+    }
+}
+
+#[derive(Properties, PartialEq)]
+struct ToolbarProps {
+    on_navigate: Callback<Route>,
+}
+
+#[function_component]
+fn Toolbar(props: &ToolbarProps) -> Html {
+    let menu_open = use_state(|| false);
+
+    let on_menu_toggle = {
+        let menu_open = menu_open.clone();
+        Callback::from(move |_| menu_open.set(!*menu_open))
+    };
+
+    let on_nav = {
+        |route: Route| {
+            props.on_navigate.reform({
+                let menu_open = menu_open.clone();
+
+                move |_| {
+                    menu_open.set(false);
+                    route.clone()
+                }
+            })
+        }
+    };
+
+    html! {
+        <div class="toolbar">
+            <div class="toolbar-inner desktop-row-fill mobile-column">
+                <div class="row-fill">
+                    <div class="row">
+                        <span class="site-title">{"OnTV"}</span>
+                    </div>
+
+                    <div class="row end hide-desktop">
+                        <button class="btn" onclick={on_menu_toggle} title="Settings">
+                            <span class="icon-inline"><span class={classes!("icon", if *menu_open { "ellipsis-horizontal" } else { "bars-3" })} /></span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class={classes!("desktop-row", "mobile-column", "end", (!*menu_open).then_some("hide-mobile"))}>
+                    <button onclick={on_nav(Route::Dashboard(DashboardQuery::default()))} class="btn" title="Dashboard">
+                        <span class="icon-inline"><span class="icon rectangle-stack" /></span>
+                        <span>{"Dashboard"}</span>
+                    </button>
+                    <button onclick={on_nav(Route::Queue)} class="btn" title="Queue">
+                        <span class="icon-inline"><span class="icon queue-list" /></span>
+                        <span>{"Queue"}</span>
+                    </button>
+                    <button onclick={on_nav(Route::Series(PagedQuery::default()))} class="btn" title="Series">
+                        <span class="icon-inline"><span class="icon tv" /></span>
+                        <span>{"Series"}</span>
+                    </button>
+                    <button onclick={on_nav(Route::Movies(PagedQuery::default()))} class="btn" title="Movies">
+                        <span class="icon-inline"><span class="icon film" /></span>
+                        <span>{"Movies"}</span>
+                    </button>
+                    <button onclick={on_nav(Route::Search)} class="btn" title="Search">
+                        <span class="icon-inline"><span class="icon magnifying-glass" /></span>
+                        <span>{"Search"}</span>
+                    </button>
+                    <button onclick={on_nav(Route::Settings)} class="btn" title="Settings">
+                        <span class="icon-inline"><span class="icon cog-6-tooth" /></span>
+                        <span>{"Settings"}</span>
+                    </button>
+                </div>
+            </div>
+        </div>
     }
 }

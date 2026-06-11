@@ -277,12 +277,12 @@ impl Component for SeriesDetail {
                             if series.tracked {
                                 <button class="btn" onclick={link.callback(|_| Msg::SetTracked(false))} title="Track series">
                                     <span class="icon-inline"><span class="icon eye" /></span>
-                                    <span class="hide-desktop">{"Track"}</span>
+                                    <span class="hide-desktop">{"Tracking"}</span>
                                 </button>
                             } else {
                                 <button class="btn" onclick={link.callback(|_| Msg::SetTracked(true))} title="Untrack series">
                                     <span class="icon-inline"><span class="icon eye-slash" /></span>
-                                    <span class="hide-desktop">{"Untrack"}</span>
+                                    <span class="hide-desktop">{"Not tracking"}</span>
                                 </button>
                             }
 
