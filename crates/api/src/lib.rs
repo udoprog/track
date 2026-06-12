@@ -2080,6 +2080,9 @@ pub enum PendingKind {
 #[musli(crate = musli_core)]
 pub struct AddPendingRequest {
     pub kind: PendingKind,
+    /// When the pending slot should be dated: `Now`, or when the episode aired
+    /// / movie was released (`WhenAired`).
+    pub mark_time: MarkTime,
 }
 
 #[derive(Debug, Encode, Decode)]

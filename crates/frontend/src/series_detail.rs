@@ -22,6 +22,7 @@ pub(super) struct SeriesDetail {
     selected: Option<api::SeasonNumber>,
     expanded_seasons: bool,
     episodes: Vec<api::Episode>,
+    pending_episode: Option<String>,
     view_orphaned: bool,
     confirm_remove: bool,
     syncing: bool,
@@ -29,6 +30,7 @@ pub(super) struct SeriesDetail {
     episode_actions_expanded: HashSet<api::EpisodeId>,
     confirm_remove_watch: Option<api::WatchedId>,
     confirming_mark_watch: Option<api::EpisodeId>,
+    confirming_pending: Option<api::EpisodeId>,
     select_mark_remaining: bool,
     watched_by_episode: HashMap<api::EpisodeId, Vec<api::WatchedEpisode>>,
     history_expanded: HashSet<api::EpisodeId>,
@@ -93,7 +95,9 @@ pub(super) enum Msg {
     SyncDone(Result<ws::Packet<api::SyncSeries>, ws::Error>),
     ToggleHistory(api::EpisodeId),
     WatchedLoaded(Result<ws::Packet<api::ListEpisodesWatched>, ws::Error>),
-    OnWatchNext(api::EpisodeId),
+    AskWatchNext(api::EpisodeId),
+    CancelWatchNext(api::EpisodeId),
+    OnWatchNext(api::EpisodeId, api::MarkTime),
     AddPendingDone(Result<ws::Packet<api::AddPending>, ws::Error>),
     OnRemoveNext(api::EpisodeId),
     RemovePendingDone(Result<ws::Packet<api::RemovePending>, ws::Error>),
@@ -177,6 +181,7 @@ impl Component for SeriesDetail {
             selected: None,
             expanded_seasons: false,
             episodes: Vec::new(),
+            pending_episode: None,
             view_orphaned: false,
             confirm_remove: false,
             syncing: false,
@@ -184,6 +189,7 @@ impl Component for SeriesDetail {
             episode_actions_expanded: HashSet::new(),
             confirm_remove_watch: None,
             confirming_mark_watch: None,
+            confirming_pending: None,
             select_mark_remaining: false,
             watched_by_episode: HashMap::new(),
             history_expanded: HashSet::new(),
@@ -348,6 +354,7 @@ impl Component for SeriesDetail {
             self.selected = None;
             self.expanded_seasons = false;
             self.episodes.clear();
+            self.pending_episode = None;
             self.confirm_remove = false;
             self.syncing = false;
             self.confirm_remove_watch = None;
@@ -364,6 +371,7 @@ impl Component for SeriesDetail {
         {
             self.selected = Some(season);
             self.episodes.clear();
+            self.pending_episode = None;
             self.confirm_remove_watch = None;
             self.watched_by_episode.clear();
 
@@ -382,6 +390,7 @@ impl SeriesDetail {
         match msg {
             Msg::Channel(result) => {
                 self.channel = result?;
+
                 if self.channel.id() != ws::ChannelId::NONE {
                     self.load_series(ctx);
                     self.load_seasons(ctx);
@@ -390,8 +399,10 @@ impl SeriesDetail {
                     self.series = None;
                     self.seasons.clear();
                     self.episodes.clear();
+                    self.pending_episode = None;
                     self.orphaned.clear();
                 }
+
                 Ok(true)
             }
             Msg::AppBroadcast(packet) => {
@@ -415,6 +426,7 @@ impl SeriesDetail {
                         if self.channel.id() != ws::ChannelId::NONE {
                             self.load_seasons(ctx);
                         }
+
                         Ok(false)
                     }
                     api::AppEventKind::EpisodesChanged { series_id, season }
@@ -555,6 +567,11 @@ impl SeriesDetail {
                 self.watched_by_episode.clear();
 
                 self.episodes = result.episodes;
+                self.pending_episode = self
+                    .episodes
+                    .iter()
+                    .find(|e| e.pending)
+                    .map(|e| format!("s{}e{}", e.season.ordinal(), e.episode));
 
                 for w in result.watched {
                     self.watched_by_episode
@@ -786,8 +803,19 @@ impl SeriesDetail {
 
                 Ok(true)
             }
-            Msg::OnWatchNext(episode_id) => {
+            Msg::AskWatchNext(episode_id) => {
+                self.confirming_pending = Some(episode_id);
+                self.confirming_mark_watch = None;
+                Ok(true)
+            }
+            Msg::CancelWatchNext(episode_id) => {
                 self.episode_actions_expanded.remove(&episode_id);
+                self.confirming_pending = None;
+                Ok(true)
+            }
+            Msg::OnWatchNext(episode_id, mark_time) => {
+                self.episode_actions_expanded.remove(&episode_id);
+                self.confirming_pending = None;
 
                 let series_id = ctx.props().series_id;
 
@@ -799,11 +827,12 @@ impl SeriesDetail {
                             series: series_id,
                             episode: episode_id,
                         },
+                        mark_time,
                     })
                     .on_packet(ctx.link().callback(Msg::AddPendingDone))
                     .send();
 
-                Ok(false)
+                Ok(true)
             }
             Msg::AddPendingDone(result) => {
                 result.context(Message::SyncingSeries)?;
@@ -1334,6 +1363,13 @@ impl SeriesDetail {
                                         </button>
                                     }
 
+                                    if let Some(ref pending) = self.pending_episode {
+                                        <a class="btn-primary" href={format!("#{pending}")} title="Jump to pending episode">
+                                            <span class="item-inline"><span class="icon bookmark" /></span>
+                                            <span class="hide-mobile">{"Jump to pending"}</span>
+                                        </a>
+                                    }
+
                                     if !self.view_orphaned && watched_count < total {
                                         <button class="btn-success" onclick={link.callback(move |_| Msg::MarkRemainingWatch)} title="Mark remaining episodes as watched">
                                             <span class="item-inline"><span class="icon check" /></span>
@@ -1375,15 +1411,27 @@ impl SeriesDetail {
 
         let history_expanded = self.history_expanded.contains(&episode_id);
         let confirming_mark = self.confirming_mark_watch == Some(episode_id);
+        let confirming_pending = self.confirming_pending == Some(episode_id);
         let on_ask_mark = link.callback(move |_| Msg::AskMarkWatched(episode_id));
         let on_toggle_history =
             (!watched.is_empty()).then(|| link.callback(move |_| Msg::ToggleHistory(episode_id)));
+
+        // If the episode has already aired, let the user pick whether the
+        // pending slot is dated now or at the air date; otherwise just set it.
+        let now = api::Timestamp::now();
+
+        let aired_in_past = episode.aired.is_some_and(|a| a <= now);
 
         let actions_expanded = self.episode_actions_expanded.contains(&episode_id);
 
         let toggle_pending = move |mobile: bool| {
             let on_remove_next = link.callback(move |_| Msg::OnRemoveNext(episode_id));
-            let on_watch_next = link.callback(move |_| Msg::OnWatchNext(episode_id));
+
+            let on_watch_next = if aired_in_past {
+                link.callback(move |_| Msg::AskWatchNext(episode_id))
+            } else {
+                link.callback(move |_| Msg::OnWatchNext(episode_id, api::MarkTime::WhenAired))
+            };
 
             html! {
                 if episode.pending {
@@ -1413,7 +1461,7 @@ impl SeriesDetail {
 
                 if let Some(on_toggle) = on_toggle_history {
                     <button class="btn" onclick={on_toggle} title={if history_expanded { "Hide watch history" } else { "Show watch history" }}>
-                        <span class={if history_expanded { "ellipsis-horizontal" } else { "icon clock" }} />
+                        <span class={classes!("icon", if history_expanded { "ellipsis-horizontal" } else { "clock" })} />
                         <span class="hide-desktop">{if history_expanded { "History" } else { "Show history" }}</span>
                     </button>
                 }
@@ -1424,8 +1472,20 @@ impl SeriesDetail {
             if confirming_mark {
                 break 'actions html! {
                     <MarkWatchedPicker
+                        class="lg"
                         on_confirm={link.callback(move |mark_time| Msg::MarkWatched(series_id, episode_id, mark_time))}
                         on_cancel={link.callback(move |_| Msg::CancelMarkWatch(episode_id))}
+                    />
+                };
+            }
+
+            if confirming_pending {
+                break 'actions html! {
+                    <MarkWatchedPicker
+                        class="lg"
+                        prompt="Pending since when?"
+                        on_confirm={link.callback(move |mark_time| Msg::OnWatchNext(episode_id, mark_time))}
+                        on_cancel={link.callback(move |_| Msg::CancelWatchNext(episode_id))}
                     />
                 };
             }
@@ -1480,7 +1540,7 @@ impl SeriesDetail {
         };
 
         html! {
-            <div class={classes!("episode", (!watched.is_empty()).then_some("watched"))}>
+            <div class={classes!("episode", (!watched.is_empty()).then_some("watched"))} id={format!("s{}e{}", episode.season.ordinal(), episode.episode)}>
                 <Image class="screenshot" src={episode.screenshot.clone()} />
 
                 <a class="episode-code">

@@ -154,6 +154,13 @@ pub(super) fn ConfirmDanger(props: &ConfirmDangerProps) -> Html {
 pub(super) struct MarkWatchedPickerProps {
     #[prop_or_default]
     pub(super) class: Classes,
+    /// Heading shown above the choices. Defaults to "Watched when?".
+    #[prop_or(AttrValue::Static("Watched when?"))]
+    pub(super) prompt: AttrValue,
+    /// Label for the "when aired" choice. Defaults to "Aired"; movies pass
+    /// "Released" since "aired" reads oddly for them.
+    #[prop_or(AttrValue::Static("Aired"))]
+    pub(super) aired_label: AttrValue,
     pub(super) on_confirm: Callback<api::MarkTime>,
     pub(super) on_cancel: Callback<()>,
 }
@@ -176,7 +183,7 @@ pub(super) fn MarkWatchedPicker(props: &MarkWatchedPickerProps) -> Html {
 
     html! {
         <div class={classes!("row-fill", "fill", &props.class)}>
-            <span>{"Watched when?"}</span>
+            <span>{&props.prompt}</span>
 
             <div class="end">
                 <div class="input-group">
@@ -191,7 +198,7 @@ pub(super) fn MarkWatchedPicker(props: &MarkWatchedPickerProps) -> Html {
 
                     <button class="btn" onclick={on_aired} title="Watched when aired">
                         <span class="item-inline"><span class="icon clock" /></span>
-                        {"Aired"}
+                        {&props.aired_label}
                     </button>
                 </div>
             </div>

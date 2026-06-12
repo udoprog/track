@@ -75,9 +75,10 @@ impl Component for Root {
         let style = self.background.style();
 
         html! {
-            <div class="background" {style}>
+            <>
+                <div class="background" {style} />
                 <App error={self.error.clone()} {route} {onerror} {on_navigate} {on_background} />
-            </div>
+            </>
         }
     }
 }

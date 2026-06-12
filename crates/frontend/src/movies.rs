@@ -286,6 +286,7 @@ impl MoviesList {
                     <div class="column fill top">
                         if self.confirming_watch == Some(movie_id) {
                             <MarkWatchedPicker
+                                aired_label="Released"
                                 on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(movie_id, mark_time))}
                                 on_cancel={ctx.link().callback(|_| Msg::CancelMarkWatch)}
                             />

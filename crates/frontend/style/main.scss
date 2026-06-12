@@ -2,6 +2,8 @@
 $monospace-font: 'SF Mono', Consolas, 'SF Mono Regular', monospace;
 $sans-serif-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 
+$page-width: 960px;
+
 $bg-dark: #222;
 $bg-site: #525252;
 $bg-dark-transparent: rgba(0, 0, 0, 0.75);
@@ -63,10 +65,10 @@ $bold-weight: 500;
 
 html,
 body {
+    position: fixed;
+    inset: 0;
     margin: 0;
     padding: 0;
-    height: 100%;
-    overflow: hidden;
     background: $bg-site;
     color: $text-primary;
     font-family: $sans-serif-font;
@@ -80,42 +82,40 @@ p {
     padding: 0;
 }
 
-#app {
-    height: 100%;
-    overflow: hidden;
-}
-
 .clickable {
     cursor: pointer;
     user-select: none;
 }
 
-.app {
-    display: grid;
-    grid-template-rows: auto 1fr;
-    height: 100%;
-}
-
 .toolbar {
-    min-height: $input-height;
-
-    @include g.until-mobile {
-        min-height: $input-height-touch;
-    }
-}
-
-.toolbar-inner {
     display: flex;
-    max-width: 960px;
     margin: 0 auto;
     gap: $gap-sm;
     padding: $padding-row $gap;
-    background: $bg-dark-transparent;
 
     @include g.until-mobile {
         padding: $padding-row;
         gap: $padding;
     }
+}
+
+#application {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    grid-template-rows: min-content 1fr;
+    background: $bg-dark-transparent;
+    max-width: $page-width;
+    margin: 0 auto;
+}
+
+.page {
+    display: flex;
+    flex-direction: column;
+    fill: 1;
+    padding: $gap;
+    gap: $gap;
+    overflow-y: auto;
 }
 
 @mixin row-base {
@@ -205,12 +205,11 @@ p {
 }
 
 @mixin row-fill-base {
-    display: flex;
-    flex-direction: row;
+    @include row-base;
+
     flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
-    gap: $gap-sm;
 
     &.reverse {
         flex-direction: row-reverse;
@@ -222,10 +221,6 @@ p {
 
     .end {
         margin-left: auto;
-    }
-
-    &.align-top {
-        align-items: start;
     }
 }
 
@@ -728,16 +723,16 @@ image {
 
 .background {
     --background: none;
-    position: relative;
+    position: fixed;
+    inset: 0;
     isolation: isolate;
-    overflow: hidden;
-    height: 100%;
     background: $bg-dark;
+    overflow: hidden;
 }
 
 .background::before {
     content: '';
-    position: absolute;
+    position: fixed;
     inset: 0;
     background: var(--background);
     background-size: cover;
@@ -753,20 +748,6 @@ image {
 .background > * {
     position: relative;
     z-index: 1;
-}
-
-.page {
-    display: flex;
-    flex-direction: column;
-    max-width: 960px;
-    width: 100%;
-    margin: 0 auto;
-    padding: $gap;
-    gap: $gap;
-    height: 100%;
-    overflow-y: auto;
-    overflow-anchor: none;
-    background: $bg-dark-transparent;
 }
 
 @mixin input-group-base {

@@ -2016,21 +2016,25 @@ impl Database {
         result.await?
     }
 
-    pub(crate) async fn movie_release_by_type(
-        &self,
-        id: MovieId,
-        ty: ReleaseType,
-    ) -> Result<Option<Timestamp>> {
+    /// Earliest digital or physical release for a movie, used to date a pending
+    /// slot to when the movie became available to watch.
+    pub(crate) async fn earliest_movie_release(&self, id: MovieId) -> Result<Option<Timestamp>> {
         let mut s = self.inner.clone().shared().await;
 
         let result = spawn_blocking(move || {
-            let stmt = s.movie_release_by_type.bind((id, ty))?;
+            let mut earliest: Option<Timestamp> = None;
 
-            let Some(timestamp) = stmt.first::<Timestamp>()? else {
-                return Ok(None);
-            };
+            for ty in [ReleaseType::Digital, ReleaseType::Physical] {
+                if let Some(ts) = s
+                    .movie_release_by_type
+                    .bind((id, ty))?
+                    .first::<Timestamp>()?
+                {
+                    earliest = Some(earliest.map_or(ts, |e| e.min(ts)));
+                }
+            }
 
-            Ok(Some(timestamp))
+            Ok(earliest)
         });
 
         result.await?

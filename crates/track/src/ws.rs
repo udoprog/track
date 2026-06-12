@@ -1017,27 +1017,33 @@ impl WsHandler {
 
                 match req.kind {
                     api::PendingKind::Episode { series, episode } => {
-                        let now = api::Timestamp::now();
+                        let ts = match req.mark_time {
+                            api::MarkTime::Now => api::Timestamp::now(),
+                            api::MarkTime::WhenAired => {
+                                let Some(aired) = self.db.episode_aired_by_id(episode).await?
+                                else {
+                                    anyhow::bail!("Episode does not have an aired date");
+                                };
 
-                        let Some(ts) = self.db.episode_aired_by_id(episode).await? else {
-                            anyhow::bail!("Episode does not have an aired date");
+                                aired
+                            }
                         };
 
-                        let ts = ts.max(now);
                         self.db.add_pending_episode(series, episode, ts).await?;
                     }
                     api::PendingKind::Movie { movie } => {
-                        let now = api::Timestamp::now();
+                        let ts = match req.mark_time {
+                            api::MarkTime::Now => api::Timestamp::now(),
+                            api::MarkTime::WhenAired => {
+                                let Some(released) = self.db.earliest_movie_release(movie).await?
+                                else {
+                                    anyhow::bail!("Movie does not have a release date");
+                                };
 
-                        let Some(released) = self
-                            .db
-                            .movie_release_by_type(movie, api::ReleaseType::Digital)
-                            .await?
-                        else {
-                            anyhow::bail!("Movie does not have a release date");
+                                released
+                            }
                         };
 
-                        let ts = released.max(now);
                         self.db.add_pending_movie(movie, ts).await?;
                     }
                 }

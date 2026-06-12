@@ -21,6 +21,7 @@ pub(super) struct MovieDetail {
     watched: Vec<api::Watched>,
     confirm_remove: bool,
     confirm_mark_watch: bool,
+    confirm_pending: bool,
     confirm_remove_watch: Option<api::WatchedId>,
     syncing: bool,
     actions_expanded: bool,
@@ -95,7 +96,9 @@ pub(super) enum Msg {
     ),
     SetTracked(bool),
     SetTrackedDone(bool, Result<ws::Packet<api::UntrackMovie>, ws::Error>),
-    OnWatchNext,
+    AskWatchNext,
+    CancelWatchNext,
+    OnWatchNext(api::MarkTime),
     AddPendingDone(Result<ws::Packet<api::AddPending>, ws::Error>),
     OnRemoveNext,
     RemovePendingDone(Result<ws::Packet<api::RemovePending>, ws::Error>),
@@ -143,6 +146,7 @@ impl Component for MovieDetail {
             watched: Vec::new(),
             confirm_remove: false,
             confirm_mark_watch: false,
+            confirm_pending: false,
             confirm_remove_watch: None,
             syncing: false,
             actions_expanded: false,
@@ -473,17 +477,28 @@ impl MovieDetail {
 
                 Ok(true)
             }
-            Msg::OnWatchNext => {
+            Msg::AskWatchNext => {
+                self.confirm_pending = true;
+                self.confirm_mark_watch = false;
+                Ok(true)
+            }
+            Msg::CancelWatchNext => {
+                self.confirm_pending = false;
+                Ok(true)
+            }
+            Msg::OnWatchNext(mark_time) => {
+                self.confirm_pending = false;
                 let movie = ctx.props().movie_id;
                 self._pending_req = self
                     .channel
                     .request()
                     .body(api::AddPendingRequest {
                         kind: api::PendingKind::Movie { movie },
+                        mark_time,
                     })
                     .on_packet(ctx.link().callback(Msg::AddPendingDone))
                     .send();
-                Ok(false)
+                Ok(true)
             }
             Msg::AddPendingDone(result) => {
                 result.context(Message::SyncingSeries)?;
@@ -747,9 +762,26 @@ impl MovieDetail {
         let movie_id = ctx.props().movie_id;
         let link = ctx.link();
 
+        // If the movie has already had a digital or physical release, let the
+        // user pick whether the pending slot is dated now or at that release;
+        // otherwise just set it.
+        let now = api::Timestamp::now();
+
+        let released_in_past = movie.releases.iter().any(|r| {
+            matches!(
+                r.release_type,
+                api::ReleaseType::Digital | api::ReleaseType::Physical
+            ) && r.timestamp <= now
+        });
+
         let toggle_pending = move |mobile: bool| {
             let on_remove_next = link.callback(move |_| Msg::OnRemoveNext);
-            let on_watch_next = link.callback(move |_| Msg::OnWatchNext);
+
+            let on_watch_next = if released_in_past {
+                link.callback(move |_| Msg::AskWatchNext)
+            } else {
+                link.callback(move |_| Msg::OnWatchNext(api::MarkTime::WhenAired))
+            };
 
             html! {
                 if movie.pending {
@@ -773,8 +805,22 @@ impl MovieDetail {
                 break 'actions html! {
                     <div class="row actions">
                         <MarkWatchedPicker
+                            aired_label="Released"
                             on_confirm={link.callback(Msg::MarkWatched)}
                             on_cancel={link.callback(|_| Msg::CancelMarkWatch)}
+                        />
+                    </div>
+                };
+            }
+
+            if self.confirm_pending {
+                break 'actions html! {
+                    <div class="row actions">
+                        <MarkWatchedPicker
+                            prompt="Pending since when?"
+                            aired_label="Released"
+                            on_confirm={link.callback(Msg::OnWatchNext)}
+                            on_cancel={link.callback(|_| Msg::CancelWatchNext)}
                         />
                     </div>
                 };
@@ -784,7 +830,7 @@ impl MovieDetail {
                 <div class="actions row-fill">
                     <div class="column fill">
                         <div class="row-fill">
-                            <div class="row">
+                            <div class="row lg">
                                 if !self.watched.is_empty() {
                                     <span class="item-inline-lg" title="Watched"><span class="icon primary check-circle" /></span>
                                 } else {

@@ -375,6 +375,12 @@ impl Dashboard {
             api::PendingKind::Movie { movie } => api::WatchedKind::Movie { movie },
         };
 
+        // "Aired" reads oddly for movies; label that choice "Released" instead.
+        let aired_label = match p.kind {
+            api::PendingKind::Episode { .. } => "Aired",
+            api::PendingKind::Movie { .. } => "Released",
+        };
+
         let on_navigate = ctx.link().callback({
             let route = route.clone();
             move |_| Msg::Navigate(route.clone())
@@ -431,6 +437,7 @@ impl Dashboard {
             if confirming_watch {
                 break 'actions html! {
                     <MarkWatchedPicker
+                        {aired_label}
                         on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(kind, mark_time))}
                         on_cancel={ctx.link().callback(|_| Msg::CancelMarkWatch)}
                     />
