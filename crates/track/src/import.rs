@@ -326,7 +326,8 @@ pub async fn import() -> Result<()> {
     let source = expand_tilde(&args.source);
 
     tracing::info!("Opening database at {}", args.db.display());
-    let db = Database::open(&args.db, OpenMode::Bulk)
+
+    let db = Database::open(&args.db, OpenMode::Bulk, 1)
         .with_context(|| anyhow!("Opening database at {}", args.db.display()))?;
 
     // Maps from old UUID → new SQLite rowid

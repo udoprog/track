@@ -24,6 +24,10 @@ use crate::web::{self, AppState};
 #[derive(Parser)]
 #[command(version, about = "Track web server")]
 struct Args {
+    /// Number of concurrent read connections to the database.
+    #[arg(long, default_value_t = 16)]
+    read_concurrency: usize,
+
     /// Path to the SQLite database file.
     #[arg(long, default_value = "track.db")]
     db: PathBuf,
@@ -54,7 +58,7 @@ pub async fn server() -> Result<ExitCode> {
 
     tracing_subscriber::fmt().with_env_filter(filter).init();
 
-    let db = Database::open(&args.db, OpenMode::Normal)
+    let db = Database::open(&args.db, OpenMode::Normal, args.read_concurrency)
         .with_context(|| anyhow!("Opening database at {}", args.db.display()))?;
 
     let http = reqwest::Client::builder()
