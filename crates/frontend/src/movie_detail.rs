@@ -4,11 +4,12 @@ use musli_web::web03::prelude::*;
 use std::collections::{BTreeMap, HashSet};
 use yew::prelude::*;
 
-use crate::error::{CustomContext, Error, Message, RcError};
+use crate::background::Background;
+use crate::error::{CustomContext, Error, Message};
 use crate::router::{PagedQuery, Route};
 use crate::ui::{
-    ConfirmDanger, ErrorBox, LanguagePicker, LoadingPage, MarkWatchedPicker, RemoteEditor,
-    RemoteSourceKind, RemoteSourceSelect, Tracked,
+    ConfirmDanger, LanguagePicker, Loading, MarkWatchedPicker, RemoteEditor, RemoteSourceKind,
+    RemoteSourceSelect, Tracked,
 };
 use crate::{Image, ImageGallery, ImageItem, Modal, SetupChannel};
 
@@ -28,6 +29,7 @@ pub(super) struct MovieDetail {
     movie_releases: Vec<(api::ReleaseType, Vec<api::MovieRelease>)>,
     image_modal: bool,
     remote_editor: bool,
+    background: Background,
     tz: TimeZone,
     _tz_handle: ContextHandle<TimeZone>,
     _setup: SetupChannel,
@@ -102,7 +104,6 @@ pub(super) enum Msg {
 
 #[derive(Properties, PartialEq)]
 pub(super) struct Props {
-    pub(super) error: Option<RcError>,
     pub(super) onerror: Callback<Option<Error>>,
     pub(super) movie_id: api::MovieId,
     pub(super) on_navigate: Callback<Route>,
@@ -126,6 +127,11 @@ impl Component for MovieDetail {
             .context::<TimeZone>(ctx.link().callback(Msg::SetTz))
             .expect("time zone not found");
 
+        let (background, _) = ctx
+            .link()
+            .context::<Background>(Callback::noop())
+            .expect("background context not found");
+
         Self {
             countries: Countries::new(),
             channel: ws::Channel::default(),
@@ -142,6 +148,7 @@ impl Component for MovieDetail {
             movie_releases: Vec::new(),
             image_modal: false,
             remote_editor: false,
+            background,
             tz,
             _tz_handle,
             _setup,
@@ -174,28 +181,15 @@ impl Component for MovieDetail {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let Some(ref movie) = self.movie else {
-            return html!(<LoadingPage />);
+            return html!(<Loading />);
         };
 
-        let url = movie.backdrop.as_ref().map(|i| i.proxy_url());
-
-        let style = url
-            .as_ref()
-            .map(|url| format!("--background: url('{}')", url))
-            .unwrap_or_default();
-
         html! {
-            <div class="page-container" {style}>
-                <div class="page">
-                    if let Some(ref error) = ctx.props().error {
-                        <ErrorBox error={error.clone()} onclearerror={ctx.props().onerror.reform(|()| None)} />
-                    }
+            <>
+                { self.view_header(ctx, movie) }
 
-                    { self.view_header(ctx, movie) }
-
-                    { self.view_body(ctx, movie) }
-                </div>
-            </div>
+                { self.view_body(ctx, movie) }
+            </>
         }
     }
 
@@ -667,6 +661,8 @@ impl MovieDetail {
         }
 
         self.movie_releases = by_type.into_values().collect();
+        self.background
+            .set(movie.backdrop.as_ref().map(|i| i.proxy_url()));
         self.movie = Some(movie);
 
         self.update_graphics();

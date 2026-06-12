@@ -4,7 +4,7 @@ $sans-serif-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helveti
 
 $bg-dark: #222;
 $bg-site: #525252;
-$bg-dark-transparent: rgba(0, 0, 0, 0.6);
+$bg-dark-transparent: rgba(0, 0, 0, 0.75);
 $bg-panel: #2a2a2a;
 $bg-highlight: #2e2e2e;
 $bg-surface: #333;;
@@ -97,7 +97,6 @@ p {
 }
 
 .toolbar {
-    background: $bg-dark-transparent;
     min-height: $input-height;
 
     @include g.until-mobile {
@@ -111,6 +110,7 @@ p {
     margin: 0 auto;
     gap: $gap-sm;
     padding: $padding-row $gap;
+    background: $bg-dark-transparent;
 
     @include g.until-mobile {
         padding: $padding-row;
@@ -715,15 +715,16 @@ image {
     }
 }
 
-.page-container {
+.background {
     --background: none;
     position: relative;
     isolation: isolate;
     overflow: hidden;
+    height: 100%;
     background: $bg-dark;
 }
 
-.page-container::before {
+.background::before {
     content: '';
     position: absolute;
     inset: 0;
@@ -738,7 +739,7 @@ image {
     z-index: 0;
 }
 
-.page-container > * {
+.background > * {
     position: relative;
     z-index: 1;
 }

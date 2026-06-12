@@ -5,11 +5,12 @@ use yew::prelude::*;
 
 use api::{HasAired, TimeZone};
 
-use crate::error::{CustomContext, Error, Message, RcError};
+use crate::background::Background;
+use crate::error::{CustomContext, Error, Message};
 use crate::router::{PagedQuery, Route, SeriesDetailQuery};
 use crate::ui::{
-    ConfirmDanger, EpisodePicker, ErrorBox, LanguagePicker, LoadingPage, MarkWatchedPicker,
-    RemoteEditor, RemoteSourceKind, RemoteSourceSelect, Tracked,
+    ConfirmDanger, EpisodePicker, LanguagePicker, Loading, MarkWatchedPicker, RemoteEditor,
+    RemoteSourceKind, RemoteSourceSelect, Tracked,
 };
 use crate::{Image, ImageGallery, ImageItem, Modal, SetupChannel};
 
@@ -35,6 +36,7 @@ pub(super) struct SeriesDetail {
     fixing_watched: Option<api::WatchedId>,
     image_modal: bool,
     remote_editor: bool,
+    background: Background,
     tz: TimeZone,
     _tz_handle: ContextHandle<TimeZone>,
     _setup: SetupChannel,
@@ -128,7 +130,6 @@ pub(super) enum Msg {
 
 #[derive(Properties, PartialEq)]
 pub(super) struct Props {
-    pub(super) error: Option<RcError>,
     pub(super) onerror: Callback<Option<Error>>,
     pub(super) series_id: api::SeriesId,
     #[prop_or_default]
@@ -154,6 +155,11 @@ impl Component for SeriesDetail {
             .context::<TimeZone>(ctx.link().callback(Msg::SetTz))
             .expect("time zone not found");
 
+        let (background, _) = ctx
+            .link()
+            .context::<Background>(Callback::noop())
+            .expect("background context not found");
+
         Self {
             channel: ws::Channel::default(),
             series: None,
@@ -176,6 +182,7 @@ impl Component for SeriesDetail {
             fixing_watched: None,
             image_modal: false,
             remote_editor: false,
+            background,
             tz,
             _tz_handle,
             _setup,
@@ -213,17 +220,10 @@ impl Component for SeriesDetail {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let (Some(series), Some(season)) = (&self.series, self.selected) else {
-            return html!(<LoadingPage />);
+            return html!(<Loading />);
         };
 
         let link = ctx.link();
-
-        let url = series.backdrop.as_ref().map(|i| i.proxy_url());
-
-        let style = url
-            .as_ref()
-            .map(|url| format!("--background: url('{}')", url))
-            .unwrap_or_default();
 
         let actions = 'actions: {
             if self.confirm_remove {
@@ -307,42 +307,36 @@ impl Component for SeriesDetail {
         };
 
         html! {
-            <div class="page-container" {style}>
-                <div class="page">
-                    if let Some(ref error) = ctx.props().error {
-                        <ErrorBox error={error.clone()} onclearerror={ctx.props().onerror.reform(|()| None)} />
-                    }
+            <>
+                { self.view_header(ctx, series) }
 
-                    { self.view_header(ctx, series) }
-
-                    <div class={classes!("desktop-row-fill", "mobile-column", "actions", (!self.actions_expanded).then_some("hide-mobile"))}>
-                        {actions}
-                    </div>
-
-                    <div class="detail-layout">
-                        <Image class="banner hide-desktop" src={series.banner.clone()} />
-
-                        { self.view_sidebar(ctx, series) }
-
-                        { self.view_episodes(ctx, season) }
-                    </div>
-
-                    if self.image_modal {
-                        { self.view_image_modal(ctx) }
-                    }
-
-                    if self.remote_editor {
-                        <RemoteEditor
-                            title={series.title.as_deref().unwrap_or("Untitled Series").to_owned()}
-                            remotes={series.remotes.clone()}
-                            on_add={link.callback(Msg::AddRemote)}
-                            on_edit={link.callback(|(old, new)| Msg::EditRemote(old, new))}
-                            on_remove={link.callback(Msg::RemoveRemote)}
-                            on_close={link.callback(|_| Msg::CloseRemoteEditor)}
-                        />
-                    }
+                <div class={classes!("desktop-row-fill", "mobile-column", "actions", (!self.actions_expanded).then_some("hide-mobile"))}>
+                    {actions}
                 </div>
-            </div>
+
+                <div class="detail-layout">
+                    <Image class="banner hide-desktop" src={series.banner.clone()} />
+
+                    { self.view_sidebar(ctx, series) }
+
+                    { self.view_episodes(ctx, season) }
+                </div>
+
+                if self.image_modal {
+                    { self.view_image_modal(ctx) }
+                }
+
+                if self.remote_editor {
+                    <RemoteEditor
+                        title={series.title.as_deref().unwrap_or("Untitled Series").to_owned()}
+                        remotes={series.remotes.clone()}
+                        on_add={link.callback(Msg::AddRemote)}
+                        on_edit={link.callback(|(old, new)| Msg::EditRemote(old, new))}
+                        on_remove={link.callback(Msg::RemoveRemote)}
+                        on_close={link.callback(|_| Msg::CloseRemoteEditor)}
+                    />
+                }
+            </>
         }
     }
 
@@ -408,6 +402,8 @@ impl SeriesDetail {
                     api::AppEventKind::SeriesChanged { series }
                         if series.id == ctx.props().series_id =>
                     {
+                        self.background
+                            .set(series.backdrop.as_ref().map(|i| i.proxy_url()));
                         self.series = Some(series.clone());
                         self.update_graphics();
                         Ok(true)
@@ -494,6 +490,8 @@ impl SeriesDetail {
                     .decode()
                     .context(Message::LoadingSeries)?;
 
+                self.background
+                    .set(series.backdrop.as_ref().map(|i| i.proxy_url()));
                 self.series = Some(series);
                 self.update_graphics();
                 Ok(true)

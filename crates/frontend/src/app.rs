@@ -3,10 +3,11 @@ use jiff::tz::TimeZone as JiffTimeZone;
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
+use crate::background::Background;
 use crate::error::{CustomContext, Error, Message, RcError};
 use crate::router::{DashboardQuery, PagedQuery, Route, SearchQuery};
 use crate::setup_channel::SetupChannel;
-use crate::ui::LoadingPage;
+use crate::ui::{ErrorBox, Loading};
 use crate::{
     Dashboard, MovieDetail, MoviesList, Queue, Search, SeriesDetail, SeriesList, Settings,
 };
@@ -34,6 +35,7 @@ pub(super) struct Props {
     pub(super) onerror: Callback<Option<Error>>,
     pub(super) route: Route,
     pub(super) on_navigate: Callback<Route>,
+    pub(super) on_background: Callback<String>,
 }
 
 impl Component for App {
@@ -76,21 +78,32 @@ impl Component for App {
     fn view(&self, ctx: &Context<Self>) -> Html {
         let Some(tz) = &self.tz else {
             return html! {
-                <LoadingPage />
+                <div class="page">
+                    <Loading />
+                </div>
             };
         };
 
         let link = ctx.link();
         let on_nav = link.callback(Msg::Navigate);
+        let background = Background::new(ctx.props().on_background.clone());
 
         html! {
             <ContextProvider<TimeZone> context={tz.clone()}>
                 <ContextProvider<ws::Handle> context={self.ws.handle()}>
-                    <div class="app">
-                        <Toolbar on_navigate={on_nav} />
+                    <ContextProvider<Background> context={background}>
+                        <div class="app">
+                            <Toolbar on_navigate={on_nav} />
 
-                        { self.view_page(ctx) }
-                    </div>
+                            <div class="page">
+                                if let Some(error) = &ctx.props().error {
+                                    <ErrorBox error={error.clone()} onclearerror={ctx.props().onerror.reform(|()| None)} />
+                                }
+
+                                { self.view_page(ctx) }
+                            </div>
+                        </div>
+                    </ContextProvider<Background>>
                 </ContextProvider<ws::Handle>>
             </ContextProvider<TimeZone>>
         }
@@ -165,36 +178,35 @@ impl App {
     fn view_page(&self, ctx: &Context<Self>) -> Html {
         let on_navigate = ctx.link().callback(Msg::Navigate);
 
-        let error = ctx.props().error.clone();
         let onerror = ctx.props().onerror.clone();
 
         match &ctx.props().route {
             Route::Dashboard(query) => {
-                html! { <Dashboard {error} {onerror} {on_navigate} page={query.page} /> }
+                html! { <Dashboard {onerror} {on_navigate} page={query.page} /> }
             }
-            Route::Queue => html! { <Queue {error} {onerror} {on_navigate} /> },
+            Route::Queue => html! { <Queue {onerror} {on_navigate} /> },
             Route::Series(query) => html! {
-                <SeriesList {error} {onerror} {on_navigate} page={query.page} filter={query.filter.clone()} />
+                <SeriesList {onerror} {on_navigate} page={query.page} filter={query.filter.clone()} />
             },
             Route::SeriesDetail(series_id, query) => {
                 let series_id = *series_id;
                 let initial_season = query.season;
 
                 html! {
-                    <SeriesDetail {error} {onerror} {series_id} {initial_season} {on_navigate} />
+                    <SeriesDetail {onerror} {series_id} {initial_season} {on_navigate} />
                 }
             }
             Route::Movies(query) => html! {
-                <MoviesList {error} {onerror} {on_navigate} page={query.page} filter={query.filter.clone()} />
+                <MoviesList {onerror} {on_navigate} page={query.page} filter={query.filter.clone()} />
             },
             Route::MovieDetail(movie_id) => {
                 let movie_id = *movie_id;
-                html! { <MovieDetail {error} {onerror} {movie_id} {on_navigate} /> }
+                html! { <MovieDetail {onerror} {movie_id} {on_navigate} /> }
             }
             Route::Search(query) => html! {
-                <Search {error} {onerror} {on_navigate} kind={query.kind} filter={query.filter.clone()} />
+                <Search {onerror} {on_navigate} kind={query.kind} filter={query.filter.clone()} />
             },
-            Route::Settings => html! { <Settings {error} {onerror} /> },
+            Route::Settings => html! { <Settings {onerror} /> },
         }
     }
 }
@@ -246,10 +258,6 @@ fn Toolbar(props: &ToolbarProps) -> Html {
                         <span class="item-inline"><span class="icon rectangle-stack" /></span>
                         <span>{"Dashboard"}</span>
                     </button>
-                    <button onclick={on_nav(Route::Queue)} class="btn" title="Queue">
-                        <span class="item-inline"><span class="icon queue-list" /></span>
-                        <span>{"Queue"}</span>
-                    </button>
                     <button onclick={on_nav(Route::Series(PagedQuery::default()))} class="btn" title="Series">
                         <span class="item-inline"><span class="icon tv" /></span>
                         <span>{"Series"}</span>
@@ -261,6 +269,10 @@ fn Toolbar(props: &ToolbarProps) -> Html {
                     <button onclick={on_nav(Route::Search(SearchQuery::default()))} class="btn" title="Search">
                         <span class="item-inline"><span class="icon magnifying-glass" /></span>
                         <span>{"Search"}</span>
+                    </button>
+                    <button onclick={on_nav(Route::Queue)} class="btn" title="Queue">
+                        <span class="item-inline"><span class="icon queue-list" /></span>
+                        <span>{"Queue"}</span>
                     </button>
                     <button onclick={on_nav(Route::Settings)} class="btn" title="Settings">
                         <span class="item-inline"><span class="icon cog-6-tooth" /></span>

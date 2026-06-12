@@ -2,9 +2,9 @@ use api::TimeZone;
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
-use crate::error::{CustomContext, Error, Message, RcError};
+use crate::error::{CustomContext, Error, Message};
 use crate::router::{PagedQuery, Route, SeriesDetailQuery};
-use crate::ui::{ErrorBox, PaginationButtons};
+use crate::ui::PaginationButtons;
 use crate::{Image, SetupChannel};
 
 const PAGE_SIZE: usize = 20;
@@ -33,7 +33,6 @@ pub(super) enum Msg {
 
 #[derive(Properties, PartialEq)]
 pub(super) struct Props {
-    pub(super) error: Option<RcError>,
     pub(super) onerror: Callback<Option<Error>>,
     pub(super) page: usize,
     pub(super) filter: String,
@@ -109,11 +108,7 @@ impl Component for SeriesList {
         });
 
         html! {
-            <div class="page">
-                if let Some(ref error) = ctx.props().error {
-                    <ErrorBox error={error.clone()} onclearerror={ctx.props().onerror.reform(|()| None)} />
-                }
-
+            <>
                 <div class="page-title row">
                     <span class="fill">{"Series"}</span>
                     <span class="text-muted">{total}</span>
@@ -153,7 +148,7 @@ impl Component for SeriesList {
                         <PaginationButtons page={page} total_pages={total_pages} on_page={link.callback(Msg::SetPage)} />
                     </div>
                 }
-            </div>
+            </>
         }
     }
 }

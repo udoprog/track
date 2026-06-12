@@ -3,9 +3,9 @@ use yew::prelude::*;
 
 use api::{HasAired, TimeZone};
 
-use crate::error::{CustomContext, Error, Message, RcError};
+use crate::error::{CustomContext, Error, Message};
 use crate::router::{DashboardQuery, Route, SeriesDetailQuery};
-use crate::ui::{ConfirmDanger, ErrorBox, MarkWatchedPicker, PaginationButtons};
+use crate::ui::{ConfirmDanger, MarkWatchedPicker, PaginationButtons};
 use crate::{Calendar, Image, SetupChannel};
 
 pub(super) struct Dashboard {
@@ -47,7 +47,6 @@ pub(super) enum Msg {
 
 #[derive(Properties, PartialEq)]
 pub(super) struct Props {
-    pub(super) error: Option<RcError>,
     pub(super) onerror: Callback<Option<Error>>,
     pub(super) on_navigate: Callback<Route>,
     pub(super) page: usize,
@@ -101,11 +100,7 @@ impl Component for Dashboard {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         html! {
-            <div class="page">
-                if let Some(ref error) = ctx.props().error {
-                    <ErrorBox error={error.clone()} onclearerror={ctx.props().onerror.reform(|()| None)} />
-                }
-
+            <>
                 { self.view_pending(ctx) }
 
                 <div class="column">
@@ -116,7 +111,7 @@ impl Component for Dashboard {
                         on_navigate={ctx.props().on_navigate.clone()}
                     />
                 </div>
-            </div>
+            </>
         }
     }
 }

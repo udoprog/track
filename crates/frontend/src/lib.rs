@@ -1,6 +1,7 @@
 #![allow(clippy::type_complexity)]
 
 mod app;
+mod background;
 mod calendar;
 mod dashboard;
 mod error;

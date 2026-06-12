@@ -2,9 +2,8 @@ use musli_web::web03::prelude::*;
 use wasm_bindgen::JsCast as _;
 use yew::prelude::*;
 
-use crate::error::{CustomContext, Error, Message, RcError};
+use crate::error::{CustomContext, Error, Message};
 use crate::router::{Route, SearchQuery, SeriesDetailQuery};
-use crate::ui::ErrorBox;
 use crate::{Image, SetupChannel};
 
 pub(super) struct Search {
@@ -39,7 +38,6 @@ pub(super) enum Msg {
 
 #[derive(Properties, PartialEq)]
 pub(super) struct Props {
-    pub(super) error: Option<RcError>,
     pub(super) onerror: Callback<Option<Error>>,
     pub(super) kind: api::SearchKind,
     pub(super) filter: String,
@@ -140,11 +138,7 @@ impl Component for Search {
         };
 
         html! {
-            <div class="page">
-                if let Some(ref error) = ctx.props().error {
-                    <ErrorBox error={error.clone()} onclearerror={ctx.props().onerror.reform(|()| None)} />
-                }
-
+            <>
                 <div class="page-title">{"Search"}</div>
 
                 <div class="input-group fill">
@@ -175,7 +169,7 @@ impl Component for Search {
                 </div>
 
                 { self.view_results(ctx) }
-            </div>
+            </>
         }
     }
 }

@@ -2,8 +2,8 @@ use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
 use crate::SetupChannel;
-use crate::error::{CustomContext, Error, Message, RcError};
-use crate::ui::{ErrorBox, LanguagePicker};
+use crate::error::{CustomContext, Error, Message};
+use crate::ui::LanguagePicker;
 
 fn tz_is_valid(name: &str) -> bool {
     name.is_empty() || jiff_tzdb::get(name).is_some()
@@ -39,7 +39,6 @@ pub(super) enum Msg {
 
 #[derive(Properties, PartialEq)]
 pub(super) struct Props {
-    pub(super) error: Option<RcError>,
     pub(super) onerror: Callback<Option<Error>>,
 }
 
@@ -134,11 +133,7 @@ impl Component for Settings {
         let theme_val = self.config.theme.to_string();
 
         html! {
-            <form class="page" onsubmit={on_save}>
-                if let Some(ref error) = ctx.props().error {
-                    <ErrorBox error={error.clone()} onclearerror={ctx.props().onerror.reform(|()| None)} />
-                }
-
+            <form onsubmit={on_save} style="display: contents">
                 if self.saving {
                     <div class="box info">
                         <span class="item-inline"><span class="icon arrow-path spin" /></span>

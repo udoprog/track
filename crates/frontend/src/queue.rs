@@ -2,9 +2,9 @@ use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
 use crate::SetupChannel;
-use crate::error::{CustomContext, Error, Message, RcError};
+use crate::error::{CustomContext, Error, Message};
 use crate::router::{Route, SeriesDetailQuery};
-use crate::ui::{ErrorBox, PaginationButtons};
+use crate::ui::PaginationButtons;
 
 const PAGE_SIZE: usize = 20;
 pub(super) struct Queue {
@@ -30,7 +30,6 @@ pub(super) enum Msg {
 
 #[derive(Properties, PartialEq)]
 pub(super) struct Props {
-    pub(super) error: Option<RcError>,
     pub(super) onerror: Callback<Option<Error>>,
     pub(super) on_navigate: Callback<Route>,
 }
@@ -86,16 +85,14 @@ impl Component for Queue {
             .collect();
 
         html! {
-            <div class="page">
-                if let Some(ref error) = ctx.props().error {
-                    <ErrorBox error={error.clone()} onclearerror={ctx.props().onerror.reform(|()| None)} />
-                }
-
+            <>
                 <div class="page-title row">
-                    <span class="fill">{"Sync Queue"}</span>
+                    <span class="fill">{"Queue"}</span>
 
-                    if total_pending > 0 {
-                        <span class="text-muted">{format!("{} pending", total_pending)}</span>
+                    if total_pending == 0 {
+                        <span class="text-muted">{"No pending tasks"}</span>
+                    } else {
+                        <span class="text-muted">{format!("{} pending tasks", total_pending)}</span>
                     }
 
                     <button class="btn" onclick={link.callback(|_| Msg::SyncAll)}
@@ -125,7 +122,7 @@ impl Component for Queue {
                     </div>
                 }
                 { self.view_completed(ctx) }
-            </div>
+            </>
         }
     }
 }
