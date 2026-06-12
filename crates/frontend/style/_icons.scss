@@ -22,6 +22,14 @@
     height: 100%;
     aspect-ratio: 1;
 
+    &.primary {
+        --icon-color: #{$color-primary};
+    }
+
+    &.secondary {
+        --icon-color: #{$color-secondary};
+    }
+
     &.sm {
         height: 80%;
     }

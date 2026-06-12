@@ -13,9 +13,9 @@ $text-primary: #eee;
 $text-muted: #aaa;
 $border-subtle: #333;
 $border-input: #555;
-$color-primary: #97d9e6;
-$color-secondary: #555;
-$color-danger: #c26969;
+$color-primary: #2f72b9;
+$color-secondary: #545e66;
+$color-danger: #a24949;
 $color-danger-bg: #5a1a1a;
 $color-success: #73b173;
 $color-title: #97d9e6;
@@ -37,29 +37,22 @@ $gap-sm: 12px;
 $gap: 16px;
 $input-height: 32px;
 $input-height-sm: 24px;
+$input-height-lg: 44px;
+$input-height-xl: 56px;
 $input-height-touch: 44px;
+$input-height-touch-lg: 44px;
+$input-height-touch-xl: 56px;
 $icon-padding: 8px;
-$icon-inline-padding: 4px;
+$item-inline-padding: 4px;
 
 $sidebar-width: 240px;
 
 @use 'grid' as g;
-@use 'icons';
-@use 'flags';
-@use 'calendar' with (
-    $bg-surface: $bg-surface,
-    $color-primary: $color-primary,
-    $text-primary: $text-primary,
-    $text-muted: $text-muted,
-    $border-subtle: $border-subtle,
-    $radius-sm: $radius-sm,
-    $padding: $padding,
-    $gap-sm: $gap-sm,
-    $font-sm: $font-sm,
-    $font-base: $font-base,
-    $input-height: $input-height,
-    $input-height-touch: $input-height-touch,
-);
+
+@import 'icons';
+@import 'logos';
+@import 'flags';
+@import 'calendar';
 
 *,
 *::before,
@@ -103,8 +96,7 @@ p {
 }
 
 .toolbar {
-    background: $bg-panel;
-    border-bottom: 1px solid $border-subtle;
+    background: $bg-dark-transparent;
     min-height: $input-height;
 
     @include g.until-mobile {
@@ -152,6 +144,10 @@ p {
 
     &.end {
         justify-content: flex-end;
+    }
+
+    &.justify-around {
+        justify-content: space-around;
     }
 }
 
@@ -236,50 +232,40 @@ p {
     }
 }
 
-.icon-inline {
+.item-inline {
     display: inline-flex;
-    width: $input-height;
-    height: $input-height;
-    padding: $icon-inline-padding;
-    margin: -$icon-inline-padding;
     vertical-align: middle;
+    height: $input-height;
+    padding: $item-inline-padding 0;
 
     @include g.until-mobile {
-        width: $input-height-touch;
         height: $input-height-touch;
     }
 }
 
-.flag-inline {
+.item-inline-lg {
     display: inline-flex;
-    width: $input-height;
-    height: $input-height;
-    padding: $icon-inline-padding;
-    margin: -$icon-inline-padding;
     vertical-align: middle;
+    height: $input-height-lg;
+    padding: $item-inline-padding 0;
 
     @include g.until-mobile {
-        width: $input-height-touch;
-        height: $input-height-touch;
+        height: $input-height-touch-lg;
     }
 }
 
-@mixin btn-base($color, $color-selected) {
+.item-inline-source {
+    display: inline-flex;
+    vertical-align: middle;
+    height: $input-height-lg;
+
+    @include g.until-mobile {
+        height: $input-height-touch-lg;
+    }
+}
+
+@mixin btn-base($color, $color-selected, $input-height, $input-height-touch) {
     background: $color;
-
-    &.fill {
-        flex: 1;
-    }
-
-    &.disabled {
-        opacity: 0.5;
-        cursor: default;
-    }
-
-    &.selected {
-        background: $color-selected;
-    }
-
     box-sizing: border-box;
     display: inline-flex;
     gap: 0.25rem;
@@ -295,56 +281,43 @@ p {
     font-size: $font-sm;
     font-family: $sans-serif-font;
 
+    &.fill {
+        flex: 1;
+    }
+
+    &.disabled {
+        opacity: 0.5;
+        cursor: default;
+    }
+
+    &.selected {
+        background: $color-selected;
+    }
+
     @include g.until-mobile {
         height: $input-height-touch;
         min-width: $input-height-touch;
     }
 }
 
-@mixin btn-icon-base($color, $color-selected) {
-    @include btn-base($color, $color-selected);
-
-    padding: $icon-padding;
-    width: $input-height;
-    height: $input-height;
-    justify-content: center;
-
-    @include g.until-mobile {
-        width: $input-height-touch;
-        height: $input-height-touch;
-    }
+.btn {
+    @include btn-base($color-secondary, $color-primary, $input-height, $input-height-touch);
 }
 
-.btn {
-    @include btn-base($color-secondary, $color-primary);
+.btn-lg {
+    @include btn-base($color-secondary, $color-primary, $input-height-lg, $input-height-touch-lg);
 }
 
 .btn-primary {
-    @include btn-base($color-primary, $color-primary);
+    @include btn-base($color-primary, $color-primary, $input-height, $input-height-touch);
 }
 
 .btn-success {
-    @include btn-base($color-success, $color-primary);
+    @include btn-base($color-success, $color-primary, $input-height, $input-height-touch);
 }
 
 .btn-danger {
-    @include btn-base($color-danger, $color-primary);
-}
-
-.btn-icon {
-    @include btn-icon-base($color-secondary, $color-primary);
-}
-
-.btn-icon-primary {
-    @include btn-icon-base($color-primary, $color-primary);
-}
-
-.btn-icon-success {
-    @include btn-icon-base($color-success, $color-primary);
-}
-
-.btn-icon-danger {
-    @include btn-icon-base($color-danger, $color-primary);
+    @include btn-base($color-danger, $color-primary, $input-height, $input-height-touch);
 }
 
 .hide-mobile {
@@ -417,12 +390,20 @@ p {
     font-size: $font-lg;
 }
 
+h1 {
+    color: $color-title;
+    margin: 0;
+    padding: 0;
+    font-size: $font-xl;
+    font-weight: 500;
+}
+
 h2 {
     color: $color-title;
     margin: 0;
     padding: 0;
     font-size: $font-lg;
-    font-weight: 100;
+    font-weight: 500;
 }
 
 h3 {
@@ -692,7 +673,7 @@ image {
     &.error {
         background: $color-danger-bg;
         border: 1px solid $color-danger;
-        color: $color-danger;
+        color: $text-primary;
     }
 
     &.info {

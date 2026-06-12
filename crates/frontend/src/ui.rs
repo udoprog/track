@@ -12,7 +12,7 @@ pub(super) fn LoadingPage() -> Html {
     html! {
         <div class="page">
             <div class="box info">
-                <span class="icon-inline"><span class="icon arrow-path spin" /></span>
+                <span class="item-inline"><span class="icon arrow-path spin" /></span>
                 <span>{"Loading…"}</span>
             </div>
         </div>
@@ -33,7 +33,7 @@ pub(super) fn ErrorBox(props: &ErrorBoxProps) -> Html {
                 { for props.error.sources().map(|e| html! { <p>{e.to_string()}</p> }) }
 
                 <button class="btn-danger" onclick={props.onclearerror.reform(|_| ())}>
-                    <span class="icon-inline"><span class="icon x-mark" /></span>
+                    <span class="item-inline"><span class="icon x-mark" /></span>
                     <span>{"Dismiss"}</span>
                 </button>
             </div>
@@ -53,7 +53,7 @@ pub(super) fn Tracked(props: &TrackedProps) -> Html {
 
     html! {
         <button class="btn" onclick={props.ontoggle.reform(move |_| tracked)} title="Track movie">
-            <span class="icon-inline"><span class={classes!("icon", if tracked { "eye" } else { "eye-slash" })} /></span>
+            <span class="item-inline"><span class={classes!("icon", if tracked { "eye" } else { "eye-slash" })} /></span>
             <span class="hide-desktop">{if  tracked { "Tracking" } else { "Not tracking" }}</span>
         </button>
     }
@@ -81,14 +81,14 @@ pub(super) fn PaginationButtons(props: &PaginationButtonsProps) -> Html {
 
     html! {
         <div class="input-group">
-            <button class="btn-icon" disabled={prev.is_none()}
+            <button class="btn" disabled={prev.is_none()}
                 onclick={Callback::from(move |_| { if let Some(p) = prev { on_page.emit(p); } })}>
                 <span class="icon arrow-left" />
             </button>
 
             <span class="input-text">{format!("{} / {}", page + 1, props.total_pages)}</span>
 
-            <button class="btn-icon" disabled={next.is_none()}
+            <button class="btn" disabled={next.is_none()}
                 onclick={Callback::from(move |_| { if let Some(p) = next { on_page2.emit(p); } })}>
                 <span class="icon arrow-right" />
             </button>
@@ -99,6 +99,7 @@ pub(super) fn PaginationButtons(props: &PaginationButtonsProps) -> Html {
 #[derive(Properties, PartialEq)]
 pub(super) struct ConfirmDangerProps {
     pub(super) prompt: AttrValue,
+    #[prop_or_default]
     pub(super) label: Option<AttrValue>,
     pub(super) on_confirm: Callback<()>,
     pub(super) on_cancel: Callback<()>,
@@ -180,17 +181,17 @@ pub(super) fn MarkWatchedPicker(props: &MarkWatchedPickerProps) -> Html {
 
             <div class="end">
                 <div class="input-group">
-                    <button class="btn-icon" onclick={on_cancel} title="Cancel">
+                    <button class="btn" onclick={on_cancel} title="Cancel">
                         <span class="icon x-mark" />
                     </button>
 
                     <button class="btn-success" onclick={on_now} title="Watched now">
-                        <span class="icon-inline"><span class="icon check" /></span>
+                        <span class="item-inline"><span class="icon check" /></span>
                         {"Now"}
                     </button>
 
                     <button class="btn" onclick={on_aired} title="Watched when aired">
-                        <span class="icon-inline"><span class="icon clock" /></span>
+                        <span class="item-inline"><span class="icon clock" /></span>
                         {"Aired"}
                     </button>
                 </div>
@@ -467,7 +468,7 @@ impl Component for RemoteEditor {
 
         let title = html! {
             <>
-                <span class="icon-inline"><span class="icon identification" /></span>
+                <span class="item-inline"><span class="icon identification" /></span>
                 <span>{format!("Identifiers — {}", props.title)}</span>
             </>
         };
@@ -498,14 +499,20 @@ impl Component for RemoteEditor {
 
                         html! {
                             <div key={r.to_string()} class={classes!("row-fill", editing_this.then_some("active"))}>
-                                <span class="remote-id">{r.to_string()}</span>
+                                <div class="row clickable">
+                                    <span class="item-inline-lg">
+                                        <span class={classes!("logo", r.source().as_str().to_owned())} />
+                                    </span>
+
+                                    <span>{r.value().to_string()}</span>
+                                </div>
 
                                 <div class="input-group end">
-                                    <button class="btn-icon" onclick={link.callback(move |_| RemoteEditorMsg::Edit(edit_id.clone()))} title="Edit identifier">
+                                    <button class="btn" onclick={link.callback(move |_| RemoteEditorMsg::Edit(edit_id.clone()))} title="Edit identifier">
                                         <span class="icon pencil-square" />
                                     </button>
 
-                                    <button class="btn-icon-danger" onclick={link.callback(move |_| RemoteEditorMsg::AskRemove(remove_id.clone()))} title="Remove identifier">
+                                    <button class="btn-danger" onclick={link.callback(move |_| RemoteEditorMsg::AskRemove(remove_id.clone()))} title="Remove identifier">
                                         <span class="icon trash" />
                                     </button>
                                 </div>
@@ -526,12 +533,12 @@ impl Component for RemoteEditor {
                             <input type="text" class="input-text fill" placeholder="Identifier" value={self.value.clone()} oninput={on_value} />
 
                             <button class="btn-success" onclick={link.callback(|_| RemoteEditorMsg::Submit)} disabled={self.value.trim().is_empty()} title={if editing { "Save identifier" } else { "Add identifier" }}>
-                                <span class="icon-inline"><span class={classes!("icon", if editing { "check" } else { "plus" })} /></span>
+                                <span class="item-inline"><span class={classes!("icon", if editing { "check" } else { "plus" })} /></span>
                                 <span>{if editing { "Save" } else { "Add" }}</span>
                             </button>
 
                             if editing {
-                                <button class="btn-icon" onclick={link.callback(|_| RemoteEditorMsg::CancelEdit)} title="Cancel edit">
+                                <button class="btn" onclick={link.callback(|_| RemoteEditorMsg::CancelEdit)} title="Cancel edit">
                                     <span class="icon x-mark" />
                                 </button>
                             }
@@ -627,7 +634,7 @@ impl Component for LanguagePicker {
         let trigger = match value {
             Some((label, code)) => html! {
                 <button class="btn" onclick={link.callback(|_| Msg::Open)} title="Select language">
-                    <span class="icon-inline"><span class="icon language" /></span>
+                    <span class="item-inline"><span class="icon language" /></span>
                     <span>{label}</span>
 
                     if let Some(code) = self.language_to_country.get_by_part1(code) {
@@ -637,7 +644,7 @@ impl Component for LanguagePicker {
             },
             None => html! {
                 <button class="btn" onclick={link.callback(|_| Msg::Open)} title="Select language">
-                    <span class="icon-inline"><span class="icon language" /></span>
+                    <span class="item-inline"><span class="icon language" /></span>
                     <span>{props.placeholder}</span>
                 </button>
             },
@@ -696,7 +703,7 @@ impl Component for LanguagePicker {
                                             <span class="fill">{entry.ref_name}</span>
 
                                             if let Some(code) = self.language_to_country.get_by_part1(part1) {
-                                                <span class={classes!("flag-inline", "flag", code)} />
+                                                <span class={classes!("item-inline", "flag", code)} />
                                             }
 
                                             <span class="text-muted">{part1}</span>
@@ -892,11 +899,11 @@ impl Component for EpisodePicker {
                     </select>
 
                     <div class="input-group">
-                        <button class="btn-icon" onclick={link.callback(|_| EpisodePickerMsg::Cancel)}
+                        <button class="btn" onclick={link.callback(|_| EpisodePickerMsg::Cancel)}
                             title="Cancel">
                             <span class="icon x-mark" />
                         </button>
-                        <button class="btn-icon-success" onclick={link.callback(|_| EpisodePickerMsg::Confirm)}
+                        <button class="btn-success" onclick={link.callback(|_| EpisodePickerMsg::Confirm)}
                             title="Confirm" disabled={!can_confirm}>
                             <span class="icon check" />
                         </button>

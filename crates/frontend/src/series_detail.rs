@@ -225,6 +225,87 @@ impl Component for SeriesDetail {
             .map(|url| format!("--background: url('{}')", url))
             .unwrap_or_default();
 
+        let actions = 'actions: {
+            if self.confirm_remove {
+                break 'actions html! {
+                    <ConfirmDanger prompt="Remove series" label={series.title.clone()} on_confirm={link.callback(|_| Msg::RemoveSeries)} on_cancel={link.callback(|_| Msg::CancelRemove)} />
+                };
+            }
+
+            html! {
+                <>
+                    <div class="desktop-row mobile-column fill start">
+                        <LanguagePicker
+                            current={series.language.clone()}
+                            placeholder="Default"
+                            on_change={link.callback(Msg::SetLanguage)}
+                        />
+
+                        if !series.images.is_empty() {
+                            <button class="btn" onclick={link.callback(|_| Msg::OpenImageModal)}>
+                                <span class="item-inline"><span class="icon photo" /></span>
+                                <span>{"Graphics"}</span>
+                            </button>
+                        }
+
+                        <div class="input-group">
+                            <div class="input-label">{"Sync"}</div>
+
+                            <RemoteSourceSelect
+                                kind={RemoteSourceKind::Series}
+                                remotes={series.remotes.clone()}
+                                current_source={series.effective_sync_source().map(|r| r.into_remote_source())}
+                                on_change={link.callback(|s: api::RemoteSource| Msg::SetSyncSource(s.into_sync_source()))}
+                            />
+
+                            if let Some(ts) = series.last_synced_at {
+                                <div class="input-text fill" title="Last synced at">
+                                    <span>{ts.display(self.tz.clone())}</span>
+                                </div>
+                            } else {
+                                <div class="input-text fill">{"Never synced"}</div>
+                            }
+
+                            if !series.remotes.is_empty() {
+                                <button class="btn" onclick={link.callback(|_| Msg::SyncSeries)} title="Sync now">
+                                    <span class="item-inline"><span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} /></span>
+                                </button>
+                            }
+                        </div>
+
+                        <button class="btn" onclick={link.callback(|_| Msg::OpenRemoteEditor)} title="Repair remote identifiers">
+                            <span class="item-inline"><span class="icon identification" /></span>
+                            <span>{"Identifiers"}</span>
+                        </button>
+                    </div>
+
+                    <div class="desktop-row mobile-column end desktop-input-group">
+                        <Tracked tracked={series.tracked} ontoggle={link.callback(Msg::SetTracked)} />
+
+                        <button class="btn-danger" onclick={link.callback(|_| Msg::ConfirmRemove)} title="Remove series">
+                            <span class="item-inline"><span class="icon trash" /></span>
+                            <span class="hide-desktop">{"Remove"}</span>
+                        </button>
+
+                        if !series.remotes.is_empty() {
+                            <div class="hide-desktop row justify-around">
+                                {for series.remotes.iter().filter_map(|r| {
+                                    let url = r.series_url()?;
+                                    let label = r.source().as_str();
+
+                                    Some(html! {
+                                        <a class="item-inline-source" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
+                                            <span class={classes!("logo", label.to_owned())} />
+                                        </a>
+                                    })
+                                })}
+                            </div>
+                        }
+                    </div>
+                </>
+            }
+        };
+
         html! {
             <div class="page-container" {style}>
                 <div class="page">
@@ -235,79 +316,7 @@ impl Component for SeriesDetail {
                     { self.view_header(ctx, series) }
 
                     <div class={classes!("desktop-row-fill", "mobile-column", "actions", (!self.actions_expanded).then_some("hide-mobile"))}>
-                        <div class="desktop-row mobile-column fill start">
-                            <LanguagePicker
-                                current={series.language.clone()}
-                                placeholder="Default"
-                                on_change={link.callback(Msg::SetLanguage)}
-                            />
-
-                            if !series.images.is_empty() {
-                                <button class="btn" onclick={link.callback(|_| Msg::OpenImageModal)}>
-                                    <span class="icon-inline"><span class="icon photo" /></span>
-                                    <span>{"Graphics"}</span>
-                                </button>
-                            }
-
-                            <div class="input-group">
-                                <div class="input-label">{"Sync"}</div>
-
-                                <RemoteSourceSelect
-                                    kind={RemoteSourceKind::Series}
-                                    remotes={series.remotes.clone()}
-                                    current_source={series.effective_sync_source().map(|r| r.into_remote_source())}
-                                    on_change={link.callback(|s: api::RemoteSource| Msg::SetSyncSource(s.into_sync_source()))}
-                                />
-
-                                if let Some(ts) = series.last_synced_at {
-                                    <div class="input-text fill" title="Last synced at">
-                                        <span>{ts.display(self.tz.clone())}</span>
-                                    </div>
-                                } else {
-                                    <div class="input-text fill">{"Never synced"}</div>
-                                }
-
-                                if !series.remotes.is_empty() {
-                                    <button class="btn" onclick={link.callback(|_| Msg::SyncSeries)} title="Sync now">
-                                        <span class="icon-inline"><span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} /></span>
-                                    </button>
-                                }
-                            </div>
-
-                            <button class="btn" onclick={link.callback(|_| Msg::OpenRemoteEditor)} title="Repair remote identifiers">
-                                <span class="icon-inline"><span class="icon identification" /></span>
-                                <span>{"Identifiers"}</span>
-                            </button>
-                        </div>
-
-                        <div class="desktop-row mobile-column end desktop-input-group">
-                            <Tracked tracked={series.tracked} ontoggle={link.callback(Msg::SetTracked)} />
-
-                            if self.confirm_remove {
-                                <ConfirmDanger prompt="Remove series" label={series.title.clone()} on_confirm={link.callback(|_| Msg::RemoveSeries)} on_cancel={link.callback(|_| Msg::CancelRemove)} />
-                            } else {
-                                <button class="btn btn-danger" onclick={link.callback(|_| Msg::ConfirmRemove)} title="Remove series">
-                                    <span class="icon-inline"><span class="icon trash" /></span>
-                                    <span class="hide-desktop">{"Remove"}</span>
-                                </button>
-                            }
-
-                            if !series.remotes.is_empty() {
-                                <div class="hide-desktop row">
-                                    {for series.remotes.iter().filter_map(|r| {
-                                        let url = r.series_url()?;
-                                        let label = r.source().as_str().to_uppercase();
-
-                                        Some(html! {
-                                            <a class="btn" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
-                                                <span class="icon-inline"><span class="icon arrow-top-right-on-square" /></span>
-                                                <span>{label}</span>
-                                            </a>
-                                        })
-                                    })}
-                                </div>
-                            }
-                        </div>
+                        {actions}
                     </div>
 
                     <div class="detail-layout">
@@ -610,6 +619,12 @@ impl SeriesDetail {
             }
             Msg::RemoveWatched(id, kind) => {
                 self.orphaned.retain(|w| w.id != id);
+
+                self.actions_expanded = false;
+
+                if let api::WatchedKind::Episode { episode, .. } = kind {
+                    self.episode_actions_expanded.remove(&episode);
+                }
 
                 if self.orphaned.is_empty() {
                     self.view_orphaned = false;
@@ -1142,32 +1157,29 @@ impl SeriesDetail {
         html! {
             <div class="row-fill page-title">
                 if let Some(ref title) = series.title {
-                    <span class="fill">{title}</span>
+                    <h1>{title}</h1>
                 } else {
-                    <span class="fill text-muted">{"Untitled Series"}</span>
+                    <h1>{"Untitled Series"}</h1>
                 }
 
                 <div class="row end">
                     if !series.remotes.is_empty() {
                         <div class="row hide-mobile">
-                            <div class="input-group">
-                                {for series.remotes.iter().filter_map(|r| {
-                                    let url = r.series_url()?;
-                                    let label = r.source().as_str().to_uppercase();
+                            {for series.remotes.iter().filter_map(|r| {
+                                let url = r.series_url()?;
+                                let label = r.source().as_str();
 
-                                    Some(html! {
-                                        <a class="btn" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
-                                            <span class="icon-inline"><span class="icon arrow-top-right-on-square" /></span>
-                                            <span>{label}</span>
-                                        </a>
-                                    })
-                                })}
-                            </div>
+                                Some(html! {
+                                    <a class="item-inline-source" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
+                                        <span class={classes!("logo", label.to_owned())} />
+                                    </a>
+                                })
+                            })}
                         </div>
                     }
 
                     <button class="hide-desktop btn" onclick={link.callback(|_| Msg::ToggleActionsExpanded)}>
-                        <span class="icon-inline"><span class={classes!("icon", if self.actions_expanded { "ellipsis-horizontal" } else { "bars-2" })} /></span>
+                        <span class="item-inline"><span class={classes!("icon", if self.actions_expanded { "ellipsis-horizontal" } else { "bars-2" })} /></span>
                     </button>
                 </div>
             </div>
@@ -1237,7 +1249,7 @@ impl SeriesDetail {
                         }
 
                         if clickable {
-                            <span class="icon-inline">
+                            <span class="item-inline">
                                 <span class={classes!("icon", if active { "ellipsis-horizontal" } else { "chevron-right" })} />
                             </span>
                         }
@@ -1292,7 +1304,7 @@ impl SeriesDetail {
                                 <div class="input-group">
                                     if !self.orphaned.is_empty() {
                                         <button class="btn-danger" onclick={link.callback(|_| Msg::ToggleOrphaned)} title="View orphaned watched episodes">
-                                            <span class="icon-inline"><span class={classes!("icon", if self.view_orphaned { "ellipsis-horizontal" } else { "exclamation-triangle" })} /></span>
+                                            <span class="item-inline"><span class={classes!("icon", if self.view_orphaned { "ellipsis-horizontal" } else { "exclamation-triangle" })} /></span>
 
                                             if !self.view_orphaned {
                                                 <span class="hide-mobile">{"Show orphaned watches"}</span>
@@ -1302,7 +1314,7 @@ impl SeriesDetail {
 
                                     if !self.view_orphaned && watched_count < total {
                                         <button class="btn-success" onclick={link.callback(move |_| Msg::MarkRemainingWatch)} title="Mark remaining episodes as watched">
-                                            <span class="icon-inline"><span class="icon check" /></span>
+                                            <span class="item-inline"><span class="icon check" /></span>
                                             <span class="hide-mobile">{"Remaining"}</span>
                                         </button>
                                     }
@@ -1351,14 +1363,14 @@ impl SeriesDetail {
 
             html! {
                 if episode.pending {
-                    <button class="btn" onclick={on_remove_next} title="Remove from watch next">
-                        <span class="icon bookmark-slash" />
-                        <span class={classes!(mobile.then_some("hide-mobile"), "hide-desktop")}>{"Remove watch next"}</span>
+                    <button class="btn-primary" onclick={on_remove_next} title="Next episode">
+                        <span class="icon bookmark" />
+                        <span class={classes!(mobile.then_some("hide-mobile"), "hide-desktop")}>{"Next episode"}</span>
                     </button>
                 } else {
-                    <button class="btn" onclick={on_watch_next} title="Watch next">
-                        <span class="icon bookmark" />
-                        <span class={classes!(mobile.then_some("hide-mobile"), "hide-desktop")}>{"Watch next"}</span>
+                    <button class="btn" onclick={on_watch_next} title="Not next episode">
+                        <span class="icon bookmark-slash" />
+                        <span class={classes!(mobile.then_some("hide-mobile"), "hide-desktop")}>{"Not next episode"}</span>
                     </button>
                 }
             }
@@ -1366,17 +1378,17 @@ impl SeriesDetail {
 
         let main_actions = html! {
             <>
+                <button class="btn-success" onclick={on_ask_mark.clone()} title="Mark watched">
+                    <span class="icon check" />
+                    <span class="hide-desktop">{"Mark watched"}</span>
+                </button>
+
                 if let Some(on_toggle) = on_toggle_history {
                     <button class="btn" onclick={on_toggle} title={if history_expanded { "Hide watch history" } else { "Show watch history" }}>
                         <span class={if history_expanded { "icon chevron-up" } else { "icon clock" }} />
                         <span class="hide-desktop">{if history_expanded { "History" } else { "Show history" }}</span>
                     </button>
                 }
-
-                <button class="btn-success" onclick={on_ask_mark.clone()} title="Mark watched">
-                    <span class="icon check" />
-                    <span class="hide-desktop">{"Mark watched"}</span>
-                </button>
 
                 {toggle_pending(false)}
             </>
@@ -1398,14 +1410,14 @@ impl SeriesDetail {
                         <div class="row-fill">
                             <div class="row">
                                 if !watched.is_empty() {
-                                    <span class="icon-inline" title="Watched"><span class="icon check-circle" /></span>
+                                    <span class="item-inline-lg" title="Watched"><span class="icon primary check-circle" /></span>
                                 } else {
-                                    <span class="icon-inline" title="Not watched"><span class="icon x-circle" /></span>
+                                    <span class="item-inline-lg" title="Never watched"><span class="icon secondary x-circle" /></span>
                                 }
 
                                 <span class="text-muted fill">
                                     {match watched {
-                                        [] => "Not watched".to_string(),
+                                        [] => "Never watched".to_string(),
                                         [w] => format!("Watched at {}", w.timestamp.display(self.tz.clone())),
                                         [first, ..] => format!("Watched {} times, first at {}", watched.len(), first.timestamp.display(self.tz.clone())),
                                     }}
@@ -1418,7 +1430,7 @@ impl SeriesDetail {
                                         {toggle_pending(true)}
 
                                         <button class="btn" onclick={link.callback(move |_| Msg::ToggleEpisodeActionsExpanded(episode_id))}>
-                                            <span class="icon-inline"><span class={classes!("icon", if actions_expanded { "ellipsis-horizontal" } else { "bars-2" })} /></span>
+                                            <span class="item-inline"><span class={classes!("icon", if actions_expanded { "ellipsis-horizontal" } else { "bars-2" })} /></span>
                                         </button>
                                     </div>
                                 </div>

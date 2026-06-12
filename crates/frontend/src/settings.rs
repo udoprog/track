@@ -141,7 +141,7 @@ impl Component for Settings {
 
                 if self.saving {
                     <div class="box info">
-                        <span class="icon-inline"><span class="icon arrow-path spin" /></span>
+                        <span class="item-inline"><span class="icon arrow-path spin" /></span>
                         <span>{"Loading…"}</span>
                     </div>
                 }
@@ -228,7 +228,7 @@ impl Component for Settings {
 
                             if !tz_is_valid(&self.config.timezone) {
                                 <span>
-                                    <span class="icon-inline"><span class="icon exclamation-triangle" /></span>
+                                    <span class="item-inline"><span class="icon exclamation-triangle" /></span>
                                     {"Unknown timezone"}
                                 </span>
                             }

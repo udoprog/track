@@ -130,7 +130,7 @@ impl Component for SeriesList {
                         />
 
                         if !self.filter.is_empty() {
-                            <button class="btn-icon" title="Clear filter"
+                            <button class="btn" title="Clear filter"
                                 onclick={link.callback(|_| Msg::Filter(String::new()))}>
                                 <span class="icon backspace" />
                             </button>
@@ -259,7 +259,7 @@ impl SeriesList {
 
                             <div class="row end top">
                                 if !s.tracked {
-                                    <span class="end icon-inline" title="Untracked series">
+                                    <span class="end item-inline" title="Untracked series">
                                         <span class="icon eye-slash" />
                                     </span>
                                 }
@@ -271,7 +271,7 @@ impl SeriesList {
                         }
                     </div>
 
-                    <span class="icon-inline align-end clickable" onclick={&onclick}>
+                    <span class="item-inline align-end clickable" onclick={&onclick}>
                         <span class="icon chevron-right" />
                     </span>
                 </div>

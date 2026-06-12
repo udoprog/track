@@ -100,7 +100,7 @@ impl Component for Queue {
 
                     <button class="btn" onclick={link.callback(|_| Msg::SyncAll)}
                         title="Queue sync for all series and movies">
-                        <span class="icon-inline"><span class="icon arrow-path" /></span>
+                        <span class="item-inline"><span class="icon arrow-path" /></span>
                         <span class="hide-mobile">{"Sync All"}</span>
                     </button>
                 </div>
@@ -244,7 +244,7 @@ impl Queue {
         html! {
             <div class="table-entry">
                 <div class="row">
-                    <span class="icon-inline">
+                    <span class="item-inline">
                         <span class={if spinning { "icon arrow-path" } else { "icon clock" }} />
                     </span>
 
@@ -306,7 +306,7 @@ impl Queue {
         html! {
             <div class="table-entry">
                 <div class="row">
-                    <span class="icon-inline"><span class="icon check" /></span>
+                    <span class="item-inline"><span class="icon check" /></span>
                     <span class="fill">
                         { self.view_completed_label(task, on_navigate) }
                     </span>

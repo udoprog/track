@@ -326,12 +326,10 @@ impl Dashboard {
 
                     <div class="row end">
                         <div class="input-group">
-                            <button class="btn-icon" title="Show fewer"
-                                onclick={link.callback(|_| Msg::AdjustPageSize(-1))}>
+                            <button class="btn" title="Show fewer" onclick={link.callback(|_| Msg::AdjustPageSize(-1))}>
                                 <span class="icon minus" />
                             </button>
-                            <button class="btn-icon" title="Show more"
-                                onclick={link.callback(|_| Msg::AdjustPageSize(1))}>
+                            <button class="btn" title="Show more" onclick={link.callback(|_| Msg::AdjustPageSize(1))}>
                                 <span class="icon plus" />
                             </button>
                         </div>
@@ -399,22 +397,6 @@ impl Dashboard {
 
         let confirming_skip = self.confirming_skip == skip_ids;
 
-        let label = match &p.info {
-            api::PendingInfo::Movie {
-                title: Some(title), ..
-            } => Some(title.clone()),
-            api::PendingInfo::Episode {
-                season,
-                number,
-                episode: Some(title),
-                ..
-            } => Some(format!("{}E{number:02} ─ {title}", season.short())),
-            api::PendingInfo::Episode { season, number, .. } => {
-                Some(format!("{}E{number:02}", season.short()))
-            }
-            _ => None,
-        };
-
         let title = match &p.info {
             api::PendingInfo::Movie { title, .. } => {
                 html! {
@@ -457,7 +439,6 @@ impl Dashboard {
                 break 'actions html! {
                     <ConfirmDanger
                         prompt="Skip"
-                        {label}
                         on_confirm={ctx.link().callback(move |_| Msg::SkipEpisode(series, episode))}
                         on_cancel={ctx.link().callback(|_| Msg::CancelSkipEpisode)}
                     />
@@ -465,17 +446,17 @@ impl Dashboard {
             }
 
             html! {
-                <>
-                    <button class="btn-icon-success" onclick={on_ask_mark} title="Mark watched">
+                <div class="input-group">
+                    <button class="btn-success" onclick={on_ask_mark} title="Mark watched">
                         <span class="icon check" />
                     </button>
 
                     if let Some((series, episode)) = skip_ids {
-                        <button class="btn-icon" onclick={ctx.link().callback(move |_| Msg::AskSkipEpisode(series, episode))} title="Skip episode">
+                        <button class="btn" onclick={ctx.link().callback(move |_| Msg::AskSkipEpisode(series, episode))} title="Skip episode">
                             <span class="icon forward" />
                         </button>
                     }
-                </>
+                </div>
             }
         };
 

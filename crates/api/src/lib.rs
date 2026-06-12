@@ -654,7 +654,7 @@ impl RemoteId {
 
     pub fn series_url(&self) -> Option<String> {
         match &self.source {
-            RemoteSource::Tvdb => Some(format!("https://thetvdb.com/series/{}", self.value)),
+            RemoteSource::Tvdb => Some(format!("https://thetvdb.com/search?query={}", self.value)),
             RemoteSource::Tmdb => Some(format!("https://www.themoviedb.org/tv/{}", self.value)),
             RemoteSource::Imdb => Some(format!("https://www.imdb.com/title/{}/", self.value)),
             _ => None,
@@ -663,7 +663,7 @@ impl RemoteId {
 
     pub fn movie_url(&self) -> Option<String> {
         match &self.source {
-            RemoteSource::Tvdb => Some(format!("https://thetvdb.com/movies/{}", self.value)),
+            RemoteSource::Tvdb => Some(format!("https://thetvdb.com/search?query={}", self.value)),
             RemoteSource::Tmdb => Some(format!("https://www.themoviedb.org/movie/{}", self.value)),
             RemoteSource::Imdb => Some(format!("https://www.imdb.com/title/{}/", self.value)),
             _ => None,

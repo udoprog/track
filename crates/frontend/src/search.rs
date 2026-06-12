@@ -305,7 +305,7 @@ impl Search {
                         let on_nav = ctx.link().callback(move |_| Msg::Navigate(Route::SeriesDetail(id, SeriesDetailQuery::default())));
                         html! {
                             <button class="btn" onclick={on_nav} title="Already tracked">
-                                <span class="icon-inline"><span class="icon check" /></span>
+                                <span class="item-inline"><span class="icon check" /></span>
                                 <span class="hide-mobile">{"Tracked"}</span>
                             </button>
                         }
@@ -313,7 +313,7 @@ impl Search {
                         let on_track = ctx.link().callback(move |_| Msg::TrackSeries(remote_id.clone()));
                         html! {
                             <button class="btn" onclick={on_track} title="Track series">
-                                <span class="icon-inline"><span class="icon plus" /></span>
+                                <span class="item-inline"><span class="icon plus" /></span>
                                 <span class="hide-mobile">{"Track"}</span>
                             </button>
                         }
@@ -352,7 +352,7 @@ impl Search {
                         let on_nav = ctx.link().callback(move |_| Msg::Navigate(Route::MovieDetail(id)));
                         html! {
                             <button class="btn" onclick={on_nav} title="Already tracked">
-                                <span class="icon-inline"><span class="icon check" /></span>
+                                <span class="item-inline"><span class="icon check" /></span>
                                 <span class="hide-mobile">{"Tracked"}</span>
                             </button>
                         }
@@ -360,7 +360,7 @@ impl Search {
                         let on_track = ctx.link().callback(move |_| Msg::TrackMovie(remote_id.clone()));
                         html! {
                             <button class="btn" onclick={on_track} title="Track movie">
-                                <span class="icon-inline"><span class="icon plus" /></span>
+                                <span class="item-inline"><span class="icon plus" /></span>
                                 <span class="hide-mobile">{"Track"}</span>
                             </button>
                         }

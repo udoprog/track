@@ -1,0 +1,25 @@
+@mixin logo($name) {
+    &.#{$name} {
+        background-image: url('/static/logos/#{$name}.svg');
+    }
+}
+
+.logo {
+    display: inline-block;
+    vertical-align: middle;
+
+    height: 100%;
+    aspect-ratio: 1;
+
+    &.sm {
+        height: 80%;
+    }
+
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+
+    @include logo('imdb');
+    @include logo('tmdb');
+    @include logo('tvdb');
+}

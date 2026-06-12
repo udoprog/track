@@ -728,12 +728,11 @@ impl MovieDetail {
                             <div class="input-group">
                                 {for movie.remotes.iter().filter_map(|r| {
                                     let url = r.movie_url()?;
-                                    let label = r.source().as_str().to_uppercase();
+                                    let label = r.source().as_str();
 
                                     Some(html! {
-                                        <a class="btn" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
-                                            <span class="icon-inline"><span class="icon arrow-top-right-on-square" /></span>
-                                            <span>{label}</span>
+                                        <a class="item-inline-source" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
+                                            <span class={classes!("logo", label.to_owned())} />
                                         </a>
                                     })
                                 })}
@@ -742,7 +741,7 @@ impl MovieDetail {
                     }
 
                     <button class="btn hide-desktop" onclick={link.callback(|_| Msg::ToggleActionsExpanded)}>
-                        <span class="icon-inline"><span class={classes!("icon", if self.actions_expanded { "ellipsis-horizontal" } else { "bars-3" })} /></span>
+                        <span class="item-inline"><span class={classes!("icon", if self.actions_expanded { "ellipsis-horizontal" } else { "bars-3" })} /></span>
                     </button>
                 </div>
             </div>
@@ -759,14 +758,14 @@ impl MovieDetail {
 
             html! {
                 if movie.pending {
-                    <button class="btn" onclick={on_remove_next} title="Remove from watch next">
-                        <span class="icon bookmark-slash" />
-                        <span class={classes!(mobile.then_some("hide-mobile"), "hide-desktop")}>{"Remove watch next"}</span>
+                    <button class="btn-primary" onclick={on_remove_next} title="Next movie">
+                        <span class="icon bookmark" />
+                        <span class={classes!(mobile.then_some("hide-mobile"), "hide-desktop")}>{"Next movie"}</span>
                     </button>
                 } else {
-                    <button class="btn" onclick={on_watch_next} title="Watch next">
-                        <span class="icon bookmark" />
-                        <span class={classes!(mobile.then_some("hide-mobile"), "hide-desktop")}>{"Watch next"}</span>
+                    <button class="btn" onclick={on_watch_next} title="Not next movie">
+                        <span class="icon bookmark-slash" />
+                        <span class={classes!(mobile.then_some("hide-mobile"), "hide-desktop")}>{"Not next movie"}</span>
                     </button>
                 }
             }
@@ -792,14 +791,14 @@ impl MovieDetail {
                         <div class="row-fill">
                             <div class="row">
                                 if !self.watched.is_empty() {
-                                    <span class="icon-inline" title="Watched"><span class="icon check-circle" /></span>
+                                    <span class="item-inline-lg" title="Watched"><span class="icon primary check-circle" /></span>
                                 } else {
-                                    <span class="icon-inline" title="Not watched"><span class="icon x-circle" /></span>
+                                    <span class="item-inline-lg" title="Never watched"><span class="icon secondary x-circle" /></span>
                                 }
 
                                 <span class="text-muted">
                                     {match &self.watched[..] {
-                                        [] => "Not watched".to_string(),
+                                        [] => "Never watched".to_string(),
                                         [w] => format!("Watched once at {}", w.timestamp.display(self.tz.clone())),
                                         [first, ..] => format!("Watched {} times, first at {}", self.watched.len(), first.timestamp.display(self.tz.clone())),
                                     }}
@@ -811,7 +810,7 @@ impl MovieDetail {
                                     {toggle_pending(true)}
 
                                     <button class="btn" onclick={link.callback(move |_| Msg::ToggleDetailedActionsExpanded)}>
-                                        <span class="icon-inline"><span class={classes!("icon", if self.detailed_expand { "ellipsis-horizontal" } else { "bars-3" })} /></span>
+                                        <span class="item-inline"><span class={classes!("icon", if self.detailed_expand { "ellipsis-horizontal" } else { "bars-3" })} /></span>
                                     </button>
                                 </div>
                             </div>
@@ -820,7 +819,7 @@ impl MovieDetail {
                                 <div class="input-group">
                                     <button class="btn-success" onclick={&on_ask_mark} title="Mark watched">
                                         <span class="icon check" />
-                                        <span>{"Mark watched"}</span>
+                                        <span class="hide-desktop">{"Mark watched"}</span>
                                     </button>
 
                                     {toggle_pending(false)}
@@ -853,7 +852,7 @@ impl MovieDetail {
 
                     if !movie.images.is_empty() {
                         <button class="btn" onclick={link.callback(|_| Msg::OpenImageModal)} title="Change poster">
-                            <span class="icon-inline"><span class="icon photo" /></span>
+                            <span class="item-inline"><span class="icon photo" /></span>
                             <span>{"Graphics"}</span>
                         </button>
                     }
@@ -880,13 +879,13 @@ impl MovieDetail {
 
                         if !movie.remotes.is_empty() {
                             <button class="btn" onclick={link.callback(|_| Msg::SyncMovie)} title="Sync now">
-                                <span class="icon-inline"><span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} /></span>
+                                <span class="item-inline"><span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} /></span>
                             </button>
                         }
                     </div>
 
                     <button class="btn" onclick={link.callback(|_| Msg::OpenRemoteEditor)} title="Repair remote identifiers">
-                        <span class="icon-inline"><span class="icon identification" /></span>
+                        <span class="item-inline"><span class="icon identification" /></span>
                         <span>{"Identifiers"}</span>
                     </button>
                 </div>
@@ -902,22 +901,21 @@ impl MovieDetail {
                             on_cancel={link.callback(|_| Msg::CancelRemove)}
                         />
                     } else {
-                        <button class="btn btn-danger" onclick={link.callback(|_| Msg::ConfirmRemove)} title="Remove movie">
-                            <span class="icon-inline"><span class="icon trash" /></span>
+                        <button class="btn-danger" onclick={link.callback(|_| Msg::ConfirmRemove)} title="Remove movie">
+                            <span class="item-inline"><span class="icon trash" /></span>
                             <span class="hide-desktop">{"Remove"}</span>
                         </button>
                     }
 
                     if !movie.remotes.is_empty() {
-                        <div class="hide-desktop row">
+                        <div class="hide-desktop row justify-around">
                             {for movie.remotes.iter().filter_map(|r| {
                                 let url = r.movie_url()?;
-                                let label = r.source().as_str().to_uppercase();
+                                let label = r.source().as_str();
 
                                 Some(html! {
-                                    <a class="btn" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
-                                        <span class="icon-inline"><span class="icon arrow-top-right-on-square" /></span>
-                                        <span>{label}</span>
+                                    <a class="item-inline-source" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
+                                        <span class={classes!("logo", label.to_owned())} />
                                     </a>
                                 })
                             })}
@@ -1029,7 +1027,7 @@ impl MovieDetail {
                                     <span>{ty.as_str()}</span>
                                     <div class="row">
                                         <span class="text-muted">{earliest.timestamp.display(self.tz.clone())}</span>
-                                        <span class="icon-inline">
+                                        <span class="item-inline">
                                             <span class={classes!("icon", if expanded { "ellipsis-horizontal" } else { "chevron-right" })} />
                                         </span>
                                     </div>
@@ -1040,7 +1038,7 @@ impl MovieDetail {
                                         { for releases.iter().map(|r| html! {
                                             <div class="row-fill">
                                                 if let Some(code) = self.countries.get(&r.country) {
-                                                    <span class="flag-inline" title={r.country.clone()}>
+                                                    <span class="item-inline" title={r.country.clone()}>
                                                         <span class={classes!("flag", code)}></span>
                                                     </span>
                                                 } else {

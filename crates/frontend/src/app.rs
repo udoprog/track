@@ -234,34 +234,34 @@ fn Toolbar(props: &ToolbarProps) -> Html {
 
                     <div class="row end hide-desktop">
                         <button class="btn" onclick={on_menu_toggle} title="Settings">
-                            <span class="icon-inline"><span class={classes!("icon", if *menu_open { "ellipsis-horizontal" } else { "bars-3" })} /></span>
+                            <span class="item-inline"><span class={classes!("icon", if *menu_open { "ellipsis-horizontal" } else { "bars-3" })} /></span>
                         </button>
                     </div>
                 </div>
 
                 <div class={classes!("desktop-row", "mobile-column", "end", (!*menu_open).then_some("hide-mobile"))}>
                     <button onclick={on_nav(Route::Dashboard(DashboardQuery::default()))} class="btn" title="Dashboard">
-                        <span class="icon-inline"><span class="icon rectangle-stack" /></span>
+                        <span class="item-inline"><span class="icon rectangle-stack" /></span>
                         <span>{"Dashboard"}</span>
                     </button>
                     <button onclick={on_nav(Route::Queue)} class="btn" title="Queue">
-                        <span class="icon-inline"><span class="icon queue-list" /></span>
+                        <span class="item-inline"><span class="icon queue-list" /></span>
                         <span>{"Queue"}</span>
                     </button>
                     <button onclick={on_nav(Route::Series(PagedQuery::default()))} class="btn" title="Series">
-                        <span class="icon-inline"><span class="icon tv" /></span>
+                        <span class="item-inline"><span class="icon tv" /></span>
                         <span>{"Series"}</span>
                     </button>
                     <button onclick={on_nav(Route::Movies(PagedQuery::default()))} class="btn" title="Movies">
-                        <span class="icon-inline"><span class="icon film" /></span>
+                        <span class="item-inline"><span class="icon film" /></span>
                         <span>{"Movies"}</span>
                     </button>
                     <button onclick={on_nav(Route::Search)} class="btn" title="Search">
-                        <span class="icon-inline"><span class="icon magnifying-glass" /></span>
+                        <span class="item-inline"><span class="icon magnifying-glass" /></span>
                         <span>{"Search"}</span>
                     </button>
                     <button onclick={on_nav(Route::Settings)} class="btn" title="Settings">
-                        <span class="icon-inline"><span class="icon cog-6-tooth" /></span>
+                        <span class="item-inline"><span class="icon cog-6-tooth" /></span>
                         <span>{"Settings"}</span>
                     </button>
                 </div>

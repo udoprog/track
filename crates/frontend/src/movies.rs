@@ -137,7 +137,7 @@ impl Component for MoviesList {
                             class="input-text fill"
                         />
                         if !self.filter.is_empty() {
-                            <button class="btn-icon" title="Clear filter"
+                            <button class="btn" title="Clear filter"
                                 onclick={link.callback(|_| Msg::Filter(String::new()))}>
                                 <span class="icon backspace" />
                             </button>
@@ -307,12 +307,12 @@ impl MoviesList {
                                 </div>
 
                                 <div class="row end top">
-                                    <button class="btn-icon-success" title="Mark watched" onclick={ctx.link().callback(move |_| Msg::AskMarkWatched(movie_id))}>
+                                    <button class="btn-success" title="Mark watched" onclick={ctx.link().callback(move |_| Msg::AskMarkWatched(movie_id))}>
                                         <span class="icon check" />
                                     </button>
 
                                     if !m.tracked {
-                                        <span class="end icon-inline" title="Untracked movie">
+                                        <span class="end item-inline" title="Untracked movie">
                                             <span class="icon eye-slash" />
                                         </span>
                                     }
@@ -327,7 +327,7 @@ impl MoviesList {
                         }
                     </div>
 
-                    <span class="icon-inline align-end clickable"><span onclick={&onclick} class="icon chevron-right" /></span>
+                    <span class="item-inline align-end clickable"><span onclick={&onclick} class="icon chevron-right" /></span>
                 </div>
             </div>
         }
