@@ -141,7 +141,7 @@ impl Component for Search {
             <>
                 <div class="page-title">{"Search"}</div>
 
-                <div class="input-group fill">
+                <div class="input-group">
                     <select class="input-select" onchange={on_kind} value={kind}>
                         <option value="series" selected={matches!(self.kind, api::SearchKind::Series)}>
                             {"Series"}
