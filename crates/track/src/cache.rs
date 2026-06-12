@@ -70,7 +70,9 @@ impl ImageCache {
             return Ok(Some(data));
         }
 
-        let disk_path = self.disk_path(source, path).context("Expected a valid image path")?;
+        let disk_path = self
+            .disk_path(source, path)
+            .context("Expected a valid image path")?;
 
         let shard = Self::shard(&key);
         let lock = &self.inner.locks[shard];

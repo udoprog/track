@@ -1114,7 +1114,10 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.set_series_tracked.bind((tracked, id))?;
-            ensure!(s.set_series_tracked.step()?.is_done(), "Setting series tracked");
+            ensure!(
+                s.set_series_tracked.step()?.is_done(),
+                "Setting series tracked"
+            );
             Ok(())
         });
 
@@ -1817,7 +1820,10 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.set_movie_tracked.bind((tracked, id))?;
-            ensure!(s.set_movie_tracked.step()?.is_done(), "Setting movie tracked");
+            ensure!(
+                s.set_movie_tracked.step()?.is_done(),
+                "Setting movie tracked"
+            );
             Ok(())
         });
 
@@ -1852,7 +1858,10 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.set_movie_language.bind((language.as_deref(), id))?;
-            ensure!(s.set_movie_language.step()?.is_done(), "Setting movie language");
+            ensure!(
+                s.set_movie_language.step()?.is_done(),
+                "Setting movie language"
+            );
             Ok(())
         });
 
@@ -2005,7 +2014,10 @@ impl Database {
                 image.height(),
                 rank,
             ))?;
-            ensure!(s.insert_movie_image.step()?.is_done(), "Inserting movie image");
+            ensure!(
+                s.insert_movie_image.step()?.is_done(),
+                "Inserting movie image"
+            );
             Ok(())
         });
 

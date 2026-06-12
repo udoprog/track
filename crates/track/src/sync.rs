@@ -32,7 +32,10 @@ pub(crate) async fn sync_series(
                 .remote_by_source(api::SyncSource::Tmdb)
                 .context("Expected series to have a TMDB remote")?;
 
-            let tmdb_id: u32 = remote_id.value().as_u32().context("Expected a valid TMDB id")?;
+            let tmdb_id: u32 = remote_id
+                .value()
+                .as_u32()
+                .context("Expected a valid TMDB id")?;
 
             sync_series_tmdb(series_id, tmdb_id, language, remote, db, broadcast).await?;
         }
@@ -41,7 +44,10 @@ pub(crate) async fn sync_series(
                 .remote_by_source(api::SyncSource::Tvdb)
                 .context("Expected series to have a TVDB remote")?;
 
-            let tvdb_id: u32 = remote_id.value().as_u32().context("Expected a valid TVDB id")?;
+            let tvdb_id: u32 = remote_id
+                .value()
+                .as_u32()
+                .context("Expected a valid TVDB id")?;
 
             sync_series_tvdb(series_id, tvdb_id, language, remote, db, broadcast).await?;
         }
@@ -394,7 +400,10 @@ pub(crate) async fn sync_movie(
     remote: &RemoteClients,
     broadcast: &Broadcaster,
 ) -> Result<()> {
-    let movie = db.movie_by_id(movie_id).await?.context("Expected movie to exist")?;
+    let movie = db
+        .movie_by_id(movie_id)
+        .await?
+        .context("Expected movie to exist")?;
 
     let config = db.load_config().await?;
     let language = movie.language.as_deref().or(config.language.as_deref());
@@ -408,7 +417,10 @@ pub(crate) async fn sync_movie(
                 .remote_by_source(api::SyncSource::Tmdb)
                 .context("Expected movie to have a TMDB remote")?;
 
-            let tmdb_id: u32 = remote_id.value().as_u32().context("Expected a valid TMDB id")?;
+            let tmdb_id: u32 = remote_id
+                .value()
+                .as_u32()
+                .context("Expected a valid TMDB id")?;
             info!(tmdb_id, "Fetching TMDB movie");
 
             let info = remote.fetch_tmdb_movie(tmdb_id, language).await?;
