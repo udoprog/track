@@ -10,7 +10,7 @@ use crate::error::{CustomContext, Error, Message};
 use crate::router::{PagedQuery, Route, SeriesDetailQuery};
 use crate::ui::{
     ConfirmDanger, EpisodePicker, Loading, MarkWatchedPicker, MediaSettingsModal, RemoteEditor,
-    RemoteSourceKind, RemoteSourceSelect, Tracked,
+    RemoteSourceKind, Tracked,
 };
 use crate::{Image, ImageGallery, ImageItem, Modal, SetupChannel};
 
@@ -245,9 +245,9 @@ impl Component for SeriesDetail {
 
             html! {
                 <>
-                    <div class="desktop-row mobile-column fill start">
-                        if !series.remotes.is_empty() {
-                            <div class="hide-desktop row justify-around">
+                    if !series.remotes.is_empty() {
+                        <div class="desktop-row mobile-column fill start">
+                            <div class="row justify-around">
                                 {for series.remotes.iter().filter_map(|r| {
                                     let url = r.series_url()?;
                                     let label = r.source().as_str();
@@ -259,41 +259,23 @@ impl Component for SeriesDetail {
                                     })
                                 })}
                             </div>
-                        }
-
-                        <div class="input-group">
-                            <div class="input-label">{"Sync"}</div>
-
-                            <RemoteSourceSelect
-                                kind={RemoteSourceKind::Series}
-                                remotes={series.remotes.clone()}
-                                current_source={series.effective_sync_source().map(|r| r.into_remote_source())}
-                                on_change={link.callback(|s: api::RemoteSource| Msg::SetSyncSource(s.into_sync_source()))}
-                            />
-
-                            if let Some(ts) = series.last_synced_at {
-                                <div class="input-text fill" title="Last synced at">
-                                    <span>{ts.display(self.tz.clone())}</span>
-                                </div>
-                            } else {
-                                <div class="input-text fill">{"Never synced"}</div>
-                            }
-
-                            if !series.remotes.is_empty() {
-                                <button class="btn" onclick={link.callback(|_| Msg::SyncSeries)} title="Sync now">
-                                    <span class="item-inline"><span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} /></span>
-                                </button>
-                            }
                         </div>
-                    </div>
+                    }
 
-                    <div class="desktop-row mobile-column end desktop-input-group">
+                    <div class="desktop-row mobile-column desktop-input-group end">
                         <Tracked tracked={series.tracked} ontoggle={link.callback(Msg::SetTracked)} />
 
                         <button class="btn-danger" onclick={link.callback(|_| Msg::ConfirmRemove)} title="Remove series">
                             <span class="item-inline"><span class="icon trash" /></span>
                             <span class="hide-desktop">{"Remove"}</span>
                         </button>
+
+                        if !series.remotes.is_empty() {
+                            <button class="btn" onclick={link.callback(|_| Msg::SyncSeries)} title="Sync now">
+                                <span class="item-inline"><span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} /></span>
+                                <span class="hide-desktop">{"Sync"}</span>
+                            </button>
+                        }
 
                         <button class="btn" onclick={link.callback(|_| Msg::OpenSettingsModal)} title="Series settings">
                             <span class="item-inline"><span class="icon cog-6-tooth" /></span>
@@ -330,6 +312,13 @@ impl Component for SeriesDetail {
                         language={series.language.clone()}
                         include_specials={series.include_specials}
                         has_images={!series.images.is_empty()}
+                        kind={RemoteSourceKind::Series}
+                        remotes={series.remotes.clone()}
+                        current_source={series.effective_sync_source().map(|r| r.into_remote_source())}
+                        last_synced={series.last_synced_at.map(|ts| AttrValue::from(ts.display(self.tz.clone())))}
+                        syncing={self.syncing}
+                        on_sync_source_change={link.callback(|s: api::RemoteSource| Msg::SetSyncSource(s.into_sync_source()))}
+                        on_sync={link.callback(|_| Msg::SyncSeries)}
                         on_language_change={link.callback(Msg::SetLanguage)}
                         on_include_specials_change={Some(link.callback(Msg::SetIncludeSpecials))}
                         on_edit_graphics={link.callback(|_| Msg::OpenImageModal)}
@@ -1202,29 +1191,16 @@ impl SeriesDetail {
 
         html! {
             <div class="row-fill page-title">
-                if let Some(ref title) = series.title {
-                    <h1>{title}</h1>
-                } else {
-                    <h1>{"Untitled Series"}</h1>
-                }
+                <div class="column desktop-center fill">
+                    <h1>{series.title.as_deref().unwrap_or("Untitled Series")}</h1>
 
-                <div class="row end">
-                    if !series.remotes.is_empty() {
-                        <div class="row hide-mobile">
-                            {for series.remotes.iter().filter_map(|r| {
-                                let url = r.series_url()?;
-                                let label = r.source().as_str();
-
-                                Some(html! {
-                                    <a class="item-inline-source" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
-                                        <span class={classes!("logo", label.to_owned())} />
-                                    </a>
-                                })
-                            })}
-                        </div>
+                    if let Some(date) = series.first_air_date {
+                        <span class="text-muted">{date.date(self.tz.clone()).year()}</span>
                     }
+                </div>
 
-                    <button class="hide-desktop btn" onclick={link.callback(|_| Msg::ToggleActionsExpanded)}>
+                <div class="hide-desktop row end">
+                    <button class="btn" onclick={link.callback(|_| Msg::ToggleActionsExpanded)}>
                         <span class="item-inline"><span class={classes!("icon", if self.actions_expanded { "ellipsis-horizontal" } else { "bars-2" })} /></span>
                     </button>
                 </div>

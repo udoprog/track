@@ -9,7 +9,7 @@ use crate::error::{CustomContext, Error, Message};
 use crate::router::{PagedQuery, Route};
 use crate::ui::{
     ConfirmDanger, Loading, MarkWatchedPicker, MediaSettingsModal, RemoteEditor, RemoteSourceKind,
-    RemoteSourceSelect, Tracked,
+    Tracked,
 };
 use crate::{Image, ImageGallery, ImageItem, Modal, SetupChannel};
 
@@ -725,32 +725,17 @@ impl MovieDetail {
         let link = ctx.link();
 
         html! {
-            <div class="row-fill page-title">
-                if let Some(ref title) = movie.title {
-                    <span class="fill">{title}</span>
-                } else {
-                    <span class="fill text-muted">{"Untitled Movie"}</span>
-                }
+            <div class="row-fill">
+                <div class="column desktop-center fill">
+                    <h1>{movie.title.as_deref().unwrap_or("Untitled Movie")}</h1>
 
-                <div class="row end">
-                    if !movie.remotes.is_empty() {
-                        <div class="row hide-mobile">
-                            <div class="input-group">
-                                {for movie.remotes.iter().filter_map(|r| {
-                                    let url = r.movie_url()?;
-                                    let label = r.source().as_str();
-
-                                    Some(html! {
-                                        <a class="item-inline-source" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
-                                            <span class={classes!("logo", label.to_owned())} />
-                                        </a>
-                                    })
-                                })}
-                            </div>
-                        </div>
+                    if let Some(date) = movie.release_date {
+                        <span class="text-muted">{date.date(self.tz.clone()).year()}</span>
                     }
+                </div>
 
-                    <button class="btn hide-desktop" onclick={link.callback(|_| Msg::ToggleActionsExpanded)}>
+                <div class="hide-desktop row end">
+                    <button class="btn" onclick={link.callback(|_| Msg::ToggleActionsExpanded)}>
                         <span class="item-inline"><span class={classes!("icon", if self.actions_expanded { "ellipsis-horizontal" } else { "bars-3" })} /></span>
                     </button>
                 </div>
@@ -855,7 +840,7 @@ impl MovieDetail {
             <div class={classes!("desktop-row-fill", "mobile-column", "actions", (!self.actions_expanded).then_some("hide-mobile"))}>
                 <div class="desktop-row mobile-column fill start">
                     if !movie.remotes.is_empty() {
-                        <div class="hide-desktop row justify-around">
+                        <div class="row justify-around">
                             {for movie.remotes.iter().filter_map(|r| {
                                 let url = r.movie_url()?;
                                 let label = r.source().as_str();
@@ -868,33 +853,6 @@ impl MovieDetail {
                             })}
                         </div>
                     }
-
-                    <div class="input-group">
-                        <div class="input-label">{"Sync"}</div>
-
-                        <RemoteSourceSelect
-                            kind={RemoteSourceKind::Movie}
-                            remotes={movie.remotes.clone()}
-                            current_source={movie.effective_sync_source().map(|r| r.into_remote_source())}
-                            on_change={link.callback(|s: api::RemoteSource| Msg::SetSyncSource(s.into_sync_source()))}
-                        />
-
-                        if let Some(ts) = movie.last_synced_at {
-                            <div class="input-text fill" title="Last synced at">
-                                <span>{ts.display(self.tz.clone())}</span>
-                            </div>
-                        } else {
-                            <div class="input-text fill text-muted" title="Never synced">
-                                <span>{"Never synced"}</span>
-                            </div>
-                        }
-
-                        if !movie.remotes.is_empty() {
-                            <button class="btn" onclick={link.callback(|_| Msg::SyncMovie)} title="Sync now">
-                                <span class="item-inline"><span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} /></span>
-                            </button>
-                        }
-                    </div>
                 </div>
 
                 <div class="desktop-row mobile-column end desktop-input-group">
@@ -911,6 +869,13 @@ impl MovieDetail {
                         <button class="btn-danger" onclick={link.callback(|_| Msg::ConfirmRemove)} title="Remove movie">
                             <span class="item-inline"><span class="icon trash" /></span>
                             <span class="hide-desktop">{"Remove"}</span>
+                        </button>
+                    }
+
+                    if !movie.remotes.is_empty() {
+                        <button class="btn" onclick={link.callback(|_| Msg::SyncMovie)} title="Sync now">
+                            <span class="item-inline"><span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} /></span>
+                            <span class="hide-desktop">{"Sync"}</span>
                         </button>
                     }
 
@@ -988,6 +953,13 @@ impl MovieDetail {
                     title="Movie settings"
                     language={movie.language.clone()}
                     has_images={!movie.images.is_empty()}
+                    kind={RemoteSourceKind::Movie}
+                    remotes={movie.remotes.clone()}
+                    current_source={movie.effective_sync_source().map(|r| r.into_remote_source())}
+                    last_synced={movie.last_synced_at.map(|ts| AttrValue::from(ts.display(self.tz.clone())))}
+                    syncing={self.syncing}
+                    on_sync_source_change={link.callback(|s: api::RemoteSource| Msg::SetSyncSource(s.into_sync_source()))}
+                    on_sync={link.callback(|_| Msg::SyncMovie)}
                     on_language_change={link.callback(Msg::SetLanguage)}
                     on_edit_graphics={link.callback(|_| Msg::OpenImageModal)}
                     on_edit_identifiers={link.callback(|_| Msg::OpenRemoteEditor)}

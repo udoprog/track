@@ -1,4 +1,5 @@
-use web_sys::{Event, MouseEvent};
+use gloo::timers::callback::Timeout;
+use web_sys::{Event, InputEvent, MouseEvent};
 use yew::prelude::*;
 
 use iso639::{LanguageToCountry, Languages};
@@ -212,6 +213,18 @@ pub(super) struct MediaSettingsModalProps {
     pub(super) on_edit_graphics: Callback<()>,
     pub(super) on_edit_identifiers: Callback<()>,
     pub(super) on_close: Callback<()>,
+    /// Remote identifiers available for syncing.
+    pub(super) remotes: Vec<api::RemoteId>,
+    /// Whether to scope the sync-source select to series or movie remotes.
+    pub(super) kind: RemoteSourceKind,
+    /// Currently selected sync source.
+    pub(super) current_source: Option<api::RemoteSource>,
+    /// Formatted "last synced at" timestamp, or `None` if never synced.
+    pub(super) last_synced: Option<AttrValue>,
+    /// Whether a sync is currently in progress (spins the sync icon).
+    pub(super) syncing: bool,
+    pub(super) on_sync_source_change: Callback<api::RemoteSource>,
+    pub(super) on_sync: Callback<()>,
     /// Current specials override. Only meaningful when
     /// `on_include_specials_change` is set.
     #[prop_or_default]
@@ -225,6 +238,7 @@ pub(super) struct MediaSettingsModalProps {
 pub(super) fn MediaSettingsModal(props: &MediaSettingsModalProps) -> Html {
     let on_edit_graphics = props.on_edit_graphics.reform(|_: MouseEvent| ());
     let on_edit_identifiers = props.on_edit_identifiers.reform(|_: MouseEvent| ());
+    let on_sync = props.on_sync.reform(|_: MouseEvent| ());
 
     let specials = props.on_include_specials_change.as_ref().map(|cb| {
         let include_specials = props.include_specials;
@@ -270,6 +284,30 @@ pub(super) fn MediaSettingsModal(props: &MediaSettingsModalProps) -> Html {
                 {specials}
 
                 <div class="field">
+                    <label>{"Sync"}</label>
+                    <div class="input-group">
+                        <RemoteSourceSelect
+                            kind={props.kind}
+                            remotes={props.remotes.clone()}
+                            current_source={props.current_source}
+                            on_change={props.on_sync_source_change.clone()}
+                        />
+
+                        if let Some(ref ts) = props.last_synced {
+                            <div class="input-text fill" title="Last synced at">{ts}</div>
+                        } else {
+                            <div class="input-text fill text-muted">{"Never synced"}</div>
+                        }
+
+                        if !props.remotes.is_empty() {
+                            <button class="btn" onclick={on_sync} title="Sync now">
+                                <span class="item-inline"><span class={classes!("icon", "arrow-path", props.syncing.then_some("spin"))} /></span>
+                            </button>
+                        }
+                    </div>
+                </div>
+
+                <div class="field">
                     <label>{"Graphics"}</label>
                     if props.has_images {
                         <button class="btn" onclick={on_edit_graphics}>
@@ -292,6 +330,136 @@ pub(super) fn MediaSettingsModal(props: &MediaSettingsModalProps) -> Html {
                 </div>
             </div>
         </Modal>
+    }
+}
+
+/// How long a revealed secret stays visible before auto-hiding.
+const SECRET_REVEAL_MS: u32 = 3000;
+
+/// Reusable input for sensitive values (API keys, PINs). Renders as a password
+/// field with three actions: reveal (shows the value, then auto-hides after a
+/// few seconds), copy to clipboard, and clear. Controlled — `value` comes from
+/// the parent and edits are emitted through `on_change`.
+#[derive(Properties, PartialEq)]
+pub(super) struct SecretInputProps {
+    pub(super) value: String,
+    #[prop_or_default]
+    pub(super) placeholder: AttrValue,
+    pub(super) on_change: Callback<String>,
+}
+
+pub(super) enum SecretInputMsg {
+    Input(String),
+    Reveal,
+    Hide,
+    Copy,
+    Clear,
+}
+
+pub(super) struct SecretInput {
+    revealed: bool,
+    // Held so the scheduled auto-hide fires; dropping it cancels the timer.
+    _hide_timer: Option<Timeout>,
+}
+
+impl Component for SecretInput {
+    type Message = SecretInputMsg;
+    type Properties = SecretInputProps;
+
+    fn create(_ctx: &Context<Self>) -> Self {
+        Self {
+            revealed: false,
+            _hide_timer: None,
+        }
+    }
+
+    fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
+        match msg {
+            SecretInputMsg::Input(value) => {
+                ctx.props().on_change.emit(value);
+                false
+            }
+            SecretInputMsg::Reveal => {
+                self.revealed = true;
+                let link = ctx.link().clone();
+                self._hide_timer = Some(Timeout::new(SECRET_REVEAL_MS, move || {
+                    link.send_message(SecretInputMsg::Hide);
+                }));
+                true
+            }
+            SecretInputMsg::Hide => {
+                self.revealed = false;
+                self._hide_timer = None;
+                true
+            }
+            SecretInputMsg::Copy => {
+                if let Some(window) = web_sys::window() {
+                    let _ = window
+                        .navigator()
+                        .clipboard()
+                        .write_text(&ctx.props().value);
+                }
+                false
+            }
+            SecretInputMsg::Clear => {
+                ctx.props().on_change.emit(String::new());
+                self.revealed = false;
+                self._hide_timer = None;
+                true
+            }
+        }
+    }
+
+    fn view(&self, ctx: &Context<Self>) -> Html {
+        let link = ctx.link();
+        let props = ctx.props();
+        let is_empty = props.value.is_empty();
+
+        let on_input = link.callback(|e: InputEvent| {
+            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+            SecretInputMsg::Input(input.value())
+        });
+
+        let revealed = self.revealed;
+        let on_toggle = link.callback(move |_: MouseEvent| {
+            if revealed {
+                SecretInputMsg::Hide
+            } else {
+                SecretInputMsg::Reveal
+            }
+        });
+
+        let (toggle_icon, toggle_title) = if revealed {
+            ("eye-slash", "Hide")
+        } else {
+            ("eye", "Reveal")
+        };
+
+        html! {
+            <div class="input-group">
+                <input
+                    type={if revealed { "text" } else { "password" }}
+                    class="input-text fill"
+                    placeholder={props.placeholder.clone()}
+                    value={props.value.clone()}
+                    oninput={on_input}
+                    autocomplete="off"
+                    spellcheck="false"
+                />
+
+                <button type="button" class="btn" title={toggle_title} disabled={is_empty} onclick={on_toggle}>
+                    <span class="item-inline"><span class={classes!("icon", toggle_icon)} /></span>
+                </button>
+
+                <button type="button" class="btn" title="Copy to clipboard" disabled={is_empty} onclick={link.callback(|_| SecretInputMsg::Copy)}>
+                    <span class="item-inline"><span class="icon clipboard" /></span>
+                </button>
+
+                <button type="button" class="btn" title="Clear" disabled={is_empty} onclick={link.callback(|_| SecretInputMsg::Clear)}>
+                    <span class="item-inline"><span class="icon x-mark" /></span>
+                </button>
+            </div>
+        }
     }
 }
 

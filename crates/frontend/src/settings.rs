@@ -3,7 +3,7 @@ use yew::prelude::*;
 
 use crate::SetupChannel;
 use crate::error::{CustomContext, Error, Message};
-use crate::ui::LanguagePicker;
+use crate::ui::{LanguagePicker, SecretInput};
 
 fn tz_is_valid(name: &str) -> bool {
     name.is_empty() || jiff_tzdb::get(name).is_some()
@@ -89,21 +89,6 @@ impl Component for Settings {
             Msg::ThemeChanged(theme)
         });
 
-        let on_tvdb = link.callback(|e: InputEvent| {
-            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
-            Msg::TvdbKeyChanged(input.value())
-        });
-
-        let on_tvdb_pin = link.callback(|e: InputEvent| {
-            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
-            Msg::TvdbPinChanged(input.value())
-        });
-
-        let on_tmdb = link.callback(|e: InputEvent| {
-            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
-            Msg::TmdbKeyChanged(input.value())
-        });
-
         let on_schedule_days = link.callback(|e: InputEvent| {
             let input: web_sys::HtmlInputElement = e.target_unchecked_into();
             Msg::ScheduleDaysChanged(input.value())
@@ -166,15 +151,27 @@ impl Component for Settings {
                     <div class="form">
                         <div class="field">
                             <label>{"TheTVDB API Key"}</label>
-                            <input type="text" class="input-text" placeholder="Enter TVDB API key" value={self.config.tvdb_api_key.clone()} oninput={on_tvdb} />
+                            <SecretInput
+                                placeholder="Enter TVDB API key"
+                                value={self.config.tvdb_api_key.clone()}
+                                on_change={link.callback(Msg::TvdbKeyChanged)}
+                            />
                         </div>
                         <div class="field">
                             <label>{"TheTVDB Subscriber PIN (optional)"}</label>
-                            <input type="text" class="input-text" placeholder="Enter TVDB subscriber PIN" value={self.config.tvdb_pin.clone().unwrap_or_default()} oninput={on_tvdb_pin} />
+                            <SecretInput
+                                placeholder="Enter TVDB subscriber PIN"
+                                value={self.config.tvdb_pin.clone().unwrap_or_default()}
+                                on_change={link.callback(Msg::TvdbPinChanged)}
+                            />
                         </div>
                         <div class="field">
                             <label>{"TheMovieDB API Key"}</label>
-                            <input type="text" class="input-text" placeholder="Enter TMDB API key" value={self.config.tmdb_api_key.clone()} oninput={on_tmdb} />
+                            <SecretInput
+                                placeholder="Enter TMDB API key"
+                                value={self.config.tmdb_api_key.clone()}
+                                on_change={link.callback(Msg::TmdbKeyChanged)}
+                            />
                         </div>
                     </div>
                 </div>
@@ -325,7 +322,7 @@ impl Settings {
             }
             Msg::TvdbKeyChanged(val) => {
                 self.config.tvdb_api_key = val;
-                Ok(false)
+                Ok(true)
             }
             Msg::TvdbPinChanged(val) => {
                 let val = val.trim();
@@ -336,11 +333,11 @@ impl Settings {
                     self.config.tvdb_pin = Some(val.to_owned());
                 }
 
-                Ok(false)
+                Ok(true)
             }
             Msg::TmdbKeyChanged(val) => {
                 self.config.tmdb_api_key = val;
-                Ok(false)
+                Ok(true)
             }
             Msg::TimezoneChanged(val) => {
                 self.config.timezone = val;

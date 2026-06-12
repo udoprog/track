@@ -170,7 +170,13 @@ p {
     gap: $gap-sm;
 
     &.center {
-        justify-content: center;
+        align-items: center;
+    }
+
+    @include g.from-desktop {
+        &.desktop-center {
+            align-items: center;
+        }
     }
 
     &.no-gap {
