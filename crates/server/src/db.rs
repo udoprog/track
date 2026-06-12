@@ -524,7 +524,7 @@ statements! {
         "#,
         update_movie: r#"
             UPDATE movies
-            SET title = ?, release_date = ?, overview = ?, tracked = ?
+            SET title = ?, release_date = ?, overview = ?
             WHERE id = ?
         "#,
         delete_movie: r#"

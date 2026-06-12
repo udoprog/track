@@ -283,6 +283,7 @@ impl WsHandler {
                 let req = incoming
                     .read::<api::UntrackMovieRequest>()
                     .context("missing request")?;
+
                 self.db.set_movie_tracked(req.id, req.tracked).await?;
 
                 let movie = self
