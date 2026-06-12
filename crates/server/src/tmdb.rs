@@ -105,6 +105,8 @@ impl Client {
         Ok(Some(resp.error_for_status()?.bytes().await?))
     }
 
+    /// Search series, returning the results for `page` and the total number of
+    /// results across all pages.
     pub(crate) async fn search_series(
         &self,
         query: &str,
@@ -131,7 +133,7 @@ impl Client {
         struct Resp {
             results: Vec<Row>,
             #[serde(default)]
-            total_pages: usize,
+            total_results: usize,
         }
 
         // TMDB pages are 1-indexed.
@@ -162,9 +164,11 @@ impl Client {
             });
         }
 
-        Ok((out, resp.total_pages))
+        Ok((out, resp.total_results))
     }
 
+    /// Search movies, returning the results for `page` and the total number of
+    /// results across all pages.
     pub(crate) async fn search_movies(
         &self,
         query: &str,
@@ -191,7 +195,7 @@ impl Client {
         struct Resp {
             results: Vec<Row>,
             #[serde(default)]
-            total_pages: usize,
+            total_results: usize,
         }
 
         // TMDB pages are 1-indexed.
@@ -222,7 +226,7 @@ impl Client {
             });
         }
 
-        Ok((out, resp.total_pages))
+        Ok((out, resp.total_results))
     }
 
     pub(crate) async fn fetch_series(&self, id: u32, language: Option<&str>) -> Result<SeriesInfo> {

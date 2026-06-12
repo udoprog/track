@@ -79,6 +79,50 @@ impl PagedQuery {
 }
 
 #[derive(Default, Debug, Clone, PartialEq)]
+pub(super) struct SearchQuery {
+    pub(super) kind: api::SearchKind,
+    pub(super) filter: String,
+}
+
+impl SearchQuery {
+    fn to_query_string(&self) -> String {
+        let mut s = form_urlencoded::Serializer::new(String::new());
+
+        if matches!(self.kind, api::SearchKind::Movies) {
+            s.append_pair("kind", "movies");
+        }
+
+        if !self.filter.is_empty() {
+            s.append_pair("filter", &self.filter);
+        }
+
+        s.finish()
+    }
+
+    fn from_search(search: &str) -> Self {
+        let mut this = Self::default();
+
+        for (key, value) in form_urlencoded::parse(search.as_bytes()) {
+            match key.as_ref() {
+                "kind" => {
+                    this.kind = if value.as_ref() == "movies" {
+                        api::SearchKind::Movies
+                    } else {
+                        api::SearchKind::Series
+                    };
+                }
+                "filter" => {
+                    this.filter = value.into_owned();
+                }
+                _ => continue,
+            }
+        }
+
+        this
+    }
+}
+
+#[derive(Default, Debug, Clone, PartialEq)]
 pub(super) struct SeriesDetailQuery {
     pub(super) season: Option<api::SeasonNumber>,
 }
@@ -122,7 +166,7 @@ pub(super) enum Route {
     SeriesDetail(api::SeriesId, SeriesDetailQuery),
     Movies(PagedQuery),
     MovieDetail(api::MovieId),
-    Search,
+    Search(SearchQuery),
     Settings,
 }
 
@@ -174,7 +218,15 @@ impl fmt::Display for Route {
                 }
             }
             Route::MovieDetail(id) => write!(f, "/movies/{id}"),
-            Route::Search => f.write_str("/search"),
+            Route::Search(q) => {
+                let qs = q.to_query_string();
+
+                if qs.is_empty() {
+                    f.write_str("/search")
+                } else {
+                    write!(f, "/search?{qs}")
+                }
+            }
             Route::Settings => f.write_str("/settings"),
         }
     }
@@ -201,7 +253,7 @@ impl Route {
                     .unwrap_or(Route::Movies(PagedQuery::default())),
                 None => Route::Movies(PagedQuery::from_search(search)),
             },
-            Some("search") => Route::Search,
+            Some("search") => Route::Search(SearchQuery::from_search(search)),
             Some("settings") => Route::Settings,
             _ => Route::Dashboard(DashboardQuery::from_search(search)),
         }

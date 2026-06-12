@@ -3,7 +3,7 @@ use wasm_bindgen::JsCast as _;
 use yew::prelude::*;
 
 use crate::error::{CustomContext, Error, Message, RcError};
-use crate::router::{Route, SeriesDetailQuery};
+use crate::router::{Route, SearchQuery, SeriesDetailQuery};
 use crate::ui::ErrorBox;
 use crate::{Image, SetupChannel};
 
@@ -14,7 +14,8 @@ pub(super) struct Search {
     series: Vec<api::SearchSeries>,
     movies: Vec<api::SearchMovie>,
     page: usize,
-    has_more: bool,
+    total: usize,
+    loading: bool,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
     _search_req: ws::Request,
@@ -40,6 +41,8 @@ pub(super) enum Msg {
 pub(super) struct Props {
     pub(super) error: Option<RcError>,
     pub(super) onerror: Callback<Option<Error>>,
+    pub(super) kind: api::SearchKind,
+    pub(super) filter: String,
     pub(super) on_navigate: Callback<Route>,
 }
 
@@ -58,12 +61,13 @@ impl Component for Search {
 
         Self {
             channel: ws::Channel::default(),
-            query: String::new(),
-            kind: api::SearchKind::Series,
+            query: ctx.props().filter.clone(),
+            kind: ctx.props().kind,
             series: Vec::new(),
             movies: Vec::new(),
             page: 0,
-            has_more: false,
+            total: 0,
+            loading: false,
             _setup,
             _broadcast,
             _search_req: ws::Request::default(),
@@ -79,6 +83,22 @@ impl Component for Search {
                 false
             }
         }
+    }
+
+    fn changed(&mut self, ctx: &Context<Self>, old_props: &Self::Properties) -> bool {
+        let props = ctx.props();
+
+        if props.kind != old_props.kind || props.filter != old_props.filter {
+            self.kind = props.kind;
+            self.query = props.filter.clone();
+            self.series.clear();
+            self.movies.clear();
+            self.page = 0;
+            self.total = 0;
+            self.send_search(ctx, self.page);
+        }
+
+        true
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
@@ -165,7 +185,9 @@ impl Search {
         match msg {
             Msg::Channel(result) => {
                 self.channel = result?;
-                Ok(false)
+                // Run the search carried by the URL once the channel is ready.
+                self.page = 0;
+                Ok(self.send_search(ctx, self.page))
             }
             Msg::AppBroadcast(packet) => {
                 let event = packet?.decode_event()?;
@@ -201,25 +223,27 @@ impl Search {
                 Ok(false)
             }
             Msg::KindChanged(kind) => {
-                self.kind = kind;
-                self.series.clear();
-                self.movies.clear();
-                self.page = 0;
-                self.has_more = false;
-                self.send_search(ctx, self.page);
-                Ok(true)
+                // Drive the search through the URL; `changed` runs the search.
+                ctx.props().on_navigate.emit(Route::Search(SearchQuery {
+                    kind,
+                    filter: self.query.clone(),
+                }));
+                Ok(false)
             }
             Msg::Submit => {
-                self.page = 0;
-                self.send_search(ctx, self.page);
+                ctx.props().on_navigate.emit(Route::Search(SearchQuery {
+                    kind: self.kind,
+                    filter: self.query.clone(),
+                }));
                 Ok(false)
             }
             Msg::LoadMore => {
                 self.page += 1;
-                self.send_search(ctx, self.page);
-                Ok(false)
+                Ok(self.send_search(ctx, self.page))
             }
             Msg::SearchDone(result) => {
+                self.loading = false;
+
                 let resp = result
                     .context(Message::Searching)?
                     .decode()
@@ -233,7 +257,7 @@ impl Search {
                     self.movies.extend(resp.movies);
                 }
 
-                self.has_more = resp.has_more;
+                self.total = resp.total;
                 Ok(true)
             }
             Msg::TrackSeries(remote_id) => {
@@ -279,10 +303,12 @@ impl Search {
         }
     }
 
-    fn send_search(&mut self, ctx: &Context<Self>, page: usize) {
+    fn send_search(&mut self, ctx: &Context<Self>, page: usize) -> bool {
         if self.query.is_empty() || self.channel.id() == ws::ChannelId::NONE {
-            return;
+            return false;
         }
+
+        self.loading = true;
 
         self._search_req = self
             .channel
@@ -294,6 +320,8 @@ impl Search {
             })
             .on_packet(ctx.link().callback(Msg::SearchDone))
             .send();
+
+        true
     }
 
     fn view_results(&self, ctx: &Context<Self>) -> Html {
@@ -301,7 +329,11 @@ impl Search {
             return html! {};
         }
 
-        let on_more = ctx.link().callback(|_| Msg::LoadMore);
+        let on_more = ctx.link().callback(|e: MouseEvent| {
+            e.prevent_default();
+            Msg::LoadMore
+        });
+        let loaded = self.series.len() + self.movies.len();
 
         html! {
             <>
@@ -309,12 +341,16 @@ impl Search {
 
                 { for self.movies.iter().map(|r| self.view_movie_result(ctx, r)) }
 
-                if self.has_more {
+                if self.loading {
                     <div class="row center">
-                        <a class="item-inline-more clickable" onclick={on_more}>
-                            <span class="icon ellipsis-horizontal" />
-                        </a>
+                        <span class="item-inline-more"><span class="icon arrow-path spin" /></span>
                     </div>
+                } else if loaded < self.total {
+                    <a class="row center clickable" onclick={on_more}>
+                        <span class="item-inline-more">
+                            <span class="icon ellipsis-horizontal" />
+                        </span>
+                    </a>
                 }
             </>
         }
@@ -324,12 +360,11 @@ impl Search {
         let remote_id = r.remote_id.clone();
         let series_id = r.already_tracked;
 
-        let on_nav = match series_id {
-            Some(series_id) => Some(ctx.link().callback(move |_| {
-                Msg::Navigate(Route::SeriesDetail(series_id, SeriesDetailQuery::default()))
-            })),
-            None => None,
-        };
+        let on_nav = series_id.map(|id| {
+            ctx.link().callback(move |_| {
+                Msg::Navigate(Route::SeriesDetail(id, SeriesDetailQuery::default()))
+            })
+        });
 
         let on_track = ctx
             .link()
@@ -382,13 +417,10 @@ impl Search {
         let remote_id = r.remote_id.clone();
         let series_id = r.already_tracked;
 
-        let on_nav = match series_id {
-            Some(series_id) => Some(
-                ctx.link()
-                    .callback(move |_| Msg::Navigate(Route::MovieDetail(series_id))),
-            ),
-            None => None,
-        };
+        let on_nav = series_id.map(|id| {
+            ctx.link()
+                .callback(move |_| Msg::Navigate(Route::MovieDetail(id)))
+        });
 
         let on_track = ctx
             .link()

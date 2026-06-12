@@ -4,7 +4,7 @@ use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
 use crate::error::{CustomContext, Error, Message, RcError};
-use crate::router::{DashboardQuery, PagedQuery, Route};
+use crate::router::{DashboardQuery, PagedQuery, Route, SearchQuery};
 use crate::setup_channel::SetupChannel;
 use crate::ui::LoadingPage;
 use crate::{
@@ -191,7 +191,9 @@ impl App {
                 let movie_id = *movie_id;
                 html! { <MovieDetail {error} {onerror} {movie_id} {on_navigate} /> }
             }
-            Route::Search => html! { <Search {error} {onerror} {on_navigate} /> },
+            Route::Search(query) => html! {
+                <Search {error} {onerror} {on_navigate} kind={query.kind} filter={query.filter.clone()} />
+            },
             Route::Settings => html! { <Settings {error} {onerror} /> },
         }
     }
@@ -256,7 +258,7 @@ fn Toolbar(props: &ToolbarProps) -> Html {
                         <span class="item-inline"><span class="icon film" /></span>
                         <span>{"Movies"}</span>
                     </button>
-                    <button onclick={on_nav(Route::Search)} class="btn" title="Search">
+                    <button onclick={on_nav(Route::Search(SearchQuery::default()))} class="btn" title="Search">
                         <span class="item-inline"><span class="icon magnifying-glass" /></span>
                         <span>{"Search"}</span>
                     </button>

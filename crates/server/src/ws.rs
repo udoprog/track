@@ -501,13 +501,14 @@ impl WsHandler {
 
                 let mut series: Vec<api::SearchSeries> = Vec::new();
                 let mut movies: Vec<api::SearchMovie> = Vec::new();
-                let has_more;
+                let total;
 
                 match req.kind {
                     api::SearchKind::Series => {
-                        let (results, more) =
+                        let (results, count) =
                             self.remote.search_series(&req.query, req.page).await?;
-                        has_more = more;
+
+                        total = count;
 
                         for r in results {
                             let already_tracked = self
@@ -523,9 +524,10 @@ impl WsHandler {
                         }
                     }
                     api::SearchKind::Movies => {
-                        let (results, more) =
+                        let (results, count) =
                             self.remote.search_movies(&req.query, req.page).await?;
-                        has_more = more;
+
+                        total = count;
 
                         for r in results {
                             let already_tracked = self
@@ -545,7 +547,7 @@ impl WsHandler {
                 outgoing.write(api::SearchResponse {
                     series,
                     movies,
-                    has_more,
+                    total,
                 });
             }
             api::Request::SyncSeries => {

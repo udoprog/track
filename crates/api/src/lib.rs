@@ -1622,9 +1622,10 @@ pub struct Empty;
 
 // ── Search types ─────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub enum SearchKind {
+    #[default]
     Series,
     Movies,
 }
@@ -1937,7 +1938,8 @@ pub struct SearchRequest {
 pub struct SearchResponse {
     pub series: Vec<SearchSeries>,
     pub movies: Vec<SearchMovie>,
-    pub has_more: bool,
+    /// Total number of results across the queried sources.
+    pub total: usize,
 }
 
 #[derive(Debug, Encode, Decode)]

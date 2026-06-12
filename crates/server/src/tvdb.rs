@@ -14,6 +14,8 @@ const BASE: &str = "https://api4.thetvdb.com/v4/";
 const IMAGE_BASE: &str = "https://artworks.thetvdb.com/";
 // v4 tokens are valid for ~1 month; refresh well before that.
 const EXPIRATION_SECONDS: u64 = 3600 * 24 * 24;
+// Results requested per search page (aligned with TMDB's fixed page size).
+const SEARCH_LIMIT: usize = 20;
 
 // Series artwork `type` ids (see `GET /artwork/types`, recordType "series").
 const ARTWORK_BANNER: u32 = 1;
@@ -146,6 +148,8 @@ impl Client {
         Ok(req)
     }
 
+    /// Search series, returning the results for `page` and the total number of
+    /// results across all pages.
     pub(crate) async fn search_series(
         &self,
         query: &str,
@@ -173,8 +177,6 @@ impl Client {
         struct Links {
             #[serde(default)]
             total_items: Option<usize>,
-            #[serde(default)]
-            page_size: Option<usize>,
         }
 
         #[derive(Deserialize)]
@@ -184,10 +186,9 @@ impl Client {
             links: Option<Links>,
         }
 
-        // Keep the page size aligned with TMDB (which returns 20 per page).
-        const LIMIT: usize = 20;
-        let offset = (page * LIMIT).to_string();
-        let limit = LIMIT.to_string();
+        let offset = page * SEARCH_LIMIT;
+        let offset_param = offset.to_string();
+        let limit_param = SEARCH_LIMIT.to_string();
 
         let bytes = self
             .request(Method::GET, "search")
@@ -195,8 +196,8 @@ impl Client {
             .query(&[
                 ("query", query),
                 ("type", "series"),
-                ("limit", limit.as_str()),
-                ("offset", offset.as_str()),
+                ("limit", limit_param.as_str()),
+                ("offset", offset_param.as_str()),
             ])
             .send()
             .await?
@@ -206,17 +207,10 @@ impl Client {
 
         let resp: Resp = serde_json::from_slice(&bytes)?;
 
-        // Prefer the server-reported totals; otherwise infer from the page fill.
-        let total_pages = match resp.links.as_ref() {
-            Some(Links {
-                total_items: Some(total),
-                page_size,
-            }) => {
-                let size = page_size.filter(|&s| s > 0).unwrap_or(LIMIT);
-                total.div_ceil(size)
-            }
-            _ if resp.data.len() >= LIMIT => page + 2,
-            _ => page + 1,
+        // Prefer the server-reported total; otherwise infer from this page.
+        let total = match resp.links.as_ref().and_then(|l| l.total_items) {
+            Some(total) => total,
+            None => offset + resp.data.len(),
         };
 
         let mut out = Vec::new();
@@ -228,9 +222,12 @@ impl Client {
                 continue;
             };
 
-            let poster = opt_image(row.poster.as_deref());
+            // Search results expose the primary image (the poster, for series)
+            // in `image_url`; a dedicated `poster` field is usually absent.
+            let primary = opt_image(row.image_url.as_deref());
+            let poster = opt_image(row.poster.as_deref()).or_else(|| primary.clone());
             let banner = opt_image(row.thumbnail.as_deref());
-            let fanart = opt_image(row.image_url.as_deref());
+            let fanart = primary;
 
             out.push(SearchSeriesResult {
                 remote_id: RemoteId::tvdb(id),
@@ -243,7 +240,7 @@ impl Client {
             });
         }
 
-        Ok((out, total_pages))
+        Ok((out, total))
     }
 
     pub(crate) async fn fetch_series(&self, id: u32, language: Option<&str>) -> Result<SeriesInfo> {

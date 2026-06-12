@@ -106,25 +106,27 @@ impl RemoteClients {
 
     /// Search series across all configured sources (tmdb then tvdb), one page
     /// per source merged together. `already_tracked` is left as `None`; the
-    /// caller fills it in from the DB. Returns the results and whether a further
-    /// page can be fetched from any source.
+    /// caller fills it in from the DB. Returns the results and the total number
+    /// of results across the queried sources.
     pub(crate) async fn search_series(
         &self,
         query: &str,
         page: usize,
-    ) -> Result<(Vec<api::SearchSeries>, bool)> {
+    ) -> Result<(Vec<api::SearchSeries>, usize)> {
         let tmdb = self.tmdb();
         let tvdb = self.tvdb();
 
-        let mut out = Vec::new();
-        let mut has_more = false;
+        let mut a = Vec::new();
+        let mut b = Vec::new();
+
+        let mut total = 0;
 
         if let Some(client) = tmdb {
-            let (results, pages) = client.search_series(query, page).await?;
-            has_more |= page + 1 < pages;
+            let (results, count) = client.search_series(query, page).await?;
+            total += count;
 
             for r in results {
-                out.push(api::SearchSeries {
+                a.push(api::SearchSeries {
                     remote_id: r.remote_id,
                     title: r.title,
                     poster: r.poster.clone().map(api::Image::from),
@@ -138,11 +140,11 @@ impl RemoteClients {
         }
 
         if let Some(client) = tvdb {
-            let (results, pages) = client.search_series(query, page).await?;
-            has_more |= page + 1 < pages;
+            let (results, count) = client.search_series(query, page).await?;
+            total += count;
 
             for r in results {
-                out.push(api::SearchSeries {
+                b.push(api::SearchSeries {
                     remote_id: r.remote_id,
                     title: r.title,
                     poster: r
@@ -161,22 +163,34 @@ impl RemoteClients {
             }
         }
 
-        Ok((out, has_more))
+        let mut out = Vec::new();
+
+        let mut b = b.into_iter();
+
+        for a in a {
+            out.push(a);
+
+            if let Some(b) = b.next() {
+                out.push(b);
+            }
+        }
+
+        Ok((out, total))
     }
 
     /// Search movies (tmdb only). `already_tracked` is left as `None`. Returns
-    /// the results and whether a further page can be fetched.
+    /// the results and the total number of results.
     pub(crate) async fn search_movies(
         &self,
         query: &str,
         page: usize,
-    ) -> Result<(Vec<api::SearchMovie>, bool)> {
+    ) -> Result<(Vec<api::SearchMovie>, usize)> {
         let mut out = Vec::new();
-        let mut has_more = false;
+        let mut total = 0;
 
         if let Some(client) = self.tmdb() {
-            let (results, pages) = client.search_movies(query, page).await?;
-            has_more |= page + 1 < pages;
+            let (results, count) = client.search_movies(query, page).await?;
+            total += count;
 
             for r in results {
                 out.push(api::SearchMovie {
@@ -192,7 +206,7 @@ impl RemoteClients {
             }
         }
 
-        Ok((out, has_more))
+        Ok((out, total))
     }
 
     // ── Sync fetch helpers ────────────────────────────────────────────────────
