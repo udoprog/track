@@ -42,7 +42,7 @@ pub(crate) async fn run(
     let mut config = db.load_config().await?;
 
     if !config.auto_sync_enabled {
-        info!("background sync disabled, skipping");
+        info!("Background sync disabled, skipping");
     }
 
     loop {
@@ -52,7 +52,7 @@ pub(crate) async fn run(
                 config = db.load_config().await?;
 
                 if !config.auto_sync_enabled {
-                    info!("background sync disabled, skipping");
+                    info!("Background sync disabled, skipping");
                 }
 
                 continue;
@@ -60,7 +60,7 @@ pub(crate) async fn run(
             _ = shutdown.cancelled() => { return Ok(()); }
         }
 
-        tracing::info!("starting background sync poll");
+        tracing::info!("Starting background sync poll");
         discover_pending_movies(&db).await?;
 
         let interval_hours = config.auto_sync_interval_hours.max(1);
@@ -72,7 +72,7 @@ pub(crate) async fn run(
             series = stale_series.len(),
             movies = stale_movies.len(),
             interval_hours,
-            "background sync poll"
+            "Background sync poll"
         );
 
         for s in stale_series {

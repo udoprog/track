@@ -50,59 +50,59 @@ pub(crate) struct Error {
 pub(crate) enum Message {
     #[display("WebSocket Error")]
     WebSocketError,
-    #[display("missing window")]
+    #[display("Missing window")]
     MissingWindow,
-    #[display("missing history API")]
+    #[display("Missing history API")]
     MissingHistory,
-    #[display("reading location pathname")]
+    #[display("Reading location pathname")]
     ReadingPathname,
-    #[display("pushing browser history state")]
+    #[display("Pushing browser history state")]
     PushState,
-    #[display("loading pending")]
+    #[display("Loading pending")]
     LoadingPending,
-    #[display("loading schedule")]
+    #[display("Loading schedule")]
     LoadingSchedule,
-    #[display("loading config")]
+    #[display("Loading config")]
     LoadingConfig,
-    #[display("loading series")]
+    #[display("Loading series")]
     LoadingSeries,
-    #[display("loading seasons")]
+    #[display("Loading seasons")]
     LoadingSeasons,
-    #[display("loading episodes")]
+    #[display("Loading episodes")]
     LoadingEpisodes,
-    #[display("marking watched")]
+    #[display("Marking watched")]
     MarkingWatched,
-    #[display("loading movies")]
+    #[display("Loading movies")]
     LoadingMovies,
-    #[display("loading watch history")]
+    #[display("Loading watch history")]
     LoadingWatched,
-    #[display("saving config")]
+    #[display("Saving config")]
     SavingConfig,
-    #[display("removing watch")]
+    #[display("Removing watch")]
     RemovingWatched,
-    #[display("removing movie")]
+    #[display("Removing movie")]
     RemovingMovie,
-    #[display("untracking series")]
+    #[display("Untracking series")]
     UntrackingSeries,
-    #[display("updating movie tracking")]
+    #[display("Updating movie tracking")]
     UntrackingMovie,
-    #[display("removing series")]
+    #[display("Removing series")]
     RemovingSeries,
-    #[display("syncing series")]
+    #[display("Syncing series")]
     SyncingSeries,
-    #[display("setting sync source")]
+    #[display("Setting sync source")]
     SettingSyncSource,
-    #[display("editing remote identifiers")]
+    #[display("Editing remote identifiers")]
     EditingRemotes,
-    #[display("setting language")]
+    #[display("Setting language")]
     SettingLanguage,
-    #[display("loading tasks")]
+    #[display("Loading tasks")]
     LoadingTasks,
-    #[display("searching")]
+    #[display("Searching")]
     Searching,
-    #[display("tracking series")]
+    #[display("Tracking series")]
     TrackingSeries,
-    #[display("tracking movie")]
+    #[display("Tracking movie")]
     TrackingMovie,
 }
 

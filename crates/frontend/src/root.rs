@@ -27,7 +27,7 @@ impl Component for Root {
     fn create(ctx: &Context<Self>) -> Self {
         let background = BackgroundState::new();
 
-        let router = RouterState::new().expect("setting up router");
+        let router = RouterState::new().expect("Setting up router");
         let _history_listener = router.on_change(ctx.link().callback(|()| Msg::PopState));
 
         Self {

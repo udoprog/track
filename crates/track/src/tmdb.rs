@@ -84,14 +84,14 @@ impl Client {
         let bytes = req
             .send()
             .await
-            .context("request failed")?
+            .context("Sending request")?
             .error_for_status()
-            .context("bad status")?
+            .context("Bad response status")?
             .bytes()
             .await
-            .context("reading body")?;
+            .context("Reading response body")?;
 
-        serde_json::from_slice(&bytes).context("deserializing JSON")
+        serde_json::from_slice(&bytes).context("Deserializing JSON response")
     }
 
     pub(crate) async fn fetch_image(&self, path: &str) -> Result<Option<bytes::Bytes>> {
@@ -141,7 +141,7 @@ impl Client {
 
         let bytes = self
             .request(Method::GET, "search/tv")
-            .context("building request")?
+            .context("Building request")?
             .query(&[("query", query), ("page", page.as_str())])
             .send()
             .await?
@@ -203,7 +203,7 @@ impl Client {
 
         let bytes = self
             .request(Method::GET, "search/movie")
-            .context("building request")?
+            .context("Building request")?
             .query(&[("query", query), ("page", page.as_str())])
             .send()
             .await?
@@ -279,7 +279,7 @@ impl Client {
         let images: Images = self
             .get_images(format!("tv/{id}/images"), language)
             .await
-            .context("fetching images")?;
+            .context("Fetching images")?;
 
         let mut seasons = Vec::with_capacity(details.seasons.len());
 
@@ -483,7 +483,7 @@ impl Client {
         let images: Images = self
             .get_images(format!("movie/{id}/images"), language)
             .await
-            .context("fetching images")?;
+            .context("Fetching images")?;
 
         let mut remotes = vec![RemoteId::tmdb(id)];
 
@@ -518,8 +518,6 @@ impl Client {
         })
     }
 }
-
-// ── Output types ─────────────────────────────────────────────────────────────
 
 pub(crate) struct SeriesInfo {
     pub title: Option<String>,
@@ -586,8 +584,6 @@ pub(crate) struct MovieReleaseInfo {
     pub release_type: ReleaseType,
     pub release_date: Timestamp,
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn opt_date(s: Option<&str>) -> Option<Date> {
     s.filter(|s| !s.is_empty()).and_then(|s| s.parse().ok())

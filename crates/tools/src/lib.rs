@@ -3,7 +3,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use serde::Deserialize;
 
 const URL: &str = "https://iso639-3.sil.org/sites/iso639-3/files/downloads/iso-639-3.tab";
@@ -33,7 +33,7 @@ impl Scope {
             "I" => Ok(Self::Individual),
             "M" => Ok(Self::Macrolanguage),
             "S" => Ok(Self::Special),
-            _ => bail!("unknown scope code: {value}"),
+            _ => bail!("Unknown scope code: {value}"),
         }
     }
 
@@ -63,7 +63,7 @@ impl LanguageType {
             "H" => Ok(Self::Historical),
             "C" => Ok(Self::Constructed),
             "S" => Ok(Self::Special),
-            _ => bail!("unknown language type code: {value}"),
+            _ => bail!("Unknown language type code: {value}"),
         }
     }
 
@@ -137,26 +137,26 @@ pub fn generate_module_from_to_3166_1(input: &str, flags_dir: &Path) -> Result<S
 
         let part1 = parts
             .next()
-            .context(format!("missing iso639-1 code at line {line_no}"))?;
+            .with_context(|| anyhow!("Expected an ISO 639-1 code at line {line_no}"))?;
 
         let iso3166_1 = parts
             .next()
-            .context(format!("missing iso3166-1 code at line {line_no}"))?;
+            .with_context(|| anyhow!("Expected an ISO 3166-1 code at line {line_no}"))?;
 
         if !flags_dir.join(format!("{iso3166_1}.svg")).is_file() {
             continue;
         }
 
         if parts.next().is_some() {
-            bail!("too many fields in to-3166-1 mapping at line {line_no}");
+            bail!("Too many fields in ISO 3166-1 mapping at line {line_no}");
         }
 
         if part1.len() != 2 {
-            bail!("invalid iso639-1 code at line {line_no}: {part1}");
+            bail!("Invalid ISO 639-1 code at line {line_no}: {part1}");
         }
 
         if iso3166_1.len() != 2 {
-            bail!("invalid iso3166-1 code at line {line_no}: {iso3166_1}");
+            bail!("Invalid ISO 3166-1 code at line {line_no}: {iso3166_1}");
         }
 
         map.insert(part1.to_ascii_lowercase(), iso3166_1.to_ascii_lowercase());
@@ -180,7 +180,7 @@ pub fn generate_strings_module(source: impl AsRef<Path>, id: &str) -> Result<Str
     let source = source.as_ref();
 
     let input = fs::read_to_string(source)
-        .with_context(|| format!("failed to read source file: {}", source.display()))?;
+        .with_context(|| anyhow!("Reading source file {}", source.display()))?;
 
     let mut set = BTreeSet::new();
 
@@ -211,14 +211,14 @@ pub fn generate_strings_module(source: impl AsRef<Path>, id: &str) -> Result<Str
 pub fn download_table() -> Result<String> {
     reqwest::blocking::get(URL)
         .and_then(|response| response.error_for_status())
-        .context("failed to download iso-639-3 dataset")?
+        .context("Downloading ISO 639-3 dataset")?
         .text()
-        .context("failed to read iso-639-3 response body")
+        .context("Reading ISO 639-3 response body")
 }
 
 fn parse_rows(input: &str) -> Result<Vec<LanguageRow>> {
     if input.trim().is_empty() {
-        bail!("dataset is empty");
+        bail!("Dataset is empty");
     }
 
     let mut reader = csv::ReaderBuilder::new()
@@ -229,7 +229,7 @@ fn parse_rows(input: &str) -> Result<Vec<LanguageRow>> {
 
     for (index, row) in reader.deserialize::<RawLanguageRow>().enumerate() {
         let line_no = index + 2;
-        let row = row.with_context(|| format!("failed to parse row at line {line_no}"))?;
+        let row = row.with_context(|| anyhow!("Parsing row at line {line_no}"))?;
 
         let id = row.id.trim();
         let scope = row.scope.trim();
@@ -237,25 +237,25 @@ fn parse_rows(input: &str) -> Result<Vec<LanguageRow>> {
         let ref_name = row.ref_name.trim();
 
         if id.len() != 3 {
-            bail!("invalid language id at line {line_no}: {id:?}");
+            bail!("Invalid language id at line {line_no}: {id:?}");
         }
 
         if scope.is_empty() {
-            bail!("empty scope at line {line_no}");
+            bail!("Empty scope at line {line_no}");
         }
 
         if language_type.is_empty() {
-            bail!("empty language type at line {line_no}");
+            bail!("Empty language type at line {line_no}");
         }
 
         if ref_name.is_empty() {
-            bail!("empty ref name at line {line_no}");
+            bail!("Empty ref name at line {line_no}");
         }
 
         let scope =
-            Scope::parse(scope).with_context(|| format!("invalid scope at line {line_no}"))?;
+            Scope::parse(scope).with_context(|| anyhow!("Invalid scope at line {line_no}"))?;
         let language_type = LanguageType::parse(language_type)
-            .with_context(|| format!("invalid language type at line {line_no}"))?;
+            .with_context(|| anyhow!("Invalid language type at line {line_no}"))?;
 
         rows.push(LanguageRow {
             id: id.to_owned(),
@@ -270,7 +270,7 @@ fn parse_rows(input: &str) -> Result<Vec<LanguageRow>> {
     }
 
     if rows.is_empty() {
-        bail!("dataset has no data rows");
+        bail!("Dataset has no data rows");
     }
 
     Ok(rows)

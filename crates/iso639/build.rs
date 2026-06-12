@@ -30,7 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if !path.is_dir() {
         panic!(
-            "expected flag icons to be present at {}, but the directory does not exist",
+            "Expected flag icons to be present at {}, but the directory does not exist",
             path.display()
         );
     }

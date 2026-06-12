@@ -37,7 +37,7 @@ impl ws::Handler for WsHandler {
         incoming: &mut ws::Incoming<'_>,
         outgoing: &mut ws::Outgoing<'_>,
     ) -> Self::Response {
-        tracing::trace!(?id, "request");
+        tracing::trace!(?id, "Request");
 
         let result = self.handle_inner(id, incoming, outgoing).await;
 
@@ -94,34 +94,34 @@ impl WsHandler {
             api::Request::ListSeries => {
                 let _req = incoming
                     .read::<api::ListSeriesRequest>()
-                    .context("missing request")?;
-                let series = self.db.series().await.context("loading series")?;
+                    .context("Expected a request payload")?;
+                let series = self.db.series().await.context("Loading series")?;
                 outgoing.write(api::ListSeriesResponse { series });
             }
             api::Request::GetSeries => {
                 let req = incoming
                     .read::<api::GetSeriesRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 let series = self
                     .db
                     .series_by_id(req.id)
                     .await?
-                    .context("series not found")?;
+                    .context("Expected series to exist")?;
 
                 outgoing.write(series);
             }
             api::Request::ListSeasons => {
                 let req = incoming
                     .read::<api::ListSeasonsRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
                 let seasons = self.db.seasons(req.series_id).await?;
                 outgoing.write(api::ListSeasonsResponse { seasons });
             }
             api::Request::TrackSeries => {
                 let req = incoming
                     .read::<api::TrackSeriesRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 let series_id = match self.db.series_id_by_remote(&req.remote_id).await? {
                     Some(id) => id,
@@ -144,7 +144,7 @@ impl WsHandler {
                     .db
                     .series_by_id(series_id)
                     .await?
-                    .context("series not found")?;
+                    .context("Expected series to exist")?;
 
                 self.broadcast.emit(
                     incoming.channel(),
@@ -168,13 +168,13 @@ impl WsHandler {
             api::Request::UntrackSeries => {
                 let req = incoming
                     .read::<api::UntrackSeriesRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
                 self.db.set_series_tracked(req.id, req.tracked).await?;
                 let series = self
                     .db
                     .series_by_id(req.id)
                     .await?
-                    .context("series not found")?;
+                    .context("Expected series to exist")?;
                 self.broadcast.emit(
                     incoming.channel(),
                     api::AppEventKind::SeriesChanged {
@@ -192,7 +192,7 @@ impl WsHandler {
             api::Request::RemoveSeries => {
                 let req = incoming
                     .read::<api::RemoveSeriesRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
                 self.db.delete_series(req.id).await?;
                 self.broadcast.emit(
                     incoming.channel(),
@@ -209,7 +209,7 @@ impl WsHandler {
             api::Request::ListEpisodes => {
                 let req = incoming
                     .read::<api::ListEpisodesRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
                 let episodes = self.db.episodes(req.series_id, req.season).await?;
                 let watched = self.db.episodes_watched(req.series_id).await?;
                 outgoing.write(api::ListEpisodesResponse { episodes, watched });
@@ -217,25 +217,25 @@ impl WsHandler {
             api::Request::ListMovies => {
                 let _req = incoming
                     .read::<api::ListMoviesRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
                 let movies = self.db.movies().await?;
                 outgoing.write(api::ListMoviesResponse { movies });
             }
             api::Request::GetMovie => {
                 let req = incoming
                     .read::<api::GetMovieRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
                 let movie = self
                     .db
                     .movie_by_id(req.id)
                     .await?
-                    .context("movie not found")?;
+                    .context("Expected movie to exist")?;
                 outgoing.write(movie);
             }
             api::Request::TrackMovie => {
                 let req = incoming
                     .read::<api::TrackMovieRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 let movie_id = match self.db.movie_id_by_remote(&req.remote_id).await? {
                     Some(id) => id,
@@ -258,7 +258,7 @@ impl WsHandler {
                     .db
                     .movie_by_id(movie_id)
                     .await?
-                    .context("movie not found")?;
+                    .context("Expected movie to exist")?;
 
                 self.broadcast.emit(
                     incoming.channel(),
@@ -282,7 +282,7 @@ impl WsHandler {
             api::Request::UntrackMovie => {
                 let req = incoming
                     .read::<api::UntrackMovieRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 self.db.set_movie_tracked(req.id, req.tracked).await?;
 
@@ -290,7 +290,7 @@ impl WsHandler {
                     .db
                     .movie_by_id(req.id)
                     .await?
-                    .context("movie not found")?;
+                    .context("Expected movie to exist")?;
 
                 self.broadcast.emit(
                     incoming.channel(),
@@ -311,7 +311,7 @@ impl WsHandler {
             api::Request::RemoveMovie => {
                 let req = incoming
                     .read::<api::RemoveMovieRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 self.db.delete_movie(req.id).await?;
 
@@ -332,7 +332,7 @@ impl WsHandler {
             api::Request::MarkWatched => {
                 let req = incoming
                     .read::<api::MarkWatchedRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 let now = api::Timestamp::now();
                 let watched = self
@@ -365,7 +365,7 @@ impl WsHandler {
             api::Request::MarkWatchedRemaining => {
                 let req = incoming
                     .read::<api::MarkWatchedRemainingRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 let now = api::Timestamp::now();
 
@@ -389,7 +389,7 @@ impl WsHandler {
             api::Request::RemoveWatched => {
                 let req = incoming
                     .read::<api::RemoveWatchedRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 self.db.remove_watched(req.id).await?;
 
@@ -412,7 +412,7 @@ impl WsHandler {
             api::Request::ListEpisodesWatched => {
                 let req = incoming
                     .read::<api::ListEpisodesWatchedRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 let watched = self.db.episodes_watched(req.series_id).await?;
                 outgoing.write(api::ListEpisodesWatchedResponse { watched });
@@ -420,7 +420,7 @@ impl WsHandler {
             api::Request::ListWatched => {
                 let req = incoming
                     .read::<api::ListWatchedRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 let watched = match req.kind {
                     api::WatchedKind::Episode { episode, .. } => {
@@ -434,7 +434,7 @@ impl WsHandler {
             api::Request::MoveWatchedEpisode => {
                 let req = incoming
                     .read::<api::MoveWatchedEpisodeRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 self.db
                     .move_watched_episode(req.id, req.season, req.episode)
@@ -456,7 +456,7 @@ impl WsHandler {
             api::Request::ListOrphanedWatched => {
                 let req = incoming
                     .read::<api::ListOrphanedWatchedRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 let watched = self.db.orphaned_for_series(req.series_id).await?;
                 outgoing.write(api::ListOrphanedWatchedResponse { watched });
@@ -464,16 +464,16 @@ impl WsHandler {
             api::Request::ListPending => {
                 let _req = incoming
                     .read::<api::ListPendingRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 let now = api::Timestamp::now();
-                let pending = self.db.pending(now).await.context("loading pending")?;
+                let pending = self.db.pending(now).await.context("Loading pending")?;
                 outgoing.write(api::ListPendingResponse { pending });
             }
             api::Request::ListSchedule => {
                 let req = incoming
                     .read::<api::ListScheduleRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 let tz = req
                     .tz
@@ -489,16 +489,16 @@ impl WsHandler {
             api::Request::ListWatchNext => {
                 let _req = incoming
                     .read::<api::ListWatchNextRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 let now = api::Timestamp::now();
-                let pending = self.db.pending(now).await.context("loading watch next")?;
+                let pending = self.db.pending(now).await.context("Loading watch next")?;
                 outgoing.write(api::ListWatchNextResponse { pending });
             }
             api::Request::Search => {
                 let req = incoming
                     .read::<api::SearchRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 let mut series: Vec<api::SearchSeries> = Vec::new();
                 let mut movies: Vec<api::SearchMovie> = Vec::new();
@@ -554,13 +554,13 @@ impl WsHandler {
             api::Request::SyncSeries => {
                 let req = incoming
                     .read::<api::SyncSeriesRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 let series = self
                     .db
                     .series_by_id(req.id)
                     .await?
-                    .context("series not found")?;
+                    .context("Expected series to exist")?;
 
                 self.enqueue_series_sync(series.id, series.title, true)
                     .await;
@@ -570,13 +570,13 @@ impl WsHandler {
             api::Request::SyncMovie => {
                 let req = incoming
                     .read::<api::SyncMovieRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 let movie = self
                     .db
                     .movie_by_id(req.id)
                     .await?
-                    .context("movie not found")?;
+                    .context("Expected movie to exist")?;
 
                 self.enqueue_movie_sync(movie.id, movie.title, true).await;
 
@@ -585,16 +585,16 @@ impl WsHandler {
             api::Request::SetSeriesSyncSource => {
                 let req = incoming
                     .read::<api::SetSeriesSyncSourceRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 let series = self
                     .db
                     .series_by_id(req.id)
                     .await?
-                    .context("series not found")?;
+                    .context("Expected series to exist")?;
 
                 if series.remote_by_source(req.source).is_none() {
-                    anyhow::bail!("series does not have remote for source: {}", req.source);
+                    anyhow::bail!("Series does not have remote for source: {}", req.source);
                 }
 
                 self.db.set_series_sync_source(req.id, req.source).await?;
@@ -603,7 +603,7 @@ impl WsHandler {
                     .db
                     .series_by_id(req.id)
                     .await?
-                    .context("series not found")?;
+                    .context("Expected series to exist")?;
 
                 self.broadcast.emit(
                     incoming.channel(),
@@ -627,20 +627,20 @@ impl WsHandler {
             api::Request::SetMovieSyncSource => {
                 let req = incoming
                     .read::<api::SetMovieSyncSourceRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 let movie = self
                     .db
                     .movie_by_id(req.id)
                     .await?
-                    .context("movie not found")?;
+                    .context("Expected movie to exist")?;
 
                 if req.source != api::SyncSource::Tmdb {
-                    anyhow::bail!("unsupported movie sync source: {}", req.source);
+                    anyhow::bail!("Unsupported movie sync source: {}", req.source);
                 }
 
                 if movie.remote_by_source(req.source).is_none() {
-                    anyhow::bail!("movie does not have remote for source: {}", req.source);
+                    anyhow::bail!("Movie does not have remote for source: {}", req.source);
                 }
 
                 self.db.set_movie_sync_source(req.id, req.source).await?;
@@ -649,7 +649,7 @@ impl WsHandler {
                     .db
                     .movie_by_id(req.id)
                     .await?
-                    .context("movie not found")?;
+                    .context("Expected movie to exist")?;
 
                 self.broadcast.emit(
                     incoming.channel(),
@@ -672,12 +672,12 @@ impl WsHandler {
             api::Request::AddSeriesRemote => {
                 let req = incoming
                     .read::<api::AddSeriesRemoteRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 self.db
                     .series_by_id(req.id)
                     .await?
-                    .context("series not found")?;
+                    .context("Expected series to exist")?;
 
                 self.db.add_series_remote(req.id, &req.remote_id).await?;
 
@@ -685,7 +685,7 @@ impl WsHandler {
                     .db
                     .series_by_id(req.id)
                     .await?
-                    .context("series not found")?;
+                    .context("Expected series to exist")?;
 
                 self.broadcast.emit(
                     incoming.channel(),
@@ -706,12 +706,12 @@ impl WsHandler {
             api::Request::RemoveSeriesRemote => {
                 let req = incoming
                     .read::<api::RemoveSeriesRemoteRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 self.db
                     .series_by_id(req.id)
                     .await?
-                    .context("series not found")?;
+                    .context("Expected series to exist")?;
 
                 self.db.remove_series_remote(req.id, &req.remote_id).await?;
 
@@ -719,7 +719,7 @@ impl WsHandler {
                     .db
                     .series_by_id(req.id)
                     .await?
-                    .context("series not found")?;
+                    .context("Expected series to exist")?;
 
                 self.broadcast.emit(
                     incoming.channel(),
@@ -740,12 +740,12 @@ impl WsHandler {
             api::Request::AddMovieRemote => {
                 let req = incoming
                     .read::<api::AddMovieRemoteRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 self.db
                     .movie_by_id(req.id)
                     .await?
-                    .context("movie not found")?;
+                    .context("Expected movie to exist")?;
 
                 self.db.add_movie_remote(req.id, &req.remote_id).await?;
 
@@ -753,7 +753,7 @@ impl WsHandler {
                     .db
                     .movie_by_id(req.id)
                     .await?
-                    .context("movie not found")?;
+                    .context("Expected movie to exist")?;
 
                 self.broadcast.emit(
                     incoming.channel(),
@@ -774,12 +774,12 @@ impl WsHandler {
             api::Request::RemoveMovieRemote => {
                 let req = incoming
                     .read::<api::RemoveMovieRemoteRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 self.db
                     .movie_by_id(req.id)
                     .await?
-                    .context("movie not found")?;
+                    .context("Expected movie to exist")?;
 
                 self.db.remove_movie_remote(req.id, &req.remote_id).await?;
 
@@ -787,7 +787,7 @@ impl WsHandler {
                     .db
                     .movie_by_id(req.id)
                     .await?
-                    .context("movie not found")?;
+                    .context("Expected movie to exist")?;
 
                 self.broadcast.emit(
                     incoming.channel(),
@@ -808,12 +808,12 @@ impl WsHandler {
             api::Request::UpdateSeriesRemote => {
                 let req = incoming
                     .read::<api::UpdateSeriesRemoteRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 self.db
                     .series_by_id(req.id)
                     .await?
-                    .context("series not found")?;
+                    .context("Expected series to exist")?;
 
                 self.db
                     .update_series_remote(req.id, &req.old, &req.new)
@@ -823,7 +823,7 @@ impl WsHandler {
                     .db
                     .series_by_id(req.id)
                     .await?
-                    .context("series not found")?;
+                    .context("Expected series to exist")?;
 
                 self.broadcast.emit(
                     incoming.channel(),
@@ -844,12 +844,12 @@ impl WsHandler {
             api::Request::UpdateMovieRemote => {
                 let req = incoming
                     .read::<api::UpdateMovieRemoteRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 self.db
                     .movie_by_id(req.id)
                     .await?
-                    .context("movie not found")?;
+                    .context("Expected movie to exist")?;
 
                 self.db
                     .update_movie_remote(req.id, &req.old, &req.new)
@@ -859,7 +859,7 @@ impl WsHandler {
                     .db
                     .movie_by_id(req.id)
                     .await?
-                    .context("movie not found")?;
+                    .context("Expected movie to exist")?;
 
                 self.broadcast.emit(
                     incoming.channel(),
@@ -880,7 +880,7 @@ impl WsHandler {
             api::Request::SetSeriesLanguage => {
                 let req = incoming
                     .read::<api::SetSeriesLanguageRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 self.db.set_series_language(req.id, req.language).await?;
 
@@ -888,7 +888,7 @@ impl WsHandler {
                     .db
                     .series_by_id(req.id)
                     .await?
-                    .context("series not found")?;
+                    .context("Expected series to exist")?;
 
                 self.broadcast.emit(
                     incoming.channel(),
@@ -906,7 +906,7 @@ impl WsHandler {
             api::Request::SetMovieLanguage => {
                 let req = incoming
                     .read::<api::SetMovieLanguageRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 self.db.set_movie_language(req.id, req.language).await?;
 
@@ -914,7 +914,7 @@ impl WsHandler {
                     .db
                     .movie_by_id(req.id)
                     .await?
-                    .context("movie not found")?;
+                    .context("Expected movie to exist")?;
 
                 self.broadcast.emit(
                     incoming.channel(),
@@ -931,7 +931,7 @@ impl WsHandler {
             api::Request::SyncAll => {
                 let _req = incoming
                     .read::<api::SyncAllRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 let series = self.db.series().await?;
 
@@ -950,7 +950,7 @@ impl WsHandler {
             api::Request::ListTasks => {
                 let _req = incoming
                     .read::<api::ListTasksRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 let tasks = self.queue.list().await;
 
@@ -959,7 +959,7 @@ impl WsHandler {
             api::Request::GetConfig => {
                 let _req = incoming
                     .read::<api::GetConfigRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 let config = self.db.load_config().await?;
 
@@ -968,7 +968,7 @@ impl WsHandler {
             api::Request::SetConfig => {
                 let req = incoming
                     .read::<api::SetConfigRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 self.db.save_config(&req.config).await?;
                 self.remote.configure(&req.config)?;
@@ -988,14 +988,14 @@ impl WsHandler {
             api::Request::AddPending => {
                 let req = incoming
                     .read::<api::AddPendingRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 match req.kind {
                     api::PendingKind::Episode { series, episode } => {
                         let now = api::Timestamp::now();
 
                         let Some(ts) = self.db.episode_aired_by_id(episode).await? else {
-                            anyhow::bail!("episode does not have aired date");
+                            anyhow::bail!("Episode does not have an aired date");
                         };
 
                         let ts = ts.max(now);
@@ -1009,7 +1009,7 @@ impl WsHandler {
                             .movie_release_by_type(movie, api::ReleaseType::Digital)
                             .await?
                         else {
-                            anyhow::bail!("movie does not have release date");
+                            anyhow::bail!("Movie does not have a release date");
                         };
 
                         let ts = released.max(now);
@@ -1028,7 +1028,7 @@ impl WsHandler {
             api::Request::RemovePending => {
                 let req = incoming
                     .read::<api::RemovePendingRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 match req.kind {
                     api::PendingKind::Episode { series, .. } => {
@@ -1050,7 +1050,7 @@ impl WsHandler {
             api::Request::SkipEpisode => {
                 let req = incoming
                     .read::<api::SkipEpisodeRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 self.db
                     .skip_pending_episode(req.series, req.episode)
@@ -1067,7 +1067,7 @@ impl WsHandler {
             api::Request::SelectImage => {
                 let req = incoming
                     .read::<api::SelectImageRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 let owner = self.db.select_image(req.id).await?;
 
@@ -1077,7 +1077,7 @@ impl WsHandler {
                             .db
                             .series_by_id(series_id)
                             .await?
-                            .context("series not found")?;
+                            .context("Expected series to exist")?;
 
                         self.broadcast.emit(
                             incoming.channel(),
@@ -1092,7 +1092,7 @@ impl WsHandler {
                             .db
                             .movie_by_id(movie_id)
                             .await?
-                            .context("movie not found")?;
+                            .context("Expected movie to exist")?;
 
                         self.broadcast.emit(
                             incoming.channel(),
@@ -1109,7 +1109,7 @@ impl WsHandler {
             api::Request::ClearSelectedImage => {
                 let req = incoming
                     .read::<api::ClearSelectedImageRequest>()
-                    .context("missing request")?;
+                    .context("Expected a request payload")?;
 
                 self.db.clear_selected_image(req.owner, req.kind).await?;
 
@@ -1119,7 +1119,7 @@ impl WsHandler {
                             .db
                             .series_by_id(series_id)
                             .await?
-                            .context("series not found")?;
+                            .context("Expected series to exist")?;
                         self.broadcast.emit(
                             incoming.channel(),
                             api::AppEventKind::SeriesChanged {
@@ -1133,7 +1133,7 @@ impl WsHandler {
                             .db
                             .movie_by_id(movie_id)
                             .await?
-                            .context("movie not found")?;
+                            .context("Expected movie to exist")?;
                         self.broadcast.emit(
                             incoming.channel(),
                             api::AppEventKind::MovieChanged {
@@ -1147,7 +1147,7 @@ impl WsHandler {
                 outgoing.write(api::Empty);
             }
             api::Request::Unknown(id) => {
-                anyhow::bail!("unknown request id: {id:?}");
+                anyhow::bail!("Unknown request id: {id:?}");
             }
         }
 

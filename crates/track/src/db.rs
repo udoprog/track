@@ -1,9 +1,11 @@
 #![allow(clippy::too_many_arguments)]
 
+use core::str;
+
 use std::path::Path;
 use std::sync::Arc;
 
-use anyhow::{Context as _, Result, ensure};
+use anyhow::{Context as _, Result, anyhow, ensure};
 use std::collections::{HashMap, HashSet};
 
 use api::{
@@ -26,8 +28,6 @@ CREATE TABLE IF NOT EXISTS migrations (
 #[derive(RustEmbed)]
 #[folder = "migrations"]
 struct Migrations;
-
-// ── Row types ────────────────────────────────────────────────────────────────
 
 #[derive(Row)]
 struct SeriesRow {
@@ -260,8 +260,6 @@ struct ScheduleRow {
     remote_id: Option<RemoteId>,
 }
 
-// ── Statements ───────────────────────────────────────────────────────────────
-
 macro_rules! statements {
     (
         $vis:vis struct $struct_name:ident {
@@ -281,7 +279,7 @@ macro_rules! statements {
                                 .prepare_with($sql)
                                 .persistent()
                                 .build()
-                                .context(concat!("preparing statement ", stringify!($name)))?
+                                .context(concat!("Preparing statement ", stringify!($name)))?
                                 .into_send()?,
                         )*
                     })
@@ -776,13 +774,13 @@ impl Inner {
 
     fn set_config(&mut self, key: &str, value: &str) -> Result<()> {
         self.set_config.bind((key, value))?;
-        ensure!(self.set_config.step()?.is_done(), "set_config");
+        ensure!(self.set_config.step()?.is_done(), "Setting config");
         Ok(())
     }
 
     fn delete_config(&mut self, key: &str) -> Result<()> {
         self.delete_config.bind((key,))?;
-        ensure!(self.delete_config.step()?.is_done(), "delete_config");
+        ensure!(self.delete_config.step()?.is_done(), "Deleting config");
         Ok(())
     }
 }
@@ -804,7 +802,7 @@ impl Inner {
                     .next::<Option<Timestamp>>()?
                     .flatten()
                 else {
-                    anyhow::bail!("episode has no air date");
+                    anyhow::bail!("Episode has no air date");
                 };
 
                 Ok(aired)
@@ -832,8 +830,6 @@ impl Inner {
         Ok(poster_row.map(|p| api::Image::new(p.source, &p.path)))
     }
 }
-
-// ── Database ─────────────────────────────────────────────────────────────────
 
 pub(crate) enum OpenMode {
     /// Full synchronization — safe for the server.
@@ -864,23 +860,21 @@ impl Database {
             .create()
             .no_mutex()
             .open(path.as_os_str())
-            .with_context(|| path.display().to_string())?;
+            .with_context(|| anyhow!("Opening database at {}", path.display()))?;
 
         // Enforce foreign keys so ON DELETE CASCADE actually fires. Must run
         // outside any transaction.
         c.execute("PRAGMA foreign_keys = ON;")?;
 
-        do_migrations(&c).context("running migrations")?;
-        ensure_mode(&c, mode).context("setting database mode")?;
+        do_migrations(&c).context("Running migrations")?;
+        ensure_mode(&c, mode).context("Setting database mode")?;
 
-        let inner = Inner::new(&c).context("preparing statements")?;
+        let inner = Inner::new(&c).context("Preparing statements")?;
 
         Ok(Self {
             inner: Arc::new(Mutex::new(inner)),
         })
     }
-
-    // ── Series ──
 
     pub(crate) async fn create_series(
         &self,
@@ -896,7 +890,7 @@ impl Database {
         let result = spawn_blocking(move || {
             s.insert_series
                 .bind((id, &title[..], first_air.as_ref(), &overview[..], true))?;
-            ensure!(s.insert_series.step()?.is_done(), "insert_series");
+            ensure!(s.insert_series.step()?.is_done(), "Inserting series");
             Ok(())
         });
 
@@ -930,7 +924,7 @@ impl Database {
             s.insert_series_remote.bind((series_id, &remote_id))?;
             ensure!(
                 s.insert_series_remote.step()?.is_done(),
-                "insert_series_remote"
+                "Inserting series remote"
             );
             Ok(())
         });
@@ -950,7 +944,7 @@ impl Database {
             s.delete_series_remote.bind((series_id, &remote_id))?;
             ensure!(
                 s.delete_series_remote.step()?.is_done(),
-                "delete_series_remote"
+                "Deleting series remote"
             );
             Ok(())
         });
@@ -972,7 +966,7 @@ impl Database {
             s.update_series_remote.bind((&new, series_id, &old))?;
             ensure!(
                 s.update_series_remote.step()?.is_done(),
-                "update_series_remote"
+                "Updating series remote"
             );
             Ok(())
         });
@@ -1096,7 +1090,7 @@ impl Database {
                 tracked,
                 id,
             ))?;
-            ensure!(s.update_series.step()?.is_done(), "update_series");
+            ensure!(s.update_series.step()?.is_done(), "Updating series");
             Ok(())
         });
 
@@ -1108,7 +1102,7 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.delete_series.bind((id,))?;
-            ensure!(s.delete_series.step()?.is_done(), "delete_series");
+            ensure!(s.delete_series.step()?.is_done(), "Deleting series");
             Ok(())
         });
 
@@ -1120,7 +1114,7 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.set_series_tracked.bind((tracked, id))?;
-            ensure!(s.set_series_tracked.step()?.is_done(), "set_series_tracked");
+            ensure!(s.set_series_tracked.step()?.is_done(), "Setting series tracked");
             Ok(())
         });
 
@@ -1138,7 +1132,7 @@ impl Database {
             s.set_series_sync_source.bind((source, id))?;
             ensure!(
                 s.set_series_sync_source.step()?.is_done(),
-                "set_series_sync_source"
+                "Setting series sync source"
             );
             Ok(())
         });
@@ -1157,15 +1151,13 @@ impl Database {
             s.set_series_language.bind((language.as_deref(), id))?;
             ensure!(
                 s.set_series_language.step()?.is_done(),
-                "set_series_language"
+                "Setting series language"
             );
             Ok(())
         });
 
         result.await?
     }
-
-    // ── Seasons ──
 
     pub(crate) async fn upsert_season(
         &self,
@@ -1188,7 +1180,7 @@ impl Database {
                 name.as_deref(),
                 overview.as_deref(),
             ))?;
-            ensure!(s.upsert_season.step()?.is_done(), "upsert_season");
+            ensure!(s.upsert_season.step()?.is_done(), "Upserting season");
             Ok(())
         });
 
@@ -1232,11 +1224,11 @@ impl Database {
                 s.delete_season_episodes.bind((series_id, n))?;
                 ensure!(
                     s.delete_season_episodes.step()?.is_done(),
-                    "delete_season_episodes"
+                    "Deleting season episodes"
                 );
 
                 s.delete_season.bind((series_id, n))?;
-                ensure!(s.delete_season.step()?.is_done(), "delete_season");
+                ensure!(s.delete_season.step()?.is_done(), "Deleting season");
                 Ok(())
             });
 
@@ -1272,7 +1264,7 @@ impl Database {
                     .bind((series_id, season, number))?;
                 ensure!(
                     s.delete_episode_by_place.step()?.is_done(),
-                    "delete_episode_by_place"
+                    "Deleting episode by place"
                 );
             }
 
@@ -1281,8 +1273,6 @@ impl Database {
 
         result.await?
     }
-
-    // ── Episodes ──
 
     pub(crate) async fn upsert_episode(
         &self,
@@ -1313,7 +1303,7 @@ impl Database {
                 aired.as_ref(),
                 remote_id.as_ref(),
             ))?;
-            ensure!(s.upsert_episode.step()?.is_done(), "upsert_episode");
+            ensure!(s.upsert_episode.step()?.is_done(), "Upserting episode");
             Ok(())
         });
 
@@ -1410,7 +1400,7 @@ impl Database {
                 ))?;
                 ensure!(
                     s.insert_watched_episode.step()?.is_done(),
-                    "mark_watched_remaining/insert_watched_episode"
+                    "Inserting watched episode for remaining season"
                 );
             }
 
@@ -1468,7 +1458,7 @@ impl Database {
                     .bind((aired, series_id, season, number))?;
                 ensure!(
                     s.update_episode_aired.step()?.is_done(),
-                    "update_episode_aired"
+                    "Updating episode aired"
                 );
             }
             Ok(())
@@ -1476,8 +1466,6 @@ impl Database {
 
         result.await?
     }
-
-    // ── Movies ──
 
     pub(crate) async fn create_movie(
         &self,
@@ -1494,7 +1482,7 @@ impl Database {
         let result = spawn_blocking(move || {
             s.insert_movie
                 .bind((id, &title[..], release_date, &overview[..], tracked))?;
-            ensure!(s.insert_movie.step()?.is_done(), "insert_movie");
+            ensure!(s.insert_movie.step()?.is_done(), "Inserting movie");
             Ok(())
         });
 
@@ -1525,7 +1513,7 @@ impl Database {
             s.insert_movie_remote.bind((movie_id, &remote_id))?;
             ensure!(
                 s.insert_movie_remote.step()?.is_done(),
-                "insert_movie_remote"
+                "Inserting movie remote"
             );
             Ok(())
         });
@@ -1545,7 +1533,7 @@ impl Database {
             s.delete_movie_remote.bind((movie_id, &remote_id))?;
             ensure!(
                 s.delete_movie_remote.step()?.is_done(),
-                "delete_movie_remote"
+                "Deleting movie remote"
             );
             Ok(())
         });
@@ -1567,7 +1555,7 @@ impl Database {
             s.update_movie_remote.bind((&new, movie_id, &old))?;
             ensure!(
                 s.update_movie_remote.step()?.is_done(),
-                "update_movie_remote"
+                "Updating movie remote"
             );
             Ok(())
         });
@@ -1805,7 +1793,7 @@ impl Database {
                 overview.as_deref(),
                 id,
             ))?;
-            ensure!(s.update_movie.step()?.is_done(), "update_movie");
+            ensure!(s.update_movie.step()?.is_done(), "Updating movie");
             Ok(())
         });
 
@@ -1817,7 +1805,7 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.delete_movie.bind((id,))?;
-            ensure!(s.delete_movie.step()?.is_done(), "delete_movie");
+            ensure!(s.delete_movie.step()?.is_done(), "Deleting movie");
             Ok(())
         });
 
@@ -1829,7 +1817,7 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.set_movie_tracked.bind((tracked, id))?;
-            ensure!(s.set_movie_tracked.step()?.is_done(), "set_movie_tracked");
+            ensure!(s.set_movie_tracked.step()?.is_done(), "Setting movie tracked");
             Ok(())
         });
 
@@ -1847,7 +1835,7 @@ impl Database {
             s.set_movie_sync_source.bind((source, id))?;
             ensure!(
                 s.set_movie_sync_source.step()?.is_done(),
-                "set_movie_sync_source"
+                "Setting movie sync source"
             );
             Ok(())
         });
@@ -1864,14 +1852,12 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.set_movie_language.bind((language.as_deref(), id))?;
-            ensure!(s.set_movie_language.step()?.is_done(), "set_movie_language");
+            ensure!(s.set_movie_language.step()?.is_done(), "Setting movie language");
             Ok(())
         });
 
         result.await?
     }
-
-    // ── Images ──
 
     pub(crate) async fn clear_series_images(&self, series_id: SeriesId) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
@@ -1879,7 +1865,7 @@ impl Database {
             s.delete_series_images.bind((series_id,))?;
             ensure!(
                 s.delete_series_images.step()?.is_done(),
-                "clear_series_images"
+                "Clearing series images"
             );
             Ok(())
         })
@@ -1892,7 +1878,7 @@ impl Database {
             s.delete_movie_images.bind((movie_id,))?;
             ensure!(
                 s.delete_movie_images.step()?.is_done(),
-                "clear_movie_images"
+                "Clearing movie images"
             );
             Ok(())
         })
@@ -1905,7 +1891,7 @@ impl Database {
             s.delete_episode_images_for_series.bind((series_id,))?;
             ensure!(
                 s.delete_episode_images_for_series.step()?.is_done(),
-                "clear_episode_images"
+                "Clearing episode images"
             );
             Ok(())
         })
@@ -1934,7 +1920,7 @@ impl Database {
             ))?;
             ensure!(
                 s.insert_episode_image.step()?.is_done(),
-                "insert_episode_image"
+                "Inserting episode image"
             );
             Ok(())
         });
@@ -1955,7 +1941,7 @@ impl Database {
                 .bind((episode_id, kind, image_id))?;
             ensure!(
                 s.set_episode_image_selection.step()?.is_done(),
-                "set_episode_image_selection"
+                "Setting episode image selection"
             );
             Ok(())
         });
@@ -1988,7 +1974,7 @@ impl Database {
 
             ensure!(
                 s.insert_series_image.step()?.is_done(),
-                "insert_series_image"
+                "Inserting series image"
             );
 
             Ok(())
@@ -2019,7 +2005,7 @@ impl Database {
                 image.height(),
                 rank,
             ))?;
-            ensure!(s.insert_movie_image.step()?.is_done(), "insert_movie_image");
+            ensure!(s.insert_movie_image.step()?.is_done(), "Inserting movie image");
             Ok(())
         });
 
@@ -2039,7 +2025,7 @@ impl Database {
                 .bind((series_id, kind, image_id))?;
             ensure!(
                 s.set_series_image_selection.step()?.is_done(),
-                "set_series_image_selection"
+                "Setting series image selection"
             );
             Ok(())
         });
@@ -2060,7 +2046,7 @@ impl Database {
                 .bind((movie_id, kind, image_id))?;
             ensure!(
                 s.set_movie_image_selection.step()?.is_done(),
-                "set_movie_image_selection"
+                "Setting movie image selection"
             );
             Ok(())
         });
@@ -2079,7 +2065,7 @@ impl Database {
             let row = s
                 .image_by_id
                 .next::<ImageMetaRow>()?
-                .context("image not found")?;
+                .context("Expected image to exist")?;
 
             let kind = row.kind;
 
@@ -2088,7 +2074,7 @@ impl Database {
                     s.set_series_image_selection.bind((series_id, kind, id))?;
                     ensure!(
                         s.set_series_image_selection.step()?.is_done(),
-                        "set_series_image_selection"
+                        "Setting series image selection"
                     );
 
                     api::ImageOwner::Series(series_id)
@@ -2097,12 +2083,12 @@ impl Database {
                     s.set_movie_image_selection.bind((movie_id, kind, id))?;
                     ensure!(
                         s.set_movie_image_selection.step()?.is_done(),
-                        "set_movie_image_selection"
+                        "Setting movie image selection"
                     );
 
                     api::ImageOwner::Movie(movie_id)
                 }
-                _ => anyhow::bail!("image has no owner"),
+                _ => anyhow::bail!("Image has no owner"),
             };
 
             Ok(owner)
@@ -2124,14 +2110,14 @@ impl Database {
                     s.delete_series_image_selection.bind((series_id, kind))?;
                     ensure!(
                         s.delete_series_image_selection.step()?.is_done(),
-                        "delete_series_image_selection"
+                        "Deleting series image selection"
                     );
                 }
                 api::ImageOwner::Movie(movie_id) => {
                     s.delete_movie_image_selection.bind((movie_id, kind))?;
                     ensure!(
                         s.delete_movie_image_selection.step()?.is_done(),
-                        "delete_movie_image_selection"
+                        "Deleting movie image selection"
                     );
                 }
             }
@@ -2141,8 +2127,6 @@ impl Database {
 
         result.await?
     }
-
-    // ── Watched ──
 
     pub(crate) async fn mark_watched(
         &self,
@@ -2162,7 +2146,7 @@ impl Database {
                     let key = s
                         .episode_natural_key
                         .next::<EpisodeNaturalKeyRow>()?
-                        .context("episode not found")?;
+                        .context("Expected episode to exist")?;
 
                     s.insert_watched_episode.bind((
                         id,
@@ -2173,7 +2157,7 @@ impl Database {
                     ))?;
                     ensure!(
                         s.insert_watched_episode.step()?.is_done(),
-                        "insert_watched_episode"
+                        "Inserting watched episode"
                     );
                     (id, timestamp)
                 }
@@ -2188,7 +2172,7 @@ impl Database {
                                 .next::<Option<Timestamp>>()?
                                 .flatten()
                             else {
-                                anyhow::bail!("movie has no release date");
+                                anyhow::bail!("Movie has no release date");
                             };
 
                             released
@@ -2198,7 +2182,7 @@ impl Database {
                     s.insert_watched_movie.bind((id, timestamp, movie))?;
                     ensure!(
                         s.insert_watched_movie.step()?.is_done(),
-                        "insert_watched_movie"
+                        "Inserting watched movie"
                     );
                     (id, timestamp)
                 }
@@ -2229,7 +2213,7 @@ impl Database {
                 .bind((id, timestamp, series_id, season, episode))?;
             ensure!(
                 s.insert_watched_episode.step()?.is_done(),
-                "add_watched_episode"
+                "Adding watched episode"
             );
             Ok(())
         });
@@ -2249,7 +2233,7 @@ impl Database {
             s.insert_watched_movie.bind((id, timestamp, movie_id))?;
             ensure!(
                 s.insert_watched_movie.step()?.is_done(),
-                "add_watched_movie"
+                "Adding watched movie"
             );
             Ok(())
         });
@@ -2269,7 +2253,7 @@ impl Database {
             s.move_watched_episode.bind((season, episode, id))?;
             ensure!(
                 s.move_watched_episode.step()?.is_done(),
-                "move_watched_episode"
+                "Moving watched episode"
             );
             Ok(())
         });
@@ -2308,12 +2292,12 @@ impl Database {
             s.delete_watched_episode.bind((id,))?;
             ensure!(
                 s.delete_watched_episode.step()?.is_done(),
-                "delete_watched_episode"
+                "Deleting watched episode"
             );
             s.delete_watched_movie.bind((id,))?;
             ensure!(
                 s.delete_watched_movie.step()?.is_done(),
-                "delete_watched_movie"
+                "Deleting watched movie"
             );
             Ok(())
         });
@@ -2354,8 +2338,6 @@ impl Database {
         result.await?
     }
 
-    // ── Pending table ──
-
     pub(crate) async fn add_pending_episode(
         &self,
         series_id: api::SeriesId,
@@ -2369,7 +2351,7 @@ impl Database {
                 .bind((PendingId::random(), ts, series_id, episode_id))?;
             ensure!(
                 s.upsert_pending_episode.step()?.is_done(),
-                "upsert_pending_episode"
+                "Upserting pending episode"
             );
             Ok(())
         });
@@ -2389,7 +2371,7 @@ impl Database {
                 .bind((PendingId::random(), ts, movie_id))?;
             ensure!(
                 s.upsert_pending_movie.step()?.is_done(),
-                "upsert_pending_movie"
+                "Upserting pending movie"
             );
             Ok(())
         });
@@ -2404,7 +2386,7 @@ impl Database {
             s.delete_pending_episode.bind((series_id,))?;
             ensure!(
                 s.delete_pending_episode.step()?.is_done(),
-                "delete_pending_episode"
+                "Deleting pending episode"
             );
             Ok(())
         });
@@ -2434,14 +2416,14 @@ impl Database {
                         .bind((PendingId::random(), ts, series_id, next))?;
                     ensure!(
                         s.upsert_pending_episode.step()?.is_done(),
-                        "upsert_pending_episode"
+                        "Upserting pending episode"
                     );
                 }
                 None => {
                     s.delete_pending_episode.bind((series_id,))?;
                     ensure!(
                         s.delete_pending_episode.step()?.is_done(),
-                        "delete_pending_episode"
+                        "Deleting pending episode"
                     );
                 }
             }
@@ -2459,7 +2441,7 @@ impl Database {
             s.delete_pending_movie.bind((movie_id,))?;
             ensure!(
                 s.delete_pending_movie.step()?.is_done(),
-                "delete_pending_movie"
+                "Deleting pending movie"
             );
             Ok(())
         });
@@ -2496,7 +2478,7 @@ impl Database {
                 .bind((PendingId::random(), now, series_id, row.id))?;
             ensure!(
                 s.upsert_pending_episode.step()?.is_done(),
-                "upsert_pending_episode"
+                "Upserting pending episode"
             );
 
             Ok(())
@@ -2538,7 +2520,7 @@ impl Database {
                 .bind((PendingId::random(), now, series_id, next_id))?;
             ensure!(
                 s.upsert_pending_episode.step()?.is_done(),
-                "upsert_pending_episode"
+                "Upserting pending episode"
             );
 
             Ok(())
@@ -2582,7 +2564,7 @@ impl Database {
                 .bind((PendingId::random(), ts, series_id, row.id))?;
             ensure!(
                 s.upsert_pending_episode.step()?.is_done(),
-                "upsert_pending_episode"
+                "Upserting pending episode"
             );
 
             Ok(())
@@ -2647,7 +2629,7 @@ impl Database {
             s.set_series_synced_at.bind((at, id))?;
             ensure!(
                 s.set_series_synced_at.step()?.is_done(),
-                "set_series_synced_at"
+                "Setting series synced at"
             );
             Ok(())
         });
@@ -2661,7 +2643,7 @@ impl Database {
             s.set_movie_synced_at.bind((at, id))?;
             ensure!(
                 s.set_movie_synced_at.step()?.is_done(),
-                "set_movie_synced_at"
+                "Setting movie synced at"
             );
             Ok(())
         });
@@ -2690,7 +2672,7 @@ impl Database {
             ))?;
             ensure!(
                 s.upsert_movie_release.step()?.is_done(),
-                "upsert_movie_release"
+                "Upserting movie release"
             );
 
             Ok(())
@@ -2807,8 +2789,6 @@ impl Database {
         result.await?
     }
 
-    // ── Dashboard queries ──
-
     pub(crate) async fn schedule(
         &self,
         days: u32,
@@ -2882,8 +2862,6 @@ impl Database {
 
         result.await?
     }
-
-    // ── Config ──
 
     pub(crate) async fn load_config(&self) -> Result<Config> {
         let mut s = self.inner.clone().lock_owned().await;
@@ -2995,8 +2973,6 @@ impl Database {
     }
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
 fn cutoff_timestamp(interval_hours: u32) -> Timestamp {
     let hours = interval_hours.max(1);
     let inner = Timestamp::now().inner();
@@ -3005,8 +2981,6 @@ fn cutoff_timestamp(interval_hours: u32) -> Timestamp {
         .unwrap_or(inner);
     Timestamp::from_jiff(ts)
 }
-
-// ── Row converters ───────────────────────────────────────────────────────────
 
 fn series_from_row(r: SeriesRow) -> api::Series {
     api::Series {
@@ -3138,7 +3112,7 @@ fn watched_from_row(r: WatchedRow) -> Result<api::Watched> {
     let kind = match (r.series_id, r.episode_id, r.movie_id) {
         (Some(series), Some(episode), None) => WatchedKind::Episode { series, episode },
         (None, None, Some(movie)) => WatchedKind::Movie { movie },
-        _ => anyhow::bail!("watched row violates CHECK constraint"),
+        _ => anyhow::bail!("Watched row violates CHECK constraint"),
     };
 
     Ok(api::Watched {
@@ -3147,8 +3121,6 @@ fn watched_from_row(r: WatchedRow) -> Result<api::Watched> {
         kind,
     })
 }
-
-// ── Migrations ───────────────────────────────────────────────────────────────
 
 fn do_migrations(c: &sqll::Connection) -> Result<()> {
     c.execute(MIGRATIONS_INIT)?;
@@ -3163,28 +3135,27 @@ fn do_migrations(c: &sqll::Connection) -> Result<()> {
             select.bind(id)?;
 
             if let Some(applied_at) = select.next::<String>()? {
-                tracing::debug!(id, applied_at, "migration already applied");
+                tracing::debug!(id, applied_at, "Migration already applied");
                 return Ok(());
             }
 
-            let Some(asset) = Migrations::get(id) else {
-                anyhow::bail!("migration file not found: {id}");
-            };
+            let asset =
+                Migrations::get(id).with_context(|| anyhow!("Migration file not found: {id}"))?;
 
-            let sql = std::str::from_utf8(asset.data.as_ref())
-                .with_context(|| format!("migration {id} is not valid UTF-8"))?;
+            let sql = str::from_utf8(asset.data.as_ref())
+                .with_context(|| anyhow!("Migration {id} is not valid UTF-8"))?;
 
             c.execute(sql)
-                .with_context(|| format!("executing migration {id}"))?;
+                .with_context(|| anyhow!("Executing migration {id}"))?;
 
             let now = Timestamp::now().to_string();
             insert.bind((id, now.as_str()))?;
-            ensure!(insert.step()?.is_done(), "stepping migration insert");
-            tracing::info!(id, "migration applied");
+            ensure!(insert.step()?.is_done(), "Stepping migration insert");
+            tracing::info!(id, "Migration applied");
             Ok(())
         })();
 
-        result.with_context(|| format!("migration {id}"))?;
+        result.with_context(|| anyhow!("Migration {id}"))?;
     }
 
     Ok(())
@@ -3200,7 +3171,7 @@ fn ensure_mode(c: &sqll::Connection, mode: OpenMode) -> Result<()> {
                 .transpose()?;
 
             if journal.as_deref() != Some("wal") {
-                tracing::warn!(?journal, "switching journal mode to wal");
+                tracing::warn!(?journal, "Switching journal mode to WAL");
                 let applied = c
                     .prepare("PRAGMA journal_mode = wal")?
                     .into_iter::<String>()
@@ -3209,7 +3180,7 @@ fn ensure_mode(c: &sqll::Connection, mode: OpenMode) -> Result<()> {
 
                 ensure!(
                     applied.as_deref() == Some("wal"),
-                    "failed to enable WAL journal mode, got {applied:?}"
+                    "Failed to enable WAL journal mode, got {applied:?}"
                 );
             }
 

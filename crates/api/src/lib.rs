@@ -1212,8 +1212,6 @@ impl ::sqll::BindValue for ThemeType {
     }
 }
 
-// ── Core data types ──────────────────────────────────────────────────────────
-
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Encode, Decode, serde::Serialize, serde::Deserialize,
 )]
@@ -1620,8 +1618,6 @@ impl Default for Config {
 #[musli(crate = musli_core)]
 pub struct Empty;
 
-// ── Search types ─────────────────────────────────────────────────────────────
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub enum SearchKind {
@@ -1655,8 +1651,6 @@ pub struct SearchMovie {
     pub release_date: Option<Date>,
     pub already_tracked: Option<MovieId>,
 }
-
-// ── Task queue ────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
@@ -1703,8 +1697,6 @@ pub struct CompletedTask {
     pub id: TaskId,
     pub kind: TaskKind,
 }
-
-// ── Request / Response structs ───────────────────────────────────────────────
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
@@ -2102,8 +2094,6 @@ pub struct ClearSelectedImageRequest {
     pub kind: ImageKind,
 }
 
-// ── Broadcast events ─────────────────────────────────────────────────────────
-
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct AppEvent {
@@ -2160,8 +2150,6 @@ pub enum AppEventKind {
         task: CompletedTask,
     },
 }
-
-// ── Endpoint definitions ─────────────────────────────────────────────────────
 
 api::define! {
     pub type ListSeries;

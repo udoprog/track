@@ -12,7 +12,7 @@ fn main() -> Result<()> {
     };
 
     if args.next().is_some() {
-        bail!("usage: redownload-languages [output-file]");
+        bail!("Usage: redownload-languages [output-file]");
     }
 
     let body = update_languages::download_table()?;
@@ -22,6 +22,6 @@ fn main() -> Result<()> {
     }
 
     fs::write(&output, body)?;
-    eprintln!("wrote {}", output.display());
+    eprintln!("Wrote {}", output.display());
     Ok(())
 }

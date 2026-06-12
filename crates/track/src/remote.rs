@@ -86,14 +86,14 @@ impl RemoteClients {
 
     pub(crate) async fn fetch_tmdb_image(&self, path: &str) -> Result<Option<bytes::Bytes>> {
         self.tmdb()
-            .context("no tmdb client configured")?
+            .context("Expected a configured TMDB client")?
             .fetch_image(path)
             .await
     }
 
     pub(crate) async fn fetch_tvdb_image(&self, path: &str) -> Result<Option<bytes::Bytes>> {
         self.tvdb()
-            .context("no tvdb client configured")?
+            .context("Expected a configured TVDB client")?
             .fetch_image(path)
             .await
     }
@@ -101,8 +101,6 @@ impl RemoteClients {
     fn tvmaze(&self) -> Option<crate::tvmaze::Client> {
         self.inner.lock().tvmaze.clone()
     }
-
-    // ── Search ────────────────────────────────────────────────────────────────
 
     /// Search series across all configured sources (tmdb then tvdb), one page
     /// per source merged together. `already_tracked` is left as `None`; the
@@ -209,15 +207,13 @@ impl RemoteClients {
         Ok((out, total))
     }
 
-    // ── Sync fetch helpers ────────────────────────────────────────────────────
-
     pub(crate) async fn fetch_tmdb_series(
         &self,
         id: u32,
         language: Option<&str>,
     ) -> Result<tmdb::SeriesInfo> {
         self.tmdb()
-            .context("no tmdb client configured")?
+            .context("Expected a configured TMDB client")?
             .fetch_series(id, language)
             .await
     }
@@ -229,7 +225,7 @@ impl RemoteClients {
         language: Option<&str>,
     ) -> Result<Vec<tmdb::EpisodeInfo>> {
         self.tmdb()
-            .context("no tmdb client configured")?
+            .context("Expected a configured TMDB client")?
             .fetch_season_episodes(series_id, season, language)
             .await
     }
@@ -240,7 +236,7 @@ impl RemoteClients {
         language: Option<&str>,
     ) -> Result<tmdb::MovieInfo> {
         self.tmdb()
-            .context("no tmdb client configured")?
+            .context("Expected a configured TMDB client")?
             .fetch_movie(id, language)
             .await
     }
@@ -250,7 +246,7 @@ impl RemoteClients {
         id: u32,
     ) -> Result<Vec<tmdb::MovieReleaseInfo>> {
         self.tmdb()
-            .context("no tmdb client configured")?
+            .context("Expected a configured TMDB client")?
             .fetch_movie_releases(id)
             .await
     }
@@ -261,7 +257,7 @@ impl RemoteClients {
         language: Option<&str>,
     ) -> Result<tvdb::SeriesInfo> {
         self.tvdb()
-            .context("no tvdb client configured")?
+            .context("Expected a configured TVDB client")?
             .fetch_series(id, language)
             .await
     }
@@ -272,21 +268,21 @@ impl RemoteClients {
         language: Option<&str>,
     ) -> Result<Vec<tvdb::EpisodeInfo>> {
         self.tvdb()
-            .context("no tvdb client configured")?
+            .context("Expected a configured TVDB client")?
             .fetch_episodes(series_id, language)
             .await
     }
 
     pub(crate) async fn lookup_tvmaze_by_tvdb(&self, tvdb_id: u32) -> Result<Option<u32>> {
         self.tvmaze()
-            .context("no tvmaze client")?
+            .context("Expected a configured TVmaze client")?
             .lookup_by_tvdb(tvdb_id)
             .await
     }
 
     pub(crate) async fn lookup_tvmaze_by_imdb(&self, imdb_id: &str) -> Result<Option<u32>> {
         self.tvmaze()
-            .context("no tvmaze client")?
+            .context("Expected a configured TVmaze client")?
             .lookup_by_imdb(imdb_id)
             .await
     }
@@ -296,7 +292,7 @@ impl RemoteClients {
         tvmaze_id: u32,
     ) -> Result<Vec<crate::tvmaze::EpisodeInfo>> {
         self.tvmaze()
-            .context("no tvmaze client")?
+            .context("Expected a configured TVmaze client")?
             .fetch_episodes(tvmaze_id)
             .await
     }

@@ -53,7 +53,7 @@ impl Component for MoviesList {
         let (ws, _) = ctx
             .link()
             .context::<ws::Handle>(Callback::noop())
-            .expect("ws::Handle context not found");
+            .expect("Expected ws::Handle in context");
 
         let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
@@ -61,7 +61,7 @@ impl Component for MoviesList {
         let (tz, _tz_handle) = ctx
             .link()
             .context::<TimeZone>(ctx.link().callback(Msg::SetTz))
-            .expect("time zone not found");
+            .expect("Expected a configured time zone");
 
         Self {
             channel: ws::Channel::default(),

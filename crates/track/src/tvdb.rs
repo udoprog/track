@@ -102,7 +102,7 @@ impl Client {
             apikey: &self.inner.api_key,
             pin: self.inner.pin.as_deref(),
         })
-        .context("serializing login body")?;
+        .context("Serializing login body")?;
 
         let bytes = self
             .inner
@@ -112,17 +112,17 @@ impl Client {
             .body(body)
             .send()
             .await
-            .context("tvdb login request")?
+            .context("TVDB login request")?
             .error_for_status()
-            .context("tvdb login status")?
+            .context("TVDB login status")?
             .bytes()
             .await?;
 
-        let resp: Resp = serde_json::from_slice(&bytes).context("tvdb login response")?;
+        let resp: Resp = serde_json::from_slice(&bytes).context("TVDB login response")?;
 
         let expires_at = now
             .checked_add(Duration::from_secs(EXPIRATION_SECONDS))
-            .context("calculating credentials expiration time")?;
+            .context("Expected a valid credentials expiration time")?;
 
         *creds = Credentials {
             token: resp.data.token,
@@ -503,8 +503,6 @@ impl Client {
     }
 }
 
-// ── Wire types ────────────────────────────────────────────────────────────────
-
 #[derive(Deserialize)]
 struct Translation {
     #[serde(default)]
@@ -512,8 +510,6 @@ struct Translation {
     #[serde(default)]
     overview: Option<String>,
 }
-
-// ── Output types ─────────────────────────────────────────────────────────────
 
 pub(crate) struct SeriesInfo {
     pub title: Option<String>,
@@ -547,8 +543,6 @@ pub(crate) struct SearchSeriesResult {
     pub banner: Option<(ImageSource, String)>,
     pub fanart: Option<(ImageSource, String)>,
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 /// Map a language code to the 3-letter (ISO 639-3) form the v4 API expects. The
 /// app stores ISO 639-1 (2-letter) codes; pass any already-3-letter code through.

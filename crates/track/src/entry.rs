@@ -5,10 +5,11 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, Result, anyhow};
 use clap::Parser;
 use musli_web::ws::Channels;
 use tokio::sync::{Notify, broadcast};
+use tracing::Level;
 
 use crate::app_broadcast::Broadcaster;
 use crate::background;
@@ -34,21 +35,32 @@ struct Args {
     /// Address to listen on.
     #[arg(long, default_value = "127.0.0.1:3000")]
     bind: SocketAddr,
+
+    /// Add logging directives.
+    #[arg(long)]
+    log: Vec<String>,
 }
 
 pub async fn server() -> Result<ExitCode> {
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
-
     let args = Args::parse();
 
-    let db = Database::open(&args.db, OpenMode::Normal).context("failed to open database")?;
+    let mut filter = tracing_subscriber::EnvFilter::builder()
+        .with_default_directive(Level::INFO.into())
+        .from_env_lossy();
+
+    for directive in &args.log {
+        filter = filter.add_directive(directive.parse()?);
+    }
+
+    tracing_subscriber::fmt().with_env_filter(filter).init();
+
+    let db = Database::open(&args.db, OpenMode::Normal)
+        .with_context(|| anyhow!("Opening database at {}", args.db.display()))?;
 
     let http = reqwest::Client::builder()
         .user_agent("ontv-musli-web/0.1")
         .build()
-        .context("building HTTP client")?;
+        .context("Building HTTP client")?;
 
     let cache = ImageCache::new(&args.cache_dir);
 
@@ -60,7 +72,7 @@ pub async fn server() -> Result<ExitCode> {
 
     let remote = RemoteClients::new(http.clone());
 
-    let config = db.load_config().await.context("loading config")?;
+    let config = db.load_config().await.context("Loading config")?;
     remote.configure(&config)?;
 
     let pending = PendingSystem::new(db.clone());
@@ -93,11 +105,11 @@ pub async fn server() -> Result<ExitCode> {
         config_changed,
     };
 
-    tracing::info!("listening on {}", args.bind);
+    tracing::info!("Listening on {}", args.bind);
 
     let listener = tokio::net::TcpListener::bind(args.bind)
         .await
-        .context("failed to bind")?;
+        .with_context(|| anyhow!("Binding to {}", args.bind))?;
 
     let server = {
         let shutdown = shutdown.clone();
@@ -121,38 +133,38 @@ pub async fn server() -> Result<ExitCode> {
     while !stopped_server || !stopped_background || !stopped_queue {
         tokio::select! {
             result = server.as_mut(), if !stopped_server => {
-                if let Err(error) = result.context("server error") {
-                    tracing::error!("server error: {error:#}");
+                if let Err(error) = result.context("Server error") {
+                    tracing::error!("Server error: {error:#}");
                     ok = false;
                 } else {
-                    tracing::info!("server stopped");
+                    tracing::info!("Server stopped");
                 }
 
                 stopped_server = true;
             }
             result = &mut background, if !stopped_background => {
-                if let Err(error) = result.context("background task panicked")
-                    .and_then(|r| r.context("background task error")) {
-                    tracing::error!("background task error: {error:#}");
+                if let Err(error) = result.context("Background task panicked")
+                    .and_then(|r| r.context("Background task error")) {
+                    tracing::error!("Background task error: {error:#}");
                     ok = false;
                 } else {
-                    tracing::info!("background task stopped");
+                    tracing::info!("Background task stopped");
                 }
 
                 stopped_background = true;
             }
             result = &mut queue_worker, if !stopped_queue => {
-                if let Err(error) = result.context("task queue panicked"){
-                    tracing::error!("task queue error: {error:#}");
+                if let Err(error) = result.context("Task queue panicked"){
+                    tracing::error!("Task queue error: {error:#}");
                     ok = false;
                 } else {
-                    tracing::info!("task queue stopped");
+                    tracing::info!("Task queue stopped");
                 }
 
                 stopped_queue = true;
             }
             _ = tokio::signal::ctrl_c() => {
-                tracing::info!("received ctrl-c, shutting down");
+                tracing::info!("Received Ctrl-C, shutting down");
             }
         }
 

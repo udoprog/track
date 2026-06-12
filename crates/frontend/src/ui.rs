@@ -147,8 +147,6 @@ pub(super) fn ConfirmDanger(props: &ConfirmDangerProps) -> Html {
     }
 }
 
-// ── MarkWatchedPicker ─────────────────────────────────────────────────────────
-
 /// Two-button step shown after clicking "Mark watched": choose now or when aired.
 /// Renders as a `row-fill fill` that can replace the watch button's action area.
 #[derive(Properties, PartialEq)]
@@ -199,8 +197,6 @@ pub(super) fn MarkWatchedPicker(props: &MarkWatchedPickerProps) -> Html {
         </div>
     }
 }
-
-// ── RemoteSourceSelect ───────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum RemoteSourceKind {
@@ -256,8 +252,6 @@ pub(super) fn RemoteSourceSelect(props: &RemoteSourceSelectProps) -> Html {
         </select>
     }
 }
-
-// ── RemoteEditor ──────────────────────────────────────────────────────────────
 
 /// Sources offered when adding a remote identifier, as `(value, label)`.
 const REMOTE_SOURCES: &[(api::RemoteSource, &str)] = &[
@@ -554,8 +548,6 @@ impl Component for RemoteEditor {
     }
 }
 
-// ── LanguagePicker ────────────────────────────────────────────────────────────
-
 const LANGUAGE_PAGE_SIZE: usize = 5;
 
 #[derive(Properties, PartialEq)]
@@ -726,8 +718,6 @@ impl Component for LanguagePicker {
     }
 }
 
-// ── EpisodePicker ─────────────────────────────────────────────────────────────
-
 /// Inline season + episode picker used for moving or fixing watched entries.
 /// Renders two `<select>` elements and confirm/cancel buttons, fitting inside
 /// a `row` or `table-entry` without taking up extra vertical space.
@@ -771,7 +761,7 @@ impl Component for EpisodePicker {
         let (ws, _) = ctx
             .link()
             .context::<ws::Handle>(Callback::noop())
-            .expect("ws::Handle context not found");
+            .expect("Expected ws::Handle in context");
 
         let selected_season = match ctx.props().selected_season {
             Some(selected_season) => Some(selected_season),

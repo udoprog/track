@@ -3,6 +3,8 @@ name = "track"
 edition = "2024"
 publish = false
 
+default-run = "track"
+
 [features]
 default = ["bundle", "import"]
 bundle = ["dep:rust-embed", "dep:mime_guess"]

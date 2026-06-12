@@ -70,7 +70,7 @@ impl ImageCache {
             return Ok(Some(data));
         }
 
-        let disk_path = self.disk_path(source, path).context("invalid image path")?;
+        let disk_path = self.disk_path(source, path).context("Expected a valid image path")?;
 
         let shard = Self::shard(&key);
         let lock = &self.inner.locks[shard];
@@ -84,7 +84,7 @@ impl ImageCache {
                     return Ok(Some(bytes));
                 }
                 Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-                Err(e) => tracing::warn!(%key, error = %e, "cache read error"),
+                Err(e) => tracing::warn!(%key, error = %e, "Cache read error"),
             }
         }
 
@@ -96,7 +96,7 @@ impl ImageCache {
                 return Ok(Some(bytes));
             }
             Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-            Err(e) => tracing::warn!(%key, error = %e, "cache read error"),
+            Err(e) => tracing::warn!(%key, error = %e, "Cache read error"),
         }
 
         let _permit = self
@@ -104,7 +104,7 @@ impl ImageCache {
             .semaphore
             .acquire()
             .await
-            .context("acquiring fetch permit")?;
+            .context("Acquiring fetch permit")?;
 
         let data = match fetch().await? {
             Some(d) => d,
@@ -114,7 +114,7 @@ impl ImageCache {
         let parent = disk_path.parent().unwrap_or(&self.inner.root).to_owned();
         fs::create_dir_all(&parent)
             .await
-            .context("creating cache dirs")?;
+            .context("Creating cache dirs")?;
 
         let write_bytes = data.clone();
         let final_path = disk_path;
@@ -124,12 +124,12 @@ impl ImageCache {
             tmp.write_all(&write_bytes)?;
             tmp.persist(&final_path)
                 .map_err(|e| e.error)
-                .context("persisting cache file")?;
+                .context("Persisting cache file")?;
             Ok::<_, anyhow::Error>(())
         })
         .await?
         {
-            tracing::warn!(%key, error = %e, "cache write error");
+            tracing::warn!(%key, error = %e, "Cache write error");
         }
 
         self.inner.memory.lock().put(key, data.clone());

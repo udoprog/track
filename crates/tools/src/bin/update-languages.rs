@@ -1,7 +1,7 @@
 use std::env;
 use std::fs;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 
 fn main() -> Result<()> {
     let mut args = env::args().skip(1).collect::<Vec<_>>();
@@ -13,7 +13,7 @@ fn main() -> Result<()> {
     };
 
     if args.len() > 1 {
-        bail!("usage: update-languages [--data-module] [output-file]");
+        bail!("Usage: update-languages [--data-module] [output-file]");
     }
 
     let out = args.pop();
@@ -26,8 +26,8 @@ fn main() -> Result<()> {
     match out {
         Some(path) => {
             fs::write(&path, module)
-                .with_context(|| format!("failed to write generated output to {path}"))?;
-            eprintln!("wrote language sets to {path}");
+                .with_context(|| anyhow!("Writing generated output to {path}"))?;
+            eprintln!("Wrote language sets to {path}");
         }
         None => {
             print!("{module}");

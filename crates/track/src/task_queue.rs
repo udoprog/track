@@ -86,7 +86,7 @@ impl TaskQueue {
             return false;
         }
 
-        info!(task_kind = ?kind, "task queued");
+        info!(task_kind = ?kind, "Task queued");
 
         let run_at = if immediate {
             Instant::now()
@@ -189,13 +189,13 @@ impl TaskQueue {
                 "task queue task started",
             );
 
-            info!(task_id = ?task.id, task_kind = ?task.kind, "task started");
+            info!(task_id = ?task.id, task_kind = ?task.kind, "Task started");
             let start = Instant::now();
             let result = execute(&task, &db, &remote, &broadcast, &pending).await;
 
             match result {
                 Ok(()) => {
-                    info!(?task.id, elapsed_ms = start.elapsed().as_millis(), "task completed");
+                    info!(?task.id, elapsed_ms = start.elapsed().as_millis(), "Task completed");
 
                     match &task.kind {
                         api::TaskKind::SyncSeries { series_id, .. } => {
@@ -230,7 +230,7 @@ impl TaskQueue {
                     }
                 }
                 Err(e) => {
-                    error!(task_id = ?task.id, "task failed: {e:#}");
+                    error!(task_id = ?task.id, "Task failed: {e:#}");
                 }
             }
 

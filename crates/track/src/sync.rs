@@ -18,34 +18,34 @@ pub(crate) async fn sync_series(
     let series = db
         .series_by_id(series_id)
         .await?
-        .context("series not found")?;
+        .context("Expected series to exist")?;
 
     let config = db.load_config().await?;
     let language = series.language.as_deref().or(config.language.as_deref());
 
     let source = series.effective_sync_source();
-    info!(series_id = %series_id, title = series.title, ?source, ?language, "syncing series");
+    info!(series_id = %series_id, title = series.title, ?source, ?language, "Syncing series");
 
     match source {
         Some(api::SyncSource::Tmdb) => {
             let remote_id = series
                 .remote_by_source(api::SyncSource::Tmdb)
-                .context("series has no tmdb remote")?;
+                .context("Expected series to have a TMDB remote")?;
 
-            let tmdb_id: u32 = remote_id.value().as_u32().context("invalid tmdb id")?;
+            let tmdb_id: u32 = remote_id.value().as_u32().context("Expected a valid TMDB id")?;
 
             sync_series_tmdb(series_id, tmdb_id, language, remote, db, broadcast).await?;
         }
         Some(api::SyncSource::Tvdb) => {
             let remote_id = series
                 .remote_by_source(api::SyncSource::Tvdb)
-                .context("series has no tvdb remote")?;
+                .context("Expected series to have a TVDB remote")?;
 
-            let tvdb_id: u32 = remote_id.value().as_u32().context("invalid tvdb id")?;
+            let tvdb_id: u32 = remote_id.value().as_u32().context("Expected a valid TVDB id")?;
 
             sync_series_tvdb(series_id, tvdb_id, language, remote, db, broadcast).await?;
         }
-        _ => anyhow::bail!("series has no syncable remote (tmdb or tvdb)"),
+        _ => anyhow::bail!("Series has no syncable remote (TMDB or TVDB)"),
     }
 
     // Best-effort tvmaze enrichment for exact airtimes. Re-fetch so remotes are
@@ -53,14 +53,14 @@ pub(crate) async fn sync_series(
     if let Some(series) = db.series_by_id(series_id).await?
         && let Err(e) = enrich_with_tvmaze(series_id, &series, remote, db, broadcast).await
     {
-        warn!("tvmaze enrichment skipped for series {series_id}: {e:#}");
+        warn!("TVmaze enrichment skipped for series {series_id}: {e:#}");
     }
 
     let now = api::Timestamp::now();
     pending.fill_for_series(series_id, now).await?;
     db.set_series_synced_at(series_id, now).await?;
     broadcast.broadcast_event(api::AppEventKind::PendingChanged);
-    info!(series_id = %series_id, "sync complete");
+    info!(series_id = %series_id, "Sync complete");
     Ok(())
 }
 
@@ -75,9 +75,9 @@ async fn sync_series_tmdb(
     let series = db
         .series_by_id(series_id)
         .await?
-        .context("series not found")?;
+        .context("Expected series to exist")?;
 
-    info!(tmdb_id, "fetching tmdb series");
+    info!(tmdb_id, "Fetching TMDB series");
 
     let info = remote.fetch_tmdb_series(tmdb_id, language).await?;
 
@@ -137,7 +137,7 @@ async fn sync_series_tmdb(
     let updated = db
         .series_by_id(series_id)
         .await?
-        .context("series not found after update")?;
+        .context("Expected series to exist after update")?;
     broadcast.broadcast_event(api::AppEventKind::SeriesChanged { series: updated });
 
     let mut synced_seasons = HashSet::new();
@@ -156,7 +156,7 @@ async fn sync_series_tmdb(
         )
         .await?;
 
-        info!(tmdb_id, season = ?info.number, "fetching tmdb season episodes");
+        info!(tmdb_id, season = ?info.number, "Fetching TMDB season episodes");
 
         let mut fetched_numbers = HashSet::new();
 
@@ -226,9 +226,9 @@ async fn sync_series_tvdb(
     let series = db
         .series_by_id(series_id)
         .await?
-        .context("series not found")?;
+        .context("Expected series to exist")?;
 
-    info!(tvdb_id, "fetching tvdb series");
+    info!(tvdb_id, "Fetching TVDB series");
 
     let info = remote.fetch_tvdb_series(tvdb_id, language).await?;
 
@@ -302,13 +302,13 @@ async fn sync_series_tvdb(
     let updated = db
         .series_by_id(series_id)
         .await?
-        .context("series not found after update")?;
+        .context("Expected series to exist after update")?;
 
     broadcast.broadcast_event(api::AppEventKind::SeriesChanged { series: updated });
 
-    info!(tvdb_id, "fetching tvdb episodes");
+    info!(tvdb_id, "Fetching TVDB episodes");
     let episodes = remote.fetch_tvdb_episodes(tvdb_id, language).await?;
-    info!(count = episodes.len(), "got episodes from tvdb");
+    info!(count = episodes.len(), "Got episodes from TVDB");
 
     let mut seasons_seen: HashSet<SeasonNumber> = HashSet::new();
     let mut season_air_dates: HashMap<SeasonNumber, api::Timestamp> = HashMap::new();
@@ -394,22 +394,22 @@ pub(crate) async fn sync_movie(
     remote: &RemoteClients,
     broadcast: &Broadcaster,
 ) -> Result<()> {
-    let movie = db.movie_by_id(movie_id).await?.context("movie not found")?;
+    let movie = db.movie_by_id(movie_id).await?.context("Expected movie to exist")?;
 
     let config = db.load_config().await?;
     let language = movie.language.as_deref().or(config.language.as_deref());
 
     let source = movie.effective_sync_source();
-    info!(movie_id = %movie_id, title = movie.title, ?source, ?language, "syncing movie");
+    info!(movie_id = %movie_id, title = movie.title, ?source, ?language, "Syncing movie");
 
     match source {
         Some(api::SyncSource::Tmdb) => {
             let remote_id = movie
                 .remote_by_source(api::SyncSource::Tmdb)
-                .context("movie has no tmdb remote")?;
+                .context("Expected movie to have a TMDB remote")?;
 
-            let tmdb_id: u32 = remote_id.value().as_u32().context("invalid tmdb id")?;
-            info!(tmdb_id, "fetching tmdb movie");
+            let tmdb_id: u32 = remote_id.value().as_u32().context("Expected a valid TMDB id")?;
+            info!(tmdb_id, "Fetching TMDB movie");
 
             let info = remote.fetch_tmdb_movie(tmdb_id, language).await?;
 
@@ -467,7 +467,7 @@ pub(crate) async fn sync_movie(
 
             match remote.fetch_tmdb_movie_releases(tmdb_id).await {
                 Ok(releases) => {
-                    info!(count = releases.len(), "fetched tmdb movie releases");
+                    info!(count = releases.len(), "Fetched TMDB movie releases");
 
                     for r in releases {
                         db.upsert_movie_release(
@@ -479,25 +479,25 @@ pub(crate) async fn sync_movie(
                         .await?;
                     }
                 }
-                Err(e) => warn!(movie_id = %movie_id, "movie release dates skipped: {e:#}"),
+                Err(e) => warn!(movie_id = %movie_id, "Movie release dates skipped: {e:#}"),
             }
 
             let updated = db
                 .movie_by_id(movie_id)
                 .await?
-                .context("movie not found after update")?;
+                .context("Expected movie to exist after update")?;
 
             broadcast.broadcast_event(api::AppEventKind::MovieChanged { movie: updated });
         }
-        Some(api::SyncSource::Tvdb) => anyhow::bail!("unsupported movie sync source: tvdb"),
-        _ => anyhow::bail!("movie has no syncable remote"),
+        Some(api::SyncSource::Tvdb) => anyhow::bail!("Unsupported movie sync source: TVDB"),
+        _ => anyhow::bail!("Movie has no syncable remote"),
     }
 
     crate::background::discover_pending_movies(db).await?;
     db.set_movie_synced_at(movie_id, api::Timestamp::now())
         .await?;
     broadcast.broadcast_event(api::AppEventKind::PendingChanged);
-    info!(movie_id = %movie_id, "sync complete");
+    info!(movie_id = %movie_id, "Sync complete");
     Ok(())
 }
 
@@ -515,8 +515,8 @@ async fn enrich_with_tvmaze(
             .iter()
             .find(|r| *r.source() == api::RemoteSource::Tvdb)
         {
-            let id: u32 = r.value().as_u32().context("invalid tvdb id")?;
-            info!(tvdb_id = id, "looking up tvmaze id via tvdb");
+            let id: u32 = r.value().as_u32().context("Expected a valid TVDB id")?;
+            info!(tvdb_id = id, "Looking up TVmaze id via TVDB");
             break 'id remote.lookup_tvmaze_by_tvdb(id).await?;
         }
 
@@ -525,21 +525,21 @@ async fn enrich_with_tvmaze(
             .iter()
             .find(|r| *r.source() == api::RemoteSource::Imdb)
         {
-            let imdb_id = r.value().as_str().context("invalid imdb id")?;
-            info!(imdb_id, "looking up tvmaze id via IMDB");
+            let imdb_id = r.value().as_str().context("Expected a valid IMDB id")?;
+            info!(imdb_id, "Looking up TVmaze id via IMDB");
             break 'id remote.lookup_tvmaze_by_imdb(imdb_id).await?;
         }
 
-        info!(series_id = %series_id, "skipping tvmaze enrichment: no tvdb or IMDB remote");
+        info!(series_id = %series_id, "Skipping TVmaze enrichment: no TVDB or IMDB remote");
         return Ok(());
     };
 
     let Some(tvmaze_id) = tvmaze_id else {
-        info!(series_id = %series_id, "skipping tvmaze enrichment: not found on tvmaze");
+        info!(series_id = %series_id, "Skipping TVmaze enrichment: not found on TVmaze");
         return Ok(());
     };
 
-    info!(tvmaze_id, "fetching tvmaze episodes");
+    info!(tvmaze_id, "Fetching TVmaze episodes");
 
     let tvmaze_eps = remote.fetch_tvmaze_episodes(tvmaze_id).await?;
 
@@ -555,7 +555,7 @@ async fn enrich_with_tvmaze(
     info!(
         episodes = updates.len(),
         seasons = seasons_updated.len(),
-        "updating episodes with exact airtimes"
+        "Updating episodes with exact airtimes"
     );
 
     db.update_episodes_aired(series_id, updates).await?;
