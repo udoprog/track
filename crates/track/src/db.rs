@@ -214,6 +214,7 @@ struct EpisodeRow {
     aired: Option<Timestamp>,
     remote_id: Option<RemoteId>,
     pending: bool,
+    watched_count: u32,
 }
 
 #[derive(Row)]
@@ -527,7 +528,8 @@ statements! {
         "#,
         list_episodes: r#"
             SELECT e.id, e.series_id, e.season, e.episode, e.absolute_number, e.name, e.overview, e.aired, e.remote_id,
-                   EXISTS(SELECT 1 FROM pending p WHERE p.episode_id = e.id) AS pending
+                EXISTS(SELECT 1 FROM pending p WHERE p.episode_id = e.id) AS pending,
+                (SELECT COUNT(*) FROM watched_episodes we WHERE we.series_id = e.series_id AND we.season = e.season AND we.episode = e.episode) AS watched_count
             FROM episodes e
             WHERE e.series_id = ? AND e.season = ?
             ORDER BY e.episode
@@ -3091,6 +3093,7 @@ impl Database {
                     aired: r.aired,
                     remote_id: r.remote_id,
                     pending: false,
+                    watched_count: 0,
                     screenshot: None,
                 };
 
@@ -3355,6 +3358,7 @@ fn episode_from_row(r: EpisodeRow) -> api::Episode {
         aired: r.aired,
         remote_id: r.remote_id,
         pending: r.pending,
+        watched_count: r.watched_count,
         screenshot: None,
     }
 }

@@ -1391,6 +1391,7 @@ pub struct Episode {
     pub aired: Option<Timestamp>,
     pub remote_id: Option<RemoteId>,
     pub pending: bool,
+    pub watched_count: u32,
     pub screenshot: Option<Image>,
 }
 
