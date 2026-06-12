@@ -8,7 +8,7 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{PagedQuery, Route};
 use crate::ui::{
-    ConfirmDanger, LanguagePicker, Loading, MarkWatchedPicker, RemoteEditor, RemoteSourceKind,
+    ConfirmDanger, Loading, MarkWatchedPicker, MediaSettingsModal, RemoteEditor, RemoteSourceKind,
     RemoteSourceSelect, Tracked,
 };
 use crate::{Image, ImageGallery, ImageItem, Modal, SetupChannel};
@@ -28,6 +28,7 @@ pub(super) struct MovieDetail {
     releases_expanded: HashSet<api::ReleaseType>,
     movie_releases: Vec<(api::ReleaseType, Vec<api::MovieRelease>)>,
     image_modal: bool,
+    settings_modal: bool,
     remote_editor: bool,
     background: Background,
     tz: TimeZone,
@@ -68,6 +69,8 @@ pub(super) enum Msg {
     ClearSelectedImageDone(Result<ws::Packet<api::ClearSelectedImage>, ws::Error>),
     OpenImageModal,
     CloseImageModal,
+    OpenSettingsModal,
+    CloseSettingsModal,
     OpenRemoteEditor,
     CloseRemoteEditor,
     AddRemote(api::RemoteId),
@@ -147,6 +150,7 @@ impl Component for MovieDetail {
             releases_expanded: HashSet::new(),
             movie_releases: Vec::new(),
             image_modal: false,
+            settings_modal: false,
             remote_editor: false,
             background,
             tz,
@@ -560,14 +564,24 @@ impl MovieDetail {
             }
             Msg::OpenImageModal => {
                 self.image_modal = true;
+                self.settings_modal = false;
                 Ok(true)
             }
             Msg::CloseImageModal => {
                 self.image_modal = false;
                 Ok(true)
             }
+            Msg::OpenSettingsModal => {
+                self.settings_modal = true;
+                Ok(true)
+            }
+            Msg::CloseSettingsModal => {
+                self.settings_modal = false;
+                Ok(true)
+            }
             Msg::OpenRemoteEditor => {
                 self.remote_editor = true;
+                self.settings_modal = false;
                 Ok(true)
             }
             Msg::CloseRemoteEditor => {
@@ -855,19 +869,6 @@ impl MovieDetail {
                         </div>
                     }
 
-                    <LanguagePicker
-                        current={movie.language.clone()}
-                        placeholder="Default"
-                        on_change={link.callback(Msg::SetLanguage)}
-                    />
-
-                    if !movie.images.is_empty() {
-                        <button class="btn" onclick={link.callback(|_| Msg::OpenImageModal)} title="Change poster">
-                            <span class="item-inline"><span class="icon photo" /></span>
-                            <span>{"Graphics"}</span>
-                        </button>
-                    }
-
                     <div class="input-group">
                         <div class="input-label">{"Sync"}</div>
 
@@ -894,11 +895,6 @@ impl MovieDetail {
                             </button>
                         }
                     </div>
-
-                    <button class="btn" onclick={link.callback(|_| Msg::OpenRemoteEditor)} title="Repair remote identifiers">
-                        <span class="item-inline"><span class="icon identification" /></span>
-                        <span>{"Identifiers"}</span>
-                    </button>
                 </div>
 
                 <div class="desktop-row mobile-column end desktop-input-group">
@@ -917,6 +913,11 @@ impl MovieDetail {
                             <span class="hide-desktop">{"Remove"}</span>
                         </button>
                     }
+
+                    <button class="btn" onclick={link.callback(|_| Msg::OpenSettingsModal)} title="Movie settings">
+                        <span class="item-inline"><span class="icon cog-6-tooth" /></span>
+                        <span class="hide-desktop">{"Movie settings"}</span>
+                    </button>
                 </div>
             </div>
 
@@ -980,6 +981,18 @@ impl MovieDetail {
 
             if self.image_modal {
                 { self.view_image_modal(ctx) }
+            }
+
+            if self.settings_modal {
+                <MediaSettingsModal
+                    title="Movie settings"
+                    language={movie.language.clone()}
+                    has_images={!movie.images.is_empty()}
+                    on_language_change={link.callback(Msg::SetLanguage)}
+                    on_edit_graphics={link.callback(|_| Msg::OpenImageModal)}
+                    on_edit_identifiers={link.callback(|_| Msg::OpenRemoteEditor)}
+                    on_close={link.callback(|_| Msg::CloseSettingsModal)}
+                />
             }
 
             if self.remote_editor {

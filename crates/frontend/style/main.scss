@@ -359,6 +359,11 @@ p {
         &.error {
             color: $color-danger;
         }
+
+        .hint {
+            color: $text-muted;
+            font-size: $font-xs;
+        }
     }
 }
 

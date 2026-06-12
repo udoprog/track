@@ -198,6 +198,103 @@ pub(super) fn MarkWatchedPicker(props: &MarkWatchedPickerProps) -> Html {
     }
 }
 
+/// Modal holding per-title settings (language, optional specials handling,
+/// graphics, identifiers). Shared by series and movies. Sections whose
+/// corresponding callback is omitted are not rendered — e.g. movies pass no
+/// `on_include_specials_change`, so the specials field is hidden.
+/// Stateless: it renders the current values and emits the parent's callbacks.
+#[derive(Properties, PartialEq)]
+pub(super) struct MediaSettingsModalProps {
+    pub(super) title: AttrValue,
+    pub(super) language: Option<String>,
+    pub(super) has_images: bool,
+    pub(super) on_language_change: Callback<Option<String>>,
+    pub(super) on_edit_graphics: Callback<()>,
+    pub(super) on_edit_identifiers: Callback<()>,
+    pub(super) on_close: Callback<()>,
+    /// Current specials override. Only meaningful when
+    /// `on_include_specials_change` is set.
+    #[prop_or_default]
+    pub(super) include_specials: Option<bool>,
+    /// When set, the "Specials when syncing" field is rendered.
+    #[prop_or_default]
+    pub(super) on_include_specials_change: Option<Callback<Option<bool>>>,
+}
+
+#[function_component]
+pub(super) fn MediaSettingsModal(props: &MediaSettingsModalProps) -> Html {
+    let on_edit_graphics = props.on_edit_graphics.reform(|_: MouseEvent| ());
+    let on_edit_identifiers = props.on_edit_identifiers.reform(|_: MouseEvent| ());
+
+    let specials = props.on_include_specials_change.as_ref().map(|cb| {
+        let include_specials = props.include_specials;
+        let value = match include_specials {
+            None => "default",
+            Some(true) => "include",
+            Some(false) => "skip",
+        };
+
+        let on_change = cb.reform(|e: Event| {
+            let select: web_sys::HtmlSelectElement = e.target_unchecked_into();
+            match select.value().as_str() {
+                "include" => Some(true),
+                "skip" => Some(false),
+                _ => None,
+            }
+        });
+
+        html! {
+            <div class="field">
+                <label>{"Specials when syncing"}</label>
+                <select class="input-select" onchange={on_change} {value}>
+                    <option value="default" selected={include_specials.is_none()}>{"Default"}</option>
+                    <option value="include" selected={include_specials == Some(true)}>{"Include"}</option>
+                    <option value="skip" selected={include_specials == Some(false)}>{"Skip"}</option>
+                </select>
+            </div>
+        }
+    });
+
+    html! {
+        <Modal title={props.title.clone()} on_close={props.on_close.reform(|_| ())}>
+            <div class="form">
+                <div class="field">
+                    <label>{"Language"}</label>
+                    <LanguagePicker
+                        current={props.language.clone()}
+                        placeholder="Default"
+                        on_change={props.on_language_change.clone()}
+                    />
+                </div>
+
+                {specials}
+
+                <div class="field">
+                    <label>{"Graphics"}</label>
+                    if props.has_images {
+                        <button class="btn" onclick={on_edit_graphics}>
+                            <span class="item-inline"><span class="icon photo" /></span>
+                            <span>{"Edit graphics"}</span>
+                        </button>
+                        <span class="hint">{"Choose the poster, backdrop, banner, and other artwork."}</span>
+                    } else {
+                        <span class="hint">{"No graphics available. Sync to fetch artwork."}</span>
+                    }
+                </div>
+
+                <div class="field">
+                    <label>{"Identifiers"}</label>
+                    <button class="btn" onclick={on_edit_identifiers}>
+                        <span class="item-inline"><span class="icon identification" /></span>
+                        <span>{"Edit identifiers"}</span>
+                    </button>
+                    <span class="hint">{"Repair the TMDB, TVDB, and other remote ids used to sync."}</span>
+                </div>
+            </div>
+        </Modal>
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum RemoteSourceKind {
     Series,

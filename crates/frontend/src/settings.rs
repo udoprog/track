@@ -33,7 +33,7 @@ pub(super) enum Msg {
     DashboardPageChanged(String),
     AutoSyncEnabledToggle,
     AutoSyncIntervalChanged(String),
-    IncludeSpecialsToggle,
+    IncludeSpecialsChanged(bool),
     Save,
     SaveDone(Result<ws::Packet<api::SetConfig>, ws::Error>),
 }
@@ -120,7 +120,10 @@ impl Component for Settings {
         });
 
         let on_auto_sync_toggle = link.callback(|_| Msg::AutoSyncEnabledToggle);
-        let on_include_specials_toggle = link.callback(|_| Msg::IncludeSpecialsToggle);
+        let on_include_specials_change = link.callback(|e: Event| {
+            let select: web_sys::HtmlSelectElement = e.target_unchecked_into();
+            Msg::IncludeSpecialsChanged(select.value() == "include")
+        });
 
         let on_auto_sync_interval = link.callback(|e: InputEvent| {
             let input: web_sys::HtmlInputElement = e.target_unchecked_into();
@@ -268,11 +271,11 @@ impl Component for Settings {
                         </div>
 
                         <div class="field">
-                            <label class="clickable" onclick={&on_include_specials_toggle}>{"Include specials (season 0) when syncing by default"}</label>
-
-                            <span class={classes!("input-checkbox", self.config.include_specials.then_some("checked"))} onclick={on_include_specials_toggle}>
-                                <span class="mark" />
-                            </span>
+                            <label>{"Specials when syncing"}</label>
+                            <select class="input-select" onchange={on_include_specials_change}>
+                                <option value="include" selected={self.config.include_specials}>{"Include"}</option>
+                                <option value="skip" selected={!self.config.include_specials}>{"Skip"}</option>
+                            </select>
                         </div>
                     </div>
                 </div>
@@ -369,8 +372,8 @@ impl Settings {
                 }
                 Ok(false)
             }
-            Msg::IncludeSpecialsToggle => {
-                self.config.include_specials = !self.config.include_specials;
+            Msg::IncludeSpecialsChanged(include) => {
+                self.config.include_specials = include;
                 Ok(true)
             }
             Msg::Save => {
