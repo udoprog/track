@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
+
     let tab_path = manifest_dir.join("data").join("iso-639-3.tab");
     let to_3166_1_path = manifest_dir.join("data").join("to-3166-1.txt");
     let countries_path = manifest_dir.join("data").join("countries.txt");
@@ -40,8 +41,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let target = out_dir.join("generated_to_3166_1.rs");
     fs::write(target, generated)?;
 
-    let countries = fs::read_to_string(&countries_path)?;
-    let generated = update_languages::generate_module_from_countries(&countries)?;
+    let generated = update_languages::generate_strings_module(countries_path, "COUNTRIES")?;
     let target = out_dir.join("generated_countries.rs");
     fs::write(target, generated)?;
 
