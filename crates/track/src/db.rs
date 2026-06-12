@@ -773,14 +773,12 @@ impl Inner {
     }
 
     fn set_config(&mut self, key: &str, value: &str) -> Result<()> {
-        self.set_config.bind((key, value))?;
-        ensure!(self.set_config.step()?.is_done(), "Setting config");
+        self.set_config.execute((key, value))?;
         Ok(())
     }
 
     fn delete_config(&mut self, key: &str) -> Result<()> {
-        self.delete_config.bind((key,))?;
-        ensure!(self.delete_config.step()?.is_done(), "Deleting config");
+        self.delete_config.execute((key,))?;
         Ok(())
     }
 }
@@ -889,8 +887,7 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.insert_series
-                .bind((id, &title[..], first_air.as_ref(), &overview[..], true))?;
-            ensure!(s.insert_series.step()?.is_done(), "Inserting series");
+                .execute((id, &title[..], first_air.as_ref(), &overview[..], true))?;
             Ok(())
         });
 
@@ -921,11 +918,7 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.insert_series_remote.bind((series_id, &remote_id))?;
-            ensure!(
-                s.insert_series_remote.step()?.is_done(),
-                "Inserting series remote"
-            );
+            s.insert_series_remote.execute((series_id, &remote_id))?;
             Ok(())
         });
 
@@ -941,11 +934,7 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.delete_series_remote.bind((series_id, &remote_id))?;
-            ensure!(
-                s.delete_series_remote.step()?.is_done(),
-                "Deleting series remote"
-            );
+            s.delete_series_remote.execute((series_id, &remote_id))?;
             Ok(())
         });
 
@@ -963,11 +952,7 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.update_series_remote.bind((&new, series_id, &old))?;
-            ensure!(
-                s.update_series_remote.step()?.is_done(),
-                "Updating series remote"
-            );
+            s.update_series_remote.execute((&new, series_id, &old))?;
             Ok(())
         });
 
@@ -1083,14 +1068,13 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.update_series.bind((
+            s.update_series.execute((
                 title.as_deref(),
                 first_air.as_ref(),
                 overview.as_deref(),
                 tracked,
                 id,
             ))?;
-            ensure!(s.update_series.step()?.is_done(), "Updating series");
             Ok(())
         });
 
@@ -1101,8 +1085,7 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.delete_series.bind((id,))?;
-            ensure!(s.delete_series.step()?.is_done(), "Deleting series");
+            s.delete_series.execute((id,))?;
             Ok(())
         });
 
@@ -1113,11 +1096,7 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.set_series_tracked.bind((tracked, id))?;
-            ensure!(
-                s.set_series_tracked.step()?.is_done(),
-                "Setting series tracked"
-            );
+            s.set_series_tracked.execute((tracked, id))?;
             Ok(())
         });
 
@@ -1132,11 +1111,7 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.set_series_sync_source.bind((source, id))?;
-            ensure!(
-                s.set_series_sync_source.step()?.is_done(),
-                "Setting series sync source"
-            );
+            s.set_series_sync_source.execute((source, id))?;
             Ok(())
         });
 
@@ -1151,11 +1126,7 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.set_series_language.bind((language.as_deref(), id))?;
-            ensure!(
-                s.set_series_language.step()?.is_done(),
-                "Setting series language"
-            );
+            s.set_series_language.execute((language.as_deref(), id))?;
             Ok(())
         });
 
@@ -1175,7 +1146,7 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.upsert_season.bind((
+            s.upsert_season.execute((
                 SeasonId::random(),
                 series_id,
                 number,
@@ -1183,7 +1154,6 @@ impl Database {
                 name.as_deref(),
                 overview.as_deref(),
             ))?;
-            ensure!(s.upsert_season.step()?.is_done(), "Upserting season");
             Ok(())
         });
 
@@ -1224,15 +1194,9 @@ impl Database {
             let mut s = self.inner.clone().lock_owned().await;
 
             let result = spawn_blocking(move || {
-                s.delete_season_episodes.bind((series_id, n))?;
-                ensure!(
-                    s.delete_season_episodes.step()?.is_done(),
-                    "Deleting season episodes"
-                );
-
-                s.delete_season.bind((series_id, n))?;
-                ensure!(s.delete_season.step()?.is_done(), "Deleting season");
-                Ok(())
+                s.delete_season_episodes.execute((series_id, n))?;
+                s.delete_season.execute((series_id, n))?;
+                Ok::<_, anyhow::Error>(())
             });
 
             result.await??;
@@ -1264,11 +1228,7 @@ impl Database {
 
             for number in to_delete {
                 s.delete_episode_by_place
-                    .bind((series_id, season, number))?;
-                ensure!(
-                    s.delete_episode_by_place.step()?.is_done(),
-                    "Deleting episode by place"
-                );
+                    .execute((series_id, season, number))?;
             }
 
             Ok(())
@@ -1295,7 +1255,7 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.upsert_episode.bind((
+            s.upsert_episode.execute((
                 id,
                 series_id,
                 season,
@@ -1306,7 +1266,6 @@ impl Database {
                 aired.as_ref(),
                 remote_id.as_ref(),
             ))?;
-            ensure!(s.upsert_episode.step()?.is_done(), "Upserting episode");
             Ok(())
         });
 
@@ -1394,17 +1353,13 @@ impl Database {
 
             for r in unwatched {
                 let timestamp = s.episode_mark_time(r.id, mark_time, now)?;
-                s.insert_watched_episode.bind((
+                s.insert_watched_episode.execute((
                     WatchedId::random(),
                     timestamp,
                     r.series_id,
                     r.season,
                     r.number,
                 ))?;
-                ensure!(
-                    s.insert_watched_episode.step()?.is_done(),
-                    "Inserting watched episode for remaining season"
-                );
             }
 
             Ok(())
@@ -1458,11 +1413,7 @@ impl Database {
         let result = spawn_blocking(move || {
             for &(season, number, aired) in &updates {
                 s.update_episode_aired
-                    .bind((aired, series_id, season, number))?;
-                ensure!(
-                    s.update_episode_aired.step()?.is_done(),
-                    "Updating episode aired"
-                );
+                    .execute((aired, series_id, season, number))?;
             }
             Ok(())
         });
@@ -1484,8 +1435,7 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.insert_movie
-                .bind((id, &title[..], release_date, &overview[..], tracked))?;
-            ensure!(s.insert_movie.step()?.is_done(), "Inserting movie");
+                .execute((id, &title[..], release_date, &overview[..], tracked))?;
             Ok(())
         });
 
@@ -1513,11 +1463,7 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.insert_movie_remote.bind((movie_id, &remote_id))?;
-            ensure!(
-                s.insert_movie_remote.step()?.is_done(),
-                "Inserting movie remote"
-            );
+            s.insert_movie_remote.execute((movie_id, &remote_id))?;
             Ok(())
         });
 
@@ -1533,11 +1479,7 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.delete_movie_remote.bind((movie_id, &remote_id))?;
-            ensure!(
-                s.delete_movie_remote.step()?.is_done(),
-                "Deleting movie remote"
-            );
+            s.delete_movie_remote.execute((movie_id, &remote_id))?;
             Ok(())
         });
 
@@ -1555,11 +1497,7 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.update_movie_remote.bind((&new, movie_id, &old))?;
-            ensure!(
-                s.update_movie_remote.step()?.is_done(),
-                "Updating movie remote"
-            );
+            s.update_movie_remote.execute((&new, movie_id, &old))?;
             Ok(())
         });
 
@@ -1790,13 +1728,12 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.update_movie.bind((
+            s.update_movie.execute((
                 title.as_deref(),
                 release_date.as_ref(),
                 overview.as_deref(),
                 id,
             ))?;
-            ensure!(s.update_movie.step()?.is_done(), "Updating movie");
             Ok(())
         });
 
@@ -1807,8 +1744,7 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.delete_movie.bind((id,))?;
-            ensure!(s.delete_movie.step()?.is_done(), "Deleting movie");
+            s.delete_movie.execute((id,))?;
             Ok(())
         });
 
@@ -1819,11 +1755,7 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.set_movie_tracked.bind((tracked, id))?;
-            ensure!(
-                s.set_movie_tracked.step()?.is_done(),
-                "Setting movie tracked"
-            );
+            s.set_movie_tracked.execute((tracked, id))?;
             Ok(())
         });
 
@@ -1838,11 +1770,7 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.set_movie_sync_source.bind((source, id))?;
-            ensure!(
-                s.set_movie_sync_source.step()?.is_done(),
-                "Setting movie sync source"
-            );
+            s.set_movie_sync_source.execute((source, id))?;
             Ok(())
         });
 
@@ -1857,11 +1785,7 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.set_movie_language.bind((language.as_deref(), id))?;
-            ensure!(
-                s.set_movie_language.step()?.is_done(),
-                "Setting movie language"
-            );
+            s.set_movie_language.execute((language.as_deref(), id))?;
             Ok(())
         });
 
@@ -1871,11 +1795,7 @@ impl Database {
     pub(crate) async fn clear_series_images(&self, series_id: SeriesId) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
         spawn_blocking(move || {
-            s.delete_series_images.bind((series_id,))?;
-            ensure!(
-                s.delete_series_images.step()?.is_done(),
-                "Clearing series images"
-            );
+            s.delete_series_images.execute((series_id,))?;
             Ok(())
         })
         .await?
@@ -1884,11 +1804,7 @@ impl Database {
     pub(crate) async fn clear_movie_images(&self, movie_id: MovieId) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
         spawn_blocking(move || {
-            s.delete_movie_images.bind((movie_id,))?;
-            ensure!(
-                s.delete_movie_images.step()?.is_done(),
-                "Clearing movie images"
-            );
+            s.delete_movie_images.execute((movie_id,))?;
             Ok(())
         })
         .await?
@@ -1897,11 +1813,7 @@ impl Database {
     pub(crate) async fn clear_episode_images(&self, series_id: SeriesId) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
         spawn_blocking(move || {
-            s.delete_episode_images_for_series.bind((series_id,))?;
-            ensure!(
-                s.delete_episode_images_for_series.step()?.is_done(),
-                "Clearing episode images"
-            );
+            s.delete_episode_images_for_series.execute((series_id,))?;
             Ok(())
         })
         .await?
@@ -1918,7 +1830,7 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.insert_episode_image.bind((
+            s.insert_episode_image.execute((
                 id,
                 episode_id,
                 kind,
@@ -1927,10 +1839,6 @@ impl Database {
                 image.width(),
                 image.height(),
             ))?;
-            ensure!(
-                s.insert_episode_image.step()?.is_done(),
-                "Inserting episode image"
-            );
             Ok(())
         });
 
@@ -1947,11 +1855,7 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.set_episode_image_selection
-                .bind((episode_id, kind, image_id))?;
-            ensure!(
-                s.set_episode_image_selection.step()?.is_done(),
-                "Setting episode image selection"
-            );
+                .execute((episode_id, kind, image_id))?;
             Ok(())
         });
 
@@ -1970,7 +1874,7 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.insert_series_image.bind((
+            s.insert_series_image.execute((
                 id,
                 series_id,
                 kind,
@@ -1980,11 +1884,6 @@ impl Database {
                 image.height(),
                 rank,
             ))?;
-
-            ensure!(
-                s.insert_series_image.step()?.is_done(),
-                "Inserting series image"
-            );
 
             Ok(())
         });
@@ -2004,7 +1903,7 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.insert_movie_image.bind((
+            s.insert_movie_image.execute((
                 id,
                 movie_id,
                 kind,
@@ -2014,10 +1913,6 @@ impl Database {
                 image.height(),
                 rank,
             ))?;
-            ensure!(
-                s.insert_movie_image.step()?.is_done(),
-                "Inserting movie image"
-            );
             Ok(())
         });
 
@@ -2034,11 +1929,7 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.set_series_image_selection
-                .bind((series_id, kind, image_id))?;
-            ensure!(
-                s.set_series_image_selection.step()?.is_done(),
-                "Setting series image selection"
-            );
+                .execute((series_id, kind, image_id))?;
             Ok(())
         });
 
@@ -2055,11 +1946,7 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.set_movie_image_selection
-                .bind((movie_id, kind, image_id))?;
-            ensure!(
-                s.set_movie_image_selection.step()?.is_done(),
-                "Setting movie image selection"
-            );
+                .execute((movie_id, kind, image_id))?;
             Ok(())
         });
 
@@ -2083,20 +1970,13 @@ impl Database {
 
             let owner = match (row.series_id, row.movie_id) {
                 (Some(series_id), _) => {
-                    s.set_series_image_selection.bind((series_id, kind, id))?;
-                    ensure!(
-                        s.set_series_image_selection.step()?.is_done(),
-                        "Setting series image selection"
-                    );
+                    s.set_series_image_selection
+                        .execute((series_id, kind, id))?;
 
                     api::ImageOwner::Series(series_id)
                 }
                 (_, Some(movie_id)) => {
-                    s.set_movie_image_selection.bind((movie_id, kind, id))?;
-                    ensure!(
-                        s.set_movie_image_selection.step()?.is_done(),
-                        "Setting movie image selection"
-                    );
+                    s.set_movie_image_selection.execute((movie_id, kind, id))?;
 
                     api::ImageOwner::Movie(movie_id)
                 }
@@ -2119,18 +1999,10 @@ impl Database {
         let result = spawn_blocking(move || {
             match owner {
                 api::ImageOwner::Series(series_id) => {
-                    s.delete_series_image_selection.bind((series_id, kind))?;
-                    ensure!(
-                        s.delete_series_image_selection.step()?.is_done(),
-                        "Deleting series image selection"
-                    );
+                    s.delete_series_image_selection.execute((series_id, kind))?;
                 }
                 api::ImageOwner::Movie(movie_id) => {
-                    s.delete_movie_image_selection.bind((movie_id, kind))?;
-                    ensure!(
-                        s.delete_movie_image_selection.step()?.is_done(),
-                        "Deleting movie image selection"
-                    );
+                    s.delete_movie_image_selection.execute((movie_id, kind))?;
                 }
             }
 
@@ -2160,17 +2032,13 @@ impl Database {
                         .next::<EpisodeNaturalKeyRow>()?
                         .context("Expected episode to exist")?;
 
-                    s.insert_watched_episode.bind((
+                    s.insert_watched_episode.execute((
                         id,
                         timestamp,
                         key.series_id,
                         key.season,
                         key.number,
                     ))?;
-                    ensure!(
-                        s.insert_watched_episode.step()?.is_done(),
-                        "Inserting watched episode"
-                    );
                     (id, timestamp)
                 }
                 WatchedKind::Movie { movie } => {
@@ -2191,11 +2059,7 @@ impl Database {
                         }
                     };
 
-                    s.insert_watched_movie.bind((id, timestamp, movie))?;
-                    ensure!(
-                        s.insert_watched_movie.step()?.is_done(),
-                        "Inserting watched movie"
-                    );
+                    s.insert_watched_movie.execute((id, timestamp, movie))?;
                     (id, timestamp)
                 }
             };
@@ -2222,11 +2086,7 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.insert_watched_episode
-                .bind((id, timestamp, series_id, season, episode))?;
-            ensure!(
-                s.insert_watched_episode.step()?.is_done(),
-                "Adding watched episode"
-            );
+                .execute((id, timestamp, series_id, season, episode))?;
             Ok(())
         });
 
@@ -2242,11 +2102,7 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.insert_watched_movie.bind((id, timestamp, movie_id))?;
-            ensure!(
-                s.insert_watched_movie.step()?.is_done(),
-                "Adding watched movie"
-            );
+            s.insert_watched_movie.execute((id, timestamp, movie_id))?;
             Ok(())
         });
 
@@ -2262,11 +2118,7 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.move_watched_episode.bind((season, episode, id))?;
-            ensure!(
-                s.move_watched_episode.step()?.is_done(),
-                "Moving watched episode"
-            );
+            s.move_watched_episode.execute((season, episode, id))?;
             Ok(())
         });
 
@@ -2301,16 +2153,8 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.delete_watched_episode.bind((id,))?;
-            ensure!(
-                s.delete_watched_episode.step()?.is_done(),
-                "Deleting watched episode"
-            );
-            s.delete_watched_movie.bind((id,))?;
-            ensure!(
-                s.delete_watched_movie.step()?.is_done(),
-                "Deleting watched movie"
-            );
+            s.delete_watched_episode.execute((id,))?;
+            s.delete_watched_movie.execute((id,))?;
             Ok(())
         });
 
@@ -2360,11 +2204,7 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.upsert_pending_episode
-                .bind((PendingId::random(), ts, series_id, episode_id))?;
-            ensure!(
-                s.upsert_pending_episode.step()?.is_done(),
-                "Upserting pending episode"
-            );
+                .execute((PendingId::random(), ts, series_id, episode_id))?;
             Ok(())
         });
 
@@ -2380,11 +2220,7 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.upsert_pending_movie
-                .bind((PendingId::random(), ts, movie_id))?;
-            ensure!(
-                s.upsert_pending_movie.step()?.is_done(),
-                "Upserting pending movie"
-            );
+                .execute((PendingId::random(), ts, movie_id))?;
             Ok(())
         });
 
@@ -2395,11 +2231,7 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.delete_pending_episode.bind((series_id,))?;
-            ensure!(
-                s.delete_pending_episode.step()?.is_done(),
-                "Deleting pending episode"
-            );
+            s.delete_pending_episode.execute((series_id,))?;
             Ok(())
         });
 
@@ -2425,18 +2257,10 @@ impl Database {
                 Some(next) => {
                     let ts = Timestamp::now();
                     s.upsert_pending_episode
-                        .bind((PendingId::random(), ts, series_id, next))?;
-                    ensure!(
-                        s.upsert_pending_episode.step()?.is_done(),
-                        "Upserting pending episode"
-                    );
+                        .execute((PendingId::random(), ts, series_id, next))?;
                 }
                 None => {
-                    s.delete_pending_episode.bind((series_id,))?;
-                    ensure!(
-                        s.delete_pending_episode.step()?.is_done(),
-                        "Deleting pending episode"
-                    );
+                    s.delete_pending_episode.execute((series_id,))?;
                 }
             }
 
@@ -2450,11 +2274,7 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.delete_pending_movie.bind((movie_id,))?;
-            ensure!(
-                s.delete_pending_movie.step()?.is_done(),
-                "Deleting pending movie"
-            );
+            s.delete_pending_movie.execute((movie_id,))?;
             Ok(())
         });
 
@@ -2487,11 +2307,7 @@ impl Database {
             let now = row.aired.unwrap_or(now).max(now);
 
             s.upsert_pending_episode
-                .bind((PendingId::random(), now, series_id, row.id))?;
-            ensure!(
-                s.upsert_pending_episode.step()?.is_done(),
-                "Upserting pending episode"
-            );
+                .execute((PendingId::random(), now, series_id, row.id))?;
 
             Ok(())
         });
@@ -2529,11 +2345,7 @@ impl Database {
             let now = aired.unwrap_or(now).max(now);
 
             s.upsert_pending_episode
-                .bind((PendingId::random(), now, series_id, next_id))?;
-            ensure!(
-                s.upsert_pending_episode.step()?.is_done(),
-                "Upserting pending episode"
-            );
+                .execute((PendingId::random(), now, series_id, next_id))?;
 
             Ok(())
         });
@@ -2573,11 +2385,7 @@ impl Database {
             };
 
             s.upsert_pending_episode
-                .bind((PendingId::random(), ts, series_id, row.id))?;
-            ensure!(
-                s.upsert_pending_episode.step()?.is_done(),
-                "Upserting pending episode"
-            );
+                .execute((PendingId::random(), ts, series_id, row.id))?;
 
             Ok(())
         });
@@ -2638,11 +2446,7 @@ impl Database {
     pub(crate) async fn set_series_synced_at(&self, id: SeriesId, at: Timestamp) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
         let result = spawn_blocking(move || {
-            s.set_series_synced_at.bind((at, id))?;
-            ensure!(
-                s.set_series_synced_at.step()?.is_done(),
-                "Setting series synced at"
-            );
+            s.set_series_synced_at.execute((at, id))?;
             Ok(())
         });
 
@@ -2652,11 +2456,7 @@ impl Database {
     pub(crate) async fn set_movie_synced_at(&self, id: MovieId, at: Timestamp) -> Result<()> {
         let mut s = self.inner.clone().lock_owned().await;
         let result = spawn_blocking(move || {
-            s.set_movie_synced_at.bind((at, id))?;
-            ensure!(
-                s.set_movie_synced_at.step()?.is_done(),
-                "Setting movie synced at"
-            );
+            s.set_movie_synced_at.execute((at, id))?;
             Ok(())
         });
 
@@ -2675,17 +2475,13 @@ impl Database {
         let mut s = self.inner.clone().lock_owned().await;
 
         let result = spawn_blocking(move || {
-            s.upsert_movie_release.bind((
+            s.upsert_movie_release.execute((
                 MovieReleaseId::random(),
                 movie_id,
                 country.as_str(),
                 release_type,
                 timestamp,
             ))?;
-            ensure!(
-                s.upsert_movie_release.step()?.is_done(),
-                "Upserting movie release"
-            );
 
             Ok(())
         });
@@ -3143,7 +2939,7 @@ fn do_migrations(c: &sqll::Connection) -> Result<()> {
     for file in Migrations::iter() {
         let id = file.as_ref();
 
-        let result = (|| {
+        let result: Result<()> = (|| {
             select.bind(id)?;
 
             if let Some(applied_at) = select.next::<String>()? {
@@ -3161,8 +2957,7 @@ fn do_migrations(c: &sqll::Connection) -> Result<()> {
                 .with_context(|| anyhow!("Executing migration {id}"))?;
 
             let now = Timestamp::now().to_string();
-            insert.bind((id, now.as_str()))?;
-            ensure!(insert.step()?.is_done(), "Stepping migration insert");
+            insert.execute((id, now.as_str()))?;
             tracing::info!(id, "Migration applied");
             Ok(())
         })();
@@ -3176,40 +2971,22 @@ fn do_migrations(c: &sqll::Connection) -> Result<()> {
 fn ensure_mode(c: &sqll::Connection, mode: OpenMode) -> Result<()> {
     match mode {
         OpenMode::Normal => {
-            let journal = c
-                .prepare("PRAGMA journal_mode")?
-                .into_iter::<String>()
-                .next()
-                .transpose()?;
-
-            if journal.as_deref() != Some("wal") {
-                tracing::warn!(?journal, "Switching journal mode to WAL");
-                let applied = c
-                    .prepare("PRAGMA journal_mode = wal")?
-                    .into_iter::<String>()
-                    .next()
-                    .transpose()?;
-
-                ensure!(
-                    applied.as_deref() == Some("wal"),
-                    "Failed to enable WAL journal mode, got {applied:?}"
-                );
-            }
-
             // NORMAL is the recommended companion to WAL: still crash-safe
             // against corruption and application crashes, only fsyncing at
             // checkpoints rather than on every commit. A committed transaction
-            // can be lost only on OS crash / power loss, never corrupting the db.
+            // can be lost only on OS crash / power loss, never corrupting the
+            // db.
             //
             // Unlike journal_mode, synchronous is per-connection and not
             // persisted in the database header, so it resets to the default
             // (FULL) on every open and must simply be set unconditionally.
+            c.execute("PRAGMA journal_mode = wal;")?;
             c.execute("PRAGMA synchronous = normal;")?;
-
             c.execute("PRAGMA busy_timeout = 5000;")?;
         }
         OpenMode::Bulk => {
-            c.execute("PRAGMA journal_mode = off; PRAGMA synchronous = off;")?;
+            c.execute("PRAGMA journal_mode = off;")?;
+            c.execute("PRAGMA synchronous = off;")?;
         }
     }
 
