@@ -501,10 +501,15 @@ impl WsHandler {
 
                 let mut series: Vec<api::SearchSeries> = Vec::new();
                 let mut movies: Vec<api::SearchMovie> = Vec::new();
+                let has_more;
 
                 match req.kind {
                     api::SearchKind::Series => {
-                        for r in self.remote.search_series(&req.query).await? {
+                        let (results, more) =
+                            self.remote.search_series(&req.query, req.page).await?;
+                        has_more = more;
+
+                        for r in results {
                             let already_tracked = self
                                 .db
                                 .series_by_remote_id(&r.remote_id)
@@ -518,7 +523,11 @@ impl WsHandler {
                         }
                     }
                     api::SearchKind::Movies => {
-                        for r in self.remote.search_movies(&req.query).await? {
+                        let (results, more) =
+                            self.remote.search_movies(&req.query, req.page).await?;
+                        has_more = more;
+
+                        for r in results {
                             let already_tracked = self
                                 .db
                                 .movie_by_remote_id(&r.remote_id)
@@ -533,7 +542,11 @@ impl WsHandler {
                     }
                 }
 
-                outgoing.write(api::SearchResponse { series, movies });
+                outgoing.write(api::SearchResponse {
+                    series,
+                    movies,
+                    has_more,
+                });
             }
             api::Request::SyncSeries => {
                 let req = incoming

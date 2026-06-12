@@ -13,6 +13,8 @@ pub(super) struct Search {
     kind: api::SearchKind,
     series: Vec<api::SearchSeries>,
     movies: Vec<api::SearchMovie>,
+    page: usize,
+    has_more: bool,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
     _search_req: ws::Request,
@@ -25,6 +27,7 @@ pub(super) enum Msg {
     QueryInput(String),
     KindChanged(api::SearchKind),
     Submit,
+    LoadMore,
     SearchDone(Result<ws::Packet<api::Search>, ws::Error>),
     TrackSeries(api::RemoteId),
     TrackMovie(api::RemoteId),
@@ -59,6 +62,8 @@ impl Component for Search {
             kind: api::SearchKind::Series,
             series: Vec::new(),
             movies: Vec::new(),
+            page: 0,
+            has_more: false,
             _setup,
             _broadcast,
             _search_req: ws::Request::default(),
@@ -99,6 +104,7 @@ impl Component for Search {
                 .target()
                 .and_then(|t| t.dyn_into::<web_sys::HtmlSelectElement>().ok());
             let val = select.map(|s| s.value()).unwrap_or_default();
+
             Msg::KindChanged(if val == "movies" {
                 api::SearchKind::Movies
             } else {
@@ -108,7 +114,7 @@ impl Component for Search {
 
         let on_submit = link.callback(|_| Msg::Submit);
 
-        let kind_val = match self.kind {
+        let kind = match self.kind {
             api::SearchKind::Series => "series",
             api::SearchKind::Movies => "movies",
         };
@@ -121,8 +127,8 @@ impl Component for Search {
 
                 <div class="page-title">{"Search"}</div>
 
-                <div class="row">
-                    <select class="input-select" onchange={on_kind} value={kind_val}>
+                <div class="input-group fill">
+                    <select class="input-select" onchange={on_kind} value={kind}>
                         <option value="series" selected={matches!(self.kind, api::SearchKind::Series)}>
                             {"Series"}
                         </option>
@@ -136,12 +142,16 @@ impl Component for Search {
                         class="input-text fill"
                         type="text"
                         placeholder="Search…"
+                        autofocus=true
                         value={self.query.clone()}
                         oninput={on_input}
                         onkeydown={on_keydown}
                     />
 
-                    <button class="btn" onclick={on_submit}>{"Search"}</button>
+                    <button class="btn" onclick={on_submit}>
+                        <span class="icon magnifying-glass" />
+                        <span class="hide-mobile">{"Search"}</span>
+                    </button>
                 </div>
 
                 { self.view_results(ctx) }
@@ -194,21 +204,19 @@ impl Search {
                 self.kind = kind;
                 self.series.clear();
                 self.movies.clear();
+                self.page = 0;
+                self.has_more = false;
+                self.send_search(ctx, self.page);
                 Ok(true)
             }
             Msg::Submit => {
-                if self.query.is_empty() || self.channel.id() == ws::ChannelId::NONE {
-                    return Ok(false);
-                }
-                self._search_req = self
-                    .channel
-                    .request()
-                    .body(api::SearchRequest {
-                        kind: self.kind,
-                        query: self.query.clone(),
-                    })
-                    .on_packet(ctx.link().callback(Msg::SearchDone))
-                    .send();
+                self.page = 0;
+                self.send_search(ctx, self.page);
+                Ok(false)
+            }
+            Msg::LoadMore => {
+                self.page += 1;
+                self.send_search(ctx, self.page);
                 Ok(false)
             }
             Msg::SearchDone(result) => {
@@ -216,8 +224,16 @@ impl Search {
                     .context(Message::Searching)?
                     .decode()
                     .context(Message::Searching)?;
-                self.series = resp.series;
-                self.movies = resp.movies;
+
+                if self.page == 0 {
+                    self.series = resp.series;
+                    self.movies = resp.movies;
+                } else {
+                    self.series.extend(resp.series);
+                    self.movies.extend(resp.movies);
+                }
+
+                self.has_more = resp.has_more;
                 Ok(true)
             }
             Msg::TrackSeries(remote_id) => {
@@ -263,15 +279,43 @@ impl Search {
         }
     }
 
+    fn send_search(&mut self, ctx: &Context<Self>, page: usize) {
+        if self.query.is_empty() || self.channel.id() == ws::ChannelId::NONE {
+            return;
+        }
+
+        self._search_req = self
+            .channel
+            .request()
+            .body(api::SearchRequest {
+                kind: self.kind,
+                query: self.query.clone(),
+                page,
+            })
+            .on_packet(ctx.link().callback(Msg::SearchDone))
+            .send();
+    }
+
     fn view_results(&self, ctx: &Context<Self>) -> Html {
         if self.series.is_empty() && self.movies.is_empty() {
             return html! {};
         }
 
+        let on_more = ctx.link().callback(|_| Msg::LoadMore);
+
         html! {
             <>
                 { for self.series.iter().map(|r| self.view_series_result(ctx, r)) }
+
                 { for self.movies.iter().map(|r| self.view_movie_result(ctx, r)) }
+
+                if self.has_more {
+                    <div class="row center">
+                        <a class="item-inline-more clickable" onclick={on_more}>
+                            <span class="icon ellipsis-horizontal" />
+                        </a>
+                    </div>
+                }
             </>
         }
     }
@@ -280,92 +324,115 @@ impl Search {
         let remote_id = r.remote_id.clone();
         let series_id = r.already_tracked;
 
-        html! {
-            <div class="row">
-                <Image class="poster" src={r.poster.clone()} />
+        let on_nav = match series_id {
+            Some(series_id) => Some(ctx.link().callback(move |_| {
+                Msg::Navigate(Route::SeriesDetail(series_id, SeriesDetailQuery::default()))
+            })),
+            None => None,
+        };
 
-                <div class="fill">
-                    <div class="row">
+        let on_track = ctx
+            .link()
+            .callback(move |_| Msg::TrackSeries(remote_id.clone()));
+
+        html! {
+            <div key={r.remote_id.to_string()} class="row">
+                <Image class="poster poster-side top" src={r.poster.clone()} placeholder=true />
+
+                <div class="column top fill">
+                    <div class="row-fill">
+                        <a class="item-inline-lg" href={r.remote_id.series_url()} target="_blank" rel="noopener noreferrer" title={format!("Open on {}", r.remote_id.source())}>
+                            <span class={classes!("logo", r.remote_id.source().as_str().to_owned())} />
+                        </a>
+
                         if let Some(ref title) = r.title {
-                            <span class="fill">{title}</span>
+                            <h2 class={classes!(on_nav.is_some().then_some("clickable"))} onclick={on_nav.clone()}>{title}</h2>
                         }
 
+                        <div class="row end">
+                            if let Some(on_nav) = on_nav {
+                                <button class="btn" onclick={on_nav} title="Already tracked">
+                                    <span class="item-inline"><span class="icon check" /></span>
+                                    <span class="hide-mobile">{"Tracked"}</span>
+                                </button>
+                            } else {
+                                <button class="btn" onclick={on_track} title="Track series">
+                                    <span class="item-inline"><span class="icon plus" /></span>
+                                    <span class="hide-mobile">{"Track"}</span>
+                                </button>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="row">
                         if let Some(date) = r.first_air_date {
                             <span class="text-muted">{date.year().to_string()}</span>
                         }
                     </div>
 
                     if let Some(ref overview) = r.overview {
-                        <p class="overview text-muted">{overview}</p>
+                        <p class="overview text-muted top">{overview}</p>
                     }
                 </div>
-
-                {
-                    if let Some(id) = series_id {
-                        let on_nav = ctx.link().callback(move |_| Msg::Navigate(Route::SeriesDetail(id, SeriesDetailQuery::default())));
-                        html! {
-                            <button class="btn" onclick={on_nav} title="Already tracked">
-                                <span class="item-inline"><span class="icon check" /></span>
-                                <span class="hide-mobile">{"Tracked"}</span>
-                            </button>
-                        }
-                    } else {
-                        let on_track = ctx.link().callback(move |_| Msg::TrackSeries(remote_id.clone()));
-                        html! {
-                            <button class="btn" onclick={on_track} title="Track series">
-                                <span class="item-inline"><span class="icon plus" /></span>
-                                <span class="hide-mobile">{"Track"}</span>
-                            </button>
-                        }
-                    }
-                }
             </div>
         }
     }
 
     fn view_movie_result(&self, ctx: &Context<Self>, r: &api::SearchMovie) -> Html {
         let remote_id = r.remote_id.clone();
-        let movie_id = r.already_tracked;
+        let series_id = r.already_tracked;
+
+        let on_nav = match series_id {
+            Some(series_id) => Some(
+                ctx.link()
+                    .callback(move |_| Msg::Navigate(Route::MovieDetail(series_id))),
+            ),
+            None => None,
+        };
+
+        let on_track = ctx
+            .link()
+            .callback(move |_| Msg::TrackMovie(remote_id.clone()));
 
         html! {
-            <div class="row">
-                <Image class="poster poster-side" src={r.poster.clone()} />
+            <div key={r.remote_id.to_string()} class="row">
+                <Image class="poster poster-side top" src={r.poster.clone()} placeholder=true />
 
-                <div class="fill top">
-                    <div class="row">
+                <div class="column top fill">
+                    <div class="row-fill">
+                        <a class="item-inline-lg" href={r.remote_id.movie_url()} target="_blank" rel="noopener noreferrer" title={format!("Open on {}", r.remote_id.source())}>
+                            <span class={classes!("logo", r.remote_id.source().as_str().to_owned())} />
+                        </a>
+
                         if let Some(ref title) = r.title {
-                            <span class="fill">{title}</span>
+                            <h2 class={classes!(on_nav.is_some().then_some("clickable"))} onclick={on_nav.clone()}>{title}</h2>
                         }
 
+                        <div class="row end">
+                            if let Some(on_nav) = on_nav {
+                                <button class="btn" onclick={on_nav} title="Already tracked">
+                                    <span class="item-inline"><span class="icon check" /></span>
+                                    <span class="hide-mobile">{"Tracked"}</span>
+                                </button>
+                            } else {
+                                <button class="btn" onclick={on_track} title="Track series">
+                                    <span class="item-inline"><span class="icon plus" /></span>
+                                    <span class="hide-mobile">{"Track"}</span>
+                                </button>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="row">
                         if let Some(date) = r.release_date {
                             <span class="text-muted">{date.year().to_string()}</span>
                         }
                     </div>
 
                     if let Some(ref overview) = r.overview {
-                        <p class="overview text-muted">{overview}</p>
+                        <p class="overview text-muted top">{overview}</p>
                     }
                 </div>
-
-                {
-                    if let Some(id) = movie_id {
-                        let on_nav = ctx.link().callback(move |_| Msg::Navigate(Route::MovieDetail(id)));
-                        html! {
-                            <button class="btn" onclick={on_nav} title="Already tracked">
-                                <span class="item-inline"><span class="icon check" /></span>
-                                <span class="hide-mobile">{"Tracked"}</span>
-                            </button>
-                        }
-                    } else {
-                        let on_track = ctx.link().callback(move |_| Msg::TrackMovie(remote_id.clone()));
-                        html! {
-                            <button class="btn" onclick={on_track} title="Track movie">
-                                <span class="item-inline"><span class="icon plus" /></span>
-                                <span class="hide-mobile">{"Track"}</span>
-                            </button>
-                        }
-                    }
-                }
             </div>
         }
     }

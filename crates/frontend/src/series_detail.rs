@@ -235,6 +235,21 @@ impl Component for SeriesDetail {
             html! {
                 <>
                     <div class="desktop-row mobile-column fill start">
+                        if !series.remotes.is_empty() {
+                            <div class="hide-desktop row justify-around">
+                                {for series.remotes.iter().filter_map(|r| {
+                                    let url = r.series_url()?;
+                                    let label = r.source().as_str();
+
+                                    Some(html! {
+                                        <a class="item-inline-source" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
+                                            <span class={classes!("logo", label.to_owned())} />
+                                        </a>
+                                    })
+                                })}
+                            </div>
+                        }
+
                         <LanguagePicker
                             current={series.language.clone()}
                             placeholder="Default"
@@ -286,21 +301,6 @@ impl Component for SeriesDetail {
                             <span class="item-inline"><span class="icon trash" /></span>
                             <span class="hide-desktop">{"Remove"}</span>
                         </button>
-
-                        if !series.remotes.is_empty() {
-                            <div class="hide-desktop row justify-around">
-                                {for series.remotes.iter().filter_map(|r| {
-                                    let url = r.series_url()?;
-                                    let label = r.source().as_str();
-
-                                    Some(html! {
-                                        <a class="item-inline-source" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
-                                            <span class={classes!("logo", label.to_owned())} />
-                                        </a>
-                                    })
-                                })}
-                            </div>
-                        }
                     </div>
                 </>
             }
@@ -1331,7 +1331,9 @@ impl SeriesDetail {
                 if self.view_orphaned {
                     { self.view_orphaned(ctx) }
                 } else {
-                    { for self.episodes.iter().map(|ep| self.view_episode(ctx, ep)) }
+                    <div class="episodes">
+                        { for self.episodes.iter().map(|ep| self.view_episode(ctx, ep)) }
+                    </div>
                 }
             </div>
         }
@@ -1378,19 +1380,21 @@ impl SeriesDetail {
 
         let main_actions = html! {
             <>
-                <button class="btn-success" onclick={on_ask_mark.clone()} title="Mark watched">
-                    <span class="icon check" />
-                    <span class="hide-desktop">{"Mark watched"}</span>
-                </button>
-
-                if let Some(on_toggle) = on_toggle_history {
-                    <button class="btn" onclick={on_toggle} title={if history_expanded { "Hide watch history" } else { "Show watch history" }}>
-                        <span class={if history_expanded { "icon chevron-up" } else { "icon clock" }} />
-                        <span class="hide-desktop">{if history_expanded { "History" } else { "Show history" }}</span>
+                if !history_expanded {
+                    <button class="btn-success" onclick={on_ask_mark.clone()} title="Mark watched">
+                        <span class="icon check" />
+                        <span class="hide-desktop">{"Mark watched"}</span>
                     </button>
                 }
 
                 {toggle_pending(false)}
+
+                if let Some(on_toggle) = on_toggle_history {
+                    <button class="btn" onclick={on_toggle} title={if history_expanded { "Hide watch history" } else { "Show watch history" }}>
+                        <span class={if history_expanded { "ellipsis-horizontal" } else { "icon clock" }} />
+                        <span class="hide-desktop">{if history_expanded { "History" } else { "Show history" }}</span>
+                    </button>
+                }
             </>
         };
 
@@ -1443,36 +1447,38 @@ impl SeriesDetail {
                             </div>
                         </div>
 
-                        <div class={classes!("column", "hide-desktop", (!actions_expanded).then_some("hide-mobile"))}>
-                            {main_actions.clone()}
-                        </div>
-
-                        <div class="column fill">
-                            <span class={classes!("row", actions_expanded.then_some("hide-mobile"))}>
-                                { episode.name.as_deref().unwrap_or("—") }
-                            </span>
-
-                            if let Some(s) = episode.display_at(self.tz.clone()) {
-                                <span class={classes!("text-muted", actions_expanded.then_some("hide-mobile"))}>{s}</span>
-                            }
-                        </div>
+                        if !history_expanded {
+                            <div class={classes!("column", "hide-desktop", (!actions_expanded).then_some("hide-mobile"))}>
+                                {main_actions.clone()}
+                            </div>
+                        }
                     </div>
                 </div>
             }
         };
 
         html! {
-            <div class={classes!("column", (!watched.is_empty()).then_some("watched"))}>
+            <div class={classes!("episode", (!watched.is_empty()).then_some("watched"))}>
+                <Image class="screenshot" src={episode.screenshot.clone()} />
+
                 <a class="episode-code">
                     { format!("{}E{:02}", episode.season.short(), episode.episode) }
                 </a>
 
-                <Image class="screenshot" src={episode.screenshot.clone()} />
-
                 {actions}
 
-                if let Some(ref overview) = episode.overview {
-                    <p class={classes!("overview", actions_expanded.then_some("hide-mobile"))}>{overview}</p>
+                if !history_expanded {
+                    <span class="row">
+                        { episode.name.as_deref().unwrap_or("—") }
+                    </span>
+
+                    if let Some(aired) = episode.display_at(self.tz.clone()) {
+                        <span class="text-muted">{aired}</span>
+                    }
+
+                    if let Some(ref overview) = episode.overview {
+                        <p class="overview">{overview}</p>
+                    }
                 }
 
                 if history_expanded {

@@ -22,7 +22,9 @@ pub(super) enum Msg {
 }
 
 #[derive(Properties, PartialEq)]
-pub(super) struct ImageProps {
+pub(super) struct Props {
+    #[prop_or_default]
+    pub(super) placeholder: bool,
     #[prop_or_default]
     pub(super) src: Option<api::Image>,
     #[prop_or_default]
@@ -39,7 +41,7 @@ pub(super) struct ImageProps {
 
 impl Component for Image {
     type Message = Msg;
-    type Properties = ImageProps;
+    type Properties = Props;
 
     fn create(ctx: &Context<Self>) -> Self {
         let mut this = Self {
@@ -90,7 +92,7 @@ impl Component for Image {
             },
             State::Loaded(ref src) => html! {
                 <image {class} style={props.style.clone()} onclick={props.onclick.clone()} title={props.title.clone()}>
-                    <img src={src.clone()} class={props.class.clone()} alt={props.alt.clone()} />
+                    <img src={src.clone()} alt={props.alt.clone()} />
                 </image>
             },
             State::Error => html! {
@@ -98,7 +100,12 @@ impl Component for Image {
                     <span class="icon exclamation-triangle" />
                 </image>
             },
-            State::Empty => html!(),
+            State::Empty if props.placeholder => html! {
+                <image {class} style={props.style.clone()} onclick={props.onclick.clone()} title={props.title.clone()}>
+                    <span class="icon question-mark-circle" />
+                </image>
+            },
+            _ => html!(),
         }
     }
 }

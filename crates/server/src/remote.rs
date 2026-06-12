@@ -104,16 +104,26 @@ impl RemoteClients {
 
     // ── Search ────────────────────────────────────────────────────────────────
 
-    /// Search series across all configured sources (tmdb then tvdb).
-    /// `already_tracked` is left as `None`; the caller fills it in from the DB.
-    pub(crate) async fn search_series(&self, query: &str) -> Result<Vec<api::SearchSeries>> {
+    /// Search series across all configured sources (tmdb then tvdb), one page
+    /// per source merged together. `already_tracked` is left as `None`; the
+    /// caller fills it in from the DB. Returns the results and whether a further
+    /// page can be fetched from any source.
+    pub(crate) async fn search_series(
+        &self,
+        query: &str,
+        page: usize,
+    ) -> Result<(Vec<api::SearchSeries>, bool)> {
         let tmdb = self.tmdb();
         let tvdb = self.tvdb();
 
         let mut out = Vec::new();
+        let mut has_more = false;
 
         if let Some(client) = tmdb {
-            for r in client.search_series(query).await? {
+            let (results, pages) = client.search_series(query, page).await?;
+            has_more |= page + 1 < pages;
+
+            for r in results {
                 out.push(api::SearchSeries {
                     remote_id: r.remote_id,
                     title: r.title,
@@ -128,7 +138,10 @@ impl RemoteClients {
         }
 
         if let Some(client) = tvdb {
-            for r in client.search_series(query).await? {
+            let (results, pages) = client.search_series(query, page).await?;
+            has_more |= page + 1 < pages;
+
+            for r in results {
                 out.push(api::SearchSeries {
                     remote_id: r.remote_id,
                     title: r.title,
@@ -148,15 +161,24 @@ impl RemoteClients {
             }
         }
 
-        Ok(out)
+        Ok((out, has_more))
     }
 
-    /// Search movies (tmdb only). `already_tracked` is left as `None`.
-    pub(crate) async fn search_movies(&self, query: &str) -> Result<Vec<api::SearchMovie>> {
+    /// Search movies (tmdb only). `already_tracked` is left as `None`. Returns
+    /// the results and whether a further page can be fetched.
+    pub(crate) async fn search_movies(
+        &self,
+        query: &str,
+        page: usize,
+    ) -> Result<(Vec<api::SearchMovie>, bool)> {
         let mut out = Vec::new();
+        let mut has_more = false;
 
         if let Some(client) = self.tmdb() {
-            for r in client.search_movies(query).await? {
+            let (results, pages) = client.search_movies(query, page).await?;
+            has_more |= page + 1 < pages;
+
+            for r in results {
                 out.push(api::SearchMovie {
                     remote_id: r.remote_id,
                     title: r.title,
@@ -170,7 +192,7 @@ impl RemoteClients {
             }
         }
 
-        Ok(out)
+        Ok((out, has_more))
     }
 
     // ── Sync fetch helpers ────────────────────────────────────────────────────

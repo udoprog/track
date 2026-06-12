@@ -844,6 +844,21 @@ impl MovieDetail {
             <>
             <div class={classes!("desktop-row-fill", "mobile-column", "actions", (!self.actions_expanded).then_some("hide-mobile"))}>
                 <div class="desktop-row mobile-column fill start">
+                    if !movie.remotes.is_empty() {
+                        <div class="hide-desktop row justify-around">
+                            {for movie.remotes.iter().filter_map(|r| {
+                                let url = r.movie_url()?;
+                                let label = r.source().as_str();
+
+                                Some(html! {
+                                    <a class="item-inline-source" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
+                                        <span class={classes!("logo", label.to_owned())} />
+                                    </a>
+                                })
+                            })}
+                        </div>
+                    }
+
                     <LanguagePicker
                         current={movie.language.clone()}
                         placeholder="Default"
@@ -905,21 +920,6 @@ impl MovieDetail {
                             <span class="item-inline"><span class="icon trash" /></span>
                             <span class="hide-desktop">{"Remove"}</span>
                         </button>
-                    }
-
-                    if !movie.remotes.is_empty() {
-                        <div class="hide-desktop row justify-around">
-                            {for movie.remotes.iter().filter_map(|r| {
-                                let url = r.movie_url()?;
-                                let label = r.source().as_str();
-
-                                Some(html! {
-                                    <a class="item-inline-source" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
-                                        <span class={classes!("logo", label.to_owned())} />
-                                    </a>
-                                })
-                            })}
-                        </div>
                     }
                 </div>
             </div>

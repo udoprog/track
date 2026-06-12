@@ -46,6 +46,7 @@ $icon-padding: 8px;
 $item-inline-padding: 4px;
 
 $sidebar-width: 240px;
+$bold-weight: 500;
 
 @use 'grid' as g;
 
@@ -254,6 +255,12 @@ p {
     }
 }
 
+.item-inline-more {
+    display: inline-flex;
+    vertical-align: middle;
+    height: $input-height-xl;
+}
+
 .item-inline-source {
     display: inline-flex;
     vertical-align: middle;
@@ -358,7 +365,7 @@ p {
 .pending-title {
     color: $color-title;
     font-size: $font-lg;
-    font-weight: 600;
+    font-weight: $bold-weight;
     color: $text-primary;
     white-space: wrap;
 
@@ -377,7 +384,7 @@ p {
 .site-title {
     color: $color-title;
     font-size: $font-title;
-    font-weight: 600;
+    font-weight: $bold-weight;
 }
 
 .page-title {
@@ -395,7 +402,7 @@ h1 {
     margin: 0;
     padding: 0;
     font-size: $font-xl;
-    font-weight: 500;
+    font-weight: $bold-weight;
 }
 
 h2 {
@@ -403,7 +410,7 @@ h2 {
     margin: 0;
     padding: 0;
     font-size: $font-lg;
-    font-weight: 500;
+    font-weight: $bold-weight;
 }
 
 h3 {
@@ -480,7 +487,7 @@ image {
         aspect-ratio: 2 / 3;
 
         &-side {
-            max-height: 240px;
+            height: 240px;
         }
     }
 
@@ -517,7 +524,7 @@ image {
 
 .pending-label {
     font-size: $font-sm;
-    font-weight: 600;
+    font-weight: $bold-weight;
     color: $text-primary;
     white-space: wrap;
 
@@ -567,7 +574,7 @@ image {
 }
 
 .schedule-series {
-    font-weight: 600;
+    font-weight: $bold-weight;
     min-width: 180px;
 
     @include g.until-mobile {
@@ -594,7 +601,7 @@ image {
 
 .title {
     font-size: $font-lg;
-    font-weight: 600;
+    font-weight: $bold-weight;
     color: $text-primary;
 }
 
@@ -645,6 +652,28 @@ image {
     flex-direction: column;
     gap: $gap;
     min-width: 0;
+}
+
+.episodes {
+    display: flex;
+    flex-direction: column;
+
+    >.episode {
+        display: flex;
+        flex-direction: column;
+        gap: $gap-sm;
+
+        padding-top: $gap-sm;
+        padding-bottom: $gap-sm;
+
+        &:first-child {
+            border-top: 1px solid $border-subtle;
+        }
+
+        &:not(:last-child) {
+            border-bottom: 1px solid $border-subtle;
+        }
+    }
 }
 
 .overview {
@@ -975,7 +1004,7 @@ image {
         position: fixed;
         inset: 0;
         background: rgba(0, 0, 0, 0.6);
-        z-index: 400;
+        z-index: $bold-weight;
         display: flex;
         align-items: center;
         justify-content: center;

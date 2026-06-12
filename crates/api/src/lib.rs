@@ -1929,6 +1929,7 @@ pub struct ListWatchNextResponse {
 pub struct SearchRequest {
     pub kind: SearchKind,
     pub query: String,
+    pub page: usize,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -1936,6 +1937,7 @@ pub struct SearchRequest {
 pub struct SearchResponse {
     pub series: Vec<SearchSeries>,
     pub movies: Vec<SearchMovie>,
+    pub has_more: bool,
 }
 
 #[derive(Debug, Encode, Decode)]

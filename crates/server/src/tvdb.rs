@@ -146,7 +146,11 @@ impl Client {
         Ok(req)
     }
 
-    pub(crate) async fn search_series(&self, query: &str) -> Result<Vec<SearchSeriesResult>> {
+    pub(crate) async fn search_series(
+        &self,
+        query: &str,
+        page: usize,
+    ) -> Result<(Vec<SearchSeriesResult>, usize)> {
         #[derive(Deserialize)]
         struct Row {
             #[serde(default)]
@@ -166,14 +170,34 @@ impl Client {
         }
 
         #[derive(Deserialize)]
+        struct Links {
+            #[serde(default)]
+            total_items: Option<usize>,
+            #[serde(default)]
+            page_size: Option<usize>,
+        }
+
+        #[derive(Deserialize)]
         struct Resp {
             data: Vec<serde_json::Value>,
+            #[serde(default)]
+            links: Option<Links>,
         }
+
+        // Keep the page size aligned with TMDB (which returns 20 per page).
+        const LIMIT: usize = 20;
+        let offset = (page * LIMIT).to_string();
+        let limit = LIMIT.to_string();
 
         let bytes = self
             .request(Method::GET, "search")
             .await?
-            .query(&[("query", query), ("type", "series")])
+            .query(&[
+                ("query", query),
+                ("type", "series"),
+                ("limit", limit.as_str()),
+                ("offset", offset.as_str()),
+            ])
             .send()
             .await?
             .error_for_status()?
@@ -181,6 +205,19 @@ impl Client {
             .await?;
 
         let resp: Resp = serde_json::from_slice(&bytes)?;
+
+        // Prefer the server-reported totals; otherwise infer from the page fill.
+        let total_pages = match resp.links.as_ref() {
+            Some(Links {
+                total_items: Some(total),
+                page_size,
+            }) => {
+                let size = page_size.filter(|&s| s > 0).unwrap_or(LIMIT);
+                total.div_ceil(size)
+            }
+            _ if resp.data.len() >= LIMIT => page + 2,
+            _ => page + 1,
+        };
 
         let mut out = Vec::new();
 
@@ -206,7 +243,7 @@ impl Client {
             });
         }
 
-        Ok(out)
+        Ok((out, total_pages))
     }
 
     pub(crate) async fn fetch_series(&self, id: u32, language: Option<&str>) -> Result<SeriesInfo> {

@@ -105,7 +105,11 @@ impl Client {
         Ok(Some(resp.error_for_status()?.bytes().await?))
     }
 
-    pub(crate) async fn search_series(&self, query: &str) -> Result<Vec<SearchSeriesResult>> {
+    pub(crate) async fn search_series(
+        &self,
+        query: &str,
+        page: usize,
+    ) -> Result<(Vec<SearchSeriesResult>, usize)> {
         #[derive(Deserialize)]
         struct Row {
             id: u32,
@@ -126,12 +130,17 @@ impl Client {
         #[derive(Deserialize)]
         struct Resp {
             results: Vec<Row>,
+            #[serde(default)]
+            total_pages: usize,
         }
+
+        // TMDB pages are 1-indexed.
+        let page = (page + 1).to_string();
 
         let bytes = self
             .request(Method::GET, "search/tv")
             .context("building request")?
-            .query(&[("query", query)])
+            .query(&[("query", query), ("page", page.as_str())])
             .send()
             .await?
             .error_for_status()?
@@ -153,10 +162,14 @@ impl Client {
             });
         }
 
-        Ok(out)
+        Ok((out, resp.total_pages))
     }
 
-    pub(crate) async fn search_movies(&self, query: &str) -> Result<Vec<SearchMovieResult>> {
+    pub(crate) async fn search_movies(
+        &self,
+        query: &str,
+        page: usize,
+    ) -> Result<(Vec<SearchMovieResult>, usize)> {
         #[derive(Deserialize)]
         struct Row {
             id: u32,
@@ -177,12 +190,17 @@ impl Client {
         #[derive(Deserialize)]
         struct Resp {
             results: Vec<Row>,
+            #[serde(default)]
+            total_pages: usize,
         }
+
+        // TMDB pages are 1-indexed.
+        let page = (page + 1).to_string();
 
         let bytes = self
             .request(Method::GET, "search/movie")
             .context("building request")?
-            .query(&[("query", query)])
+            .query(&[("query", query), ("page", page.as_str())])
             .send()
             .await?
             .error_for_status()?
@@ -204,7 +222,7 @@ impl Client {
             });
         }
 
-        Ok(out)
+        Ok((out, resp.total_pages))
     }
 
     pub(crate) async fn fetch_series(&self, id: u32, language: Option<&str>) -> Result<SeriesInfo> {
