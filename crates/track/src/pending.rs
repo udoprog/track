@@ -15,9 +15,12 @@ impl PendingSystem {
     pub(crate) async fn fill_for_series(
         &self,
         series_id: api::SeriesId,
+        include_specials: bool,
         now: api::Timestamp,
     ) -> Result<()> {
-        self.db.fill_pending_for_series(series_id, now).await
+        self.db
+            .fill_pending_for_series(series_id, include_specials, now)
+            .await
     }
 
     pub(crate) async fn on_episode_watched_from(

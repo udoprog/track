@@ -35,6 +35,7 @@ pub(super) struct SeriesDetail {
     orphaned: Vec<api::OrphanedWatched>,
     fixing_watched: Option<api::WatchedId>,
     image_modal: bool,
+    settings_modal: bool,
     remote_editor: bool,
     background: Background,
     tz: TimeZone,
@@ -56,6 +57,7 @@ pub(super) struct SeriesDetail {
     _clear_image_req: ws::Request,
     _set_sync_source_req: ws::Request,
     _set_language_req: ws::Request,
+    _set_include_specials_req: ws::Request,
     _orphaned_req: ws::Request,
     _move_req: ws::Request,
     _remote_req: ws::Request,
@@ -111,6 +113,13 @@ pub(super) enum Msg {
     ),
     OpenImageModal,
     CloseImageModal,
+    OpenSettingsModal,
+    CloseSettingsModal,
+    SetIncludeSpecials(Option<bool>),
+    SetIncludeSpecialsDone(
+        Option<bool>,
+        Result<ws::Packet<api::SetSeriesIncludeSpecials>, ws::Error>,
+    ),
     OpenRemoteEditor,
     CloseRemoteEditor,
     AddRemote(api::RemoteId),
@@ -181,6 +190,7 @@ impl Component for SeriesDetail {
             orphaned: Vec::new(),
             fixing_watched: None,
             image_modal: false,
+            settings_modal: false,
             remote_editor: false,
             background,
             tz,
@@ -202,6 +212,7 @@ impl Component for SeriesDetail {
             _clear_image_req: ws::Request::default(),
             _set_sync_source_req: ws::Request::default(),
             _set_language_req: ws::Request::default(),
+            _set_include_specials_req: ws::Request::default(),
             _orphaned_req: ws::Request::default(),
             _move_req: ws::Request::default(),
             _remote_req: ws::Request::default(),
@@ -250,11 +261,9 @@ impl Component for SeriesDetail {
                             </div>
                         }
 
-                        <LanguagePicker
-                            current={series.language.clone()}
-                            placeholder="Default"
-                            on_change={link.callback(Msg::SetLanguage)}
-                        />
+                        <button class="btn" onclick={link.callback(|_| Msg::OpenSettingsModal)} title="Series settings">
+                            <span class="item-inline"><span class="icon cog-6-tooth" /></span>
+                        </button>
 
                         if !series.images.is_empty() {
                             <button class="btn" onclick={link.callback(|_| Msg::OpenImageModal)}>
@@ -324,6 +333,10 @@ impl Component for SeriesDetail {
 
                 if self.image_modal {
                     { self.view_image_modal(ctx) }
+                }
+
+                if self.settings_modal {
+                    { self.view_settings_modal(ctx, series) }
                 }
 
                 if self.remote_editor {
@@ -944,6 +957,40 @@ impl SeriesDetail {
                 self.image_modal = false;
                 Ok(true)
             }
+            Msg::OpenSettingsModal => {
+                self.settings_modal = true;
+                self.view_orphaned = false;
+                Ok(true)
+            }
+            Msg::CloseSettingsModal => {
+                self.settings_modal = false;
+                Ok(true)
+            }
+            Msg::SetIncludeSpecials(include_specials) => {
+                let id = ctx.props().series_id;
+
+                self._set_include_specials_req = self
+                    .channel
+                    .request()
+                    .body(api::SetSeriesIncludeSpecialsRequest {
+                        id,
+                        include_specials,
+                    })
+                    .on_packet(
+                        ctx.link()
+                            .callback(move |r| Msg::SetIncludeSpecialsDone(include_specials, r)),
+                    )
+                    .send();
+
+                Ok(false)
+            }
+            Msg::SetIncludeSpecialsDone(include_specials, result) => {
+                result.context(Message::SettingLanguage)?;
+                if let Some(ref mut series) = self.series {
+                    series.include_specials = include_specials;
+                }
+                Ok(true)
+            }
             Msg::OpenRemoteEditor => {
                 self.remote_editor = true;
                 self.view_orphaned = false;
@@ -1211,6 +1258,52 @@ impl SeriesDetail {
                         />
                     }
                 })}
+            </Modal>
+        }
+    }
+
+    fn view_settings_modal(&self, ctx: &Context<Self>, series: &api::Series) -> Html {
+        let link = ctx.link();
+
+        let on_language_change = link.callback(Msg::SetLanguage);
+
+        let include_specials_value = match series.include_specials {
+            None => "default",
+            Some(true) => "include",
+            Some(false) => "skip",
+        };
+
+        let on_include_specials_change = link.callback(|e: Event| {
+            let select: web_sys::HtmlSelectElement = e.target_unchecked_into();
+            let value = match select.value().as_str() {
+                "include" => Some(true),
+                "skip" => Some(false),
+                _ => None,
+            };
+            Msg::SetIncludeSpecials(value)
+        });
+
+        html! {
+            <Modal title="Series settings" on_close={link.callback(|_| Msg::CloseSettingsModal)}>
+                <div class="form">
+                    <div class="field">
+                        <label>{"Language"}</label>
+                        <LanguagePicker
+                            current={series.language.clone()}
+                            placeholder="Default"
+                            on_change={on_language_change}
+                        />
+                    </div>
+
+                    <div class="field">
+                        <label>{"Specials when syncing"}</label>
+                        <select class="input-select" onchange={on_include_specials_change} value={include_specials_value}>
+                            <option value="default" selected={series.include_specials.is_none()}>{"Default"}</option>
+                            <option value="include" selected={series.include_specials == Some(true)}>{"Include"}</option>
+                            <option value="skip" selected={series.include_specials == Some(false)}>{"Skip"}</option>
+                        </select>
+                    </div>
+                </div>
             </Modal>
         }
     }

@@ -381,6 +381,7 @@ pub async fn import() -> Result<()> {
             auto_sync_interval_hours: 24,
             timezone: String::new(),
             language: None,
+            include_specials: false,
         })
         .await
         .context("Saving config")?;

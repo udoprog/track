@@ -380,9 +380,16 @@ impl Dashboard {
             move |_| Msg::Navigate(route.clone())
         });
 
-        let on_ask_mark = ctx
-            .link()
-            .callback(move |_| Msg::AskMarkWatched(pending_kind));
+        let now = api::Timestamp::now();
+        let aired_in_past = p.aired.is_some_and(|a| a <= now);
+
+        let on_ask_mark = if aired_in_past {
+            ctx.link()
+                .callback(move |_| Msg::AskMarkWatched(pending_kind))
+        } else {
+            ctx.link()
+                .callback(move |_| Msg::MarkWatched(kind, api::MarkTime::Now))
+        };
 
         let skip_ids = if let api::PendingKind::Episode { series, episode } = p.kind {
             Some((series, episode))

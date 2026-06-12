@@ -903,6 +903,31 @@ impl WsHandler {
 
                 outgoing.write(api::Empty);
             }
+            api::Request::SetSeriesIncludeSpecials => {
+                let req = incoming
+                    .read::<api::SetSeriesIncludeSpecialsRequest>()
+                    .context("Expected a request payload")?;
+
+                self.db
+                    .set_series_include_specials(req.id, req.include_specials)
+                    .await?;
+
+                let series = self
+                    .db
+                    .series_by_id(req.id)
+                    .await?
+                    .context("Expected series to exist")?;
+
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::SeriesChanged {
+                        series: series.clone(),
+                    },
+                    "ws set series include specials changed",
+                );
+
+                outgoing.write(api::Empty);
+            }
             api::Request::SetMovieLanguage => {
                 let req = incoming
                     .read::<api::SetMovieLanguageRequest>()

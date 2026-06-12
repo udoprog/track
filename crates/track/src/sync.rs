@@ -63,7 +63,10 @@ pub(crate) async fn sync_series(
     }
 
     let now = api::Timestamp::now();
-    pending.fill_for_series(series_id, now).await?;
+    let include_specials = series.effective_include_specials(config.include_specials);
+    pending
+        .fill_for_series(series_id, include_specials, now)
+        .await?;
     db.set_series_synced_at(series_id, now).await?;
     broadcast.broadcast_event(api::AppEventKind::PendingChanged);
     info!(series_id = %series_id, "Sync complete");

@@ -1313,9 +1313,14 @@ pub struct Series {
     pub backdrop: Option<Image>,
     pub last_synced_at: Option<Timestamp>,
     pub language: Option<String>,
+    pub include_specials: Option<bool>,
 }
 
 impl Series {
+    pub fn effective_include_specials(&self, default: bool) -> bool {
+        self.include_specials.unwrap_or(default)
+    }
+
     pub fn remote_by_source(&self, source: SyncSource) -> Option<&RemoteId> {
         self.remotes.iter().find(|r| *r.source() == source)
     }
@@ -1595,6 +1600,7 @@ pub struct Config {
     pub auto_sync_interval_hours: u32,
     pub timezone: String,
     pub language: Option<String>,
+    pub include_specials: bool,
 }
 
 impl Default for Config {
@@ -1610,6 +1616,7 @@ impl Default for Config {
             auto_sync_interval_hours: 24,
             timezone: String::new(),
             language: None,
+            include_specials: false,
         }
     }
 }
@@ -1969,6 +1976,13 @@ pub struct SetSeriesLanguageRequest {
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
+pub struct SetSeriesIncludeSpecialsRequest {
+    pub id: SeriesId,
+    pub include_specials: Option<bool>,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
 pub struct SetMovieLanguageRequest {
     pub id: MovieId,
     pub language: Option<String>,
@@ -2317,6 +2331,12 @@ api::define! {
     pub type SetSeriesLanguage;
     impl Endpoint for SetSeriesLanguage {
         impl Request for SetSeriesLanguageRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type SetSeriesIncludeSpecials;
+    impl Endpoint for SetSeriesIncludeSpecials {
+        impl Request for SetSeriesIncludeSpecialsRequest;
         type Response<'de> = Empty;
     }
 

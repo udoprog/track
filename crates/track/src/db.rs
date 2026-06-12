@@ -116,6 +116,7 @@ struct SeriesRow {
     sync_source: Option<SyncSource>,
     last_synced_at: Option<Timestamp>,
     language: Option<String>,
+    include_specials: Option<bool>,
 }
 
 #[derive(Row)]
@@ -318,6 +319,12 @@ struct NextEpisodeRow {
 }
 
 #[derive(Row)]
+struct PendingEpisodeAiredRow {
+    aired: Option<Timestamp>,
+    timestamp: Timestamp,
+}
+
+#[derive(Row)]
 struct PendingMovieCandidateRow {
     id: api::MovieId,
     release_date: Option<Timestamp>,
@@ -429,15 +436,15 @@ statements! {
     struct InnerRead {
         // series
         list_series: r#"
-            SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at, language
+            SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at, language, include_specials
             FROM series ORDER BY title
         "#,
         series_by_id: r#"
-            SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at, language
+            SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at, language, include_specials
             FROM series WHERE id = ?
         "#,
         series_by_remote: r#"
-            SELECT s.id, s.title, s.first_air, s.overview, s.tracked, s.sync_source, s.last_synced_at, s.language
+            SELECT s.id, s.title, s.first_air, s.overview, s.tracked, s.sync_source, s.last_synced_at, s.language, s.include_specials
             FROM series s
             JOIN remotes r ON r.series_id = s.id
             WHERE r.remote_id = ?
@@ -601,11 +608,18 @@ statements! {
         has_pending_episode_for_series: r#"
             SELECT 1 FROM pending WHERE series_id = ? LIMIT 1
         "#,
+        pending_episode_aired_for_series: r#"
+            SELECT e.aired, p.timestamp
+            FROM pending p
+            JOIN episodes e ON e.id = p.episode_id
+            WHERE p.series_id = ?
+        "#,
         next_pending_episode_for_series: r#"
             SELECT e.id, e.aired
             FROM episodes e
-            WHERE e.series_id = ?
-              AND (e.aired IS NOT NULL AND e.aired <= ?)
+            WHERE e.series_id = ?1
+              AND e.aired IS NOT NULL
+              AND (?2 OR e.season <> 0)
               AND NOT EXISTS (
                   SELECT 1 FROM watched_episodes we
                   WHERE we.series_id = e.series_id AND we.season = e.season AND we.episode = e.episode
@@ -688,7 +702,7 @@ statements! {
 
         // stale-item queries
         series_needing_sync: r#"
-            SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at, language
+            SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at, language, include_specials
             FROM series
             WHERE tracked = 1
               AND (last_synced_at IS NULL OR last_synced_at < ?)
@@ -751,6 +765,9 @@ statements! {
         "#,
         set_series_language: r#"
             UPDATE series SET language = ? WHERE id = ?
+        "#,
+        set_series_include_specials: r#"
+            UPDATE series SET include_specials = ? WHERE id = ?
         "#,
 
         // remotes (series and movies share one table)
@@ -895,6 +912,9 @@ statements! {
             INSERT INTO pending (id, timestamp, movie_id) VALUES (?, ?, ?)
             ON CONFLICT(movie_id) WHERE movie_id IS NOT NULL
                 DO UPDATE SET timestamp = excluded.timestamp
+        "#,
+        update_pending_episode_timestamp: r#"
+            UPDATE pending SET timestamp = ? WHERE series_id = ?
         "#,
         delete_pending_episode: r#"DELETE FROM pending WHERE series_id = ?"#,
         delete_pending_movie: r#"DELETE FROM pending WHERE movie_id = ?"#,
@@ -1462,6 +1482,22 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.set_series_language.execute((language.as_deref(), id))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    pub(crate) async fn set_series_include_specials(
+        &self,
+        id: SeriesId,
+        include_specials: Option<bool>,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await;
+
+        let result = spawn_blocking(move || {
+            s.set_series_include_specials
+                .execute((include_specials, id))?;
             Ok(())
         });
 
@@ -2669,29 +2705,53 @@ impl Database {
     pub(crate) async fn fill_pending_for_series(
         &self,
         series_id: api::SeriesId,
+        include_specials: bool,
         now: Timestamp,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await;
 
         let result = spawn_blocking(move || {
-            let stmt = s.has_pending_episode_for_series.bind((series_id,))?;
-
-            let already_has = stmt.first::<(i64,)>()?.is_some();
+            let already_has = s
+                .has_pending_episode_for_series
+                .bind((series_id,))?
+                .first::<(i64,)>()?
+                .is_some();
 
             if already_has {
+                // If the pending episode has a future air date that changed, update the timestamp.
+                let maybe_update = {
+                    let row = s
+                        .pending_episode_aired_for_series
+                        .bind((series_id,))?
+                        .first::<PendingEpisodeAiredRow>()?;
+                    row.and_then(|r| {
+                        let aired = r.aired?;
+                        if aired > now && aired != r.timestamp {
+                            Some(aired)
+                        } else {
+                            None
+                        }
+                    })
+                };
+                if let Some(aired) = maybe_update {
+                    s.update_pending_episode_timestamp
+                        .execute((aired, series_id))?;
+                }
                 return Ok(());
             }
 
-            let stmt = s.next_pending_episode_for_series.bind((series_id, now))?;
-
-            let Some(row) = stmt.first::<NextEpisodeRow>()? else {
+            let Some(row) = s
+                .next_pending_episode_for_series
+                .bind((series_id, include_specials))?
+                .first::<NextEpisodeRow>()?
+            else {
                 return Ok(());
             };
 
-            let now = row.aired.unwrap_or(now).max(now);
+            let ts = row.aired.unwrap_or(now).max(now);
 
             s.upsert_pending_episode
-                .execute((PendingId::random(), now, series_id, row.id))?;
+                .execute((PendingId::random(), ts, series_id, row.id))?;
 
             Ok(())
         });
@@ -3110,6 +3170,10 @@ impl Database {
                 .get_config("language")?
                 .filter(|v| !v.is_empty())
                 .map(|v| v.to_owned());
+            let include_specials = s
+                .get_config("include_specials")?
+                .map(|v| v == "true")
+                .unwrap_or(false);
 
             Ok(Config {
                 theme,
@@ -3122,6 +3186,7 @@ impl Database {
                 auto_sync_interval_hours,
                 timezone,
                 language,
+                include_specials,
             })
         });
 
@@ -3169,6 +3234,14 @@ impl Database {
 
             s.set_config("timezone", &config.timezone)?;
             s.set_config("language", config.language.as_deref().unwrap_or(""))?;
+            s.set_config(
+                "include_specials",
+                if config.include_specials {
+                    "true"
+                } else {
+                    "false"
+                },
+            )?;
             Ok(())
         });
 
@@ -3200,6 +3273,7 @@ fn series_from_row(r: SeriesRow) -> api::Series {
         backdrop: None,
         last_synced_at: r.last_synced_at,
         language: r.language,
+        include_specials: r.include_specials,
     }
 }
 
@@ -3331,10 +3405,14 @@ fn do_migrations(c: &sqll::Connection) -> Result<()> {
     let mut select = c.prepare("SELECT applied_at FROM migrations WHERE id = ?")?;
     let mut insert = c.prepare("INSERT INTO migrations (id, applied_at) VALUES (?, ?)")?;
 
-    for file in Migrations::iter() {
+    let mut ids: Vec<_> = Migrations::iter().collect();
+    ids.sort();
+
+    for file in ids {
         let id = file.as_ref();
 
         let result: Result<()> = (|| {
+            select.reset()?;
             select.bind(id)?;
 
             if let Some(applied_at) = select.next::<String>()? {
@@ -3352,7 +3430,9 @@ fn do_migrations(c: &sqll::Connection) -> Result<()> {
                 .with_context(|| anyhow!("Executing migration {id}"))?;
 
             let now = Timestamp::now().to_string();
-            insert.execute((id, now.as_str()))?;
+            insert
+                .execute((id, now.as_str()))
+                .with_context(|| anyhow!("Updating migrations table {id}"))?;
             tracing::info!(id, "Migration applied");
             Ok(())
         })();
