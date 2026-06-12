@@ -371,8 +371,9 @@ impl Search {
             .callback(move |_| Msg::TrackSeries(remote_id.clone()));
 
         html! {
-            <div key={r.remote_id.to_string()} class="row">
-                <Image class="poster poster-side top" src={r.poster.clone()} placeholder=true />
+            <div key={r.remote_id.to_string()} class="desktop-row mobile-column">
+                <Image class="poster poster-side top hide-mobile" src={r.poster.clone()} placeholder=true />
+                <Image class="banner hide-desktop" src={r.banner.clone()} placeholder=true />
 
                 <div class="column top fill">
                     <div class="row-fill">
@@ -427,8 +428,9 @@ impl Search {
             .callback(move |_| Msg::TrackMovie(remote_id.clone()));
 
         html! {
-            <div key={r.remote_id.to_string()} class="row">
-                <Image class="poster poster-side top" src={r.poster.clone()} placeholder=true />
+            <div key={r.remote_id.to_string()} class="desktop-row mobile-column">
+                <Image class="poster poster-side top hide-mobile" src={r.poster.clone()} placeholder=true />
+                <Image class="banner hide-desktop" src={r.banner.clone()} placeholder=true />
 
                 <div class="column top fill">
                     <div class="row-fill">
@@ -447,7 +449,7 @@ impl Search {
                                     <span class="hide-mobile">{"Tracked"}</span>
                                 </button>
                             } else {
-                                <button class="btn" onclick={on_track} title="Track series">
+                                <button class="btn" onclick={on_track} title="Track movie">
                                     <span class="item-inline"><span class="icon plus" /></span>
                                     <span class="hide-mobile">{"Track"}</span>
                                 </button>

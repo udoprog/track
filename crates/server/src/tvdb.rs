@@ -169,8 +169,6 @@ impl Client {
             image_url: Option<String>,
             #[serde(default)]
             poster: Option<String>,
-            #[serde(default)]
-            thumbnail: Option<String>,
         }
 
         #[derive(Deserialize)]
@@ -223,10 +221,12 @@ impl Client {
             };
 
             // Search results expose the primary image (the poster, for series)
-            // in `image_url`; a dedicated `poster` field is usually absent.
+            // in `image_url`; a dedicated `poster` field is usually absent, and
+            // there is no wide banner artwork. Reuse the poster for the banner
+            // slot rather than the smaller `thumbnail`.
             let primary = opt_image(row.image_url.as_deref());
             let poster = opt_image(row.poster.as_deref()).or_else(|| primary.clone());
-            let banner = opt_image(row.thumbnail.as_deref());
+            let banner = poster.clone();
             let fanart = primary;
 
             out.push(SearchSeriesResult {
