@@ -162,14 +162,26 @@ async fn sync_show_tmdb(
     let existing_episode_ids = db.episode_ids(show_id).await?;
 
     for info in &info.seasons {
-        db.upsert_season(
-            show_id,
-            info.number,
-            info.air_date,
-            info.name.as_deref(),
-            info.overview.as_deref(),
-        )
-        .await?;
+        let season_id = db
+            .upsert_season(
+                show_id,
+                info.number,
+                info.air_date,
+                info.name.as_deref(),
+                info.overview.as_deref(),
+            )
+            .await?;
+
+        db.clear_season_images(season_id).await?;
+
+        if let Some(poster) = &info.poster {
+            let image = api::Image::from(poster.clone());
+            let image_id = ImageId::random();
+            db.upsert_season_image(image_id, season_id, ImageKind::Poster, &image)
+                .await?;
+            db.set_season_image_selection(season_id, ImageKind::Poster, image_id)
+                .await?;
+        }
 
         info!(tmdb_id, season = ?info.number, "Fetching TMDB season episodes");
 

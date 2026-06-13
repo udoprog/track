@@ -621,7 +621,6 @@ pub(crate) struct SeasonInfo {
     pub air_date: Option<Timestamp>,
     pub name: Option<String>,
     pub overview: Option<String>,
-    #[allow(dead_code)]
     pub poster: Option<ImageKey>,
 }
 

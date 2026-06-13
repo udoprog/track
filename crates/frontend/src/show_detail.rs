@@ -1315,7 +1315,12 @@ impl ShowDetail {
         html! {
             <div class={classes!("table-entry", "column", clickable.then_some("clickable"), active.then_some("active"), (!active && !self.expanded_seasons).then_some("hide-mobile"))} {onclick}>
                 <div class="row-fill fill">
-                    <span>{s.season.long().to_string()}</span>
+                    <span>
+                        {s.season.long().to_string()}
+                        if let Some(name) = s.name.as_deref() {
+                            <span class="text-muted">{format!(" — {name}")}</span>
+                        }
+                    </span>
 
                     <div class="row">
                         if let Some(ts) = s.air_date {
@@ -1425,6 +1430,8 @@ impl ShowDetail {
             }
         };
 
+        let s = self.seasons.iter().find(|s| s.season == season);
+
         let actions = 'actions: {
             if self.select_mark_remaining {
                 break 'actions html! {
@@ -1441,6 +1448,10 @@ impl ShowDetail {
                         <h2>{format!("{} orphaned episodes", self.orphaned.len())}</h2>
                     } else {
                         <h2 class="hide-mobile">{season.long().to_string()}</h2>
+                    }
+
+                    if let Some(overview) = s.and_then(|s| s.overview.as_ref()) {
+                        <p class="overview">{overview}</p>
                     }
 
                     <div class="row-fill">

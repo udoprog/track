@@ -1,2 +1,0 @@
-ALTER TABLE shows
-ADD COLUMN slug TEXT;

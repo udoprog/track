@@ -1327,6 +1327,7 @@ pub struct Season {
     pub air_date: Option<Timestamp>,
     pub name: Option<String>,
     pub overview: Option<String>,
+    pub poster: Option<Image>,
     pub watched_count: u32,
     pub total_count: u32,
 }

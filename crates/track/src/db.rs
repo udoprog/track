@@ -198,6 +198,8 @@ struct SeasonRow {
     air_date: Option<Timestamp>,
     name: Option<String>,
     overview: Option<String>,
+    poster_source: Option<ImageSource>,
+    poster_path: Option<String>,
     watched_count: u32,
     total_count: u32,
 }
@@ -547,9 +549,13 @@ statements! {
         // seasons
         list_seasons: r#"
             SELECT s.id, s.show_id, s.season, s.air_date, s.name, s.overview,
+                i.source AS poster_source, i.path AS poster_path,
                 (SELECT COUNT(DISTINCT we.episode) FROM watched_episodes we WHERE we.show_id = s.show_id AND we.season = s.season) AS watched_count,
                 (SELECT COUNT(*) FROM episodes e WHERE e.show_id = s.show_id AND e.season = s.season) AS total_count
-            FROM seasons s WHERE s.show_id = ? ORDER BY s.season
+            FROM seasons s
+            LEFT JOIN season_images si ON si.season_id = s.id AND si.kind = 1
+            LEFT JOIN images i ON i.id = si.image_id
+            WHERE s.show_id = ? ORDER BY s.season
         "#,
         episode_numbers_for_season: r#"
             SELECT episode FROM episodes WHERE show_id = ? AND season = ?
@@ -715,6 +721,9 @@ statements! {
             FROM movie_images mi JOIN images i ON i.id = mi.image_id
             WHERE mi.movie_id = ? AND mi.kind = ?
         "#,
+        season_id_for: r#"
+            SELECT id FROM seasons WHERE show_id = ? AND season = ?
+        "#,
         next_episode_after: r#"
             SELECT e.id, e.aired FROM episodes e
             JOIN episodes c ON c.id = ?2
@@ -872,6 +881,16 @@ statements! {
         "#,
         set_episode_image_selection: r#"
             INSERT OR REPLACE INTO episode_images (episode_id, kind, image_id) VALUES (?, ?, ?)
+        "#,
+        delete_season_images: r#"
+            DELETE FROM images WHERE season_id = ?
+        "#,
+        insert_season_image: r#"
+            INSERT INTO images (id, season_id, kind, source, path, width, height, rank) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(season_id, kind, path) WHERE season_id IS NOT NULL DO NOTHING
+        "#,
+        set_season_image_selection: r#"
+            INSERT OR REPLACE INTO season_images (season_id, kind, image_id) VALUES (?, ?, ?)
         "#,
 
         // seasons
@@ -1581,7 +1600,7 @@ impl Database {
         air_date: Option<Timestamp>,
         name: Option<&str>,
         overview: Option<&str>,
-    ) -> Result<()> {
+    ) -> Result<SeasonId> {
         let name = name.map(str::to_owned);
         let overview = overview.map(str::to_owned);
         let mut s = self.inner.clone().exclusive().await;
@@ -1595,10 +1614,67 @@ impl Database {
                 name.as_deref(),
                 overview.as_deref(),
             ))?;
-            Ok(())
+            let id = s
+                .season_id_for
+                .bind((show_id, number))?
+                .first::<SeasonId>()?
+                .context("Season missing after upsert")?;
+            Ok(id)
         });
 
         result.await?
+    }
+
+    pub(crate) async fn upsert_season_image(
+        &self,
+        id: ImageId,
+        season_id: SeasonId,
+        kind: ImageKind,
+        image: &api::Image,
+    ) -> Result<()> {
+        let image = image.clone();
+        let mut s = self.inner.clone().exclusive().await;
+
+        spawn_blocking(move || {
+            s.insert_season_image.execute((
+                id,
+                season_id,
+                kind,
+                image.key().source(),
+                image.key().path(),
+                image.width(),
+                image.height(),
+                0u32,
+            ))?;
+            Ok(())
+        })
+        .await?
+    }
+
+    pub(crate) async fn set_season_image_selection(
+        &self,
+        season_id: SeasonId,
+        kind: ImageKind,
+        image_id: ImageId,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await;
+
+        spawn_blocking(move || {
+            s.set_season_image_selection
+                .execute((season_id, kind, image_id))?;
+            Ok(())
+        })
+        .await?
+    }
+
+    pub(crate) async fn clear_season_images(&self, season_id: SeasonId) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await;
+
+        spawn_blocking(move || {
+            s.delete_season_images.execute((season_id,))?;
+            Ok(())
+        })
+        .await?
     }
 
     pub(crate) async fn seasons(&self, show_id: ShowId) -> Result<Vec<api::Season>> {
@@ -3459,6 +3535,10 @@ fn season_from_row(r: SeasonRow) -> api::Season {
         air_date: r.air_date,
         name: r.name,
         overview: r.overview,
+        poster: match (r.poster_source, r.poster_path) {
+            (Some(source), Some(path)) => Some(api::Image::new(source, &path)),
+            _ => None,
+        },
         watched_count: r.watched_count,
         total_count: r.total_count,
     }
