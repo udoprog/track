@@ -324,16 +324,13 @@ impl Dashboard {
                             <button class="btn" title="Show fewer" onclick={link.callback(|_| Msg::AdjustPageSize(-1))}>
                                 <span class="icon minus" />
                             </button>
+
                             <button class="btn" title="Show more" onclick={link.callback(|_| Msg::AdjustPageSize(1))}>
                                 <span class="icon plus" />
                             </button>
-                        </div>
 
-                        <PaginationButtons
-                            {page}
-                            {total_pages}
-                            on_page={link.callback(Msg::SetPage)}
-                        />
+                            <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
+                        </div>
                     </div>
                 </div>
 

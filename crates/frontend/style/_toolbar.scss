@@ -1,9 +1,11 @@
+@import "grid";
+
 .toolbar {
     display: flex;
     gap: $gap;
     padding: $gap;
 
-    @include g.until-mobile {
+    @include until-mobile {
         display: grid;
         grid-template-columns: 1fr auto;
         padding: $gap;
@@ -22,7 +24,7 @@
 
     height: $input-height * 1.5;
 
-    @include g.until-mobile {
+    @include until-mobile {
         height: $input-height-touch;
     }
 }
@@ -32,7 +34,7 @@
     flex-direction: row;
     gap: $gap;
 
-    @include g.until-mobile {
+    @include until-mobile {
         flex-direction: column;
         grid-column: 1 / -1;
     }
@@ -47,7 +49,7 @@
 
     height: $input-height-touch;
 
-    @include g.from-desktop {
+    @include from-desktop {
         display: none;
     }
 }
@@ -61,7 +63,7 @@
 
     height: $input-height * 1.5;
 
-    @include g.until-mobile {
+    @include until-mobile {
         height: $input-height-touch;
     }
 
@@ -77,5 +79,13 @@
     &.active {
         background: $bg-highlight;
         color: $color-primary;
+    }
+
+    >.icon {
+        height: $input-height;
+
+        @include until-mobile {
+            height: $input-height-touch;
+        }
     }
 }

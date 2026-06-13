@@ -4,7 +4,7 @@ use yew::prelude::*;
 
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{PagedQuery, Route, SeriesDetailQuery};
-use crate::ui::PaginationButtons;
+use crate::ui::{Loading, PaginationButtons};
 use crate::{Image, SetupChannel};
 
 const PAGE_SIZE: usize = 20;
@@ -18,7 +18,7 @@ pub(super) struct SeriesList {
     _tz_handle: ContextHandle<TimeZone>,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
-    _list_req: ws::Request,
+    list_req: ws::Request,
 }
 
 pub(super) enum Msg {
@@ -66,7 +66,7 @@ impl Component for SeriesList {
             _tz_handle,
             _setup,
             _broadcast,
-            _list_req: ws::Request::default(),
+            list_req: ws::Request::default(),
         }
     }
 
@@ -109,9 +109,9 @@ impl Component for SeriesList {
 
         html! {
             <>
-                <div class="page-title row">
-                    <span class="fill">{"Series"}</span>
-                    <span class="text-muted">{total}</span>
+                <div class="row-fill">
+                    <h1>{"Series"}</h1>
+                    <h4 class="text-muted end">{total}</h4>
                 </div>
 
                 <div class="row">
@@ -130,22 +130,24 @@ impl Component for SeriesList {
                                 <span class="icon backspace" />
                             </button>
                         }
+
+                        <PaginationButtons page={page} total_pages={total_pages} on_page={link.callback(Msg::SetPage)} />
                     </div>
                 </div>
 
-                <div class="row center">
-                    <PaginationButtons page={page} total_pages={total_pages} on_page={link.callback(Msg::SetPage)} />
-                </div>
-
-                if items.len() == 0 {
-                    <div class="empty text-muted">{"No series tracked."}</div>
+                if self.list_req.is_pending() {
+                    <Loading />
+                } else if items.len() == 0 {
+                    <div class="text-muted">{"No series tracked."}</div>
                 } else {
                     <div class="table">
                         { for items.into_iter().map(|s| self.view_row(ctx, s)) }
                     </div>
 
                     <div class="row center">
-                        <PaginationButtons page={page} total_pages={total_pages} on_page={link.callback(Msg::SetPage)} />
+                        <div class="input-group">
+                            <PaginationButtons page={page} total_pages={total_pages} on_page={link.callback(Msg::SetPage)} />
+                        </div>
                     </div>
                 }
             </>
@@ -222,7 +224,7 @@ impl SeriesList {
     }
 
     fn load(&mut self, ctx: &Context<Self>) {
-        self._list_req = self
+        self.list_req = self
             .channel
             .request()
             .body(api::ListSeriesRequest)

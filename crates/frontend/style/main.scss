@@ -35,9 +35,8 @@ $font-xs: 12px;
 $radius-sm: 3px;
 $radius: 4px;
 $padding: 4px;
-$padding-sm: 6px;
-$padding-row: 8px;
-$padding-row-sm: 4px;
+$padding-md: 6px;
+$padding-lg: 8px;
 $gap-xs: 8px;
 $gap-sm: 12px;
 $gap: 16px;
@@ -54,8 +53,7 @@ $item-inline-padding: 4px;
 $sidebar-width: 240px;
 $bold-weight: 500;
 
-@use 'grid' as g;
-
+@import 'grid';
 @import 'icons';
 @import 'logos';
 @import 'flags';
@@ -114,6 +112,8 @@ p {
 
 @mixin row-base {
     display: flex;
+    flex-direction: row;
+    justify-items: stretch;
     align-items: center;
     gap: $gap-sm;
 
@@ -130,44 +130,17 @@ p {
     }
 }
 
-.row {
-    @include row-base;
-
-    &.start {
-        justify-content: flex-start;
-    }
-
-    &.end {
-        justify-content: flex-end;
-    }
-
-    &.justify-around {
-        justify-content: space-around;
-    }
-}
-
-@include g.from-desktop {
-    .desktop-row {
-        @include row-base;
-    }
-}
-
-@include g.until-mobile {
-    .mobile-row {
-        @include row-base;
-    }
-}
-
 @mixin column-base {
     display: flex;
     flex-direction: column;
+    justify-items: stretch;
     gap: $gap-sm;
 
     &.center {
         align-items: center;
     }
 
-    @include g.from-desktop {
+    @include from-desktop {
         &.desktop-center {
             align-items: center;
         }
@@ -182,17 +155,37 @@ p {
     }
 }
 
+.row {
+    @include row-base;
+
+    &.justify-around {
+        justify-content: space-around;
+    }
+}
+
+@include from-desktop {
+    .desktop-row {
+        @include row-base;
+    }
+}
+
+@include until-mobile {
+    .mobile-row {
+        @include row-base;
+    }
+}
+
 .column {
     @include column-base;
 }
 
-@include g.until-mobile {
+@include until-mobile {
     .mobile-column {
         @include column-base;
     }
 }
 
-@include g.from-desktop {
+@include from-desktop {
     .desktop-column {
         @include column-base;
     }
@@ -209,12 +202,14 @@ p {
         flex-direction: row-reverse;
     }
 
-    .start {
+    >.start {
         margin-right: auto;
+        justify-content: flex-start;
     }
 
-    .end {
+    >.end {
         margin-left: auto;
+        justify-content: flex-end;
     }
 }
 
@@ -222,7 +217,7 @@ p {
     @include row-fill-base;
 }
 
-@include g.from-desktop {
+@include from-desktop {
     .desktop-row-fill {
         @include row-fill-base;
     }
@@ -234,7 +229,7 @@ p {
     height: $input-height;
     padding: $item-inline-padding 0;
 
-    @include g.until-mobile {
+    @include until-mobile {
         height: $input-height-touch;
     }
 }
@@ -245,7 +240,7 @@ p {
     height: $input-height-lg;
     padding: $item-inline-padding 0;
 
-    @include g.until-mobile {
+    @include until-mobile {
         height: $input-height-touch-lg;
     }
 }
@@ -261,7 +256,7 @@ p {
     vertical-align: middle;
     height: $input-height-lg;
 
-    @include g.until-mobile {
+    @include until-mobile {
         height: $input-height-touch-lg;
     }
 }
@@ -274,7 +269,6 @@ p {
     align-items: center;
     justify-content: start;
     color: #fff;
-    padding: $padding $padding-row;
     border: none;
     border-radius: $radius-sm;
     cursor: pointer;
@@ -282,6 +276,7 @@ p {
     min-width: $input-height;
     font-size: $font-sm;
     font-family: $sans-serif-font;
+    padding: $padding-md;
 
     &.fill {
         flex: 1;
@@ -296,9 +291,10 @@ p {
         background: $color-selected;
     }
 
-    @include g.until-mobile {
+    @include until-mobile {
         height: $input-height-touch;
         min-width: $input-height-touch;
+        padding: $padding-lg;
     }
 }
 
@@ -323,13 +319,13 @@ p {
 }
 
 .hide-mobile {
-    @include g.until-mobile {
+    @include until-mobile {
         display: none;
     }
 }
 
 .hide-desktop {
-    @include g.from-desktop {
+    @include from-desktop {
         display: none;
     }
 }
@@ -369,7 +365,7 @@ p {
     color: $text-primary;
     white-space: wrap;
 
-    @include g.from-desktop {
+    @include from-desktop {
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -385,11 +381,6 @@ p {
     color: $color-title;
     font-size: $font-title;
     font-weight: $bold-weight;
-}
-
-.page-title {
-    color: $color-title;
-    font-size: $font-xl;
 }
 
 .page-sub-title {
@@ -410,7 +401,7 @@ p {
 
     height: $input-height;
 
-    @include g.until-mobile {
+    @include until-mobile {
         height: $input-height-touch;
     }
 }
@@ -449,7 +440,7 @@ h6 {
     grid-template-columns: repeat(var(--pending-columns, 4), 1fr);
     gap: $gap;
 
-    @include g.until-mobile {
+    @include until-mobile {
         grid-template-columns: 1fr;
     }
 }
@@ -530,7 +521,7 @@ image {
     color: $text-primary;
     white-space: wrap;
 
-    @include g.from-desktop {
+    @include from-desktop {
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -579,7 +570,7 @@ image {
     font-weight: $bold-weight;
     min-width: 180px;
 
-    @include g.until-mobile {
+    @include until-mobile {
         min-width: 0;
     }
 }
@@ -611,11 +602,6 @@ image {
     align-self: flex-start;
 }
 
-.empty {
-    color: $text-muted;
-    padding: $gap;
-}
-
 .status {
     font-size: $font-xs;
     background: $color-secondary;
@@ -631,7 +617,7 @@ image {
     grid-template-columns: $sidebar-width 1fr;
     gap: $gap;
 
-    @include g.until-mobile {
+    @include until-mobile {
         display: flex;
         flex-direction: column;
     }
@@ -643,7 +629,7 @@ image {
     gap: $gap;
     overflow-y: auto;
 
-    @include g.from-desktop {
+    @include from-desktop {
         width: $sidebar-width;
         height: 100%;
     }
@@ -746,12 +732,8 @@ image {
 }
 
 @mixin input-group-base {
-    display: inline-flex !important;
-    gap: 0 !important;
-
-    &.fill {
-        flex: 1;
-    }
+    display: flex;
+    gap: 0;
 
     >* {
         border-radius: 0 !important;
@@ -774,13 +756,13 @@ image {
     @include input-group-base;
 }
 
-@include g.from-desktop {
+@include from-desktop {
     .desktop-input-group {
         @include input-group-base;
     }
 }
 
-@include g.until-mobile {
+@include until-mobile {
     .mobile-input-group {
         @include input-group-base;
     }
@@ -827,7 +809,7 @@ image {
     border-style: solid;
     border-radius: $radius-sm;
     border-color: $border-input;
-    padding: 0 $padding-row;
+    padding: 0 $padding-lg;
     height: $input-height;
     font-size: $font-sm;
     font-family: $sans-serif-font;
@@ -838,9 +820,11 @@ image {
         border-color: $color-primary;
     }
 
-    @include g.until-mobile {
+    @include until-mobile {
         height: $input-height-touch;
     }
+
+    user-select: none;
 }
 
 .input-number {
@@ -904,7 +888,7 @@ image {
         border-color: $color-primary;
     }
 
-    @include g.until-mobile {
+    @include until-mobile {
         width: $input-height-touch;
         height: $input-height-touch;
     }
@@ -926,7 +910,7 @@ image {
         grid-template-columns: 1fr;
     }
 
-    @include g.until-mobile {
+    @include until-mobile {
         grid-template-columns: 1fr;
 
         &.poster {
@@ -977,7 +961,7 @@ image {
     width: min(600px, calc(100vw - #{$gap-sm * 2}));
     z-index: 401;
 
-    @include g.until-mobile {
+    @include until-mobile {
         width: 100%;
         border-radius: 0;
 

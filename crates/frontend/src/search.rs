@@ -139,7 +139,7 @@ impl Component for Search {
 
         html! {
             <>
-                <div class="page-title">{"Search"}</div>
+                <h1>{"Search"}</h1>
 
                 <div class="input-group">
                     <select class="input-select" onchange={on_kind} value={kind}>
@@ -382,12 +382,12 @@ impl Search {
                         <div class="row end">
                             if let Some(on_nav) = on_nav {
                                 <button class="btn" onclick={on_nav} title="Already tracked">
-                                    <span class="item-inline"><span class="icon check" /></span>
+                                    <span class="icon check" />
                                     <span class="hide-mobile">{"Tracked"}</span>
                                 </button>
                             } else {
                                 <button class="btn" onclick={on_track} title="Track series">
-                                    <span class="item-inline"><span class="icon plus" /></span>
+                                    <span class="icon plus" />
                                     <span class="hide-mobile">{"Track"}</span>
                                 </button>
                             }
@@ -439,12 +439,12 @@ impl Search {
                         <div class="row end">
                             if let Some(on_nav) = on_nav {
                                 <button class="btn" onclick={on_nav} title="Already tracked">
-                                    <span class="item-inline"><span class="icon check" /></span>
+                                    <span class="icon check" />
                                     <span class="hide-mobile">{"Tracked"}</span>
                                 </button>
                             } else {
                                 <button class="btn" onclick={on_track} title="Track movie">
-                                    <span class="item-inline"><span class="icon plus" /></span>
+                                    <span class="icon plus" />
                                     <span class="hide-mobile">{"Track"}</span>
                                 </button>
                             }

@@ -86,41 +86,42 @@ impl Component for Queue {
 
         html! {
             <>
-                <div class="page-title row">
-                    <span class="fill">{"Queue"}</span>
+                <div class="row-fill">
+                    <h1>{"Queue"}</h1>
 
-                    if total_pending == 0 {
-                        <span class="text-muted">{"No pending tasks"}</span>
-                    } else {
-                        <span class="text-muted">{format!("{} pending tasks", total_pending)}</span>
-                    }
-
-                    <button class="btn" onclick={link.callback(|_| Msg::SyncAll)}
+                    <button class="btn end" onclick={link.callback(|_| Msg::SyncAll)}
                         title="Queue sync for all series and movies">
                         <span class="item-inline"><span class="icon arrow-path" /></span>
                         <span class="hide-mobile">{"Sync All"}</span>
                     </button>
                 </div>
 
+                if total_pending == 0 {
+                    <h4 class="text-muted">{"No pending tasks"}</h4>
+                } else {
+                    <h4 class="text-muted">{format!("{} pending tasks", total_pending)}</h4>
+                }
+
                 { self.view_section(ctx, "Running", &self.running, true) }
 
                 if !page_pending.is_empty() {
                     <div class="column">
-                        <h3>{"Pending"}</h3>
+                        <div class="row-fill">
+                            <h3>{"Pending"}</h3>
 
-                        <div class="row center">
-                            <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
+                            <div class="row end">
+                                <div class="input-group">
+                                    <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
+                                </div>
+                            </div>
                         </div>
 
                         <div class="table">
                             { for page_pending.iter().map(|t| self.view_task_row(ctx, t, false)) }
                         </div>
-
-                        <div class="row center">
-                            <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
-                        </div>
                     </div>
                 }
+
                 { self.view_completed(ctx) }
             </>
         }

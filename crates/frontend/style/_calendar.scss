@@ -1,11 +1,11 @@
-@use 'grid' as g;
+@import 'grid';
 
 @mixin row-base {
     display: flex;
     height: $input-height;
     align-items: center;
 
-    @include g.until-mobile {
+    @include until-mobile {
         height: $input-height-touch;
     }
 }
@@ -43,7 +43,7 @@
 .calendar-week {
     @include column-base;
 
-    @include g.from-desktop {
+    @include from-desktop {
         display: grid;
         grid-template-columns: repeat(7, minmax(0, 1fr));
     }
@@ -54,7 +54,7 @@
 
     min-height: $input-height * 2;
 
-    @include g.until-mobile {
+    @include until-mobile {
         min-height: $input-height-touch * 2;
     }
 
@@ -78,7 +78,7 @@
         justify-content: center;
         font-weight: $bold-weight;
 
-        @include g.until-mobile {
+        @include until-mobile {
             height: $input-height-touch;
         }
     }
@@ -106,7 +106,7 @@
     min-height: $input-height;
     border: 1px solid $border-subtle-transparent;
 
-    @include g.until-mobile {
+    @include until-mobile {
         min-height: $input-height-touch;
     }
 

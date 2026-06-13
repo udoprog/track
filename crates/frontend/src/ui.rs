@@ -14,7 +14,7 @@ use crate::{Modal, SetupChannel};
 pub(super) fn Loading() -> Html {
     html! {
         <div class="box info">
-            <span class="item-inline"><span class="icon arrow-path spin" /></span>
+            <span class="icon arrow-path spin" />
             <span>{"Loading…"}</span>
         </div>
     }
@@ -34,7 +34,7 @@ pub(super) fn ErrorBox(props: &ErrorBoxProps) -> Html {
                 { for props.error.sources().map(|e| html! { <p>{e.to_string()}</p> }) }
 
                 <button class="btn-danger" onclick={props.onclearerror.reform(|_| ())}>
-                    <span class="item-inline"><span class="icon x-mark" /></span>
+                    <span class="icon x-mark" />
                     <span>{"Dismiss"}</span>
                 </button>
             </div>
@@ -54,7 +54,7 @@ pub(super) fn Tracked(props: &TrackedProps) -> Html {
 
     html! {
         <button class="btn" onclick={props.ontoggle.reform(move |_| !tracked)} title="Track movie">
-            <span class="item-inline"><span class={classes!("icon", if tracked { "eye" } else { "eye-slash" })} /></span>
+            <span class={classes!("icon", if tracked { "eye" } else { "eye-slash" })} />
             <span class="hide-desktop">{if tracked { "Tracking" } else { "Not tracking" }}</span>
         </button>
     }
@@ -73,27 +73,21 @@ pub(super) fn PaginationButtons(props: &PaginationButtonsProps) -> Html {
     let prev = page.checked_sub(1);
     let next = page.checked_add(1).filter(|&v| v < props.total_pages);
 
-    let on_page = props.on_page.clone();
-    let on_page2 = props.on_page.clone();
-
-    if props.total_pages <= 1 {
-        return html! {};
-    }
+    let on_back = prev.map(|prev| props.on_page.reform(move |_: MouseEvent| prev));
+    let on_next = next.map(|next| props.on_page.reform(move |_: MouseEvent| next));
 
     html! {
-        <div class="input-group">
-            <button class="btn" disabled={prev.is_none()}
-                onclick={Callback::from(move |_| { if let Some(p) = prev { on_page.emit(p); } })}>
-                <span class="icon arrow-left" />
+        <>
+            <button class={classes!("btn", prev.is_none().then_some("disabled"))} onclick={on_back}>
+                <span class="icon chevron-left" />
             </button>
 
-            <span class="input-text">{format!("{} / {}", page + 1, props.total_pages)}</span>
+            <span class="input-text">{format!("{} / {}", page.saturating_add(1), props.total_pages)}</span>
 
-            <button class="btn" disabled={next.is_none()}
-                onclick={Callback::from(move |_| { if let Some(p) = next { on_page2.emit(p); } })}>
-                <span class="icon arrow-right" />
+            <button class={classes!("btn", next.is_none().then_some("disabled"))} onclick={on_next}>
+                <span class="icon chevron-right" />
             </button>
-        </div>
+        </>
     }
 }
 
@@ -110,22 +104,13 @@ pub(super) struct ConfirmDangerProps {
 
 #[function_component]
 pub(super) fn ConfirmDanger(props: &ConfirmDangerProps) -> Html {
-    let on_confirm = {
-        let cb = props.on_confirm.clone();
+    let on_confirm = props.on_confirm.reform(move |e: MouseEvent| {
+        e.stop_propagation();
+    });
 
-        Callback::from(move |e: MouseEvent| {
-            e.stop_propagation();
-            cb.emit(());
-        })
-    };
-
-    let on_cancel = {
-        let cb = props.on_cancel.clone();
-        Callback::from(move |e: MouseEvent| {
-            e.stop_propagation();
-            cb.emit(());
-        })
-    };
+    let on_cancel = props.on_cancel.reform(move |e: MouseEvent| {
+        e.stop_propagation();
+    });
 
     html! {
         <div class="row-fill fill">
@@ -192,12 +177,12 @@ pub(super) fn MarkWatchedPicker(props: &MarkWatchedPickerProps) -> Html {
                     </button>
 
                     <button class="btn-success" onclick={on_now} title="Watched now">
-                        <span class="item-inline"><span class="icon check" /></span>
+                        <span class="icon check" />
                         {"Now"}
                     </button>
 
                     <button class="btn" onclick={on_aired} title="Watched when aired">
-                        <span class="item-inline"><span class="icon clock" /></span>
+                        <span class="icon clock" />
                         {&props.aired_label}
                     </button>
                 </div>
@@ -308,7 +293,7 @@ pub(super) fn MediaSettingsModal(props: &MediaSettingsModalProps) -> Html {
 
                         if !props.remotes.is_empty() {
                             <button class="btn" onclick={on_sync} title="Sync now">
-                                <span class="item-inline"><span class={classes!("icon", "arrow-path", props.syncing.then_some("spin"))} /></span>
+                                <span class={classes!("icon", "arrow-path", props.syncing.then_some("spin"))} />
                             </button>
                         }
                     </div>
@@ -318,7 +303,7 @@ pub(super) fn MediaSettingsModal(props: &MediaSettingsModalProps) -> Html {
                     <label>{"Graphics"}</label>
                     if props.has_images {
                         <button class="btn" onclick={on_edit_graphics}>
-                            <span class="item-inline"><span class="icon photo" /></span>
+                            <span class="icon photo" />
                             <span>{"Edit graphics"}</span>
                         </button>
                         <span class="hint">{"Choose the poster, backdrop, banner, and other artwork."}</span>
@@ -330,7 +315,7 @@ pub(super) fn MediaSettingsModal(props: &MediaSettingsModalProps) -> Html {
                 <div class="field">
                     <label>{"Identifiers"}</label>
                     <button class="btn" onclick={on_edit_identifiers}>
-                        <span class="item-inline"><span class="icon identification" /></span>
+                        <span class="icon identification" />
                         <span>{"Edit identifiers"}</span>
                     </button>
                     <span class="hint">{"Repair the TMDB, TVDB, and other remote ids used to sync."}</span>
@@ -455,15 +440,15 @@ impl Component for SecretInput {
                 />
 
                 <button type="button" class="btn" title={toggle_title} disabled={is_empty} onclick={on_toggle}>
-                    <span class="item-inline"><span class={classes!("icon", toggle_icon)} /></span>
+                    <span class={classes!("icon", toggle_icon)} />
                 </button>
 
                 <button type="button" class="btn" title="Copy to clipboard" disabled={is_empty} onclick={link.callback(|_| SecretInputMsg::Copy)}>
-                    <span class="item-inline"><span class="icon clipboard" /></span>
+                    <span class="icon clipboard" />
                 </button>
 
                 <button type="button" class="btn" title="Clear" disabled={is_empty} onclick={link.callback(|_| SecretInputMsg::Clear)}>
-                    <span class="item-inline"><span class="icon x-mark" /></span>
+                    <span class="icon x-mark" />
                 </button>
             </div>
         }
@@ -504,7 +489,7 @@ pub(super) fn RemoteSourceSelect(props: &RemoteSourceSelectProps) -> Html {
             let input: web_sys::HtmlSelectElement = e.target_unchecked_into();
             let source = api::RemoteSource::from_raw(&input.value());
 
-            if !source.is_unknown() {
+            if source.is_unknown() {
                 cb.emit(source);
             }
         })
@@ -512,15 +497,13 @@ pub(super) fn RemoteSourceSelect(props: &RemoteSourceSelectProps) -> Html {
 
     html! {
         <select class="input-select" onchange={on_change} title="Select remote source">
-            {
-                for props.remotes.iter().map(|remote| {
-                    let label = remote.source().as_str().to_uppercase();
+            {for props.remotes.iter().map(|remote| {
+                let label = remote.source().as_str().to_uppercase();
 
-                    html! {
-                        <option value={remote.source().as_str().to_owned()} selected={Some(remote.source()) == selected.as_ref()}>{label}</option>
-                    }
-                })
-            }
+                html! {
+                    <option value={remote.source().as_str().to_owned()} selected={Some(remote.source()) == selected.as_ref()}>{label}</option>
+                }
+            })}
         </select>
     }
 }
@@ -734,7 +717,7 @@ impl Component for RemoteEditor {
 
         let title = html! {
             <>
-                <span class="item-inline"><span class="icon identification" /></span>
+                <span class="icon identification" />
                 <span>{format!("Identifiers — {}", props.title)}</span>
             </>
         };
@@ -742,7 +725,7 @@ impl Component for RemoteEditor {
         html! {
             <Modal {title} on_close={link.callback(|_| RemoteEditorMsg::Close)}>
                 if props.remotes.is_empty() {
-                    <div class="empty text-muted">{"No remote identifiers"}</div>
+                    <div class="text-muted">{"No remote identifiers"}</div>
                 } else {
                     { for props.remotes.iter().map(|r| {
                         if self.confirming_remove.as_ref() == Some(r) {
@@ -799,7 +782,7 @@ impl Component for RemoteEditor {
                             <input type="text" class="input-text fill" placeholder="Identifier" value={self.value.clone()} oninput={on_value} />
 
                             <button class="btn-success" onclick={link.callback(|_| RemoteEditorMsg::Submit)} disabled={self.value.trim().is_empty()} title={if editing { "Save identifier" } else { "Add identifier" }}>
-                                <span class="item-inline"><span class={classes!("icon", if editing { "check" } else { "plus" })} /></span>
+                                <span class={classes!("icon", if editing { "check" } else { "plus" })} />
                                 <span>{if editing { "Save" } else { "Add" }}</span>
                             </button>
 
@@ -898,7 +881,7 @@ impl Component for LanguagePicker {
         let trigger = match value {
             Some((label, code)) => html! {
                 <button class="btn" onclick={link.callback(|_| Msg::Open)} title="Select language">
-                    <span class="item-inline"><span class="icon language" /></span>
+                    <span class="icon language" />
                     <span>{label}</span>
 
                     if let Some(code) = self.language_to_country.get_by_part1(code) {
@@ -908,7 +891,7 @@ impl Component for LanguagePicker {
             },
             None => html! {
                 <button class="btn" onclick={link.callback(|_| Msg::Open)} title="Select language">
-                    <span class="item-inline"><span class="icon language" /></span>
+                    <span class="icon language" />
                     <span>{props.placeholder}</span>
                 </button>
             },
@@ -978,11 +961,13 @@ impl Component for LanguagePicker {
                     </div>
 
                     <div class="row center">
-                        <PaginationButtons
-                            page={page}
-                            total_pages={total_pages}
-                            on_page={link.callback(Msg::Page)}
-                        />
+                        <div class="input-group">
+                            <PaginationButtons
+                                page={page}
+                                total_pages={total_pages}
+                                on_page={link.callback(Msg::Page)}
+                            />
+                        </div>
                     </div>
                 </Modal>
             </>

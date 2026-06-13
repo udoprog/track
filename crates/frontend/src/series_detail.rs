@@ -277,19 +277,19 @@ impl Component for SeriesDetail {
                         <Tracked tracked={series.tracked} ontoggle={link.callback(Msg::SetTracked)} />
 
                         <button class="btn-danger" onclick={link.callback(|_| Msg::ConfirmRemove)} title="Remove series">
-                            <span class="item-inline"><span class="icon trash" /></span>
+                            <span class="icon trash" />
                             <span class="hide-desktop">{"Remove"}</span>
                         </button>
 
                         if !series.remotes.is_empty() {
                             <button class="btn" onclick={link.callback(|_| Msg::SyncSeries)} title="Sync now">
-                                <span class="item-inline"><span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} /></span>
+                                <span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} />
                                 <span class="hide-desktop">{"Sync"}</span>
                             </button>
                         }
 
                         <button class="btn" onclick={link.callback(|_| Msg::OpenSettingsModal)} title="Series settings">
-                            <span class="item-inline"><span class="icon cog-6-tooth" /></span>
+                            <span class="icon cog-6-tooth" />
                             <span class="hide-desktop">{"Series settings"}</span>
                         </button>
                     </div>
@@ -1241,7 +1241,7 @@ impl SeriesDetail {
         let link = ctx.link();
 
         html! {
-            <div class="row-fill page-title">
+            <div class="row-fill align-top">
                 <div class="column desktop-center fill">
                     <h1>{series.title.as_deref().unwrap_or("Untitled Series")}</h1>
 
@@ -1252,7 +1252,7 @@ impl SeriesDetail {
 
                 <div class="hide-desktop row end">
                     <button class="btn" onclick={link.callback(|_| Msg::ToggleActionsExpanded)}>
-                        <span class="item-inline"><span class={classes!("icon", if self.actions_expanded { "ellipsis-horizontal" } else { "bars-2" })} /></span>
+                        <span class={classes!("icon", if self.actions_expanded { "ellipsis-horizontal" } else { "bars-2" })} />
                     </button>
                 </div>
             </div>
@@ -1389,7 +1389,7 @@ impl SeriesDetail {
                 <>
                     if !self.orphaned.is_empty() {
                         <button class="btn-danger" onclick={link.callback(|_| Msg::ToggleOrphaned)} title="View orphaned watched episodes">
-                            <span class="item-inline"><span class={classes!("icon", if self.view_orphaned { "ellipsis-horizontal" } else { "exclamation-triangle" })} /></span>
+                            <span class={classes!("icon", if self.view_orphaned { "ellipsis-horizontal" } else { "exclamation-triangle" })} />
 
                             if !self.view_orphaned {
                                 <span class="hide-mobile">{"Show orphaned watches"}</span>
@@ -1399,8 +1399,8 @@ impl SeriesDetail {
 
                     if let Some((ref label, on_remove_next)) = pending_episode {
                         <a class="btn-primary" href={format!("#{label}")} title="Jump to pending episode">
-                            <span class="item-inline"><span class="icon bookmark" /></span>
-                            <span class="item-inline"><span class="icon chevron-down" /></span>
+                            <span class="icon bookmark" />
+                            <span class="icon chevron-down" />
                         </a>
 
                         <button class="btn-danger" onclick={on_remove_next} title="Remove pending">
@@ -1409,14 +1409,14 @@ impl SeriesDetail {
                         </button>
                     } else if let Some((ref label, onclick)) = next_unwatched {
                         <button class="btn" title="Make next episode" {onclick}>
-                            <span class="item-inline"><span class="icon bookmark-slash" /></span>
+                            <span class="icon bookmark-slash" />
                             <span>{label}</span>
                         </button>
                     }
 
                     if !self.view_orphaned && watched_count < total {
                         <button class="btn-success" onclick={link.callback(move |_| Msg::MarkRemainingWatch)} title="Mark remaining episodes as watched">
-                            <span class="item-inline"><span class="icon check" /></span>
+                            <span class="icon check" />
                             <span class="hide-mobile">{"Remaining"}</span>
                         </button>
                     }
@@ -1466,7 +1466,7 @@ impl SeriesDetail {
                 </div>
 
                 if self.episodes.is_empty() && self.selected.is_some() {
-                    <div class="empty text-muted">{"No episodes."}</div>
+                    <div class="text-muted">{"No episodes."}</div>
                 }
 
                 if self.view_orphaned {
@@ -1599,7 +1599,7 @@ impl SeriesDetail {
                                         {toggle_pending(true)}
 
                                         <button class="btn" onclick={link.callback(move |_| Msg::ToggleEpisodeActionsExpanded(episode_id))}>
-                                            <span class="item-inline"><span class={classes!("icon", if actions_expanded { "ellipsis-horizontal" } else { "bars-2" })} /></span>
+                                            <span class={classes!("icon", if actions_expanded { "ellipsis-horizontal" } else { "bars-2" })} />
                                         </button>
                                     </div>
                                 </div>

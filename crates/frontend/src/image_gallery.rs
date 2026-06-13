@@ -29,8 +29,8 @@ pub(super) fn ImageGallery(props: &ImageGalleryProps) -> Html {
     let page = use_state(|| 0usize);
 
     let total_pages = props.items.len().div_ceil(GALLERY_PAGE_SIZE);
-    let cur_page = (*page).min(total_pages.saturating_sub(1));
-    let start = cur_page * GALLERY_PAGE_SIZE;
+    let this_page = (*page).min(total_pages.saturating_sub(1));
+    let start = this_page * GALLERY_PAGE_SIZE;
     let end = (start + GALLERY_PAGE_SIZE).min(props.items.len());
     let page_images = props.items.get(start..end).unwrap_or_default();
 
@@ -56,11 +56,13 @@ pub(super) fn ImageGallery(props: &ImageGalleryProps) -> Html {
             </div>
 
             if props.items.is_empty() {
-                <div class="empty text-muted">{"No images"}</div>
+                <div class="text-muted">{"No images"}</div>
             } else {
                 if total_pages > 1 {
                     <div class="row center">
-                        <PaginationButtons page={cur_page} {total_pages} on_page={on_page} />
+                        <div class="input-group">
+                            <PaginationButtons page={this_page} {total_pages} on_page={on_page} />
+                        </div>
                     </div>
                 }
 

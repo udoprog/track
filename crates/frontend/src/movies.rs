@@ -4,7 +4,7 @@ use yew::prelude::*;
 
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{PagedQuery, Route};
-use crate::ui::{MarkWatchedPicker, PaginationButtons};
+use crate::ui::{Loading, MarkWatchedPicker, PaginationButtons};
 use crate::{Image, SetupChannel};
 
 const PAGE_SIZE: usize = 20;
@@ -18,7 +18,7 @@ pub(super) struct MoviesList {
     _tz_handle: ContextHandle<TimeZone>,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
-    _list_req: ws::Request,
+    list_req: ws::Request,
     _mark_req: ws::Request,
     confirming_watch: Option<api::MovieId>,
 }
@@ -72,7 +72,7 @@ impl Component for MoviesList {
             _tz_handle,
             _setup,
             _broadcast,
-            _list_req: ws::Request::default(),
+            list_req: ws::Request::default(),
             _mark_req: ws::Request::default(),
             confirming_watch: None,
         }
@@ -117,9 +117,10 @@ impl Component for MoviesList {
 
         html! {
             <>
-                <div class="page-title row">
-                    <span class="fill">{"Movies"}</span>
-                    <span class="text-muted">{total}</span>
+                <div class="row-fill">
+                    <h1>{"Movies"}</h1>
+
+                    <h4 class="text-muted end">{total}</h4>
                 </div>
 
                 <div class="row">
@@ -131,28 +132,31 @@ impl Component for MoviesList {
                             oninput={on_filter}
                             class="input-text fill"
                         />
+
                         if !self.filter.is_empty() {
                             <button class="btn" title="Clear filter"
                                 onclick={link.callback(|_| Msg::Filter(String::new()))}>
                                 <span class="icon backspace" />
                             </button>
                         }
+
+                        <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
                     </div>
                 </div>
 
-                <div class="row center">
-                    <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
-                </div>
-
-                if items.len() == 0 {
-                    <div class="empty text-muted">{"No movies tracked."}</div>
+                if self.list_req.is_pending() {
+                    <Loading />
+                } else if items.len() == 0 {
+                    <div class="text-muted">{"No movies tracked."}</div>
                 } else {
                     <div class="table">
                         { for items.into_iter().map(|m| self.view_row(ctx, m)) }
                     </div>
 
                     <div class="row center">
-                        <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
+                        <div class="input-group">
+                            <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
+                        </div>
                     </div>
                 }
             </>
@@ -263,7 +267,7 @@ impl MoviesList {
     }
 
     fn load(&mut self, ctx: &Context<Self>) {
-        self._list_req = self
+        self.list_req = self
             .channel
             .request()
             .body(api::ListMoviesRequest)

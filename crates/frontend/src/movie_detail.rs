@@ -751,7 +751,7 @@ impl MovieDetail {
 
                 <div class="hide-desktop row end">
                     <button class="btn" onclick={link.callback(|_| Msg::ToggleActionsExpanded)}>
-                        <span class="item-inline"><span class={classes!("icon", if self.actions_expanded { "ellipsis-horizontal" } else { "bars-3" })} /></span>
+                        <span class={classes!("icon", if self.actions_expanded { "ellipsis-horizontal" } else { "bars-3" })} />
                     </button>
                 </div>
             </div>
@@ -913,20 +913,20 @@ impl MovieDetail {
                         />
                     } else {
                         <button class="btn-danger" onclick={link.callback(|_| Msg::ConfirmRemove)} title="Remove movie">
-                            <span class="item-inline"><span class="icon trash" /></span>
+                            <span class="icon trash" />
                             <span class="hide-desktop">{"Remove"}</span>
                         </button>
                     }
 
                     if !movie.remotes.is_empty() {
                         <button class="btn" onclick={link.callback(|_| Msg::SyncMovie)} title="Sync now">
-                            <span class="item-inline"><span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} /></span>
+                            <span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} />
                             <span class="hide-desktop">{"Sync"}</span>
                         </button>
                     }
 
                     <button class="btn" onclick={link.callback(|_| Msg::OpenSettingsModal)} title="Movie settings">
-                        <span class="item-inline"><span class="icon cog-6-tooth" /></span>
+                        <span class="icon cog-6-tooth" />
                         <span class="hide-desktop">{"Movie settings"}</span>
                     </button>
                 </div>

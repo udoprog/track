@@ -245,32 +245,32 @@ fn Toolbar(props: &ToolbarProps) -> Html {
             </div>
 
             <div class="toolbar-toggle" onclick={on_menu_toggle} title="Navigation">
-                <span class="item-inline"><span class={classes!("icon", if *menu_open { "ellipsis-horizontal" } else { "bars-3" })} /></span>
+                <span class={classes!("icon", if *menu_open { "ellipsis-horizontal" } else { "bars-3" })} />
             </div>
 
             <div class={classes!("toolbar-dropdown", (!*menu_open).then_some("hide-mobile"))}>
                 <button onclick={on_nav(Route::Dashboard(DashboardQuery::default()))} class="toolbar-item" title="Dashboard">
-                    <span class="item-inline"><span class="icon rectangle-stack" /></span>
+                    <span class="icon rectangle-stack" />
                     <span>{"Dashboard"}</span>
                 </button>
                 <button onclick={on_nav(Route::Series(PagedQuery::default()))} class="toolbar-item" title="Series">
-                    <span class="item-inline"><span class="icon tv" /></span>
+                    <span class="icon tv" />
                     <span>{"Series"}</span>
                 </button>
                 <button onclick={on_nav(Route::Movies(PagedQuery::default()))} class="toolbar-item" title="Movies">
-                    <span class="item-inline"><span class="icon film" /></span>
+                    <span class="icon film" />
                     <span>{"Movies"}</span>
                 </button>
                 <button onclick={on_nav(Route::Search(SearchQuery::default()))} class="toolbar-item" title="Search">
-                    <span class="item-inline"><span class="icon magnifying-glass" /></span>
+                    <span class="icon magnifying-glass" />
                     <span class="hide-desktop">{"Search"}</span>
                 </button>
                 <button onclick={on_nav(Route::Queue)} class="toolbar-item" title="Queue">
-                    <span class="item-inline"><span class="icon queue-list" /></span>
+                    <span class="icon queue-list" />
                     <span class="hide-desktop">{"Queue"}</span>
                 </button>
                 <button onclick={on_nav(Route::Settings)} class="toolbar-item" title="Settings">
-                    <span class="item-inline"><span class="icon cog-6-tooth" /></span>
+                    <span class="icon cog-6-tooth" />
                     <span class="hide-desktop">{"Settings"}</span>
                 </button>
             </div>
