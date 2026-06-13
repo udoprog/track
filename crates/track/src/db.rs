@@ -109,6 +109,7 @@ struct Migrations;
 #[derive(Row)]
 struct ShowRow {
     id: ShowId,
+    slug: Option<String>,
     title: Option<String>,
     first_air: Option<Timestamp>,
     overview: Option<String>,
@@ -470,15 +471,15 @@ statements! {
     struct InnerRead {
         // shows
         list_shows: r#"
-            SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at, language, include_specials
+            SELECT id, slug, title, first_air, overview, tracked, sync_source, last_synced_at, language, include_specials
             FROM shows ORDER BY title
         "#,
         show_by_id: r#"
-            SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at, language, include_specials
+            SELECT id, slug, title, first_air, overview, tracked, sync_source, last_synced_at, language, include_specials
             FROM shows WHERE id = ?
         "#,
         shows_by_remote: r#"
-            SELECT s.id, s.title, s.first_air, s.overview, s.tracked, s.sync_source, s.last_synced_at, s.language, s.include_specials
+            SELECT s.id, s.slug, s.title, s.first_air, s.overview, s.tracked, s.sync_source, s.last_synced_at, s.language, s.include_specials
             FROM shows s
             JOIN show_remotes r ON r.show_id = s.id
             WHERE r.source = ? AND r.value = ?
@@ -752,7 +753,7 @@ statements! {
 
         // stale-item queries
         shows_needing_sync: r#"
-            SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at, language, include_specials
+            SELECT id, slug, title, first_air, overview, tracked, sync_source, last_synced_at, language, include_specials
             FROM shows
             WHERE tracked = 1
               AND (last_synced_at IS NULL OR last_synced_at < ?)
@@ -801,7 +802,7 @@ statements! {
         "#,
         update_show: r#"
             UPDATE shows
-            SET title = ?, first_air = ?, overview = ?, tracked = ?
+            SET slug = ?, title = ?, first_air = ?, overview = ?, tracked = ?
             WHERE id = ?
         "#,
         delete_show: r#"
@@ -1464,11 +1465,13 @@ impl Database {
     pub(crate) async fn update_show(
         &self,
         id: ShowId,
+        slug: Option<&str>,
         title: Option<&str>,
         first_air: Option<Timestamp>,
         overview: Option<&str>,
         tracked: bool,
     ) -> Result<()> {
+        let slug = slug.map(str::to_owned);
         let title = title.map(str::to_owned);
         let overview = overview.map(str::to_owned);
 
@@ -1476,6 +1479,7 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.update_show.execute((
+                slug.as_deref(),
                 title.as_deref(),
                 first_air.as_ref(),
                 overview.as_deref(),
@@ -1761,9 +1765,10 @@ impl Database {
                     .bind((ImageKind::Screenshot, show_id, season))?;
 
             while let Some(r) = stmt.next::<EpisodeScreenshotRow>()? {
-                if let Some(&i) = idx_by_id.get(&r.episode_id) {
-                    out[i].screenshot =
-                        Some(Image::new_with_dims(r.source, &r.path, r.width, r.height));
+                if let Some(&i) = idx_by_id.get(&r.episode_id)
+                    && let Some(o) = out.get_mut(i)
+                {
+                    o.screenshot = Some(Image::new_with_dims(r.source, &r.path, r.width, r.height));
                 }
             }
 
@@ -1772,8 +1777,10 @@ impl Database {
             let mut stmt = s.list_season_episode_remotes.bind((show_id, season))?;
 
             while let Some(r) = stmt.next::<EpisodeRemoteRow>()? {
-                if let Some(&i) = idx_by_id.get(&r.episode_id) {
-                    out[i].remote_id = Some(Remote::new(r.source, r.value));
+                if let Some(&i) = idx_by_id.get(&r.episode_id)
+                    && let Some(o) = out.get_mut(i)
+                {
+                    o.remote_id = Some(Remote::new(r.source, r.value));
                 }
             }
 
@@ -3348,6 +3355,7 @@ fn cutoff_timestamp(interval_hours: u32) -> Timestamp {
 fn show_from_row(r: ShowRow) -> api::Show {
     api::Show {
         id: r.id,
+        slug: r.slug,
         title: r.title,
         first_air_date: r.first_air,
         overview: r.overview,

@@ -261,7 +261,7 @@ impl Component for ShowDetail {
                         <div class="desktop-row mobile-column fill start">
                             <div class="row justify-around">
                                 {for show.remotes.iter().filter_map(|r| {
-                                    let url = r.remote.show_url()?;
+                                    let url = r.remote.show_url(show.slug.as_deref())?;
                                     let label = r.remote.source().as_str();
 
                                     Some(html! {

@@ -17,7 +17,7 @@ const EXPIRATION_SECONDS: u64 = 3600 * 24 * 24;
 // Results requested per search page (aligned with TMDB's fixed page size).
 const SEARCH_LIMIT: usize = 20;
 
-// Show artwork `type` ids (see `GET /artwork/types`, recordType "show").
+// Series artwork `type` ids (see `GET /artwork/types`, recordType "series").
 const ARTWORK_BANNER: u32 = 1;
 const ARTWORK_POSTER: u32 = 2;
 const ARTWORK_BACKGROUND: u32 = 3;
@@ -148,17 +148,19 @@ impl Client {
         Ok(req)
     }
 
-    /// Search show, returning the results for `page` and the total number of
+    /// Search series, returning the results for `page` and the total number of
     /// results across all pages.
-    pub(crate) async fn search_show(
+    pub(crate) async fn search_series(
         &self,
         query: &str,
         page: usize,
-    ) -> Result<(Vec<SearchShowResult>, usize)> {
+    ) -> Result<(Vec<SearchSeriesResult>, usize)> {
         #[derive(Deserialize)]
         struct Row {
             #[serde(default)]
             tvdb_id: Option<String>,
+            #[serde(default)]
+            slug: Option<String>,
             #[serde(default)]
             name: Option<String>,
             #[serde(default)]
@@ -193,7 +195,7 @@ impl Client {
             .await?
             .query(&[
                 ("query", query),
-                ("type", "show"),
+                ("type", "series"),
                 ("limit", limit_param.as_str()),
                 ("offset", offset_param.as_str()),
             ])
@@ -220,7 +222,7 @@ impl Client {
                 continue;
             };
 
-            // Search results expose the primary image (the poster, for show)
+            // Search results expose the primary image (the poster, for series)
             // in `image_url`; a dedicated `poster` field is usually absent, and
             // there is no wide banner artwork. Reuse the poster for the banner
             // slot rather than the smaller `thumbnail`.
@@ -229,8 +231,9 @@ impl Client {
             let banner = poster.clone();
             let fanart = primary;
 
-            out.push(SearchShowResult {
+            out.push(SearchSeriesResult {
                 remote: Remote::tvdb(id),
+                slug: row.slug,
                 title: row.name,
                 overview: row.overview,
                 first_air_date: opt_date(row.first_air_time.as_deref()),
@@ -243,7 +246,7 @@ impl Client {
         Ok((out, total))
     }
 
-    pub(crate) async fn fetch_show(&self, id: u32, language: Option<&str>) -> Result<ShowInfo> {
+    pub(crate) async fn fetch_show(&self, id: u32, language: Option<&str>) -> Result<SeriesInfo> {
         let language = language.and_then(tvdb_language);
 
         #[derive(Deserialize)]
@@ -256,6 +259,8 @@ impl Client {
         struct Extended {
             #[serde(default)]
             name: Option<String>,
+            #[serde(default)]
+            slug: Option<String>,
             #[serde(default)]
             overview: Option<String>,
             #[serde(default)]
@@ -301,6 +306,7 @@ impl Client {
         let resp: Resp = serde_json::from_slice(&bytes)?;
         let v = resp.data;
 
+        let slug = v.slug;
         let mut title = v.name;
         let mut overview = v.overview;
 
@@ -350,7 +356,7 @@ impl Client {
         let banner: Vec<Image> = banners.iter().map(|(_, i)| i.clone()).collect();
         let fanart: Vec<Image> = fanart.iter().map(|(_, i)| i.clone()).collect();
 
-        // The show record's `image` is TVDB's primary poster (its analog of
+        // The series record's `image` is TVDB's primary poster (its analog of
         // TMDB's poster_path). Prefer it when selecting, and fall back to it as
         // the only poster when there are no poster artworks at all.
         let primary_poster = v.image.as_deref().and_then(image_path).map(ImageKey::tvdb);
@@ -367,7 +373,8 @@ impl Client {
         let selected_banner = best_image(&banner, None);
         let selected_fanart = best_image(&fanart, None);
 
-        Ok(ShowInfo {
+        Ok(SeriesInfo {
+            slug,
             title,
             overview,
             poster,
@@ -507,7 +514,8 @@ struct Translation {
     overview: Option<String>,
 }
 
-pub(crate) struct ShowInfo {
+pub(crate) struct SeriesInfo {
+    pub slug: Option<String>,
     pub title: Option<String>,
     pub overview: Option<String>,
     pub poster: Vec<Image>,
@@ -530,8 +538,9 @@ pub(crate) struct EpisodeInfo {
     pub remote: Remote,
 }
 
-pub(crate) struct SearchShowResult {
+pub(crate) struct SearchSeriesResult {
     pub remote: Remote,
+    pub slug: Option<String>,
     pub title: Option<String>,
     pub overview: Option<String>,
     pub first_air_date: Option<Date>,

@@ -397,7 +397,7 @@ impl Search {
 
                 <div class="column top fill">
                     <div class="row-fill">
-                        <a class="item-inline-lg" href={r.remote.show_url()} target="_blank" rel="noopener noreferrer" title={format!("Open on {}", r.remote.source())}>
+                        <a class="item-inline-lg" href={r.remote.show_url(r.slug.as_deref())} target="_blank" rel="noopener noreferrer" title={format!("Open on {}", r.remote.source())}>
                             <span class={classes!("logo", r.remote.source().as_str().to_owned())} />
                         </a>
 

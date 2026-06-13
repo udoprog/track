@@ -126,6 +126,7 @@ impl RemoteClients {
             for r in results {
                 a.push(api::SearchShow {
                     remote: r.remote,
+                    slug: None,
                     title: r.title,
                     poster: r.poster.clone().map(api::Image::from),
                     banner: r.backdrop.clone().map(api::Image::from),
@@ -138,12 +139,13 @@ impl RemoteClients {
         }
 
         if let Some(client) = tvdb {
-            let (results, count) = client.search_show(query, page).await?;
+            let (results, count) = client.search_series(query, page).await?;
             total += count;
 
             for r in results {
                 b.push(api::SearchShow {
                     remote: r.remote,
+                    slug: r.slug,
                     title: r.title,
                     poster: r
                         .poster
@@ -255,7 +257,7 @@ impl RemoteClients {
         &self,
         id: u32,
         language: Option<&str>,
-    ) -> Result<tvdb::ShowInfo> {
+    ) -> Result<tvdb::SeriesInfo> {
         self.tvdb()
             .context("Expected a configured TVDB client")?
             .fetch_show(id, language)

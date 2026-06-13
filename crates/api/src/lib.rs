@@ -617,18 +617,20 @@ impl ::sqll::FromColumn<'_> for RemoteValue {
         let value = ::sqll::Value::from_column(stmt, index)?;
 
         if let Some(n) = value.as_integer() {
-            Ok(RemoteValue::Int(n as u32))
-        } else if let Some(s) = value.as_text() {
+            return Ok(RemoteValue::Int(n as u32));
+        }
+
+        if let Some(s) = value.as_text() {
             let s = s
                 .to_str()
                 .map_err(|e| ::sqll::Error::new(::sqll::Code::MISMATCH, e))?;
-            Ok(RemoteValue::Str(s.to_owned()))
-        } else {
-            Err(::sqll::Error::new(
-                ::sqll::Code::MISMATCH,
-                "remote value must be an integer or text",
-            ))
+            return Ok(RemoteValue::Str(s.to_owned()));
         }
+
+        Err(::sqll::Error::new(
+            ::sqll::Code::MISMATCH,
+            "remote value must be an integer or text",
+        ))
     }
 }
 
@@ -698,11 +700,16 @@ impl Remote {
         &self.value
     }
 
-    pub fn show_url(&self) -> Option<String> {
-        match &self.source {
-            RemoteSource::Tvdb => Some(format!("https://thetvdb.com/search?query={}", self.value)),
-            RemoteSource::Tmdb => Some(format!("https://www.themoviedb.org/tv/{}", self.value)),
-            RemoteSource::Imdb => Some(format!("https://www.imdb.com/title/{}/", self.value)),
+    pub fn show_url(&self, slug: Option<&str>) -> Option<String> {
+        match (&self.source, slug) {
+            (RemoteSource::Tvdb, Some(slug)) => Some(format!("https://thetvdb.com/series/{slug}")),
+            (RemoteSource::Tvdb, None) => {
+                Some(format!("https://thetvdb.com/search?query={}", self.value))
+            }
+            (RemoteSource::Tmdb, _) => {
+                Some(format!("https://www.themoviedb.org/tv/{}", self.value))
+            }
+            (RemoteSource::Imdb, _) => Some(format!("https://www.imdb.com/title/{}/", self.value)),
             _ => None,
         }
     }
@@ -1243,6 +1250,7 @@ pub struct MediaImage {
 #[musli(crate = musli_core)]
 pub struct Show {
     pub id: ShowId,
+    pub slug: Option<String>,
     pub title: Option<String>,
     pub first_air_date: Option<Timestamp>,
     pub overview: Option<String>,
@@ -1573,6 +1581,7 @@ pub enum SearchKind {
 #[musli(crate = musli_core)]
 pub struct SearchShow {
     pub remote: Remote,
+    pub slug: Option<String>,
     pub title: Option<String>,
     pub poster: Option<Image>,
     pub banner: Option<Image>,

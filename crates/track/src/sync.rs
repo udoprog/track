@@ -92,6 +92,7 @@ async fn sync_show_tmdb(
 
     db.update_show(
         show_id,
+        None,
         info.title.as_deref(),
         info.first_air_date.or(show.first_air_date),
         info.overview.as_deref(),
@@ -243,6 +244,7 @@ async fn sync_show_tvdb(
 
     db.update_show(
         show_id,
+        info.slug.as_deref(),
         info.title.as_deref(),
         show.first_air_date,
         info.overview.as_deref(),
