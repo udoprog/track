@@ -31,8 +31,8 @@ pub(super) enum Msg {
     Submit,
     LoadMore,
     SearchDone(Result<ws::Packet<api::Search>, ws::Error>),
-    TrackShow(api::RemoteId),
-    TrackMovie(api::RemoteId),
+    TrackShow(api::Remote),
+    TrackMovie(api::Remote),
     TrackShowDone(Result<ws::Packet<api::TrackShow>, ws::Error>),
     TrackMovieDone(Result<ws::Packet<api::TrackMovie>, ws::Error>),
     Navigate(Route),
@@ -207,9 +207,9 @@ impl Search {
                 }
                 match event.kind {
                     api::AppEventKind::ShowCreated { show } => {
-                        for remote_id in &show.remotes {
+                        for entry in &show.remotes {
                             for r in &mut self.shows {
-                                if &r.remote_id == remote_id {
+                                if r.remote == entry.remote {
                                     r.already_tracked = Some(show.id);
                                 }
                             }
@@ -217,9 +217,9 @@ impl Search {
                         Ok(true)
                     }
                     api::AppEventKind::MovieCreated { movie } => {
-                        for remote_id in &movie.remotes {
+                        for entry in &movie.remotes {
                             for r in &mut self.movies {
-                                if &r.remote_id == remote_id {
+                                if r.remote == entry.remote {
                                     r.already_tracked = Some(movie.id);
                                 }
                             }
@@ -275,7 +275,7 @@ impl Search {
                 self._track_req = self
                     .channel
                     .request()
-                    .body(api::TrackShowRequest { remote_id })
+                    .body(api::TrackShowRequest { remote: remote_id })
                     .on_packet(ctx.link().callback(Msg::TrackShowDone))
                     .send();
                 Ok(false)
@@ -284,7 +284,7 @@ impl Search {
                 self._track_req = self
                     .channel
                     .request()
-                    .body(api::TrackMovieRequest { remote_id })
+                    .body(api::TrackMovieRequest { remote: remote_id })
                     .on_packet(ctx.link().callback(Msg::TrackMovieDone))
                     .send();
                 Ok(false)
@@ -378,7 +378,7 @@ impl Search {
     }
 
     fn view_show_result(&self, ctx: &Context<Self>, r: &api::SearchShow) -> Html {
-        let remote_id = r.remote_id.clone();
+        let remote_id = r.remote.clone();
         let show_id = r.already_tracked;
 
         let on_nav = show_id.map(|id| {
@@ -391,14 +391,14 @@ impl Search {
             .callback(move |_| Msg::TrackShow(remote_id.clone()));
 
         html! {
-            <div key={r.remote_id.to_string()} class="desktop-row mobile-column">
+            <div key={r.remote.to_string()} class="desktop-row mobile-column">
                 <Image class="poster poster-side top hide-mobile" src={r.poster.clone()} placeholder=true />
                 <Image class="banner hide-desktop" src={r.banner.clone()} placeholder=true />
 
                 <div class="column top fill">
                     <div class="row-fill">
-                        <a class="item-inline-lg" href={r.remote_id.show_url()} target="_blank" rel="noopener noreferrer" title={format!("Open on {}", r.remote_id.source())}>
-                            <span class={classes!("logo", r.remote_id.source().as_str().to_owned())} />
+                        <a class="item-inline-lg" href={r.remote.show_url()} target="_blank" rel="noopener noreferrer" title={format!("Open on {}", r.remote.source())}>
+                            <span class={classes!("logo", r.remote.source().as_str().to_owned())} />
                         </a>
 
                         if let Some(ref title) = r.title {
@@ -435,7 +435,7 @@ impl Search {
     }
 
     fn view_movie_result(&self, ctx: &Context<Self>, r: &api::SearchMovie) -> Html {
-        let remote_id = r.remote_id.clone();
+        let remote_id = r.remote.clone();
         let show_id = r.already_tracked;
 
         let on_nav = show_id.map(|id| {
@@ -448,14 +448,14 @@ impl Search {
             .callback(move |_| Msg::TrackMovie(remote_id.clone()));
 
         html! {
-            <div key={r.remote_id.to_string()} class="desktop-row mobile-column">
+            <div key={r.remote.to_string()} class="desktop-row mobile-column">
                 <Image class="poster poster-side top hide-mobile" src={r.poster.clone()} placeholder=true />
                 <Image class="banner hide-desktop" src={r.banner.clone()} placeholder=true />
 
                 <div class="column top fill">
                     <div class="row-fill">
-                        <a class="item-inline-lg" href={r.remote_id.movie_url()} target="_blank" rel="noopener noreferrer" title={format!("Open on {}", r.remote_id.source())}>
-                            <span class={classes!("logo", r.remote_id.source().as_str().to_owned())} />
+                        <a class="item-inline-lg" href={r.remote.movie_url()} target="_blank" rel="noopener noreferrer" title={format!("Open on {}", r.remote.source())}>
+                            <span class={classes!("logo", r.remote.source().as_str().to_owned())} />
                         </a>
 
                         if let Some(ref title) = r.title {

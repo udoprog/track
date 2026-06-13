@@ -206,7 +206,7 @@ pub(super) struct MediaSettingsModalProps {
     pub(super) on_edit_identifiers: Callback<()>,
     pub(super) on_close: Callback<()>,
     /// Remote identifiers available for syncing.
-    pub(super) remotes: Vec<api::RemoteId>,
+    pub(super) remotes: Vec<api::Remote>,
     /// Whether to scope the sync-source select to show or movie remotes.
     pub(super) kind: RemoteSourceKind,
     /// Currently selected sync source.
@@ -463,7 +463,7 @@ pub(super) enum RemoteSourceKind {
 
 #[derive(Properties, PartialEq)]
 pub(super) struct RemoteSourceSelectProps {
-    pub(super) remotes: Vec<api::RemoteId>,
+    pub(super) remotes: Vec<api::Remote>,
     pub(super) current_source: Option<api::RemoteSource>,
     pub(super) kind: RemoteSourceKind,
     pub(super) on_change: Callback<api::RemoteSource>,
@@ -515,9 +515,9 @@ const REMOTE_SOURCES: &[(api::RemoteSource, &str)] = &[
     (api::RemoteSource::Imdb, "IMDb"),
 ];
 
-/// Validate a source/value pair and build the `RemoteId`, or return a
+/// Validate a source/value pair and build the `Remote`, or return a
 /// user-facing error explaining why the identifier is invalid.
-fn parse_remote(source: &api::RemoteSource, value: &str) -> Result<api::RemoteId, String> {
+fn parse_remote(source: &api::RemoteSource, value: &str) -> Result<api::Remote, String> {
     let value = value.trim();
 
     if value.is_empty() {
@@ -548,7 +548,7 @@ fn parse_remote(source: &api::RemoteSource, value: &str) -> Result<api::RemoteId
         }
     };
 
-    Ok(api::RemoteId::new(*source, value))
+    Ok(api::Remote::new(*source, value))
 }
 
 /// Modal for adding, editing and removing remote identifiers (e.g. `tvdb:123`,
@@ -558,10 +558,10 @@ fn parse_remote(source: &api::RemoteSource, value: &str) -> Result<api::RemoteId
 #[derive(Properties, PartialEq)]
 pub(super) struct RemoteEditorProps {
     pub(super) title: String,
-    pub(super) remotes: Vec<api::RemoteId>,
-    pub(super) on_add: Callback<api::RemoteId>,
-    /// `(old, new)` — replace an existing identifier with an edited one.
-    pub(super) on_edit: Callback<(api::RemoteId, api::RemoteId)>,
+    pub(super) remotes: Vec<api::RemoteEntry>,
+    pub(super) on_add: Callback<api::Remote>,
+    /// `(id, remote)` — replace the identified remote with an edited value.
+    pub(super) on_edit: Callback<(api::RemoteId, api::Remote)>,
     pub(super) on_remove: Callback<api::RemoteId>,
     pub(super) on_close: Callback<()>,
 }
@@ -570,9 +570,9 @@ pub(super) enum RemoteEditorMsg {
     SetSource(api::RemoteSource),
     SetValue(String),
     Submit,
-    Edit(api::RemoteId),
+    Edit(api::RemoteEntry),
     CancelEdit,
-    AskRemove(api::RemoteId),
+    AskRemove(api::RemoteEntry),
     CancelRemove,
     ConfirmRemove(api::RemoteId),
     Close,
@@ -581,10 +581,10 @@ pub(super) enum RemoteEditorMsg {
 pub(super) struct RemoteEditor {
     source: api::RemoteSource,
     value: String,
-    /// When set, the form edits this existing identifier instead of adding.
+    /// When set, the form edits the remote with this id instead of adding.
     editing: Option<api::RemoteId>,
     /// When set, awaiting confirmation to remove this identifier.
-    confirming_remove: Option<api::RemoteId>,
+    confirming_remove: Option<api::RemoteEntry>,
     error: Option<String>,
     /// The source `<select>`; its displayed selection is a DOM property that
     /// must be set imperatively when `source` changes programmatically.
@@ -637,14 +637,13 @@ impl Component for RemoteEditor {
             }
             RemoteEditorMsg::Submit => {
                 match parse_remote(&self.source, &self.value) {
-                    Ok(remote_id) => {
+                    Ok(remote) => {
                         match self.editing.take() {
-                            Some(old) if old != remote_id => {
-                                ctx.props().on_edit.emit((old, remote_id));
+                            Some(id) => {
+                                ctx.props().on_edit.emit((id, remote));
                             }
-                            Some(..) => {}
                             None => {
-                                ctx.props().on_add.emit(remote_id);
+                                ctx.props().on_add.emit(remote);
                             }
                         }
 
@@ -657,10 +656,10 @@ impl Component for RemoteEditor {
 
                 true
             }
-            RemoteEditorMsg::Edit(remote_id) => {
-                self.source = *remote_id.source();
-                self.value = remote_id.value().to_string();
-                self.editing = Some(remote_id);
+            RemoteEditorMsg::Edit(entry) => {
+                self.source = *entry.remote.source();
+                self.value = entry.remote.value().to_string();
+                self.editing = Some(entry.id);
                 self.confirming_remove = None;
                 self.error = None;
                 true
@@ -669,8 +668,8 @@ impl Component for RemoteEditor {
                 self.reset_form();
                 true
             }
-            RemoteEditorMsg::AskRemove(remote_id) => {
-                self.confirming_remove = Some(remote_id);
+            RemoteEditorMsg::AskRemove(entry) => {
+                self.confirming_remove = Some(entry);
                 true
             }
             RemoteEditorMsg::CancelRemove => {
@@ -678,7 +677,7 @@ impl Component for RemoteEditor {
                 true
             }
             RemoteEditorMsg::ConfirmRemove(remote_id) => {
-                if self.editing.as_ref() == Some(&remote_id) {
+                if self.editing == Some(remote_id) {
                     self.reset_form();
                 }
 
@@ -728,40 +727,42 @@ impl Component for RemoteEditor {
                     <div class="text-muted">{"No remote identifiers"}</div>
                 } else {
                     { for props.remotes.iter().map(|r| {
+                        let key = r.remote.to_string();
+
                         if self.confirming_remove.as_ref() == Some(r) {
-                            let remote_id = r.clone();
+                            let remote_id = r.id;
 
                             return html! {
                                 <ConfirmDanger
-                                    key={r.to_string()}
+                                    key={key}
                                     prompt="Remove"
-                                    label={r.to_string()}
-                                    on_confirm={link.callback(move |_| RemoteEditorMsg::ConfirmRemove(remote_id.clone()))}
+                                    label={r.remote.to_string()}
+                                    on_confirm={link.callback(move |_| RemoteEditorMsg::ConfirmRemove(remote_id))}
                                     on_cancel={link.callback(|_| RemoteEditorMsg::CancelRemove)}
                                 />
                             };
                         }
 
-                        let editing_this = self.editing.as_ref() == Some(r);
-                        let edit_id = r.clone();
-                        let remove_id = r.clone();
+                        let editing_this = self.editing == Some(r.id);
+                        let edit_entry = r.clone();
+                        let remove_entry = r.clone();
 
                         html! {
-                            <div key={r.to_string()} class={classes!("row-fill", editing_this.then_some("active"))}>
+                            <div key={key} class={classes!("row-fill", editing_this.then_some("active"))}>
                                 <div class="row clickable">
                                     <span class="item-inline-lg">
-                                        <span class={classes!("logo", r.source().as_str().to_owned())} />
+                                        <span class={classes!("logo", r.remote.source().as_str().to_owned())} />
                                     </span>
 
-                                    <span>{r.value().to_string()}</span>
+                                    <span>{r.remote.value().to_string()}</span>
                                 </div>
 
                                 <div class="input-group end">
-                                    <button class="btn" onclick={link.callback(move |_| RemoteEditorMsg::Edit(edit_id.clone()))} title="Edit identifier">
+                                    <button class="btn" onclick={link.callback(move |_| RemoteEditorMsg::Edit(edit_entry.clone()))} title="Edit identifier">
                                         <span class="icon pencil-square" />
                                     </button>
 
-                                    <button class="btn-danger" onclick={link.callback(move |_| RemoteEditorMsg::AskRemove(remove_id.clone()))} title="Remove identifier">
+                                    <button class="btn-danger" onclick={link.callback(move |_| RemoteEditorMsg::AskRemove(remove_entry.clone()))} title="Remove identifier">
                                         <span class="icon trash" />
                                     </button>
                                 </div>

@@ -123,18 +123,18 @@ impl WsHandler {
                     .read::<api::TrackShowRequest>()
                     .context("Expected a request payload")?;
 
-                let show_id = match self.db.show_id_by_remote(&req.remote_id).await? {
+                let show_id = match self.db.show_id_by_remote(&req.remote).await? {
                     Some(id) => id,
                     None => ShowId::random(),
                 };
 
                 self.db
-                    .create_show(show_id, &req.remote_id.value().to_string(), None, "")
+                    .create_show(show_id, &req.remote.value().to_string(), None, "")
                     .await?;
 
-                self.db.add_show_remote(show_id, &req.remote_id).await?;
+                self.db.add_show_remote(show_id, &req.remote).await?;
 
-                let source = api::SyncSource::from_remote_source(req.remote_id.source());
+                let source = *req.remote.source();
 
                 if !source.is_unknown() {
                     self.db.set_show_sync_source(show_id, source).await?;
@@ -233,18 +233,18 @@ impl WsHandler {
                     .read::<api::TrackMovieRequest>()
                     .context("Expected a request payload")?;
 
-                let movie_id = match self.db.movie_id_by_remote(&req.remote_id).await? {
+                let movie_id = match self.db.movie_id_by_remote(&req.remote).await? {
                     Some(id) => id,
                     None => MovieId::random(),
                 };
 
                 self.db
-                    .create_movie(movie_id, &req.remote_id.value().to_string(), None, "", true)
+                    .create_movie(movie_id, &req.remote.value().to_string(), None, "", true)
                     .await?;
 
-                self.db.add_movie_remote(movie_id, &req.remote_id).await?;
+                self.db.add_movie_remote(movie_id, &req.remote).await?;
 
-                let source = api::SyncSource::from_remote_source(req.remote_id.source());
+                let source = *req.remote.source();
 
                 if !source.is_unknown() {
                     self.db.set_movie_sync_source(movie_id, source).await?;
@@ -509,11 +509,8 @@ impl WsHandler {
                         total = count;
 
                         for r in results {
-                            let already_tracked = self
-                                .db
-                                .shows_by_remote_id(&r.remote_id)
-                                .await?
-                                .map(|s| s.id);
+                            let already_tracked =
+                                self.db.shows_by_remote_id(&r.remote).await?.map(|s| s.id);
 
                             shows.push(api::SearchShow {
                                 already_tracked,
@@ -528,11 +525,8 @@ impl WsHandler {
                         total = count;
 
                         for r in results {
-                            let already_tracked = self
-                                .db
-                                .movie_by_remote_id(&r.remote_id)
-                                .await?
-                                .map(|m| m.id);
+                            let already_tracked =
+                                self.db.movie_by_remote_id(&r.remote).await?.map(|m| m.id);
 
                             movies.push(api::SearchMovie {
                                 already_tracked,
@@ -628,7 +622,7 @@ impl WsHandler {
                     .await?
                     .context("Expected movie to exist")?;
 
-                if req.source != api::SyncSource::Tmdb {
+                if req.source != api::RemoteSource::Tmdb {
                     anyhow::bail!("Unsupported movie sync source: {}", req.source);
                 }
 
@@ -672,7 +666,7 @@ impl WsHandler {
                     .await?
                     .context("Expected show to exist")?;
 
-                self.db.add_show_remote(req.id, &req.remote_id).await?;
+                self.db.add_show_remote(req.id, &req.remote).await?;
 
                 let show = self
                     .db
@@ -704,7 +698,7 @@ impl WsHandler {
                     .await?
                     .context("Expected show to exist")?;
 
-                self.db.remove_show_remote(req.id, &req.remote_id).await?;
+                self.db.remove_show_remote(req.remote_id).await?;
 
                 let show = self
                     .db
@@ -736,7 +730,7 @@ impl WsHandler {
                     .await?
                     .context("Expected movie to exist")?;
 
-                self.db.add_movie_remote(req.id, &req.remote_id).await?;
+                self.db.add_movie_remote(req.id, &req.remote).await?;
 
                 let movie = self
                     .db
@@ -770,7 +764,7 @@ impl WsHandler {
                     .await?
                     .context("Expected movie to exist")?;
 
-                self.db.remove_movie_remote(req.id, &req.remote_id).await?;
+                self.db.remove_movie_remote(req.remote_id).await?;
 
                 let movie = self
                     .db
@@ -805,7 +799,7 @@ impl WsHandler {
                     .context("Expected show to exist")?;
 
                 self.db
-                    .update_show_remote(req.id, &req.old, &req.new)
+                    .update_show_remote(req.remote_id, &req.remote)
                     .await?;
 
                 let show = self
@@ -839,7 +833,7 @@ impl WsHandler {
                     .context("Expected movie to exist")?;
 
                 self.db
-                    .update_movie_remote(req.id, &req.old, &req.new)
+                    .update_movie_remote(req.remote_id, &req.remote)
                     .await?;
 
                 let movie = self

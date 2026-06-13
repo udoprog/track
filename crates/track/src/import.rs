@@ -240,12 +240,12 @@ async fn import_movie_images(
     Ok(())
 }
 
-fn remote_id(s: Option<&String>) -> Option<api::RemoteId> {
+fn remote_id(s: Option<&String>) -> Option<api::Remote> {
     let s = s?;
     if s.is_empty() {
         return None;
     }
-    Some(api::RemoteId::from_raw(s.as_str()))
+    Some(api::Remote::from_raw(s.as_str()))
 }
 
 #[derive(Debug, Deserialize)]
@@ -342,7 +342,9 @@ pub async fn import() -> Result<()> {
         .into_iter()
         .flat_map(|s| {
             let id = s.id;
-            s.remotes.into_iter().map(move |r| (r.to_string(), id))
+            s.remotes
+                .into_iter()
+                .map(move |r| (r.remote.to_string(), id))
         })
         .collect();
 
@@ -353,7 +355,9 @@ pub async fn import() -> Result<()> {
         .into_iter()
         .flat_map(|m| {
             let id = m.id;
-            m.remotes.into_iter().map(move |r| (r.to_string(), id))
+            m.remotes
+                .into_iter()
+                .map(move |r| (r.remote.to_string(), id))
         })
         .collect();
 
@@ -417,7 +421,7 @@ pub async fn import() -> Result<()> {
             import_show_images(&db, show_id, &s.graphics).await?;
 
             if let Some(remote_id) = &s.remote_id {
-                let remote = api::RemoteId::from_raw(remote_id);
+                let remote = api::Remote::from_raw(remote_id);
                 db.add_show_remote(show_id, &remote).await?;
                 show_by_remote.insert(remote_id.clone(), show_id);
             }
@@ -523,7 +527,7 @@ pub async fn import() -> Result<()> {
             import_movie_images(&db, movie_id, &m.graphics).await?;
 
             if let Some(rid) = &m.remote_id {
-                let remote = api::RemoteId::from_raw(rid.as_str());
+                let remote = api::Remote::from_raw(rid.as_str());
                 db.add_movie_remote(movie_id, &remote).await?;
                 movies_by_remote.insert(rid.clone(), movie_id);
             }
@@ -604,7 +608,7 @@ pub async fn import() -> Result<()> {
                 "show" => {
                     let show_id = api::ShowId::new(uuid_to_u64(entry.uuid));
                     for rid in &entry.remotes {
-                        let remote = api::RemoteId::from_raw(rid.as_str());
+                        let remote = api::Remote::from_raw(rid.as_str());
                         db.add_show_remote(show_id, &remote)
                             .await
                             .with_context(|| {
@@ -616,7 +620,7 @@ pub async fn import() -> Result<()> {
                 "movie" => {
                     let movie_id = api::MovieId::new(uuid_to_u64(entry.uuid));
                     for rid in &entry.remotes {
-                        let remote = api::RemoteId::from_raw(rid.as_str());
+                        let remote = api::Remote::from_raw(rid.as_str());
                         db.add_movie_remote(movie_id, &remote)
                             .await
                             .with_context(|| {

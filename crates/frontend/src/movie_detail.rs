@@ -74,8 +74,8 @@ pub(super) enum Msg {
     CloseSettingsModal,
     OpenRemoteEditor,
     CloseRemoteEditor,
-    AddRemote(api::RemoteId),
-    EditRemote(api::RemoteId, api::RemoteId),
+    AddRemote(api::Remote),
+    EditRemote(api::RemoteId, api::Remote),
     RemoveRemote(api::RemoteId),
     RemoteDone(Result<(), ws::Error>),
     ConfirmRemove,
@@ -84,9 +84,9 @@ pub(super) enum Msg {
     RemoveDone(Result<ws::Packet<api::RemoveMovie>, ws::Error>),
     SyncMovie,
     SyncDone(Result<ws::Packet<api::SyncMovie>, ws::Error>),
-    SetSyncSource(api::SyncSource),
+    SetSyncSource(api::RemoteSource),
     SetSyncSourceDone(
-        api::SyncSource,
+        api::RemoteSource,
         Result<ws::Packet<api::SetMovieSyncSource>, ws::Error>,
     ),
     SetLanguage(Option<String>),
@@ -607,13 +607,13 @@ impl MovieDetail {
                 self.remote_editor = false;
                 Ok(true)
             }
-            Msg::AddRemote(remote_id) => {
+            Msg::AddRemote(remote) => {
                 let id = ctx.props().movie_id;
 
                 self._remote_req = self
                     .channel
                     .request()
-                    .body(api::AddMovieRemoteRequest { id, remote_id })
+                    .body(api::AddMovieRemoteRequest { id, remote })
                     .on_packet(ctx.link().callback(
                         |r: Result<ws::Packet<api::AddMovieRemote>, ws::Error>| {
                             Msg::RemoteDone(r.map(|_| ()))
@@ -623,13 +623,17 @@ impl MovieDetail {
 
                 Ok(false)
             }
-            Msg::EditRemote(old, new) => {
+            Msg::EditRemote(remote_id, remote) => {
                 let id = ctx.props().movie_id;
 
                 self._remote_req = self
                     .channel
                     .request()
-                    .body(api::UpdateMovieRemoteRequest { id, old, new })
+                    .body(api::UpdateMovieRemoteRequest {
+                        id,
+                        remote_id,
+                        remote,
+                    })
                     .on_packet(ctx.link().callback(
                         |r: Result<ws::Packet<api::UpdateMovieRemote>, ws::Error>| {
                             Msg::RemoteDone(r.map(|_| ()))
@@ -897,8 +901,8 @@ impl MovieDetail {
                     if !movie.remotes.is_empty() {
                         <div class="row justify-around">
                             {for movie.remotes.iter().filter_map(|r| {
-                                let url = r.movie_url()?;
-                                let label = r.source().as_str();
+                                let url = r.remote.movie_url()?;
+                                let label = r.remote.source().as_str();
 
                                 Some(html! {
                                     <a class="item-inline-source" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
@@ -1009,11 +1013,11 @@ impl MovieDetail {
                     language={movie.language.clone()}
                     has_images={!movie.images.is_empty()}
                     kind={RemoteSourceKind::Movie}
-                    remotes={movie.remotes.clone()}
-                    current_source={movie.effective_sync_source().map(|r| r.into_remote_source())}
+                    remotes={movie.remotes.iter().map(|e| e.remote.clone()).collect::<Vec<_>>()}
+                    current_source={movie.effective_sync_source()}
                     last_synced={movie.last_synced_at.map(|ts| AttrValue::from(ts.display(self.tz.clone())))}
                     syncing={self.syncing}
-                    on_sync_source_change={link.callback(|s: api::RemoteSource| Msg::SetSyncSource(s.into_sync_source()))}
+                    on_sync_source_change={link.callback(Msg::SetSyncSource)}
                     on_sync={link.callback(|_| Msg::SyncMovie)}
                     on_language_change={link.callback(Msg::SetLanguage)}
                     on_edit_graphics={link.callback(|_| Msg::OpenImageModal)}
@@ -1027,7 +1031,7 @@ impl MovieDetail {
                     title={movie.title.as_deref().unwrap_or("Untitled Movie").to_owned()}
                     remotes={movie.remotes.clone()}
                     on_add={link.callback(Msg::AddRemote)}
-                    on_edit={link.callback(|(old, new)| Msg::EditRemote(old, new))}
+                    on_edit={link.callback(|(id, remote)| Msg::EditRemote(id, remote))}
                     on_remove={link.callback(Msg::RemoveRemote)}
                     on_close={link.callback(|_| Msg::CloseRemoteEditor)}
                 />

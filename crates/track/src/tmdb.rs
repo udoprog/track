@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
-use api::{Date, Image, ImageKey, ImageSource, ReleaseType, RemoteId, SeasonNumber, Timestamp};
+use api::{Date, Image, ImageKey, ImageSource, ReleaseType, Remote, SeasonNumber, Timestamp};
 use reqwest::{Method, RequestBuilder};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
@@ -155,7 +155,7 @@ impl Client {
 
         for r in resp.results {
             out.push(SearchShowResult {
-                remote_id: RemoteId::tmdb(r.id),
+                remote: Remote::tmdb(r.id),
                 title: r.name.or(r.original_name),
                 overview: r.overview.filter(|s| !s.trim().is_empty()),
                 first_air_date: opt_date(r.first_air_date.as_deref()),
@@ -217,7 +217,7 @@ impl Client {
 
         for r in resp.results {
             out.push(SearchMovieResult {
-                remote_id: RemoteId::tmdb(r.id),
+                remote: Remote::tmdb(r.id),
                 title: r.title.or(r.original_title),
                 overview: r.overview.filter(|s| !s.trim().is_empty()),
                 release_date: opt_date(r.release_date.as_deref()),
@@ -298,16 +298,16 @@ impl Client {
             })
         }
 
-        let mut remotes = vec![RemoteId::tmdb(id)];
+        let mut remotes = vec![Remote::tmdb(id)];
 
         if let Some(tvdb_id) = details.external_ids.tvdb_id {
-            remotes.push(RemoteId::tvdb(tvdb_id));
+            remotes.push(Remote::tvdb(tvdb_id));
         }
 
         if let Some(ref imdb_id) = details.external_ids.imdb_id
             && !imdb_id.is_empty()
         {
-            remotes.push(RemoteId::imdb(imdb_id));
+            remotes.push(Remote::imdb(imdb_id));
         }
 
         let posters = to_images(images.posters);
@@ -382,7 +382,7 @@ impl Client {
                     .map(|d| d.to_timestamp_at_midnight_utc())
                     .transpose()?,
                 filename: e.still_path.as_deref().map(ImageKey::tmdb),
-                remote_id: RemoteId::tmdb(e.id),
+                remote: Remote::tmdb(e.id),
             });
         }
 
@@ -485,12 +485,12 @@ impl Client {
             .await
             .context("Fetching images")?;
 
-        let mut remotes = vec![RemoteId::tmdb(id)];
+        let mut remotes = vec![Remote::tmdb(id)];
 
         if let Some(ref imdb_id) = details.external_ids.imdb_id
             && !imdb_id.is_empty()
         {
-            remotes.push(RemoteId::imdb(imdb_id));
+            remotes.push(Remote::imdb(imdb_id));
         }
 
         let posters = to_images(images.posters);
@@ -528,7 +528,7 @@ pub(crate) struct ShowInfo {
     pub selected_poster: Option<ImageKey>,
     pub selected_backdrop: Option<ImageKey>,
     pub seasons: Vec<SeasonInfo>,
-    pub remotes: Vec<RemoteId>,
+    pub remotes: Vec<Remote>,
 }
 
 pub(crate) struct SeasonInfo {
@@ -547,7 +547,7 @@ pub(crate) struct EpisodeInfo {
     pub overview: Option<String>,
     pub aired: Option<Timestamp>,
     pub filename: Option<ImageKey>,
-    pub remote_id: RemoteId,
+    pub remote: Remote,
 }
 
 pub(crate) struct MovieInfo {
@@ -558,11 +558,11 @@ pub(crate) struct MovieInfo {
     pub backdrops: Vec<Image>,
     pub selected_poster: Option<ImageKey>,
     pub selected_backdrop: Option<ImageKey>,
-    pub remotes: Vec<RemoteId>,
+    pub remotes: Vec<Remote>,
 }
 
 pub(crate) struct SearchShowResult {
-    pub remote_id: RemoteId,
+    pub remote: Remote,
     pub title: Option<String>,
     pub overview: Option<String>,
     pub first_air_date: Option<Date>,
@@ -571,7 +571,7 @@ pub(crate) struct SearchShowResult {
 }
 
 pub(crate) struct SearchMovieResult {
-    pub remote_id: RemoteId,
+    pub remote: Remote,
     pub title: Option<String>,
     pub overview: Option<String>,
     pub release_date: Option<Date>,

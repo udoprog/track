@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{Context as _, Result};
-use api::{Date, Image, ImageKey, ImageSource, RemoteId, SeasonNumber, Timestamp};
+use api::{Date, Image, ImageKey, ImageSource, Remote, SeasonNumber, Timestamp};
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, MutexGuard};
@@ -230,7 +230,7 @@ impl Client {
             let fanart = primary;
 
             out.push(SearchShowResult {
-                remote_id: RemoteId::tvdb(id),
+                remote: Remote::tvdb(id),
                 title: row.name,
                 overview: row.overview,
                 first_air_date: opt_date(row.first_air_time.as_deref()),
@@ -316,11 +316,11 @@ impl Client {
             }
         }
 
-        let mut remotes = vec![RemoteId::tvdb(id)];
+        let mut remotes = vec![Remote::tvdb(id)];
 
         for remote in &v.remote_ids {
             if remote.source_name.eq_ignore_ascii_case("imdb") && !remote.id.is_empty() {
-                remotes.push(RemoteId::imdb(&remote.id));
+                remotes.push(Remote::imdb(&remote.id));
             }
         }
 
@@ -484,7 +484,7 @@ impl Client {
                         .map(|d| d.to_timestamp_at_midnight_utc())
                         .transpose()?,
                     image: opt_image(row.image.as_deref()),
-                    remote_id: RemoteId::tvdb(row.id),
+                    remote: Remote::tvdb(row.id),
                 });
             }
 
@@ -516,7 +516,7 @@ pub(crate) struct ShowInfo {
     pub selected_banner: Option<ImageKey>,
     pub fanart: Vec<Image>,
     pub selected_fanart: Option<ImageKey>,
-    pub remotes: Vec<RemoteId>,
+    pub remotes: Vec<Remote>,
 }
 
 pub(crate) struct EpisodeInfo {
@@ -527,11 +527,11 @@ pub(crate) struct EpisodeInfo {
     pub overview: Option<String>,
     pub aired: Option<Timestamp>,
     pub image: Option<(ImageSource, String)>,
-    pub remote_id: RemoteId,
+    pub remote: Remote,
 }
 
 pub(crate) struct SearchShowResult {
-    pub remote_id: RemoteId,
+    pub remote: Remote,
     pub title: Option<String>,
     pub overview: Option<String>,
     pub first_air_date: Option<Date>,

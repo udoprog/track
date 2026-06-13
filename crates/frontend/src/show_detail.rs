@@ -108,7 +108,7 @@ pub(super) enum Msg {
     ClearSelectedImage(api::ImageKind),
     SelectImageDone(Result<ws::Packet<api::SelectImage>, ws::Error>),
     ClearSelectedImageDone(Result<ws::Packet<api::ClearSelectedImage>, ws::Error>),
-    SetSyncSource(api::SyncSource),
+    SetSyncSource(api::RemoteSource),
     SetSyncSourceDone(Result<ws::Packet<api::SetShowSyncSource>, ws::Error>),
     SetLanguage(Option<String>),
     SetLanguageDone(
@@ -126,8 +126,8 @@ pub(super) enum Msg {
     ),
     OpenRemoteEditor,
     CloseRemoteEditor,
-    AddRemote(api::RemoteId),
-    EditRemote(api::RemoteId, api::RemoteId),
+    AddRemote(api::Remote),
+    EditRemote(api::RemoteId, api::Remote),
     RemoveRemote(api::RemoteId),
     RemoteDone(Result<(), ws::Error>),
     SetTz(TimeZone),
@@ -261,8 +261,8 @@ impl Component for ShowDetail {
                         <div class="desktop-row mobile-column fill start">
                             <div class="row justify-around">
                                 {for show.remotes.iter().filter_map(|r| {
-                                    let url = r.show_url()?;
-                                    let label = r.source().as_str();
+                                    let url = r.remote.show_url()?;
+                                    let label = r.remote.source().as_str();
 
                                     Some(html! {
                                         <a class="item-inline-source" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
@@ -325,11 +325,11 @@ impl Component for ShowDetail {
                         include_specials={show.include_specials}
                         has_images={!show.images.is_empty()}
                         kind={RemoteSourceKind::Show}
-                        remotes={show.remotes.clone()}
-                        current_source={show.effective_sync_source().map(|r| r.into_remote_source())}
+                        remotes={show.remotes.iter().map(|e| e.remote.clone()).collect::<Vec<_>>()}
+                        current_source={show.effective_sync_source()}
                         last_synced={show.last_synced_at.map(|ts| AttrValue::from(ts.display(self.tz.clone())))}
                         syncing={self.syncing}
-                        on_sync_source_change={link.callback(|s: api::RemoteSource| Msg::SetSyncSource(s.into_sync_source()))}
+                        on_sync_source_change={link.callback(Msg::SetSyncSource)}
                         on_sync={link.callback(|_| Msg::SyncShow)}
                         on_language_change={link.callback(Msg::SetLanguage)}
                         on_include_specials_change={Some(link.callback(Msg::SetIncludeSpecials))}
@@ -344,7 +344,7 @@ impl Component for ShowDetail {
                         title={show.title.as_deref().unwrap_or("Untitled Show").to_owned()}
                         remotes={show.remotes.clone()}
                         on_add={link.callback(Msg::AddRemote)}
-                        on_edit={link.callback(|(old, new)| Msg::EditRemote(old, new))}
+                        on_edit={link.callback(|(id, remote)| Msg::EditRemote(id, remote))}
                         on_remove={link.callback(Msg::RemoveRemote)}
                         on_close={link.callback(|_| Msg::CloseRemoteEditor)}
                     />
@@ -1038,13 +1038,13 @@ impl ShowDetail {
                 self.remote_editor = false;
                 Ok(true)
             }
-            Msg::AddRemote(remote_id) => {
+            Msg::AddRemote(remote) => {
                 let id = ctx.props().show_id;
 
                 self._remote_req = self
                     .channel
                     .request()
-                    .body(api::AddShowRemoteRequest { id, remote_id })
+                    .body(api::AddShowRemoteRequest { id, remote })
                     .on_packet(ctx.link().callback(
                         |r: Result<ws::Packet<api::AddShowRemote>, ws::Error>| {
                             Msg::RemoteDone(r.map(|_| ()))
@@ -1054,13 +1054,17 @@ impl ShowDetail {
 
                 Ok(false)
             }
-            Msg::EditRemote(old, new) => {
+            Msg::EditRemote(remote_id, remote) => {
                 let id = ctx.props().show_id;
 
                 self._remote_req = self
                     .channel
                     .request()
-                    .body(api::UpdateShowRemoteRequest { id, old, new })
+                    .body(api::UpdateShowRemoteRequest {
+                        id,
+                        remote_id,
+                        remote,
+                    })
                     .on_packet(ctx.link().callback(
                         |r: Result<ws::Packet<api::UpdateShowRemote>, ws::Error>| {
                             Msg::RemoteDone(r.map(|_| ()))

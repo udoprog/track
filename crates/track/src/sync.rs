@@ -27,9 +27,9 @@ pub(crate) async fn sync_show(
     info!(show_id = %show_id, title = show.title, ?source, ?language, "Syncing show");
 
     match source {
-        Some(api::SyncSource::Tmdb) => {
+        Some(api::RemoteSource::Tmdb) => {
             let remote_id = show
-                .remote_by_source(api::SyncSource::Tmdb)
+                .remote_by_source(api::RemoteSource::Tmdb)
                 .context("Expected show to have a TMDB remote")?;
 
             let tmdb_id: u32 = remote_id
@@ -39,9 +39,9 @@ pub(crate) async fn sync_show(
 
             sync_show_tmdb(show_id, tmdb_id, language, remote, db, broadcast).await?;
         }
-        Some(api::SyncSource::Tvdb) => {
+        Some(api::RemoteSource::Tvdb) => {
             let remote_id = show
-                .remote_by_source(api::SyncSource::Tvdb)
+                .remote_by_source(api::RemoteSource::Tvdb)
                 .context("Expected show to have a TVDB remote")?;
 
             let tvdb_id: u32 = remote_id
@@ -189,7 +189,7 @@ async fn sync_show_tmdb(
                 ep.name.as_deref(),
                 ep.overview.as_deref(),
                 ep.aired,
-                Some(&ep.remote_id),
+                Some(&ep.remote),
             )
             .await?;
 
@@ -356,7 +356,7 @@ async fn sync_show_tvdb(
             ep.name.as_deref(),
             ep.overview.as_deref(),
             ep.aired,
-            Some(&ep.remote_id),
+            Some(&ep.remote),
         )
         .await?;
 
@@ -415,9 +415,9 @@ pub(crate) async fn sync_movie(
     info!(movie_id = %movie_id, title = movie.title, ?source, ?language, "Syncing movie");
 
     match source {
-        Some(api::SyncSource::Tmdb) => {
+        Some(api::RemoteSource::Tmdb) => {
             let remote_id = movie
-                .remote_by_source(api::SyncSource::Tmdb)
+                .remote_by_source(api::RemoteSource::Tmdb)
                 .context("Expected movie to have a TMDB remote")?;
 
             let tmdb_id: u32 = remote_id
@@ -504,7 +504,7 @@ pub(crate) async fn sync_movie(
 
             broadcast.broadcast_event(api::AppEventKind::MovieChanged { movie: updated });
         }
-        Some(api::SyncSource::Tvdb) => anyhow::bail!("Unsupported movie sync source: TVDB"),
+        Some(api::RemoteSource::Tvdb) => anyhow::bail!("Unsupported movie sync source: TVDB"),
         _ => anyhow::bail!("Movie has no syncable remote"),
     }
 
@@ -528,9 +528,13 @@ async fn enrich_with_tvmaze(
         if let Some(r) = show
             .remotes
             .iter()
-            .find(|r| *r.source() == api::RemoteSource::Tvdb)
+            .find(|r| *r.remote.source() == api::RemoteSource::Tvdb)
         {
-            let id: u32 = r.value().as_u32().context("Expected a valid TVDB id")?;
+            let id: u32 = r
+                .remote
+                .value()
+                .as_u32()
+                .context("Expected a valid TVDB id")?;
             info!(tvdb_id = id, "Looking up TVmaze id via TVDB");
             break 'id remote.lookup_tvmaze_by_tvdb(id).await?;
         }
@@ -538,9 +542,13 @@ async fn enrich_with_tvmaze(
         if let Some(r) = show
             .remotes
             .iter()
-            .find(|r| *r.source() == api::RemoteSource::Imdb)
+            .find(|r| *r.remote.source() == api::RemoteSource::Imdb)
         {
-            let imdb_id = r.value().as_str().context("Expected a valid IMDB id")?;
+            let imdb_id = r
+                .remote
+                .value()
+                .as_str()
+                .context("Expected a valid IMDB id")?;
             info!(imdb_id, "Looking up TVmaze id via IMDB");
             break 'id remote.lookup_tvmaze_by_imdb(imdb_id).await?;
         }

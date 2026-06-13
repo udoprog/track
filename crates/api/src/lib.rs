@@ -116,6 +116,7 @@ define_id!(WatchedId);
 define_id!(TaskId);
 define_id!(ImageId);
 define_id!(PendingId);
+define_id!(RemoteId);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TimeZone(JiffTimeZone);
@@ -508,16 +509,6 @@ pub enum RemoteSource {
     Unknown,
 }
 
-impl PartialEq<SyncSource> for RemoteSource {
-    #[inline]
-    fn eq(&self, other: &SyncSource) -> bool {
-        matches!(
-            (self, other),
-            (RemoteSource::Tvdb, SyncSource::Tvdb) | (RemoteSource::Tmdb, SyncSource::Tmdb)
-        )
-    }
-}
-
 impl RemoteSource {
     pub fn is_unknown(&self) -> bool {
         matches!(self, Self::Unknown)
@@ -540,19 +531,41 @@ impl RemoteSource {
             _ => Self::Unknown,
         }
     }
-
-    pub fn into_sync_source(self) -> SyncSource {
-        match self {
-            Self::Tvdb => SyncSource::Tvdb,
-            Self::Tmdb => SyncSource::Tmdb,
-            _ => SyncSource::Unknown,
-        }
-    }
 }
 
 impl fmt::Display for RemoteSource {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
+    }
+}
+
+#[cfg(feature = "sqll")]
+impl ::sqll::FromColumn<'_> for RemoteSource {
+    type Type = ::sqll::ty::Integer;
+
+    fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Integer) -> ::sqll::Result<Self> {
+        let s = u32::from_column(stmt, index)?;
+
+        match s {
+            1 => Ok(RemoteSource::Tvdb),
+            2 => Ok(RemoteSource::Tmdb),
+            3 => Ok(RemoteSource::Imdb),
+            _ => Ok(RemoteSource::Unknown),
+        }
+    }
+}
+
+#[cfg(feature = "sqll")]
+impl ::sqll::BindValue for RemoteSource {
+    fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
+        let n: u32 = match self {
+            RemoteSource::Unknown => 0,
+            RemoteSource::Tvdb => 1,
+            RemoteSource::Tmdb => 2,
+            RemoteSource::Imdb => 3,
+        };
+
+        n.bind_value(stmt, index)
     }
 }
 
@@ -596,16 +609,49 @@ impl fmt::Display for RemoteValue {
     }
 }
 
+#[cfg(feature = "sqll")]
+impl ::sqll::FromColumn<'_> for RemoteValue {
+    type Type = ::sqll::ty::Any;
+
+    fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Any) -> ::sqll::Result<Self> {
+        let value = ::sqll::Value::from_column(stmt, index)?;
+
+        if let Some(n) = value.as_integer() {
+            Ok(RemoteValue::Int(n as u32))
+        } else if let Some(s) = value.as_text() {
+            let s = s
+                .to_str()
+                .map_err(|e| ::sqll::Error::new(::sqll::Code::MISMATCH, e))?;
+            Ok(RemoteValue::Str(s.to_owned()))
+        } else {
+            Err(::sqll::Error::new(
+                ::sqll::Code::MISMATCH,
+                "remote value must be an integer or text",
+            ))
+        }
+    }
+}
+
+#[cfg(feature = "sqll")]
+impl ::sqll::BindValue for RemoteValue {
+    fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
+        match self {
+            RemoteValue::Int(n) => n.bind_value(stmt, index),
+            RemoteValue::Str(s) => s.as_str().bind_value(stmt, index),
+        }
+    }
+}
+
 /// Remote identifier: "tvdb:123", "tmdb:456", "imdb:tt0001234".
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize)]
 #[musli(crate = musli_core)]
 #[serde(from = "String", into = "String")]
-pub struct RemoteId {
+pub struct Remote {
     source: RemoteSource,
     value: RemoteValue,
 }
 
-impl RemoteId {
+impl Remote {
     pub const fn new(source: RemoteSource, value: RemoteValue) -> Self {
         Self { source, value }
     }
@@ -671,42 +717,32 @@ impl RemoteId {
     }
 }
 
-impl fmt::Display for RemoteId {
+impl fmt::Display for Remote {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}:{}", self.source, self.value)
     }
 }
 
-impl From<String> for RemoteId {
+impl From<String> for Remote {
     fn from(s: String) -> Self {
         Self::from_raw(&s)
     }
 }
 
-impl From<RemoteId> for String {
-    fn from(r: RemoteId) -> String {
+impl From<Remote> for String {
+    fn from(r: Remote) -> String {
         r.to_string()
     }
 }
 
-#[cfg(feature = "sqll")]
-impl ::sqll::FromColumn<'_> for RemoteId {
-    type Type = ::sqll::ty::Text;
-
-    #[inline]
-    fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Text) -> ::sqll::Result<Self> {
-        let s = String::from_column(stmt, index)?;
-        Ok(RemoteId::from_raw(&s))
-    }
-}
-
-#[cfg(feature = "sqll")]
-impl ::sqll::BindValue for RemoteId {
-    #[inline]
-    fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
-        let s = self.to_string();
-        s.as_str().bind_value(stmt, index)
-    }
+/// A stored remote belonging to a show or movie: its database identifier paired
+/// with the logical value. The `id` lets the client reference a specific remote
+/// (for editing or removal) without matching on its source/value.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct RemoteEntry {
+    pub id: RemoteId,
+    pub remote: Remote,
 }
 
 /// Image reference: "tvdb:/banners/abc.jpg", "tmdb:/xy.jpg".
@@ -1072,100 +1108,6 @@ impl ::sqll::BindValue for ImageSource {
 }
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize,
-)]
-#[musli(crate = musli_core)]
-#[serde(rename_all = "lowercase")]
-pub enum SyncSource {
-    Tvdb,
-    Tmdb,
-    Unknown,
-}
-
-impl SyncSource {
-    /// Test if the sync source is unknown.
-    pub fn is_unknown(&self) -> bool {
-        matches!(*self, Self::Unknown)
-    }
-
-    pub fn parse(s: &str) -> Self {
-        match s {
-            "tvdb" => Self::Tvdb,
-            "tmdb" => Self::Tmdb,
-            _ => Self::Unknown,
-        }
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Tvdb => "tvdb",
-            Self::Tmdb => "tmdb",
-            Self::Unknown => "unknown",
-        }
-    }
-
-    pub fn from_remote_source(remote_source: &RemoteSource) -> Self {
-        match remote_source {
-            RemoteSource::Tvdb => Self::Tvdb,
-            RemoteSource::Tmdb => Self::Tmdb,
-            _ => Self::Unknown,
-        }
-    }
-
-    pub fn into_remote_source(self) -> RemoteSource {
-        match self {
-            Self::Tvdb => RemoteSource::Tvdb,
-            Self::Tmdb => RemoteSource::Tmdb,
-            Self::Unknown => RemoteSource::Unknown,
-        }
-    }
-}
-
-impl PartialEq<RemoteSource> for SyncSource {
-    #[inline]
-    fn eq(&self, other: &RemoteSource) -> bool {
-        matches!(
-            (self, other),
-            (SyncSource::Tvdb, RemoteSource::Tvdb) | (SyncSource::Tmdb, RemoteSource::Tmdb)
-        )
-    }
-}
-
-impl fmt::Display for SyncSource {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-#[cfg(feature = "sqll")]
-impl ::sqll::FromColumn<'_> for SyncSource {
-    type Type = ::sqll::ty::Integer;
-
-    fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Integer) -> ::sqll::Result<Self> {
-        let s = u32::from_column(stmt, index)?;
-
-        match s {
-            1 => Ok(SyncSource::Tvdb),
-            2 => Ok(SyncSource::Tmdb),
-            _ => Ok(SyncSource::Unknown),
-        }
-    }
-}
-
-#[cfg(feature = "sqll")]
-impl ::sqll::BindValue for SyncSource {
-    fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
-        let n: u32 = match self {
-            SyncSource::Unknown => 0,
-            SyncSource::Tvdb => 1,
-            SyncSource::Tmdb => 2,
-        };
-
-        n.bind_value(stmt, index)
-    }
-}
-
-#[derive(
     Debug, Clone, Copy, PartialEq, Eq, Default, Encode, Decode, serde::Serialize, serde::Deserialize,
 )]
 #[musli(crate = musli_core)]
@@ -1305,8 +1247,8 @@ pub struct Show {
     pub first_air_date: Option<Timestamp>,
     pub overview: Option<String>,
     pub tracked: bool,
-    pub sync_source: Option<SyncSource>,
-    pub remotes: Vec<RemoteId>,
+    pub sync_source: Option<RemoteSource>,
+    pub remotes: Vec<RemoteEntry>,
     pub images: Vec<MediaImage>,
     pub poster: Option<Image>,
     pub banner: Option<Image>,
@@ -1321,23 +1263,26 @@ impl Show {
         self.include_specials.unwrap_or(default)
     }
 
-    pub fn remote_by_source(&self, source: SyncSource) -> Option<&RemoteId> {
-        self.remotes.iter().find(|r| *r.source() == source)
+    pub fn remote_by_source(&self, source: RemoteSource) -> Option<&Remote> {
+        self.remotes
+            .iter()
+            .map(|e| &e.remote)
+            .find(|r| *r.source() == source)
     }
 
-    pub fn effective_sync_source(&self) -> Option<SyncSource> {
+    pub fn effective_sync_source(&self) -> Option<RemoteSource> {
         if let Some(source) = self.sync_source
             && self.remote_by_source(source).is_some()
         {
             return Some(source);
         }
 
-        if self.remote_by_source(SyncSource::Tmdb).is_some() {
-            return Some(SyncSource::Tmdb);
+        if self.remote_by_source(RemoteSource::Tmdb).is_some() {
+            return Some(RemoteSource::Tmdb);
         }
 
-        if self.remote_by_source(SyncSource::Tvdb).is_some() {
-            return Some(SyncSource::Tvdb);
+        if self.remote_by_source(RemoteSource::Tvdb).is_some() {
+            return Some(RemoteSource::Tvdb);
         }
 
         None
@@ -1389,7 +1334,7 @@ pub struct Episode {
     pub name: Option<String>,
     pub overview: Option<String>,
     pub aired: Option<Timestamp>,
-    pub remote_id: Option<RemoteId>,
+    pub remote_id: Option<Remote>,
     pub pending: bool,
     pub watched_count: u32,
     pub screenshot: Option<Image>,
@@ -1412,8 +1357,8 @@ pub struct Movie {
     pub title: Option<String>,
     pub release_date: Option<Timestamp>,
     pub overview: Option<String>,
-    pub remotes: Vec<RemoteId>,
-    pub sync_source: Option<SyncSource>,
+    pub remotes: Vec<RemoteEntry>,
+    pub sync_source: Option<RemoteSource>,
     pub tracked: bool,
     pub pending: bool,
     pub images: Vec<MediaImage>,
@@ -1426,23 +1371,26 @@ pub struct Movie {
 }
 
 impl Movie {
-    pub fn remote_by_source(&self, source: SyncSource) -> Option<&RemoteId> {
-        self.remotes.iter().find(|r| *r.source() == source)
+    pub fn remote_by_source(&self, source: RemoteSource) -> Option<&Remote> {
+        self.remotes
+            .iter()
+            .map(|e| &e.remote)
+            .find(|r| *r.source() == source)
     }
 
-    pub fn effective_sync_source(&self) -> Option<SyncSource> {
+    pub fn effective_sync_source(&self) -> Option<RemoteSource> {
         if let Some(source) = self.sync_source
             && self.remote_by_source(source).is_some()
         {
             return Some(source);
         }
 
-        if self.remote_by_source(SyncSource::Tmdb).is_some() {
-            return Some(SyncSource::Tmdb);
+        if self.remote_by_source(RemoteSource::Tmdb).is_some() {
+            return Some(RemoteSource::Tmdb);
         }
 
-        if self.remote_by_source(SyncSource::Tvdb).is_some() {
-            return Some(SyncSource::Tvdb);
+        if self.remote_by_source(RemoteSource::Tvdb).is_some() {
+            return Some(RemoteSource::Tvdb);
         }
 
         None
@@ -1624,7 +1572,7 @@ pub enum SearchKind {
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct SearchShow {
-    pub remote_id: RemoteId,
+    pub remote: Remote,
     pub title: Option<String>,
     pub poster: Option<Image>,
     pub banner: Option<Image>,
@@ -1637,7 +1585,7 @@ pub struct SearchShow {
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct SearchMovie {
-    pub remote_id: RemoteId,
+    pub remote: Remote,
     pub title: Option<String>,
     pub poster: Option<Image>,
     pub banner: Option<Image>,
@@ -1724,7 +1672,7 @@ pub struct ListSeasonsResponse {
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct TrackShowRequest {
-    pub remote_id: RemoteId,
+    pub remote: Remote,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -1773,7 +1721,7 @@ pub struct GetMovieRequest {
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct TrackMovieRequest {
-    pub remote_id: RemoteId,
+    pub remote: Remote,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -1945,14 +1893,14 @@ pub struct SyncMovieRequest {
 #[musli(crate = musli_core)]
 pub struct SetShowSyncSourceRequest {
     pub id: ShowId,
-    pub source: SyncSource,
+    pub source: RemoteSource,
 }
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct SetMovieSyncSourceRequest {
     pub id: MovieId,
-    pub source: SyncSource,
+    pub source: RemoteSource,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -1980,7 +1928,7 @@ pub struct SetMovieLanguageRequest {
 #[musli(crate = musli_core)]
 pub struct AddShowRemoteRequest {
     pub id: ShowId,
-    pub remote_id: RemoteId,
+    pub remote: Remote,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -1994,7 +1942,7 @@ pub struct RemoveShowRemoteRequest {
 #[musli(crate = musli_core)]
 pub struct AddMovieRemoteRequest {
     pub id: MovieId,
-    pub remote_id: RemoteId,
+    pub remote: Remote,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -2008,16 +1956,16 @@ pub struct RemoveMovieRemoteRequest {
 #[musli(crate = musli_core)]
 pub struct UpdateShowRemoteRequest {
     pub id: ShowId,
-    pub old: RemoteId,
-    pub new: RemoteId,
+    pub remote_id: RemoteId,
+    pub remote: Remote,
 }
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct UpdateMovieRemoteRequest {
     pub id: MovieId,
-    pub old: RemoteId,
-    pub new: RemoteId,
+    pub remote_id: RemoteId,
+    pub remote: Remote,
 }
 
 #[derive(Debug, Encode, Decode)]

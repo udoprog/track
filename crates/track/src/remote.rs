@@ -125,7 +125,7 @@ impl RemoteClients {
 
             for r in results {
                 a.push(api::SearchShow {
-                    remote_id: r.remote_id,
+                    remote: r.remote,
                     title: r.title,
                     poster: r.poster.clone().map(api::Image::from),
                     banner: r.backdrop.clone().map(api::Image::from),
@@ -143,7 +143,7 @@ impl RemoteClients {
 
             for r in results {
                 b.push(api::SearchShow {
-                    remote_id: r.remote_id,
+                    remote: r.remote,
                     title: r.title,
                     poster: r
                         .poster
@@ -192,7 +192,7 @@ impl RemoteClients {
 
             for r in results {
                 out.push(api::SearchMovie {
-                    remote_id: r.remote_id,
+                    remote: r.remote,
                     title: r.title,
                     poster: r.poster.clone().map(api::Image::from),
                     banner: r.backdrop.clone().map(api::Image::from),
