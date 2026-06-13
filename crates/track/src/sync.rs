@@ -90,6 +90,11 @@ async fn sync_show_tmdb(
 
     let info = remote.fetch_tmdb_show(tmdb_id, language).await?;
 
+    // When no language is configured, use the show's own original language for
+    // episode fetches so that episode titles and overviews are also localized.
+    let effective_language: Option<&str> =
+        language.or_else(|| info.original_language.as_deref().filter(|&l| l != "en"));
+
     db.update_show(
         show_id,
         info.title.as_deref(),
@@ -171,7 +176,7 @@ async fn sync_show_tmdb(
         let mut fetched_numbers = HashSet::new();
 
         for ep in remote
-            .fetch_tmdb_season_episodes(tmdb_id, info.number, language)
+            .fetch_tmdb_season_episodes(tmdb_id, info.number, effective_language)
             .await?
         {
             fetched_numbers.insert(ep.number);
@@ -241,6 +246,11 @@ async fn sync_show_tvdb(
     info!(tvdb_id, "Fetching TVDB show");
 
     let info = remote.fetch_tvdb_show(tvdb_id, language).await?;
+
+    // When no language is configured, use the show's own original language for
+    // episode fetches. TVDB uses 3-letter language codes; "eng" is the default.
+    let effective_language: Option<&str> =
+        language.or_else(|| info.original_language.as_deref().filter(|&l| l != "eng"));
 
     db.update_show(
         show_id,
@@ -318,7 +328,9 @@ async fn sync_show_tvdb(
     broadcast.broadcast_event(api::AppEventKind::ShowChanged { show: updated });
 
     info!(tvdb_id, "Fetching TVDB episodes");
-    let episodes = remote.fetch_tvdb_episodes(tvdb_id, language).await?;
+    let episodes = remote
+        .fetch_tvdb_episodes(tvdb_id, effective_language)
+        .await?;
     info!(count = episodes.len(), "Got episodes from TVDB");
 
     let mut seasons_seen: HashSet<SeasonNumber> = HashSet::new();

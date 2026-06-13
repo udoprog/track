@@ -267,6 +267,8 @@ impl Client {
             #[serde(default)]
             first_air_date: Option<String>,
             #[serde(default)]
+            original_language: Option<String>,
+            #[serde(default)]
             seasons: Vec<SeasonDetails>,
             #[serde(default)]
             external_ids: ExternalIds,
@@ -276,10 +278,34 @@ impl Client {
             .get_json(format!("tv/{id}?append_to_response=external_ids"), language)
             .await?;
 
+        // When no language is configured, fall back to the show's own original language.
+        let effective_language: Option<&str> =
+            language.or_else(|| details.original_language.as_deref().filter(|&l| l != "en"));
+
+        // Re-fetch for a localized title and overview when the effective language
+        // differs from what was used for the initial request (i.e., no language was
+        // configured but the show has a non-English original language).
+        let localized: Option<Details> = if effective_language != language {
+            self.get_json(
+                format!("tv/{id}?append_to_response=external_ids"),
+                effective_language,
+            )
+            .await
+            .ok()
+        } else {
+            None
+        };
+
         let images: Images = self
-            .get_images(format!("tv/{id}/images"), language)
+            .get_images(format!("tv/{id}/images"), effective_language)
             .await
             .context("Fetching images")?;
+
+        // Extract fields used for image selection before consuming details.
+        let original_language = details.original_language;
+        let poster_path = details.poster_path;
+        let backdrop_path = details.backdrop_path;
+        let first_air_date = details.first_air_date;
 
         let mut seasons = Vec::with_capacity(details.seasons.len());
 
@@ -322,18 +348,31 @@ impl Client {
         let posters = to_images(images.posters);
         let backdrops = to_images(images.backdrops);
 
-        let selected_poster =
-            best_image(&posters, details.poster_path.as_deref().map(ImageKey::tmdb));
+        let selected_poster = best_image(&posters, poster_path.as_deref().map(ImageKey::tmdb));
 
-        let selected_backdrop = best_image(
-            &backdrops,
-            details.backdrop_path.as_deref().map(ImageKey::tmdb),
-        );
+        let selected_backdrop =
+            best_image(&backdrops, backdrop_path.as_deref().map(ImageKey::tmdb));
+
+        // Prefer the localized title/overview; fall back to the original-language
+        // name, then whatever the default language returned.
+        let title = localized
+            .as_ref()
+            .and_then(|l| l.name.as_deref().filter(|s| !s.trim().is_empty()))
+            .map(str::to_owned)
+            .or(details.original_name)
+            .or(details.name);
+
+        let overview = localized
+            .as_ref()
+            .and_then(|l| l.overview.as_deref().filter(|s| !s.trim().is_empty()))
+            .map(str::to_owned)
+            .or(details.overview);
 
         Ok(ShowInfo {
-            title: details.name.or(details.original_name),
-            overview: details.overview,
-            first_air_date: opt_date(details.first_air_date.as_deref())
+            title,
+            overview,
+            original_language,
+            first_air_date: opt_date(first_air_date.as_deref())
                 .map(|d| d.to_timestamp_at_midnight_utc())
                 .transpose()?,
             posters,
@@ -479,6 +518,8 @@ impl Client {
             #[serde(default)]
             release_date: Option<String>,
             #[serde(default)]
+            original_language: Option<String>,
+            #[serde(default)]
             external_ids: ExternalIds,
         }
 
@@ -489,10 +530,28 @@ impl Client {
             )
             .await?;
 
+        let effective_language: Option<&str> =
+            language.or_else(|| details.original_language.as_deref().filter(|&l| l != "en"));
+
+        let localized: Option<Details> = if effective_language != language {
+            self.get_json(
+                format!("movie/{id}?append_to_response=external_ids"),
+                effective_language,
+            )
+            .await
+            .ok()
+        } else {
+            None
+        };
+
         let images: Images = self
-            .get_images(format!("movie/{id}/images"), language)
+            .get_images(format!("movie/{id}/images"), effective_language)
             .await
             .context("Fetching images")?;
+
+        let poster_path = details.poster_path;
+        let backdrop_path = details.backdrop_path;
+        let release_date = details.release_date;
 
         let mut remotes = vec![Remote::tmdb(id)];
 
@@ -505,18 +564,28 @@ impl Client {
         let posters = to_images(images.posters);
         let backdrops = to_images(images.backdrops);
 
-        let selected_poster =
-            best_image(&posters, details.poster_path.as_deref().map(ImageKey::tmdb));
+        let selected_poster = best_image(&posters, poster_path.as_deref().map(ImageKey::tmdb));
 
-        let selected_backdrop = best_image(
-            &backdrops,
-            details.backdrop_path.as_deref().map(ImageKey::tmdb),
-        );
+        let selected_backdrop =
+            best_image(&backdrops, backdrop_path.as_deref().map(ImageKey::tmdb));
+
+        let title = localized
+            .as_ref()
+            .and_then(|l| l.title.as_deref().filter(|s| !s.trim().is_empty()))
+            .map(str::to_owned)
+            .or(details.original_title)
+            .or(details.title);
+
+        let overview = localized
+            .as_ref()
+            .and_then(|l| l.overview.as_deref().filter(|s| !s.trim().is_empty()))
+            .map(str::to_owned)
+            .or(details.overview);
 
         Ok(MovieInfo {
-            title: details.title.or(details.original_title),
-            overview: details.overview,
-            release_date: opt_date(details.release_date.as_deref())
+            title,
+            overview,
+            release_date: opt_date(release_date.as_deref())
                 .map(|d| d.to_timestamp_at_midnight_utc())
                 .transpose()?,
             posters,
@@ -537,6 +606,7 @@ pub(crate) struct ShowRemote {
 pub(crate) struct ShowInfo {
     pub title: Option<String>,
     pub overview: Option<String>,
+    pub original_language: Option<String>,
     pub first_air_date: Option<Timestamp>,
     pub posters: Vec<Image>,
     pub backdrops: Vec<Image>,

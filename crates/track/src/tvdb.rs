@@ -266,6 +266,8 @@ impl Client {
             #[serde(default)]
             image: Option<String>,
             #[serde(default)]
+            original_language: Option<String>,
+            #[serde(default)]
             remote_ids: Vec<RemoteIdRow>,
             #[serde(default)]
             artworks: Vec<Artwork>,
@@ -307,12 +309,23 @@ impl Client {
         let v = resp.data;
 
         let slug = v.slug;
+        let original_language = v.original_language;
         let mut title = v.name;
         let mut overview = v.overview;
 
-        // Override title/overview with the configured language's translation.
-        if let Some(language) = &language
-            && let Some(tr) = self.fetch_show_translation(id, language).await?
+        // When no user preference is configured, fall back to the show's own
+        // original language for the translation fetch. "eng" is the default and
+        // needs no separate fetch.
+        let original_language_tvdb = original_language
+            .as_deref()
+            .filter(|&l| l != "eng")
+            .and_then(tvdb_language);
+
+        let effective_language: Option<&str> =
+            language.as_deref().or(original_language_tvdb.as_deref());
+
+        if let Some(eff_lang) = effective_language
+            && let Some(tr) = self.fetch_show_translation(id, eff_lang).await?
         {
             if tr.name.as_deref().is_some_and(|s| !s.trim().is_empty()) {
                 title = tr.name;
@@ -382,6 +395,7 @@ impl Client {
         Ok(SeriesInfo {
             title,
             overview,
+            original_language,
             poster,
             selected_poster,
             banner,
@@ -527,6 +541,7 @@ pub(crate) struct SeriesRemote {
 pub(crate) struct SeriesInfo {
     pub title: Option<String>,
     pub overview: Option<String>,
+    pub original_language: Option<String>,
     pub poster: Vec<Image>,
     pub selected_poster: Option<ImageKey>,
     pub banner: Vec<Image>,
