@@ -2,12 +2,14 @@ use musli_web::web03::prelude::*;
 use wasm_bindgen::JsCast as _;
 use yew::prelude::*;
 
+use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{Route, SearchQuery, SeriesDetailQuery};
 use crate::{Image, SetupChannel};
 
 pub(super) struct Search {
     channel: ws::Channel,
+    background: Background,
     query: String,
     kind: api::SearchKind,
     series: Vec<api::SearchSeries>,
@@ -57,8 +59,14 @@ impl Component for Search {
         let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
+        let (background, _) = ctx
+            .link()
+            .context::<Background>(Callback::noop())
+            .expect("Expected background handle in context");
+
         Self {
             channel: ws::Channel::default(),
+            background,
             query: ctx.props().filter.clone(),
             kind: ctx.props().kind,
             series: Vec::new(),
@@ -81,6 +89,16 @@ impl Component for Search {
                 false
             }
         }
+    }
+
+    fn rendered(&mut self, _ctx: &Context<Self>, first_render: bool) {
+        if first_render {
+            self.background.title(Some("Search".to_string()));
+        }
+    }
+
+    fn destroy(&mut self, _ctx: &Context<Self>) {
+        self.background.title(None);
     }
 
     fn changed(&mut self, ctx: &Context<Self>, old_props: &Self::Properties) -> bool {

@@ -2,7 +2,7 @@
 $monospace-font: 'SF Mono', Consolas, 'SF Mono Regular', monospace;
 $sans-serif-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 
-$page-width: 1280px;
+$page-width: 1200px;
 
 $transparency: 0.75;
 
@@ -693,7 +693,7 @@ image {
     }
 
     &.info {
-        background: $bg-highlight;
+        background: $bg-dark-transparent;
         border: 1px solid $border-subtle;
     }
 

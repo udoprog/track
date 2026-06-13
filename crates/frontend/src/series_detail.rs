@@ -240,6 +240,10 @@ impl Component for SeriesDetail {
         }
     }
 
+    fn destroy(&mut self, _ctx: &Context<Self>) {
+        self.background.title(None);
+    }
+
     fn view(&self, ctx: &Context<Self>) -> Html {
         let (Some(series), Some(season)) = (&self.series, self.selected) else {
             return html!(<Loading />);
@@ -423,7 +427,7 @@ impl SeriesDetail {
                         if series.id == ctx.props().series_id =>
                     {
                         self.background
-                            .set(series.backdrop.as_ref().map(|i| i.proxy_url()));
+                            .background(series.backdrop.as_ref().map(|i| i.proxy_url()));
                         self.series = Some(series.clone());
                         self.update_graphics();
                         Ok(true)
@@ -512,7 +516,13 @@ impl SeriesDetail {
                     .context(Message::LoadingSeries)?;
 
                 self.background
-                    .set(series.backdrop.as_ref().map(|i| i.proxy_url()));
+                    .background(series.backdrop.as_ref().map(|i| i.proxy_url()));
+                self.background.title(
+                    series
+                        .title
+                        .as_deref()
+                        .map(|title| format!("Series / {title}")),
+                );
                 self.series = Some(series);
                 self.update_graphics();
                 Ok(true)

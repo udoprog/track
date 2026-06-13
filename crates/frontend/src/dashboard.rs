@@ -3,6 +3,7 @@ use yew::prelude::*;
 
 use api::{HasAired, TimeZone};
 
+use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{DashboardQuery, Route, SeriesDetailQuery};
 use crate::ui::{ConfirmDanger, MarkWatchedPicker, PaginationButtons};
@@ -13,6 +14,7 @@ pub(super) struct Dashboard {
     pending: Vec<api::Pending>,
     config: api::Config,
     tz: TimeZone,
+    background: Background,
     _tz_handle: ContextHandle<TimeZone>,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
@@ -70,11 +72,17 @@ impl Component for Dashboard {
             .context::<TimeZone>(ctx.link().callback(Msg::SetTz))
             .expect("Expected a configured time zone");
 
+        let (background, _) = ctx
+            .link()
+            .context::<Background>(Callback::noop())
+            .expect("Expected background handle in context");
+
         Self {
             channel: ws::Channel::default(),
             pending: Vec::new(),
             config: api::Config::default(),
             tz,
+            background,
             _tz_handle,
             _setup,
             _broadcast,
@@ -96,6 +104,16 @@ impl Component for Dashboard {
                 false
             }
         }
+    }
+
+    fn rendered(&mut self, _ctx: &Context<Self>, first_render: bool) {
+        if first_render {
+            self.background.title(Some("Dashboard".to_string()));
+        }
+    }
+
+    fn destroy(&mut self, _ctx: &Context<Self>) {
+        self.background.title(None);
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {

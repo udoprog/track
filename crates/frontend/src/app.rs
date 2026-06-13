@@ -36,6 +36,7 @@ pub(super) struct Props {
     pub(super) route: Route,
     pub(super) on_navigate: Callback<Route>,
     pub(super) on_background: Callback<String>,
+    pub(super) on_title: Callback<Option<String>>,
 }
 
 impl Component for App {
@@ -86,7 +87,10 @@ impl Component for App {
 
         let link = ctx.link();
         let on_nav = link.callback(Msg::Navigate);
-        let background = Background::new(ctx.props().on_background.clone());
+        let background = Background::new(
+            ctx.props().on_background.clone(),
+            ctx.props().on_title.clone(),
+        );
 
         html! {
             <ContextProvider<TimeZone> context={tz.clone()}>

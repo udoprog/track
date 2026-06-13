@@ -2,6 +2,7 @@ use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
 use crate::SetupChannel;
+use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::ui::{LanguagePicker, SecretInput};
 
@@ -12,6 +13,7 @@ fn tz_is_valid(name: &str) -> bool {
 pub(super) struct Settings {
     saving: bool,
     channel: ws::Channel,
+    background: Background,
     config: api::Config,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
@@ -56,9 +58,15 @@ impl Component for Settings {
         let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
+        let (background, _) = ctx
+            .link()
+            .context::<Background>(Callback::noop())
+            .expect("Expected background handle in context");
+
         Self {
             saving: false,
             channel: ws::Channel::default(),
+            background,
             config: api::Config::default(),
             _setup,
             _broadcast,
@@ -75,6 +83,16 @@ impl Component for Settings {
                 false
             }
         }
+    }
+
+    fn rendered(&mut self, _ctx: &Context<Self>, first_render: bool) {
+        if first_render {
+            self.background.title(Some("Settings".to_string()));
+        }
+    }
+
+    fn destroy(&mut self, _ctx: &Context<Self>) {
+        self.background.title(None);
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {

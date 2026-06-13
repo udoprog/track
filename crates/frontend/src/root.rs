@@ -17,6 +17,7 @@ pub(super) enum Msg {
     Navigate(Route),
     PopState,
     SetBackground(String),
+    SetTitle(Option<String>),
     Error(Option<Error>),
 }
 
@@ -55,8 +56,12 @@ impl Component for Root {
                 true
             }
             Msg::SetBackground(background) => {
-                self.background.set(background);
+                self.background.set_background(background);
                 true
+            }
+            Msg::SetTitle(title) => {
+                self.background.set_title(title);
+                false
             }
             Msg::Error(e) => {
                 self.error = e.map(RcError::from);
@@ -72,12 +77,13 @@ impl Component for Root {
         let onerror = link.callback(Msg::Error);
         let on_navigate = link.callback(Msg::Navigate);
         let on_background = link.callback(Msg::SetBackground);
+        let on_title = link.callback(Msg::SetTitle);
         let style = self.background.style();
 
         html! {
             <>
                 <div class="background" {style} />
-                <App error={self.error.clone()} {route} {onerror} {on_navigate} {on_background} />
+                <App error={self.error.clone()} {route} {onerror} {on_navigate} {on_background} {on_title} />
             </>
         }
     }

@@ -2,6 +2,7 @@ use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
 use crate::SetupChannel;
+use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{Route, SeriesDetailQuery};
 use crate::ui::PaginationButtons;
@@ -9,6 +10,7 @@ use crate::ui::PaginationButtons;
 const PAGE_SIZE: usize = 20;
 pub(super) struct Queue {
     channel: ws::Channel,
+    background: Background,
     pending: Vec<api::Task>,
     running: Vec<api::Task>,
     completed: Vec<api::CompletedTask>,
@@ -47,8 +49,14 @@ impl Component for Queue {
         let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
+        let (background, _) = ctx
+            .link()
+            .context::<Background>(Callback::noop())
+            .expect("Expected background handle in context");
+
         Self {
             channel: ws::Channel::default(),
+            background,
             pending: Vec::new(),
             running: Vec::new(),
             completed: Vec::new(),
@@ -68,6 +76,16 @@ impl Component for Queue {
                 false
             }
         }
+    }
+
+    fn rendered(&mut self, _ctx: &Context<Self>, first_render: bool) {
+        if first_render {
+            self.background.title(Some("Queue".to_string()));
+        }
+    }
+
+    fn destroy(&mut self, _ctx: &Context<Self>) {
+        self.background.title(None);
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {

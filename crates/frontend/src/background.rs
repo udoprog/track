@@ -1,4 +1,4 @@
-use web_sys::Storage;
+use web_sys::{Document, Storage};
 use yew::prelude::*;
 
 const STORAGE_KEY: &str = "background";
@@ -7,12 +7,14 @@ const STORAGE_KEY: &str = "background";
 /// router (see [`crate::root::Root`]) so the saved background is applied from the
 /// very first render.
 pub(super) struct BackgroundState {
+    document: Option<Document>,
     storage: Option<Storage>,
     value: Option<String>,
 }
 
 impl BackgroundState {
     pub(super) fn new() -> Self {
+        let document = web_sys::window().and_then(|w| w.document());
         let storage = web_sys::window().and_then(|w| w.local_storage().ok().flatten());
 
         let value = storage
@@ -20,12 +22,16 @@ impl BackgroundState {
             .and_then(|s| s.get_item(STORAGE_KEY).ok().flatten())
             .filter(|s| !s.is_empty());
 
-        Self { storage, value }
+        Self {
+            document,
+            storage,
+            value,
+        }
     }
 
     /// Update the stored background, persisting it to local storage. Returns
     /// whether the value changed (and therefore a re-render is needed).
-    pub(super) fn set(&mut self, value: String) -> bool {
+    pub(super) fn set_background(&mut self, value: String) -> bool {
         if self.value.as_ref() == Some(&value) {
             return false;
         }
@@ -36,6 +42,18 @@ impl BackgroundState {
 
         self.value = Some(value);
         true
+    }
+
+    pub(super) fn set_title(&self, title: Option<String>) {
+        let Some(ref document) = self.document else {
+            return;
+        };
+
+        if let Some(title) = title {
+            document.set_title(&title);
+        } else {
+            document.set_title("Track");
+        }
     }
 
     /// The inline `--background` custom property for the current value, ready to
@@ -52,19 +70,25 @@ impl BackgroundState {
 /// Backed by a callback into [`crate::root::Root`].
 #[derive(Clone, PartialEq)]
 pub(super) struct Background {
-    set: Callback<String>,
+    background: Callback<String>,
+    title: Callback<Option<String>>,
 }
 
 impl Background {
-    pub(super) fn new(set: Callback<String>) -> Self {
-        Self { set }
+    pub(super) fn new(background: Callback<String>, title: Callback<Option<String>>) -> Self {
+        Self { background, title }
     }
 
     /// Set the page background to the given (proxied) image URL, or clear it
     /// with `None`.
-    pub(super) fn set(&self, url: Option<String>) {
+    pub(super) fn background(&self, url: Option<String>) {
         if let Some(url) = url {
-            self.set.emit(url);
+            self.background.emit(url);
         }
+    }
+
+    /// Set the title.
+    pub(super) fn title(&self, title: Option<String>) {
+        self.title.emit(title);
     }
 }

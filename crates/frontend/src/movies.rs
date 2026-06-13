@@ -2,6 +2,7 @@ use api::TimeZone;
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
+use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{PagedQuery, Route};
 use crate::ui::{Loading, MarkWatchedPicker, PaginationButtons};
@@ -15,6 +16,7 @@ pub(super) struct MoviesList {
     filter: String,
     page: usize,
     tz: TimeZone,
+    background: Background,
     _tz_handle: ContextHandle<TimeZone>,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
@@ -63,12 +65,18 @@ impl Component for MoviesList {
             .context::<TimeZone>(ctx.link().callback(Msg::SetTz))
             .expect("Expected a configured time zone");
 
+        let (background, _) = ctx
+            .link()
+            .context::<Background>(Callback::noop())
+            .expect("Expected background handle in context");
+
         Self {
             channel: ws::Channel::default(),
             movies: Vec::new(),
             page: ctx.props().page,
             filter: ctx.props().filter.clone(),
             tz,
+            background,
             _tz_handle,
             _setup,
             _broadcast,
@@ -86,6 +94,16 @@ impl Component for MoviesList {
                 false
             }
         }
+    }
+
+    fn rendered(&mut self, _ctx: &Context<Self>, first_render: bool) {
+        if first_render {
+            self.background.title(Some("Movies".to_string()));
+        }
+    }
+
+    fn destroy(&mut self, _ctx: &Context<Self>) {
+        self.background.title(None);
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {

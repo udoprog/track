@@ -187,6 +187,10 @@ impl Component for MovieDetail {
         }
     }
 
+    fn destroy(&mut self, _ctx: &Context<Self>) {
+        self.background.title(None);
+    }
+
     fn view(&self, ctx: &Context<Self>) -> Html {
         let Some(ref movie) = self.movie else {
             return html!(<Loading />);
@@ -691,9 +695,14 @@ impl MovieDetail {
 
         self.movie_releases = by_type.into_values().collect();
         self.background
-            .set(movie.backdrop.as_ref().map(|i| i.proxy_url()));
+            .background(movie.backdrop.as_ref().map(|i| i.proxy_url()));
+        self.background.title(
+            movie
+                .title
+                .as_deref()
+                .map(|title| format!("Movie / {title}")),
+        );
         self.movie = Some(movie);
-
         self.update_graphics();
     }
 
