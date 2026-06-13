@@ -14,6 +14,7 @@ $bg-item: #2e2e2e;
 $text-primary: #eee;
 $text-muted: #aaa;
 $border-subtle: #252525;
+$border-subtle-transparent: rgba(37, 37, 37, 0.5);
 $border-input: #555;
 $color-primary: #2f72b9;
 $color-secondary: #545e66;
@@ -452,8 +453,8 @@ h5 {
     display: flex;
     flex-direction: column;
     gap: $gap-sm;
-    background: $bg-panel;
-    border: 1px solid $border-subtle;
+    background: $bg-dark-transparent;
+    border: 1px solid $border-subtle-transparent;
     border-radius: $radius;
     padding: $padding-row;
     min-width: 0;
@@ -788,7 +789,7 @@ image {
     gap: $gap-xs;
 
     &:not(.table-striped) >.table-entry {
-        background: $bg-panel;
+        background: $bg-dark-transparent;
     }
 }
 
@@ -798,7 +799,7 @@ image {
     gap: $gap-sm;
     padding: $gap-sm;
     border-style: solid;
-    border-color: $border-subtle;
+    border-color: $border-subtle-transparent;
     border-width: 1px;
 
     &.row {
