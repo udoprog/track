@@ -2,18 +2,18 @@
 $monospace-font: 'SF Mono', Consolas, 'SF Mono Regular', monospace;
 $sans-serif-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 
-$page-width: 960px;
+$page-width: 1280px;
 
 $bg-dark: #222;
 $bg-site: #525252;
 $bg-dark-transparent: rgba(0, 0, 0, 0.75);
 $bg-panel: #2a2a2a;
 $bg-highlight: #2e2e2e;
-$bg-surface: #333;;
+$bg-surface: #252525;
 $bg-item: #2e2e2e;
 $text-primary: #eee;
 $text-muted: #aaa;
-$border-subtle: #333;
+$border-subtle: #252525;
 $border-input: #555;
 $color-primary: #2f72b9;
 $color-secondary: #545e66;
@@ -56,6 +56,7 @@ $bold-weight: 500;
 @import 'logos';
 @import 'flags';
 @import 'calendar';
+@import 'toolbar';
 
 *,
 *::before,
@@ -87,23 +88,12 @@ p {
     user-select: none;
 }
 
-.toolbar {
-    display: flex;
-    margin: 0 auto;
-    gap: $gap-sm;
-    padding: $padding-row $gap;
-
-    @include g.until-mobile {
-        padding: $padding-row;
-        gap: $padding;
-    }
-}
-
 #application {
     position: fixed;
     inset: 0;
     display: grid;
     grid-template-rows: min-content 1fr;
+    justify-items: stretch;
     background: $bg-dark-transparent;
     max-width: $page-width;
     margin: 0 auto;

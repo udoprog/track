@@ -1,0 +1,81 @@
+.toolbar {
+    display: flex;
+    gap: $gap;
+    padding: $gap;
+
+    @include g.until-mobile {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        padding: $gap;
+        gap: $padding;
+    }
+}
+
+.toolbar-brand {
+    font-size: $font-lg;
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: $gap-xs;
+    padding: 0 $gap;
+    cursor: pointer;
+
+    height: $input-height * 1.5;
+
+    @include g.until-mobile {
+        height: $input-height-touch;
+    }
+}
+
+.toolbar-dropdown {
+    display: flex;
+    flex-direction: row;
+    gap: $gap;
+
+    @include g.until-mobile {
+        flex-direction: column;
+        grid-column: 1 / -1;
+    }
+}
+
+.toolbar-toggle {
+    display: flex;
+    align-items: center;
+    gap: $gap-xs;
+    padding: 0 $gap;
+    cursor: pointer;
+
+    height: $input-height-touch;
+
+    @include g.from-desktop {
+        display: none;
+    }
+}
+
+.toolbar-item {
+    display: flex;
+    align-items: center;
+    gap: $gap-xs;
+    padding: 0 $gap;
+    cursor: pointer;
+
+    height: $input-height * 1.5;
+
+    @include g.until-mobile {
+        height: $input-height-touch;
+    }
+
+    color: $text-primary;
+    background-color: $bg-dark-transparent;
+    border-radius: $radius;
+    border: none;
+
+    &:hover {
+        background: $bg-dark;
+    }
+
+    &.active {
+        background: $bg-highlight;
+        color: $color-primary;
+    }
+}

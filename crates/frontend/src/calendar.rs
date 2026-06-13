@@ -86,12 +86,6 @@ impl Component for Calendar {
 
         html! {
             <div class="calendar-grid">
-                <div class="calendar-weekday-header hide-mobile">
-                    { for api::Weekday::ALL.iter().map(|wd| html! {
-                        <div class="calendar-weekday">{wd.short_name()}</div>
-                    }) }
-                </div>
-
                 { for weeks.iter().map(|(month_band, days)| {
                     html! {
                         <>
@@ -99,7 +93,14 @@ impl Component for Calendar {
                             <div class="calendar-month">
                                 {format!("{month_name} {year}")}
                             </div>
+
+                            <div class="calendar-weekdays hide-mobile">
+                                { for api::Weekday::ALL.iter().map(|wd| html! {
+                                    <div class="calendar-weekday">{wd.short_name()}</div>
+                                }) }
+                            </div>
                         }
+
                         <div class="calendar-week">
                             { for days.iter().map(|&day| {
                                 let is_today = day == today;
@@ -133,7 +134,7 @@ impl Component for Calendar {
                                                         .join(" ");
 
                                                     html! {
-                                                        <div class="calendar-item clickable" onclick={on_click}>
+                                                        <div class="calendar-item clickable" onclick={on_click} title={entry.series_title.clone()}>
                                                             <div class="calendar-item-title">{&entry.series_title}</div>
                                                             <div class="calendar-item-code">{codes}</div>
                                                         </div>

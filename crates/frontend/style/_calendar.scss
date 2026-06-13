@@ -1,110 +1,108 @@
 @use 'grid' as g;
 
-.calendar-grid {
-    width: 100%;
-    overflow-x: auto;
+@mixin row-base {
+    display: flex;
+    height: $input-height;
+    align-items: center;
+
+    @include g.until-mobile {
+        height: $input-height-touch;
+    }
 }
 
-.calendar-weekday-header {
+@mixin column-base {
+    display: flex;
+    flex-direction: column;
+    gap: $gap;
+}
+
+.calendar-grid {
+    @include column-base;
+}
+
+.calendar-weekdays {
     display: grid;
     grid-template-columns: repeat(7, minmax(0, 1fr));
-    border-bottom: 2px solid $border-subtle;
-    min-width: 280px;
+    gap: $gap;
 }
 
 .calendar-weekday {
+    @include row-base;
+
     text-align: center;
     color: $text-muted;
-    padding: $padding;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
 }
 
 .calendar-month {
+    @include row-base;
+
+    font-size: $font-lg;
     color: $color-primary;
-    border-top: 1px solid $border-subtle;
-    padding: $padding;
-
-    &:first-of-type {
-        border-top: none;
-        padding-top: $padding;
-    }
-
-    @include g.until-mobile {
-        font-size: $font-base;
-    }
 }
 
 .calendar-week {
-    display: flex;
-    flex-direction: column;
+    @include column-base;
 
     @include g.from-desktop {
         display: grid;
         grid-template-columns: repeat(7, minmax(0, 1fr));
-        min-width: 280px;
     }
 }
 
 .calendar-cell {
-    display: flex;
-    flex-direction: column;
+    @include column-base;
 
-    padding: $padding;
-    border-top: 1px solid $border-subtle;
-    border-right: 1px solid $border-subtle;
-
-    min-height: $input-height * 3;
+    min-height: $input-height * 2;
 
     @include g.until-mobile {
-        min-height: $input-height-touch * 3;
-    }
-
-    &:last-child {
-        border-right: none;
-    }
-
-    &.past {
-        opacity: 0.45;
+        min-height: $input-height-touch * 2;
     }
 
     &.today {
-        background: rgba($color-primary, 0.12);
+        background: rgba($color-primary, 0.25);
 
         .calendar-day-number>.bullet {
-            background: $color-primary;
-            color: #fff;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
+            background: none;
+        }
+    }
+
+    .calendar-day-number>.bullet {
+        height: $input-height;
+        aspect-ratio: 1;
+        display: inline-flex;
+        background: rgba($color-secondary, 0.25);
+        padding: $padding;
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: $bold-weight;
+
+        @include g.until-mobile {
+            height: $input-height-touch;
         }
     }
 }
 
 .calendar-day-number {
+    @include row-base;
+
+    font-size: $font-lg;
     color: $text-muted;
-    padding: $padding;
 }
 
 .calendar-items {
-    display: flex;
-    flex-direction: column;
-    gap: $gap-sm;
+    @include column-base;
 }
 
 .calendar-item {
     display: flex;
     flex-direction: column;
-    gap: $gap-sm;
+    gap: $gap-xs;
 
     background: $bg-surface;
     color: $text-primary;
-    border-radius: $radius-sm;
-    padding: $padding;
+    padding: $gap-xs;
     min-height: $input-height;
 
     @include g.until-mobile {
@@ -122,7 +120,9 @@
 }
 
 .calendar-item-title {
-    word-break: break-word;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .calendar-item-code {

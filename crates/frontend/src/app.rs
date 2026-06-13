@@ -239,43 +239,39 @@ fn Toolbar(props: &ToolbarProps) -> Html {
     };
 
     html! {
-        <div class="toolbar row-fill mobile-column">
-            <div class="row-fill">
-                <div class="row">
-                    <span class="site-title clickable" onclick={on_nav(Route::Dashboard(DashboardQuery::default()))}>{"Track"}</span>
-                </div>
-
-                <div class="row end hide-desktop">
-                    <button class="btn" onclick={on_menu_toggle} title="Settings">
-                        <span class="item-inline"><span class={classes!("icon", if *menu_open { "ellipsis-horizontal" } else { "bars-3" })} /></span>
-                    </button>
-                </div>
+        <div class="toolbar">
+            <div class="toolbar-brand">
+                <span class="site-title clickable" onclick={on_nav(Route::Dashboard(DashboardQuery::default()))}>{"Track"}</span>
             </div>
 
-            <div class={classes!("desktop-row", "mobile-column", "end", (!*menu_open).then_some("hide-mobile"))}>
-                <button onclick={on_nav(Route::Dashboard(DashboardQuery::default()))} class="btn" title="Dashboard">
+            <div class="toolbar-toggle" onclick={on_menu_toggle} title="Navigation">
+                <span class="item-inline"><span class={classes!("icon", if *menu_open { "ellipsis-horizontal" } else { "bars-3" })} /></span>
+            </div>
+
+            <div class={classes!("toolbar-dropdown", (!*menu_open).then_some("hide-mobile"))}>
+                <button onclick={on_nav(Route::Dashboard(DashboardQuery::default()))} class="toolbar-item" title="Dashboard">
                     <span class="item-inline"><span class="icon rectangle-stack" /></span>
                     <span>{"Dashboard"}</span>
                 </button>
-                <button onclick={on_nav(Route::Series(PagedQuery::default()))} class="btn" title="Series">
+                <button onclick={on_nav(Route::Series(PagedQuery::default()))} class="toolbar-item" title="Series">
                     <span class="item-inline"><span class="icon tv" /></span>
                     <span>{"Series"}</span>
                 </button>
-                <button onclick={on_nav(Route::Movies(PagedQuery::default()))} class="btn" title="Movies">
+                <button onclick={on_nav(Route::Movies(PagedQuery::default()))} class="toolbar-item" title="Movies">
                     <span class="item-inline"><span class="icon film" /></span>
                     <span>{"Movies"}</span>
                 </button>
-                <button onclick={on_nav(Route::Search(SearchQuery::default()))} class="btn" title="Search">
+                <button onclick={on_nav(Route::Search(SearchQuery::default()))} class="toolbar-item" title="Search">
                     <span class="item-inline"><span class="icon magnifying-glass" /></span>
-                    <span>{"Search"}</span>
+                    <span class="hide-desktop">{"Search"}</span>
                 </button>
-                <button onclick={on_nav(Route::Queue)} class="btn" title="Queue">
+                <button onclick={on_nav(Route::Queue)} class="toolbar-item" title="Queue">
                     <span class="item-inline"><span class="icon queue-list" /></span>
-                    <span>{"Queue"}</span>
+                    <span class="hide-desktop">{"Queue"}</span>
                 </button>
-                <button onclick={on_nav(Route::Settings)} class="btn" title="Settings">
+                <button onclick={on_nav(Route::Settings)} class="toolbar-item" title="Settings">
                     <span class="item-inline"><span class="icon cog-6-tooth" /></span>
-                    <span>{"Settings"}</span>
+                    <span class="hide-desktop">{"Settings"}</span>
                 </button>
             </div>
         </div>
