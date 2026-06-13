@@ -144,9 +144,6 @@ async fn sync_show_tmdb(
     if let Some(id) = selected_backdrop_id {
         db.set_show_image_selection(show_id, ImageKind::Backdrop, id)
             .await?;
-
-        db.set_show_image_selection(show_id, ImageKind::Banner, id)
-            .await?;
     }
 
     let updated = db

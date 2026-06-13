@@ -118,6 +118,13 @@ impl WsHandler {
                 let seasons = self.db.seasons(req.show_id).await?;
                 outgoing.write(api::ListSeasonsResponse { seasons });
             }
+            api::Request::GetSeasonImages => {
+                let req = incoming
+                    .read::<api::GetSeasonImagesRequest>()
+                    .context("Expected a request payload")?;
+                let images = self.db.season_images_by_id(req.season_id).await?;
+                outgoing.write(api::GetSeasonImagesResponse { images });
+            }
             api::Request::TrackShow => {
                 let req = incoming
                     .read::<api::TrackShowRequest>()
@@ -1115,6 +1122,16 @@ impl WsHandler {
                             "ws select image movie changed",
                         );
                     }
+                    api::ImageOwner::Season(season_id) => {
+                        if let Some(show_id) = self.db.show_id_for_season(season_id).await? {
+                            let seasons = self.db.seasons(show_id).await?;
+                            self.broadcast.emit(
+                                incoming.channel(),
+                                api::AppEventKind::SeasonsChanged { show_id, seasons },
+                                "ws select image season changed",
+                            );
+                        }
+                    }
                 }
 
                 outgoing.write(api::Empty);
@@ -1153,6 +1170,16 @@ impl WsHandler {
                             },
                             "ws clear selected image movie changed",
                         );
+                    }
+                    api::ImageOwner::Season(season_id) => {
+                        if let Some(show_id) = self.db.show_id_for_season(season_id).await? {
+                            let seasons = self.db.seasons(show_id).await?;
+                            self.broadcast.emit(
+                                incoming.channel(),
+                                api::AppEventKind::SeasonsChanged { show_id, seasons },
+                                "ws clear selected image season changed",
+                            );
+                        }
                     }
                 }
 

@@ -132,6 +132,7 @@ struct ImageMetaRow {
     kind: ImageKind,
     show_id: Option<ShowId>,
     movie_id: Option<MovieId>,
+    season_id: Option<SeasonId>,
 }
 
 #[derive(Row)]
@@ -523,7 +524,14 @@ statements! {
             WHERE movie_id IS NOT NULL ORDER BY movie_id, kind, rank, id
         "#,
         image_by_id: r#"
-            SELECT kind, show_id, movie_id FROM images WHERE id = ?
+            SELECT kind, show_id, movie_id, season_id FROM images WHERE id = ?
+        "#,
+        list_season_images: r#"
+            SELECT id, kind, source, path FROM images
+            WHERE season_id = ? ORDER BY kind, rank, id
+        "#,
+        show_id_for_season: r#"
+            SELECT show_id FROM seasons WHERE id = ?
         "#,
 
         // selection tables
@@ -864,6 +872,9 @@ statements! {
         insert_movie_image: r#"
             INSERT INTO images (id, movie_id, kind, source, path, width, height, rank) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(movie_id, kind, path) WHERE movie_id IS NOT NULL DO NOTHING
+        "#,
+        delete_season_image_selection: r#"
+            DELETE FROM season_images WHERE season_id = ? AND kind = ?
         "#,
 
         // selection tables
@@ -2582,16 +2593,19 @@ impl Database {
 
             let kind = row.kind;
 
-            let owner = match (row.show_id, row.movie_id) {
-                (Some(show_id), _) => {
+            let owner = match (row.show_id, row.movie_id, row.season_id) {
+                (Some(show_id), _, _) => {
                     s.set_show_image_selection.execute((show_id, kind, id))?;
-
                     api::ImageOwner::Show(show_id)
                 }
-                (_, Some(movie_id)) => {
+                (_, Some(movie_id), _) => {
                     s.set_movie_image_selection.execute((movie_id, kind, id))?;
-
                     api::ImageOwner::Movie(movie_id)
+                }
+                (_, _, Some(season_id)) => {
+                    s.set_season_image_selection
+                        .execute((season_id, kind, id))?;
+                    api::ImageOwner::Season(season_id)
                 }
                 _ => anyhow::bail!("Image has no owner"),
             };
@@ -2617,12 +2631,38 @@ impl Database {
                 api::ImageOwner::Movie(movie_id) => {
                     s.delete_movie_image_selection.execute((movie_id, kind))?;
                 }
+                api::ImageOwner::Season(season_id) => {
+                    s.delete_season_image_selection.execute((season_id, kind))?;
+                }
             }
 
             Ok(())
         });
 
         result.await?
+    }
+
+    pub(crate) async fn season_images_by_id(
+        &self,
+        season_id: SeasonId,
+    ) -> Result<Vec<api::MediaImage>> {
+        let mut s = self.inner.clone().shared().await;
+
+        spawn_blocking(move || {
+            let mut out = Vec::new();
+            let mut stmt = s.list_season_images.bind((season_id,))?;
+            while let Some(r) = stmt.next::<ImageRow>()? {
+                out.push(image_from_row(r));
+            }
+            Ok(out)
+        })
+        .await?
+    }
+
+    pub(crate) async fn show_id_for_season(&self, season_id: SeasonId) -> Result<Option<ShowId>> {
+        let mut s = self.inner.clone().shared().await;
+
+        spawn_blocking(move || s.show_id_for_season.bind((season_id,))?.first::<ShowId>()).await?
     }
 
     pub(crate) async fn mark_watched(

@@ -1332,6 +1332,19 @@ pub struct Season {
     pub total_count: u32,
 }
 
+impl Season {
+    pub fn is_selected(&self, kind: ImageKind, key: &ImageKey) -> bool {
+        match kind {
+            ImageKind::Poster => self
+                .poster
+                .as_ref()
+                .map(|i| i.key() == key)
+                .unwrap_or(false),
+            _ => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct Episode {
@@ -1434,6 +1447,7 @@ impl Movie {
 pub enum ImageOwner {
     Show(ShowId),
     Movie(MovieId),
+    Season(SeasonId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
@@ -1677,6 +1691,18 @@ pub struct ListSeasonsRequest {
 #[musli(crate = musli_core)]
 pub struct ListSeasonsResponse {
     pub seasons: Vec<Season>,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct GetSeasonImagesRequest {
+    pub season_id: SeasonId,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct GetSeasonImagesResponse {
+    pub images: Vec<MediaImage>,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -2132,6 +2158,12 @@ api::define! {
     impl Endpoint for ListSeasons {
         impl Request for ListSeasonsRequest;
         type Response<'de> = ListSeasonsResponse;
+    }
+
+    pub type GetSeasonImages;
+    impl Endpoint for GetSeasonImages {
+        impl Request for GetSeasonImagesRequest;
+        type Response<'de> = GetSeasonImagesResponse;
     }
 
     pub type TrackShow;

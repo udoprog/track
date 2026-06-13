@@ -18,8 +18,9 @@ pub(super) struct ShowDetail {
     channel: ws::Channel,
     show: Option<api::Show>,
     graphics: BTreeMap<api::ImageKind, Vec<ImageItem>>,
+    season_graphics: BTreeMap<api::ImageKind, Vec<ImageItem>>,
     seasons: Vec<api::Season>,
-    selected: Option<api::SeasonNumber>,
+    selected: Option<usize>,
     expanded_seasons: bool,
     episodes: Vec<api::Episode>,
     pending_episode: Option<(String, api::EpisodeId)>,
@@ -39,6 +40,7 @@ pub(super) struct ShowDetail {
     orphaned: Vec<api::OrphanedWatched>,
     fixing_watched: Option<api::WatchedId>,
     image_modal: bool,
+    season_image_modal: bool,
     settings_modal: bool,
     remote_editor: bool,
     background: Background,
@@ -59,6 +61,9 @@ pub(super) struct ShowDetail {
     _set_next_req: ws::Request,
     _select_image_req: ws::Request,
     _clear_image_req: ws::Request,
+    _season_images_req: ws::Request,
+    _select_season_image_req: ws::Request,
+    _clear_season_image_req: ws::Request,
     _set_sync_source_req: ws::Request,
     _set_language_req: ws::Request,
     _set_include_specials_req: ws::Request,
@@ -117,6 +122,13 @@ pub(super) enum Msg {
     ),
     OpenImageModal,
     CloseImageModal,
+    OpenSeasonImageModal,
+    CloseSeasonImageModal,
+    SeasonImagesLoaded(Result<ws::Packet<api::GetSeasonImages>, ws::Error>),
+    SelectSeasonImage(api::ImageKind, api::ImageId),
+    SelectSeasonImageDone(Result<ws::Packet<api::SelectImage>, ws::Error>),
+    ClearSelectedSeasonImage(api::ImageKind),
+    ClearSelectedSeasonImageDone(Result<ws::Packet<api::ClearSelectedImage>, ws::Error>),
     OpenSettingsModal,
     CloseSettingsModal,
     SetIncludeSpecials(Option<bool>),
@@ -177,6 +189,7 @@ impl Component for ShowDetail {
             channel: ws::Channel::default(),
             show: None,
             graphics: BTreeMap::new(),
+            season_graphics: BTreeMap::new(),
             seasons: Vec::new(),
             selected: None,
             expanded_seasons: false,
@@ -198,6 +211,7 @@ impl Component for ShowDetail {
             orphaned: Vec::new(),
             fixing_watched: None,
             image_modal: false,
+            season_image_modal: false,
             settings_modal: false,
             remote_editor: false,
             background,
@@ -218,6 +232,9 @@ impl Component for ShowDetail {
             _set_next_req: ws::Request::default(),
             _select_image_req: ws::Request::default(),
             _clear_image_req: ws::Request::default(),
+            _season_images_req: ws::Request::default(),
+            _select_season_image_req: ws::Request::default(),
+            _clear_season_image_req: ws::Request::default(),
             _set_sync_source_req: ws::Request::default(),
             _set_language_req: ws::Request::default(),
             _set_include_specials_req: ws::Request::default(),
@@ -242,7 +259,7 @@ impl Component for ShowDetail {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
-        let (Some(show), Some(season)) = (&self.show, self.selected) else {
+        let (Some(show), Some(season)) = (&self.show, self.selected()) else {
             return html!(<Loading />);
         };
 
@@ -300,22 +317,54 @@ impl Component for ShowDetail {
 
         html! {
             <>
-                { self.view_header(ctx, show) }
+                <div class="row-fill align-top">
+                    <div class="column desktop-center fill">
+                        <h1>{show.title.as_deref().unwrap_or("Untitled Show")}</h1>
+
+                        if let Some(date) = show.first_air_date {
+                            <span class="text-muted">{date.date(self.tz.clone()).year()}</span>
+                        }
+                    </div>
+
+                    <div class="hide-desktop row end">
+                        <button class="btn" onclick={link.callback(|_| Msg::ToggleActionsExpanded)}>
+                            <span class={classes!("icon", if self.actions_expanded { "ellipsis-horizontal" } else { "bars-2" })} />
+                        </button>
+                    </div>
+
+                    if let Some(ref overview) = show.overview {
+                        <p class="overview hide-mobile">{overview}</p>
+                    }
+                </div>
 
                 <div class={classes!("desktop-row-fill", "mobile-column", "actions", (!self.actions_expanded).then_some("hide-mobile"))}>
                     {actions}
                 </div>
 
                 <div class="detail-layout">
-                    <Image class="banner hide-desktop" src={show.banner.clone()} />
+                    <div class="hide-desktop">
+                        if let Some(ref banner) = show.banner {
+                            <Image class="banner" src={banner.clone()} />
+                        } else if let Some(ref backdrop) = show.backdrop {
+                            <Image class="backdrop" src={backdrop.clone()} />
+                        }
+                    </div>
 
-                    { self.view_sidebar(ctx, show) }
+                    if let Some(ref overview) = show.overview {
+                        <p class="overview hide-desktop">{overview}</p>
+                    }
+
+                    { self.view_sidebar(ctx, show, season) }
 
                     { self.view_episodes(ctx, season) }
                 </div>
 
                 if self.image_modal {
                     { self.view_image_modal(ctx) }
+                }
+
+                if self.season_image_modal {
+                    { self.view_season_image_modal(ctx) }
                 }
 
                 if self.settings_modal {
@@ -374,9 +423,14 @@ impl Component for ShowDetail {
             }
         } else if ctx.props().initial_season != old_props.initial_season
             && let Some(season) = ctx.props().initial_season
-            && self.selected != Some(season)
+            && self.selected().map(|s| s.season) != Some(season)
         {
-            self.selected = Some(season);
+            self.selected = self
+                .seasons
+                .iter()
+                .enumerate()
+                .find(|(_, s)| s.season == season)
+                .map(|(i, _)| i);
             self.episodes.clear();
             self.pending_episode = None;
             self.next_unwatched = None;
@@ -439,7 +493,7 @@ impl ShowDetail {
                     api::AppEventKind::EpisodesChanged { show_id, season }
                         if *show_id == ctx.props().show_id =>
                     {
-                        if self.selected == Some(*season) {
+                        if self.selected().map(|s| s.season) == Some(*season) {
                             self.load_episodes(ctx, *season);
                         }
 
@@ -447,8 +501,8 @@ impl ShowDetail {
                         Ok(false)
                     }
                     api::AppEventKind::PendingChanged => {
-                        if let Some(season) = self.selected {
-                            self.load_episodes(ctx, season);
+                        if let Some(season) = self.selected() {
+                            self.load_episodes(ctx, season.season);
                         }
 
                         self.load_orphaned(ctx);
@@ -468,8 +522,8 @@ impl ShowDetail {
                         {
                             self.syncing = false;
 
-                            if let Some(season) = self.selected {
-                                self.load_episodes(ctx, season);
+                            if let Some(season) = self.selected() {
+                                self.load_episodes(ctx, season.season);
                             }
 
                             self.load_show(ctx);
@@ -489,8 +543,8 @@ impl ShowDetail {
                         };
 
                         if relevant {
-                            if let Some(season) = self.selected {
-                                self.load_episodes(ctx, season);
+                            if let Some(season) = self.selected() {
+                                self.load_episodes(ctx, season.season);
                             }
 
                             self.load_orphaned(ctx);
@@ -526,15 +580,19 @@ impl ShowDetail {
                     let initial = ctx
                         .props()
                         .initial_season
-                        .and_then(|n| self.seasons.iter().find(|s| s.season == n));
+                        .and_then(|n| self.seasons.iter().enumerate().find(|(_, s)| s.season == n))
+                        .map(|(i, _)| i);
 
-                    self.selected = initial
-                        .or_else(|| self.seasons.iter().find(|s| !s.season.is_special()))
-                        .or_else(|| self.seasons.first())
-                        .map(|s| s.season);
+                    self.selected = initial.or_else(|| {
+                        self.seasons
+                            .iter()
+                            .enumerate()
+                            .find(|(_, s)| !s.season.is_special())
+                            .map(|(i, _)| i)
+                    });
 
-                    if let Some(season) = self.selected {
-                        self.load_episodes(ctx, season);
+                    if let Some(season) = self.selected() {
+                        self.load_episodes(ctx, season.season);
                     }
 
                     self.load_history(ctx);
@@ -544,7 +602,7 @@ impl ShowDetail {
                 Ok(true)
             }
             Msg::SelectSeason(season) => {
-                if self.selected != Some(season) {
+                if self.selected().map(|s| s.season) != Some(season) {
                     let id = ctx.props().show_id;
 
                     ctx.props().on_navigate.emit(Route::ShowDetail(
@@ -636,8 +694,8 @@ impl ShowDetail {
             Msg::MarkWatchedDone(result) => {
                 result.context(Message::MarkingWatched)?;
 
-                if let Some(season) = self.selected {
-                    self.load_episodes(ctx, season);
+                if let Some(season) = self.selected() {
+                    self.load_episodes(ctx, season.season);
                 }
 
                 // Refresh season counts so the progress bars reflect the mark.
@@ -672,8 +730,8 @@ impl ShowDetail {
                 result.context(Message::RemovingWatched)?;
                 self.confirm_remove_watch = None;
 
-                if let Some(season) = self.selected {
-                    self.load_episodes(ctx, season);
+                if let Some(season) = self.selected() {
+                    self.load_episodes(ctx, season.season);
                 }
 
                 // Refresh season counts so the progress bars reflect the change.
@@ -710,8 +768,8 @@ impl ShowDetail {
             Msg::WatchRemainingDone(result) => {
                 result.context(Message::MarkingWatched)?;
 
-                if let Some(season) = self.selected {
-                    self.load_episodes(ctx, season);
+                if let Some(season) = self.selected() {
+                    self.load_episodes(ctx, season.season);
                 }
 
                 // Refresh season counts so the progress bars reflect the marks.
@@ -857,8 +915,8 @@ impl ShowDetail {
             Msg::AddPendingDone(result) => {
                 result.context(Message::SyncingShow)?;
 
-                if let Some(season) = self.selected {
-                    self.load_episodes(ctx, season);
+                if let Some(season) = self.selected() {
+                    self.load_episodes(ctx, season.season);
                 }
 
                 self.load_orphaned(ctx);
@@ -885,8 +943,8 @@ impl ShowDetail {
             Msg::RemovePendingDone(result) => {
                 result.context(Message::SyncingShow)?;
 
-                if let Some(season) = self.selected {
-                    self.load_episodes(ctx, season);
+                if let Some(season) = self.selected() {
+                    self.load_episodes(ctx, season.season);
                 }
 
                 Ok(false)
@@ -991,6 +1049,93 @@ impl ShowDetail {
             }
             Msg::CloseImageModal => {
                 self.image_modal = false;
+                Ok(true)
+            }
+            Msg::OpenSeasonImageModal => {
+                if let Some(id) = self.selected().map(|s| s.id) {
+                    self.season_image_modal = true;
+                    self.load_season_images(ctx, id);
+                }
+
+                Ok(true)
+            }
+            Msg::CloseSeasonImageModal => {
+                self.season_image_modal = false;
+                Ok(true)
+            }
+            Msg::SeasonImagesLoaded(result) => {
+                let packet = result
+                    .context(Message::SyncingShow)?
+                    .decode()
+                    .context(Message::SyncingShow)?;
+
+                self.season_graphics.clear();
+
+                for i in &packet.images {
+                    let selected = self
+                        .selected()
+                        .map(|s| s.is_selected(i.kind, i.image.key()))
+                        .unwrap_or(false);
+
+                    self.season_graphics
+                        .entry(i.kind)
+                        .or_default()
+                        .push(ImageItem {
+                            selected,
+                            id: i.id,
+                            kind: i.kind,
+                            source: i.source,
+                            image: i.image.clone(),
+                        });
+                }
+
+                Ok(true)
+            }
+            Msg::SelectSeasonImage(kind, id) => {
+                if let Some(items) = self.season_graphics.get_mut(&kind) {
+                    for item in items {
+                        item.selected = item.id == id;
+                    }
+                }
+
+                self._select_season_image_req = self
+                    .channel
+                    .request()
+                    .body(api::SelectImageRequest { id })
+                    .on_packet(ctx.link().callback(Msg::SelectSeasonImageDone))
+                    .send();
+
+                Ok(true)
+            }
+            Msg::SelectSeasonImageDone(result) => {
+                result.context(Message::SyncingShow)?;
+                self.season_image_modal = false;
+                Ok(true)
+            }
+            Msg::ClearSelectedSeasonImage(kind) => {
+                if let Some(items) = self.season_graphics.get_mut(&kind) {
+                    for item in items {
+                        item.selected = false;
+                    }
+                }
+
+                if let Some(season) = self.selected() {
+                    self._clear_season_image_req = self
+                        .channel
+                        .request()
+                        .body(api::ClearSelectedImageRequest {
+                            owner: api::ImageOwner::Season(season.id),
+                            kind,
+                        })
+                        .on_packet(ctx.link().callback(Msg::ClearSelectedSeasonImageDone))
+                        .send();
+                }
+
+                Ok(true)
+            }
+            Msg::ClearSelectedSeasonImageDone(result) => {
+                result.context(Message::SyncingShow)?;
+                self.season_image_modal = false;
                 Ok(true)
             }
             Msg::OpenSettingsModal => {
@@ -1127,8 +1272,8 @@ impl ShowDetail {
             Msg::MoveWatchedDone(result) => {
                 result.context(Message::MarkingWatched)?;
 
-                if let Some(season) = self.selected {
-                    self.load_episodes(ctx, season);
+                if let Some(season) = self.selected() {
+                    self.load_episodes(ctx, season.season);
                     self.load_history(ctx);
                 }
 
@@ -1164,6 +1309,10 @@ impl ShowDetail {
                 Ok(true)
             }
         }
+    }
+
+    fn selected(&self) -> Option<&api::Season> {
+        self.selected.and_then(|i| self.seasons.get(i))
     }
 
     fn load_show(&mut self, ctx: &Context<Self>) {
@@ -1204,6 +1353,15 @@ impl ShowDetail {
             .send();
     }
 
+    fn load_season_images(&mut self, ctx: &Context<Self>, season_id: api::SeasonId) {
+        self._season_images_req = self
+            .channel
+            .request()
+            .body(api::GetSeasonImagesRequest { season_id })
+            .on_packet(ctx.link().callback(Msg::SeasonImagesLoaded))
+            .send();
+    }
+
     fn load_episodes(&mut self, ctx: &Context<Self>, season: api::SeasonNumber) {
         self._episodes_req = self
             .channel
@@ -1238,32 +1396,12 @@ impl ShowDetail {
             .send();
     }
 
-    fn view_header(&self, ctx: &Context<Self>, show: &api::Show) -> Html {
-        let link = ctx.link();
+    fn view_sidebar(&self, ctx: &Context<Self>, show: &api::Show, season: &api::Season) -> Html {
+        let poster = season.poster.as_ref().or(show.poster.as_ref());
 
-        html! {
-            <div class="row-fill align-top">
-                <div class="column desktop-center fill">
-                    <h1>{show.title.as_deref().unwrap_or("Untitled Show")}</h1>
-
-                    if let Some(date) = show.first_air_date {
-                        <span class="text-muted">{date.date(self.tz.clone()).year()}</span>
-                    }
-                </div>
-
-                <div class="hide-desktop row end">
-                    <button class="btn" onclick={link.callback(|_| Msg::ToggleActionsExpanded)}>
-                        <span class={classes!("icon", if self.actions_expanded { "ellipsis-horizontal" } else { "bars-2" })} />
-                    </button>
-                </div>
-            </div>
-        }
-    }
-
-    fn view_sidebar(&self, ctx: &Context<Self>, show: &api::Show) -> Html {
         html! {
             <div class="detail-sidebar">
-                <Image class="poster hide-mobile" src={show.poster.clone()} />
+                <Image class="poster hide-mobile" src={poster.cloned()} />
 
                 <div class="table">
                     { for self.seasons.iter().map(|s| self.view_season(ctx, s, self.seasons.len())) }
@@ -1291,9 +1429,28 @@ impl ShowDetail {
         }
     }
 
+    fn view_season_image_modal(&self, ctx: &Context<Self>) -> Html {
+        let link = ctx.link();
+
+        html! {
+            <Modal title="Season Graphics" on_close={link.callback(|_| Msg::CloseSeasonImageModal)}>
+                {for self.season_graphics.iter().map(|(&kind, items)| {
+                    html! {
+                        <ImageGallery
+                            items={items.clone()}
+                            {kind}
+                            on_select={link.callback(move |id| Msg::SelectSeasonImage(kind, id))}
+                            on_clear={link.callback(move |_| Msg::ClearSelectedSeasonImage(kind))}
+                        />
+                    }
+                })}
+            </Modal>
+        }
+    }
+
     fn view_season(&self, ctx: &Context<Self>, s: &api::Season, total: usize) -> Html {
         let season = s.season;
-        let active = self.selected == Some(season);
+        let active = self.selected().as_ref().map(|s| s.id) == Some(s.id);
         let clickable = total > 1;
 
         let onclick = if !clickable {
@@ -1316,9 +1473,10 @@ impl ShowDetail {
             <div class={classes!("table-entry", "column", clickable.then_some("clickable"), active.then_some("active"), (!active && !self.expanded_seasons).then_some("hide-mobile"))} {onclick}>
                 <div class="row-fill fill">
                     <span>
-                        {s.season.long().to_string()}
-                        if let Some(name) = s.name.as_deref() {
-                            <span class="text-muted">{format!(" — {name}")}</span>
+                        if let Some(ref name) = s.name {
+                            {name}
+                        } else {
+                            {s.season.long().to_string()}
                         }
                     </span>
 
@@ -1342,7 +1500,7 @@ impl ShowDetail {
         }
     }
 
-    fn view_episodes(&self, ctx: &Context<Self>, season: api::SeasonNumber) -> Html {
+    fn view_episodes(&self, ctx: &Context<Self>, season: &api::Season) -> Html {
         let link = ctx.link();
 
         let watched_count = self
@@ -1430,10 +1588,10 @@ impl ShowDetail {
             }
         };
 
-        let s = self.seasons.iter().find(|s| s.season == season);
-
         let actions = 'actions: {
             if self.select_mark_remaining {
+                let season = season.season;
+
                 break 'actions html! {
                     <MarkWatchedPicker
                         on_confirm={link.callback(move |mark_time| Msg::WatchRemaining(season, mark_time))}
@@ -1447,10 +1605,16 @@ impl ShowDetail {
                     if self.view_orphaned {
                         <h2>{format!("{} orphaned episodes", self.orphaned.len())}</h2>
                     } else {
-                        <h2 class="hide-mobile">{season.long().to_string()}</h2>
+                        <h2 class="hide-mobile">
+                            if let Some(ref name) = season.name {
+                                {name}
+                            } else {
+                                {season.season.long().to_string()}
+                            }
+                        </h2>
                     }
 
-                    if let Some(overview) = s.and_then(|s| s.overview.as_ref()) {
+                    if let Some(ref overview) = season.overview {
                         <p class="overview">{overview}</p>
                     }
 
@@ -1459,13 +1623,18 @@ impl ShowDetail {
                             <h4>{format!("{watched_count} / {total} watched")}</h4>
                         }
 
-                        if self.view_orphaned  || (!self.orphaned.is_empty() || watched_count < total) {
-                            <div class="row end">
-                                <div class="input-group">
+                        <div class="row end">
+                            <div class="input-group">
+                                <button class="btn" onclick={link.callback(|_| Msg::OpenSeasonImageModal)} title="Season Graphics">
+                                    <span class="icon photo" />
+                                    <span class="hide-mobile">{"Graphics"}</span>
+                                </button>
+
+                                if self.view_orphaned || (!self.orphaned.is_empty() || watched_count < total) {
                                     {header}
-                                </div>
+                                }
                             </div>
-                        }
+                        </div>
                     </div>
                 </div>
             }
@@ -1730,8 +1899,8 @@ impl ShowDetail {
         // The first unwatched episode in the current season is the default
         // selected value.
         let selected_episode = || {
-            self.selected.and_then(|season| {
-                for e in self.episodes.iter().filter(|ep| ep.season == season) {
+            self.selected().and_then(|season| {
+                for e in self.episodes.iter().filter(|ep| ep.season == season.season) {
                     let Some(watched) = self.watched_by_episode.get(&e.id) else {
                         return Some(e.episode);
                     };
@@ -1761,7 +1930,7 @@ impl ShowDetail {
                                         label={w.timestamp.display(self.tz.clone())}
                                         {show_id}
                                         seasons={self.seasons.clone()}
-                                        selected_season={self.selected}
+                                        selected_season={self.selected().map(|s| s.season)}
                                         selected_episode={selected_episode()}
                                         on_confirm={link.callback(move |(season, ep)| Msg::MoveWatched(wid, season, ep))}
                                         on_cancel={link.callback(|_| Msg::CancelFixWatched)}
