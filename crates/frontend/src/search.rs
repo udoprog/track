@@ -162,7 +162,7 @@ impl Component for Search {
                 <div class="input-group">
                     <select class="input-select" onchange={on_kind} value={kind}>
                         <option value="show" selected={matches!(self.kind, api::SearchKind::Show)}>
-                            {"Show"}
+                            {"Shows"}
                         </option>
 
                         <option value="movies" selected={matches!(self.kind, api::SearchKind::Movies)}>

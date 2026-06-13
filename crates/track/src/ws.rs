@@ -577,6 +577,8 @@ impl WsHandler {
                     .read::<api::SetShowSyncSourceRequest>()
                     .context("Expected a request payload")?;
 
+                tracing::warn!(?req);
+
                 let show = self
                     .db
                     .show_by_id(req.id)

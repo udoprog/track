@@ -255,9 +255,9 @@ fn Toolbar(props: &ToolbarProps) -> Html {
                     <span class="icon rectangle-stack" />
                     <span>{"Dashboard"}</span>
                 </button>
-                <button onclick={on_nav(Route::Shows(PagedQuery::default()))} class="toolbar-item" title="Show">
+                <button onclick={on_nav(Route::Shows(PagedQuery::default()))} class="toolbar-item" title="Shows">
                     <span class="icon tv" />
-                    <span>{"Show"}</span>
+                    <span>{"Shows"}</span>
                 </button>
                 <button onclick={on_nav(Route::Movies(PagedQuery::default()))} class="toolbar-item" title="Movies">
                     <span class="icon film" />

@@ -239,7 +239,7 @@ impl Route {
 
         match parts.next() {
             Some("queue") => Route::Queue,
-            Some("show") => match parts.next() {
+            Some("shows") => match parts.next() {
                 Some(id) => id
                     .parse()
                     .map(|id| Route::ShowDetail(id, ShowDetailQuery::from_search(search)))

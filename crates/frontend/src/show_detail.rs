@@ -510,8 +510,7 @@ impl ShowDetail {
 
                 self.background
                     .background(show.backdrop.as_ref().map(|i| i.proxy_url()));
-                self.background
-                    .title(show.title.as_deref().map(|title| format!("Show / {title}")));
+                self.background.title(show.title.clone());
                 self.show = Some(show);
                 self.update_graphics();
                 Ok(true)

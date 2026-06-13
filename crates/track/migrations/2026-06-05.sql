@@ -8,7 +8,8 @@ CREATE TABLE
         sync_source INTEGER,
         language TEXT,
         last_synced_at INTEGER,
-        include_specials INTEGER
+        include_specials INTEGER,
+        remote_id INTEGER REFERENCES show_remotes (id) ON DELETE SET NULL
     );
 
 CREATE TABLE
@@ -32,7 +33,7 @@ CREATE TABLE
         name TEXT,
         overview TEXT,
         aired INTEGER,
-        remote_id TEXT,
+        remote_id INTEGER REFERENCES episode_remotes (id) ON DELETE SET NULL,
         UNIQUE (show_id, season, episode)
     );
 
@@ -49,7 +50,8 @@ CREATE TABLE
         tracked INTEGER NOT NULL DEFAULT 1,
         sync_source INTEGER,
         language TEXT,
-        last_synced_at INTEGER
+        last_synced_at INTEGER,
+        remote_id INTEGER REFERENCES movie_remotes (id) ON DELETE SET NULL
     );
 
 CREATE INDEX idx_movies_release_date ON movies (release_date)
@@ -181,21 +183,49 @@ CREATE TABLE
         PRIMARY KEY (episode_id, kind)
     );
 
+-- Remotes are normalized per owner: a random id, a numeric source enum
+-- (api::RemoteSource) and a dynamic (integer or text) value. The owning
+-- show/movie/episode also points back at its selected remote via remote_id.
+--
+-- show_remotes/movie_remotes intentionally have NO foreign key on their owner:
+-- remote identifiers must outlive deletion of the show/movie (so re-adding the
+-- same id re-links them), so the owner column is a plain id. episode_remotes
+-- stays tied to its episode and cascades.
 CREATE TABLE
-    remotes (
-        remote_id TEXT NOT NULL,
-        show_id INTEGER,
-        movie_id INTEGER,
-        CHECK (
-            (show_id IS NOT NULL)
-            OR (movie_id IS NOT NULL)
-        )
+    show_remotes (
+        id INTEGER PRIMARY KEY,
+        show_id INTEGER NOT NULL,
+        source INTEGER NOT NULL,
+        value,
+        UNIQUE (show_id, source, value)
     );
 
-CREATE UNIQUE INDEX idx_remotes_show ON remotes (show_id, remote_id)
-WHERE
-    show_id IS NOT NULL;
+CREATE TABLE
+    movie_remotes (
+        id INTEGER PRIMARY KEY,
+        movie_id INTEGER NOT NULL,
+        source INTEGER NOT NULL,
+        value,
+        UNIQUE (movie_id, source, value)
+    );
 
-CREATE UNIQUE INDEX idx_remotes_movie ON remotes (movie_id, remote_id)
-WHERE
-    movie_id IS NOT NULL;
+CREATE TABLE
+    episode_remotes (
+        id INTEGER PRIMARY KEY,
+        episode_id INTEGER NOT NULL REFERENCES episodes (id) ON DELETE CASCADE,
+        source INTEGER NOT NULL,
+        value,
+        UNIQUE (episode_id, source, value)
+    );
+
+-- This baseline already describes the normalized-remotes schema, so the
+-- transition migration only needs to run on databases created from the
+-- pre-normalization baseline. Mark it applied here so it is skipped on fresh
+-- databases (it is a no-op against this schema and would otherwise conflict).
+INSERT
+OR IGNORE INTO migrations (id, applied_at)
+VALUES
+    (
+        '2026-06-13-normalize-remotes.sql',
+        '2026-06-05T00:00:00Z'
+    );

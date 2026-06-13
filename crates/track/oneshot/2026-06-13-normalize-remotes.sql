@@ -10,10 +10,69 @@
 -- imdb=3. The `value` columns are declared without a type so they keep no
 -- affinity and preserve the integer/text storage class written into them.
 
+-- Databases predating this migration also predate the series -> shows rename
+-- (the table, its `series_id` foreign keys and the `series_images` table were
+-- renamed in the baseline without a dedicated migration). Bring that legacy
+-- schema up to date first. Fresh databases already match the baseline and skip
+-- this migration entirely (the baseline marks it applied), so these statements
+-- only ever run against the old `series` schema.
+ALTER TABLE series
+RENAME TO shows;
+
+ALTER TABLE series_images
+RENAME TO show_images;
+
+ALTER TABLE seasons
+RENAME COLUMN series_id TO show_id;
+
+ALTER TABLE episodes
+RENAME COLUMN series_id TO show_id;
+
+ALTER TABLE watched_episodes
+RENAME COLUMN series_id TO show_id;
+
+ALTER TABLE pending
+RENAME COLUMN series_id TO show_id;
+
+ALTER TABLE images
+RENAME COLUMN series_id TO show_id;
+
+ALTER TABLE show_images
+RENAME COLUMN series_id TO show_id;
+
+ALTER TABLE remotes
+RENAME COLUMN series_id TO show_id;
+
+-- Rename the series-scoped indexes to their show-scoped baseline names. (The
+-- column references inside them were updated automatically by RENAME COLUMN;
+-- only the index names need fixing. idx_remotes_series is dropped with the
+-- remotes table below.)
+DROP INDEX idx_watched_episodes_series;
+
+DROP INDEX idx_pending_series;
+
+DROP INDEX idx_images_series;
+
+DROP INDEX idx_images_series_rank;
+
+CREATE INDEX idx_watched_episodes_show ON watched_episodes (show_id, season, episode);
+
+CREATE UNIQUE INDEX idx_pending_show ON pending (show_id)
+WHERE
+    show_id IS NOT NULL;
+
+CREATE UNIQUE INDEX idx_images_show ON images (show_id, kind, path)
+WHERE
+    show_id IS NOT NULL;
+
+CREATE INDEX idx_images_show_rank ON images (show_id, kind, rank)
+WHERE
+    show_id IS NOT NULL;
+
 CREATE TABLE
     show_remotes (
         id INTEGER PRIMARY KEY,
-        show_id INTEGER NOT NULL REFERENCES shows (id) ON DELETE CASCADE,
+        show_id INTEGER NOT NULL,
         source INTEGER NOT NULL,
         value,
         UNIQUE (show_id, source, value)
@@ -22,7 +81,7 @@ CREATE TABLE
 CREATE TABLE
     movie_remotes (
         id INTEGER PRIMARY KEY,
-        movie_id INTEGER NOT NULL REFERENCES movies (id) ON DELETE CASCADE,
+        movie_id INTEGER NOT NULL,
         source INTEGER NOT NULL,
         value,
         UNIQUE (movie_id, source, value)

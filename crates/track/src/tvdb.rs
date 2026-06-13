@@ -290,7 +290,7 @@ impl Client {
         }
 
         let bytes = self
-            .request(Method::GET, format!("show/{id}/extended"))
+            .request(Method::GET, format!("series/{id}/extended"))
             .await?
             .send()
             .await?
@@ -387,7 +387,7 @@ impl Client {
         }
 
         let resp = self
-            .request(Method::GET, format!("show/{id}/translations/{language}"))
+            .request(Method::GET, format!("series/{id}/translations/{language}"))
             .await?
             .send()
             .await?;
@@ -448,8 +448,8 @@ impl Client {
         // Default (aired-order) season type, optionally translated to `language`.
         let language = language.and_then(tvdb_language);
         let path = match &language {
-            Some(language) => format!("show/{show_id}/episodes/default/{language}"),
-            None => format!("show/{show_id}/episodes/default"),
+            Some(language) => format!("series/{show_id}/episodes/default/{language}"),
+            None => format!("series/{show_id}/episodes/default"),
         };
 
         let mut output = Vec::new();

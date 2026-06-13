@@ -700,12 +700,7 @@ impl MovieDetail {
         self.movie_releases = by_type.into_values().collect();
         self.background
             .background(movie.backdrop.as_ref().map(|i| i.proxy_url()));
-        self.background.title(
-            movie
-                .title
-                .as_deref()
-                .map(|title| format!("Movie / {title}")),
-        );
+        self.background.title(movie.title.clone());
         self.movie = Some(movie);
         self.update_graphics();
     }

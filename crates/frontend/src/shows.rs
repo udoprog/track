@@ -90,7 +90,7 @@ impl Component for ShowList {
 
     fn rendered(&mut self, _ctx: &Context<Self>, first_render: bool) {
         if first_render {
-            self.background.title(Some("Movies".to_string()));
+            self.background.title(Some("Shows".to_string()));
         }
     }
 
@@ -128,7 +128,7 @@ impl Component for ShowList {
         html! {
             <>
                 <div class="row-fill">
-                    <h1>{"Show"}</h1>
+                    <h1>{"Shows"}</h1>
                     <h4 class="text-muted end">{total}</h4>
                 </div>
 
