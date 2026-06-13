@@ -197,7 +197,6 @@ impl Search {
         match msg {
             Msg::Channel(result) => {
                 self.channel = result?;
-                // Run the search carried by the URL once the channel is ready.
                 self.page = 0;
                 Ok(self.send_search(ctx, self.page))
             }
@@ -317,7 +316,8 @@ impl Search {
 
     fn send_search(&mut self, ctx: &Context<Self>, page: usize) -> bool {
         if self.query.is_empty() || self.channel.id() == ws::ChannelId::NONE {
-            return false;
+            self.loading = false;
+            return true;
         }
 
         self.loading = true;
@@ -337,14 +337,23 @@ impl Search {
     }
 
     fn view_results(&self, ctx: &Context<Self>) -> Html {
+        if self.query.is_empty() {
+            return html! {
+                <p class="hint">{"Enter a search query to find series or movies."}</p>
+            };
+        }
+
         if self.series.is_empty() && self.movies.is_empty() {
-            return html! {};
+            return html! {
+                <p class="hint">{"No results found."}</p>
+            };
         }
 
         let on_more = ctx.link().callback(|e: MouseEvent| {
             e.prevent_default();
             Msg::LoadMore
         });
+
         let loaded = self.series.len() + self.movies.len();
 
         html! {
