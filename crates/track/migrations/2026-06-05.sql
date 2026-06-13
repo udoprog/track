@@ -1,5 +1,5 @@
 CREATE TABLE
-    series (
+    shows (
         id INTEGER PRIMARY KEY,
         title TEXT,
         first_air INTEGER,
@@ -7,24 +7,25 @@ CREATE TABLE
         tracked INTEGER NOT NULL DEFAULT 1,
         sync_source INTEGER,
         language TEXT,
-        last_synced_at INTEGER
+        last_synced_at INTEGER,
+        include_specials INTEGER
     );
 
 CREATE TABLE
     seasons (
         id INTEGER PRIMARY KEY,
-        series_id INTEGER NOT NULL REFERENCES series (id) ON DELETE CASCADE,
+        show_id INTEGER NOT NULL REFERENCES shows (id) ON DELETE CASCADE,
         season INTEGER NOT NULL,
         air_date INTEGER,
         name TEXT,
         overview TEXT,
-        UNIQUE (series_id, season)
+        UNIQUE (show_id, season)
     );
 
 CREATE TABLE
     episodes (
         id INTEGER PRIMARY KEY,
-        series_id INTEGER NOT NULL REFERENCES series (id) ON DELETE CASCADE,
+        show_id INTEGER NOT NULL REFERENCES shows (id) ON DELETE CASCADE,
         season INTEGER NOT NULL,
         episode INTEGER NOT NULL,
         absolute_number INTEGER,
@@ -32,7 +33,7 @@ CREATE TABLE
         overview TEXT,
         aired INTEGER,
         remote_id TEXT,
-        UNIQUE (series_id, season, episode)
+        UNIQUE (show_id, season, episode)
     );
 
 CREATE INDEX idx_episodes_aired ON episodes (aired)
@@ -71,12 +72,12 @@ CREATE TABLE
     watched_episodes (
         id INTEGER PRIMARY KEY,
         timestamp INTEGER NOT NULL,
-        series_id INTEGER,
+        show_id INTEGER,
         season INTEGER NOT NULL,
         episode INTEGER NOT NULL
     );
 
-CREATE INDEX idx_watched_episodes_series ON watched_episodes (series_id, season, episode);
+CREATE INDEX idx_watched_episodes_show ON watched_episodes (show_id, season, episode);
 
 CREATE TABLE
     watched_movies (
@@ -91,12 +92,12 @@ CREATE TABLE
     pending (
         id INTEGER PRIMARY KEY,
         timestamp INTEGER NOT NULL,
-        series_id INTEGER REFERENCES series (id) ON DELETE CASCADE,
+        show_id INTEGER REFERENCES shows (id) ON DELETE CASCADE,
         episode_id INTEGER REFERENCES episodes (id) ON DELETE CASCADE,
         movie_id INTEGER REFERENCES movies (id) ON DELETE CASCADE,
         CHECK (
             (
-                series_id IS NOT NULL
+                show_id IS NOT NULL
                 AND episode_id IS NOT NULL
             )
             OR (movie_id IS NOT NULL)
@@ -105,9 +106,9 @@ CREATE TABLE
 
 CREATE INDEX idx_pending_timestamp ON pending (timestamp);
 
-CREATE UNIQUE INDEX idx_pending_series ON pending (series_id)
+CREATE UNIQUE INDEX idx_pending_show ON pending (show_id)
 WHERE
-    series_id IS NOT NULL;
+    show_id IS NOT NULL;
 
 CREATE UNIQUE INDEX idx_pending_movie ON pending (movie_id)
 WHERE
@@ -125,19 +126,19 @@ CREATE TABLE
         width INTEGER NOT NULL,
         height INTEGER NOT NULL,
         rank INTEGER NOT NULL DEFAULT 0,
-        series_id INTEGER REFERENCES series (id) ON DELETE CASCADE,
+        show_id INTEGER REFERENCES shows (id) ON DELETE CASCADE,
         movie_id INTEGER REFERENCES movies (id) ON DELETE CASCADE,
         episode_id INTEGER REFERENCES episodes (id) ON DELETE CASCADE,
         CHECK (
-            (series_id IS NOT NULL)
+            (show_id IS NOT NULL)
             OR (movie_id IS NOT NULL)
             OR (episode_id IS NOT NULL)
         )
     );
 
-CREATE UNIQUE INDEX idx_images_series ON images (series_id, kind, path)
+CREATE UNIQUE INDEX idx_images_show ON images (show_id, kind, path)
 WHERE
-    series_id IS NOT NULL;
+    show_id IS NOT NULL;
 
 CREATE UNIQUE INDEX idx_images_movie ON images (movie_id, kind, path)
 WHERE
@@ -148,20 +149,20 @@ WHERE
     episode_id IS NOT NULL;
 
 -- Ordering galleries best-first (lowest rank) within a kind.
-CREATE INDEX idx_images_series_rank ON images (series_id, kind, rank)
+CREATE INDEX idx_images_show_rank ON images (show_id, kind, rank)
 WHERE
-    series_id IS NOT NULL;
+    show_id IS NOT NULL;
 
 CREATE INDEX idx_images_movie_rank ON images (movie_id, kind, rank)
 WHERE
     movie_id IS NOT NULL;
 
 CREATE TABLE
-    series_images (
-        series_id INTEGER NOT NULL REFERENCES series (id) ON DELETE CASCADE,
+    show_images (
+        show_id INTEGER NOT NULL REFERENCES shows (id) ON DELETE CASCADE,
         kind INTEGER NOT NULL,
         image_id INTEGER NOT NULL REFERENCES images (id) ON DELETE CASCADE,
-        PRIMARY KEY (series_id, kind)
+        PRIMARY KEY (show_id, kind)
     );
 
 CREATE TABLE
@@ -183,17 +184,17 @@ CREATE TABLE
 CREATE TABLE
     remotes (
         remote_id TEXT NOT NULL,
-        series_id INTEGER,
+        show_id INTEGER,
         movie_id INTEGER,
         CHECK (
-            (series_id IS NOT NULL)
+            (show_id IS NOT NULL)
             OR (movie_id IS NOT NULL)
         )
     );
 
-CREATE UNIQUE INDEX idx_remotes_series ON remotes (series_id, remote_id)
+CREATE UNIQUE INDEX idx_remotes_show ON remotes (show_id, remote_id)
 WHERE
-    series_id IS NOT NULL;
+    show_id IS NOT NULL;
 
 CREATE UNIQUE INDEX idx_remotes_movie ON remotes (movie_id, remote_id)
 WHERE

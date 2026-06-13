@@ -15,7 +15,7 @@ use std::collections::{HashMap, HashSet};
 
 use api::{
     Config, Date, EpisodeId, Image, ImageId, ImageKind, ImageSource, MarkTime, MovieId,
-    MovieReleaseId, PendingId, ReleaseType, RemoteId, SeasonId, SeasonNumber, SeriesId, SyncSource,
+    MovieReleaseId, PendingId, ReleaseType, RemoteId, SeasonId, SeasonNumber, ShowId, SyncSource,
     ThemeType, Timestamp, WatchedId, WatchedKind,
 };
 use rust_embed::RustEmbed;
@@ -107,8 +107,8 @@ impl Drop for BoundStmt<'_> {
 struct Migrations;
 
 #[derive(Row)]
-struct SeriesRow {
-    id: SeriesId,
+struct ShowRow {
+    id: ShowId,
     title: Option<String>,
     first_air: Option<Timestamp>,
     overview: Option<String>,
@@ -130,17 +130,17 @@ struct ImageRow {
 #[derive(Row)]
 struct ImageMetaRow {
     kind: ImageKind,
-    series_id: Option<SeriesId>,
+    show_id: Option<ShowId>,
     movie_id: Option<MovieId>,
 }
 
 #[derive(Row)]
-struct SeriesImageRow {
+struct ShowImageRow {
     id: ImageId,
     kind: ImageKind,
     source: ImageSource,
     path: String,
-    series_id: SeriesId,
+    show_id: ShowId,
 }
 
 #[derive(Row)]
@@ -171,8 +171,8 @@ struct EpisodeScreenshotRow {
 }
 
 #[derive(Row)]
-struct AllSeriesImageSelectionRow {
-    series_id: SeriesId,
+struct AllShowImageSelectionRow {
+    show_id: ShowId,
     kind: ImageKind,
     source: ImageSource,
     path: String,
@@ -193,7 +193,7 @@ struct AllMovieImageSelectionRow {
 #[derive(Row)]
 struct SeasonRow {
     id: SeasonId,
-    series_id: SeriesId,
+    show_id: ShowId,
     season: SeasonNumber,
     air_date: Option<Timestamp>,
     name: Option<String>,
@@ -205,7 +205,7 @@ struct SeasonRow {
 #[derive(Row)]
 struct EpisodeRow {
     id: EpisodeId,
-    series_id: SeriesId,
+    show_id: ShowId,
     season: SeasonNumber,
     number: u32,
     absolute_number: Option<u32>,
@@ -249,7 +249,7 @@ struct WatchedRow {
     timestamp: Timestamp,
     episode_id: Option<EpisodeId>,
     movie_id: Option<MovieId>,
-    series_id: Option<SeriesId>,
+    show_id: Option<ShowId>,
 }
 
 #[derive(Row)]
@@ -265,14 +265,14 @@ struct WatchedEpisodeRow {
 struct OrphanedWatchedRow {
     id: WatchedId,
     timestamp: Timestamp,
-    series_id: SeriesId,
+    show_id: ShowId,
     season: SeasonNumber,
     episode: u32,
 }
 
 #[derive(Row)]
 struct EpisodeNaturalKeyRow {
-    series_id: SeriesId,
+    show_id: ShowId,
     season: SeasonNumber,
     number: u32,
 }
@@ -280,7 +280,7 @@ struct EpisodeNaturalKeyRow {
 #[derive(Row)]
 struct UnwatchedEpisodeRow {
     id: EpisodeId,
-    series_id: SeriesId,
+    show_id: ShowId,
     season: SeasonNumber,
     number: u32,
 }
@@ -293,8 +293,8 @@ struct PendingBaseRow {
 
 #[derive(Row)]
 struct PendingEpisodeDetailRow {
-    series_id: api::SeriesId,
-    series_title: Option<String>,
+    show_id: api::ShowId,
+    show_title: Option<String>,
     season: SeasonNumber,
     number: u32,
     episode_name: Option<String>,
@@ -333,8 +333,8 @@ struct PendingMovieCandidateRow {
 
 #[derive(Row)]
 struct ScheduleRow {
-    series_id: SeriesId,
-    series_title: String,
+    show_id: ShowId,
+    show_title: String,
     episode_id: EpisodeId,
     season: SeasonNumber,
     number: u32,
@@ -435,46 +435,46 @@ macro_rules! statements {
 
 statements! {
     struct InnerRead {
-        // series
-        list_series: r#"
+        // shows
+        list_shows: r#"
             SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at, language, include_specials
-            FROM series ORDER BY title
+            FROM shows ORDER BY title
         "#,
-        series_by_id: r#"
+        show_by_id: r#"
             SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at, language, include_specials
-            FROM series WHERE id = ?
+            FROM shows WHERE id = ?
         "#,
-        series_by_remote: r#"
+        shows_by_remote: r#"
             SELECT s.id, s.title, s.first_air, s.overview, s.tracked, s.sync_source, s.last_synced_at, s.language, s.include_specials
-            FROM series s
-            JOIN remotes r ON r.series_id = s.id
+            FROM shows s
+            JOIN remotes r ON r.show_id = s.id
             WHERE r.remote_id = ?
         "#,
 
-        // remotes (series and movies share one table)
-        list_series_remotes: r#"
-            SELECT remote_id FROM remotes WHERE series_id = ? ORDER BY rowid
+        // remotes (shows and movies share one table)
+        list_show_remotes: r#"
+            SELECT remote_id FROM remotes WHERE show_id = ? ORDER BY rowid
         "#,
-        list_all_series_remotes: r#"
-            SELECT series_id, remote_id FROM remotes WHERE series_id IS NOT NULL ORDER BY series_id, rowid
+        list_all_show_remotes: r#"
+            SELECT show_id, remote_id FROM remotes WHERE show_id IS NOT NULL ORDER BY show_id, rowid
         "#,
-        series_id_by_remote: r#"
-            SELECT series_id FROM remotes WHERE remote_id = ? LIMIT 1
+        show_id_by_remote: r#"
+            SELECT show_id FROM remotes WHERE remote_id = ? LIMIT 1
         "#,
 
-        // images (series and movies share one table)
-        list_series_images: r#"
+        // images (shows and movies share one table)
+        list_show_images: r#"
             SELECT id, kind, source, path FROM images
-            WHERE series_id = ? ORDER BY kind, rank, id
+            WHERE show_id = ? ORDER BY kind, rank, id
         "#,
-        list_all_series_images: r#"
-            SELECT id, kind, source, path, series_id FROM images
-            WHERE series_id IS NOT NULL ORDER BY series_id, kind, rank, id
+        list_all_show_images: r#"
+            SELECT id, kind, source, path, show_id FROM images
+            WHERE show_id IS NOT NULL ORDER BY show_id, kind, rank, id
         "#,
         list_season_episode_screenshots: r#"
             SELECT ei.episode_id, i.source, i.path, i.width, i.height
             FROM episode_images ei JOIN images i ON i.id = ei.image_id
-            WHERE ei.kind = ? AND ei.episode_id IN (SELECT id FROM episodes WHERE series_id = ? AND season = ?)
+            WHERE ei.kind = ? AND ei.episode_id IN (SELECT id FROM episodes WHERE show_id = ? AND season = ?)
         "#,
         list_movie_images: r#"
             SELECT id, kind, source, path FROM images
@@ -485,18 +485,18 @@ statements! {
             WHERE movie_id IS NOT NULL ORDER BY movie_id, kind, rank, id
         "#,
         image_by_id: r#"
-            SELECT kind, series_id, movie_id FROM images WHERE id = ?
+            SELECT kind, show_id, movie_id FROM images WHERE id = ?
         "#,
 
         // selection tables
-        list_series_image_selections: r#"
+        list_show_image_selections: r#"
             SELECT si.kind, i.source, i.path, i.width, i.height
-            FROM series_images si JOIN images i ON i.id = si.image_id
-            WHERE si.series_id = ?
+            FROM show_images si JOIN images i ON i.id = si.image_id
+            WHERE si.show_id = ?
         "#,
-        list_all_series_image_selections: r#"
-            SELECT si.series_id, si.kind, i.source, i.path, i.width, i.height
-            FROM series_images si JOIN images i ON i.id = si.image_id
+        list_all_show_image_selections: r#"
+            SELECT si.show_id, si.kind, i.source, i.path, i.width, i.height
+            FROM show_images si JOIN images i ON i.id = si.image_id
         "#,
         list_movie_image_selections: r#"
             SELECT mi.kind, i.source, i.path, i.width, i.height
@@ -510,35 +510,35 @@ statements! {
 
         // seasons
         list_seasons: r#"
-            SELECT s.id, s.series_id, s.season, s.air_date, s.name, s.overview,
-                (SELECT COUNT(DISTINCT we.episode) FROM watched_episodes we WHERE we.series_id = s.series_id AND we.season = s.season) AS watched_count,
-                (SELECT COUNT(*) FROM episodes e WHERE e.series_id = s.series_id AND e.season = s.season) AS total_count
-            FROM seasons s WHERE s.series_id = ? ORDER BY s.season
+            SELECT s.id, s.show_id, s.season, s.air_date, s.name, s.overview,
+                (SELECT COUNT(DISTINCT we.episode) FROM watched_episodes we WHERE we.show_id = s.show_id AND we.season = s.season) AS watched_count,
+                (SELECT COUNT(*) FROM episodes e WHERE e.show_id = s.show_id AND e.season = s.season) AS total_count
+            FROM seasons s WHERE s.show_id = ? ORDER BY s.season
         "#,
         episode_numbers_for_season: r#"
-            SELECT episode FROM episodes WHERE series_id = ? AND season = ?
+            SELECT episode FROM episodes WHERE show_id = ? AND season = ?
         "#,
 
         // episodes
         episode_natural_key: r#"
-            SELECT series_id, season, episode FROM episodes WHERE id = ?
+            SELECT show_id, season, episode FROM episodes WHERE id = ?
         "#,
-        list_episode_ids_for_series: r#"
-            SELECT id, season, episode FROM episodes WHERE series_id = ?
+        list_episode_ids_for_show: r#"
+            SELECT id, season, episode FROM episodes WHERE show_id = ?
         "#,
         list_episodes: r#"
-            SELECT e.id, e.series_id, e.season, e.episode, e.absolute_number, e.name, e.overview, e.aired, e.remote_id,
+            SELECT e.id, e.show_id, e.season, e.episode, e.absolute_number, e.name, e.overview, e.aired, e.remote_id,
                 EXISTS(SELECT 1 FROM pending p WHERE p.episode_id = e.id) AS pending,
-                (SELECT COUNT(*) FROM watched_episodes we WHERE we.series_id = e.series_id AND we.season = e.season AND we.episode = e.episode) AS watched_count
+                (SELECT COUNT(*) FROM watched_episodes we WHERE we.show_id = e.show_id AND we.season = e.season AND we.episode = e.episode) AS watched_count
             FROM episodes e
-            WHERE e.series_id = ? AND e.season = ?
+            WHERE e.show_id = ? AND e.season = ?
             ORDER BY e.episode
         "#,
         list_episodes_watched: r#"
             SELECT we.id, we.timestamp, we.season, we.episode, e.id AS episode_id
             FROM watched_episodes we
-            JOIN episodes e ON e.series_id = we.series_id AND e.season = we.season AND e.episode = we.episode
-            WHERE we.series_id = ?
+            JOIN episodes e ON e.show_id = we.show_id AND e.season = we.season AND e.episode = we.episode
+            WHERE we.show_id = ?
             ORDER BY we.timestamp DESC
         "#,
         episode_aired_by_id: r#"
@@ -575,31 +575,31 @@ statements! {
 
         // watched
         list_watched_by_episode: r#"
-            SELECT we.id, we.timestamp, e.id AS episode_id, NULL AS movie_id, e.series_id
+            SELECT we.id, we.timestamp, e.id AS episode_id, NULL AS movie_id, e.show_id
             FROM watched_episodes we
-            JOIN episodes e ON e.series_id = we.series_id AND e.season = we.season AND e.episode = we.episode
+            JOIN episodes e ON e.show_id = we.show_id AND e.season = we.season AND e.episode = we.episode
             WHERE e.id = ?
             ORDER BY we.timestamp DESC
         "#,
         list_watched_by_movie: r#"
-            SELECT id, timestamp, NULL AS episode_id, movie_id, NULL AS series_id
+            SELECT id, timestamp, NULL AS episode_id, movie_id, NULL AS show_id
             FROM watched_movies WHERE movie_id = ? ORDER BY timestamp DESC
         "#,
-        list_orphaned_for_series: r#"
-            SELECT we.id, we.timestamp, we.series_id, we.season, we.episode
+        list_orphaned_for_show: r#"
+            SELECT we.id, we.timestamp, we.show_id, we.season, we.episode
             FROM watched_episodes we
             LEFT JOIN episodes e
-                ON e.series_id = we.series_id AND e.season = we.season AND e.episode = we.episode
-            WHERE we.series_id = ? AND e.id IS NULL
+                ON e.show_id = we.show_id AND e.season = we.season AND e.episode = we.episode
+            WHERE we.show_id = ? AND e.id IS NULL
             ORDER BY we.timestamp ASC
         "#,
-        // select episodes which have 0 watched by series and season.
-        select_unwatched_by_series_season: r#"
-            SELECT id, series_id, season, episode FROM episodes
-            WHERE series_id = ? AND season = ?
+        // select episodes which have 0 watched by show and season.
+        select_unwatched_by_show_season: r#"
+            SELECT id, show_id, season, episode FROM episodes
+            WHERE show_id = ? AND season = ?
               AND NOT EXISTS (
                   SELECT 1 FROM watched_episodes we
-                  WHERE we.series_id = episodes.series_id
+                  WHERE we.show_id = episodes.show_id
                     AND we.season = episodes.season
                     AND we.episode = episodes.episode
               )
@@ -607,35 +607,35 @@ statements! {
 
         // pending table management
         has_pending_movie: r#"SELECT 1 FROM pending WHERE movie_id = ? LIMIT 1"#,
-        has_pending_episode_for_series: r#"
-            SELECT 1 FROM pending WHERE series_id = ? LIMIT 1
+        has_pending_episode_for_show: r#"
+            SELECT 1 FROM pending WHERE show_id = ? LIMIT 1
         "#,
-        pending_episode_aired_for_series: r#"
+        pending_episode_aired_for_show: r#"
             SELECT e.aired, p.timestamp
             FROM pending p
             JOIN episodes e ON e.id = p.episode_id
-            WHERE p.series_id = ?
+            WHERE p.show_id = ?
         "#,
-        next_pending_episode_for_series: r#"
+        next_pending_episode_for_show: r#"
             SELECT e.id, e.aired
             FROM episodes e
-            WHERE e.series_id = ?1
+            WHERE e.show_id = ?1
               AND e.aired IS NOT NULL
               AND (?2 OR e.season <> 0)
               AND NOT EXISTS (
                   SELECT 1 FROM watched_episodes we
-                  WHERE we.series_id = e.series_id AND we.season = e.season AND we.episode = e.episode
+                  WHERE we.show_id = e.show_id AND we.season = e.season AND we.episode = e.episode
               )
             ORDER BY e.season, e.episode
             LIMIT 1
         "#,
-        first_unwatched_episode_for_series: r#"
+        first_unwatched_episode_for_show: r#"
             SELECT e.id, e.aired
             FROM episodes e
-            WHERE e.series_id = ?
+            WHERE e.show_id = ?
               AND NOT EXISTS (
                   SELECT 1 FROM watched_episodes we
-                  WHERE we.series_id = e.series_id AND we.season = e.season AND we.episode = e.episode
+                  WHERE we.show_id = e.show_id AND we.season = e.season AND we.episode = e.episode
               )
             ORDER BY e.season, e.episode
             LIMIT 1
@@ -655,18 +655,18 @@ statements! {
             ORDER BY timestamp DESC
         "#,
         pending_episode_detail: r#"
-            SELECT e.series_id, s.title AS series_title, e.season, e.episode, e.name AS episode_name, e.aired
+            SELECT e.show_id, s.title AS show_title, e.season, e.episode, e.name AS episode_name, e.aired
             FROM episodes e
-            JOIN series s ON s.id = e.series_id
+            JOIN shows s ON s.id = e.show_id
             WHERE e.id = ?
         "#,
         pending_movie_detail: r#"
             SELECT title, release_date FROM movies WHERE id = ?
         "#,
-        image_for_series: r#"
+        image_for_show: r#"
             SELECT i.source, i.path
-            FROM series_images si JOIN images i ON i.id = si.image_id
-            WHERE si.series_id = ? AND si.kind = ?
+            FROM show_images si JOIN images i ON i.id = si.image_id
+            WHERE si.show_id = ? AND si.kind = ?
         "#,
         image_for_movie: r#"
             SELECT i.source, i.path
@@ -676,7 +676,7 @@ statements! {
         next_episode_after: r#"
             SELECT e.id, e.aired FROM episodes e
             JOIN episodes c ON c.id = ?2
-            WHERE e.series_id = ?1
+            WHERE e.show_id = ?1
               AND (e.season > c.season OR (e.season = c.season AND e.episode > c.episode))
             ORDER BY e.season, e.episode
             LIMIT 1
@@ -684,11 +684,11 @@ statements! {
 
         // schedule: episodes airing in the next N days
         list_schedule: r#"
-            SELECT e.series_id, s.title AS series_title,
+            SELECT e.show_id, s.title AS show_title,
                    e.id AS episode_id, e.season, e.episode, e.absolute_number,
                    e.name, e.overview, e.aired, e.remote_id
             FROM episodes e
-            JOIN series s ON s.id = e.series_id
+            JOIN shows s ON s.id = e.show_id
             WHERE s.tracked = 1
               AND e.aired > ?
               AND e.aired <= ?
@@ -703,9 +703,9 @@ statements! {
         "#,
 
         // stale-item queries
-        series_needing_sync: r#"
+        shows_needing_sync: r#"
             SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at, language, include_specials
-            FROM series
+            FROM shows
             WHERE tracked = 1
               AND (last_synced_at IS NULL OR last_synced_at < ?)
             ORDER BY last_synced_at IS NOT NULL, last_synced_at
@@ -746,57 +746,57 @@ statements! {
     }
 
     struct InnerWrite {
-        // series
-        insert_series: r#"
-            INSERT INTO series (id, title, first_air, overview, tracked)
+        // shows
+        insert_show: r#"
+            INSERT INTO shows (id, title, first_air, overview, tracked)
             VALUES (?, ?, ?, ?, ?)
         "#,
-        update_series: r#"
-            UPDATE series
+        update_show: r#"
+            UPDATE shows
             SET title = ?, first_air = ?, overview = ?, tracked = ?
             WHERE id = ?
         "#,
-        delete_series: r#"
-            DELETE FROM series WHERE id = ?
+        delete_show: r#"
+            DELETE FROM shows WHERE id = ?
         "#,
-        set_series_tracked: r#"
-            UPDATE series SET tracked = ? WHERE id = ?
+        set_show_tracked: r#"
+            UPDATE shows SET tracked = ? WHERE id = ?
         "#,
-        set_series_sync_source: r#"
-            UPDATE series SET sync_source = ? WHERE id = ?
+        set_show_sync_source: r#"
+            UPDATE shows SET sync_source = ? WHERE id = ?
         "#,
-        set_series_language: r#"
-            UPDATE series SET language = ? WHERE id = ?
+        set_show_language: r#"
+            UPDATE shows SET language = ? WHERE id = ?
         "#,
-        set_series_include_specials: r#"
-            UPDATE series SET include_specials = ? WHERE id = ?
-        "#,
-
-        // remotes (series and movies share one table)
-        insert_series_remote: r#"
-            INSERT OR IGNORE INTO remotes (series_id, remote_id) VALUES (?, ?)
-        "#,
-        delete_series_remote: r#"
-            DELETE FROM remotes WHERE series_id = ? AND remote_id = ?
-        "#,
-        update_series_remote: r#"
-            UPDATE remotes SET remote_id = ? WHERE series_id = ? AND remote_id = ?
+        set_show_include_specials: r#"
+            UPDATE shows SET include_specials = ? WHERE id = ?
         "#,
 
-        // images (series and movies share one table)
-        delete_series_images: r#"
-            DELETE FROM images WHERE series_id = ?
+        // remotes (shows and movies share one table)
+        insert_show_remote: r#"
+            INSERT OR IGNORE INTO remotes (show_id, remote_id) VALUES (?, ?)
         "#,
-        insert_series_image: r#"
-            INSERT INTO images (id, series_id, kind, source, path, width, height, rank) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(series_id, kind, path) WHERE series_id IS NOT NULL DO NOTHING
+        delete_show_remote: r#"
+            DELETE FROM remotes WHERE show_id = ? AND remote_id = ?
+        "#,
+        update_show_remote: r#"
+            UPDATE remotes SET remote_id = ? WHERE show_id = ? AND remote_id = ?
+        "#,
+
+        // images (shows and movies share one table)
+        delete_show_images: r#"
+            DELETE FROM images WHERE show_id = ?
+        "#,
+        insert_show_image: r#"
+            INSERT INTO images (id, show_id, kind, source, path, width, height, rank) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(show_id, kind, path) WHERE show_id IS NOT NULL DO NOTHING
         "#,
         insert_episode_image: r#"
             INSERT INTO images (id, episode_id, kind, source, path, width, height) VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(episode_id, kind, path) WHERE episode_id IS NOT NULL DO NOTHING
         "#,
-        delete_episode_images_for_series: r#"
-            DELETE FROM images WHERE episode_id IN (SELECT id FROM episodes WHERE series_id = ?)
+        delete_episode_images_for_show: r#"
+            DELETE FROM images WHERE episode_id IN (SELECT id FROM episodes WHERE show_id = ?)
         "#,
         delete_movie_images: r#"
             DELETE FROM images WHERE movie_id = ?
@@ -807,11 +807,11 @@ statements! {
         "#,
 
         // selection tables
-        set_series_image_selection: r#"
-            INSERT OR REPLACE INTO series_images (series_id, kind, image_id) VALUES (?, ?, ?)
+        set_show_image_selection: r#"
+            INSERT OR REPLACE INTO show_images (show_id, kind, image_id) VALUES (?, ?, ?)
         "#,
-        delete_series_image_selection: r#"
-            DELETE FROM series_images WHERE series_id = ? AND kind = ?
+        delete_show_image_selection: r#"
+            DELETE FROM show_images WHERE show_id = ? AND kind = ?
         "#,
         set_movie_image_selection: r#"
             INSERT OR REPLACE INTO movie_images (movie_id, kind, image_id) VALUES (?, ?, ?)
@@ -825,24 +825,24 @@ statements! {
 
         // seasons
         upsert_season: r#"
-            INSERT INTO seasons (id, series_id, season, air_date, name, overview)
+            INSERT INTO seasons (id, show_id, season, air_date, name, overview)
             VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(series_id, season) DO UPDATE SET
+            ON CONFLICT(show_id, season) DO UPDATE SET
                 air_date  = excluded.air_date,
                 name      = excluded.name,
                 overview  = excluded.overview
         "#,
-        delete_season: r#"DELETE FROM seasons WHERE series_id = ?1 AND season = ?2"#,
-        delete_season_episodes: r#"DELETE FROM episodes WHERE series_id = ?1 AND season = ?2"#,
+        delete_season: r#"DELETE FROM seasons WHERE show_id = ?1 AND season = ?2"#,
+        delete_season_episodes: r#"DELETE FROM episodes WHERE show_id = ?1 AND season = ?2"#,
         delete_episode_by_place: r#"
-            DELETE FROM episodes WHERE series_id = ? AND season = ? AND episode = ?
+            DELETE FROM episodes WHERE show_id = ? AND season = ? AND episode = ?
         "#,
 
         // episodes
         upsert_episode: r#"
-            INSERT INTO episodes (id, series_id, season, episode, absolute_number, name, overview, aired, remote_id)
+            INSERT INTO episodes (id, show_id, season, episode, absolute_number, name, overview, aired, remote_id)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(series_id, season, episode) DO UPDATE SET
+            ON CONFLICT(show_id, season, episode) DO UPDATE SET
                 absolute_number = excluded.absolute_number,
                 name            = excluded.name,
                 overview        = excluded.overview,
@@ -850,7 +850,7 @@ statements! {
                 remote_id       = excluded.remote_id
         "#,
         update_episode_aired: r#"
-            UPDATE episodes SET aired = ? WHERE series_id = ? AND season = ? AND episode = ?
+            UPDATE episodes SET aired = ? WHERE show_id = ? AND season = ? AND episode = ?
         "#,
 
         // movies
@@ -887,7 +887,7 @@ statements! {
 
         // watched
         insert_watched_episode: r#"
-            INSERT OR IGNORE INTO watched_episodes (id, timestamp, series_id, season, episode)
+            INSERT OR IGNORE INTO watched_episodes (id, timestamp, show_id, season, episode)
             VALUES (?, ?, ?, ?, ?)
         "#,
         insert_watched_movie: r#"
@@ -906,8 +906,8 @@ statements! {
 
         // pending table management
         upsert_pending_episode: r#"
-            INSERT INTO pending (id, timestamp, series_id, episode_id) VALUES (?, ?, ?, ?)
-            ON CONFLICT(series_id) WHERE series_id IS NOT NULL
+            INSERT INTO pending (id, timestamp, show_id, episode_id) VALUES (?, ?, ?, ?)
+            ON CONFLICT(show_id) WHERE show_id IS NOT NULL
                 DO UPDATE SET episode_id = excluded.episode_id, timestamp = excluded.timestamp
         "#,
         upsert_pending_movie: r#"
@@ -916,9 +916,9 @@ statements! {
                 DO UPDATE SET timestamp = excluded.timestamp
         "#,
         update_pending_episode_timestamp: r#"
-            UPDATE pending SET timestamp = ? WHERE series_id = ?
+            UPDATE pending SET timestamp = ? WHERE show_id = ?
         "#,
-        delete_pending_episode: r#"DELETE FROM pending WHERE series_id = ?"#,
+        delete_pending_episode: r#"DELETE FROM pending WHERE show_id = ?"#,
         delete_pending_movie: r#"DELETE FROM pending WHERE movie_id = ?"#,
 
         // config
@@ -939,8 +939,8 @@ statements! {
         "#,
 
         // last_synced_at stamping
-        set_series_synced_at: r#"
-            UPDATE series SET last_synced_at = ? WHERE id = ?
+        set_show_synced_at: r#"
+            UPDATE shows SET last_synced_at = ? WHERE id = ?
         "#,
         set_movie_synced_at: r#"
             UPDATE movies SET last_synced_at = ? WHERE id = ?
@@ -990,14 +990,10 @@ impl InnerRead {
         }
     }
 
-    fn image_for_series(
-        &mut self,
-        series_id: SeriesId,
-        kind: ImageKind,
-    ) -> Result<Option<api::Image>> {
+    fn image_for_show(&mut self, show_id: ShowId, kind: ImageKind) -> Result<Option<api::Image>> {
         let poster_row = self
-            .image_for_series
-            .bind((series_id, kind))?
+            .image_for_show
+            .bind((show_id, kind))?
             .first::<PendingImageRow>()?;
         Ok(poster_row.map(|p| api::Image::new(p.source, &p.path)))
     }
@@ -1217,9 +1213,9 @@ impl Database {
         })
     }
 
-    pub(crate) async fn create_series(
+    pub(crate) async fn create_show(
         &self,
-        id: SeriesId,
+        id: ShowId,
         title: &str,
         first_air: Option<Timestamp>,
         overview: &str,
@@ -1229,7 +1225,7 @@ impl Database {
         let mut s = self.inner.clone().exclusive().await;
 
         let result = spawn_blocking(move || {
-            s.insert_series
+            s.insert_show
                 .execute((id, &title[..], first_air.as_ref(), &overview[..], true))?;
             Ok(())
         });
@@ -1237,57 +1233,51 @@ impl Database {
         result.await?
     }
 
-    pub(crate) async fn series_id_by_remote(
-        &self,
-        remote_id: &RemoteId,
-    ) -> Result<Option<SeriesId>> {
+    pub(crate) async fn show_id_by_remote(&self, remote_id: &RemoteId) -> Result<Option<ShowId>> {
         let remote_id = remote_id.clone();
         let mut s = self.inner.clone().shared().await;
 
-        let result = spawn_blocking(move || {
-            s.series_id_by_remote
-                .bind((&remote_id,))?
-                .first::<SeriesId>()
-        });
+        let result =
+            spawn_blocking(move || s.show_id_by_remote.bind((&remote_id,))?.first::<ShowId>());
 
         result.await?
     }
 
-    pub(crate) async fn add_series_remote(
+    pub(crate) async fn add_show_remote(
         &self,
-        series_id: SeriesId,
+        show_id: ShowId,
         remote_id: &RemoteId,
     ) -> Result<()> {
         let remote_id = remote_id.clone();
         let mut s = self.inner.clone().exclusive().await;
 
         let result = spawn_blocking(move || {
-            s.insert_series_remote.execute((series_id, &remote_id))?;
+            s.insert_show_remote.execute((show_id, &remote_id))?;
             Ok(())
         });
 
         result.await?
     }
 
-    pub(crate) async fn remove_series_remote(
+    pub(crate) async fn remove_show_remote(
         &self,
-        series_id: SeriesId,
+        show_id: ShowId,
         remote_id: &RemoteId,
     ) -> Result<()> {
         let remote_id = remote_id.clone();
         let mut s = self.inner.clone().exclusive().await;
 
         let result = spawn_blocking(move || {
-            s.delete_series_remote.execute((series_id, &remote_id))?;
+            s.delete_show_remote.execute((show_id, &remote_id))?;
             Ok(())
         });
 
         result.await?
     }
 
-    pub(crate) async fn update_series_remote(
+    pub(crate) async fn update_show_remote(
         &self,
-        series_id: SeriesId,
+        show_id: ShowId,
         old: &RemoteId,
         new: &RemoteId,
     ) -> Result<()> {
@@ -1296,60 +1286,60 @@ impl Database {
         let mut s = self.inner.clone().exclusive().await;
 
         let result = spawn_blocking(move || {
-            s.update_series_remote.execute((&new, series_id, &old))?;
+            s.update_show_remote.execute((&new, show_id, &old))?;
             Ok(())
         });
 
         result.await?
     }
 
-    pub(crate) async fn series(&self) -> Result<Vec<api::Series>> {
+    pub(crate) async fn shows(&self) -> Result<Vec<api::Show>> {
         let mut s = self.inner.clone().shared().await;
 
         let result = spawn_blocking(move || {
-            let mut out: Vec<api::Series> = Vec::new();
-            let mut id_to_idx: HashMap<SeriesId, usize> = HashMap::new();
+            let mut out: Vec<api::Show> = Vec::new();
+            let mut id_to_idx: HashMap<ShowId, usize> = HashMap::new();
 
-            let mut stmt = s.list_series.query()?;
+            let mut stmt = s.list_shows.query()?;
 
-            while let Some(row) = stmt.next::<SeriesRow>()? {
+            while let Some(row) = stmt.next::<ShowRow>()? {
                 let idx = out.len();
                 id_to_idx.insert(row.id, idx);
 
-                out.push(series_from_row(row));
+                out.push(show_from_row(row));
             }
 
             stmt.reset()?;
 
-            for series in &mut out {
-                series.poster = s.image_for_series(series.id, ImageKind::Poster)?;
-                series.banner = s.image_for_series(series.id, ImageKind::Banner)?;
+            for show in &mut out {
+                show.poster = s.image_for_show(show.id, ImageKind::Poster)?;
+                show.banner = s.image_for_show(show.id, ImageKind::Banner)?;
             }
 
-            let mut stmt = s.list_all_series_remotes.query()?;
+            let mut stmt = s.list_all_show_remotes.query()?;
 
-            while let Some((series_id, remote_id)) = stmt.next::<(SeriesId, RemoteId)>()? {
-                if let Some(o) = id_to_idx.get(&series_id).and_then(|&i| out.get_mut(i)) {
+            while let Some((show_id, remote_id)) = stmt.next::<(ShowId, RemoteId)>()? {
+                if let Some(o) = id_to_idx.get(&show_id).and_then(|&i| out.get_mut(i)) {
                     o.remotes.push(remote_id);
                 }
             }
 
             stmt.reset()?;
 
-            let mut stmt = s.list_all_series_images.query()?;
+            let mut stmt = s.list_all_show_images.query()?;
 
-            while let Some(r) = stmt.next::<SeriesImageRow>()? {
-                if let Some(o) = id_to_idx.get(&r.series_id).and_then(|&i| out.get_mut(i)) {
-                    o.images.push(series_image_from_row(r));
+            while let Some(r) = stmt.next::<ShowImageRow>()? {
+                if let Some(o) = id_to_idx.get(&r.show_id).and_then(|&i| out.get_mut(i)) {
+                    o.images.push(show_image_from_row(r));
                 }
             }
 
             stmt.reset()?;
 
-            let mut stmt = s.list_all_series_image_selections.query()?;
+            let mut stmt = s.list_all_show_image_selections.query()?;
 
-            while let Some(row) = stmt.next::<AllSeriesImageSelectionRow>()? {
-                if let Some(o) = id_to_idx.get(&row.series_id).and_then(|&i| out.get_mut(i)) {
+            while let Some(row) = stmt.next::<AllShowImageSelectionRow>()? {
+                if let Some(o) = id_to_idx.get(&row.show_id).and_then(|&i| out.get_mut(i)) {
                     apply_image_selection(
                         o,
                         ImageSelectionRow {
@@ -1369,51 +1359,51 @@ impl Database {
         result.await?
     }
 
-    pub(crate) async fn series_by_id(&self, id: SeriesId) -> Result<Option<api::Series>> {
+    pub(crate) async fn show_by_id(&self, id: ShowId) -> Result<Option<api::Show>> {
         let mut s = self.inner.clone().shared().await;
 
         let result = spawn_blocking(move || {
-            let Some(r) = s.series_by_id.bind((id,))?.first::<SeriesRow>()? else {
+            let Some(r) = s.show_by_id.bind((id,))?.first::<ShowRow>()? else {
                 return Ok(None);
             };
 
-            let mut series = series_from_row(r);
+            let mut show = show_from_row(r);
 
-            let mut stmt = s.list_series_remotes.bind((id,))?;
+            let mut stmt = s.list_show_remotes.bind((id,))?;
 
             while let Some(remote_id) = stmt.next::<RemoteId>()? {
-                series.remotes.push(remote_id);
+                show.remotes.push(remote_id);
             }
 
             stmt.reset()?;
 
-            let mut stmt = s.list_series_images.bind((id,))?;
+            let mut stmt = s.list_show_images.bind((id,))?;
 
             while let Some(row) = stmt.next::<ImageRow>()? {
-                series.images.push(image_from_row(row));
+                show.images.push(image_from_row(row));
             }
 
             stmt.reset()?;
 
-            let mut stmt = s.list_series_image_selections.bind((id,))?;
+            let mut stmt = s.list_show_image_selections.bind((id,))?;
 
             while let Some(sel) = stmt.next::<ImageSelectionRow>()? {
-                apply_image_selection(&mut series, sel);
+                apply_image_selection(&mut show, sel);
             }
 
             stmt.reset()?;
 
-            series.poster = s.image_for_series(series.id, ImageKind::Poster)?;
-            series.banner = s.image_for_series(series.id, ImageKind::Banner)?;
-            Ok(Some(series))
+            show.poster = s.image_for_show(show.id, ImageKind::Poster)?;
+            show.banner = s.image_for_show(show.id, ImageKind::Banner)?;
+            Ok(Some(show))
         });
 
         result.await?
     }
 
-    pub(crate) async fn update_series(
+    pub(crate) async fn update_show(
         &self,
-        id: SeriesId,
+        id: ShowId,
         title: Option<&str>,
         first_air: Option<Timestamp>,
         overview: Option<&str>,
@@ -1425,7 +1415,7 @@ impl Database {
         let mut s = self.inner.clone().exclusive().await;
 
         let result = spawn_blocking(move || {
-            s.update_series.execute((
+            s.update_show.execute((
                 title.as_deref(),
                 first_air.as_ref(),
                 overview.as_deref(),
@@ -1438,67 +1428,63 @@ impl Database {
         result.await?
     }
 
-    pub(crate) async fn delete_series(&self, id: SeriesId) -> Result<()> {
+    pub(crate) async fn delete_show(&self, id: ShowId) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await;
 
         let result = spawn_blocking(move || {
-            s.delete_series.execute((id,))?;
+            s.delete_show.execute((id,))?;
             Ok(())
         });
 
         result.await?
     }
 
-    pub(crate) async fn set_series_tracked(&self, id: SeriesId, tracked: bool) -> Result<()> {
+    pub(crate) async fn set_show_tracked(&self, id: ShowId, tracked: bool) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await;
 
         let result = spawn_blocking(move || {
-            s.set_series_tracked.execute((tracked, id))?;
+            s.set_show_tracked.execute((tracked, id))?;
             Ok(())
         });
 
         result.await?
     }
 
-    pub(crate) async fn set_series_sync_source(
+    pub(crate) async fn set_show_sync_source(&self, id: ShowId, source: SyncSource) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await;
+
+        let result = spawn_blocking(move || {
+            s.set_show_sync_source.execute((source, id))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    pub(crate) async fn set_show_language(
         &self,
-        id: SeriesId,
-        source: SyncSource,
-    ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
-
-        let result = spawn_blocking(move || {
-            s.set_series_sync_source.execute((source, id))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    pub(crate) async fn set_series_language(
-        &self,
-        id: SeriesId,
+        id: ShowId,
         language: Option<String>,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await;
 
         let result = spawn_blocking(move || {
-            s.set_series_language.execute((language.as_deref(), id))?;
+            s.set_show_language.execute((language.as_deref(), id))?;
             Ok(())
         });
 
         result.await?
     }
 
-    pub(crate) async fn set_series_include_specials(
+    pub(crate) async fn set_show_include_specials(
         &self,
-        id: SeriesId,
+        id: ShowId,
         include_specials: Option<bool>,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await;
 
         let result = spawn_blocking(move || {
-            s.set_series_include_specials
+            s.set_show_include_specials
                 .execute((include_specials, id))?;
             Ok(())
         });
@@ -1508,7 +1494,7 @@ impl Database {
 
     pub(crate) async fn upsert_season(
         &self,
-        series_id: SeriesId,
+        show_id: ShowId,
         number: SeasonNumber,
         air_date: Option<Timestamp>,
         name: Option<&str>,
@@ -1521,7 +1507,7 @@ impl Database {
         let result = spawn_blocking(move || {
             s.upsert_season.execute((
                 SeasonId::random(),
-                series_id,
+                show_id,
                 number,
                 air_date.as_ref(),
                 name.as_deref(),
@@ -1533,13 +1519,13 @@ impl Database {
         result.await?
     }
 
-    pub(crate) async fn seasons(&self, series_id: SeriesId) -> Result<Vec<api::Season>> {
+    pub(crate) async fn seasons(&self, show_id: ShowId) -> Result<Vec<api::Season>> {
         let mut s = self.inner.clone().shared().await;
 
         let result = spawn_blocking(move || {
             let mut out = Vec::new();
 
-            let mut stmt = s.list_seasons.bind((series_id,))?;
+            let mut stmt = s.list_seasons.bind((show_id,))?;
 
             while let Some(r) = stmt.next::<SeasonRow>()? {
                 out.push(season_from_row(r));
@@ -1553,10 +1539,10 @@ impl Database {
 
     pub(crate) async fn prune_seasons(
         &self,
-        series_id: SeriesId,
+        show_id: ShowId,
         kept: &HashSet<SeasonNumber>,
     ) -> Result<Vec<SeasonNumber>> {
-        let existing = self.seasons(series_id).await?;
+        let existing = self.seasons(show_id).await?;
         let mut removed = Vec::new();
 
         for season in existing {
@@ -1568,8 +1554,8 @@ impl Database {
             let mut s = self.inner.clone().exclusive().await;
 
             let result = spawn_blocking(move || {
-                s.delete_season_episodes.execute((series_id, n))?;
-                s.delete_season.execute((series_id, n))?;
+                s.delete_season_episodes.execute((show_id, n))?;
+                s.delete_season.execute((show_id, n))?;
                 Ok::<_, anyhow::Error>(())
             });
 
@@ -1582,7 +1568,7 @@ impl Database {
 
     pub(crate) async fn prune_season_episodes(
         &self,
-        series_id: SeriesId,
+        show_id: ShowId,
         season: SeasonNumber,
         kept: &HashSet<u32>,
     ) -> Result<()> {
@@ -1593,7 +1579,7 @@ impl Database {
             let mut to_delete = Vec::new();
 
             {
-                let mut stmt = s.episode_numbers_for_season.bind((series_id, season))?;
+                let mut stmt = s.episode_numbers_for_season.bind((show_id, season))?;
 
                 while let Some(number) = stmt.next::<u32>()? {
                     if !kept.contains(&number) {
@@ -1604,7 +1590,7 @@ impl Database {
 
             for number in to_delete {
                 s.delete_episode_by_place
-                    .execute((series_id, season, number))?;
+                    .execute((show_id, season, number))?;
             }
 
             Ok(())
@@ -1616,7 +1602,7 @@ impl Database {
     pub(crate) async fn upsert_episode(
         &self,
         id: EpisodeId,
-        series_id: SeriesId,
+        show_id: ShowId,
         season: SeasonNumber,
         number: u32,
         absolute_number: Option<u32>,
@@ -1633,7 +1619,7 @@ impl Database {
         let result = spawn_blocking(move || {
             s.upsert_episode.execute((
                 id,
-                series_id,
+                show_id,
                 season,
                 number,
                 absolute_number,
@@ -1648,18 +1634,18 @@ impl Database {
         result.await?
     }
 
-    /// Map of `(season, number)` to the existing episode id for a series, so a
+    /// Map of `(season, number)` to the existing episode id for a show, so a
     /// re-sync can reuse stable ids rather than allocating new ones.
     pub(crate) async fn episode_ids(
         &self,
-        series_id: SeriesId,
+        show_id: ShowId,
     ) -> Result<HashMap<(SeasonNumber, u32), EpisodeId>> {
         let mut s = self.inner.clone().shared().await;
 
         let result = spawn_blocking(move || {
             let mut out = HashMap::new();
 
-            let mut stmt = s.list_episode_ids_for_series.bind((series_id,))?;
+            let mut stmt = s.list_episode_ids_for_show.bind((show_id,))?;
 
             while let Some(r) = stmt.next::<EpisodeIdRow>()? {
                 out.insert((r.season, r.number), r.id);
@@ -1673,7 +1659,7 @@ impl Database {
 
     pub(crate) async fn episodes(
         &self,
-        series_id: SeriesId,
+        show_id: ShowId,
         season: SeasonNumber,
     ) -> Result<Vec<api::Episode>> {
         let mut s = self.inner.clone().shared().await;
@@ -1682,7 +1668,7 @@ impl Database {
             let mut out = Vec::new();
             let mut idx_by_id = HashMap::new();
 
-            let mut stmt = s.list_episodes.bind((series_id, season))?;
+            let mut stmt = s.list_episodes.bind((show_id, season))?;
 
             while let Some(r) = stmt.next::<EpisodeRow>()? {
                 idx_by_id.insert(r.id, out.len());
@@ -1691,11 +1677,9 @@ impl Database {
 
             stmt.reset()?;
 
-            let mut stmt = s.list_season_episode_screenshots.bind((
-                ImageKind::Screenshot,
-                series_id,
-                season,
-            ))?;
+            let mut stmt =
+                s.list_season_episode_screenshots
+                    .bind((ImageKind::Screenshot, show_id, season))?;
 
             while let Some(r) = stmt.next::<EpisodeScreenshotRow>()? {
                 if let Some(&i) = idx_by_id.get(&r.episode_id) {
@@ -1712,7 +1696,7 @@ impl Database {
 
     pub(crate) async fn mark_watched_remaining(
         &self,
-        series_id: SeriesId,
+        show_id: ShowId,
         season: SeasonNumber,
         mark_time: MarkTime,
         now: Timestamp,
@@ -1722,9 +1706,7 @@ impl Database {
         let result = spawn_blocking(move || {
             let mut unwatched = Vec::new();
 
-            let mut stmt = s
-                .select_unwatched_by_series_season
-                .bind((series_id, season))?;
+            let mut stmt = s.select_unwatched_by_show_season.bind((show_id, season))?;
 
             while let Some(r) = stmt.next::<UnwatchedEpisodeRow>()? {
                 unwatched.push(r);
@@ -1737,7 +1719,7 @@ impl Database {
                 s.insert_watched_episode.execute((
                     WatchedId::random(),
                     timestamp,
-                    r.series_id,
+                    r.show_id,
                     r.season,
                     r.number,
                 ))?;
@@ -1751,14 +1733,14 @@ impl Database {
 
     pub(crate) async fn episodes_watched(
         &self,
-        series_id: SeriesId,
+        show_id: ShowId,
     ) -> Result<Vec<api::WatchedEpisode>> {
         let mut s = self.inner.clone().exclusive().await;
 
         let result = spawn_blocking(move || {
             let mut out = Vec::new();
 
-            let mut stmt = s.list_episodes_watched.bind((series_id,))?;
+            let mut stmt = s.list_episodes_watched.bind((show_id,))?;
 
             while let Some(r) = stmt.next::<WatchedEpisodeRow>()? {
                 out.push(watched_episode_from_row(r));
@@ -1783,7 +1765,7 @@ impl Database {
 
     pub(crate) async fn update_episodes_aired(
         &self,
-        series_id: SeriesId,
+        show_id: ShowId,
         updates: Vec<(SeasonNumber, u32, Timestamp)>,
     ) -> Result<()> {
         if updates.is_empty() {
@@ -1795,7 +1777,7 @@ impl Database {
         let result = spawn_blocking(move || {
             for &(season, number, aired) in &updates {
                 s.update_episode_aired
-                    .execute((aired, series_id, season, number))?;
+                    .execute((aired, show_id, season, number))?;
             }
             Ok(())
         });
@@ -2042,52 +2024,48 @@ impl Database {
         result.await?
     }
 
-    pub(crate) async fn series_by_remote_id(
+    pub(crate) async fn shows_by_remote_id(
         &self,
         remote_id: &RemoteId,
-    ) -> Result<Option<api::Series>> {
+    ) -> Result<Option<api::Show>> {
         let remote_id = remote_id.clone();
         let mut s = self.inner.clone().shared().await;
 
         let result = spawn_blocking(move || {
-            let Some(row) = s
-                .series_by_remote
-                .bind((remote_id,))?
-                .first::<SeriesRow>()?
-            else {
+            let Some(row) = s.shows_by_remote.bind((remote_id,))?.first::<ShowRow>()? else {
                 return Ok(None);
             };
 
-            let series_id = row.id;
-            let mut series = series_from_row(row);
+            let show_id = row.id;
+            let mut show = show_from_row(row);
 
-            let mut stmt = s.list_series_remotes.bind((series_id,))?;
+            let mut stmt = s.list_show_remotes.bind((show_id,))?;
 
             while let Some(remote_id) = stmt.next::<RemoteId>()? {
-                series.remotes.push(remote_id);
+                show.remotes.push(remote_id);
             }
 
             stmt.reset()?;
 
-            let mut stmt = s.list_series_images.bind((series_id,))?;
+            let mut stmt = s.list_show_images.bind((show_id,))?;
 
             while let Some(r) = stmt.next::<ImageRow>()? {
-                series.images.push(image_from_row(r));
+                show.images.push(image_from_row(r));
             }
 
             stmt.reset()?;
 
-            let mut stmt = s.list_series_image_selections.bind((series_id,))?;
+            let mut stmt = s.list_show_image_selections.bind((show_id,))?;
 
             while let Some(sel) = stmt.next::<ImageSelectionRow>()? {
-                apply_image_selection(&mut series, sel);
+                apply_image_selection(&mut show, sel);
             }
 
             stmt.reset()?;
 
-            series.poster = s.image_for_series(series_id, ImageKind::Poster)?;
-            series.banner = s.image_for_series(series_id, ImageKind::Banner)?;
-            Ok(Some(series))
+            show.poster = s.image_for_show(show_id, ImageKind::Poster)?;
+            show.banner = s.image_for_show(show_id, ImageKind::Banner)?;
+            Ok(Some(show))
         });
 
         result.await?
@@ -2217,10 +2195,10 @@ impl Database {
         result.await?
     }
 
-    pub(crate) async fn clear_series_images(&self, series_id: SeriesId) -> Result<()> {
+    pub(crate) async fn clear_show_images(&self, show_id: ShowId) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await;
         spawn_blocking(move || {
-            s.delete_series_images.execute((series_id,))?;
+            s.delete_show_images.execute((show_id,))?;
             Ok(())
         })
         .await?
@@ -2235,10 +2213,10 @@ impl Database {
         .await?
     }
 
-    pub(crate) async fn clear_episode_images(&self, series_id: SeriesId) -> Result<()> {
+    pub(crate) async fn clear_episode_images(&self, show_id: ShowId) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await;
         spawn_blocking(move || {
-            s.delete_episode_images_for_series.execute((series_id,))?;
+            s.delete_episode_images_for_show.execute((show_id,))?;
             Ok(())
         })
         .await?
@@ -2287,10 +2265,10 @@ impl Database {
         result.await?
     }
 
-    pub(crate) async fn upsert_series_image(
+    pub(crate) async fn upsert_show_image(
         &self,
         id: ImageId,
-        series_id: SeriesId,
+        show_id: ShowId,
         kind: ImageKind,
         rank: u32,
         image: &Image,
@@ -2299,9 +2277,9 @@ impl Database {
         let mut s = self.inner.clone().exclusive().await;
 
         let result = spawn_blocking(move || {
-            s.insert_series_image.execute((
+            s.insert_show_image.execute((
                 id,
-                series_id,
+                show_id,
                 kind,
                 image.key().source(),
                 image.key().path(),
@@ -2344,17 +2322,17 @@ impl Database {
         result.await?
     }
 
-    pub(crate) async fn set_series_image_selection(
+    pub(crate) async fn set_show_image_selection(
         &self,
-        series_id: SeriesId,
+        show_id: ShowId,
         kind: ImageKind,
         image_id: ImageId,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await;
 
         let result = spawn_blocking(move || {
-            s.set_series_image_selection
-                .execute((series_id, kind, image_id))?;
+            s.set_show_image_selection
+                .execute((show_id, kind, image_id))?;
             Ok(())
         });
 
@@ -2392,12 +2370,11 @@ impl Database {
 
             let kind = row.kind;
 
-            let owner = match (row.series_id, row.movie_id) {
-                (Some(series_id), _) => {
-                    s.set_series_image_selection
-                        .execute((series_id, kind, id))?;
+            let owner = match (row.show_id, row.movie_id) {
+                (Some(show_id), _) => {
+                    s.set_show_image_selection.execute((show_id, kind, id))?;
 
-                    api::ImageOwner::Series(series_id)
+                    api::ImageOwner::Show(show_id)
                 }
                 (_, Some(movie_id)) => {
                     s.set_movie_image_selection.execute((movie_id, kind, id))?;
@@ -2422,8 +2399,8 @@ impl Database {
 
         let result = spawn_blocking(move || {
             match owner {
-                api::ImageOwner::Series(series_id) => {
-                    s.delete_series_image_selection.execute((series_id, kind))?;
+                api::ImageOwner::Show(show_id) => {
+                    s.delete_show_image_selection.execute((show_id, kind))?;
                 }
                 api::ImageOwner::Movie(movie_id) => {
                     s.delete_movie_image_selection.execute((movie_id, kind))?;
@@ -2459,7 +2436,7 @@ impl Database {
                     s.insert_watched_episode.execute((
                         id,
                         timestamp,
-                        key.series_id,
+                        key.show_id,
                         key.season,
                         key.number,
                     ))?;
@@ -2495,7 +2472,7 @@ impl Database {
         &self,
         id: WatchedId,
         timestamp: Timestamp,
-        series_id: SeriesId,
+        show_id: ShowId,
         season: api::SeasonNumber,
         episode: u32,
     ) -> Result<()> {
@@ -2503,7 +2480,7 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.insert_watched_episode
-                .execute((id, timestamp, series_id, season, episode))?;
+                .execute((id, timestamp, show_id, season, episode))?;
             Ok(())
         });
 
@@ -2542,22 +2519,22 @@ impl Database {
         result.await?
     }
 
-    pub(crate) async fn orphaned_for_series(
+    pub(crate) async fn orphaned_for_show(
         &self,
-        series_id: SeriesId,
+        show_id: ShowId,
     ) -> Result<Vec<api::OrphanedWatched>> {
         let mut s = self.inner.clone().shared().await;
 
         let result = spawn_blocking(move || {
             let mut out = Vec::new();
 
-            let mut stmt = s.list_orphaned_for_series.bind((series_id,))?;
+            let mut stmt = s.list_orphaned_for_show.bind((show_id,))?;
 
             while let Some(r) = stmt.next::<OrphanedWatchedRow>()? {
                 out.push(api::OrphanedWatched {
                     id: r.id,
                     timestamp: r.timestamp,
-                    series_id: r.series_id,
+                    show_id: r.show_id,
                     season: r.season,
                     episode: r.episode,
                 });
@@ -2622,7 +2599,7 @@ impl Database {
 
     pub(crate) async fn add_pending_episode(
         &self,
-        series_id: api::SeriesId,
+        show_id: api::ShowId,
         episode_id: api::EpisodeId,
         ts: Timestamp,
     ) -> Result<()> {
@@ -2630,7 +2607,7 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.upsert_pending_episode
-                .execute((PendingId::random(), ts, series_id, episode_id))?;
+                .execute((PendingId::random(), ts, show_id, episode_id))?;
             Ok(())
         });
 
@@ -2653,11 +2630,11 @@ impl Database {
         result.await?
     }
 
-    pub(crate) async fn remove_pending_episode(&self, series_id: api::SeriesId) -> Result<()> {
+    pub(crate) async fn remove_pending_episode(&self, show_id: api::ShowId) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await;
 
         let result = spawn_blocking(move || {
-            s.delete_pending_episode.execute((series_id,))?;
+            s.delete_pending_episode.execute((show_id,))?;
             Ok(())
         });
 
@@ -2666,7 +2643,7 @@ impl Database {
 
     pub(crate) async fn skip_pending_episode(
         &self,
-        series_id: api::SeriesId,
+        show_id: api::ShowId,
         episode_id: api::EpisodeId,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await;
@@ -2674,7 +2651,7 @@ impl Database {
         let result = spawn_blocking(move || {
             let next_id = s
                 .next_episode_after
-                .bind((series_id, episode_id))?
+                .bind((show_id, episode_id))?
                 .first::<(api::EpisodeId, Timestamp)>()?
                 .map(|r| r.0);
 
@@ -2682,10 +2659,10 @@ impl Database {
                 Some(next) => {
                     let ts = Timestamp::now();
                     s.upsert_pending_episode
-                        .execute((PendingId::random(), ts, series_id, next))?;
+                        .execute((PendingId::random(), ts, show_id, next))?;
                 }
                 None => {
-                    s.delete_pending_episode.execute((series_id,))?;
+                    s.delete_pending_episode.execute((show_id,))?;
                 }
             }
 
@@ -2706,11 +2683,11 @@ impl Database {
         result.await?
     }
 
-    /// Fill the pending slot for a series, but ONLY if it currently has no pending episode.
+    /// Fill the pending slot for a show, but ONLY if it currently has no pending episode.
     /// Called after sync upserts episodes, and after MarkWatched clears the old pending row.
-    pub(crate) async fn fill_pending_for_series(
+    pub(crate) async fn fill_pending_for_show(
         &self,
-        series_id: api::SeriesId,
+        show_id: api::ShowId,
         include_specials: bool,
         now: Timestamp,
     ) -> Result<()> {
@@ -2718,8 +2695,8 @@ impl Database {
 
         let result = spawn_blocking(move || {
             let already_has = s
-                .has_pending_episode_for_series
-                .bind((series_id,))?
+                .has_pending_episode_for_show
+                .bind((show_id,))?
                 .first::<(i64,)>()?
                 .is_some();
 
@@ -2727,8 +2704,8 @@ impl Database {
                 // If the pending episode has a future air date that changed, update the timestamp.
                 let maybe_update = {
                     let row = s
-                        .pending_episode_aired_for_series
-                        .bind((series_id,))?
+                        .pending_episode_aired_for_show
+                        .bind((show_id,))?
                         .first::<PendingEpisodeAiredRow>()?;
                     row.and_then(|r| {
                         let aired = r.aired?;
@@ -2741,14 +2718,14 @@ impl Database {
                 };
                 if let Some(aired) = maybe_update {
                     s.update_pending_episode_timestamp
-                        .execute((aired, series_id))?;
+                        .execute((aired, show_id))?;
                 }
                 return Ok(());
             }
 
             let Some(row) = s
-                .next_pending_episode_for_series
-                .bind((series_id, include_specials))?
+                .next_pending_episode_for_show
+                .bind((show_id, include_specials))?
                 .first::<NextEpisodeRow>()?
             else {
                 return Ok(());
@@ -2757,7 +2734,7 @@ impl Database {
             let ts = row.aired.unwrap_or(now).max(now);
 
             s.upsert_pending_episode
-                .execute((PendingId::random(), ts, series_id, row.id))?;
+                .execute((PendingId::random(), ts, show_id, row.id))?;
 
             Ok(())
         });
@@ -2765,11 +2742,11 @@ impl Database {
         result.await?
     }
 
-    /// Fill the pending slot for a series, but ONLY if it currently has no pending episode.
+    /// Fill the pending slot for a show, but ONLY if it currently has no pending episode.
     /// Called after sync upserts episodes, and after MarkWatched clears the old pending row.
-    pub(crate) async fn fill_pending_for_series_from(
+    pub(crate) async fn fill_pending_for_show_from(
         &self,
-        series_id: api::SeriesId,
+        show_id: api::ShowId,
         episode_id: api::EpisodeId,
         now: Timestamp,
     ) -> Result<()> {
@@ -2777,8 +2754,8 @@ impl Database {
 
         let result = spawn_blocking(move || {
             let already_has = s
-                .has_pending_episode_for_series
-                .bind((series_id,))?
+                .has_pending_episode_for_show
+                .bind((show_id,))?
                 .first::<(i64,)>()?
                 .is_some();
 
@@ -2788,7 +2765,7 @@ impl Database {
 
             let Some((next_id, aired)) = s
                 .next_episode_after
-                .bind((series_id, episode_id))?
+                .bind((show_id, episode_id))?
                 .first::<(api::EpisodeId, Option<Timestamp>)>()?
             else {
                 return Ok(());
@@ -2797,7 +2774,7 @@ impl Database {
             let now = aired.unwrap_or(now).max(now);
 
             s.upsert_pending_episode
-                .execute((PendingId::random(), now, series_id, next_id))?;
+                .execute((PendingId::random(), now, show_id, next_id))?;
 
             Ok(())
         });
@@ -2805,18 +2782,15 @@ impl Database {
         result.await?
     }
 
-    /// Like `fill_pending_for_series` but for bulk import: finds the first unwatched episode
+    /// Like `fill_pending_for_show` but for bulk import: finds the first unwatched episode
     /// regardless of whether it has aired, and uses the actual aired timestamp rather than
     /// clamping to `now`. This preserves the episode's original air date as the pending
     /// timestamp so dashboard ordering reflects episode order rather than import time.
-    pub(crate) async fn fill_pending_for_series_import(
-        &self,
-        series_id: api::SeriesId,
-    ) -> Result<()> {
+    pub(crate) async fn fill_pending_for_show_import(&self, show_id: api::ShowId) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await;
 
         let result = spawn_blocking(move || {
-            let stmt = s.has_pending_episode_for_series.bind((series_id,))?;
+            let stmt = s.has_pending_episode_for_show.bind((show_id,))?;
 
             let already_has = stmt.first::<(i64,)>()?.is_some();
 
@@ -2824,7 +2798,7 @@ impl Database {
                 return Ok(());
             }
 
-            let stmt = s.first_unwatched_episode_for_series.bind((series_id,))?;
+            let stmt = s.first_unwatched_episode_for_show.bind((show_id,))?;
 
             let Some(row) = stmt.first::<NextEpisodeRow>()? else {
                 return Ok(());
@@ -2835,7 +2809,7 @@ impl Database {
             };
 
             s.upsert_pending_episode
-                .execute((PendingId::random(), ts, series_id, row.id))?;
+                .execute((PendingId::random(), ts, show_id, row.id))?;
 
             Ok(())
         });
@@ -2887,10 +2861,10 @@ impl Database {
         result.await?
     }
 
-    pub(crate) async fn set_series_synced_at(&self, id: SeriesId, at: Timestamp) -> Result<()> {
+    pub(crate) async fn set_show_synced_at(&self, id: ShowId, at: Timestamp) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await;
         let result = spawn_blocking(move || {
-            s.set_series_synced_at.execute((at, id))?;
+            s.set_show_synced_at.execute((at, id))?;
             Ok(())
         });
 
@@ -2933,20 +2907,17 @@ impl Database {
         result.await?
     }
 
-    pub(crate) async fn series_needing_sync(
-        &self,
-        interval_hours: u32,
-    ) -> Result<Vec<api::Series>> {
+    pub(crate) async fn shows_needing_sync(&self, interval_hours: u32) -> Result<Vec<api::Show>> {
         let cutoff = cutoff_timestamp(interval_hours);
         let mut s = self.inner.clone().shared().await;
 
         let result = spawn_blocking(move || {
             let mut out = Vec::new();
 
-            let mut stmt = s.series_needing_sync.bind((cutoff,))?;
+            let mut stmt = s.shows_needing_sync.bind((cutoff,))?;
 
-            while let Some(row) = stmt.next::<SeriesRow>()? {
-                out.push(series_from_row(row));
+            while let Some(row) = stmt.next::<ShowRow>()? {
+                out.push(show_from_row(row));
             }
 
             Ok(out)
@@ -3004,16 +2975,16 @@ impl Database {
                             continue 'outer;
                         };
 
-                        let poster = s.image_for_series(d.series_id, ImageKind::Poster)?;
-                        let banner = s.image_for_series(d.series_id, ImageKind::Banner)?;
+                        let poster = s.image_for_show(d.show_id, ImageKind::Poster)?;
+                        let banner = s.image_for_show(d.show_id, ImageKind::Banner)?;
 
                         break 'pending api::Pending {
                             kind: api::PendingKind::Episode {
-                                series: d.series_id,
+                                show: d.show_id,
                                 episode: episode_id,
                             },
                             info: api::PendingInfo::Episode {
-                                series: d.series_title,
+                                show: d.show_title,
                                 episode: d.episode_name,
                                 season: d.season,
                                 number: d.number,
@@ -3077,14 +3048,14 @@ impl Database {
         let result = spawn_blocking(move || {
             let mut stmt = s.list_schedule.bind((today, end))?;
 
-            let mut days_map = Vec::<(Date, Vec<(SeriesId, String, Vec<api::Episode>)>)>::new();
+            let mut days_map = Vec::<(Date, Vec<(ShowId, String, Vec<api::Episode>)>)>::new();
 
             while let Some(r) = stmt.next::<ScheduleRow>()? {
                 let Some(day) = r.aired else { continue };
 
                 let ep = api::Episode {
                     id: r.episode_id,
-                    series_id: r.series_id,
+                    show_id: r.show_id,
                     season: r.season,
                     episode: r.number,
                     absolute_number: r.absolute_number,
@@ -3100,27 +3071,27 @@ impl Database {
                 let day = day.date(tz.clone());
 
                 if let Some(day_entry) = days_map.iter_mut().find(|(d, _)| d == &day) {
-                    if let Some(series_entry) =
-                        day_entry.1.iter_mut().find(|(id, _, _)| *id == r.series_id)
+                    if let Some(show_entry) =
+                        day_entry.1.iter_mut().find(|(id, _, _)| *id == r.show_id)
                     {
-                        series_entry.2.push(ep);
+                        show_entry.2.push(ep);
                     } else {
-                        day_entry.1.push((r.series_id, r.series_title, vec![ep]));
+                        day_entry.1.push((r.show_id, r.show_title, vec![ep]));
                     }
                 } else {
-                    days_map.push((day, vec![(r.series_id, r.series_title, vec![ep])]));
+                    days_map.push((day, vec![(r.show_id, r.show_title, vec![ep])]));
                 }
             }
 
             let out = days_map
                 .into_iter()
-                .map(|(date, series)| api::ScheduledDay {
+                .map(|(date, show)| api::ScheduledDay {
                     date,
-                    entries: series
+                    entries: show
                         .into_iter()
-                        .map(|(series_id, series_title, episodes)| api::ScheduledEntry {
-                            series_id,
-                            series_title,
+                        .map(|(show_id, show_title, episodes)| api::ScheduledEntry {
+                            show_id,
+                            show_title,
                             episodes,
                         })
                         .collect(),
@@ -3265,8 +3236,8 @@ fn cutoff_timestamp(interval_hours: u32) -> Timestamp {
     Timestamp::from_jiff(ts)
 }
 
-fn series_from_row(r: SeriesRow) -> api::Series {
-    api::Series {
+fn show_from_row(r: ShowRow) -> api::Show {
+    api::Show {
         id: r.id,
         title: r.title,
         first_air_date: r.first_air,
@@ -3293,7 +3264,7 @@ fn image_from_row(r: ImageRow) -> api::MediaImage {
     }
 }
 
-fn series_image_from_row(r: SeriesImageRow) -> api::MediaImage {
+fn show_image_from_row(r: ShowImageRow) -> api::MediaImage {
     api::MediaImage {
         id: r.id,
         kind: r.kind,
@@ -3311,7 +3282,7 @@ fn movie_image_from_row(r: MovieImageRow) -> api::MediaImage {
     }
 }
 
-fn apply_image_selection(target: &mut api::Series, r: ImageSelectionRow) {
+fn apply_image_selection(target: &mut api::Show, r: ImageSelectionRow) {
     let image = Image::new_with_dims(r.source, &r.path, r.width, r.height);
 
     match r.kind {
@@ -3336,7 +3307,7 @@ fn apply_movie_image_selection(target: &mut api::Movie, sel: ImageSelectionRow) 
 fn season_from_row(r: SeasonRow) -> api::Season {
     api::Season {
         id: r.id,
-        series_id: r.series_id,
+        show_id: r.show_id,
         season: r.season,
         air_date: r.air_date,
         name: r.name,
@@ -3349,7 +3320,7 @@ fn season_from_row(r: SeasonRow) -> api::Season {
 fn episode_from_row(r: EpisodeRow) -> api::Episode {
     api::Episode {
         id: r.id,
-        series_id: r.series_id,
+        show_id: r.show_id,
         season: r.season,
         episode: r.number,
         absolute_number: r.absolute_number,
@@ -3394,8 +3365,8 @@ fn movie_from_row(r: MovieRow) -> api::Movie {
 }
 
 fn watched_from_row(r: WatchedRow) -> Result<api::Watched> {
-    let kind = match (r.series_id, r.episode_id, r.movie_id) {
-        (Some(series), Some(episode), None) => WatchedKind::Episode { series, episode },
+    let kind = match (r.show_id, r.episode_id, r.movie_id) {
+        (Some(show), Some(episode), None) => WatchedKind::Episode { show, episode },
         (None, None, Some(movie)) => WatchedKind::Movie { movie },
         _ => anyhow::bail!("Watched row violates CHECK constraint"),
     };

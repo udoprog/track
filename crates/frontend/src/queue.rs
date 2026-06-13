@@ -4,7 +4,7 @@ use yew::prelude::*;
 use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{Route, SeriesDetailQuery};
+use crate::router::{Route, ShowDetailQuery};
 use crate::ui::PaginationButtons;
 
 const PAGE_SIZE: usize = 20;
@@ -108,7 +108,7 @@ impl Component for Queue {
                     <h1>{"Queue"}</h1>
 
                     <button class="btn end" onclick={link.callback(|_| Msg::SyncAll)}
-                        title="Queue sync for all series and movies">
+                        title="Queue sync for all show and movies">
                         <span class="item-inline"><span class="icon arrow-path" /></span>
                         <span class="hide-mobile">{"Sync All"}</span>
                     </button>
@@ -201,7 +201,7 @@ impl Queue {
                 Ok(false)
             }
             Msg::SyncAllDone(result) => {
-                result.context(Message::SyncingSeries)?;
+                result.context(Message::SyncingShow)?;
                 Ok(false)
             }
             Msg::SetPage(p) => {
@@ -248,10 +248,9 @@ impl Queue {
 
     fn view_task_row(&self, ctx: &Context<Self>, task: &api::Task, spinning: bool) -> Html {
         let route = match &task.kind {
-            api::TaskKind::SyncSeries { series_id, .. } => Some(Route::SeriesDetail(
-                *series_id,
-                SeriesDetailQuery::default(),
-            )),
+            api::TaskKind::SyncShow { show_id, .. } => {
+                Some(Route::ShowDetail(*show_id, ShowDetailQuery::default()))
+            }
             api::TaskKind::SyncMovie { movie_id, .. } => Some(Route::MovieDetail(*movie_id)),
         };
 
@@ -274,7 +273,7 @@ impl Queue {
 
     fn view_task_label(&self, task: &api::Task, on_navigate: Option<Callback<MouseEvent>>) -> Html {
         let verb = match &task.kind {
-            api::TaskKind::SyncSeries { .. } => "Updating series",
+            api::TaskKind::SyncShow { .. } => "Updating show",
             api::TaskKind::SyncMovie { .. } => "Updating movie",
         };
 
@@ -311,10 +310,9 @@ impl Queue {
 
     fn view_completed_row(&self, ctx: &Context<Self>, task: &api::CompletedTask) -> Html {
         let route = match &task.kind {
-            api::TaskKind::SyncSeries { series_id, .. } => Some(Route::SeriesDetail(
-                *series_id,
-                SeriesDetailQuery::default(),
-            )),
+            api::TaskKind::SyncShow { show_id, .. } => {
+                Some(Route::ShowDetail(*show_id, ShowDetailQuery::default()))
+            }
             api::TaskKind::SyncMovie { movie_id, .. } => Some(Route::MovieDetail(*movie_id)),
         };
         let on_navigate = route.map(|r| ctx.link().callback(move |_| Msg::Navigate(r.clone())));
@@ -337,7 +335,7 @@ impl Queue {
         on_navigate: Option<Callback<MouseEvent>>,
     ) -> Html {
         let verb = match &task.kind {
-            api::TaskKind::SyncSeries { .. } => "Updated series",
+            api::TaskKind::SyncShow { .. } => "Updated show",
             api::TaskKind::SyncMovie { .. } => "Updated movie",
         };
 

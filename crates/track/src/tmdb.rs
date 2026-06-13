@@ -105,13 +105,13 @@ impl Client {
         Ok(Some(resp.error_for_status()?.bytes().await?))
     }
 
-    /// Search series, returning the results for `page` and the total number of
+    /// Search show, returning the results for `page` and the total number of
     /// results across all pages.
-    pub(crate) async fn search_series(
+    pub(crate) async fn search_show(
         &self,
         query: &str,
         page: usize,
-    ) -> Result<(Vec<SearchSeriesResult>, usize)> {
+    ) -> Result<(Vec<SearchShowResult>, usize)> {
         #[derive(Deserialize)]
         struct Row {
             id: u32,
@@ -154,7 +154,7 @@ impl Client {
         let mut out = Vec::with_capacity(resp.results.len());
 
         for r in resp.results {
-            out.push(SearchSeriesResult {
+            out.push(SearchShowResult {
                 remote_id: RemoteId::tmdb(r.id),
                 title: r.name.or(r.original_name),
                 overview: r.overview.filter(|s| !s.trim().is_empty()),
@@ -229,7 +229,7 @@ impl Client {
         Ok((out, resp.total_results))
     }
 
-    pub(crate) async fn fetch_series(&self, id: u32, language: Option<&str>) -> Result<SeriesInfo> {
+    pub(crate) async fn fetch_show(&self, id: u32, language: Option<&str>) -> Result<ShowInfo> {
         #[derive(Deserialize)]
         struct SeasonDetails {
             #[serde(default)]
@@ -321,7 +321,7 @@ impl Client {
             details.backdrop_path.as_deref().map(ImageKey::tmdb),
         );
 
-        Ok(SeriesInfo {
+        Ok(ShowInfo {
             title: details.name.or(details.original_name),
             overview: details.overview,
             first_air_date: opt_date(details.first_air_date.as_deref())
@@ -338,7 +338,7 @@ impl Client {
 
     pub(crate) async fn fetch_season_episodes(
         &self,
-        series_id: u32,
+        show_id: u32,
         season: api::SeasonNumber,
         language: Option<&str>,
     ) -> Result<Vec<EpisodeInfo>> {
@@ -365,7 +365,7 @@ impl Client {
 
         let resp: SeasonResponse = self
             .get_json(
-                format!("tv/{series_id}/season/{}", season.ordinal()),
+                format!("tv/{show_id}/season/{}", season.ordinal()),
                 language,
             )
             .await?;
@@ -519,7 +519,7 @@ impl Client {
     }
 }
 
-pub(crate) struct SeriesInfo {
+pub(crate) struct ShowInfo {
     pub title: Option<String>,
     pub overview: Option<String>,
     pub first_air_date: Option<Timestamp>,
@@ -561,7 +561,7 @@ pub(crate) struct MovieInfo {
     pub remotes: Vec<RemoteId>,
 }
 
-pub(crate) struct SearchSeriesResult {
+pub(crate) struct SearchShowResult {
     pub remote_id: RemoteId,
     pub title: Option<String>,
     pub overview: Option<String>,

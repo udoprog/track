@@ -403,7 +403,7 @@ impl MovieDetail {
                 Ok(true)
             }
             Msg::SyncDone(result) => {
-                result.context(Message::SyncingSeries)?;
+                result.context(Message::SyncingShow)?;
                 Ok(false)
             }
             Msg::SetSyncSource(source) => {
@@ -505,7 +505,7 @@ impl MovieDetail {
                 Ok(true)
             }
             Msg::AddPendingDone(result) => {
-                result.context(Message::SyncingSeries)?;
+                result.context(Message::SyncingShow)?;
 
                 if let Some(ref mut movie) = self.movie {
                     movie.pending = true;
@@ -526,7 +526,7 @@ impl MovieDetail {
                 Ok(false)
             }
             Msg::RemovePendingDone(result) => {
-                result.context(Message::SyncingSeries)?;
+                result.context(Message::SyncingShow)?;
 
                 if let Some(ref mut movie) = self.movie {
                     movie.pending = false;
@@ -570,13 +570,13 @@ impl MovieDetail {
                 Ok(false)
             }
             Msg::SelectImageDone(result) => {
-                result.context(Message::SyncingSeries)?;
+                result.context(Message::SyncingShow)?;
                 self.image_modal = false;
                 self.load_movie(ctx);
                 Ok(true)
             }
             Msg::ClearSelectedImageDone(result) => {
-                result.context(Message::SyncingSeries)?;
+                result.context(Message::SyncingShow)?;
                 self.image_modal = false;
                 self.load_movie(ctx);
                 Ok(true)

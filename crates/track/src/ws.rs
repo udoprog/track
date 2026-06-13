@@ -3,7 +3,7 @@ use core::iter;
 use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
-use api::{MovieId, SeriesId, TimeZone};
+use api::{MovieId, ShowId, TimeZone};
 use axum::extract::State;
 use axum::extract::WebSocketUpgrade;
 use musli_web::axum08;
@@ -54,15 +54,15 @@ impl ws::Handler for WsHandler {
 }
 
 impl WsHandler {
-    async fn enqueue_series_sync(
+    async fn enqueue_show_sync(
         &self,
-        series_id: api::SeriesId,
+        show_id: api::ShowId,
         title: Option<String>,
         immediate: bool,
     ) {
         self.queue
             .push(
-                api::TaskKind::SyncSeries { series_id, title },
+                api::TaskKind::SyncShow { show_id, title },
                 immediate,
                 &self.broadcast,
             )
@@ -91,118 +91,114 @@ impl WsHandler {
         outgoing: &mut ws::Outgoing<'_>,
     ) -> Result<()> {
         match id {
-            api::Request::ListSeries => {
+            api::Request::ListShow => {
                 let _req = incoming
-                    .read::<api::ListSeriesRequest>()
+                    .read::<api::ListShowRequest>()
                     .context("Expected a request payload")?;
-                let series = self.db.series().await.context("Loading series")?;
-                outgoing.write(api::ListSeriesResponse { series });
+                let shows = self.db.shows().await.context("Loading show")?;
+                outgoing.write(api::ListShowResponse { shows });
             }
-            api::Request::GetSeries => {
+            api::Request::GetShow => {
                 let req = incoming
-                    .read::<api::GetSeriesRequest>()
+                    .read::<api::GetShowRequest>()
                     .context("Expected a request payload")?;
 
-                let series = self
+                let show = self
                     .db
-                    .series_by_id(req.id)
+                    .show_by_id(req.id)
                     .await?
-                    .context("Expected series to exist")?;
+                    .context("Expected show to exist")?;
 
-                outgoing.write(series);
+                outgoing.write(show);
             }
             api::Request::ListSeasons => {
                 let req = incoming
                     .read::<api::ListSeasonsRequest>()
                     .context("Expected a request payload")?;
-                let seasons = self.db.seasons(req.series_id).await?;
+                let seasons = self.db.seasons(req.show_id).await?;
                 outgoing.write(api::ListSeasonsResponse { seasons });
             }
-            api::Request::TrackSeries => {
+            api::Request::TrackShow => {
                 let req = incoming
-                    .read::<api::TrackSeriesRequest>()
+                    .read::<api::TrackShowRequest>()
                     .context("Expected a request payload")?;
 
-                let series_id = match self.db.series_id_by_remote(&req.remote_id).await? {
+                let show_id = match self.db.show_id_by_remote(&req.remote_id).await? {
                     Some(id) => id,
-                    None => SeriesId::random(),
+                    None => ShowId::random(),
                 };
 
                 self.db
-                    .create_series(series_id, &req.remote_id.value().to_string(), None, "")
+                    .create_show(show_id, &req.remote_id.value().to_string(), None, "")
                     .await?;
 
-                self.db.add_series_remote(series_id, &req.remote_id).await?;
+                self.db.add_show_remote(show_id, &req.remote_id).await?;
 
                 let source = api::SyncSource::from_remote_source(req.remote_id.source());
 
                 if !source.is_unknown() {
-                    self.db.set_series_sync_source(series_id, source).await?;
+                    self.db.set_show_sync_source(show_id, source).await?;
                 }
 
-                let series = self
+                let show = self
                     .db
-                    .series_by_id(series_id)
+                    .show_by_id(show_id)
                     .await?
-                    .context("Expected series to exist")?;
+                    .context("Expected show to exist")?;
 
                 self.broadcast.emit(
                     incoming.channel(),
-                    api::AppEventKind::SeriesCreated {
-                        series: series.clone(),
-                    },
-                    "ws track series created",
+                    api::AppEventKind::ShowCreated { show: show.clone() },
+                    "ws track show created",
                 );
 
                 self.broadcast.emit(
                     incoming.channel(),
                     api::AppEventKind::PendingChanged,
-                    "ws track series pending changed",
+                    "ws track show pending changed",
                 );
 
-                self.enqueue_series_sync(series.id, series.title.clone(), true)
+                self.enqueue_show_sync(show.id, show.title.clone(), true)
                     .await;
 
-                outgoing.write(series);
+                outgoing.write(show);
             }
-            api::Request::UntrackSeries => {
+            api::Request::UntrackShow => {
                 let req = incoming
-                    .read::<api::UntrackSeriesRequest>()
+                    .read::<api::UntrackShowRequest>()
                     .context("Expected a request payload")?;
-                self.db.set_series_tracked(req.id, req.tracked).await?;
-                let series = self
+                self.db.set_show_tracked(req.id, req.tracked).await?;
+                let show = self
                     .db
-                    .series_by_id(req.id)
+                    .show_by_id(req.id)
                     .await?
-                    .context("Expected series to exist")?;
+                    .context("Expected show to exist")?;
                 self.broadcast.emit(
                     incoming.channel(),
-                    api::AppEventKind::SeriesChanged {
-                        series: series.clone(),
-                    },
-                    "ws untrack series changed",
+                    api::AppEventKind::ShowChanged { show: show.clone() },
+                    "ws untrack show changed",
                 );
                 self.broadcast.emit(
                     incoming.channel(),
                     api::AppEventKind::PendingChanged,
-                    "ws untrack series pending changed",
+                    "ws untrack show pending changed",
                 );
                 outgoing.write(api::Empty);
             }
-            api::Request::RemoveSeries => {
+            api::Request::RemoveShow => {
                 let req = incoming
-                    .read::<api::RemoveSeriesRequest>()
+                    .read::<api::RemoveShowRequest>()
                     .context("Expected a request payload")?;
-                self.db.delete_series(req.id).await?;
+                self.db.delete_show(req.id).await?;
                 self.broadcast.emit(
                     incoming.channel(),
-                    api::AppEventKind::SeriesDeleted { series_id: req.id },
-                    "ws remove series deleted",
+                    api::AppEventKind::ShowDeleted { show_id: req.id },
+                    "ws remove show deleted",
                 );
                 self.broadcast.emit(
                     incoming.channel(),
                     api::AppEventKind::PendingChanged,
-                    "ws remove series pending changed",
+                    "ws remove show pending changed",
                 );
                 outgoing.write(api::Empty);
             }
@@ -210,8 +206,8 @@ impl WsHandler {
                 let req = incoming
                     .read::<api::ListEpisodesRequest>()
                     .context("Expected a request payload")?;
-                let episodes = self.db.episodes(req.series_id, req.season).await?;
-                let watched = self.db.episodes_watched(req.series_id).await?;
+                let episodes = self.db.episodes(req.show_id, req.season).await?;
+                let watched = self.db.episodes_watched(req.show_id).await?;
                 outgoing.write(api::ListEpisodesResponse { episodes, watched });
             }
             api::Request::ListMovies => {
@@ -340,9 +336,9 @@ impl WsHandler {
                     .mark_watched(api::WatchedId::random(), req.kind, req.mark_time, now)
                     .await?;
 
-                if let api::WatchedKind::Episode { series, episode } = req.kind {
+                if let api::WatchedKind::Episode { show, episode } = req.kind {
                     self.pending
-                        .on_episode_watched_from(series, episode, now)
+                        .on_episode_watched_from(show, episode, now)
                         .await?;
                 }
 
@@ -370,14 +366,14 @@ impl WsHandler {
                 let now = api::Timestamp::now();
 
                 self.db
-                    .mark_watched_remaining(req.series_id, req.season, req.mark_time, now)
+                    .mark_watched_remaining(req.show_id, req.season, req.mark_time, now)
                     .await?;
 
                 self.broadcast.emit(
                     incoming.channel(),
                     api::AppEventKind::WatchedChanged {
                         event: api::WatchedEvent::RemainingSeason {
-                            series: req.series_id,
+                            show: req.show_id,
                             season: req.season,
                         },
                     },
@@ -414,7 +410,7 @@ impl WsHandler {
                     .read::<api::ListEpisodesWatchedRequest>()
                     .context("Expected a request payload")?;
 
-                let watched = self.db.episodes_watched(req.series_id).await?;
+                let watched = self.db.episodes_watched(req.show_id).await?;
                 outgoing.write(api::ListEpisodesWatchedResponse { watched });
             }
             api::Request::ListWatched => {
@@ -444,7 +440,7 @@ impl WsHandler {
                     incoming.channel(),
                     api::AppEventKind::WatchedChanged {
                         event: api::WatchedEvent::Episode {
-                            series: req.series_id,
+                            show: req.show_id,
                             episode: api::EpisodeId::new(0),
                         },
                     },
@@ -458,7 +454,7 @@ impl WsHandler {
                     .read::<api::ListOrphanedWatchedRequest>()
                     .context("Expected a request payload")?;
 
-                let watched = self.db.orphaned_for_series(req.series_id).await?;
+                let watched = self.db.orphaned_for_show(req.show_id).await?;
                 outgoing.write(api::ListOrphanedWatchedResponse { watched });
             }
             api::Request::ListPending => {
@@ -500,25 +496,26 @@ impl WsHandler {
                     .read::<api::SearchRequest>()
                     .context("Expected a request payload")?;
 
-                let mut series: Vec<api::SearchSeries> = Vec::new();
+                let mut shows: Vec<api::SearchShow> = Vec::new();
                 let mut movies: Vec<api::SearchMovie> = Vec::new();
+
                 let total;
 
                 match req.kind {
-                    api::SearchKind::Series => {
+                    api::SearchKind::Show => {
                         let (results, count) =
-                            self.remote.search_series(&req.query, req.page).await?;
+                            self.remote.search_show(&req.query, req.page).await?;
 
                         total = count;
 
                         for r in results {
                             let already_tracked = self
                                 .db
-                                .series_by_remote_id(&r.remote_id)
+                                .shows_by_remote_id(&r.remote_id)
                                 .await?
                                 .map(|s| s.id);
 
-                            series.push(api::SearchSeries {
+                            shows.push(api::SearchShow {
                                 already_tracked,
                                 ..r
                             });
@@ -546,24 +543,23 @@ impl WsHandler {
                 }
 
                 outgoing.write(api::SearchResponse {
-                    series,
+                    shows,
                     movies,
                     total,
                 });
             }
-            api::Request::SyncSeries => {
+            api::Request::SyncShow => {
                 let req = incoming
-                    .read::<api::SyncSeriesRequest>()
+                    .read::<api::SyncShowRequest>()
                     .context("Expected a request payload")?;
 
-                let series = self
+                let show = self
                     .db
-                    .series_by_id(req.id)
+                    .show_by_id(req.id)
                     .await?
-                    .context("Expected series to exist")?;
+                    .context("Expected show to exist")?;
 
-                self.enqueue_series_sync(series.id, series.title, true)
-                    .await;
+                self.enqueue_show_sync(show.id, show.title, true).await;
 
                 outgoing.write(api::Empty);
             }
@@ -582,45 +578,42 @@ impl WsHandler {
 
                 outgoing.write(api::Empty);
             }
-            api::Request::SetSeriesSyncSource => {
+            api::Request::SetShowSyncSource => {
                 let req = incoming
-                    .read::<api::SetSeriesSyncSourceRequest>()
+                    .read::<api::SetShowSyncSourceRequest>()
                     .context("Expected a request payload")?;
 
-                let series = self
+                let show = self
                     .db
-                    .series_by_id(req.id)
+                    .show_by_id(req.id)
                     .await?
-                    .context("Expected series to exist")?;
+                    .context("Expected show to exist")?;
 
-                if series.remote_by_source(req.source).is_none() {
-                    anyhow::bail!("Series does not have remote for source: {}", req.source);
+                if show.remote_by_source(req.source).is_none() {
+                    anyhow::bail!("Show does not have remote for source: {}", req.source);
                 }
 
-                self.db.set_series_sync_source(req.id, req.source).await?;
+                self.db.set_show_sync_source(req.id, req.source).await?;
 
-                let series = self
+                let show = self
                     .db
-                    .series_by_id(req.id)
+                    .show_by_id(req.id)
                     .await?
-                    .context("Expected series to exist")?;
+                    .context("Expected show to exist")?;
 
                 self.broadcast.emit(
                     incoming.channel(),
-                    api::AppEventKind::SeriesChanged {
-                        series: series.clone(),
-                    },
-                    "ws set series sync source changed",
+                    api::AppEventKind::ShowChanged { show: show.clone() },
+                    "ws set show sync source changed",
                 );
 
                 self.broadcast.emit(
                     incoming.channel(),
                     api::AppEventKind::PendingChanged,
-                    "ws set series sync source pending changed",
+                    "ws set show sync source pending changed",
                 );
 
-                self.enqueue_series_sync(series.id, series.title, true)
-                    .await;
+                self.enqueue_show_sync(show.id, show.title, true).await;
 
                 outgoing.write(api::Empty);
             }
@@ -669,70 +662,66 @@ impl WsHandler {
 
                 outgoing.write(api::Empty);
             }
-            api::Request::AddSeriesRemote => {
+            api::Request::AddShowRemote => {
                 let req = incoming
-                    .read::<api::AddSeriesRemoteRequest>()
+                    .read::<api::AddShowRemoteRequest>()
                     .context("Expected a request payload")?;
 
                 self.db
-                    .series_by_id(req.id)
+                    .show_by_id(req.id)
                     .await?
-                    .context("Expected series to exist")?;
+                    .context("Expected show to exist")?;
 
-                self.db.add_series_remote(req.id, &req.remote_id).await?;
+                self.db.add_show_remote(req.id, &req.remote_id).await?;
 
-                let series = self
+                let show = self
                     .db
-                    .series_by_id(req.id)
+                    .show_by_id(req.id)
                     .await?
-                    .context("Expected series to exist")?;
+                    .context("Expected show to exist")?;
 
                 self.broadcast.emit(
                     incoming.channel(),
-                    api::AppEventKind::SeriesChanged {
-                        series: series.clone(),
-                    },
-                    "ws add series remote changed",
+                    api::AppEventKind::ShowChanged { show: show.clone() },
+                    "ws add show remote changed",
                 );
 
                 self.broadcast.emit(
                     incoming.channel(),
                     api::AppEventKind::PendingChanged,
-                    "ws add series remote pending changed",
+                    "ws add show remote pending changed",
                 );
 
                 outgoing.write(api::Empty);
             }
-            api::Request::RemoveSeriesRemote => {
+            api::Request::RemoveShowRemote => {
                 let req = incoming
-                    .read::<api::RemoveSeriesRemoteRequest>()
+                    .read::<api::RemoveShowRemoteRequest>()
                     .context("Expected a request payload")?;
 
                 self.db
-                    .series_by_id(req.id)
+                    .show_by_id(req.id)
                     .await?
-                    .context("Expected series to exist")?;
+                    .context("Expected show to exist")?;
 
-                self.db.remove_series_remote(req.id, &req.remote_id).await?;
+                self.db.remove_show_remote(req.id, &req.remote_id).await?;
 
-                let series = self
+                let show = self
                     .db
-                    .series_by_id(req.id)
+                    .show_by_id(req.id)
                     .await?
-                    .context("Expected series to exist")?;
+                    .context("Expected show to exist")?;
 
                 self.broadcast.emit(
                     incoming.channel(),
-                    api::AppEventKind::SeriesChanged {
-                        series: series.clone(),
-                    },
-                    "ws remove series remote changed",
+                    api::AppEventKind::ShowChanged { show: show.clone() },
+                    "ws remove show remote changed",
                 );
 
                 self.broadcast.emit(
                     incoming.channel(),
                     api::AppEventKind::PendingChanged,
-                    "ws remove series remote pending changed",
+                    "ws remove show remote pending changed",
                 );
 
                 outgoing.write(api::Empty);
@@ -805,38 +794,36 @@ impl WsHandler {
 
                 outgoing.write(api::Empty);
             }
-            api::Request::UpdateSeriesRemote => {
+            api::Request::UpdateShowRemote => {
                 let req = incoming
-                    .read::<api::UpdateSeriesRemoteRequest>()
+                    .read::<api::UpdateShowRemoteRequest>()
                     .context("Expected a request payload")?;
 
                 self.db
-                    .series_by_id(req.id)
+                    .show_by_id(req.id)
                     .await?
-                    .context("Expected series to exist")?;
+                    .context("Expected show to exist")?;
 
                 self.db
-                    .update_series_remote(req.id, &req.old, &req.new)
+                    .update_show_remote(req.id, &req.old, &req.new)
                     .await?;
 
-                let series = self
+                let show = self
                     .db
-                    .series_by_id(req.id)
+                    .show_by_id(req.id)
                     .await?
-                    .context("Expected series to exist")?;
+                    .context("Expected show to exist")?;
 
                 self.broadcast.emit(
                     incoming.channel(),
-                    api::AppEventKind::SeriesChanged {
-                        series: series.clone(),
-                    },
-                    "ws update series remote changed",
+                    api::AppEventKind::ShowChanged { show: show.clone() },
+                    "ws update show remote changed",
                 );
 
                 self.broadcast.emit(
                     incoming.channel(),
                     api::AppEventKind::PendingChanged,
-                    "ws update series remote pending changed",
+                    "ws update show remote pending changed",
                 );
 
                 outgoing.write(api::Empty);
@@ -877,53 +864,48 @@ impl WsHandler {
 
                 outgoing.write(api::Empty);
             }
-            api::Request::SetSeriesLanguage => {
+            api::Request::SetShowLanguage => {
                 let req = incoming
-                    .read::<api::SetSeriesLanguageRequest>()
+                    .read::<api::SetShowLanguageRequest>()
                     .context("Expected a request payload")?;
 
-                self.db.set_series_language(req.id, req.language).await?;
+                self.db.set_show_language(req.id, req.language).await?;
 
-                let series = self
+                let show = self
                     .db
-                    .series_by_id(req.id)
+                    .show_by_id(req.id)
                     .await?
-                    .context("Expected series to exist")?;
+                    .context("Expected show to exist")?;
 
                 self.broadcast.emit(
                     incoming.channel(),
-                    api::AppEventKind::SeriesChanged {
-                        series: series.clone(),
-                    },
-                    "ws set series language changed",
+                    api::AppEventKind::ShowChanged { show: show.clone() },
+                    "ws set show language changed",
                 );
 
-                self.enqueue_series_sync(series.id, series.title, true)
-                    .await;
+                self.enqueue_show_sync(show.id, show.title, true).await;
 
                 outgoing.write(api::Empty);
             }
-            api::Request::SetSeriesIncludeSpecials => {
+            api::Request::SetShowIncludeSpecials => {
                 let req = incoming
-                    .read::<api::SetSeriesIncludeSpecialsRequest>()
+                    .read::<api::SetShowIncludeSpecialsRequest>()
                     .context("Expected a request payload")?;
 
                 self.db
-                    .set_series_include_specials(req.id, req.include_specials)
+                    .set_show_include_specials(req.id, req.include_specials)
                     .await?;
 
-                let series = self
+                let show = self
                     .db
-                    .series_by_id(req.id)
+                    .show_by_id(req.id)
                     .await?
-                    .context("Expected series to exist")?;
+                    .context("Expected show to exist")?;
 
                 self.broadcast.emit(
                     incoming.channel(),
-                    api::AppEventKind::SeriesChanged {
-                        series: series.clone(),
-                    },
-                    "ws set series include specials changed",
+                    api::AppEventKind::ShowChanged { show: show.clone() },
+                    "ws set show include specials changed",
                 );
 
                 outgoing.write(api::Empty);
@@ -958,10 +940,10 @@ impl WsHandler {
                     .read::<api::SyncAllRequest>()
                     .context("Expected a request payload")?;
 
-                let series = self.db.series().await?;
+                let shows = self.db.shows().await?;
 
-                for s in series {
-                    self.enqueue_series_sync(s.id, s.title, false).await;
+                for s in shows {
+                    self.enqueue_show_sync(s.id, s.title, false).await;
                 }
 
                 let movies = self.db.movies().await?;
@@ -1016,7 +998,7 @@ impl WsHandler {
                     .context("Expected a request payload")?;
 
                 match req.kind {
-                    api::PendingKind::Episode { series, episode } => {
+                    api::PendingKind::Episode { show, episode } => {
                         let ts = match req.mark_time {
                             api::MarkTime::Now => api::Timestamp::now(),
                             api::MarkTime::WhenAired => {
@@ -1029,7 +1011,7 @@ impl WsHandler {
                             }
                         };
 
-                        self.db.add_pending_episode(series, episode, ts).await?;
+                        self.db.add_pending_episode(show, episode, ts).await?;
                     }
                     api::PendingKind::Movie { movie } => {
                         let ts = match req.mark_time {
@@ -1062,8 +1044,8 @@ impl WsHandler {
                     .context("Expected a request payload")?;
 
                 match req.kind {
-                    api::PendingKind::Episode { series, .. } => {
-                        self.db.remove_pending_episode(series).await?;
+                    api::PendingKind::Episode { show, .. } => {
+                        self.db.remove_pending_episode(show).await?;
                     }
                     api::PendingKind::Movie { movie } => {
                         self.db.remove_pending_movie(movie).await?;
@@ -1083,9 +1065,7 @@ impl WsHandler {
                     .read::<api::SkipEpisodeRequest>()
                     .context("Expected a request payload")?;
 
-                self.db
-                    .skip_pending_episode(req.series, req.episode)
-                    .await?;
+                self.db.skip_pending_episode(req.show, req.episode).await?;
 
                 self.broadcast.emit(
                     incoming.channel(),
@@ -1103,19 +1083,17 @@ impl WsHandler {
                 let owner = self.db.select_image(req.id).await?;
 
                 match owner {
-                    api::ImageOwner::Series(series_id) => {
-                        let series = self
+                    api::ImageOwner::Show(show_id) => {
+                        let show = self
                             .db
-                            .series_by_id(series_id)
+                            .show_by_id(show_id)
                             .await?
-                            .context("Expected series to exist")?;
+                            .context("Expected show to exist")?;
 
                         self.broadcast.emit(
                             incoming.channel(),
-                            api::AppEventKind::SeriesChanged {
-                                series: series.clone(),
-                            },
-                            "ws select image series changed",
+                            api::AppEventKind::ShowChanged { show: show.clone() },
+                            "ws select image show changed",
                         );
                     }
                     api::ImageOwner::Movie(movie_id) => {
@@ -1145,18 +1123,17 @@ impl WsHandler {
                 self.db.clear_selected_image(req.owner, req.kind).await?;
 
                 match req.owner {
-                    api::ImageOwner::Series(series_id) => {
-                        let series = self
+                    api::ImageOwner::Show(show_id) => {
+                        let show = self
                             .db
-                            .series_by_id(series_id)
+                            .show_by_id(show_id)
                             .await?
-                            .context("Expected series to exist")?;
+                            .context("Expected show to exist")?;
+
                         self.broadcast.emit(
                             incoming.channel(),
-                            api::AppEventKind::SeriesChanged {
-                                series: series.clone(),
-                            },
-                            "ws clear selected image series changed",
+                            api::AppEventKind::ShowChanged { show: show.clone() },
+                            "ws clear selected image show changed",
                         );
                     }
                     api::ImageOwner::Movie(movie_id) => {

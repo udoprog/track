@@ -192,7 +192,7 @@ pub(super) fn MarkWatchedPicker(props: &MarkWatchedPickerProps) -> Html {
 }
 
 /// Modal holding per-title settings (language, optional specials handling,
-/// graphics, identifiers). Shared by series and movies. Sections whose
+/// graphics, identifiers). Shared by show and movies. Sections whose
 /// corresponding callback is omitted are not rendered — e.g. movies pass no
 /// `on_include_specials_change`, so the specials field is hidden.
 /// Stateless: it renders the current values and emits the parent's callbacks.
@@ -207,7 +207,7 @@ pub(super) struct MediaSettingsModalProps {
     pub(super) on_close: Callback<()>,
     /// Remote identifiers available for syncing.
     pub(super) remotes: Vec<api::RemoteId>,
-    /// Whether to scope the sync-source select to series or movie remotes.
+    /// Whether to scope the sync-source select to show or movie remotes.
     pub(super) kind: RemoteSourceKind,
     /// Currently selected sync source.
     pub(super) current_source: Option<api::RemoteSource>,
@@ -457,7 +457,7 @@ impl Component for SecretInput {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum RemoteSourceKind {
-    Series,
+    Show,
     Movie,
 }
 
@@ -552,7 +552,7 @@ fn parse_remote(source: &api::RemoteSource, value: &str) -> Result<api::RemoteId
 }
 
 /// Modal for adding, editing and removing remote identifiers (e.g. `tvdb:123`,
-/// `imdb:tt0001234`) of a series or movie. The component is presentation-only:
+/// `imdb:tt0001234`) of a show or movie. The component is presentation-only:
 /// it emits `on_add`/`on_edit`/`on_remove` and the caller performs the request,
 /// which makes it reusable wherever a remote needs to be repaired.
 #[derive(Properties, PartialEq)]
@@ -1000,7 +1000,7 @@ pub(super) enum EpisodePickerMsg {
 pub(super) struct EpisodePickerProps {
     pub(super) prompt: AttrValue,
     pub(super) label: Option<AttrValue>,
-    pub(super) series_id: api::SeriesId,
+    pub(super) show_id: api::ShowId,
     pub(super) seasons: Vec<api::Season>,
     #[prop_or_default]
     pub(super) selected_season: Option<api::SeasonNumber>,
@@ -1167,7 +1167,7 @@ impl EpisodePicker {
             .channel
             .request()
             .body(api::ListEpisodesRequest {
-                series_id: ctx.props().series_id,
+                show_id: ctx.props().show_id,
                 season,
             })
             .on_packet(ctx.link().callback(EpisodePickerMsg::EpisodesLoaded))

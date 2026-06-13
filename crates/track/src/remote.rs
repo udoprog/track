@@ -102,15 +102,15 @@ impl RemoteClients {
         self.inner.lock().tvmaze.clone()
     }
 
-    /// Search series across all configured sources (tmdb then tvdb), one page
+    /// Search show across all configured sources (tmdb then tvdb), one page
     /// per source merged together. `already_tracked` is left as `None`; the
     /// caller fills it in from the DB. Returns the results and the total number
     /// of results across the queried sources.
-    pub(crate) async fn search_series(
+    pub(crate) async fn search_show(
         &self,
         query: &str,
         page: usize,
-    ) -> Result<(Vec<api::SearchSeries>, usize)> {
+    ) -> Result<(Vec<api::SearchShow>, usize)> {
         let tmdb = self.tmdb();
         let tvdb = self.tvdb();
 
@@ -120,11 +120,11 @@ impl RemoteClients {
         let mut total = 0;
 
         if let Some(client) = tmdb {
-            let (results, count) = client.search_series(query, page).await?;
+            let (results, count) = client.search_show(query, page).await?;
             total += count;
 
             for r in results {
-                a.push(api::SearchSeries {
+                a.push(api::SearchShow {
                     remote_id: r.remote_id,
                     title: r.title,
                     poster: r.poster.clone().map(api::Image::from),
@@ -138,11 +138,11 @@ impl RemoteClients {
         }
 
         if let Some(client) = tvdb {
-            let (results, count) = client.search_series(query, page).await?;
+            let (results, count) = client.search_show(query, page).await?;
             total += count;
 
             for r in results {
-                b.push(api::SearchSeries {
+                b.push(api::SearchShow {
                     remote_id: r.remote_id,
                     title: r.title,
                     poster: r
@@ -207,26 +207,26 @@ impl RemoteClients {
         Ok((out, total))
     }
 
-    pub(crate) async fn fetch_tmdb_series(
+    pub(crate) async fn fetch_tmdb_show(
         &self,
         id: u32,
         language: Option<&str>,
-    ) -> Result<tmdb::SeriesInfo> {
+    ) -> Result<tmdb::ShowInfo> {
         self.tmdb()
             .context("Expected a configured TMDB client")?
-            .fetch_series(id, language)
+            .fetch_show(id, language)
             .await
     }
 
     pub(crate) async fn fetch_tmdb_season_episodes(
         &self,
-        series_id: u32,
+        show_id: u32,
         season: api::SeasonNumber,
         language: Option<&str>,
     ) -> Result<Vec<tmdb::EpisodeInfo>> {
         self.tmdb()
             .context("Expected a configured TMDB client")?
-            .fetch_season_episodes(series_id, season, language)
+            .fetch_season_episodes(show_id, season, language)
             .await
     }
 
@@ -251,25 +251,25 @@ impl RemoteClients {
             .await
     }
 
-    pub(crate) async fn fetch_tvdb_series(
+    pub(crate) async fn fetch_tvdb_show(
         &self,
         id: u32,
         language: Option<&str>,
-    ) -> Result<tvdb::SeriesInfo> {
+    ) -> Result<tvdb::ShowInfo> {
         self.tvdb()
             .context("Expected a configured TVDB client")?
-            .fetch_series(id, language)
+            .fetch_show(id, language)
             .await
     }
 
     pub(crate) async fn fetch_tvdb_episodes(
         &self,
-        series_id: u32,
+        show_id: u32,
         language: Option<&str>,
     ) -> Result<Vec<tvdb::EpisodeInfo>> {
         self.tvdb()
             .context("Expected a configured TVDB client")?
-            .fetch_episodes(series_id, language)
+            .fetch_episodes(show_id, language)
             .await
     }
 

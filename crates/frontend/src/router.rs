@@ -108,7 +108,7 @@ impl SearchQuery {
                     this.kind = if value.as_ref() == "movies" {
                         api::SearchKind::Movies
                     } else {
-                        api::SearchKind::Series
+                        api::SearchKind::Show
                     };
                 }
                 "filter" => {
@@ -123,11 +123,11 @@ impl SearchQuery {
 }
 
 #[derive(Default, Debug, Clone, PartialEq)]
-pub(super) struct SeriesDetailQuery {
+pub(super) struct ShowDetailQuery {
     pub(super) season: Option<api::SeasonNumber>,
 }
 
-impl SeriesDetailQuery {
+impl ShowDetailQuery {
     fn to_query_string(&self) -> String {
         let mut s = form_urlencoded::Serializer::new(String::new());
 
@@ -162,8 +162,8 @@ impl SeriesDetailQuery {
 pub(super) enum Route {
     Dashboard(DashboardQuery),
     Queue,
-    Series(PagedQuery),
-    SeriesDetail(api::SeriesId, SeriesDetailQuery),
+    Shows(PagedQuery),
+    ShowDetail(api::ShowId, ShowDetailQuery),
     Movies(PagedQuery),
     MovieDetail(api::MovieId),
     Search(SearchQuery),
@@ -190,22 +190,22 @@ impl fmt::Display for Route {
                 }
             }
             Route::Queue => f.write_str("/queue"),
-            Route::Series(q) => {
+            Route::Shows(q) => {
                 let qs = q.to_query_string();
 
                 if qs.is_empty() {
-                    f.write_str("/series")
+                    f.write_str("/shows")
                 } else {
-                    write!(f, "/series?{qs}")
+                    write!(f, "/shows?{qs}")
                 }
             }
-            Route::SeriesDetail(id, q) => {
+            Route::ShowDetail(id, q) => {
                 let qs = q.to_query_string();
 
                 if qs.is_empty() {
-                    write!(f, "/series/{id}")
+                    write!(f, "/shows/{id}")
                 } else {
-                    write!(f, "/series/{id}?{qs}")
+                    write!(f, "/shows/{id}?{qs}")
                 }
             }
             Route::Movies(q) => {
@@ -239,12 +239,12 @@ impl Route {
 
         match parts.next() {
             Some("queue") => Route::Queue,
-            Some("series") => match parts.next() {
+            Some("show") => match parts.next() {
                 Some(id) => id
                     .parse()
-                    .map(|id| Route::SeriesDetail(id, SeriesDetailQuery::from_search(search)))
-                    .unwrap_or(Route::Series(PagedQuery::default())),
-                None => Route::Series(PagedQuery::from_search(search)),
+                    .map(|id| Route::ShowDetail(id, ShowDetailQuery::from_search(search)))
+                    .unwrap_or(Route::Shows(PagedQuery::default())),
+                None => Route::Shows(PagedQuery::from_search(search)),
             },
             Some("movies") => match parts.next() {
                 Some(id) => id

@@ -8,102 +8,102 @@ use crate::app_broadcast::Broadcaster;
 use crate::db::Database;
 use crate::remote::RemoteClients;
 
-pub(crate) async fn sync_series(
-    series_id: api::SeriesId,
+pub(crate) async fn sync_show(
+    show_id: api::ShowId,
     db: &Database,
     remote: &RemoteClients,
     broadcast: &Broadcaster,
     pending: &crate::pending::PendingSystem,
 ) -> Result<()> {
-    let series = db
-        .series_by_id(series_id)
+    let show = db
+        .show_by_id(show_id)
         .await?
-        .context("Expected series to exist")?;
+        .context("Expected show to exist")?;
 
     let config = db.load_config().await?;
-    let language = series.language.as_deref().or(config.language.as_deref());
+    let language = show.language.as_deref().or(config.language.as_deref());
 
-    let source = series.effective_sync_source();
-    info!(series_id = %series_id, title = series.title, ?source, ?language, "Syncing series");
+    let source = show.effective_sync_source();
+    info!(show_id = %show_id, title = show.title, ?source, ?language, "Syncing show");
 
     match source {
         Some(api::SyncSource::Tmdb) => {
-            let remote_id = series
+            let remote_id = show
                 .remote_by_source(api::SyncSource::Tmdb)
-                .context("Expected series to have a TMDB remote")?;
+                .context("Expected show to have a TMDB remote")?;
 
             let tmdb_id: u32 = remote_id
                 .value()
                 .as_u32()
                 .context("Expected a valid TMDB id")?;
 
-            sync_series_tmdb(series_id, tmdb_id, language, remote, db, broadcast).await?;
+            sync_show_tmdb(show_id, tmdb_id, language, remote, db, broadcast).await?;
         }
         Some(api::SyncSource::Tvdb) => {
-            let remote_id = series
+            let remote_id = show
                 .remote_by_source(api::SyncSource::Tvdb)
-                .context("Expected series to have a TVDB remote")?;
+                .context("Expected show to have a TVDB remote")?;
 
             let tvdb_id: u32 = remote_id
                 .value()
                 .as_u32()
                 .context("Expected a valid TVDB id")?;
 
-            sync_series_tvdb(series_id, tvdb_id, language, remote, db, broadcast).await?;
+            sync_show_tvdb(show_id, tvdb_id, language, remote, db, broadcast).await?;
         }
-        _ => anyhow::bail!("Series has no syncable remote (TMDB or TVDB)"),
+        _ => anyhow::bail!("Show has no syncable remote (TMDB or TVDB)"),
     }
 
     // Best-effort tvmaze enrichment for exact airtimes. Re-fetch so remotes are
     // current.
-    if let Some(series) = db.series_by_id(series_id).await?
-        && let Err(e) = enrich_with_tvmaze(series_id, &series, remote, db, broadcast).await
+    if let Some(show) = db.show_by_id(show_id).await?
+        && let Err(e) = enrich_with_tvmaze(show_id, &show, remote, db, broadcast).await
     {
-        warn!("TVmaze enrichment skipped for series {series_id}: {e:#}");
+        warn!("TVmaze enrichment skipped for show {show_id}: {e:#}");
     }
 
     let now = api::Timestamp::now();
-    let include_specials = series.effective_include_specials(config.include_specials);
+    let include_specials = show.effective_include_specials(config.include_specials);
     pending
-        .fill_for_series(series_id, include_specials, now)
+        .fill_for_show(show_id, include_specials, now)
         .await?;
-    db.set_series_synced_at(series_id, now).await?;
+    db.set_show_synced_at(show_id, now).await?;
     broadcast.broadcast_event(api::AppEventKind::PendingChanged);
-    info!(series_id = %series_id, "Sync complete");
+    info!(show_id = %show_id, "Sync complete");
     Ok(())
 }
 
-async fn sync_series_tmdb(
-    series_id: api::SeriesId,
+async fn sync_show_tmdb(
+    show_id: api::ShowId,
     tmdb_id: u32,
     language: Option<&str>,
     remote: &RemoteClients,
     db: &Database,
     broadcast: &Broadcaster,
 ) -> Result<()> {
-    let series = db
-        .series_by_id(series_id)
+    let show = db
+        .show_by_id(show_id)
         .await?
-        .context("Expected series to exist")?;
+        .context("Expected show to exist")?;
 
-    info!(tmdb_id, "Fetching TMDB series");
+    info!(tmdb_id, "Fetching TMDB show");
 
-    let info = remote.fetch_tmdb_series(tmdb_id, language).await?;
+    let info = remote.fetch_tmdb_show(tmdb_id, language).await?;
 
-    db.update_series(
-        series_id,
+    db.update_show(
+        show_id,
         info.title.as_deref(),
-        info.first_air_date.or(series.first_air_date),
+        info.first_air_date.or(show.first_air_date),
         info.overview.as_deref(),
-        series.tracked,
+        show.tracked,
     )
     .await?;
 
     for remote in &info.remotes {
-        db.add_series_remote(series_id, remote).await?;
+        db.add_show_remote(show_id, remote).await?;
     }
 
-    db.clear_series_images(series_id).await?;
+    db.clear_show_images(show_id).await?;
 
     let mut selected_poster_id = None;
     let mut selected_backdrop_id = None;
@@ -111,7 +111,7 @@ async fn sync_series_tmdb(
     for (rank, poster) in info.posters.iter().enumerate() {
         let id = ImageId::random();
 
-        db.upsert_series_image(id, series_id, ImageKind::Poster, rank as u32, poster)
+        db.upsert_show_image(id, show_id, ImageKind::Poster, rank as u32, poster)
             .await?;
 
         if info.selected_poster.as_ref() == Some(poster.key()) {
@@ -122,7 +122,7 @@ async fn sync_series_tmdb(
     for (rank, backdrop) in info.backdrops.iter().enumerate() {
         let id = ImageId::random();
 
-        db.upsert_series_image(id, series_id, ImageKind::Backdrop, rank as u32, backdrop)
+        db.upsert_show_image(id, show_id, ImageKind::Backdrop, rank as u32, backdrop)
             .await?;
 
         if info.selected_backdrop.as_ref() == Some(backdrop.key()) {
@@ -131,33 +131,33 @@ async fn sync_series_tmdb(
     }
 
     if let Some(id) = selected_poster_id {
-        db.set_series_image_selection(series_id, ImageKind::Poster, id)
+        db.set_show_image_selection(show_id, ImageKind::Poster, id)
             .await?;
     }
 
     if let Some(id) = selected_backdrop_id {
-        db.set_series_image_selection(series_id, ImageKind::Backdrop, id)
+        db.set_show_image_selection(show_id, ImageKind::Backdrop, id)
             .await?;
 
-        db.set_series_image_selection(series_id, ImageKind::Banner, id)
+        db.set_show_image_selection(show_id, ImageKind::Banner, id)
             .await?;
     }
 
     let updated = db
-        .series_by_id(series_id)
+        .show_by_id(show_id)
         .await?
-        .context("Expected series to exist after update")?;
-    broadcast.broadcast_event(api::AppEventKind::SeriesChanged { series: updated });
+        .context("Expected show to exist after update")?;
+    broadcast.broadcast_event(api::AppEventKind::ShowChanged { show: updated });
 
     let mut synced_seasons = HashSet::new();
 
-    db.clear_episode_images(series_id).await?;
+    db.clear_episode_images(show_id).await?;
 
-    let existing_episode_ids = db.episode_ids(series_id).await?;
+    let existing_episode_ids = db.episode_ids(show_id).await?;
 
     for info in &info.seasons {
         db.upsert_season(
-            series_id,
+            show_id,
             info.number,
             info.air_date,
             info.name.as_deref(),
@@ -182,7 +182,7 @@ async fn sync_series_tmdb(
 
             db.upsert_episode(
                 episode_id,
-                series_id,
+                show_id,
                 ep.season,
                 ep.number,
                 None,
@@ -205,56 +205,56 @@ async fn sync_series_tmdb(
             }
         }
 
-        db.prune_season_episodes(series_id, info.number, &fetched_numbers)
+        db.prune_season_episodes(show_id, info.number, &fetched_numbers)
             .await?;
 
         broadcast.broadcast_event(api::AppEventKind::EpisodesChanged {
-            series_id,
+            show_id,
             season: info.number,
         });
 
         synced_seasons.insert(info.number);
     }
 
-    db.prune_seasons(series_id, &synced_seasons).await?;
+    db.prune_seasons(show_id, &synced_seasons).await?;
 
-    let seasons = db.seasons(series_id).await?;
-    broadcast.broadcast_event(api::AppEventKind::SeasonsChanged { series_id, seasons });
+    let seasons = db.seasons(show_id).await?;
+    broadcast.broadcast_event(api::AppEventKind::SeasonsChanged { show_id, seasons });
 
     Ok(())
 }
 
-async fn sync_series_tvdb(
-    series_id: api::SeriesId,
+async fn sync_show_tvdb(
+    show_id: api::ShowId,
     tvdb_id: u32,
     language: Option<&str>,
     remote: &RemoteClients,
     db: &Database,
     broadcast: &Broadcaster,
 ) -> Result<()> {
-    let series = db
-        .series_by_id(series_id)
+    let show = db
+        .show_by_id(show_id)
         .await?
-        .context("Expected series to exist")?;
+        .context("Expected show to exist")?;
 
-    info!(tvdb_id, "Fetching TVDB series");
+    info!(tvdb_id, "Fetching TVDB show");
 
-    let info = remote.fetch_tvdb_series(tvdb_id, language).await?;
+    let info = remote.fetch_tvdb_show(tvdb_id, language).await?;
 
-    db.update_series(
-        series_id,
+    db.update_show(
+        show_id,
         info.title.as_deref(),
-        series.first_air_date,
+        show.first_air_date,
         info.overview.as_deref(),
-        series.tracked,
+        show.tracked,
     )
     .await?;
 
     for remote in &info.remotes {
-        db.add_series_remote(series_id, remote).await?;
+        db.add_show_remote(show_id, remote).await?;
     }
 
-    db.clear_series_images(series_id).await?;
+    db.clear_show_images(show_id).await?;
 
     let mut selected_poster_id = None;
     let mut selected_banner_id = None;
@@ -263,7 +263,7 @@ async fn sync_series_tvdb(
     for (rank, poster) in info.poster.iter().enumerate() {
         let id = ImageId::random();
 
-        db.upsert_series_image(id, series_id, ImageKind::Poster, rank as u32, poster)
+        db.upsert_show_image(id, show_id, ImageKind::Poster, rank as u32, poster)
             .await?;
 
         if info.selected_poster.as_ref() == Some(poster.key()) {
@@ -274,7 +274,7 @@ async fn sync_series_tvdb(
     for (rank, banner) in info.banner.iter().enumerate() {
         let id = ImageId::random();
 
-        db.upsert_series_image(id, series_id, ImageKind::Banner, rank as u32, banner)
+        db.upsert_show_image(id, show_id, ImageKind::Banner, rank as u32, banner)
             .await?;
 
         if info.selected_banner.as_ref() == Some(banner.key()) {
@@ -285,7 +285,7 @@ async fn sync_series_tvdb(
     for (rank, fanart) in info.fanart.iter().enumerate() {
         let id = ImageId::random();
 
-        db.upsert_series_image(id, series_id, ImageKind::Backdrop, rank as u32, fanart)
+        db.upsert_show_image(id, show_id, ImageKind::Backdrop, rank as u32, fanart)
             .await?;
 
         if info.selected_fanart.as_ref() == Some(fanart.key()) {
@@ -294,26 +294,26 @@ async fn sync_series_tvdb(
     }
 
     if let Some(id) = selected_poster_id {
-        db.set_series_image_selection(series_id, ImageKind::Poster, id)
+        db.set_show_image_selection(show_id, ImageKind::Poster, id)
             .await?;
     }
 
     if let Some(id) = selected_banner_id {
-        db.set_series_image_selection(series_id, ImageKind::Banner, id)
+        db.set_show_image_selection(show_id, ImageKind::Banner, id)
             .await?;
     }
 
     if let Some(id) = selected_fanart_id {
-        db.set_series_image_selection(series_id, ImageKind::Backdrop, id)
+        db.set_show_image_selection(show_id, ImageKind::Backdrop, id)
             .await?;
     }
 
     let updated = db
-        .series_by_id(series_id)
+        .show_by_id(show_id)
         .await?
-        .context("Expected series to exist after update")?;
+        .context("Expected show to exist after update")?;
 
-    broadcast.broadcast_event(api::AppEventKind::SeriesChanged { series: updated });
+    broadcast.broadcast_event(api::AppEventKind::ShowChanged { show: updated });
 
     info!(tvdb_id, "Fetching TVDB episodes");
     let episodes = remote.fetch_tvdb_episodes(tvdb_id, language).await?;
@@ -323,9 +323,9 @@ async fn sync_series_tvdb(
     let mut season_air_dates: HashMap<SeasonNumber, api::Timestamp> = HashMap::new();
     let mut season_episode_numbers: HashMap<SeasonNumber, HashSet<u32>> = HashMap::new();
 
-    db.clear_episode_images(series_id).await?;
+    db.clear_episode_images(show_id).await?;
 
-    let existing_episode_ids = db.episode_ids(series_id).await?;
+    let existing_episode_ids = db.episode_ids(show_id).await?;
 
     for ep in &episodes {
         seasons_seen.insert(ep.season);
@@ -349,7 +349,7 @@ async fn sync_series_tvdb(
 
         db.upsert_episode(
             episode_id,
-            series_id,
+            show_id,
             ep.season,
             ep.number,
             ep.absolute_number,
@@ -379,20 +379,20 @@ async fn sync_series_tvdb(
     for &season in &seasons_seen {
         let air_date = season_air_dates.get(&season).copied();
 
-        db.upsert_season(series_id, season, air_date, None, None)
+        db.upsert_season(show_id, season, air_date, None, None)
             .await?;
 
         if let Some(kept) = season_episode_numbers.get(&season) {
-            db.prune_season_episodes(series_id, season, kept).await?;
+            db.prune_season_episodes(show_id, season, kept).await?;
         }
 
-        broadcast.broadcast_event(api::AppEventKind::EpisodesChanged { series_id, season });
+        broadcast.broadcast_event(api::AppEventKind::EpisodesChanged { show_id, season });
     }
 
-    db.prune_seasons(series_id, &seasons_seen).await?;
+    db.prune_seasons(show_id, &seasons_seen).await?;
 
-    let seasons = db.seasons(series_id).await?;
-    broadcast.broadcast_event(api::AppEventKind::SeasonsChanged { series_id, seasons });
+    let seasons = db.seasons(show_id).await?;
+    broadcast.broadcast_event(api::AppEventKind::SeasonsChanged { show_id, seasons });
 
     Ok(())
 }
@@ -516,16 +516,16 @@ pub(crate) async fn sync_movie(
     Ok(())
 }
 
-#[tracing::instrument(skip_all, fields(series_id = %series_id))]
+#[tracing::instrument(skip_all, fields(show_id = %show_id))]
 async fn enrich_with_tvmaze(
-    series_id: api::SeriesId,
-    series: &api::Series,
+    show_id: api::ShowId,
+    show: &api::Show,
     remote: &RemoteClients,
     db: &Database,
     broadcast: &Broadcaster,
 ) -> Result<()> {
     let tvmaze_id = 'id: {
-        if let Some(r) = series
+        if let Some(r) = show
             .remotes
             .iter()
             .find(|r| *r.source() == api::RemoteSource::Tvdb)
@@ -535,7 +535,7 @@ async fn enrich_with_tvmaze(
             break 'id remote.lookup_tvmaze_by_tvdb(id).await?;
         }
 
-        if let Some(r) = series
+        if let Some(r) = show
             .remotes
             .iter()
             .find(|r| *r.source() == api::RemoteSource::Imdb)
@@ -545,12 +545,12 @@ async fn enrich_with_tvmaze(
             break 'id remote.lookup_tvmaze_by_imdb(imdb_id).await?;
         }
 
-        info!(series_id = %series_id, "Skipping TVmaze enrichment: no TVDB or IMDB remote");
+        info!(show_id = %show_id, "Skipping TVmaze enrichment: no TVDB or IMDB remote");
         return Ok(());
     };
 
     let Some(tvmaze_id) = tvmaze_id else {
-        info!(series_id = %series_id, "Skipping TVmaze enrichment: not found on TVmaze");
+        info!(show_id = %show_id, "Skipping TVmaze enrichment: not found on TVmaze");
         return Ok(());
     };
 
@@ -573,10 +573,10 @@ async fn enrich_with_tvmaze(
         "Updating episodes with exact airtimes"
     );
 
-    db.update_episodes_aired(series_id, updates).await?;
+    db.update_episodes_aired(show_id, updates).await?;
 
     for season in seasons_updated {
-        broadcast.broadcast_event(api::AppEventKind::EpisodesChanged { series_id, season });
+        broadcast.broadcast_event(api::AppEventKind::EpisodesChanged { show_id, season });
     }
 
     Ok(())

@@ -7,16 +7,16 @@ use api::{HasAired, TimeZone};
 
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{PagedQuery, Route, SeriesDetailQuery};
+use crate::router::{PagedQuery, Route, ShowDetailQuery};
 use crate::ui::{
     ConfirmDanger, EpisodePicker, Loading, MarkWatchedPicker, MediaSettingsModal, RemoteEditor,
     RemoteSourceKind, Tracked,
 };
 use crate::{Image, ImageGallery, ImageItem, Modal, SetupChannel};
 
-pub(super) struct SeriesDetail {
+pub(super) struct ShowDetail {
     channel: ws::Channel,
-    series: Option<api::Series>,
+    show: Option<api::Show>,
     graphics: BTreeMap<api::ImageKind, Vec<ImageItem>>,
     seasons: Vec<api::Season>,
     selected: Option<api::SeasonNumber>,
@@ -46,7 +46,7 @@ pub(super) struct SeriesDetail {
     _tz_handle: ContextHandle<TimeZone>,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
-    _series_req: ws::Request,
+    _show_req: ws::Request,
     _seasons_req: ws::Request,
     _episodes_req: ws::Request,
     _mark_req: ws::Request,
@@ -70,13 +70,13 @@ pub(super) struct SeriesDetail {
 pub(super) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
-    SeriesLoaded(Result<ws::Packet<api::GetSeries>, ws::Error>),
+    ShowLoaded(Result<ws::Packet<api::GetShow>, ws::Error>),
     SeasonsLoaded(Result<ws::Packet<api::ListSeasons>, ws::Error>),
     SelectSeason(api::SeasonNumber),
     ToggleExpandSeasons,
     EpisodesLoaded(Result<ws::Packet<api::ListEpisodes>, ws::Error>),
     AskMarkWatched(api::EpisodeId),
-    MarkWatched(api::SeriesId, api::EpisodeId, api::MarkTime),
+    MarkWatched(api::ShowId, api::EpisodeId, api::MarkTime),
     MarkWatchedDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
     CancelMarkWatch(api::EpisodeId),
     MarkRemainingWatch,
@@ -88,13 +88,13 @@ pub(super) enum Msg {
     WatchRemaining(api::SeasonNumber, api::MarkTime),
     WatchRemainingDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
     SetTracked(bool),
-    SetTrackedDone(bool, Result<ws::Packet<api::UntrackSeries>, ws::Error>),
+    SetTrackedDone(bool, Result<ws::Packet<api::UntrackShow>, ws::Error>),
     ConfirmRemove,
     CancelRemove,
-    RemoveSeries,
-    RemoveDone(Result<ws::Packet<api::RemoveSeries>, ws::Error>),
-    SyncSeries,
-    SyncDone(Result<ws::Packet<api::SyncSeries>, ws::Error>),
+    RemoveShow,
+    RemoveDone(Result<ws::Packet<api::RemoveShow>, ws::Error>),
+    SyncShow,
+    SyncDone(Result<ws::Packet<api::SyncShow>, ws::Error>),
     ToggleHistory(api::EpisodeId),
     WatchedLoaded(Result<ws::Packet<api::ListEpisodesWatched>, ws::Error>),
     AskWatchNext(api::EpisodeId),
@@ -109,11 +109,11 @@ pub(super) enum Msg {
     SelectImageDone(Result<ws::Packet<api::SelectImage>, ws::Error>),
     ClearSelectedImageDone(Result<ws::Packet<api::ClearSelectedImage>, ws::Error>),
     SetSyncSource(api::SyncSource),
-    SetSyncSourceDone(Result<ws::Packet<api::SetSeriesSyncSource>, ws::Error>),
+    SetSyncSourceDone(Result<ws::Packet<api::SetShowSyncSource>, ws::Error>),
     SetLanguage(Option<String>),
     SetLanguageDone(
         Option<String>,
-        Result<ws::Packet<api::SetSeriesLanguage>, ws::Error>,
+        Result<ws::Packet<api::SetShowLanguage>, ws::Error>,
     ),
     OpenImageModal,
     CloseImageModal,
@@ -122,7 +122,7 @@ pub(super) enum Msg {
     SetIncludeSpecials(Option<bool>),
     SetIncludeSpecialsDone(
         Option<bool>,
-        Result<ws::Packet<api::SetSeriesIncludeSpecials>, ws::Error>,
+        Result<ws::Packet<api::SetShowIncludeSpecials>, ws::Error>,
     ),
     OpenRemoteEditor,
     CloseRemoteEditor,
@@ -144,13 +144,13 @@ pub(super) enum Msg {
 #[derive(Properties, PartialEq)]
 pub(super) struct Props {
     pub(super) onerror: Callback<Option<Error>>,
-    pub(super) series_id: api::SeriesId,
+    pub(super) show_id: api::ShowId,
     #[prop_or_default]
     pub(super) initial_season: Option<api::SeasonNumber>,
     pub(super) on_navigate: Callback<Route>,
 }
 
-impl Component for SeriesDetail {
+impl Component for ShowDetail {
     type Message = Msg;
     type Properties = Props;
 
@@ -175,7 +175,7 @@ impl Component for SeriesDetail {
 
         Self {
             channel: ws::Channel::default(),
-            series: None,
+            show: None,
             graphics: BTreeMap::new(),
             seasons: Vec::new(),
             selected: None,
@@ -205,7 +205,7 @@ impl Component for SeriesDetail {
             _tz_handle,
             _setup,
             _broadcast,
-            _series_req: ws::Request::default(),
+            _show_req: ws::Request::default(),
             _seasons_req: ws::Request::default(),
             _episodes_req: ws::Request::default(),
             _mark_req: ws::Request::default(),
@@ -242,7 +242,7 @@ impl Component for SeriesDetail {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
-        let (Some(series), Some(season)) = (&self.series, self.selected) else {
+        let (Some(show), Some(season)) = (&self.show, self.selected) else {
             return html!(<Loading />);
         };
 
@@ -251,17 +251,17 @@ impl Component for SeriesDetail {
         let actions = 'actions: {
             if self.confirm_remove {
                 break 'actions html! {
-                    <ConfirmDanger prompt="Remove series" label={series.title.clone()} on_confirm={link.callback(|_| Msg::RemoveSeries)} on_cancel={link.callback(|_| Msg::CancelRemove)} />
+                    <ConfirmDanger prompt="Remove show" label={show.title.clone()} on_confirm={link.callback(|_| Msg::RemoveShow)} on_cancel={link.callback(|_| Msg::CancelRemove)} />
                 };
             }
 
             html! {
                 <>
-                    if !series.remotes.is_empty() {
+                    if !show.remotes.is_empty() {
                         <div class="desktop-row mobile-column fill start">
                             <div class="row justify-around">
-                                {for series.remotes.iter().filter_map(|r| {
-                                    let url = r.series_url()?;
+                                {for show.remotes.iter().filter_map(|r| {
+                                    let url = r.show_url()?;
                                     let label = r.source().as_str();
 
                                     Some(html! {
@@ -275,23 +275,23 @@ impl Component for SeriesDetail {
                     }
 
                     <div class="desktop-row mobile-column desktop-input-group end">
-                        <Tracked tracked={series.tracked} ontoggle={link.callback(Msg::SetTracked)} />
+                        <Tracked tracked={show.tracked} ontoggle={link.callback(Msg::SetTracked)} />
 
-                        <button class="btn-danger" onclick={link.callback(|_| Msg::ConfirmRemove)} title="Remove series">
+                        <button class="btn-danger" onclick={link.callback(|_| Msg::ConfirmRemove)} title="Remove show">
                             <span class="icon trash" />
                             <span class="hide-desktop">{"Remove"}</span>
                         </button>
 
-                        if !series.remotes.is_empty() {
-                            <button class="btn" onclick={link.callback(|_| Msg::SyncSeries)} title="Sync now">
+                        if !show.remotes.is_empty() {
+                            <button class="btn" onclick={link.callback(|_| Msg::SyncShow)} title="Sync now">
                                 <span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} />
                                 <span class="hide-desktop">{"Sync"}</span>
                             </button>
                         }
 
-                        <button class="btn" onclick={link.callback(|_| Msg::OpenSettingsModal)} title="Series settings">
+                        <button class="btn" onclick={link.callback(|_| Msg::OpenSettingsModal)} title="Show settings">
                             <span class="icon cog-6-tooth" />
-                            <span class="hide-desktop">{"Series settings"}</span>
+                            <span class="hide-desktop">{"Show settings"}</span>
                         </button>
                     </div>
                 </>
@@ -300,16 +300,16 @@ impl Component for SeriesDetail {
 
         html! {
             <>
-                { self.view_header(ctx, series) }
+                { self.view_header(ctx, show) }
 
                 <div class={classes!("desktop-row-fill", "mobile-column", "actions", (!self.actions_expanded).then_some("hide-mobile"))}>
                     {actions}
                 </div>
 
                 <div class="detail-layout">
-                    <Image class="banner hide-desktop" src={series.banner.clone()} />
+                    <Image class="banner hide-desktop" src={show.banner.clone()} />
 
-                    { self.view_sidebar(ctx, series) }
+                    { self.view_sidebar(ctx, show) }
 
                     { self.view_episodes(ctx, season) }
                 </div>
@@ -320,17 +320,17 @@ impl Component for SeriesDetail {
 
                 if self.settings_modal {
                     <MediaSettingsModal
-                        title="Series settings"
-                        language={series.language.clone()}
-                        include_specials={series.include_specials}
-                        has_images={!series.images.is_empty()}
-                        kind={RemoteSourceKind::Series}
-                        remotes={series.remotes.clone()}
-                        current_source={series.effective_sync_source().map(|r| r.into_remote_source())}
-                        last_synced={series.last_synced_at.map(|ts| AttrValue::from(ts.display(self.tz.clone())))}
+                        title="Show settings"
+                        language={show.language.clone()}
+                        include_specials={show.include_specials}
+                        has_images={!show.images.is_empty()}
+                        kind={RemoteSourceKind::Show}
+                        remotes={show.remotes.clone()}
+                        current_source={show.effective_sync_source().map(|r| r.into_remote_source())}
+                        last_synced={show.last_synced_at.map(|ts| AttrValue::from(ts.display(self.tz.clone())))}
                         syncing={self.syncing}
                         on_sync_source_change={link.callback(|s: api::RemoteSource| Msg::SetSyncSource(s.into_sync_source()))}
-                        on_sync={link.callback(|_| Msg::SyncSeries)}
+                        on_sync={link.callback(|_| Msg::SyncShow)}
                         on_language_change={link.callback(Msg::SetLanguage)}
                         on_include_specials_change={Some(link.callback(Msg::SetIncludeSpecials))}
                         on_edit_graphics={link.callback(|_| Msg::OpenImageModal)}
@@ -341,8 +341,8 @@ impl Component for SeriesDetail {
 
                 if self.remote_editor {
                     <RemoteEditor
-                        title={series.title.as_deref().unwrap_or("Untitled Series").to_owned()}
-                        remotes={series.remotes.clone()}
+                        title={show.title.as_deref().unwrap_or("Untitled Show").to_owned()}
+                        remotes={show.remotes.clone()}
                         on_add={link.callback(Msg::AddRemote)}
                         on_edit={link.callback(|(old, new)| Msg::EditRemote(old, new))}
                         on_remove={link.callback(Msg::RemoveRemote)}
@@ -354,8 +354,8 @@ impl Component for SeriesDetail {
     }
 
     fn changed(&mut self, ctx: &Context<Self>, old_props: &Props) -> bool {
-        if ctx.props().series_id != old_props.series_id {
-            self.series = None;
+        if ctx.props().show_id != old_props.show_id {
+            self.show = None;
             self.seasons.clear();
             self.selected = None;
             self.expanded_seasons = false;
@@ -368,7 +368,7 @@ impl Component for SeriesDetail {
             self.watched_by_episode.clear();
 
             if self.channel.id() != ws::ChannelId::NONE {
-                self.load_series(ctx);
+                self.load_show(ctx);
                 self.load_seasons(ctx);
                 self.load_history(ctx);
             }
@@ -393,18 +393,18 @@ impl Component for SeriesDetail {
     }
 }
 
-impl SeriesDetail {
+impl ShowDetail {
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
             Msg::Channel(result) => {
                 self.channel = result?;
 
                 if self.channel.id() != ws::ChannelId::NONE {
-                    self.load_series(ctx);
+                    self.load_show(ctx);
                     self.load_seasons(ctx);
                     self.load_orphaned(ctx);
                 } else {
-                    self.series = None;
+                    self.show = None;
                     self.seasons.clear();
                     self.episodes.clear();
                     self.pending_episode = None;
@@ -420,17 +420,15 @@ impl SeriesDetail {
                     return Ok(false);
                 }
                 match &event.kind {
-                    api::AppEventKind::SeriesChanged { series }
-                        if series.id == ctx.props().series_id =>
-                    {
+                    api::AppEventKind::ShowChanged { show } if show.id == ctx.props().show_id => {
                         self.background
-                            .background(series.backdrop.as_ref().map(|i| i.proxy_url()));
-                        self.series = Some(series.clone());
+                            .background(show.backdrop.as_ref().map(|i| i.proxy_url()));
+                        self.show = Some(show.clone());
                         self.update_graphics();
                         Ok(true)
                     }
-                    api::AppEventKind::SeasonsChanged { series_id, .. }
-                        if *series_id == ctx.props().series_id =>
+                    api::AppEventKind::SeasonsChanged { show_id, .. }
+                        if *show_id == ctx.props().show_id =>
                     {
                         if self.channel.id() != ws::ChannelId::NONE {
                             self.load_seasons(ctx);
@@ -438,8 +436,8 @@ impl SeriesDetail {
 
                         Ok(false)
                     }
-                    api::AppEventKind::EpisodesChanged { series_id, season }
-                        if *series_id == ctx.props().series_id =>
+                    api::AppEventKind::EpisodesChanged { show_id, season }
+                        if *show_id == ctx.props().show_id =>
                     {
                         if self.selected == Some(*season) {
                             self.load_episodes(ctx, *season);
@@ -458,7 +456,7 @@ impl SeriesDetail {
                     }
                     api::AppEventKind::TaskAdded { task }
                     | api::AppEventKind::TaskStarted { task } => {
-                        if matches!(&task.kind, api::TaskKind::SyncSeries { series_id, .. } if *series_id == ctx.props().series_id)
+                        if matches!(&task.kind, api::TaskKind::SyncShow { show_id, .. } if *show_id == ctx.props().show_id)
                         {
                             self.syncing = true;
                             return Ok(true);
@@ -466,7 +464,7 @@ impl SeriesDetail {
                         Ok(false)
                     }
                     api::AppEventKind::TaskCompleted { task } => {
-                        if matches!(&task.kind, api::TaskKind::SyncSeries { series_id, .. } if *series_id == ctx.props().series_id)
+                        if matches!(&task.kind, api::TaskKind::SyncShow { show_id, .. } if *show_id == ctx.props().show_id)
                         {
                             self.syncing = false;
 
@@ -474,7 +472,7 @@ impl SeriesDetail {
                                 self.load_episodes(ctx, season);
                             }
 
-                            self.load_series(ctx);
+                            self.load_show(ctx);
                             self.load_seasons(ctx);
                             self.load_orphaned(ctx);
                             return Ok(true);
@@ -483,11 +481,9 @@ impl SeriesDetail {
                     }
                     api::AppEventKind::WatchedChanged { event: kind } => {
                         let relevant = match kind {
-                            api::WatchedEvent::Episode { series, .. } => {
-                                *series == ctx.props().series_id
-                            }
-                            api::WatchedEvent::RemainingSeason { series, .. } => {
-                                *series == ctx.props().series_id
+                            api::WatchedEvent::Episode { show, .. } => *show == ctx.props().show_id,
+                            api::WatchedEvent::RemainingSeason { show, .. } => {
+                                *show == ctx.props().show_id
                             }
                             api::WatchedEvent::Movie { .. } => false,
                         };
@@ -506,21 +502,17 @@ impl SeriesDetail {
                     _ => Ok(false),
                 }
             }
-            Msg::SeriesLoaded(result) => {
-                let series = result
-                    .context(Message::LoadingSeries)?
+            Msg::ShowLoaded(result) => {
+                let show = result
+                    .context(Message::LoadingShow)?
                     .decode()
-                    .context(Message::LoadingSeries)?;
+                    .context(Message::LoadingShow)?;
 
                 self.background
-                    .background(series.backdrop.as_ref().map(|i| i.proxy_url()));
-                self.background.title(
-                    series
-                        .title
-                        .as_deref()
-                        .map(|title| format!("Series / {title}")),
-                );
-                self.series = Some(series);
+                    .background(show.backdrop.as_ref().map(|i| i.proxy_url()));
+                self.background
+                    .title(show.title.as_deref().map(|title| format!("Show / {title}")));
+                self.show = Some(show);
                 self.update_graphics();
                 Ok(true)
             }
@@ -554,11 +546,11 @@ impl SeriesDetail {
             }
             Msg::SelectSeason(season) => {
                 if self.selected != Some(season) {
-                    let id = ctx.props().series_id;
+                    let id = ctx.props().show_id;
 
-                    ctx.props().on_navigate.emit(Route::SeriesDetail(
+                    ctx.props().on_navigate.emit(Route::ShowDetail(
                         id,
-                        SeriesDetailQuery {
+                        ShowDetailQuery {
                             season: Some(season),
                         },
                     ));
@@ -628,14 +620,14 @@ impl SeriesDetail {
                 self.select_mark_remaining = false;
                 Ok(true)
             }
-            Msg::MarkWatched(series, episode, mark_time) => {
+            Msg::MarkWatched(show, episode, mark_time) => {
                 self.episode_actions_expanded.remove(&episode);
                 self.confirming_mark_watch = None;
                 self._mark_req = self
                     .channel
                     .request()
                     .body(api::MarkWatchedRequest {
-                        kind: api::WatchedKind::Episode { series, episode },
+                        kind: api::WatchedKind::Episode { show, episode },
                         mark_time,
                     })
                     .on_packet(ctx.link().callback(Msg::MarkWatchedDone))
@@ -702,13 +694,13 @@ impl SeriesDetail {
             Msg::WatchRemaining(season, mark_time) => {
                 self.select_mark_remaining = false;
 
-                let series_id = ctx.props().series_id;
+                let show_id = ctx.props().show_id;
 
                 self._watch_remaining_reqs = self
                     .channel
                     .request()
                     .body(api::MarkWatchedRemainingRequest {
-                        series_id,
+                        show_id,
                         season,
                         mark_time,
                     })
@@ -732,12 +724,12 @@ impl SeriesDetail {
             Msg::SetTracked(tracked) => {
                 self.actions_expanded = false;
 
-                let id = ctx.props().series_id;
+                let id = ctx.props().show_id;
 
                 self._untrack_req = self
                     .channel
                     .request()
-                    .body(api::UntrackSeriesRequest { id, tracked })
+                    .body(api::UntrackShowRequest { id, tracked })
                     .on_packet(
                         ctx.link()
                             .callback(move |r| Msg::SetTrackedDone(tracked, r)),
@@ -747,9 +739,9 @@ impl SeriesDetail {
                 Ok(false)
             }
             Msg::SetTrackedDone(tracked, result) => {
-                result.context(Message::UntrackingSeries)?;
-                if let Some(ref mut series) = self.series {
-                    series.tracked = tracked;
+                result.context(Message::UntrackingShow)?;
+                if let Some(ref mut show) = self.show {
+                    show.tracked = tracked;
                 }
                 Ok(true)
             }
@@ -761,37 +753,37 @@ impl SeriesDetail {
                 self.confirm_remove = false;
                 Ok(true)
             }
-            Msg::RemoveSeries => {
-                let id = ctx.props().series_id;
+            Msg::RemoveShow => {
+                let id = ctx.props().show_id;
                 self._remove_req = self
                     .channel
                     .request()
-                    .body(api::RemoveSeriesRequest { id })
+                    .body(api::RemoveShowRequest { id })
                     .on_packet(ctx.link().callback(Msg::RemoveDone))
                     .send();
                 Ok(false)
             }
             Msg::RemoveDone(result) => {
-                result.context(Message::RemovingSeries)?;
+                result.context(Message::RemovingShow)?;
                 ctx.props()
                     .on_navigate
-                    .emit(Route::Series(PagedQuery::default()));
+                    .emit(Route::Shows(PagedQuery::default()));
                 Ok(false)
             }
-            Msg::SyncSeries => {
-                let id = ctx.props().series_id;
+            Msg::SyncShow => {
+                let id = ctx.props().show_id;
 
                 self._sync_req = self
                     .channel
                     .request()
-                    .body(api::SyncSeriesRequest { id })
+                    .body(api::SyncShowRequest { id })
                     .on_packet(ctx.link().callback(Msg::SyncDone))
                     .send();
 
                 Ok(true)
             }
             Msg::SyncDone(result) => {
-                result.context(Message::SyncingSeries)?;
+                result.context(Message::SyncingShow)?;
                 Ok(false)
             }
             Msg::ToggleHistory(id) => {
@@ -846,14 +838,14 @@ impl SeriesDetail {
                 self.confirming_pending = None;
                 self.confirming_pending_header = None;
 
-                let series_id = ctx.props().series_id;
+                let show_id = ctx.props().show_id;
 
                 self._set_next_req = self
                     .channel
                     .request()
                     .body(api::AddPendingRequest {
                         kind: api::PendingKind::Episode {
-                            series: series_id,
+                            show: show_id,
                             episode: episode_id,
                         },
                         mark_time,
@@ -864,7 +856,7 @@ impl SeriesDetail {
                 Ok(true)
             }
             Msg::AddPendingDone(result) => {
-                result.context(Message::SyncingSeries)?;
+                result.context(Message::SyncingShow)?;
 
                 if let Some(season) = self.selected {
                     self.load_episodes(ctx, season);
@@ -875,14 +867,14 @@ impl SeriesDetail {
             }
             Msg::OnRemoveNext(episode_id) => {
                 self.episode_actions_expanded.remove(&episode_id);
-                let series_id = ctx.props().series_id;
+                let show_id = ctx.props().show_id;
 
                 self._set_next_req = self
                     .channel
                     .request()
                     .body(api::RemovePendingRequest {
                         kind: api::PendingKind::Episode {
-                            series: series_id,
+                            show: show_id,
                             episode: episode_id,
                         },
                     })
@@ -892,7 +884,7 @@ impl SeriesDetail {
                 Ok(false)
             }
             Msg::RemovePendingDone(result) => {
-                result.context(Message::SyncingSeries)?;
+                result.context(Message::SyncingShow)?;
 
                 if let Some(season) = self.selected {
                     self.load_episodes(ctx, season);
@@ -927,7 +919,7 @@ impl SeriesDetail {
                     .channel
                     .request()
                     .body(api::ClearSelectedImageRequest {
-                        owner: api::ImageOwner::Series(ctx.props().series_id),
+                        owner: api::ImageOwner::Show(ctx.props().show_id),
                         kind,
                     })
                     .on_packet(ctx.link().callback(Msg::ClearSelectedImageDone))
@@ -936,28 +928,28 @@ impl SeriesDetail {
                 Ok(false)
             }
             Msg::SelectImageDone(result) => {
-                result.context(Message::SyncingSeries)?;
+                result.context(Message::SyncingShow)?;
                 self.image_modal = false;
-                self.load_series(ctx);
+                self.load_show(ctx);
                 Ok(true)
             }
             Msg::ClearSelectedImageDone(result) => {
-                result.context(Message::SyncingSeries)?;
+                result.context(Message::SyncingShow)?;
                 self.image_modal = false;
-                self.load_series(ctx);
+                self.load_show(ctx);
                 Ok(true)
             }
             Msg::SetSyncSource(source) => {
-                if let Some(ref mut series) = self.series {
-                    series.sync_source = Some(source);
+                if let Some(ref mut show) = self.show {
+                    show.sync_source = Some(source);
                 }
 
-                let id = ctx.props().series_id;
+                let id = ctx.props().show_id;
 
                 self._set_sync_source_req = self
                     .channel
                     .request()
-                    .body(api::SetSeriesSyncSourceRequest { id, source })
+                    .body(api::SetShowSyncSourceRequest { id, source })
                     .on_packet(ctx.link().callback(Msg::SetSyncSourceDone))
                     .send();
 
@@ -968,12 +960,12 @@ impl SeriesDetail {
                 Ok(true)
             }
             Msg::SetLanguage(language) => {
-                let id = ctx.props().series_id;
+                let id = ctx.props().show_id;
 
                 self._set_language_req = self
                     .channel
                     .request()
-                    .body(api::SetSeriesLanguageRequest {
+                    .body(api::SetShowLanguageRequest {
                         id,
                         language: language.clone(),
                     })
@@ -987,8 +979,8 @@ impl SeriesDetail {
             }
             Msg::SetLanguageDone(language, result) => {
                 result.context(Message::SettingLanguage)?;
-                if let Some(ref mut series) = self.series {
-                    series.language = language;
+                if let Some(ref mut show) = self.show {
+                    show.language = language;
                 }
                 Ok(true)
             }
@@ -1012,12 +1004,12 @@ impl SeriesDetail {
                 Ok(true)
             }
             Msg::SetIncludeSpecials(include_specials) => {
-                let id = ctx.props().series_id;
+                let id = ctx.props().show_id;
 
                 self._set_include_specials_req = self
                     .channel
                     .request()
-                    .body(api::SetSeriesIncludeSpecialsRequest {
+                    .body(api::SetShowIncludeSpecialsRequest {
                         id,
                         include_specials,
                     })
@@ -1031,8 +1023,8 @@ impl SeriesDetail {
             }
             Msg::SetIncludeSpecialsDone(include_specials, result) => {
                 result.context(Message::SettingLanguage)?;
-                if let Some(ref mut series) = self.series {
-                    series.include_specials = include_specials;
+                if let Some(ref mut show) = self.show {
+                    show.include_specials = include_specials;
                 }
                 Ok(true)
             }
@@ -1047,14 +1039,14 @@ impl SeriesDetail {
                 Ok(true)
             }
             Msg::AddRemote(remote_id) => {
-                let id = ctx.props().series_id;
+                let id = ctx.props().show_id;
 
                 self._remote_req = self
                     .channel
                     .request()
-                    .body(api::AddSeriesRemoteRequest { id, remote_id })
+                    .body(api::AddShowRemoteRequest { id, remote_id })
                     .on_packet(ctx.link().callback(
-                        |r: Result<ws::Packet<api::AddSeriesRemote>, ws::Error>| {
+                        |r: Result<ws::Packet<api::AddShowRemote>, ws::Error>| {
                             Msg::RemoteDone(r.map(|_| ()))
                         },
                     ))
@@ -1063,14 +1055,14 @@ impl SeriesDetail {
                 Ok(false)
             }
             Msg::EditRemote(old, new) => {
-                let id = ctx.props().series_id;
+                let id = ctx.props().show_id;
 
                 self._remote_req = self
                     .channel
                     .request()
-                    .body(api::UpdateSeriesRemoteRequest { id, old, new })
+                    .body(api::UpdateShowRemoteRequest { id, old, new })
                     .on_packet(ctx.link().callback(
-                        |r: Result<ws::Packet<api::UpdateSeriesRemote>, ws::Error>| {
+                        |r: Result<ws::Packet<api::UpdateShowRemote>, ws::Error>| {
                             Msg::RemoteDone(r.map(|_| ()))
                         },
                     ))
@@ -1079,14 +1071,14 @@ impl SeriesDetail {
                 Ok(false)
             }
             Msg::RemoveRemote(remote_id) => {
-                let id = ctx.props().series_id;
+                let id = ctx.props().show_id;
 
                 self._remote_req = self
                     .channel
                     .request()
-                    .body(api::RemoveSeriesRemoteRequest { id, remote_id })
+                    .body(api::RemoveShowRemoteRequest { id, remote_id })
                     .on_packet(ctx.link().callback(
-                        |r: Result<ws::Packet<api::RemoveSeriesRemote>, ws::Error>| {
+                        |r: Result<ws::Packet<api::RemoveShowRemote>, ws::Error>| {
                             Msg::RemoteDone(r.map(|_| ()))
                         },
                     ))
@@ -1096,7 +1088,7 @@ impl SeriesDetail {
             }
             Msg::RemoteDone(result) => {
                 result.context(Message::EditingRemotes)?;
-                self.load_series(ctx);
+                self.load_show(ctx);
                 Ok(false)
             }
             Msg::SetTz(tz) => {
@@ -1114,13 +1106,13 @@ impl SeriesDetail {
             }
             Msg::MoveWatched(id, season, episode) => {
                 self.fixing_watched = None;
-                let series_id = ctx.props().series_id;
+                let show_id = ctx.props().show_id;
                 self._move_req = self
                     .channel
                     .request()
                     .body(api::MoveWatchedEpisodeRequest {
                         id,
-                        series_id,
+                        show_id,
                         season,
                         episode,
                     })
@@ -1170,24 +1162,24 @@ impl SeriesDetail {
         }
     }
 
-    fn load_series(&mut self, ctx: &Context<Self>) {
-        self._series_req = self
+    fn load_show(&mut self, ctx: &Context<Self>) {
+        self._show_req = self
             .channel
             .request()
-            .body(api::GetSeriesRequest {
-                id: ctx.props().series_id,
+            .body(api::GetShowRequest {
+                id: ctx.props().show_id,
             })
-            .on_packet(ctx.link().callback(Msg::SeriesLoaded))
+            .on_packet(ctx.link().callback(Msg::ShowLoaded))
             .send();
     }
 
     fn update_graphics(&mut self) {
         self.graphics.clear();
 
-        if let Some(ref series) = self.series {
-            for i in &series.images {
+        if let Some(ref show) = self.show {
+            for i in &show.images {
                 self.graphics.entry(i.kind).or_default().push(ImageItem {
-                    selected: series.is_selected(i.kind, i.image.key()),
+                    selected: show.is_selected(i.kind, i.image.key()),
                     id: i.id,
                     kind: i.kind,
                     source: i.source,
@@ -1202,7 +1194,7 @@ impl SeriesDetail {
             .channel
             .request()
             .body(api::ListSeasonsRequest {
-                series_id: ctx.props().series_id,
+                show_id: ctx.props().show_id,
             })
             .on_packet(ctx.link().callback(Msg::SeasonsLoaded))
             .send();
@@ -1213,7 +1205,7 @@ impl SeriesDetail {
             .channel
             .request()
             .body(api::ListEpisodesRequest {
-                series_id: ctx.props().series_id,
+                show_id: ctx.props().show_id,
                 season,
             })
             .on_packet(ctx.link().callback(Msg::EpisodesLoaded))
@@ -1221,36 +1213,36 @@ impl SeriesDetail {
     }
 
     fn load_history(&mut self, ctx: &Context<Self>) {
-        let series_id = ctx.props().series_id;
+        let show_id = ctx.props().show_id;
 
         self._watched_req = self
             .channel
             .request()
-            .body(api::ListEpisodesWatchedRequest { series_id })
+            .body(api::ListEpisodesWatchedRequest { show_id })
             .on_packet(ctx.link().callback(Msg::WatchedLoaded))
             .send();
     }
 
     fn load_orphaned(&mut self, ctx: &Context<Self>) {
-        let series_id = ctx.props().series_id;
+        let show_id = ctx.props().show_id;
 
         self._orphaned_req = self
             .channel
             .request()
-            .body(api::ListOrphanedWatchedRequest { series_id })
+            .body(api::ListOrphanedWatchedRequest { show_id })
             .on_packet(ctx.link().callback(Msg::OrphanedLoaded))
             .send();
     }
 
-    fn view_header(&self, ctx: &Context<Self>, series: &api::Series) -> Html {
+    fn view_header(&self, ctx: &Context<Self>, show: &api::Show) -> Html {
         let link = ctx.link();
 
         html! {
             <div class="row-fill align-top">
                 <div class="column desktop-center fill">
-                    <h1>{series.title.as_deref().unwrap_or("Untitled Series")}</h1>
+                    <h1>{show.title.as_deref().unwrap_or("Untitled Show")}</h1>
 
-                    if let Some(date) = series.first_air_date {
+                    if let Some(date) = show.first_air_date {
                         <span class="text-muted">{date.date(self.tz.clone()).year()}</span>
                     }
                 </div>
@@ -1264,10 +1256,10 @@ impl SeriesDetail {
         }
     }
 
-    fn view_sidebar(&self, ctx: &Context<Self>, series: &api::Series) -> Html {
+    fn view_sidebar(&self, ctx: &Context<Self>, show: &api::Show) -> Html {
         html! {
             <div class="detail-sidebar">
-                <Image class="poster hide-mobile" src={series.poster.clone()} />
+                <Image class="poster hide-mobile" src={show.poster.clone()} />
 
                 <div class="table">
                     { for self.seasons.iter().map(|s| self.view_season(ctx, s, self.seasons.len())) }
@@ -1280,7 +1272,7 @@ impl SeriesDetail {
         let link = ctx.link();
 
         html! {
-            <Modal title="Series Graphics" on_close={link.callback(|_| Msg::CloseImageModal)}>
+            <Modal title="Show Graphics" on_close={link.callback(|_| Msg::CloseImageModal)}>
                 {for self.graphics.iter().map(|(&kind, items)| {
                     html! {
                         <ImageGallery
@@ -1488,7 +1480,7 @@ impl SeriesDetail {
     fn view_episode(&self, ctx: &Context<Self>, episode: &api::Episode) -> Html {
         let link = ctx.link();
 
-        let series_id = ctx.props().series_id;
+        let show_id = ctx.props().show_id;
         let episode_id = episode.id;
 
         let watched = self
@@ -1561,7 +1553,7 @@ impl SeriesDetail {
                 break 'actions html! {
                     <MarkWatchedPicker
                         class="lg"
-                        on_confirm={link.callback(move |mark_time| Msg::MarkWatched(series_id, episode_id, mark_time))}
+                        on_confirm={link.callback(move |mark_time| Msg::MarkWatched(show_id, episode_id, mark_time))}
                         on_cancel={link.callback(move |_| Msg::CancelMarkWatch(episode_id))}
                     />
                 };
@@ -1658,7 +1650,7 @@ impl SeriesDetail {
                         <div class="column">
                             { for watched.iter().map(|w| {
                                 let wid = w.id;
-                                let kind = api::WatchedKind::Episode { series: series_id, episode: episode_id };
+                                let kind = api::WatchedKind::Episode { show: show_id, episode: episode_id };
 
                                 if self.confirm_remove_watch == Some(wid) {
                                     html! {
@@ -1674,7 +1666,7 @@ impl SeriesDetail {
                                         <EpisodePicker
                                             prompt="Move watch at"
                                             label={w.timestamp.display(self.tz.clone())}
-                                            series_id={series_id}
+                                            show_id={show_id}
                                             seasons={self.seasons.clone()}
                                             selected_season={episode.season}
                                             selected_episode={episode.episode}
@@ -1718,7 +1710,7 @@ impl SeriesDetail {
         }
 
         let link = ctx.link();
-        let series_id = ctx.props().series_id;
+        let show_id = ctx.props().show_id;
 
         // The first unwatched episode in the current season is the default
         // selected value.
@@ -1744,7 +1736,7 @@ impl SeriesDetail {
                     { for self.orphaned.iter().map(|w| {
                         let wid = w.id;
 
-                        let kind = api::WatchedKind::Episode { series: series_id, episode: api::EpisodeId::new(0) };
+                        let kind = api::WatchedKind::Episode { show: show_id, episode: api::EpisodeId::new(0) };
 
                         if self.fixing_watched == Some(wid) {
                             html! {
@@ -1752,7 +1744,7 @@ impl SeriesDetail {
                                     <EpisodePicker
                                         prompt="Move watch at"
                                         label={w.timestamp.display(self.tz.clone())}
-                                        {series_id}
+                                        {show_id}
                                         seasons={self.seasons.clone()}
                                         selected_season={self.selected}
                                         selected_episode={selected_episode()}

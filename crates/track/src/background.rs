@@ -65,21 +65,21 @@ pub(crate) async fn run(
 
         let interval_hours = config.auto_sync_interval_hours.max(1);
 
-        let stale_series = db.series_needing_sync(interval_hours).await?;
+        let stale_show = db.shows_needing_sync(interval_hours).await?;
         let stale_movies = db.movies_needing_sync(interval_hours).await?;
 
         info!(
-            series = stale_series.len(),
+            show = stale_show.len(),
             movies = stale_movies.len(),
             interval_hours,
             "Background sync poll"
         );
 
-        for s in stale_series {
+        for s in stale_show {
             queue
                 .push(
-                    api::TaskKind::SyncSeries {
-                        series_id: s.id,
+                    api::TaskKind::SyncShow {
+                        show_id: s.id,
                         title: s.title,
                     },
                     false,

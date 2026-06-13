@@ -7,7 +7,7 @@ use yew::prelude::*;
 
 use crate::SetupChannel;
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{Route, SeriesDetailQuery};
+use crate::router::{Route, ShowDetailQuery};
 
 pub(super) struct Calendar {
     channel: ws::Channel,
@@ -121,11 +121,11 @@ impl Component for Calendar {
                                         if !entries.is_empty() {
                                             <div class="calendar-items">
                                                 { for entries.iter().map(|entry| {
-                                                    let series_id = entry.series_id;
+                                                    let show_id = entry.show_id;
                                                     let season = entry.episodes.first().map(|ep| ep.season);
 
                                                     let on_click = link.callback(move |_|
-                                                        Msg::Navigate(Route::SeriesDetail(series_id, SeriesDetailQuery { season }))
+                                                        Msg::Navigate(Route::ShowDetail(show_id, ShowDetailQuery { season }))
                                                     );
 
                                                     let codes = entry.episodes.iter()
@@ -134,8 +134,8 @@ impl Component for Calendar {
                                                         .join(" ");
 
                                                     html! {
-                                                        <div class="calendar-item clickable" onclick={on_click} title={entry.series_title.clone()}>
-                                                            <div class="calendar-item-title">{&entry.series_title}</div>
+                                                        <div class="calendar-item clickable" onclick={on_click} title={entry.show_title.clone()}>
+                                                            <div class="calendar-item-title">{&entry.show_title}</div>
                                                             <div class="calendar-item-code">{codes}</div>
                                                         </div>
                                                     }
@@ -173,9 +173,9 @@ impl Calendar {
                 }
                 match event.kind {
                     api::AppEventKind::EpisodesChanged { .. }
-                    | api::AppEventKind::SeriesChanged { .. }
-                    | api::AppEventKind::SeriesCreated { .. }
-                    | api::AppEventKind::SeriesDeleted { .. }
+                    | api::AppEventKind::ShowChanged { .. }
+                    | api::AppEventKind::ShowCreated { .. }
+                    | api::AppEventKind::ShowDeleted { .. }
                     | api::AppEventKind::WatchedChanged { .. }
                     | api::AppEventKind::TaskCompleted { .. } => {
                         if self.channel.id() != ws::ChannelId::NONE {

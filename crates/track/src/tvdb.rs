@@ -17,7 +17,7 @@ const EXPIRATION_SECONDS: u64 = 3600 * 24 * 24;
 // Results requested per search page (aligned with TMDB's fixed page size).
 const SEARCH_LIMIT: usize = 20;
 
-// Series artwork `type` ids (see `GET /artwork/types`, recordType "series").
+// Show artwork `type` ids (see `GET /artwork/types`, recordType "show").
 const ARTWORK_BANNER: u32 = 1;
 const ARTWORK_POSTER: u32 = 2;
 const ARTWORK_BACKGROUND: u32 = 3;
@@ -148,13 +148,13 @@ impl Client {
         Ok(req)
     }
 
-    /// Search series, returning the results for `page` and the total number of
+    /// Search show, returning the results for `page` and the total number of
     /// results across all pages.
-    pub(crate) async fn search_series(
+    pub(crate) async fn search_show(
         &self,
         query: &str,
         page: usize,
-    ) -> Result<(Vec<SearchSeriesResult>, usize)> {
+    ) -> Result<(Vec<SearchShowResult>, usize)> {
         #[derive(Deserialize)]
         struct Row {
             #[serde(default)]
@@ -193,7 +193,7 @@ impl Client {
             .await?
             .query(&[
                 ("query", query),
-                ("type", "series"),
+                ("type", "show"),
                 ("limit", limit_param.as_str()),
                 ("offset", offset_param.as_str()),
             ])
@@ -220,7 +220,7 @@ impl Client {
                 continue;
             };
 
-            // Search results expose the primary image (the poster, for series)
+            // Search results expose the primary image (the poster, for show)
             // in `image_url`; a dedicated `poster` field is usually absent, and
             // there is no wide banner artwork. Reuse the poster for the banner
             // slot rather than the smaller `thumbnail`.
@@ -229,7 +229,7 @@ impl Client {
             let banner = poster.clone();
             let fanart = primary;
 
-            out.push(SearchSeriesResult {
+            out.push(SearchShowResult {
                 remote_id: RemoteId::tvdb(id),
                 title: row.name,
                 overview: row.overview,
@@ -243,7 +243,7 @@ impl Client {
         Ok((out, total))
     }
 
-    pub(crate) async fn fetch_series(&self, id: u32, language: Option<&str>) -> Result<SeriesInfo> {
+    pub(crate) async fn fetch_show(&self, id: u32, language: Option<&str>) -> Result<ShowInfo> {
         let language = language.and_then(tvdb_language);
 
         #[derive(Deserialize)]
@@ -290,7 +290,7 @@ impl Client {
         }
 
         let bytes = self
-            .request(Method::GET, format!("series/{id}/extended"))
+            .request(Method::GET, format!("show/{id}/extended"))
             .await?
             .send()
             .await?
@@ -306,7 +306,7 @@ impl Client {
 
         // Override title/overview with the configured language's translation.
         if let Some(language) = &language
-            && let Some(tr) = self.fetch_series_translation(id, language).await?
+            && let Some(tr) = self.fetch_show_translation(id, language).await?
         {
             if tr.name.as_deref().is_some_and(|s| !s.trim().is_empty()) {
                 title = tr.name;
@@ -350,7 +350,7 @@ impl Client {
         let banner: Vec<Image> = banners.iter().map(|(_, i)| i.clone()).collect();
         let fanart: Vec<Image> = fanart.iter().map(|(_, i)| i.clone()).collect();
 
-        // The series record's `image` is TVDB's primary poster (its analog of
+        // The show record's `image` is TVDB's primary poster (its analog of
         // TMDB's poster_path). Prefer it when selecting, and fall back to it as
         // the only poster when there are no poster artworks at all.
         let primary_poster = v.image.as_deref().and_then(image_path).map(ImageKey::tvdb);
@@ -367,7 +367,7 @@ impl Client {
         let selected_banner = best_image(&banner, None);
         let selected_fanart = best_image(&fanart, None);
 
-        Ok(SeriesInfo {
+        Ok(ShowInfo {
             title,
             overview,
             poster,
@@ -380,18 +380,14 @@ impl Client {
         })
     }
 
-    async fn fetch_series_translation(
-        &self,
-        id: u32,
-        language: &str,
-    ) -> Result<Option<Translation>> {
+    async fn fetch_show_translation(&self, id: u32, language: &str) -> Result<Option<Translation>> {
         #[derive(Deserialize)]
         struct Resp {
             data: Translation,
         }
 
         let resp = self
-            .request(Method::GET, format!("series/{id}/translations/{language}"))
+            .request(Method::GET, format!("show/{id}/translations/{language}"))
             .await?
             .send()
             .await?;
@@ -407,7 +403,7 @@ impl Client {
 
     pub(crate) async fn fetch_episodes(
         &self,
-        series_id: u32,
+        show_id: u32,
         language: Option<&str>,
     ) -> Result<Vec<EpisodeInfo>> {
         #[derive(Deserialize)]
@@ -452,8 +448,8 @@ impl Client {
         // Default (aired-order) season type, optionally translated to `language`.
         let language = language.and_then(tvdb_language);
         let path = match &language {
-            Some(language) => format!("series/{series_id}/episodes/default/{language}"),
-            None => format!("series/{series_id}/episodes/default"),
+            Some(language) => format!("show/{show_id}/episodes/default/{language}"),
+            None => format!("show/{show_id}/episodes/default"),
         };
 
         let mut output = Vec::new();
@@ -511,7 +507,7 @@ struct Translation {
     overview: Option<String>,
 }
 
-pub(crate) struct SeriesInfo {
+pub(crate) struct ShowInfo {
     pub title: Option<String>,
     pub overview: Option<String>,
     pub poster: Vec<Image>,
@@ -534,7 +530,7 @@ pub(crate) struct EpisodeInfo {
     pub remote_id: RemoteId,
 }
 
-pub(crate) struct SearchSeriesResult {
+pub(crate) struct SearchShowResult {
     pub remote_id: RemoteId,
     pub title: Option<String>,
     pub overview: Option<String>,

@@ -26,7 +26,7 @@ struct Inner {
     pending: VecDeque<ScheduledTask>,
     running: Option<api::Task>,
     completed: VecDeque<api::CompletedTask>,
-    series_pending: HashMap<api::SeriesId, api::TaskId>,
+    show_pending: HashMap<api::ShowId, api::TaskId>,
     movie_pending: HashMap<api::MovieId, api::TaskId>,
 }
 
@@ -44,7 +44,7 @@ impl TaskQueue {
                 pending: VecDeque::new(),
                 running: None,
                 completed: VecDeque::new(),
-                series_pending: HashMap::new(),
+                show_pending: HashMap::new(),
                 movie_pending: HashMap::new(),
             })),
             notify: Arc::new(Notify::new()),
@@ -66,12 +66,12 @@ impl TaskQueue {
 
         // Deduplication check
         let already_queued = match &kind {
-            api::TaskKind::SyncSeries { series_id, .. } => {
-                inner.series_pending.contains_key(series_id)
+            api::TaskKind::SyncShow { show_id, .. } => {
+                inner.show_pending.contains_key(show_id)
                     || inner
                         .running
                         .as_ref()
-                        .is_some_and(|t| matches!(&t.kind, api::TaskKind::SyncSeries { series_id: id, .. } if id == series_id))
+                        .is_some_and(|t| matches!(&t.kind, api::TaskKind::SyncShow { show_id: id, .. } if id == show_id))
             }
             api::TaskKind::SyncMovie { movie_id, .. } => {
                 inner.movie_pending.contains_key(movie_id)
@@ -101,8 +101,8 @@ impl TaskQueue {
         let id = self.next_id();
 
         match &kind {
-            api::TaskKind::SyncSeries { series_id, .. } => {
-                inner.series_pending.insert(*series_id, id);
+            api::TaskKind::SyncShow { show_id, .. } => {
+                inner.show_pending.insert(*show_id, id);
             }
             api::TaskKind::SyncMovie { movie_id, .. } => {
                 inner.movie_pending.insert(*movie_id, id);
@@ -198,12 +198,12 @@ impl TaskQueue {
                     info!(?task.id, elapsed_ms = start.elapsed().as_millis(), "Task completed");
 
                     match &task.kind {
-                        api::TaskKind::SyncSeries { series_id, .. } => {
-                            if let Ok(Some(series)) = db.series_by_id(*series_id).await {
+                        api::TaskKind::SyncShow { show_id, .. } => {
+                            if let Ok(Some(show)) = db.show_by_id(*show_id).await {
                                 broadcast.emit(
                                     ChannelId::NONE,
-                                    api::AppEventKind::SeriesChanged { series },
-                                    "task queue series changed",
+                                    api::AppEventKind::ShowChanged { show },
+                                    "task queue show changed",
                                 );
                             }
 
@@ -243,8 +243,8 @@ impl TaskQueue {
                 let mut inner = self.inner.lock().await;
                 inner.running = None;
                 match &task.kind {
-                    api::TaskKind::SyncSeries { series_id, .. } => {
-                        inner.series_pending.remove(series_id);
+                    api::TaskKind::SyncShow { show_id, .. } => {
+                        inner.show_pending.remove(show_id);
                     }
                     api::TaskKind::SyncMovie { movie_id, .. } => {
                         inner.movie_pending.remove(movie_id);
@@ -275,8 +275,8 @@ async fn execute(
     pending: &crate::pending::PendingSystem,
 ) -> Result<()> {
     match &task.kind {
-        api::TaskKind::SyncSeries { series_id, .. } => {
-            sync::sync_series(*series_id, db, remote, broadcast, pending).await
+        api::TaskKind::SyncShow { show_id, .. } => {
+            sync::sync_show(*show_id, db, remote, broadcast, pending).await
         }
         api::TaskKind::SyncMovie { movie_id, .. } => {
             sync::sync_movie(*movie_id, db, remote, broadcast).await

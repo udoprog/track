@@ -107,7 +107,7 @@ macro_rules! define_id {
     };
 }
 
-define_id!(SeriesId);
+define_id!(ShowId);
 define_id!(SeasonId);
 define_id!(EpisodeId);
 define_id!(MovieId);
@@ -652,7 +652,7 @@ impl RemoteId {
         &self.value
     }
 
-    pub fn series_url(&self) -> Option<String> {
+    pub fn show_url(&self) -> Option<String> {
         match &self.source {
             RemoteSource::Tvdb => Some(format!("https://thetvdb.com/search?query={}", self.value)),
             RemoteSource::Tmdb => Some(format!("https://www.themoviedb.org/tv/{}", self.value)),
@@ -1299,8 +1299,8 @@ pub struct MediaImage {
 
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
-pub struct Series {
-    pub id: SeriesId,
+pub struct Show {
+    pub id: ShowId,
     pub title: Option<String>,
     pub first_air_date: Option<Timestamp>,
     pub overview: Option<String>,
@@ -1316,7 +1316,7 @@ pub struct Series {
     pub include_specials: Option<bool>,
 }
 
-impl Series {
+impl Show {
     pub fn effective_include_specials(&self, default: bool) -> bool {
         self.include_specials.unwrap_or(default)
     }
@@ -1369,7 +1369,7 @@ impl Series {
 #[musli(crate = musli_core)]
 pub struct Season {
     pub id: SeasonId,
-    pub series_id: SeriesId,
+    pub show_id: ShowId,
     pub season: SeasonNumber,
     pub air_date: Option<Timestamp>,
     pub name: Option<String>,
@@ -1382,7 +1382,7 @@ pub struct Season {
 #[musli(crate = musli_core)]
 pub struct Episode {
     pub id: EpisodeId,
-    pub series_id: SeriesId,
+    pub show_id: ShowId,
     pub season: SeasonNumber,
     pub episode: u32,
     pub absolute_number: Option<u32>,
@@ -1475,26 +1475,21 @@ impl Movie {
 )]
 #[musli(crate = musli_core)]
 pub enum ImageOwner {
-    Series(SeriesId),
+    Show(ShowId),
     Movie(MovieId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub enum WatchedKind {
-    Episode {
-        series: SeriesId,
-        episode: EpisodeId,
-    },
-    Movie {
-        movie: MovieId,
-    },
+    Episode { show: ShowId, episode: EpisodeId },
+    Movie { movie: MovieId },
 }
 
 impl WatchedKind {
     pub fn into_event(self) -> WatchedEvent {
         match self {
-            WatchedKind::Episode { series, episode } => WatchedEvent::Episode { series, episode },
+            WatchedKind::Episode { show, episode } => WatchedEvent::Episode { show, episode },
             WatchedKind::Movie { movie } => WatchedEvent::Movie { movie },
         }
     }
@@ -1503,17 +1498,9 @@ impl WatchedKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub enum WatchedEvent {
-    Episode {
-        series: SeriesId,
-        episode: EpisodeId,
-    },
-    RemainingSeason {
-        series: SeriesId,
-        season: SeasonNumber,
-    },
-    Movie {
-        movie: MovieId,
-    },
+    Episode { show: ShowId, episode: EpisodeId },
+    RemainingSeason { show: ShowId, season: SeasonNumber },
+    Movie { movie: MovieId },
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
@@ -1528,7 +1515,7 @@ pub struct Watched {
 #[musli(crate = musli_core)]
 pub enum PendingInfo {
     Episode {
-        series: Option<String>,
+        show: Option<String>,
         episode: Option<String>,
         season: SeasonNumber,
         number: u32,
@@ -1576,8 +1563,8 @@ impl HasAired for Pending {
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct ScheduledEntry {
-    pub series_id: SeriesId,
-    pub series_title: String,
+    pub show_id: ShowId,
+    pub show_title: String,
     pub episodes: Vec<Episode>,
 }
 
@@ -1630,13 +1617,13 @@ pub struct Empty;
 #[musli(crate = musli_core)]
 pub enum SearchKind {
     #[default]
-    Series,
+    Show,
     Movies,
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
-pub struct SearchSeries {
+pub struct SearchShow {
     pub remote_id: RemoteId,
     pub title: Option<String>,
     pub poster: Option<Image>,
@@ -1644,7 +1631,7 @@ pub struct SearchSeries {
     pub backdrop: Option<Image>,
     pub overview: Option<String>,
     pub first_air_date: Option<Date>,
-    pub already_tracked: Option<SeriesId>,
+    pub already_tracked: Option<ShowId>,
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
@@ -1663,8 +1650,8 @@ pub struct SearchMovie {
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub enum TaskKind {
-    SyncSeries {
-        series_id: SeriesId,
+    SyncShow {
+        show_id: ShowId,
         title: Option<String>,
     },
     SyncMovie {
@@ -1677,7 +1664,7 @@ impl TaskKind {
     #[inline]
     pub fn title(&self) -> Option<&str> {
         match self {
-            TaskKind::SyncSeries { title, .. } | TaskKind::SyncMovie { title, .. } => {
+            TaskKind::SyncShow { title, .. } | TaskKind::SyncMovie { title, .. } => {
                 title.as_deref()
             }
         }
@@ -1708,24 +1695,24 @@ pub struct CompletedTask {
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
-pub struct ListSeriesRequest;
+pub struct ListShowRequest;
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
-pub struct ListSeriesResponse {
-    pub series: Vec<Series>,
+pub struct ListShowResponse {
+    pub shows: Vec<Show>,
 }
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
-pub struct GetSeriesRequest {
-    pub id: SeriesId,
+pub struct GetShowRequest {
+    pub id: ShowId,
 }
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct ListSeasonsRequest {
-    pub series_id: SeriesId,
+    pub show_id: ShowId,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -1736,27 +1723,27 @@ pub struct ListSeasonsResponse {
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
-pub struct TrackSeriesRequest {
+pub struct TrackShowRequest {
     pub remote_id: RemoteId,
 }
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
-pub struct UntrackSeriesRequest {
-    pub id: SeriesId,
+pub struct UntrackShowRequest {
+    pub id: ShowId,
     pub tracked: bool,
 }
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
-pub struct RemoveSeriesRequest {
-    pub id: SeriesId,
+pub struct RemoveShowRequest {
+    pub id: ShowId,
 }
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct ListEpisodesRequest {
-    pub series_id: SeriesId,
+    pub show_id: ShowId,
     pub season: SeasonNumber,
 }
 
@@ -1825,7 +1812,7 @@ pub struct MarkWatchedResponse {
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct MarkWatchedRemainingRequest {
-    pub series_id: SeriesId,
+    pub show_id: ShowId,
     pub season: SeasonNumber,
     pub mark_time: MarkTime,
 }
@@ -1840,7 +1827,7 @@ pub struct RemoveWatchedRequest {
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct ListEpisodesWatchedRequest {
-    pub series_id: SeriesId,
+    pub show_id: ShowId,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -1866,7 +1853,7 @@ pub struct ListWatchedResponse {
 pub struct OrphanedWatched {
     pub id: WatchedId,
     pub timestamp: Timestamp,
-    pub series_id: SeriesId,
+    pub show_id: ShowId,
     pub season: SeasonNumber,
     pub episode: u32,
 }
@@ -1875,7 +1862,7 @@ pub struct OrphanedWatched {
 #[musli(crate = musli_core)]
 pub struct MoveWatchedEpisodeRequest {
     pub id: WatchedId,
-    pub series_id: SeriesId,
+    pub show_id: ShowId,
     pub season: SeasonNumber,
     pub episode: u32,
 }
@@ -1883,7 +1870,7 @@ pub struct MoveWatchedEpisodeRequest {
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct ListOrphanedWatchedRequest {
-    pub series_id: SeriesId,
+    pub show_id: ShowId,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -1936,7 +1923,7 @@ pub struct SearchRequest {
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct SearchResponse {
-    pub series: Vec<SearchSeries>,
+    pub shows: Vec<SearchShow>,
     pub movies: Vec<SearchMovie>,
     /// Total number of results across the queried sources.
     pub total: usize,
@@ -1944,8 +1931,8 @@ pub struct SearchResponse {
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
-pub struct SyncSeriesRequest {
-    pub id: SeriesId,
+pub struct SyncShowRequest {
+    pub id: ShowId,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -1956,8 +1943,8 @@ pub struct SyncMovieRequest {
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
-pub struct SetSeriesSyncSourceRequest {
-    pub id: SeriesId,
+pub struct SetShowSyncSourceRequest {
+    pub id: ShowId,
     pub source: SyncSource,
 }
 
@@ -1970,15 +1957,15 @@ pub struct SetMovieSyncSourceRequest {
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
-pub struct SetSeriesLanguageRequest {
-    pub id: SeriesId,
+pub struct SetShowLanguageRequest {
+    pub id: ShowId,
     pub language: Option<String>,
 }
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
-pub struct SetSeriesIncludeSpecialsRequest {
-    pub id: SeriesId,
+pub struct SetShowIncludeSpecialsRequest {
+    pub id: ShowId,
     pub include_specials: Option<bool>,
 }
 
@@ -1991,15 +1978,15 @@ pub struct SetMovieLanguageRequest {
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
-pub struct AddSeriesRemoteRequest {
-    pub id: SeriesId,
+pub struct AddShowRemoteRequest {
+    pub id: ShowId,
     pub remote_id: RemoteId,
 }
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
-pub struct RemoveSeriesRemoteRequest {
-    pub id: SeriesId,
+pub struct RemoveShowRemoteRequest {
+    pub id: ShowId,
     pub remote_id: RemoteId,
 }
 
@@ -2019,8 +2006,8 @@ pub struct RemoveMovieRemoteRequest {
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
-pub struct UpdateSeriesRemoteRequest {
-    pub id: SeriesId,
+pub struct UpdateShowRemoteRequest {
+    pub id: ShowId,
     pub old: RemoteId,
     pub new: RemoteId,
 }
@@ -2068,13 +2055,8 @@ pub struct SetConfigRequest {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub enum PendingKind {
-    Episode {
-        series: SeriesId,
-        episode: EpisodeId,
-    },
-    Movie {
-        movie: MovieId,
-    },
+    Episode { show: ShowId, episode: EpisodeId },
+    Movie { movie: MovieId },
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -2095,7 +2077,7 @@ pub struct RemovePendingRequest {
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct SkipEpisodeRequest {
-    pub series: SeriesId,
+    pub show: ShowId,
     pub episode: EpisodeId,
 }
 
@@ -2122,24 +2104,24 @@ pub struct AppEvent {
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub enum AppEventKind {
-    SeriesCreated {
-        series: Series,
+    ShowCreated {
+        show: Show,
     },
-    SeriesChanged {
-        series: Series,
+    ShowChanged {
+        show: Show,
     },
-    SeriesDeleted {
-        series_id: SeriesId,
+    ShowDeleted {
+        show_id: ShowId,
     },
     SeasonsChanged {
-        series_id: SeriesId,
+        show_id: ShowId,
         seasons: Vec<Season>,
     },
     EpisodeChanged {
         episode: Episode,
     },
     EpisodesChanged {
-        series_id: SeriesId,
+        show_id: ShowId,
         season: SeasonNumber,
     },
     MovieCreated {
@@ -2170,16 +2152,16 @@ pub enum AppEventKind {
 }
 
 api::define! {
-    pub type ListSeries;
-    impl Endpoint for ListSeries {
-        impl Request for ListSeriesRequest;
-        type Response<'de> = ListSeriesResponse;
+    pub type ListShow;
+    impl Endpoint for ListShow {
+        impl Request for ListShowRequest;
+        type Response<'de> = ListShowResponse;
     }
 
-    pub type GetSeries;
-    impl Endpoint for GetSeries {
-        impl Request for GetSeriesRequest;
-        type Response<'de> = Series;
+    pub type GetShow;
+    impl Endpoint for GetShow {
+        impl Request for GetShowRequest;
+        type Response<'de> = Show;
     }
 
     pub type ListSeasons;
@@ -2188,21 +2170,21 @@ api::define! {
         type Response<'de> = ListSeasonsResponse;
     }
 
-    pub type TrackSeries;
-    impl Endpoint for TrackSeries {
-        impl Request for TrackSeriesRequest;
-        type Response<'de> = Series;
+    pub type TrackShow;
+    impl Endpoint for TrackShow {
+        impl Request for TrackShowRequest;
+        type Response<'de> = Show;
     }
 
-    pub type UntrackSeries;
-    impl Endpoint for UntrackSeries {
-        impl Request for UntrackSeriesRequest;
+    pub type UntrackShow;
+    impl Endpoint for UntrackShow {
+        impl Request for UntrackShowRequest;
         type Response<'de> = Empty;
     }
 
-    pub type RemoveSeries;
-    impl Endpoint for RemoveSeries {
-        impl Request for RemoveSeriesRequest;
+    pub type RemoveShow;
+    impl Endpoint for RemoveShow {
+        impl Request for RemoveShowRequest;
         type Response<'de> = Empty;
     }
 
@@ -2308,9 +2290,9 @@ api::define! {
         type Response<'de> = SearchResponse;
     }
 
-    pub type SyncSeries;
-    impl Endpoint for SyncSeries {
-        impl Request for SyncSeriesRequest;
+    pub type SyncShow;
+    impl Endpoint for SyncShow {
+        impl Request for SyncShowRequest;
         type Response<'de> = Empty;
     }
 
@@ -2320,9 +2302,9 @@ api::define! {
         type Response<'de> = Empty;
     }
 
-    pub type SetSeriesSyncSource;
-    impl Endpoint for SetSeriesSyncSource {
-        impl Request for SetSeriesSyncSourceRequest;
+    pub type SetShowSyncSource;
+    impl Endpoint for SetShowSyncSource {
+        impl Request for SetShowSyncSourceRequest;
         type Response<'de> = Empty;
     }
 
@@ -2332,15 +2314,15 @@ api::define! {
         type Response<'de> = Empty;
     }
 
-    pub type SetSeriesLanguage;
-    impl Endpoint for SetSeriesLanguage {
-        impl Request for SetSeriesLanguageRequest;
+    pub type SetShowLanguage;
+    impl Endpoint for SetShowLanguage {
+        impl Request for SetShowLanguageRequest;
         type Response<'de> = Empty;
     }
 
-    pub type SetSeriesIncludeSpecials;
-    impl Endpoint for SetSeriesIncludeSpecials {
-        impl Request for SetSeriesIncludeSpecialsRequest;
+    pub type SetShowIncludeSpecials;
+    impl Endpoint for SetShowIncludeSpecials {
+        impl Request for SetShowIncludeSpecialsRequest;
         type Response<'de> = Empty;
     }
 
@@ -2350,15 +2332,15 @@ api::define! {
         type Response<'de> = Empty;
     }
 
-    pub type AddSeriesRemote;
-    impl Endpoint for AddSeriesRemote {
-        impl Request for AddSeriesRemoteRequest;
+    pub type AddShowRemote;
+    impl Endpoint for AddShowRemote {
+        impl Request for AddShowRemoteRequest;
         type Response<'de> = Empty;
     }
 
-    pub type RemoveSeriesRemote;
-    impl Endpoint for RemoveSeriesRemote {
-        impl Request for RemoveSeriesRemoteRequest;
+    pub type RemoveShowRemote;
+    impl Endpoint for RemoveShowRemote {
+        impl Request for RemoveShowRemoteRequest;
         type Response<'de> = Empty;
     }
 
@@ -2374,9 +2356,9 @@ api::define! {
         type Response<'de> = Empty;
     }
 
-    pub type UpdateSeriesRemote;
-    impl Endpoint for UpdateSeriesRemote {
-        impl Request for UpdateSeriesRemoteRequest;
+    pub type UpdateShowRemote;
+    impl Endpoint for UpdateShowRemote {
+        impl Request for UpdateShowRemoteRequest;
         type Response<'de> = Empty;
     }
 

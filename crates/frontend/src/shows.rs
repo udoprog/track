@@ -4,15 +4,15 @@ use yew::prelude::*;
 
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{PagedQuery, Route, SeriesDetailQuery};
+use crate::router::{PagedQuery, Route, ShowDetailQuery};
 use crate::ui::{Loading, PaginationButtons};
 use crate::{Image, SetupChannel};
 
 const PAGE_SIZE: usize = 20;
 
-pub(super) struct SeriesList {
+pub(super) struct ShowList {
     channel: ws::Channel,
-    series: Vec<api::Series>,
+    shows: Vec<api::Show>,
     page: usize,
     filter: String,
     tz: TimeZone,
@@ -26,7 +26,7 @@ pub(super) struct SeriesList {
 pub(super) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
-    SeriesLoaded(Result<ws::Packet<api::ListSeries>, ws::Error>),
+    ShowLoaded(Result<ws::Packet<api::ListShow>, ws::Error>),
     Filter(String),
     SetPage(usize),
     Navigate(Route),
@@ -41,7 +41,7 @@ pub(super) struct Props {
     pub(super) on_navigate: Callback<Route>,
 }
 
-impl Component for SeriesList {
+impl Component for ShowList {
     type Message = Msg;
     type Properties = Props;
 
@@ -66,7 +66,7 @@ impl Component for SeriesList {
 
         Self {
             channel: ws::Channel::default(),
-            series: Vec::new(),
+            shows: Vec::new(),
             page: ctx.props().page,
             filter: ctx.props().filter.clone(),
             tz,
@@ -103,8 +103,8 @@ impl Component for SeriesList {
 
         let filter = self.filter.to_lowercase();
 
-        let filtered: Vec<&api::Series> = self
-            .series
+        let filtered: Vec<&api::Show> = self
+            .shows
             .iter()
             .filter(|s| {
                 filter.is_empty()
@@ -128,7 +128,7 @@ impl Component for SeriesList {
         html! {
             <>
                 <div class="row-fill">
-                    <h1>{"Series"}</h1>
+                    <h1>{"Show"}</h1>
                     <h4 class="text-muted end">{total}</h4>
                 </div>
 
@@ -156,7 +156,7 @@ impl Component for SeriesList {
                 if self.list_req.is_pending() {
                     <Loading />
                 } else if items.len() == 0 {
-                    <div class="text-muted">{"No series tracked."}</div>
+                    <div class="text-muted">{"No show tracked."}</div>
                 } else {
                     <div class="table">
                         { for items.into_iter().map(|s| self.view_row(ctx, s)) }
@@ -173,7 +173,7 @@ impl Component for SeriesList {
     }
 }
 
-impl SeriesList {
+impl ShowList {
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
             Msg::Channel(result) => {
@@ -181,7 +181,7 @@ impl SeriesList {
                 if self.channel.id() != ws::ChannelId::NONE {
                     self.load(ctx);
                 } else {
-                    self.series.clear();
+                    self.shows.clear();
                 }
                 Ok(true)
             }
@@ -191,9 +191,9 @@ impl SeriesList {
                     return Ok(false);
                 }
                 match event.kind {
-                    api::AppEventKind::SeriesCreated { .. }
-                    | api::AppEventKind::SeriesChanged { .. }
-                    | api::AppEventKind::SeriesDeleted { .. } => {
+                    api::AppEventKind::ShowCreated { .. }
+                    | api::AppEventKind::ShowChanged { .. }
+                    | api::AppEventKind::ShowDeleted { .. } => {
                         if self.channel.id() != ws::ChannelId::NONE {
                             self.load(ctx);
                         }
@@ -202,18 +202,19 @@ impl SeriesList {
                     _ => Ok(false),
                 }
             }
-            Msg::SeriesLoaded(result) => {
-                self.series = result
-                    .context(Message::LoadingSeries)?
+            Msg::ShowLoaded(result) => {
+                let res = result
+                    .context(Message::LoadingShow)?
                     .decode()
-                    .context(Message::LoadingSeries)?
-                    .series;
+                    .context(Message::LoadingShow)?;
+
+                self.shows = res.shows;
                 Ok(true)
             }
             Msg::Filter(s) => {
                 self.filter = s;
 
-                ctx.props().on_navigate.emit(Route::Series(PagedQuery {
+                ctx.props().on_navigate.emit(Route::Shows(PagedQuery {
                     page: 0,
                     filter: self.filter.clone(),
                 }));
@@ -223,7 +224,7 @@ impl SeriesList {
             Msg::SetPage(p) => {
                 self.page = p;
 
-                ctx.props().on_navigate.emit(Route::Series(PagedQuery {
+                ctx.props().on_navigate.emit(Route::Shows(PagedQuery {
                     page: self.page,
                     filter: self.filter.clone(),
                 }));
@@ -245,16 +246,16 @@ impl SeriesList {
         self.list_req = self
             .channel
             .request()
-            .body(api::ListSeriesRequest)
-            .on_packet(ctx.link().callback(Msg::SeriesLoaded))
+            .body(api::ListShowRequest)
+            .on_packet(ctx.link().callback(Msg::ShowLoaded))
             .send();
     }
 
-    fn view_row(&self, ctx: &Context<Self>, s: &api::Series) -> Html {
+    fn view_row(&self, ctx: &Context<Self>, s: &api::Show) -> Html {
         let id = s.id;
-        let onclick = ctx.link().callback(move |_| {
-            Msg::Navigate(Route::SeriesDetail(id, SeriesDetailQuery::default()))
-        });
+        let onclick = ctx
+            .link()
+            .callback(move |_| Msg::Navigate(Route::ShowDetail(id, ShowDetailQuery::default())));
 
         html! {
             <div class="table-entry">
@@ -265,7 +266,7 @@ impl SeriesList {
                     <div class="column fill top">
                         <div class="row-fill fill">
                             <div class="column">
-                                <span class="item-title clickable" onclick={&onclick}>{s.title.as_deref().unwrap_or("Untitled Series")}</span>
+                                <span class="item-title clickable" onclick={&onclick}>{s.title.as_deref().unwrap_or("Untitled Show")}</span>
 
                                 if let Some(date) = s.first_air_date {
                                     <span class="text-muted">{date.date(self.tz.clone()).year().to_string()}</span>
@@ -274,7 +275,7 @@ impl SeriesList {
 
                             <div class="row end top">
                                 if !s.tracked {
-                                    <span class="end item-inline" title="Untracked series">
+                                    <span class="end item-inline" title="Untracked show">
                                         <span class="icon eye-slash" />
                                     </span>
                                 }

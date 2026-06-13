@@ -14,10 +14,10 @@ mod queue;
 mod root;
 mod router;
 mod search;
-mod series;
-mod series_detail;
 mod settings;
 mod setup_channel;
+mod show_detail;
+mod shows;
 mod ui;
 
 use self::app::App;
@@ -30,10 +30,10 @@ use self::movie_detail::MovieDetail;
 use self::movies::MoviesList;
 use self::queue::Queue;
 use self::search::Search;
-use self::series::SeriesList;
-use self::series_detail::SeriesDetail;
 use self::settings::Settings;
 use self::setup_channel::SetupChannel;
+use self::show_detail::ShowDetail;
+use self::shows::ShowList;
 
 use tracing::Level;
 use tracing_wasm::WASMLayerConfigBuilder;

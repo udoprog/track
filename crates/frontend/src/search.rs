@@ -4,7 +4,7 @@ use yew::prelude::*;
 
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{Route, SearchQuery, SeriesDetailQuery};
+use crate::router::{Route, SearchQuery, ShowDetailQuery};
 use crate::{Image, SetupChannel};
 
 pub(super) struct Search {
@@ -12,7 +12,7 @@ pub(super) struct Search {
     background: Background,
     query: String,
     kind: api::SearchKind,
-    series: Vec<api::SearchSeries>,
+    shows: Vec<api::SearchShow>,
     movies: Vec<api::SearchMovie>,
     page: usize,
     total: usize,
@@ -31,9 +31,9 @@ pub(super) enum Msg {
     Submit,
     LoadMore,
     SearchDone(Result<ws::Packet<api::Search>, ws::Error>),
-    TrackSeries(api::RemoteId),
+    TrackShow(api::RemoteId),
     TrackMovie(api::RemoteId),
-    TrackSeriesDone(Result<ws::Packet<api::TrackSeries>, ws::Error>),
+    TrackShowDone(Result<ws::Packet<api::TrackShow>, ws::Error>),
     TrackMovieDone(Result<ws::Packet<api::TrackMovie>, ws::Error>),
     Navigate(Route),
 }
@@ -69,7 +69,7 @@ impl Component for Search {
             background,
             query: ctx.props().filter.clone(),
             kind: ctx.props().kind,
-            series: Vec::new(),
+            shows: Vec::new(),
             movies: Vec::new(),
             page: 0,
             total: 0,
@@ -107,7 +107,7 @@ impl Component for Search {
         if props.kind != old_props.kind || props.filter != old_props.filter {
             self.kind = props.kind;
             self.query = props.filter.clone();
-            self.series.clear();
+            self.shows.clear();
             self.movies.clear();
             self.page = 0;
             self.total = 0;
@@ -144,14 +144,14 @@ impl Component for Search {
             Msg::KindChanged(if val == "movies" {
                 api::SearchKind::Movies
             } else {
-                api::SearchKind::Series
+                api::SearchKind::Show
             })
         });
 
         let on_submit = link.callback(|_| Msg::Submit);
 
         let kind = match self.kind {
-            api::SearchKind::Series => "series",
+            api::SearchKind::Show => "show",
             api::SearchKind::Movies => "movies",
         };
 
@@ -161,8 +161,8 @@ impl Component for Search {
 
                 <div class="input-group">
                     <select class="input-select" onchange={on_kind} value={kind}>
-                        <option value="series" selected={matches!(self.kind, api::SearchKind::Series)}>
-                            {"Series"}
+                        <option value="show" selected={matches!(self.kind, api::SearchKind::Show)}>
+                            {"Show"}
                         </option>
 
                         <option value="movies" selected={matches!(self.kind, api::SearchKind::Movies)}>
@@ -206,11 +206,11 @@ impl Search {
                     return Ok(false);
                 }
                 match event.kind {
-                    api::AppEventKind::SeriesCreated { series } => {
-                        for remote_id in &series.remotes {
-                            for r in &mut self.series {
+                    api::AppEventKind::ShowCreated { show } => {
+                        for remote_id in &show.remotes {
+                            for r in &mut self.shows {
                                 if &r.remote_id == remote_id {
-                                    r.already_tracked = Some(series.id);
+                                    r.already_tracked = Some(show.id);
                                 }
                             }
                         }
@@ -261,22 +261,22 @@ impl Search {
                     .context(Message::Searching)?;
 
                 if self.page == 0 {
-                    self.series = resp.series;
+                    self.shows = resp.shows;
                     self.movies = resp.movies;
                 } else {
-                    self.series.extend(resp.series);
+                    self.shows.extend(resp.shows);
                     self.movies.extend(resp.movies);
                 }
 
                 self.total = resp.total;
                 Ok(true)
             }
-            Msg::TrackSeries(remote_id) => {
+            Msg::TrackShow(remote_id) => {
                 self._track_req = self
                     .channel
                     .request()
-                    .body(api::TrackSeriesRequest { remote_id })
-                    .on_packet(ctx.link().callback(Msg::TrackSeriesDone))
+                    .body(api::TrackShowRequest { remote_id })
+                    .on_packet(ctx.link().callback(Msg::TrackShowDone))
                     .send();
                 Ok(false)
             }
@@ -289,14 +289,14 @@ impl Search {
                     .send();
                 Ok(false)
             }
-            Msg::TrackSeriesDone(result) => {
-                let series = result
-                    .context(Message::TrackingSeries)?
+            Msg::TrackShowDone(result) => {
+                let show = result
+                    .context(Message::TrackingShow)?
                     .decode()
-                    .context(Message::TrackingSeries)?;
+                    .context(Message::TrackingShow)?;
                 ctx.props()
                     .on_navigate
-                    .emit(Route::SeriesDetail(series.id, SeriesDetailQuery::default()));
+                    .emit(Route::ShowDetail(show.id, ShowDetailQuery::default()));
                 Ok(false)
             }
             Msg::TrackMovieDone(result) => {
@@ -339,11 +339,11 @@ impl Search {
     fn view_results(&self, ctx: &Context<Self>) -> Html {
         if self.query.is_empty() {
             return html! {
-                <p class="hint">{"Enter a search query to find series or movies."}</p>
+                <p class="hint">{"Enter a search query to find show or movies."}</p>
             };
         }
 
-        if self.series.is_empty() && self.movies.is_empty() {
+        if self.shows.is_empty() && self.movies.is_empty() {
             return html! {
                 <p class="hint">{"No results found."}</p>
             };
@@ -354,11 +354,11 @@ impl Search {
             Msg::LoadMore
         });
 
-        let loaded = self.series.len() + self.movies.len();
+        let loaded = self.shows.len() + self.movies.len();
 
         html! {
             <>
-                { for self.series.iter().map(|r| self.view_series_result(ctx, r)) }
+                { for self.shows.iter().map(|r| self.view_show_result(ctx, r)) }
 
                 { for self.movies.iter().map(|r| self.view_movie_result(ctx, r)) }
 
@@ -377,19 +377,18 @@ impl Search {
         }
     }
 
-    fn view_series_result(&self, ctx: &Context<Self>, r: &api::SearchSeries) -> Html {
+    fn view_show_result(&self, ctx: &Context<Self>, r: &api::SearchShow) -> Html {
         let remote_id = r.remote_id.clone();
-        let series_id = r.already_tracked;
+        let show_id = r.already_tracked;
 
-        let on_nav = series_id.map(|id| {
-            ctx.link().callback(move |_| {
-                Msg::Navigate(Route::SeriesDetail(id, SeriesDetailQuery::default()))
-            })
+        let on_nav = show_id.map(|id| {
+            ctx.link()
+                .callback(move |_| Msg::Navigate(Route::ShowDetail(id, ShowDetailQuery::default())))
         });
 
         let on_track = ctx
             .link()
-            .callback(move |_| Msg::TrackSeries(remote_id.clone()));
+            .callback(move |_| Msg::TrackShow(remote_id.clone()));
 
         html! {
             <div key={r.remote_id.to_string()} class="desktop-row mobile-column">
@@ -398,7 +397,7 @@ impl Search {
 
                 <div class="column top fill">
                     <div class="row-fill">
-                        <a class="item-inline-lg" href={r.remote_id.series_url()} target="_blank" rel="noopener noreferrer" title={format!("Open on {}", r.remote_id.source())}>
+                        <a class="item-inline-lg" href={r.remote_id.show_url()} target="_blank" rel="noopener noreferrer" title={format!("Open on {}", r.remote_id.source())}>
                             <span class={classes!("logo", r.remote_id.source().as_str().to_owned())} />
                         </a>
 
@@ -413,7 +412,7 @@ impl Search {
                                     <span class="hide-mobile">{"Tracked"}</span>
                                 </button>
                             } else {
-                                <button class="btn" onclick={on_track} title="Track series">
+                                <button class="btn" onclick={on_track} title="Track show">
                                     <span class="icon plus" />
                                     <span class="hide-mobile">{"Track"}</span>
                                 </button>
@@ -437,9 +436,9 @@ impl Search {
 
     fn view_movie_result(&self, ctx: &Context<Self>, r: &api::SearchMovie) -> Html {
         let remote_id = r.remote_id.clone();
-        let series_id = r.already_tracked;
+        let show_id = r.already_tracked;
 
-        let on_nav = series_id.map(|id| {
+        let on_nav = show_id.map(|id| {
             ctx.link()
                 .callback(move |_| Msg::Navigate(Route::MovieDetail(id)))
         });

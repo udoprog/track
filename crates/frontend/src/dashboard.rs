@@ -5,7 +5,7 @@ use api::{HasAired, TimeZone};
 
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{DashboardQuery, Route, SeriesDetailQuery};
+use crate::router::{DashboardQuery, Route, ShowDetailQuery};
 use crate::ui::{ConfirmDanger, MarkWatchedPicker, PaginationButtons};
 use crate::{Calendar, Image, SetupChannel};
 
@@ -24,7 +24,7 @@ pub(super) struct Dashboard {
     _skip_req: ws::Request,
     _set_config_req: ws::Request,
     confirming_watch: Option<api::PendingKind>,
-    confirming_skip: Option<(api::SeriesId, api::EpisodeId)>,
+    confirming_skip: Option<(api::ShowId, api::EpisodeId)>,
 }
 
 pub(super) enum Msg {
@@ -36,9 +36,9 @@ pub(super) enum Msg {
     CancelMarkWatch,
     MarkWatched(api::WatchedKind, api::MarkTime),
     MarkWatchedDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
-    AskSkipEpisode(api::SeriesId, api::EpisodeId),
+    AskSkipEpisode(api::ShowId, api::EpisodeId),
     CancelSkipEpisode,
-    SkipEpisode(api::SeriesId, api::EpisodeId),
+    SkipEpisode(api::ShowId, api::EpisodeId),
     SkipEpisodeDone(Result<ws::Packet<api::SkipEpisode>, ws::Error>),
     AdjustPageSize(i32),
     SetConfigDone(Result<ws::Packet<api::SetConfig>, ws::Error>),
@@ -168,9 +168,9 @@ impl Dashboard {
                     }
                     api::AppEventKind::PendingChanged
                     | api::AppEventKind::WatchedChanged { .. }
-                    | api::AppEventKind::SeriesCreated { .. }
-                    | api::AppEventKind::SeriesChanged { .. }
-                    | api::AppEventKind::SeriesDeleted { .. }
+                    | api::AppEventKind::ShowCreated { .. }
+                    | api::AppEventKind::ShowChanged { .. }
+                    | api::AppEventKind::ShowDeleted { .. }
                     | api::AppEventKind::MovieCreated { .. }
                     | api::AppEventKind::MovieChanged { .. }
                     | api::AppEventKind::MovieDeleted { .. }
@@ -228,8 +228,8 @@ impl Dashboard {
 
                 Ok(false)
             }
-            Msg::AskSkipEpisode(series, episode) => {
-                self.confirming_skip = Some((series, episode));
+            Msg::AskSkipEpisode(show, episode) => {
+                self.confirming_skip = Some((show, episode));
                 self.confirming_watch = None;
                 Ok(true)
             }
@@ -237,18 +237,18 @@ impl Dashboard {
                 self.confirming_skip = None;
                 Ok(true)
             }
-            Msg::SkipEpisode(series, episode) => {
+            Msg::SkipEpisode(show, episode) => {
                 self.confirming_skip = None;
                 self._skip_req = self
                     .channel
                     .request()
-                    .body(api::SkipEpisodeRequest { series, episode })
+                    .body(api::SkipEpisodeRequest { show, episode })
                     .on_packet(ctx.link().callback(Msg::SkipEpisodeDone))
                     .send();
                 Ok(true)
             }
             Msg::SkipEpisodeDone(result) => {
-                result.context(Message::SyncingSeries)?;
+                result.context(Message::SyncingShow)?;
 
                 if self.channel.id() != ws::ChannelId::NONE {
                     self.load_pending(ctx);
@@ -276,7 +276,7 @@ impl Dashboard {
                 Ok(true)
             }
             Msg::SetConfigDone(result) => {
-                result.context(Message::SyncingSeries)?;
+                result.context(Message::SyncingShow)?;
                 Ok(false)
             }
             Msg::SetPage(p) => {
@@ -368,24 +368,23 @@ impl Dashboard {
         let confirming_watch = self.confirming_watch.as_ref() == Some(&p.kind);
 
         let route = match (p.kind, &p.info) {
-            (
-                api::PendingKind::Episode { series, .. },
-                api::PendingInfo::Episode { season, .. },
-            ) => Route::SeriesDetail(
-                series,
-                SeriesDetailQuery {
-                    season: Some(*season),
-                },
-            ),
-            (api::PendingKind::Episode { series, .. }, _) => {
-                Route::SeriesDetail(series, SeriesDetailQuery::default())
+            (api::PendingKind::Episode { show, .. }, api::PendingInfo::Episode { season, .. }) => {
+                Route::ShowDetail(
+                    show,
+                    ShowDetailQuery {
+                        season: Some(*season),
+                    },
+                )
+            }
+            (api::PendingKind::Episode { show, .. }, _) => {
+                Route::ShowDetail(show, ShowDetailQuery::default())
             }
             (api::PendingKind::Movie { movie }, _) => Route::MovieDetail(movie),
         };
 
         let kind = match p.kind {
-            api::PendingKind::Episode { series, episode } => {
-                api::WatchedKind::Episode { series, episode }
+            api::PendingKind::Episode { show, episode } => {
+                api::WatchedKind::Episode { show, episode }
             }
             api::PendingKind::Movie { movie } => api::WatchedKind::Movie { movie },
         };
@@ -412,8 +411,8 @@ impl Dashboard {
                 .callback(move |_| Msg::MarkWatched(kind, api::MarkTime::Now))
         };
 
-        let skip_ids = if let api::PendingKind::Episode { series, episode } = p.kind {
-            Some((series, episode))
+        let skip_ids = if let api::PendingKind::Episode { show, episode } = p.kind {
+            Some((show, episode))
         } else {
             None
         };
@@ -429,7 +428,7 @@ impl Dashboard {
                 }
             }
             api::PendingInfo::Episode {
-                series,
+                show,
                 episode,
                 season,
                 number,
@@ -437,8 +436,8 @@ impl Dashboard {
             } => {
                 html! {
                     <>
-                        <span class="pending-title clickable" onclick={on_navigate.clone()} title={series.clone()}>
-                            {series.as_deref().unwrap_or("Untitled Series")}
+                        <span class="pending-title clickable" onclick={on_navigate.clone()} title={show.clone()}>
+                            {show.as_deref().unwrap_or("Untitled Show")}
                         </span>
                         <span class="pending-label clickable" onclick={on_navigate.clone()}>
                             {format!("{}E{number:02} ─ {}", season.short(), episode.as_deref().unwrap_or("Untitled Episode"))}
@@ -459,11 +458,11 @@ impl Dashboard {
                 };
             }
 
-            if confirming_skip && let Some((series, episode)) = skip_ids {
+            if confirming_skip && let Some((show, episode)) = skip_ids {
                 break 'actions html! {
                     <ConfirmDanger
                         prompt="Skip"
-                        on_confirm={ctx.link().callback(move |_| Msg::SkipEpisode(series, episode))}
+                        on_confirm={ctx.link().callback(move |_| Msg::SkipEpisode(show, episode))}
                         on_cancel={ctx.link().callback(|_| Msg::CancelSkipEpisode)}
                     />
                 };
@@ -475,8 +474,8 @@ impl Dashboard {
                         <span class="icon check" />
                     </button>
 
-                    if let Some((series, episode)) = skip_ids {
-                        <button class="btn" onclick={ctx.link().callback(move |_| Msg::AskSkipEpisode(series, episode))} title="Skip episode">
+                    if let Some((show, episode)) = skip_ids {
+                        <button class="btn" onclick={ctx.link().callback(move |_| Msg::AskSkipEpisode(show, episode))} title="Skip episode">
                             <span class="icon forward" />
                         </button>
                     }

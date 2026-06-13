@@ -16,7 +16,7 @@ fn uuid_to_u64(uuid: Uuid) -> u64 {
 }
 
 #[derive(Debug, Deserialize)]
-struct YamlSeries {
+struct YamlShow {
     id: Uuid,
     title: String,
     #[serde(default)]
@@ -24,7 +24,7 @@ struct YamlSeries {
     #[serde(default)]
     overview: String,
     #[serde(default)]
-    graphics: YamlSeriesGraphics,
+    graphics: YamlShowGraphics,
     #[serde(default)]
     tracked: bool,
     #[serde(default)]
@@ -32,7 +32,7 @@ struct YamlSeries {
 }
 
 #[derive(Debug, Default, Deserialize)]
-struct YamlSeriesGraphics {
+struct YamlShowGraphics {
     #[serde(default)]
     poster: Option<String>,
     #[serde(default)]
@@ -176,33 +176,33 @@ fn image(s: Option<&String>) -> Option<api::Image> {
     Some(api::Image::from_raw(s.as_str()))
 }
 
-async fn import_series_image(
+async fn import_show_image(
     db: &Database,
-    series_id: api::SeriesId,
+    show_id: api::ShowId,
     kind: api::ImageKind,
     img: &api::Image,
 ) -> Result<()> {
     let id = api::ImageId::random();
-    db.upsert_series_image(id, series_id, kind, 0, img).await?;
-    db.set_series_image_selection(series_id, kind, id).await?;
+    db.upsert_show_image(id, show_id, kind, 0, img).await?;
+    db.set_show_image_selection(show_id, kind, id).await?;
     Ok(())
 }
 
-async fn import_series_images(
+async fn import_show_images(
     db: &Database,
-    series_id: api::SeriesId,
-    g: &YamlSeriesGraphics,
+    show_id: api::ShowId,
+    g: &YamlShowGraphics,
 ) -> Result<()> {
     if let Some(img) = image(g.poster.as_ref()) {
-        import_series_image(db, series_id, api::ImageKind::Poster, &img).await?;
+        import_show_image(db, show_id, api::ImageKind::Poster, &img).await?;
     }
 
     if let Some(img) = image(g.banner.as_ref()) {
-        import_series_image(db, series_id, api::ImageKind::Banner, &img).await?;
+        import_show_image(db, show_id, api::ImageKind::Banner, &img).await?;
     }
 
     if let Some(img) = image(g.fanart.as_ref()) {
-        import_series_image(db, series_id, api::ImageKind::Backdrop, &img).await?;
+        import_show_image(db, show_id, api::ImageKind::Backdrop, &img).await?;
     }
 
     Ok(())
@@ -297,7 +297,8 @@ where
 #[derive(Parser)]
 #[command(about = "Import ontv YAML data into ontv-musli-web SQLite database")]
 struct Args {
-    /// Path to the ontv config directory (contains series.yaml, movies.yaml, etc.)
+    /// Path to the ontv config directory (contains series.yaml, movies.yaml,
+    /// etc.)
     #[arg(long, default_value = "~/.config/ontv")]
     source: String,
 
@@ -331,13 +332,13 @@ pub async fn import() -> Result<()> {
         .with_context(|| anyhow!("Opening database at {}", args.db.display()))?;
 
     // Maps from old UUID → new SQLite rowid
-    let mut series_map: HashMap<Uuid, api::SeriesId> = HashMap::new();
+    let mut show_by_uuid: HashMap<Uuid, api::ShowId> = HashMap::new();
 
-    // Dedup maps keyed by remote_id for series/movies, (id, timestamp) for watched
-    let mut series_by_remote: HashMap<String, api::SeriesId> = db
-        .series()
+    // Dedup maps keyed by remote_id for show/movies, (id, timestamp) for watched
+    let mut show_by_remote: HashMap<String, api::ShowId> = db
+        .shows()
         .await
-        .context("Loading existing series")?
+        .context("Loading existing show")?
         .into_iter()
         .flat_map(|s| {
             let id = s.id;
@@ -387,16 +388,15 @@ pub async fn import() -> Result<()> {
         .context("Saving config")?;
     }
 
-    let series_path = source.join("series.yaml");
-    let all_series: Vec<YamlSeries> =
-        parse_yaml_docs(&series_path).context("Parsing series.yaml")?;
+    let show_path = source.join("series.yaml");
+    let all_shows: Vec<YamlShow> = parse_yaml_docs(&show_path).context("Parsing series.yaml")?;
 
-    let total_series = all_series.len();
-    tracing::info!("Importing {total_series} series");
+    let total_show = all_shows.len();
+    tracing::info!("Importing {total_show} show");
 
-    for (i, s) in all_series.iter().enumerate() {
-        let series_id = if let Some(ref remote_id) = s.remote_id
-            && let Some(&existing_id) = series_by_remote.get(remote_id)
+    for (i, s) in all_shows.iter().enumerate() {
+        let show_id = if let Some(ref remote_id) = s.remote_id
+            && let Some(&existing_id) = show_by_remote.get(remote_id)
         {
             existing_id
         } else {
@@ -405,37 +405,37 @@ pub async fn import() -> Result<()> {
                 .as_ref()
                 .and_then(|d| naive_to_date(*d).to_timestamp_at_midnight_utc().ok());
 
-            let series_id = api::SeriesId::new(uuid_to_u64(s.id));
+            let show_id = api::ShowId::new(uuid_to_u64(s.id));
 
-            db.create_series(series_id, &s.title, first_air, &s.overview)
+            db.create_show(show_id, &s.title, first_air, &s.overview)
                 .await
-                .with_context(|| anyhow!("Inserting series '{}'", s.title))?;
+                .with_context(|| anyhow!("Inserting show '{}'", s.title))?;
 
             if !s.tracked {
-                db.set_series_tracked(series_id, false).await?;
+                db.set_show_tracked(show_id, false).await?;
             }
-            import_series_images(&db, series_id, &s.graphics).await?;
+            import_show_images(&db, show_id, &s.graphics).await?;
 
             if let Some(remote_id) = &s.remote_id {
                 let remote = api::RemoteId::from_raw(remote_id);
-                db.add_series_remote(series_id, &remote).await?;
-                series_by_remote.insert(remote_id.clone(), series_id);
+                db.add_show_remote(show_id, &remote).await?;
+                show_by_remote.insert(remote_id.clone(), show_id);
             }
 
-            series_id
+            show_id
         };
 
-        series_map.insert(s.id, series_id);
+        show_by_uuid.insert(s.id, show_id);
 
-        if (i + 1) % 50 == 0 || i + 1 == total_series {
-            tracing::info!("  Series {}/{total_series}", i + 1);
+        if (i + 1) % 50 == 0 || i + 1 == total_show {
+            tracing::info!("  Show {}/{total_show}", i + 1);
         }
     }
 
-    tracing::info!("Importing seasons and episodes for {total_series} series");
+    tracing::info!("Importing seasons and episodes for {total_show} show");
 
-    for (i, s) in all_series.iter().enumerate() {
-        let series_id = series_map[&s.id];
+    for (i, s) in all_shows.iter().enumerate() {
+        let show_id = show_by_uuid[&s.id];
 
         let seasons_file = source.join("seasons").join(format!("{}.yaml", s.id));
         if seasons_file.exists() {
@@ -450,14 +450,14 @@ pub async fn import() -> Result<()> {
                     .transpose()?;
 
                 db.upsert_season(
-                    series_id,
+                    show_id,
                     season.number.into(),
                     air_date,
                     season.name.as_deref().filter(|s| !s.trim().is_empty()),
                     season.overview.as_deref().filter(|s| !s.trim().is_empty()),
                 )
                 .await
-                .with_context(|| anyhow!("Inserting season for series {}", s.id))?;
+                .with_context(|| anyhow!("Inserting season for show {}", s.id))?;
             }
         }
 
@@ -475,7 +475,7 @@ pub async fn import() -> Result<()> {
 
                 db.upsert_episode(
                     api::EpisodeId::new(uuid_to_u64(ep.id)),
-                    series_id,
+                    show_id,
                     ep.season.into(),
                     ep.number,
                     ep.absolute_number,
@@ -485,12 +485,12 @@ pub async fn import() -> Result<()> {
                     remote_id(ep.remote_id.as_ref()).as_ref(),
                 )
                 .await
-                .with_context(|| anyhow!("Inserting episode {} for series {}", ep.number, s.id))?;
+                .with_context(|| anyhow!("Inserting episode {} for show {}", ep.number, s.id))?;
             }
         }
 
-        if (i + 1) % 50 == 0 || i + 1 == total_series {
-            tracing::info!("  Seasons/episodes {}/{total_series} series", i + 1);
+        if (i + 1) % 50 == 0 || i + 1 == total_show {
+            tracing::info!("  Seasons/episodes {}/{total_show} show", i + 1);
         }
     }
 
@@ -560,7 +560,7 @@ pub async fn import() -> Result<()> {
                 db.insert_watched_episode(
                     api::WatchedId::new(uuid_to_u64(id)),
                     timestamp,
-                    api::SeriesId::new(uuid_to_u64(series)),
+                    api::ShowId::new(uuid_to_u64(series)),
                     season,
                     ep_number,
                 )
@@ -601,14 +601,14 @@ pub async fn import() -> Result<()> {
 
         for entry in &all_remotes {
             match entry.kind.as_str() {
-                "series" => {
-                    let series_id = api::SeriesId::new(uuid_to_u64(entry.uuid));
+                "show" => {
+                    let show_id = api::ShowId::new(uuid_to_u64(entry.uuid));
                     for rid in &entry.remotes {
                         let remote = api::RemoteId::from_raw(rid.as_str());
-                        db.add_series_remote(series_id, &remote)
+                        db.add_show_remote(show_id, &remote)
                             .await
                             .with_context(|| {
-                                anyhow!("Adding remote {rid} to series {:?}", entry.uuid)
+                                anyhow!("Adding remote {rid} to show {:?}", entry.uuid)
                             })?;
                         added += 1;
                     }
@@ -634,15 +634,15 @@ pub async fn import() -> Result<()> {
 
     let now = api::Timestamp::now();
 
-    tracing::info!("Filling pending episodes for {} series", series_map.len());
+    tracing::info!("Filling pending episodes for {} show", show_by_uuid.len());
     let mut pending_filled = 0usize;
 
-    for &series_id in series_map.values() {
-        db.fill_pending_for_series_import(series_id).await?;
+    for &show_id in show_by_uuid.values() {
+        db.fill_pending_for_show_import(show_id).await?;
         pending_filled += 1;
     }
 
-    tracing::info!("Filled pending for {pending_filled} series");
+    tracing::info!("Filled pending for {pending_filled} show");
 
     tracing::info!("Discovering pending movies");
 

@@ -8,9 +8,7 @@ use crate::error::{CustomContext, Error, Message, RcError};
 use crate::router::{DashboardQuery, PagedQuery, Route, SearchQuery};
 use crate::setup_channel::SetupChannel;
 use crate::ui::{ErrorBox, Loading};
-use crate::{
-    Dashboard, MovieDetail, MoviesList, Queue, Search, SeriesDetail, SeriesList, Settings,
-};
+use crate::{Dashboard, MovieDetail, MoviesList, Queue, Search, Settings, ShowDetail, ShowList};
 
 pub(super) struct App {
     channel: ws::Channel,
@@ -189,15 +187,15 @@ impl App {
                 html! { <Dashboard {onerror} {on_navigate} page={query.page} /> }
             }
             Route::Queue => html! { <Queue {onerror} {on_navigate} /> },
-            Route::Series(query) => html! {
-                <SeriesList {onerror} {on_navigate} page={query.page} filter={query.filter.clone()} />
+            Route::Shows(query) => html! {
+                <ShowList {onerror} {on_navigate} page={query.page} filter={query.filter.clone()} />
             },
-            Route::SeriesDetail(series_id, query) => {
-                let series_id = *series_id;
+            Route::ShowDetail(show_id, query) => {
+                let show_id = *show_id;
                 let initial_season = query.season;
 
                 html! {
-                    <SeriesDetail {onerror} {series_id} {initial_season} {on_navigate} />
+                    <ShowDetail {onerror} {show_id} {initial_season} {on_navigate} />
                 }
             }
             Route::Movies(query) => html! {
@@ -257,9 +255,9 @@ fn Toolbar(props: &ToolbarProps) -> Html {
                     <span class="icon rectangle-stack" />
                     <span>{"Dashboard"}</span>
                 </button>
-                <button onclick={on_nav(Route::Series(PagedQuery::default()))} class="toolbar-item" title="Series">
+                <button onclick={on_nav(Route::Shows(PagedQuery::default()))} class="toolbar-item" title="Show">
                     <span class="icon tv" />
-                    <span>{"Series"}</span>
+                    <span>{"Show"}</span>
                 </button>
                 <button onclick={on_nav(Route::Movies(PagedQuery::default()))} class="toolbar-item" title="Movies">
                     <span class="icon film" />

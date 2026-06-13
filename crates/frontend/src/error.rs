@@ -64,8 +64,8 @@ pub(crate) enum Message {
     LoadingSchedule,
     #[display("Loading config")]
     LoadingConfig,
-    #[display("Loading series")]
-    LoadingSeries,
+    #[display("Loading show")]
+    LoadingShow,
     #[display("Loading seasons")]
     LoadingSeasons,
     #[display("Loading episodes")]
@@ -82,14 +82,14 @@ pub(crate) enum Message {
     RemovingWatched,
     #[display("Removing movie")]
     RemovingMovie,
-    #[display("Untracking series")]
-    UntrackingSeries,
+    #[display("Untracking show")]
+    UntrackingShow,
     #[display("Updating movie tracking")]
     UntrackingMovie,
-    #[display("Removing series")]
-    RemovingSeries,
-    #[display("Syncing series")]
-    SyncingSeries,
+    #[display("Removing show")]
+    RemovingShow,
+    #[display("Syncing show")]
+    SyncingShow,
     #[display("Setting sync source")]
     SettingSyncSource,
     #[display("Editing remote identifiers")]
@@ -100,8 +100,8 @@ pub(crate) enum Message {
     LoadingTasks,
     #[display("Searching")]
     Searching,
-    #[display("Tracking series")]
-    TrackingSeries,
+    #[display("Tracking show")]
+    TrackingShow,
     #[display("Tracking movie")]
     TrackingMovie,
 }
