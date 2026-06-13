@@ -109,10 +109,7 @@ pub(super) enum Msg {
     SelectImageDone(Result<ws::Packet<api::SelectImage>, ws::Error>),
     ClearSelectedImageDone(Result<ws::Packet<api::ClearSelectedImage>, ws::Error>),
     SetSyncSource(api::SyncSource),
-    SetSyncSourceDone(
-        api::SyncSource,
-        Result<ws::Packet<api::SetSeriesSyncSource>, ws::Error>,
-    ),
+    SetSyncSourceDone(Result<ws::Packet<api::SetSeriesSyncSource>, ws::Error>),
     SetLanguage(Option<String>),
     SetLanguageDone(
         Option<String>,
@@ -951,25 +948,23 @@ impl SeriesDetail {
                 Ok(true)
             }
             Msg::SetSyncSource(source) => {
+                if let Some(ref mut series) = self.series {
+                    series.sync_source = Some(source);
+                }
+
                 let id = ctx.props().series_id;
 
                 self._set_sync_source_req = self
                     .channel
                     .request()
                     .body(api::SetSeriesSyncSourceRequest { id, source })
-                    .on_packet(
-                        ctx.link()
-                            .callback(move |r| Msg::SetSyncSourceDone(source, r)),
-                    )
+                    .on_packet(ctx.link().callback(Msg::SetSyncSourceDone))
                     .send();
 
                 Ok(false)
             }
-            Msg::SetSyncSourceDone(source, result) => {
+            Msg::SetSyncSourceDone(result) => {
                 result.context(Message::SettingSyncSource)?;
-                if let Some(ref mut series) = self.series {
-                    series.sync_source = Some(source);
-                }
                 Ok(true)
             }
             Msg::SetLanguage(language) => {

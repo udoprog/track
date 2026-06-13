@@ -489,7 +489,7 @@ pub(super) fn RemoteSourceSelect(props: &RemoteSourceSelectProps) -> Html {
             let input: web_sys::HtmlSelectElement = e.target_unchecked_into();
             let source = api::RemoteSource::from_raw(&input.value());
 
-            if source.is_unknown() {
+            if !source.is_unknown() {
                 cb.emit(source);
             }
         })
