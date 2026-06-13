@@ -4,9 +4,11 @@ $sans-serif-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helveti
 
 $page-width: 1280px;
 
+$transparency: 0.75;
+
 $bg-dark: #222;
 $bg-site: #525252;
-$bg-dark-transparent: rgba(0, 0, 0, 0.75);
+$bg-dark-transparent: rgba(16, 16, 16, $transparency);
 $bg-panel: #2a2a2a;
 $bg-highlight: #2e2e2e;
 $bg-surface: #252525;
@@ -14,10 +16,11 @@ $bg-item: #2e2e2e;
 $text-primary: #eee;
 $text-muted: #aaa;
 $border-subtle: #252525;
-$border-subtle-transparent: rgba(37, 37, 37, 0.5);
+$border-subtle-transparent: rgba(8, 8, 8, $transparency);
 $border-input: #555;
 $color-primary: #2f72b9;
 $color-secondary: #545e66;
+$color-secondary-transparent: rgba($color-secondary, $transparency);
 $color-danger: #a24949;
 $color-danger-bg: #5a1a1a;
 $color-success: #73b173;
@@ -394,44 +397,46 @@ p {
     font-size: $font-lg;
 }
 
-h1 {
+@mixin header-base($font-size) {
+    display: flex;
+    align-items: center;
+    gap: $gap-sm;
+
     color: $color-title;
     margin: 0;
     padding: 0;
-    font-size: $font-xl;
+    font-size: $font-size;
     font-weight: $bold-weight;
+
+    height: $input-height;
+
+    @include g.until-mobile {
+        height: $input-height-touch;
+    }
+}
+
+h1 {
+    @include header-base($font-title);
 }
 
 h2 {
-    color: $color-title;
-    margin: 0;
-    padding: 0;
-    font-size: $font-lg;
-    font-weight: $bold-weight;
+    @include header-base($font-xl);
 }
 
 h3 {
-    color: $color-title;
-    margin: 0;
-    padding: 0;
-    font-size: $font-base;
-    font-weight: 100;
+    @include header-base($font-lg);
 }
 
 h4 {
-    color: $color-title;
-    margin: 0;
-    padding: 0;
-    font-size: $font-sm;
-    font-weight: 100;
+    @include header-base($font-base);
 }
 
 h5 {
-    color: $color-title;
-    margin: 0;
-    padding: 0;
-    font-size: $font-xs;
-    font-weight: 100;
+    @include header-base($font-base);
+}
+
+h6 {
+    @include header-base($font-base);
 }
 
 .text-muted {
@@ -453,10 +458,10 @@ h5 {
     display: flex;
     flex-direction: column;
     gap: $gap-sm;
+    padding: $gap-sm;
     background: $bg-dark-transparent;
     border: 1px solid $border-subtle-transparent;
     border-radius: $radius;
-    padding: $padding-row;
     min-width: 0;
 }
 
@@ -674,8 +679,7 @@ image {
 }
 
 .overview {
-    font-size: $font-sm;
-    color: $text-muted;
+    font-size: $font-base;
     line-height: 1.4;
 }
 
@@ -787,10 +791,6 @@ image {
     flex-direction: column;
     font-size: $font-sm;
     gap: $gap-xs;
-
-    &:not(.table-striped) >.table-entry {
-        background: $bg-dark-transparent;
-    }
 }
 
 .table-entry {
@@ -800,6 +800,7 @@ image {
     padding: $gap-sm;
     border-style: solid;
     border-color: $border-subtle-transparent;
+    background: $bg-dark-transparent;
     border-width: 1px;
 
     &.row {
@@ -812,7 +813,7 @@ image {
     }
 
     &.clickable:hover {
-        background: $color-secondary;
+        background: $color-secondary-transparent;
     }
 }
 

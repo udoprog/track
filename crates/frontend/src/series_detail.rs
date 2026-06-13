@@ -1264,7 +1264,7 @@ impl SeriesDetail {
             <div class="detail-sidebar">
                 <Image class="poster hide-mobile" src={series.poster.clone()} />
 
-                <div class="table table-striped">
+                <div class="table">
                     { for self.seasons.iter().map(|s| self.view_season(ctx, s, self.seasons.len())) }
                 </div>
             </div>
@@ -1424,23 +1424,27 @@ impl SeriesDetail {
             }
         };
 
-        html! {
-            <div class="detail-content">
-                <div class="row-fill actions">
-                    if self.select_mark_remaining {
-                        <MarkWatchedPicker
-                            on_confirm={link.callback(move |mark_time| Msg::WatchRemaining(season, mark_time))}
-                            on_cancel={link.callback(|_| Msg::CancelMarkRemainingWatch)}
-                        />
-                    } else {
-                        if self.view_orphaned {
-                            <h2>{format!("{} orphaned episodes", self.orphaned.len())}</h2>
-                        } else {
-                            <h2>{season.long().to_string()}</h2>
+        let actions = 'actions: {
+            if self.select_mark_remaining {
+                break 'actions html! {
+                    <MarkWatchedPicker
+                        on_confirm={link.callback(move |mark_time| Msg::WatchRemaining(season, mark_time))}
+                        on_cancel={link.callback(|_| Msg::CancelMarkRemainingWatch)}
+                    />
+                };
+            }
 
-                            if total > 0 {
-                                <h4>{format!("{watched_count} / {total} watched")}</h4>
-                            }
+            html! {
+                <div class="column fill">
+                    if self.view_orphaned {
+                        <h2>{format!("{} orphaned episodes", self.orphaned.len())}</h2>
+                    } else {
+                        <h2 class="hide-mobile">{season.long().to_string()}</h2>
+                    }
+
+                    <div class="row-fill">
+                        if total > 0 {
+                            <h4>{format!("{watched_count} / {total} watched")}</h4>
                         }
 
                         if self.view_orphaned  || (!self.orphaned.is_empty() || watched_count < total) {
@@ -1450,7 +1454,15 @@ impl SeriesDetail {
                                 </div>
                             </div>
                         }
-                    }
+                    </div>
+                </div>
+            }
+        };
+
+        html! {
+            <div class="detail-content">
+                <div class="row actions">
+                    {actions}
                 </div>
 
                 if self.episodes.is_empty() && self.selected.is_some() {
@@ -1621,9 +1633,9 @@ impl SeriesDetail {
                 {actions}
 
                 if !history_expanded {
-                    <span class="row">
+                    <h3 class="row">
                         { episode.name.as_deref().unwrap_or("—") }
-                    </span>
+                    </h3>
 
                     if let Some(aired) = episode.display_at(self.tz.clone()) {
                         <span class="text-muted">{aired}</span>

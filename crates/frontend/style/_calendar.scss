@@ -104,6 +104,7 @@
     color: $text-primary;
     padding: $gap-xs;
     min-height: $input-height;
+    border: 1px solid $border-subtle-transparent;
 
     @include g.until-mobile {
         min-height: $input-height-touch;
