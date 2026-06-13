@@ -50,12 +50,12 @@ pub(super) struct TrackedProps {
 
 #[function_component]
 pub(super) fn Tracked(props: &TrackedProps) -> Html {
-    let tracked = !props.tracked;
+    let tracked = props.tracked;
 
     html! {
-        <button class="btn" onclick={props.ontoggle.reform(move |_| tracked)} title="Track movie">
+        <button class="btn" onclick={props.ontoggle.reform(move |_| !tracked)} title="Track movie">
             <span class="item-inline"><span class={classes!("icon", if tracked { "eye" } else { "eye-slash" })} /></span>
-            <span class="hide-desktop">{if  tracked { "Tracking" } else { "Not tracking" }}</span>
+            <span class="hide-desktop">{if tracked { "Tracking" } else { "Not tracking" }}</span>
         </button>
     }
 }
