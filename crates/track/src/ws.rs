@@ -132,7 +132,9 @@ impl WsHandler {
                     .create_show(show_id, &req.remote.value().to_string(), None, "")
                     .await?;
 
-                self.db.add_show_remote(show_id, &req.remote).await?;
+                self.db
+                    .add_show_remote(show_id, req.slug.as_deref(), &req.remote)
+                    .await?;
 
                 let source = *req.remote.source();
 
@@ -242,7 +244,9 @@ impl WsHandler {
                     .create_movie(movie_id, &req.remote.value().to_string(), None, "", true)
                     .await?;
 
-                self.db.add_movie_remote(movie_id, &req.remote).await?;
+                self.db
+                    .add_movie_remote(movie_id, req.slug.as_deref(), &req.remote)
+                    .await?;
 
                 let source = *req.remote.source();
 
@@ -668,7 +672,9 @@ impl WsHandler {
                     .await?
                     .context("Expected show to exist")?;
 
-                self.db.add_show_remote(req.id, &req.remote).await?;
+                self.db
+                    .add_show_remote(req.id, req.slug.as_deref(), &req.remote)
+                    .await?;
 
                 let show = self
                     .db
@@ -732,7 +738,9 @@ impl WsHandler {
                     .await?
                     .context("Expected movie to exist")?;
 
-                self.db.add_movie_remote(req.id, &req.remote).await?;
+                self.db
+                    .add_movie_remote(req.id, req.slug.as_deref(), &req.remote)
+                    .await?;
 
                 let movie = self
                     .db
@@ -801,7 +809,7 @@ impl WsHandler {
                     .context("Expected show to exist")?;
 
                 self.db
-                    .update_show_remote(req.remote_id, &req.remote)
+                    .update_show_remote(req.remote_id, req.slug.as_deref(), &req.remote)
                     .await?;
 
                 let show = self
@@ -835,7 +843,7 @@ impl WsHandler {
                     .context("Expected movie to exist")?;
 
                 self.db
-                    .update_movie_remote(req.remote_id, &req.remote)
+                    .update_movie_remote(req.remote_id, req.slug.as_deref(), &req.remote)
                     .await?;
 
                 let movie = self

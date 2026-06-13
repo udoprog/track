@@ -74,8 +74,8 @@ pub(super) enum Msg {
     CloseSettingsModal,
     OpenRemoteEditor,
     CloseRemoteEditor,
-    AddRemote(api::Remote),
-    EditRemote(api::RemoteId, api::Remote),
+    AddRemote(Option<String>, api::Remote),
+    EditRemote(api::RemoteId, Option<String>, api::Remote),
     RemoveRemote(api::RemoteId),
     RemoteDone(Result<(), ws::Error>),
     ConfirmRemove,
@@ -607,13 +607,13 @@ impl MovieDetail {
                 self.remote_editor = false;
                 Ok(true)
             }
-            Msg::AddRemote(remote) => {
+            Msg::AddRemote(slug, remote) => {
                 let id = ctx.props().movie_id;
 
                 self._remote_req = self
                     .channel
                     .request()
-                    .body(api::AddMovieRemoteRequest { id, remote })
+                    .body(api::AddMovieRemoteRequest { id, slug, remote })
                     .on_packet(ctx.link().callback(
                         |r: Result<ws::Packet<api::AddMovieRemote>, ws::Error>| {
                             Msg::RemoteDone(r.map(|_| ()))
@@ -623,7 +623,7 @@ impl MovieDetail {
 
                 Ok(false)
             }
-            Msg::EditRemote(remote_id, remote) => {
+            Msg::EditRemote(remote_id, slug, remote) => {
                 let id = ctx.props().movie_id;
 
                 self._remote_req = self
@@ -632,6 +632,7 @@ impl MovieDetail {
                     .body(api::UpdateMovieRemoteRequest {
                         id,
                         remote_id,
+                        slug,
                         remote,
                     })
                     .on_packet(ctx.link().callback(
@@ -1025,8 +1026,8 @@ impl MovieDetail {
                 <RemoteEditor
                     title={movie.title.as_deref().unwrap_or("Untitled Movie").to_owned()}
                     remotes={movie.remotes.clone()}
-                    on_add={link.callback(Msg::AddRemote)}
-                    on_edit={link.callback(|(id, remote)| Msg::EditRemote(id, remote))}
+                    on_add={link.callback(|(slug, remote)| Msg::AddRemote(slug, remote))}
+                    on_edit={link.callback(|(id, slug, remote)| Msg::EditRemote(id, slug, remote))}
                     on_remove={link.callback(Msg::RemoveRemote)}
                     on_close={link.callback(|_| Msg::CloseRemoteEditor)}
                 />

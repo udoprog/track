@@ -126,8 +126,8 @@ pub(super) enum Msg {
     ),
     OpenRemoteEditor,
     CloseRemoteEditor,
-    AddRemote(api::Remote),
-    EditRemote(api::RemoteId, api::Remote),
+    AddRemote(Option<String>, api::Remote),
+    EditRemote(api::RemoteId, Option<String>, api::Remote),
     RemoveRemote(api::RemoteId),
     RemoteDone(Result<(), ws::Error>),
     SetTz(TimeZone),
@@ -261,7 +261,7 @@ impl Component for ShowDetail {
                         <div class="desktop-row mobile-column fill start">
                             <div class="row justify-around">
                                 {for show.remotes.iter().filter_map(|r| {
-                                    let url = r.remote.show_url(show.slug.as_deref())?;
+                                    let url = r.remote.show_url(r.slug.as_deref())?;
                                     let label = r.remote.source().as_str();
 
                                     Some(html! {
@@ -343,8 +343,8 @@ impl Component for ShowDetail {
                     <RemoteEditor
                         title={show.title.as_deref().unwrap_or("Untitled Show").to_owned()}
                         remotes={show.remotes.clone()}
-                        on_add={link.callback(Msg::AddRemote)}
-                        on_edit={link.callback(|(id, remote)| Msg::EditRemote(id, remote))}
+                        on_add={link.callback(|(slug, remote)| Msg::AddRemote(slug, remote))}
+                        on_edit={link.callback(|(id, slug, remote)| Msg::EditRemote(id, slug, remote))}
                         on_remove={link.callback(Msg::RemoveRemote)}
                         on_close={link.callback(|_| Msg::CloseRemoteEditor)}
                     />
@@ -1037,13 +1037,13 @@ impl ShowDetail {
                 self.remote_editor = false;
                 Ok(true)
             }
-            Msg::AddRemote(remote) => {
+            Msg::AddRemote(slug, remote) => {
                 let id = ctx.props().show_id;
 
                 self._remote_req = self
                     .channel
                     .request()
-                    .body(api::AddShowRemoteRequest { id, remote })
+                    .body(api::AddShowRemoteRequest { id, slug, remote })
                     .on_packet(ctx.link().callback(
                         |r: Result<ws::Packet<api::AddShowRemote>, ws::Error>| {
                             Msg::RemoteDone(r.map(|_| ()))
@@ -1053,7 +1053,7 @@ impl ShowDetail {
 
                 Ok(false)
             }
-            Msg::EditRemote(remote_id, remote) => {
+            Msg::EditRemote(remote_id, slug, remote) => {
                 let id = ctx.props().show_id;
 
                 self._remote_req = self
@@ -1062,6 +1062,7 @@ impl ShowDetail {
                     .body(api::UpdateShowRemoteRequest {
                         id,
                         remote_id,
+                        slug,
                         remote,
                     })
                     .on_packet(ctx.link().callback(

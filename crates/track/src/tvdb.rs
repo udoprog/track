@@ -322,11 +322,17 @@ impl Client {
             }
         }
 
-        let mut remotes = vec![Remote::tvdb(id)];
+        let mut remotes = vec![SeriesRemote {
+            slug,
+            remote: Remote::tvdb(id),
+        }];
 
         for remote in &v.remote_ids {
             if remote.source_name.eq_ignore_ascii_case("imdb") && !remote.id.is_empty() {
-                remotes.push(Remote::imdb(&remote.id));
+                remotes.push(SeriesRemote {
+                    slug: None,
+                    remote: Remote::imdb(&remote.id),
+                });
             }
         }
 
@@ -374,7 +380,6 @@ impl Client {
         let selected_fanart = best_image(&fanart, None);
 
         Ok(SeriesInfo {
-            slug,
             title,
             overview,
             poster,
@@ -514,8 +519,12 @@ struct Translation {
     overview: Option<String>,
 }
 
-pub(crate) struct SeriesInfo {
+pub(crate) struct SeriesRemote {
     pub slug: Option<String>,
+    pub remote: Remote,
+}
+
+pub(crate) struct SeriesInfo {
     pub title: Option<String>,
     pub overview: Option<String>,
     pub poster: Vec<Image>,
@@ -524,7 +533,7 @@ pub(crate) struct SeriesInfo {
     pub selected_banner: Option<ImageKey>,
     pub fanart: Vec<Image>,
     pub selected_fanart: Option<ImageKey>,
-    pub remotes: Vec<Remote>,
+    pub remotes: Vec<SeriesRemote>,
 }
 
 pub(crate) struct EpisodeInfo {

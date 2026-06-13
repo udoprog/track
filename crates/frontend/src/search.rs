@@ -31,8 +31,8 @@ pub(super) enum Msg {
     Submit,
     LoadMore,
     SearchDone(Result<ws::Packet<api::Search>, ws::Error>),
-    TrackShow(api::Remote),
-    TrackMovie(api::Remote),
+    TrackShow(Option<String>, api::Remote),
+    TrackMovie(Option<String>, api::Remote),
     TrackShowDone(Result<ws::Packet<api::TrackShow>, ws::Error>),
     TrackMovieDone(Result<ws::Packet<api::TrackMovie>, ws::Error>),
     Navigate(Route),
@@ -271,20 +271,20 @@ impl Search {
                 self.total = resp.total;
                 Ok(true)
             }
-            Msg::TrackShow(remote_id) => {
+            Msg::TrackShow(slug, remote) => {
                 self._track_req = self
                     .channel
                     .request()
-                    .body(api::TrackShowRequest { remote: remote_id })
+                    .body(api::TrackShowRequest { slug, remote })
                     .on_packet(ctx.link().callback(Msg::TrackShowDone))
                     .send();
                 Ok(false)
             }
-            Msg::TrackMovie(remote_id) => {
+            Msg::TrackMovie(slug, remote) => {
                 self._track_req = self
                     .channel
                     .request()
-                    .body(api::TrackMovieRequest { remote: remote_id })
+                    .body(api::TrackMovieRequest { slug, remote })
                     .on_packet(ctx.link().callback(Msg::TrackMovieDone))
                     .send();
                 Ok(false)
@@ -378,7 +378,8 @@ impl Search {
     }
 
     fn view_show_result(&self, ctx: &Context<Self>, r: &api::SearchShow) -> Html {
-        let remote_id = r.remote.clone();
+        let slug = r.slug.clone();
+        let remote = r.remote.clone();
         let show_id = r.already_tracked;
 
         let on_nav = show_id.map(|id| {
@@ -388,7 +389,7 @@ impl Search {
 
         let on_track = ctx
             .link()
-            .callback(move |_| Msg::TrackShow(remote_id.clone()));
+            .callback(move |_| Msg::TrackShow(slug.clone(), remote.clone()));
 
         html! {
             <div key={r.remote.to_string()} class="desktop-row mobile-column">
@@ -435,7 +436,7 @@ impl Search {
     }
 
     fn view_movie_result(&self, ctx: &Context<Self>, r: &api::SearchMovie) -> Html {
-        let remote_id = r.remote.clone();
+        let remote = r.remote.clone();
         let show_id = r.already_tracked;
 
         let on_nav = show_id.map(|id| {
@@ -445,7 +446,7 @@ impl Search {
 
         let on_track = ctx
             .link()
-            .callback(move |_| Msg::TrackMovie(remote_id.clone()));
+            .callback(move |_| Msg::TrackMovie(None, remote.clone()));
 
         html! {
             <div key={r.remote.to_string()} class="desktop-row mobile-column">

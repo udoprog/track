@@ -92,7 +92,6 @@ async fn sync_show_tmdb(
 
     db.update_show(
         show_id,
-        None,
         info.title.as_deref(),
         info.first_air_date.or(show.first_air_date),
         info.overview.as_deref(),
@@ -101,7 +100,8 @@ async fn sync_show_tmdb(
     .await?;
 
     for remote in &info.remotes {
-        db.add_show_remote(show_id, remote).await?;
+        db.add_show_remote(show_id, remote.slug.as_deref(), &remote.remote)
+            .await?;
     }
 
     db.clear_show_images(show_id).await?;
@@ -244,7 +244,6 @@ async fn sync_show_tvdb(
 
     db.update_show(
         show_id,
-        info.slug.as_deref(),
         info.title.as_deref(),
         show.first_air_date,
         info.overview.as_deref(),
@@ -253,7 +252,8 @@ async fn sync_show_tvdb(
     .await?;
 
     for remote in &info.remotes {
-        db.add_show_remote(show_id, remote).await?;
+        db.add_show_remote(show_id, remote.slug.as_deref(), &remote.remote)
+            .await?;
     }
 
     db.clear_show_images(show_id).await?;
@@ -439,7 +439,7 @@ pub(crate) async fn sync_movie(
             .await?;
 
             for remote in &info.remotes {
-                db.add_movie_remote(movie_id, remote).await?;
+                db.add_movie_remote(movie_id, None, remote).await?;
             }
 
             db.clear_movie_images(movie_id).await?;

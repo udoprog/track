@@ -559,9 +559,9 @@ fn parse_remote(source: &api::RemoteSource, value: &str) -> Result<api::Remote, 
 pub(super) struct RemoteEditorProps {
     pub(super) title: String,
     pub(super) remotes: Vec<api::RemoteEntry>,
-    pub(super) on_add: Callback<api::Remote>,
+    pub(super) on_add: Callback<(Option<String>, api::Remote)>,
     /// `(id, remote)` — replace the identified remote with an edited value.
-    pub(super) on_edit: Callback<(api::RemoteId, api::Remote)>,
+    pub(super) on_edit: Callback<(api::RemoteId, Option<String>, api::Remote)>,
     pub(super) on_remove: Callback<api::RemoteId>,
     pub(super) on_close: Callback<()>,
 }
@@ -569,6 +569,7 @@ pub(super) struct RemoteEditorProps {
 pub(super) enum RemoteEditorMsg {
     SetSource(api::RemoteSource),
     SetValue(String),
+    SetSlug(String),
     Submit,
     Edit(api::RemoteEntry),
     CancelEdit,
@@ -580,7 +581,10 @@ pub(super) enum RemoteEditorMsg {
 
 pub(super) struct RemoteEditor {
     source: api::RemoteSource,
+    /// Raw input value for the identifier.
     value: String,
+    /// Raw input value for the slug to use for this remote.
+    slug: String,
     /// When set, the form edits the remote with this id instead of adding.
     editing: Option<api::RemoteId>,
     /// When set, awaiting confirmation to remove this identifier.
@@ -595,6 +599,7 @@ impl RemoteEditor {
     fn reset_form(&mut self) {
         self.source = REMOTE_SOURCES[0].0;
         self.value.clear();
+        self.slug.clear();
         self.editing = None;
         self.error = None;
     }
@@ -608,6 +613,7 @@ impl Component for RemoteEditor {
         Self {
             source: REMOTE_SOURCES[0].0,
             value: String::new(),
+            slug: String::new(),
             editing: None,
             confirming_remove: None,
             error: None,
@@ -635,15 +641,24 @@ impl Component for RemoteEditor {
                 self.error = None;
                 true
             }
+            RemoteEditorMsg::SetSlug(slug) => {
+                self.slug = slug;
+                true
+            }
             RemoteEditorMsg::Submit => {
+                let slug = match self.slug.trim() {
+                    "" => None,
+                    s => Some(s.to_string()),
+                };
+
                 match parse_remote(&self.source, &self.value) {
                     Ok(remote) => {
                         match self.editing.take() {
                             Some(id) => {
-                                ctx.props().on_edit.emit((id, remote));
+                                ctx.props().on_edit.emit((id, slug, remote));
                             }
                             None => {
-                                ctx.props().on_add.emit(remote);
+                                ctx.props().on_add.emit((slug, remote));
                             }
                         }
 
@@ -659,6 +674,7 @@ impl Component for RemoteEditor {
             RemoteEditorMsg::Edit(entry) => {
                 self.source = *entry.remote.source();
                 self.value = entry.remote.value().to_string();
+                self.slug = entry.slug.unwrap_or_default();
                 self.editing = Some(entry.id);
                 self.confirming_remove = None;
                 self.error = None;
@@ -710,6 +726,11 @@ impl Component for RemoteEditor {
         let on_value = link.callback(|e: InputEvent| {
             let input: web_sys::HtmlInputElement = e.target_unchecked_into();
             RemoteEditorMsg::SetValue(input.value())
+        });
+
+        let on_slug = link.callback(|e: InputEvent| {
+            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+            RemoteEditorMsg::SetSlug(input.value())
         });
 
         let editing = self.editing.is_some();
@@ -781,6 +802,8 @@ impl Component for RemoteEditor {
                             </select>
 
                             <input type="text" class="input-text fill" placeholder="Identifier" value={self.value.clone()} oninput={on_value} />
+
+                            <input type="text" class="input-text" placeholder="Slug (optional)" value={self.slug.clone()} oninput={on_slug} />
 
                             <button class="btn-success" onclick={link.callback(|_| RemoteEditorMsg::Submit)} disabled={self.value.trim().is_empty()} title={if editing { "Save identifier" } else { "Add identifier" }}>
                                 <span class={classes!("icon", if editing { "check" } else { "plus" })} />

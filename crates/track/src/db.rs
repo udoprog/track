@@ -109,7 +109,6 @@ struct Migrations;
 #[derive(Row)]
 struct ShowRow {
     id: ShowId,
-    slug: Option<String>,
     title: Option<String>,
     first_air: Option<Timestamp>,
     overview: Option<String>,
@@ -357,6 +356,7 @@ struct ScheduleRow {
 #[derive(Row)]
 struct RemoteRow {
     id: RemoteId,
+    slug: Option<String>,
     source: RemoteSource,
     value: RemoteValue,
 }
@@ -367,6 +367,7 @@ struct RemoteRow {
 struct AllShowRemoteRow {
     show_id: ShowId,
     id: RemoteId,
+    slug: Option<String>,
     source: RemoteSource,
     value: RemoteValue,
 }
@@ -375,6 +376,7 @@ struct AllShowRemoteRow {
 struct AllMovieRemoteRow {
     movie_id: MovieId,
     id: RemoteId,
+    slug: Option<String>,
     source: RemoteSource,
     value: RemoteValue,
 }
@@ -471,15 +473,15 @@ statements! {
     struct InnerRead {
         // shows
         list_shows: r#"
-            SELECT id, slug, title, first_air, overview, tracked, sync_source, last_synced_at, language, include_specials
+            SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at, language, include_specials
             FROM shows ORDER BY title
         "#,
         show_by_id: r#"
-            SELECT id, slug, title, first_air, overview, tracked, sync_source, last_synced_at, language, include_specials
+            SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at, language, include_specials
             FROM shows WHERE id = ?
         "#,
         shows_by_remote: r#"
-            SELECT s.id, s.slug, s.title, s.first_air, s.overview, s.tracked, s.sync_source, s.last_synced_at, s.language, s.include_specials
+            SELECT s.id, s.title, s.first_air, s.overview, s.tracked, s.sync_source, s.last_synced_at, s.language, s.include_specials
             FROM shows s
             JOIN show_remotes r ON r.show_id = s.id
             WHERE r.source = ? AND r.value = ?
@@ -487,10 +489,10 @@ statements! {
 
         // remotes (one table per owner; source is a numeric enum, value is dynamic)
         list_show_remotes: r#"
-            SELECT id, source, value FROM show_remotes WHERE show_id = ? ORDER BY id
+            SELECT id, slug, source, value FROM show_remotes WHERE show_id = ? ORDER BY id
         "#,
         list_all_show_remotes: r#"
-            SELECT show_id, id, source, value FROM show_remotes ORDER BY show_id, id
+            SELECT show_id, id, slug, source, value FROM show_remotes ORDER BY show_id, id
         "#,
         show_id_by_remote: r#"
             SELECT show_id FROM show_remotes WHERE source = ? AND value = ? LIMIT 1
@@ -601,10 +603,10 @@ statements! {
             WHERE r.source = ? AND r.value = ?
         "#,
         list_movie_remotes: r#"
-            SELECT id, source, value FROM movie_remotes WHERE movie_id = ? ORDER BY id
+            SELECT id, slug, source, value FROM movie_remotes WHERE movie_id = ? ORDER BY id
         "#,
         list_all_movie_remotes: r#"
-            SELECT movie_id, id, source, value FROM movie_remotes ORDER BY movie_id, id
+            SELECT movie_id, id, slug, source, value FROM movie_remotes ORDER BY movie_id, id
         "#,
         movie_id_by_remote: r#"
             SELECT movie_id FROM movie_remotes WHERE source = ? AND value = ? LIMIT 1
@@ -753,7 +755,7 @@ statements! {
 
         // stale-item queries
         shows_needing_sync: r#"
-            SELECT id, slug, title, first_air, overview, tracked, sync_source, last_synced_at, language, include_specials
+            SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at, language, include_specials
             FROM shows
             WHERE tracked = 1
               AND (last_synced_at IS NULL OR last_synced_at < ?)
@@ -802,7 +804,7 @@ statements! {
         "#,
         update_show: r#"
             UPDATE shows
-            SET slug = ?, title = ?, first_air = ?, overview = ?, tracked = ?
+            SET title = ?, first_air = ?, overview = ?, tracked = ?
             WHERE id = ?
         "#,
         delete_show: r#"
@@ -823,13 +825,13 @@ statements! {
 
         // remotes (one table per owner; source is a numeric enum, value is dynamic)
         insert_show_remote: r#"
-            INSERT OR IGNORE INTO show_remotes (id, show_id, source, value) VALUES (?, ?, ?, ?)
+            INSERT OR IGNORE INTO show_remotes (id, slug, show_id, source, value) VALUES (?, ?, ?, ?, ?)
         "#,
         delete_show_remote: r#"
             DELETE FROM show_remotes WHERE id = ?
         "#,
         update_show_remote: r#"
-            UPDATE show_remotes SET source = ?, value = ? WHERE id = ?
+            UPDATE show_remotes SET slug = ?, source = ?, value = ? WHERE id = ?
         "#,
 
         // images (shows and movies share one table)
@@ -933,13 +935,13 @@ statements! {
             DELETE FROM movies WHERE id = ?
         "#,
         insert_movie_remote: r#"
-            INSERT OR IGNORE INTO movie_remotes (id, movie_id, source, value) VALUES (?, ?, ?, ?)
+            INSERT OR IGNORE INTO movie_remotes (id, slug, movie_id, source, value) VALUES (?, ?, ?, ?, ?)
         "#,
         delete_movie_remote: r#"
             DELETE FROM movie_remotes WHERE id = ?
         "#,
         update_movie_remote: r#"
-            UPDATE movie_remotes SET source = ?, value = ? WHERE id = ?
+            UPDATE movie_remotes SET slug = ?, source = ?, value = ? WHERE id = ?
         "#,
 
         // watched
@@ -1303,13 +1305,20 @@ impl Database {
         result.await?
     }
 
-    pub(crate) async fn add_show_remote(&self, show_id: ShowId, remote: &Remote) -> Result<()> {
+    pub(crate) async fn add_show_remote(
+        &self,
+        show_id: ShowId,
+        slug: Option<&str>,
+        remote: &Remote,
+    ) -> Result<()> {
         let remote = remote.clone();
+        let slug = slug.map(str::to_owned);
         let mut s = self.inner.clone().exclusive().await;
 
         let result = spawn_blocking(move || {
             s.insert_show_remote.execute((
                 RemoteId::random(),
+                slug,
                 show_id,
                 remote.source(),
                 remote.value(),
@@ -1334,14 +1343,20 @@ impl Database {
     pub(crate) async fn update_show_remote(
         &self,
         remote_id: RemoteId,
+        slug: Option<&str>,
         remote: &Remote,
     ) -> Result<()> {
+        let slug = slug.map(str::to_owned);
         let remote = remote.clone();
         let mut s = self.inner.clone().exclusive().await;
 
         let result = spawn_blocking(move || {
-            s.update_show_remote
-                .execute((remote.source(), remote.value(), remote_id))?;
+            s.update_show_remote.execute((
+                slug.as_deref(),
+                remote.source(),
+                remote.value(),
+                remote_id,
+            ))?;
             Ok(())
         });
 
@@ -1377,6 +1392,7 @@ impl Database {
                 if let Some(o) = id_to_idx.get(&r.show_id).and_then(|&i| out.get_mut(i)) {
                     o.remotes.push(api::RemoteEntry {
                         id: r.id,
+                        slug: r.slug,
                         remote: Remote::new(r.source, r.value),
                     });
                 }
@@ -1432,6 +1448,7 @@ impl Database {
             while let Some(r) = stmt.next::<RemoteRow>()? {
                 show.remotes.push(api::RemoteEntry {
                     id: r.id,
+                    slug: r.slug,
                     remote: Remote::new(r.source, r.value),
                 });
             }
@@ -1465,13 +1482,11 @@ impl Database {
     pub(crate) async fn update_show(
         &self,
         id: ShowId,
-        slug: Option<&str>,
         title: Option<&str>,
         first_air: Option<Timestamp>,
         overview: Option<&str>,
         tracked: bool,
     ) -> Result<()> {
-        let slug = slug.map(str::to_owned);
         let title = title.map(str::to_owned);
         let overview = overview.map(str::to_owned);
 
@@ -1479,7 +1494,6 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.update_show.execute((
-                slug.as_deref(),
                 title.as_deref(),
                 first_air.as_ref(),
                 overview.as_deref(),
@@ -1916,13 +1930,20 @@ impl Database {
         result.await?
     }
 
-    pub(crate) async fn add_movie_remote(&self, movie_id: MovieId, remote: &Remote) -> Result<()> {
+    pub(crate) async fn add_movie_remote(
+        &self,
+        movie_id: MovieId,
+        slug: Option<&str>,
+        remote: &Remote,
+    ) -> Result<()> {
         let remote = remote.clone();
+        let slug = slug.map(str::to_owned);
         let mut s = self.inner.clone().exclusive().await;
 
         let result = spawn_blocking(move || {
             s.insert_movie_remote.execute((
                 RemoteId::random(),
+                slug,
                 movie_id,
                 remote.source(),
                 remote.value(),
@@ -1947,14 +1968,20 @@ impl Database {
     pub(crate) async fn update_movie_remote(
         &self,
         remote_id: RemoteId,
+        slug: Option<&str>,
         remote: &Remote,
     ) -> Result<()> {
+        let slug = slug.map(str::to_owned);
         let remote = remote.clone();
         let mut s = self.inner.clone().exclusive().await;
 
         let result = spawn_blocking(move || {
-            s.update_movie_remote
-                .execute((remote.source(), remote.value(), remote_id))?;
+            s.update_movie_remote.execute((
+                slug.as_deref(),
+                remote.source(),
+                remote.value(),
+                remote_id,
+            ))?;
             Ok(())
         });
 
@@ -1992,6 +2019,7 @@ impl Database {
                 {
                     o.remotes.push(api::RemoteEntry {
                         id: r.id,
+                        slug: r.slug,
                         remote: Remote::new(r.source, r.value),
                     });
                 }
@@ -2048,6 +2076,7 @@ impl Database {
             while let Some(r) = stmt.next::<RemoteRow>()? {
                 movie.remotes.push(api::RemoteEntry {
                     id: r.id,
+                    slug: r.slug,
                     remote: Remote::new(r.source, r.value),
                 });
             }
@@ -2142,6 +2171,7 @@ impl Database {
             while let Some(r) = stmt.next::<RemoteRow>()? {
                 show.remotes.push(api::RemoteEntry {
                     id: r.id,
+                    slug: r.slug,
                     remote: Remote::new(r.source, r.value),
                 });
             }
@@ -2193,6 +2223,7 @@ impl Database {
             while let Some(r) = stmt.next::<RemoteRow>()? {
                 movie.remotes.push(api::RemoteEntry {
                     id: r.id,
+                    slug: r.slug,
                     remote: Remote::new(r.source, r.value),
                 });
             }
@@ -3355,7 +3386,6 @@ fn cutoff_timestamp(interval_hours: u32) -> Timestamp {
 fn show_from_row(r: ShowRow) -> api::Show {
     api::Show {
         id: r.id,
-        slug: r.slug,
         title: r.title,
         first_air_date: r.first_air,
         overview: r.overview,

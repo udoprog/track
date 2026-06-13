@@ -749,6 +749,7 @@ impl From<Remote> for String {
 #[musli(crate = musli_core)]
 pub struct RemoteEntry {
     pub id: RemoteId,
+    pub slug: Option<String>,
     pub remote: Remote,
 }
 
@@ -1250,7 +1251,6 @@ pub struct MediaImage {
 #[musli(crate = musli_core)]
 pub struct Show {
     pub id: ShowId,
-    pub slug: Option<String>,
     pub title: Option<String>,
     pub first_air_date: Option<Timestamp>,
     pub overview: Option<String>,
@@ -1681,6 +1681,7 @@ pub struct ListSeasonsResponse {
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct TrackShowRequest {
+    pub slug: Option<String>,
     pub remote: Remote,
 }
 
@@ -1730,6 +1731,7 @@ pub struct GetMovieRequest {
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct TrackMovieRequest {
+    pub slug: Option<String>,
     pub remote: Remote,
 }
 
@@ -1937,6 +1939,7 @@ pub struct SetMovieLanguageRequest {
 #[musli(crate = musli_core)]
 pub struct AddShowRemoteRequest {
     pub id: ShowId,
+    pub slug: Option<String>,
     pub remote: Remote,
 }
 
@@ -1951,6 +1954,7 @@ pub struct RemoveShowRemoteRequest {
 #[musli(crate = musli_core)]
 pub struct AddMovieRemoteRequest {
     pub id: MovieId,
+    pub slug: Option<String>,
     pub remote: Remote,
 }
 
@@ -1966,6 +1970,7 @@ pub struct RemoveMovieRemoteRequest {
 pub struct UpdateShowRemoteRequest {
     pub id: ShowId,
     pub remote_id: RemoteId,
+    pub slug: Option<String>,
     pub remote: Remote,
 }
 
@@ -1974,6 +1979,7 @@ pub struct UpdateShowRemoteRequest {
 pub struct UpdateMovieRemoteRequest {
     pub id: MovieId,
     pub remote_id: RemoteId,
+    pub slug: Option<String>,
     pub remote: Remote,
 }
 

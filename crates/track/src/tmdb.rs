@@ -298,16 +298,25 @@ impl Client {
             })
         }
 
-        let mut remotes = vec![Remote::tmdb(id)];
+        let mut remotes = vec![ShowRemote {
+            slug: None,
+            remote: Remote::tmdb(id),
+        }];
 
         if let Some(tvdb_id) = details.external_ids.tvdb_id {
-            remotes.push(Remote::tvdb(tvdb_id));
+            remotes.push(ShowRemote {
+                slug: None,
+                remote: Remote::tvdb(tvdb_id),
+            });
         }
 
         if let Some(ref imdb_id) = details.external_ids.imdb_id
             && !imdb_id.is_empty()
         {
-            remotes.push(Remote::imdb(imdb_id));
+            remotes.push(ShowRemote {
+                slug: None,
+                remote: Remote::imdb(imdb_id),
+            });
         }
 
         let posters = to_images(images.posters);
@@ -519,6 +528,12 @@ impl Client {
     }
 }
 
+pub(crate) struct ShowRemote {
+    #[allow(dead_code)]
+    pub slug: Option<String>,
+    pub remote: Remote,
+}
+
 pub(crate) struct ShowInfo {
     pub title: Option<String>,
     pub overview: Option<String>,
@@ -528,7 +543,7 @@ pub(crate) struct ShowInfo {
     pub selected_poster: Option<ImageKey>,
     pub selected_backdrop: Option<ImageKey>,
     pub seasons: Vec<SeasonInfo>,
-    pub remotes: Vec<Remote>,
+    pub remotes: Vec<ShowRemote>,
 }
 
 pub(crate) struct SeasonInfo {

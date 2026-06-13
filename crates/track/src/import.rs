@@ -422,7 +422,7 @@ pub async fn import() -> Result<()> {
 
             if let Some(remote_id) = &s.remote_id {
                 let remote = api::Remote::from_raw(remote_id);
-                db.add_show_remote(show_id, &remote).await?;
+                db.add_show_remote(show_id, None, &remote).await?;
                 show_by_remote.insert(remote_id.clone(), show_id);
             }
 
@@ -528,7 +528,7 @@ pub async fn import() -> Result<()> {
 
             if let Some(rid) = &m.remote_id {
                 let remote = api::Remote::from_raw(rid.as_str());
-                db.add_movie_remote(movie_id, &remote).await?;
+                db.add_movie_remote(movie_id, None, &remote).await?;
                 movies_by_remote.insert(rid.clone(), movie_id);
             }
         }
@@ -609,7 +609,7 @@ pub async fn import() -> Result<()> {
                     let show_id = api::ShowId::new(uuid_to_u64(entry.uuid));
                     for rid in &entry.remotes {
                         let remote = api::Remote::from_raw(rid.as_str());
-                        db.add_show_remote(show_id, &remote)
+                        db.add_show_remote(show_id, None, &remote)
                             .await
                             .with_context(|| {
                                 anyhow!("Adding remote {rid} to show {:?}", entry.uuid)
@@ -621,7 +621,7 @@ pub async fn import() -> Result<()> {
                     let movie_id = api::MovieId::new(uuid_to_u64(entry.uuid));
                     for rid in &entry.remotes {
                         let remote = api::Remote::from_raw(rid.as_str());
-                        db.add_movie_remote(movie_id, &remote)
+                        db.add_movie_remote(movie_id, None, &remote)
                             .await
                             .with_context(|| {
                                 anyhow!("Adding remote {rid} to movie {:?}", entry.uuid)
