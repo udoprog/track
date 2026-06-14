@@ -9,8 +9,8 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{PagedQuery, Route, ShowDetailQuery};
 use crate::ui::{
-    ConfirmDanger, EpisodePicker, Loading, MarkWatchedPicker, MediaSettingsModal, RemoteEditor,
-    RemoteSourceKind, Tracked,
+    ConfirmDanger, EpisodePicker, Loading, MDASH, MarkWatchedPicker, MediaSettingsModal,
+    RemoteEditor, RemoteSourceKind, Tracked,
 };
 use crate::{Image, ImageGallery, ImageItem, Modal, SetupChannel};
 
@@ -1811,7 +1811,7 @@ impl ShowDetail {
 
                 if !history_expanded {
                     <h3 class="row">
-                        { episode.name.as_deref().unwrap_or("—") }
+                        { episode.name.as_deref().unwrap_or(MDASH) }
                     </h3>
 
                     if let Some(aired) = episode.display_at(self.tz.clone()) {

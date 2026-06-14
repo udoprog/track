@@ -711,7 +711,7 @@ struct InnerRead {
     #[sql = "    AND e.aired <= ?"]
     list_schedule_remotes: Stmt<(Timestamp, Timestamp), EpisodeRemoteRow>,
 
-    // all watched (for import dedup) — see list_all_watched_episodes / list_all_watched_movies
+    // all watched (for import dedup) see list_all_watched_episodes / list_all_watched_movies
 
     // config
     #[sql = "SELECT value FROM config WHERE key = ?"]
@@ -1074,9 +1074,9 @@ impl InnerRead {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum OpenMode {
-    /// Full synchronization — safe for the server.
+    /// Full synchronization safe for the server.
     Normal,
-    /// No journaling or fsync — fast for bulk import; not crash-safe.
+    /// No journaling or fsync fast for bulk import; not crash-safe.
     Bulk,
 }
 

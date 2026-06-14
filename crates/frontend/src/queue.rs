@@ -5,7 +5,7 @@ use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{Route, ShowDetailQuery};
-use crate::ui::PaginationButtons;
+use crate::ui::{MDASH, PaginationButtons};
 
 const PAGE_SIZE: usize = 20;
 pub(super) struct Queue {
@@ -263,7 +263,7 @@ impl Queue {
                         <span class={if spinning { "icon arrow-path" } else { "icon clock" }} />
                     </span>
 
-                    <span class="fill">
+                    <span class="row fill">
                         { self.view_task_label(task, on_navigate) }
                     </span>
                 </div>
@@ -279,7 +279,9 @@ impl Queue {
 
         html! {
             <>
-                <span class="text-muted">{verb}{" — "}</span>
+                <span class="text-muted">{verb}</span>
+
+                <span>{MDASH}</span>
 
                 <span class={classes!(on_navigate.is_some().then_some("clickable"))} onclick={on_navigate}>
                     if let Some(ref title) = task.kind.title() {
@@ -341,7 +343,9 @@ impl Queue {
 
         html! {
             <>
-                <span class="text-muted">{verb}{" — "}</span>
+                <span class="text-muted">{verb}</span>
+
+                <span>{MDASH}</span>
 
                 <span class="clickable" onclick={on_navigate}>
                     if let Some(ref title) = task.kind.title() {

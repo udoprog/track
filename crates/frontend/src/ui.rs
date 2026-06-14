@@ -8,6 +8,8 @@ use musli_web::web03::prelude::*;
 use crate::error::RcError;
 use crate::{Modal, SetupChannel};
 
+pub(crate) const MDASH: &str = "—";
+
 /// Loading indicator placed inside the shared page container (rendered by
 /// `App`). Use [`LoadingPage`] for standalone, full-page loading screens.
 #[function_component]
@@ -191,11 +193,6 @@ pub(super) fn MarkWatchedPicker(props: &MarkWatchedPickerProps) -> Html {
     }
 }
 
-/// Modal holding per-title settings (language, optional specials handling,
-/// graphics, identifiers). Shared by show and movies. Sections whose
-/// corresponding callback is omitted are not rendered — e.g. movies pass no
-/// `on_include_specials_change`, so the specials field is hidden.
-/// Stateless: it renders the current values and emits the parent's callbacks.
 #[derive(Properties, PartialEq)]
 pub(super) struct MediaSettingsModalProps {
     pub(super) title: AttrValue,
@@ -330,7 +327,7 @@ const SECRET_REVEAL_MS: u32 = 3000;
 
 /// Reusable input for sensitive values (API keys, PINs). Renders as a password
 /// field with three actions: reveal (shows the value, then auto-hides after a
-/// few seconds), copy to clipboard, and clear. Controlled — `value` comes from
+/// few seconds), copy to clipboard, and clear. Controlled `value` comes from
 /// the parent and edits are emitted through `on_change`.
 #[derive(Properties, PartialEq)]
 pub(super) struct SecretInputProps {
@@ -560,7 +557,6 @@ pub(super) struct RemoteEditorProps {
     pub(super) title: String,
     pub(super) remotes: Vec<api::RemoteEntry>,
     pub(super) on_add: Callback<(Option<String>, api::Remote)>,
-    /// `(id, remote)` — replace the identified remote with an edited value.
     pub(super) on_edit: Callback<(api::RemoteId, Option<String>, api::Remote)>,
     pub(super) on_remove: Callback<api::RemoteId>,
     pub(super) on_close: Callback<()>,
@@ -738,7 +734,7 @@ impl Component for RemoteEditor {
         let title = html! {
             <>
                 <span class="icon identification" />
-                <span>{format!("Identifiers — {}", props.title)}</span>
+                <span>{format!("Identifiers {MDASH} {}", props.title)}</span>
             </>
         };
 
