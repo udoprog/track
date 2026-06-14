@@ -1,12 +1,10 @@
 #![allow(clippy::too_many_arguments)]
 
-use core::cell::UnsafeCell;
+use core::marker::PhantomData;
 use core::mem::ManuallyDrop;
 use core::ops::{Deref, DerefMut};
-use core::ptr::NonNull;
 use core::str;
 
-use core::sync::atomic::{AtomicU64, Ordering};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -19,8 +17,7 @@ use api::{
     SeasonNumber, ShowId, ThemeType, Timestamp, WatchedId, WatchedKind,
 };
 use rust_embed::RustEmbed;
-use sqll::{OpenOptions, Row, SendStatement};
-use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use sqll::{Bind, OpenOptions, Pool, PoolBuilder, Row, SendStatement, Statements};
 use tokio::task::spawn_blocking;
 
 const MIGRATIONS_INIT: &str = r#"
@@ -30,8 +27,77 @@ CREATE TABLE IF NOT EXISTS migrations (
 );
 "#;
 
+struct TypedStmt<I, O> {
+    inner: SendStatement,
+    _marker: PhantomData<(I, O)>,
+}
+
+impl<O> TypedStmt<(), O>
+where
+    O: for<'stmt> Row<'stmt>,
+{
+    fn query(&mut self) -> Result<TypedBoundStmt<'_, (), O>> {
+        self.inner.reset()?;
+
+        Ok(TypedBoundStmt {
+            stmt: &mut self.inner,
+            _marker: PhantomData,
+        })
+    }
+}
+
+impl<I, O> TypedStmt<I, O>
+where
+    I: Bind,
+    O: for<'stmt> Row<'stmt>,
+{
+    fn bind(&mut self, bind: I) -> Result<TypedBoundStmt<'_, I, O>> {
+        self.inner.reset()?;
+        self.inner.bind(bind)?;
+        Ok(TypedBoundStmt {
+            stmt: &mut self.inner,
+            _marker: PhantomData,
+        })
+    }
+}
+
+impl<I, O> From<SendStatement> for TypedStmt<I, O>
+where
+    I: Bind,
+    O: for<'stmt> Row<'stmt>,
+{
+    fn from(inner: SendStatement) -> Self {
+        if inner.bind_parameter_count() != I::COUNT as i32 {
+            panic!(
+                "unexpected bind parameter count for statement: expected {}, got {}",
+                I::COUNT,
+                inner.bind_parameter_count()
+            );
+        }
+
+        if inner.column_count() != O::COUNT as i32 {
+            panic!(
+                "unexpected column count for statement: expected {}, got {}",
+                O::COUNT,
+                inner.column_count()
+            );
+        }
+
+        Self {
+            inner,
+            _marker: PhantomData,
+        }
+    }
+}
+
 struct Stmt {
     inner: SendStatement,
+}
+
+impl From<SendStatement> for Stmt {
+    fn from(stmt: SendStatement) -> Self {
+        Self::new(stmt)
+    }
 }
 
 impl Stmt {
@@ -49,37 +115,39 @@ impl Stmt {
 
     fn query(&mut self) -> Result<BoundStmt<'_>> {
         self.inner.reset()?;
-        Ok(BoundStmt { stmt: self })
+        Ok(BoundStmt {
+            stmt: &mut self.inner,
+        })
     }
 
     fn bind(&mut self, bind: impl sqll::Bind) -> Result<BoundStmt<'_>> {
         self.inner.reset()?;
         self.inner.bind(bind)?;
-        Ok(BoundStmt { stmt: self })
+        Ok(BoundStmt {
+            stmt: &mut self.inner,
+        })
     }
 }
 
-struct BoundStmt<'stmt> {
-    stmt: &'stmt mut Stmt,
+struct TypedBoundStmt<'stmt, I, O> {
+    stmt: &'stmt mut SendStatement,
+    _marker: PhantomData<(I, O)>,
 }
 
-impl<'stmt> BoundStmt<'stmt> {
-    fn first<T>(self) -> Result<Option<T>>
-    where
-        T: for<'a> sqll::Row<'a>,
-    {
-        let value = self.stmt.inner.next()?;
+impl<I, O> TypedBoundStmt<'_, I, O>
+where
+    O: for<'stmt> Row<'stmt>,
+{
+    fn first(self) -> Result<Option<O>> {
+        let value = self.stmt.next()?;
         let mut this = ManuallyDrop::new(self);
-        this.stmt.inner.reset()?;
+        this.stmt.reset()?;
         Ok(value)
     }
 
     #[inline]
-    fn next<'this, T>(&'this mut self) -> Result<Option<T>>
-    where
-        T: sqll::Row<'this>,
-    {
-        Ok(self.stmt.inner.next()?)
+    fn next(&mut self) -> Result<Option<O>> {
+        Ok(self.stmt.next()?)
     }
 
     /// Consume the bound statement and reset the underlying statement,
@@ -89,7 +157,50 @@ impl<'stmt> BoundStmt<'stmt> {
     fn reset(self) -> Result<()> {
         // Skip the `Drop` reset: we reset here and surface the error instead.
         let mut this = ManuallyDrop::new(self);
-        this.stmt.inner.reset()?;
+        this.stmt.reset()?;
+        Ok(())
+    }
+}
+
+impl<I, O> Drop for TypedBoundStmt<'_, I, O> {
+    fn drop(&mut self) {
+        // Ensure the statement is reset when the bound statement goes out of
+        // scope, so that the underlying statement can be reused.
+        let _ = self.stmt.reset();
+    }
+}
+
+struct BoundStmt<'stmt> {
+    stmt: &'stmt mut SendStatement,
+}
+
+impl<'stmt> BoundStmt<'stmt> {
+    fn first<T>(self) -> Result<Option<T>>
+    where
+        T: for<'a> sqll::Row<'a>,
+    {
+        let value = self.stmt.next()?;
+        let mut this = ManuallyDrop::new(self);
+        this.stmt.reset()?;
+        Ok(value)
+    }
+
+    #[inline]
+    fn next<'this, T>(&'this mut self) -> Result<Option<T>>
+    where
+        T: sqll::Row<'this>,
+    {
+        Ok(self.stmt.next()?)
+    }
+
+    /// Consume the bound statement and reset the underlying statement,
+    /// surfacing any error. Unlike `Drop` (which resets silently), this lets a
+    /// caller release the statement between sequential uses without a scope and
+    /// still propagate a reset failure.
+    fn reset(self) -> Result<()> {
+        // Skip the `Drop` reset: we reset here and surface the error instead.
+        let mut this = ManuallyDrop::new(self);
+        this.stmt.reset()?;
         Ok(())
     }
 }
@@ -98,7 +209,7 @@ impl Drop for BoundStmt<'_> {
     fn drop(&mut self) {
         // Ensure the statement is reset when the bound statement goes out of
         // scope, so that the underlying statement can be reused.
-        let _ = self.stmt.inner.reset();
+        let _ = self.stmt.reset();
     }
 }
 
@@ -384,656 +495,482 @@ struct AllMovieRemoteRow {
     value: RemoteValue,
 }
 
-macro_rules! statements {
-    (
-        $read_vis:vis struct $read_only:ident {
-            $($read_name:ident: $read_sql:expr),* $(,)?
-        }
+#[derive(Statements)]
+#[sql(read_only)]
+struct InnerRead {
+    // shows
+    #[sql = "SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at, language, include_specials"]
+    #[sql = "FROM shows ORDER BY title"]
+    list_shows: TypedStmt<(), ShowRow>,
+    #[sql = "SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at, language, include_specials"]
+    #[sql = "FROM shows WHERE id = ?"]
+    show_by_id: TypedStmt<(ShowId,), ShowRow>,
+    #[sql = "SELECT s.id, s.title, s.first_air, s.overview, s.tracked, s.sync_source, s.last_synced_at, s.language, s.include_specials"]
+    #[sql = "FROM shows s"]
+    #[sql = "JOIN show_remotes r ON r.show_id = s.id"]
+    #[sql = "WHERE r.source = ? AND r.value = ?"]
+    shows_by_remote: Stmt,
 
-        $write_vis:vis struct $write:ident {
-            $($write_name:ident: $write_sql:expr),* $(,)?
-        }
-    ) => {
-        $read_vis struct $read_only {
-            $($read_name: Stmt,)*
-        }
+    // remotes (one table per owner; source is a numeric enum, value is dynamic)
+    #[sql = "SELECT id, slug, source, value FROM show_remotes WHERE show_id = ? ORDER BY id"]
+    list_show_remotes: Stmt,
+    #[sql = "SELECT show_id, id, slug, source, value FROM show_remotes ORDER BY show_id, id"]
+    list_all_show_remotes: Stmt,
+    #[sql = "SELECT show_id FROM show_remotes WHERE source = ? AND value = ? LIMIT 1"]
+    show_id_by_remote: Stmt,
 
-        impl $read_only {
-            fn new(c: &sqll::Connection) -> Result<Self> {
-                unsafe {
-                    Ok(Self {
-                        $(
-                            $read_name: {
-                                let stmt = c
-                                    .prepare_with($read_sql)
-                                    .persistent()
-                                    .build()
-                                    .context(concat!("Preparing statement ", stringify!($read_name)))?
-                                    .into_send()?;
+    // images (shows and movies share one table)
+    #[sql = "SELECT id, kind, source, path FROM images"]
+    #[sql = "WHERE show_id = ? ORDER BY kind, rank, id"]
+    list_show_images: Stmt,
+    #[sql = "SELECT id, kind, source, path, show_id FROM images"]
+    #[sql = "WHERE show_id IS NOT NULL ORDER BY show_id, kind, rank, id"]
+    list_all_show_images: Stmt,
+    #[sql = "SELECT ei.episode_id, i.source, i.path, i.width, i.height"]
+    #[sql = "FROM episode_images ei JOIN images i ON i.id = ei.image_id"]
+    #[sql = "WHERE ei.kind = ? AND ei.episode_id IN (SELECT id FROM episodes WHERE show_id = ? AND season = ?)"]
+    list_season_episode_screenshots: Stmt,
+    #[sql = "SELECT id, kind, source, path FROM images"]
+    #[sql = "WHERE movie_id = ? ORDER BY kind, rank, id"]
+    list_movie_images: Stmt,
+    #[sql = "SELECT id, kind, source, path, movie_id FROM images"]
+    #[sql = "WHERE movie_id IS NOT NULL ORDER BY movie_id, kind, rank, id"]
+    list_all_movie_images: Stmt,
+    #[sql = "SELECT kind, show_id, movie_id, season_id FROM images WHERE id = ?"]
+    image_by_id: Stmt,
+    #[sql = "SELECT id, kind, source, path FROM images"]
+    #[sql = "WHERE season_id = ? ORDER BY kind, rank, id"]
+    list_season_images: Stmt,
+    #[sql = "SELECT show_id FROM seasons WHERE id = ?"]
+    show_id_for_season: Stmt,
 
-                                if !stmt.is_read_only() {
-                                    return Err(anyhow!(concat!("Statement is not read-only: ", stringify!($read_name))));
-                                }
+    // selection tables
+    #[sql = "SELECT si.kind, i.source, i.path, i.width, i.height"]
+    #[sql = "FROM show_images si JOIN images i ON i.id = si.image_id"]
+    #[sql = "WHERE si.show_id = ?"]
+    list_show_image_selections: Stmt,
+    #[sql = "SELECT si.show_id, si.kind, i.source, i.path, i.width, i.height"]
+    #[sql = "FROM show_images si JOIN images i ON i.id = si.image_id"]
+    list_all_show_image_selections: Stmt,
+    #[sql = "SELECT mi.kind, i.source, i.path, i.width, i.height"]
+    #[sql = "FROM movie_images mi JOIN images i ON i.id = mi.image_id"]
+    #[sql = "WHERE mi.movie_id = ?"]
+    list_movie_image_selections: Stmt,
+    #[sql = "SELECT mi.movie_id, mi.kind, i.source, i.path, i.width, i.height"]
+    #[sql = "FROM movie_images mi JOIN images i ON i.id = mi.image_id"]
+    list_all_movie_image_selections: Stmt,
 
-                                Stmt::new(stmt)
-                            },
-                        )*
-                    })
-                }
-            }
-        }
+    // seasons
+    #[sql = "SELECT s.id, s.show_id, s.season, s.air_date, s.name, s.overview,"]
+    #[sql = "    i.source AS poster_source, i.path AS poster_path,"]
+    #[sql = "    (SELECT COUNT(DISTINCT we.episode) FROM watched_episodes we WHERE we.show_id = s.show_id AND we.season = s.season) AS watched_count,"]
+    #[sql = "    (SELECT COUNT(*) FROM episodes e WHERE e.show_id = s.show_id AND e.season = s.season) AS total_count"]
+    #[sql = "FROM seasons s"]
+    #[sql = "LEFT JOIN season_images si ON si.season_id = s.id AND si.kind = 1"]
+    #[sql = "LEFT JOIN images i ON i.id = si.image_id"]
+    #[sql = "WHERE s.show_id = ? ORDER BY s.season"]
+    list_seasons: Stmt,
+    #[sql = "SELECT episode FROM episodes WHERE show_id = ? AND season = ?"]
+    episode_numbers_for_season: Stmt,
 
-        $write_vis struct $write {
-            read_only: $read_only,
-            $($write_name: Stmt,)*
-        }
+    // episodes
+    #[sql = "SELECT show_id, season, episode FROM episodes WHERE id = ?"]
+    episode_natural_key: Stmt,
+    #[sql = "SELECT id, season, episode FROM episodes WHERE show_id = ?"]
+    list_episode_ids_for_show: Stmt,
+    #[sql = "SELECT e.id, e.show_id, e.season, e.episode, e.absolute_number, e.name, e.overview, e.aired,"]
+    #[sql = "    EXISTS(SELECT 1 FROM pending p WHERE p.episode_id = e.id) AS pending,"]
+    #[sql = "    (SELECT COUNT(*) FROM watched_episodes we WHERE we.show_id = e.show_id AND we.season = e.season AND we.episode = e.episode) AS watched_count"]
+    #[sql = "FROM episodes e"]
+    #[sql = "WHERE e.show_id = ? AND e.season = ?"]
+    #[sql = "ORDER BY e.episode"]
+    list_episodes: Stmt,
+    #[sql = "SELECT er.episode_id, er.source, er.value"]
+    #[sql = "FROM episode_remotes er"]
+    #[sql = "JOIN episodes e ON e.id = er.episode_id"]
+    #[sql = "WHERE e.show_id = ? AND e.season = ?"]
+    list_season_episode_remotes: Stmt,
+    #[sql = "SELECT we.id, we.timestamp, we.season, we.episode, e.id AS episode_id"]
+    #[sql = "FROM watched_episodes we"]
+    #[sql = "JOIN episodes e ON e.show_id = we.show_id AND e.season = we.season AND e.episode = we.episode"]
+    #[sql = "WHERE we.show_id = ?"]
+    #[sql = "ORDER BY we.timestamp DESC"]
+    list_episodes_watched: Stmt,
+    #[sql = "SELECT aired FROM episodes WHERE id = ?"]
+    episode_aired_by_id: Stmt,
 
-        impl $write {
-            fn new(c: &sqll::Connection) -> Result<Self> {
-                unsafe {
-                    Ok(Self {
-                        read_only: $read_only::new(c)?,
-                        $(
-                            $write_name: {
-                                let stmt = c
-                                    .prepare_with($write_sql)
-                                    .persistent()
-                                    .build()
-                                    .context(concat!("Preparing statement ", stringify!($write_name)))?
-                                    .into_send()?;
+    // movies
+    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.sync_source, m.last_synced_at, m.language"]
+    #[sql = "FROM movies m ORDER BY m.title"]
+    list_movies: Stmt,
+    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.sync_source, m.last_synced_at, m.language"]
+    #[sql = "FROM movies m WHERE m.id = ?"]
+    movie_by_id: Stmt,
+    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.sync_source, m.last_synced_at, m.language"]
+    #[sql = "FROM movies m"]
+    #[sql = "JOIN movie_remotes r ON r.movie_id = m.id"]
+    #[sql = "WHERE r.source = ? AND r.value = ?"]
+    movie_by_remote: Stmt,
+    #[sql = "SELECT id, slug, source, value FROM movie_remotes WHERE movie_id = ? ORDER BY id"]
+    list_movie_remotes: Stmt,
+    #[sql = "SELECT movie_id, id, slug, source, value FROM movie_remotes ORDER BY movie_id, id"]
+    list_all_movie_remotes: Stmt,
+    #[sql = "SELECT movie_id FROM movie_remotes WHERE source = ? AND value = ? LIMIT 1"]
+    movie_id_by_remote: Stmt,
+    #[sql = "SELECT release_date FROM movies WHERE id = ?"]
+    movie_released_by_id: Stmt,
 
-                                if stmt.is_read_only() {
-                                    return Err(anyhow!(concat!("Write statement is read-only: ", stringify!($write_name))));
-                                }
+    // watched
+    #[sql = "SELECT we.id, we.timestamp, e.id AS episode_id, NULL AS movie_id, e.show_id"]
+    #[sql = "FROM watched_episodes we"]
+    #[sql = "JOIN episodes e ON e.show_id = we.show_id AND e.season = we.season AND e.episode = we.episode"]
+    #[sql = "WHERE e.id = ?"]
+    #[sql = "ORDER BY we.timestamp DESC"]
+    list_watched_by_episode: Stmt,
+    #[sql = "SELECT id, timestamp, NULL AS episode_id, movie_id, NULL AS show_id"]
+    #[sql = "FROM watched_movies WHERE movie_id = ? ORDER BY timestamp DESC"]
+    list_watched_by_movie: Stmt,
+    #[sql = "SELECT we.id, we.timestamp, we.show_id, we.season, we.episode"]
+    #[sql = "FROM watched_episodes we"]
+    #[sql = "LEFT JOIN episodes e"]
+    #[sql = "    ON e.show_id = we.show_id AND e.season = we.season AND e.episode = we.episode"]
+    #[sql = "WHERE we.show_id = ? AND e.id IS NULL"]
+    #[sql = "ORDER BY we.timestamp ASC"]
+    list_orphaned_for_show: Stmt,
+    // select episodes which have 0 watched by show and season.
+    #[sql = "SELECT id, show_id, season, episode FROM episodes"]
+    #[sql = "WHERE show_id = ? AND season = ?"]
+    #[sql = "    AND NOT EXISTS ("]
+    #[sql = "        SELECT 1 FROM watched_episodes we"]
+    #[sql = "        WHERE we.show_id = episodes.show_id"]
+    #[sql = "        AND we.season = episodes.season"]
+    #[sql = "        AND we.episode = episodes.episode"]
+    #[sql = "    )"]
+    select_unwatched_by_show_season: Stmt,
 
-                                Stmt::new(stmt)
-                            },
-                        )*
-                    })
-                }
-            }
-        }
+    // pending table management
+    #[sql = "SELECT 1 FROM pending WHERE movie_id = ? LIMIT 1"]
+    has_pending_movie: Stmt,
+    #[sql = "SELECT 1 FROM pending WHERE show_id = ? LIMIT 1"]
+    has_pending_episode_for_show: Stmt,
+    #[sql = "SELECT e.aired, p.timestamp"]
+    #[sql = "FROM pending p"]
+    #[sql = "JOIN episodes e ON e.id = p.episode_id"]
+    #[sql = "WHERE p.show_id = ?"]
+    pending_episode_aired_for_show: Stmt,
+    #[sql = "SELECT e.id, e.aired"]
+    #[sql = "FROM episodes e"]
+    #[sql = "WHERE e.show_id = ?1"]
+    #[sql = "    AND e.aired IS NOT NULL"]
+    #[sql = "    AND (?2 OR e.season <> 0)"]
+    #[sql = "    AND NOT EXISTS ("]
+    #[sql = "        SELECT 1 FROM watched_episodes we"]
+    #[sql = "        WHERE we.show_id = e.show_id AND we.season = e.season AND we.episode = e.episode"]
+    #[sql = "    )"]
+    #[sql = "ORDER BY e.season, e.episode"]
+    #[sql = "LIMIT 1"]
+    next_pending_episode_for_show: Stmt,
+    #[sql = "SELECT e.id, e.aired"]
+    #[sql = "FROM episodes e"]
+    #[sql = "WHERE e.show_id = ?"]
+    #[sql = "    AND NOT EXISTS ("]
+    #[sql = "        SELECT 1 FROM watched_episodes we"]
+    #[sql = "        WHERE we.show_id = e.show_id AND we.season = e.season AND we.episode = e.episode"]
+    #[sql = "    )"]
+    #[sql = "ORDER BY e.season, e.episode"]
+    #[sql = "LIMIT 1"]
+    first_unwatched_episode_for_show: Stmt,
+    #[sql = "SELECT m.id, m.release_date"]
+    #[sql = "FROM movies m"]
+    #[sql = "WHERE m.tracked = 1"]
+    #[sql = "    AND (m.release_date IS NOT NULL AND m.release_date <= ?)"]
+    #[sql = "    AND NOT EXISTS (SELECT 1 FROM watched_movies wm WHERE wm.movie_id = m.id)"]
+    #[sql = "    AND NOT EXISTS (SELECT 1 FROM pending p WHERE p.movie_id = m.id)"]
+    movies_needing_pending: Stmt,
+    #[sql = "SELECT episode_id, movie_id"]
+    #[sql = "FROM pending"]
+    #[sql = "WHERE timestamp <= ?"]
+    #[sql = "ORDER BY timestamp DESC"]
+    list_pending_before: Stmt,
+    #[sql = "SELECT e.show_id, s.title AS show_title, e.season, e.episode, e.name AS episode_name, e.aired"]
+    #[sql = "FROM episodes e"]
+    #[sql = "JOIN shows s ON s.id = e.show_id"]
+    #[sql = "WHERE e.id = ?"]
+    pending_episode_detail: Stmt,
+    #[sql = "SELECT title, release_date FROM movies WHERE id = ?"]
+    pending_movie_detail: Stmt,
+    #[sql = "SELECT i.source, i.path"]
+    #[sql = "FROM show_images si JOIN images i ON i.id = si.image_id"]
+    #[sql = "WHERE si.show_id = ? AND si.kind = ?"]
+    image_for_show: Stmt,
+    #[sql = "SELECT i.source, i.path"]
+    #[sql = "FROM movie_images mi JOIN images i ON i.id = mi.image_id"]
+    #[sql = "WHERE mi.movie_id = ? AND mi.kind = ?"]
+    image_for_movie: Stmt,
+    #[sql = "SELECT id FROM seasons WHERE show_id = ? AND season = ?"]
+    season_id_for: Stmt,
+    #[sql = "SELECT e.id, e.aired FROM episodes e"]
+    #[sql = "JOIN episodes c ON c.id = ?2"]
+    #[sql = "WHERE e.show_id = ?1"]
+    #[sql = "    AND (e.season > c.season OR (e.season = c.season AND e.episode > c.episode))"]
+    #[sql = "ORDER BY e.season, e.episode"]
+    #[sql = "LIMIT 1"]
+    next_episode_after: Stmt,
 
-        impl ::core::ops::Deref for $write {
-            type Target = $read_only;
+    // schedule: episodes airing in the next N days
+    #[sql = "SELECT e.show_id, s.title AS show_title,"]
+    #[sql = "        e.id AS episode_id, e.season, e.episode, e.absolute_number,"]
+    #[sql = "        e.name, e.overview, e.aired"]
+    #[sql = "FROM episodes e"]
+    #[sql = "JOIN shows s ON s.id = e.show_id"]
+    #[sql = "WHERE s.tracked = 1"]
+    #[sql = "    AND e.aired > ?"]
+    #[sql = "    AND e.aired <= ?"]
+    #[sql = "ORDER BY e.aired, s.title, e.season, e.episode"]
+    list_schedule: Stmt,
+    #[sql = "SELECT er.episode_id, er.source, er.value"]
+    #[sql = "FROM episode_remotes er"]
+    #[sql = "JOIN episodes e ON e.id = er.episode_id"]
+    #[sql = "JOIN shows s ON s.id = e.show_id"]
+    #[sql = "WHERE s.tracked = 1"]
+    #[sql = "    AND e.aired > ?"]
+    #[sql = "    AND e.aired <= ?"]
+    list_schedule_remotes: Stmt,
 
-            #[inline]
-            fn deref(&self) -> &$read_only {
-                &self.read_only
-            }
-        }
+    // all watched (for import dedup) — see list_all_watched_episodes / list_all_watched_movies
 
-        impl ::core::ops::DerefMut for $write {
-            #[inline]
-            fn deref_mut(&mut self) -> &mut $read_only {
-                &mut self.read_only
-            }
-        }
+    // config
+    #[sql = "SELECT value FROM config WHERE key = ?"]
+    get_config: Stmt,
+
+    // stale-item queries
+    #[sql = "SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at, language, include_specials"]
+    #[sql = "FROM shows"]
+    #[sql = "WHERE tracked = 1"]
+    #[sql = "    AND (last_synced_at IS NULL OR last_synced_at < ?)"]
+    #[sql = "ORDER BY last_synced_at IS NOT NULL, last_synced_at"]
+    shows_needing_sync: Stmt,
+    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.sync_source, m.last_synced_at, m.language"]
+    #[sql = "FROM movies m"]
+    #[sql = "WHERE m.tracked = 1"]
+    #[sql = "    AND (m.last_synced_at IS NULL OR m.last_synced_at < ?)"]
+    #[sql = "ORDER BY m.last_synced_at IS NOT NULL, m.last_synced_at"]
+    movies_needing_sync: Stmt,
+
+    // movie releases
+    #[sql = "SELECT country, release_type, timestamp"]
+    #[sql = "FROM movie_releases"]
+    #[sql = "WHERE movie_id = ?"]
+    #[sql = "ORDER BY timestamp, country, release_type"]
+    list_movie_releases: Stmt,
+    #[sql = "SELECT timestamp"]
+    #[sql = "FROM movie_releases"]
+    #[sql = "WHERE movie_id = ? AND release_type = ?"]
+    #[sql = "ORDER BY timestamp"]
+    movie_release_by_type: Stmt,
+
+    // digital-release pending discovery
+    #[sql = "SELECT m.id, MIN(mr.timestamp) AS release_timestamp"]
+    #[sql = "FROM movies m"]
+    #[sql = "JOIN movie_releases mr ON mr.movie_id = m.id AND mr.release_type = 'digital'"]
+    #[sql = "WHERE m.tracked = 1"]
+    #[sql = "    AND mr.timestamp <= ?"]
+    #[sql = "    AND NOT EXISTS (SELECT 1 FROM watched_movies wm WHERE wm.movie_id = m.id)"]
+    #[sql = "    AND NOT EXISTS (SELECT 1 FROM pending p WHERE p.movie_id = m.id)"]
+    #[sql = "GROUP BY m.id"]
+    movies_needing_pending_digital: Stmt,
+}
+
+#[derive(Statements)]
+struct InnerWrite {
+    #[sql(statements)]
+    read: InnerRead,
+
+    // shows
+    #[sql = "INSERT INTO shows (id, title, first_air, overview, tracked)"]
+    #[sql = "VALUES (?, ?, ?, ?, ?)"]
+    insert_show: Stmt,
+    #[sql = "UPDATE shows"]
+    #[sql = "SET title = ?, first_air = ?, overview = ?, tracked = ?"]
+    #[sql = "WHERE id = ?"]
+    update_show: Stmt,
+    #[sql = "DELETE FROM shows WHERE id = ?"]
+    delete_show: Stmt,
+    #[sql = "UPDATE shows SET tracked = ? WHERE id = ?"]
+    set_show_tracked: Stmt,
+    #[sql = "UPDATE shows SET sync_source = ? WHERE id = ?"]
+    set_show_sync_source: Stmt,
+    #[sql = "UPDATE shows SET language = ? WHERE id = ?"]
+    set_show_language: Stmt,
+    #[sql = "UPDATE shows SET include_specials = ? WHERE id = ?"]
+    set_show_include_specials: Stmt,
+
+    // remotes (one table per owner; source is a numeric enum, value is dynamic)
+    #[sql = "INSERT OR IGNORE INTO show_remotes (id, slug, show_id, source, value) VALUES (?, ?, ?, ?, ?)"]
+    insert_show_remote: Stmt,
+    #[sql = "DELETE FROM show_remotes WHERE id = ?"]
+    delete_show_remote: Stmt,
+    #[sql = "UPDATE show_remotes SET slug = ?, source = ?, value = ? WHERE id = ?"]
+    update_show_remote: Stmt,
+
+    // images (shows and movies share one table)
+    #[sql = "DELETE FROM images WHERE show_id = ?"]
+    delete_show_images: Stmt,
+    #[sql = "INSERT INTO images (id, show_id, kind, source, path, width, height, rank) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"]
+    #[sql = "ON CONFLICT(show_id, kind, path) WHERE show_id IS NOT NULL DO NOTHING"]
+    insert_show_image: Stmt,
+    #[sql = "INSERT INTO images (id, episode_id, kind, source, path, width, height) VALUES (?, ?, ?, ?, ?, ?, ?)"]
+    #[sql = "ON CONFLICT(episode_id, kind, path) WHERE episode_id IS NOT NULL DO NOTHING"]
+    insert_episode_image: Stmt,
+    #[sql = "DELETE FROM images WHERE episode_id IN (SELECT id FROM episodes WHERE show_id = ?)"]
+    delete_episode_images_for_show: Stmt,
+    #[sql = "DELETE FROM images WHERE movie_id = ?"]
+    delete_movie_images: Stmt,
+    #[sql = "INSERT INTO images (id, movie_id, kind, source, path, width, height, rank) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"]
+    #[sql = "ON CONFLICT(movie_id, kind, path) WHERE movie_id IS NOT NULL DO NOTHING"]
+    insert_movie_image: Stmt,
+    #[sql = "DELETE FROM season_images WHERE season_id = ? AND kind = ?"]
+    delete_season_image_selection: Stmt,
+
+    // selection tables
+    #[sql = "INSERT OR REPLACE INTO show_images (show_id, kind, image_id) VALUES (?, ?, ?)"]
+    set_show_image_selection: Stmt,
+    #[sql = "DELETE FROM show_images WHERE show_id = ? AND kind = ?"]
+    delete_show_image_selection: Stmt,
+    #[sql = "INSERT OR REPLACE INTO movie_images (movie_id, kind, image_id) VALUES (?, ?, ?)"]
+    set_movie_image_selection: Stmt,
+    #[sql = "DELETE FROM movie_images WHERE movie_id = ? AND kind = ?"]
+    delete_movie_image_selection: Stmt,
+    #[sql = "INSERT OR REPLACE INTO episode_images (episode_id, kind, image_id) VALUES (?, ?, ?)"]
+    set_episode_image_selection: Stmt,
+    #[sql = "DELETE FROM images WHERE season_id = ?"]
+    delete_season_images: Stmt,
+    #[sql = "INSERT INTO images (id, season_id, kind, source, path, width, height, rank) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"]
+    #[sql = "ON CONFLICT(season_id, kind, path) WHERE season_id IS NOT NULL DO NOTHING"]
+    insert_season_image: Stmt,
+    #[sql = "INSERT OR REPLACE INTO season_images (season_id, kind, image_id) VALUES (?, ?, ?)"]
+    set_season_image_selection: Stmt,
+
+    // seasons
+    #[sql = "INSERT INTO seasons (id, show_id, season, air_date, name, overview)"]
+    #[sql = "VALUES (?, ?, ?, ?, ?, ?)"]
+    #[sql = "ON CONFLICT(show_id, season) DO UPDATE SET"]
+    #[sql = "    air_date  = excluded.air_date,"]
+    #[sql = "    name      = excluded.name,"]
+    #[sql = "    overview  = excluded.overview"]
+    upsert_season: Stmt,
+    #[sql = "DELETE FROM seasons WHERE show_id = ?1 AND season = ?2"]
+    delete_season: Stmt,
+    #[sql = "DELETE FROM episodes WHERE show_id = ?1 AND season = ?2"]
+    delete_season_episodes: Stmt,
+    #[sql = "DELETE FROM episodes WHERE show_id = ? AND season = ? AND episode = ?"]
+    delete_episode_by_place: Stmt,
+
+    // episodes
+    #[sql = "INSERT INTO episodes (id, show_id, season, episode, absolute_number, name, overview, aired)"]
+    #[sql = "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"]
+    #[sql = "ON CONFLICT(show_id, season, episode) DO UPDATE SET"]
+    #[sql = "    absolute_number = excluded.absolute_number,"]
+    #[sql = "    name            = excluded.name,"]
+    #[sql = "    overview        = excluded.overview,"]
+    #[sql = "    aired           = excluded.aired"]
+    upsert_episode: Stmt,
+    #[sql = "DELETE FROM episode_remotes WHERE episode_id = ?"]
+    delete_episode_remotes: Stmt,
+    #[sql = "INSERT INTO episode_remotes (id, episode_id, source, value) VALUES (?, ?, ?, ?)"]
+    insert_episode_remote: Stmt,
+    #[sql = "UPDATE episodes SET remote_id = ? WHERE id = ?"]
+    set_episode_remote: Stmt,
+    #[sql = "UPDATE episodes SET aired = ? WHERE show_id = ? AND season = ? AND episode = ?"]
+    update_episode_aired: Stmt,
+
+    // movies
+    #[sql = "INSERT INTO movies (id, title, release_date, overview, tracked)"]
+    #[sql = "VALUES (?, ?, ?, ?, ?)"]
+    insert_movie: Stmt,
+    #[sql = "UPDATE movies SET tracked = ? WHERE id = ?"]
+    set_movie_tracked: Stmt,
+    #[sql = "UPDATE movies SET sync_source = ? WHERE id = ?"]
+    set_movie_sync_source: Stmt,
+    #[sql = "UPDATE movies SET language = ? WHERE id = ?"]
+    set_movie_language: Stmt,
+    #[sql = "UPDATE movies"]
+    #[sql = "SET title = ?, release_date = ?, overview = ?"]
+    #[sql = "WHERE id = ?"]
+    update_movie: Stmt,
+    #[sql = "DELETE FROM movies WHERE id = ?"]
+    delete_movie: Stmt,
+    #[sql = "INSERT OR IGNORE INTO movie_remotes (id, slug, movie_id, source, value) VALUES (?, ?, ?, ?, ?)"]
+    insert_movie_remote: Stmt,
+    #[sql = "DELETE FROM movie_remotes WHERE id = ?"]
+    delete_movie_remote: Stmt,
+    #[sql = "UPDATE movie_remotes SET slug = ?, source = ?, value = ? WHERE id = ?"]
+    update_movie_remote: Stmt,
+
+    // watched
+    #[sql = "INSERT OR IGNORE INTO watched_episodes (id, timestamp, show_id, season, episode)"]
+    #[sql = "VALUES (?, ?, ?, ?, ?)"]
+    insert_watched_episode: Stmt,
+    #[sql = "INSERT OR IGNORE INTO watched_movies (id, timestamp, movie_id)"]
+    #[sql = "VALUES (?, ?, ?)"]
+    insert_watched_movie: Stmt,
+    #[sql = "DELETE FROM watched_episodes WHERE id = ?"]
+    delete_watched_episode: Stmt,
+    #[sql = "DELETE FROM watched_movies WHERE id = ?"]
+    delete_watched_movie: Stmt,
+    #[sql = "UPDATE watched_episodes SET season = ?, episode = ? WHERE id = ?"]
+    move_watched_episode: Stmt,
+
+    // pending table management
+    #[sql = "INSERT INTO pending (id, timestamp, show_id, episode_id) VALUES (?, ?, ?, ?)"]
+    #[sql = "ON CONFLICT(show_id) WHERE show_id IS NOT NULL"]
+    #[sql = "    DO UPDATE SET episode_id = excluded.episode_id, timestamp = excluded.timestamp"]
+    upsert_pending_episode: Stmt,
+    #[sql = "INSERT INTO pending (id, timestamp, movie_id) VALUES (?, ?, ?)"]
+    #[sql = "ON CONFLICT(movie_id) WHERE movie_id IS NOT NULL"]
+    #[sql = "    DO UPDATE SET timestamp = excluded.timestamp"]
+    upsert_pending_movie: Stmt,
+    #[sql = "UPDATE pending SET timestamp = ? WHERE show_id = ?"]
+    update_pending_episode_timestamp: Stmt,
+    #[sql = "DELETE FROM pending WHERE show_id = ?"]
+    delete_pending_episode: Stmt,
+    #[sql = "DELETE FROM pending WHERE movie_id = ?"]
+    delete_pending_movie: Stmt,
+
+    // config
+    #[sql = "INSERT INTO config (key, value) VALUES (?, ?)"]
+    #[sql = "ON CONFLICT (key) DO UPDATE SET value = excluded.value"]
+    set_config: Stmt,
+    #[sql = "DELETE FROM config WHERE key = ?"]
+    delete_config: Stmt,
+
+    // movie releases
+    #[sql = "INSERT INTO movie_releases (id, movie_id, country, release_type, timestamp)"]
+    #[sql = "VALUES (?, ?, ?, ?, ?)"]
+    #[sql = "ON CONFLICT(movie_id, country, release_type)"]
+    #[sql = "    DO UPDATE SET timestamp = excluded.timestamp"]
+    upsert_movie_release: Stmt,
+
+    // last_synced_at stamping
+    #[sql = "UPDATE shows SET last_synced_at = ? WHERE id = ?"]
+    set_show_synced_at: Stmt,
+    #[sql = "UPDATE movies SET last_synced_at = ? WHERE id = ?"]
+    set_movie_synced_at: Stmt,
+}
+
+impl Deref for InnerWrite {
+    type Target = InnerRead;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.read
     }
 }
 
-statements! {
-    struct InnerRead {
-        // shows
-        list_shows: r#"
-            SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at, language, include_specials
-            FROM shows ORDER BY title
-        "#,
-        show_by_id: r#"
-            SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at, language, include_specials
-            FROM shows WHERE id = ?
-        "#,
-        shows_by_remote: r#"
-            SELECT s.id, s.title, s.first_air, s.overview, s.tracked, s.sync_source, s.last_synced_at, s.language, s.include_specials
-            FROM shows s
-            JOIN show_remotes r ON r.show_id = s.id
-            WHERE r.source = ? AND r.value = ?
-        "#,
-
-        // remotes (one table per owner; source is a numeric enum, value is dynamic)
-        list_show_remotes: r#"
-            SELECT id, slug, source, value FROM show_remotes WHERE show_id = ? ORDER BY id
-        "#,
-        list_all_show_remotes: r#"
-            SELECT show_id, id, slug, source, value FROM show_remotes ORDER BY show_id, id
-        "#,
-        show_id_by_remote: r#"
-            SELECT show_id FROM show_remotes WHERE source = ? AND value = ? LIMIT 1
-        "#,
-
-        // images (shows and movies share one table)
-        list_show_images: r#"
-            SELECT id, kind, source, path FROM images
-            WHERE show_id = ? ORDER BY kind, rank, id
-        "#,
-        list_all_show_images: r#"
-            SELECT id, kind, source, path, show_id FROM images
-            WHERE show_id IS NOT NULL ORDER BY show_id, kind, rank, id
-        "#,
-        list_season_episode_screenshots: r#"
-            SELECT ei.episode_id, i.source, i.path, i.width, i.height
-            FROM episode_images ei JOIN images i ON i.id = ei.image_id
-            WHERE ei.kind = ? AND ei.episode_id IN (SELECT id FROM episodes WHERE show_id = ? AND season = ?)
-        "#,
-        list_movie_images: r#"
-            SELECT id, kind, source, path FROM images
-            WHERE movie_id = ? ORDER BY kind, rank, id
-        "#,
-        list_all_movie_images: r#"
-            SELECT id, kind, source, path, movie_id FROM images
-            WHERE movie_id IS NOT NULL ORDER BY movie_id, kind, rank, id
-        "#,
-        image_by_id: r#"
-            SELECT kind, show_id, movie_id, season_id FROM images WHERE id = ?
-        "#,
-        list_season_images: r#"
-            SELECT id, kind, source, path FROM images
-            WHERE season_id = ? ORDER BY kind, rank, id
-        "#,
-        show_id_for_season: r#"
-            SELECT show_id FROM seasons WHERE id = ?
-        "#,
-
-        // selection tables
-        list_show_image_selections: r#"
-            SELECT si.kind, i.source, i.path, i.width, i.height
-            FROM show_images si JOIN images i ON i.id = si.image_id
-            WHERE si.show_id = ?
-        "#,
-        list_all_show_image_selections: r#"
-            SELECT si.show_id, si.kind, i.source, i.path, i.width, i.height
-            FROM show_images si JOIN images i ON i.id = si.image_id
-        "#,
-        list_movie_image_selections: r#"
-            SELECT mi.kind, i.source, i.path, i.width, i.height
-            FROM movie_images mi JOIN images i ON i.id = mi.image_id
-            WHERE mi.movie_id = ?
-        "#,
-        list_all_movie_image_selections: r#"
-            SELECT mi.movie_id, mi.kind, i.source, i.path, i.width, i.height
-            FROM movie_images mi JOIN images i ON i.id = mi.image_id
-        "#,
-
-        // seasons
-        list_seasons: r#"
-            SELECT s.id, s.show_id, s.season, s.air_date, s.name, s.overview,
-                i.source AS poster_source, i.path AS poster_path,
-                (SELECT COUNT(DISTINCT we.episode) FROM watched_episodes we WHERE we.show_id = s.show_id AND we.season = s.season) AS watched_count,
-                (SELECT COUNT(*) FROM episodes e WHERE e.show_id = s.show_id AND e.season = s.season) AS total_count
-            FROM seasons s
-            LEFT JOIN season_images si ON si.season_id = s.id AND si.kind = 1
-            LEFT JOIN images i ON i.id = si.image_id
-            WHERE s.show_id = ? ORDER BY s.season
-        "#,
-        episode_numbers_for_season: r#"
-            SELECT episode FROM episodes WHERE show_id = ? AND season = ?
-        "#,
-
-        // episodes
-        episode_natural_key: r#"
-            SELECT show_id, season, episode FROM episodes WHERE id = ?
-        "#,
-        list_episode_ids_for_show: r#"
-            SELECT id, season, episode FROM episodes WHERE show_id = ?
-        "#,
-        list_episodes: r#"
-            SELECT e.id, e.show_id, e.season, e.episode, e.absolute_number, e.name, e.overview, e.aired,
-                EXISTS(SELECT 1 FROM pending p WHERE p.episode_id = e.id) AS pending,
-                (SELECT COUNT(*) FROM watched_episodes we WHERE we.show_id = e.show_id AND we.season = e.season AND we.episode = e.episode) AS watched_count
-            FROM episodes e
-            WHERE e.show_id = ? AND e.season = ?
-            ORDER BY e.episode
-        "#,
-        list_season_episode_remotes: r#"
-            SELECT er.episode_id, er.source, er.value
-            FROM episode_remotes er
-            JOIN episodes e ON e.id = er.episode_id
-            WHERE e.show_id = ? AND e.season = ?
-        "#,
-        list_episodes_watched: r#"
-            SELECT we.id, we.timestamp, we.season, we.episode, e.id AS episode_id
-            FROM watched_episodes we
-            JOIN episodes e ON e.show_id = we.show_id AND e.season = we.season AND e.episode = we.episode
-            WHERE we.show_id = ?
-            ORDER BY we.timestamp DESC
-        "#,
-        episode_aired_by_id: r#"
-            SELECT aired FROM episodes WHERE id = ?
-        "#,
-
-        // movies
-        list_movies: r#"
-            SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.sync_source, m.last_synced_at, m.language
-            FROM movies m ORDER BY m.title
-        "#,
-        movie_by_id: r#"
-            SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.sync_source, m.last_synced_at, m.language
-            FROM movies m WHERE m.id = ?
-        "#,
-        movie_by_remote: r#"
-            SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.sync_source, m.last_synced_at, m.language
-            FROM movies m
-            JOIN movie_remotes r ON r.movie_id = m.id
-            WHERE r.source = ? AND r.value = ?
-        "#,
-        list_movie_remotes: r#"
-            SELECT id, slug, source, value FROM movie_remotes WHERE movie_id = ? ORDER BY id
-        "#,
-        list_all_movie_remotes: r#"
-            SELECT movie_id, id, slug, source, value FROM movie_remotes ORDER BY movie_id, id
-        "#,
-        movie_id_by_remote: r#"
-            SELECT movie_id FROM movie_remotes WHERE source = ? AND value = ? LIMIT 1
-        "#,
-        movie_released_by_id: r#"
-            SELECT release_date FROM movies WHERE id = ?
-        "#,
-
-        // watched
-        list_watched_by_episode: r#"
-            SELECT we.id, we.timestamp, e.id AS episode_id, NULL AS movie_id, e.show_id
-            FROM watched_episodes we
-            JOIN episodes e ON e.show_id = we.show_id AND e.season = we.season AND e.episode = we.episode
-            WHERE e.id = ?
-            ORDER BY we.timestamp DESC
-        "#,
-        list_watched_by_movie: r#"
-            SELECT id, timestamp, NULL AS episode_id, movie_id, NULL AS show_id
-            FROM watched_movies WHERE movie_id = ? ORDER BY timestamp DESC
-        "#,
-        list_orphaned_for_show: r#"
-            SELECT we.id, we.timestamp, we.show_id, we.season, we.episode
-            FROM watched_episodes we
-            LEFT JOIN episodes e
-                ON e.show_id = we.show_id AND e.season = we.season AND e.episode = we.episode
-            WHERE we.show_id = ? AND e.id IS NULL
-            ORDER BY we.timestamp ASC
-        "#,
-        // select episodes which have 0 watched by show and season.
-        select_unwatched_by_show_season: r#"
-            SELECT id, show_id, season, episode FROM episodes
-            WHERE show_id = ? AND season = ?
-              AND NOT EXISTS (
-                  SELECT 1 FROM watched_episodes we
-                  WHERE we.show_id = episodes.show_id
-                    AND we.season = episodes.season
-                    AND we.episode = episodes.episode
-              )
-        "#,
-
-        // pending table management
-        has_pending_movie: r#"SELECT 1 FROM pending WHERE movie_id = ? LIMIT 1"#,
-        has_pending_episode_for_show: r#"
-            SELECT 1 FROM pending WHERE show_id = ? LIMIT 1
-        "#,
-        pending_episode_aired_for_show: r#"
-            SELECT e.aired, p.timestamp
-            FROM pending p
-            JOIN episodes e ON e.id = p.episode_id
-            WHERE p.show_id = ?
-        "#,
-        next_pending_episode_for_show: r#"
-            SELECT e.id, e.aired
-            FROM episodes e
-            WHERE e.show_id = ?1
-              AND e.aired IS NOT NULL
-              AND (?2 OR e.season <> 0)
-              AND NOT EXISTS (
-                  SELECT 1 FROM watched_episodes we
-                  WHERE we.show_id = e.show_id AND we.season = e.season AND we.episode = e.episode
-              )
-            ORDER BY e.season, e.episode
-            LIMIT 1
-        "#,
-        first_unwatched_episode_for_show: r#"
-            SELECT e.id, e.aired
-            FROM episodes e
-            WHERE e.show_id = ?
-              AND NOT EXISTS (
-                  SELECT 1 FROM watched_episodes we
-                  WHERE we.show_id = e.show_id AND we.season = e.season AND we.episode = e.episode
-              )
-            ORDER BY e.season, e.episode
-            LIMIT 1
-        "#,
-        movies_needing_pending: r#"
-            SELECT m.id, m.release_date
-            FROM movies m
-            WHERE m.tracked = 1
-              AND (m.release_date IS NOT NULL AND m.release_date <= ?)
-              AND NOT EXISTS (SELECT 1 FROM watched_movies wm WHERE wm.movie_id = m.id)
-              AND NOT EXISTS (SELECT 1 FROM pending p WHERE p.movie_id = m.id)
-        "#,
-        list_pending_before: r#"
-            SELECT episode_id, movie_id
-            FROM pending
-            WHERE timestamp <= ?
-            ORDER BY timestamp DESC
-        "#,
-        pending_episode_detail: r#"
-            SELECT e.show_id, s.title AS show_title, e.season, e.episode, e.name AS episode_name, e.aired
-            FROM episodes e
-            JOIN shows s ON s.id = e.show_id
-            WHERE e.id = ?
-        "#,
-        pending_movie_detail: r#"
-            SELECT title, release_date FROM movies WHERE id = ?
-        "#,
-        image_for_show: r#"
-            SELECT i.source, i.path
-            FROM show_images si JOIN images i ON i.id = si.image_id
-            WHERE si.show_id = ? AND si.kind = ?
-        "#,
-        image_for_movie: r#"
-            SELECT i.source, i.path
-            FROM movie_images mi JOIN images i ON i.id = mi.image_id
-            WHERE mi.movie_id = ? AND mi.kind = ?
-        "#,
-        season_id_for: r#"
-            SELECT id FROM seasons WHERE show_id = ? AND season = ?
-        "#,
-        next_episode_after: r#"
-            SELECT e.id, e.aired FROM episodes e
-            JOIN episodes c ON c.id = ?2
-            WHERE e.show_id = ?1
-              AND (e.season > c.season OR (e.season = c.season AND e.episode > c.episode))
-            ORDER BY e.season, e.episode
-            LIMIT 1
-        "#,
-
-        // schedule: episodes airing in the next N days
-        list_schedule: r#"
-            SELECT e.show_id, s.title AS show_title,
-                   e.id AS episode_id, e.season, e.episode, e.absolute_number,
-                   e.name, e.overview, e.aired
-            FROM episodes e
-            JOIN shows s ON s.id = e.show_id
-            WHERE s.tracked = 1
-              AND e.aired > ?
-              AND e.aired <= ?
-            ORDER BY e.aired, s.title, e.season, e.episode
-        "#,
-        list_schedule_remotes: r#"
-            SELECT er.episode_id, er.source, er.value
-            FROM episode_remotes er
-            JOIN episodes e ON e.id = er.episode_id
-            JOIN shows s ON s.id = e.show_id
-            WHERE s.tracked = 1
-              AND e.aired > ?
-              AND e.aired <= ?
-        "#,
-
-        // all watched (for import dedup) — see list_all_watched_episodes / list_all_watched_movies
-
-        // config
-        get_config: r#"
-            SELECT value FROM config WHERE key = ?
-        "#,
-
-        // stale-item queries
-        shows_needing_sync: r#"
-            SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at, language, include_specials
-            FROM shows
-            WHERE tracked = 1
-              AND (last_synced_at IS NULL OR last_synced_at < ?)
-            ORDER BY last_synced_at IS NOT NULL, last_synced_at
-        "#,
-        movies_needing_sync: r#"
-            SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.sync_source, m.last_synced_at, m.language
-            FROM movies m
-            WHERE m.tracked = 1
-              AND (m.last_synced_at IS NULL OR m.last_synced_at < ?)
-            ORDER BY m.last_synced_at IS NOT NULL, m.last_synced_at
-        "#,
-
-        // movie releases
-        list_movie_releases: r#"
-            SELECT country, release_type, timestamp
-            FROM movie_releases
-            WHERE movie_id = ?
-            ORDER BY timestamp, country, release_type
-        "#,
-        movie_release_by_type: r#"
-            SELECT timestamp
-            FROM movie_releases
-            WHERE movie_id = ? AND release_type = ?
-            ORDER BY timestamp
-        "#,
-
-        // digital-release pending discovery
-        movies_needing_pending_digital: r#"
-            SELECT m.id, MIN(mr.timestamp) AS release_timestamp
-            FROM movies m
-            JOIN movie_releases mr ON mr.movie_id = m.id AND mr.release_type = 'digital'
-            WHERE m.tracked = 1
-              AND mr.timestamp <= ?
-              AND NOT EXISTS (SELECT 1 FROM watched_movies wm WHERE wm.movie_id = m.id)
-              AND NOT EXISTS (SELECT 1 FROM pending p WHERE p.movie_id = m.id)
-            GROUP BY m.id
-        "#,
-    }
-
-    struct InnerWrite {
-        // shows
-        insert_show: r#"
-            INSERT INTO shows (id, title, first_air, overview, tracked)
-            VALUES (?, ?, ?, ?, ?)
-        "#,
-        update_show: r#"
-            UPDATE shows
-            SET title = ?, first_air = ?, overview = ?, tracked = ?
-            WHERE id = ?
-        "#,
-        delete_show: r#"
-            DELETE FROM shows WHERE id = ?
-        "#,
-        set_show_tracked: r#"
-            UPDATE shows SET tracked = ? WHERE id = ?
-        "#,
-        set_show_sync_source: r#"
-            UPDATE shows SET sync_source = ? WHERE id = ?
-        "#,
-        set_show_language: r#"
-            UPDATE shows SET language = ? WHERE id = ?
-        "#,
-        set_show_include_specials: r#"
-            UPDATE shows SET include_specials = ? WHERE id = ?
-        "#,
-
-        // remotes (one table per owner; source is a numeric enum, value is dynamic)
-        insert_show_remote: r#"
-            INSERT OR IGNORE INTO show_remotes (id, slug, show_id, source, value) VALUES (?, ?, ?, ?, ?)
-        "#,
-        delete_show_remote: r#"
-            DELETE FROM show_remotes WHERE id = ?
-        "#,
-        update_show_remote: r#"
-            UPDATE show_remotes SET slug = ?, source = ?, value = ? WHERE id = ?
-        "#,
-
-        // images (shows and movies share one table)
-        delete_show_images: r#"
-            DELETE FROM images WHERE show_id = ?
-        "#,
-        insert_show_image: r#"
-            INSERT INTO images (id, show_id, kind, source, path, width, height, rank) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(show_id, kind, path) WHERE show_id IS NOT NULL DO NOTHING
-        "#,
-        insert_episode_image: r#"
-            INSERT INTO images (id, episode_id, kind, source, path, width, height) VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(episode_id, kind, path) WHERE episode_id IS NOT NULL DO NOTHING
-        "#,
-        delete_episode_images_for_show: r#"
-            DELETE FROM images WHERE episode_id IN (SELECT id FROM episodes WHERE show_id = ?)
-        "#,
-        delete_movie_images: r#"
-            DELETE FROM images WHERE movie_id = ?
-        "#,
-        insert_movie_image: r#"
-            INSERT INTO images (id, movie_id, kind, source, path, width, height, rank) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(movie_id, kind, path) WHERE movie_id IS NOT NULL DO NOTHING
-        "#,
-        delete_season_image_selection: r#"
-            DELETE FROM season_images WHERE season_id = ? AND kind = ?
-        "#,
-
-        // selection tables
-        set_show_image_selection: r#"
-            INSERT OR REPLACE INTO show_images (show_id, kind, image_id) VALUES (?, ?, ?)
-        "#,
-        delete_show_image_selection: r#"
-            DELETE FROM show_images WHERE show_id = ? AND kind = ?
-        "#,
-        set_movie_image_selection: r#"
-            INSERT OR REPLACE INTO movie_images (movie_id, kind, image_id) VALUES (?, ?, ?)
-        "#,
-        delete_movie_image_selection: r#"
-            DELETE FROM movie_images WHERE movie_id = ? AND kind = ?
-        "#,
-        set_episode_image_selection: r#"
-            INSERT OR REPLACE INTO episode_images (episode_id, kind, image_id) VALUES (?, ?, ?)
-        "#,
-        delete_season_images: r#"
-            DELETE FROM images WHERE season_id = ?
-        "#,
-        insert_season_image: r#"
-            INSERT INTO images (id, season_id, kind, source, path, width, height, rank) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(season_id, kind, path) WHERE season_id IS NOT NULL DO NOTHING
-        "#,
-        set_season_image_selection: r#"
-            INSERT OR REPLACE INTO season_images (season_id, kind, image_id) VALUES (?, ?, ?)
-        "#,
-
-        // seasons
-        upsert_season: r#"
-            INSERT INTO seasons (id, show_id, season, air_date, name, overview)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(show_id, season) DO UPDATE SET
-                air_date  = excluded.air_date,
-                name      = excluded.name,
-                overview  = excluded.overview
-        "#,
-        delete_season: r#"DELETE FROM seasons WHERE show_id = ?1 AND season = ?2"#,
-        delete_season_episodes: r#"DELETE FROM episodes WHERE show_id = ?1 AND season = ?2"#,
-        delete_episode_by_place: r#"
-            DELETE FROM episodes WHERE show_id = ? AND season = ? AND episode = ?
-        "#,
-
-        // episodes
-        upsert_episode: r#"
-            INSERT INTO episodes (id, show_id, season, episode, absolute_number, name, overview, aired)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(show_id, season, episode) DO UPDATE SET
-                absolute_number = excluded.absolute_number,
-                name            = excluded.name,
-                overview        = excluded.overview,
-                aired           = excluded.aired
-        "#,
-        delete_episode_remotes: r#"
-            DELETE FROM episode_remotes WHERE episode_id = ?
-        "#,
-        insert_episode_remote: r#"
-            INSERT INTO episode_remotes (id, episode_id, source, value) VALUES (?, ?, ?, ?)
-        "#,
-        set_episode_remote: r#"
-            UPDATE episodes SET remote_id = ? WHERE id = ?
-        "#,
-        update_episode_aired: r#"
-            UPDATE episodes SET aired = ? WHERE show_id = ? AND season = ? AND episode = ?
-        "#,
-
-        // movies
-        insert_movie: r#"
-            INSERT INTO movies (id, title, release_date, overview, tracked)
-            VALUES (?, ?, ?, ?, ?)
-        "#,
-        set_movie_tracked: r#"
-            UPDATE movies SET tracked = ? WHERE id = ?
-        "#,
-        set_movie_sync_source: r#"
-            UPDATE movies SET sync_source = ? WHERE id = ?
-        "#,
-        set_movie_language: r#"
-            UPDATE movies SET language = ? WHERE id = ?
-        "#,
-        update_movie: r#"
-            UPDATE movies
-            SET title = ?, release_date = ?, overview = ?
-            WHERE id = ?
-        "#,
-        delete_movie: r#"
-            DELETE FROM movies WHERE id = ?
-        "#,
-        insert_movie_remote: r#"
-            INSERT OR IGNORE INTO movie_remotes (id, slug, movie_id, source, value) VALUES (?, ?, ?, ?, ?)
-        "#,
-        delete_movie_remote: r#"
-            DELETE FROM movie_remotes WHERE id = ?
-        "#,
-        update_movie_remote: r#"
-            UPDATE movie_remotes SET slug = ?, source = ?, value = ? WHERE id = ?
-        "#,
-
-        // watched
-        insert_watched_episode: r#"
-            INSERT OR IGNORE INTO watched_episodes (id, timestamp, show_id, season, episode)
-            VALUES (?, ?, ?, ?, ?)
-        "#,
-        insert_watched_movie: r#"
-            INSERT OR IGNORE INTO watched_movies (id, timestamp, movie_id)
-            VALUES (?, ?, ?)
-        "#,
-        delete_watched_episode: r#"
-            DELETE FROM watched_episodes WHERE id = ?
-        "#,
-        delete_watched_movie: r#"
-            DELETE FROM watched_movies WHERE id = ?
-        "#,
-        move_watched_episode: r#"
-            UPDATE watched_episodes SET season = ?, episode = ? WHERE id = ?
-        "#,
-
-        // pending table management
-        upsert_pending_episode: r#"
-            INSERT INTO pending (id, timestamp, show_id, episode_id) VALUES (?, ?, ?, ?)
-            ON CONFLICT(show_id) WHERE show_id IS NOT NULL
-                DO UPDATE SET episode_id = excluded.episode_id, timestamp = excluded.timestamp
-        "#,
-        upsert_pending_movie: r#"
-            INSERT INTO pending (id, timestamp, movie_id) VALUES (?, ?, ?)
-            ON CONFLICT(movie_id) WHERE movie_id IS NOT NULL
-                DO UPDATE SET timestamp = excluded.timestamp
-        "#,
-        update_pending_episode_timestamp: r#"
-            UPDATE pending SET timestamp = ? WHERE show_id = ?
-        "#,
-        delete_pending_episode: r#"DELETE FROM pending WHERE show_id = ?"#,
-        delete_pending_movie: r#"DELETE FROM pending WHERE movie_id = ?"#,
-
-        // config
-        set_config: r#"
-            INSERT INTO config (key, value) VALUES (?, ?)
-            ON CONFLICT (key) DO UPDATE SET value = excluded.value
-        "#,
-        delete_config: r#"
-            DELETE FROM config WHERE key = ?
-        "#,
-
-        // movie releases
-        upsert_movie_release: r#"
-            INSERT INTO movie_releases (id, movie_id, country, release_type, timestamp)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(movie_id, country, release_type)
-                DO UPDATE SET timestamp = excluded.timestamp
-        "#,
-
-        // last_synced_at stamping
-        set_show_synced_at: r#"
-            UPDATE shows SET last_synced_at = ? WHERE id = ?
-        "#,
-        set_movie_synced_at: r#"
-            UPDATE movies SET last_synced_at = ? WHERE id = ?
-        "#,
+impl DerefMut for InnerWrite {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.read
     }
 }
 
@@ -1108,136 +1045,8 @@ pub(crate) enum OpenMode {
     Bulk,
 }
 
-struct State {
-    inner: Box<[UnsafeCell<InnerRead>]>,
-    // Bit set of which inner connections are in use.
-    used: AtomicU64,
-    write: UnsafeCell<InnerWrite>,
-    wr: usize,
-    s: Arc<Semaphore>,
-}
-
-unsafe impl Send for State {}
-unsafe impl Sync for State {}
-
-struct SharedState {
-    read: NonNull<InnerRead>,
-    state: Arc<State>,
-    index: usize,
-    _permit: OwnedSemaphorePermit,
-}
-
-impl Deref for SharedState {
-    type Target = InnerRead;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        unsafe { self.read.as_ref() }
-    }
-}
-
-impl DerefMut for SharedState {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { self.read.as_mut() }
-    }
-}
-
-unsafe impl Send for SharedState {}
-
-impl Drop for SharedState {
-    fn drop(&mut self) {
-        // Mark the connection as unused again. We can do this without locking
-        // because each permit corresponds to one bit in the used set.
-        self.state
-            .used
-            .fetch_and(!(1 << self.index), Ordering::AcqRel);
-    }
-}
-
-struct ExclusiveState {
-    write: NonNull<InnerWrite>,
-    _state: Arc<State>,
-    _permit: OwnedSemaphorePermit,
-}
-
-impl Deref for ExclusiveState {
-    type Target = InnerWrite;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        unsafe { self.write.as_ref() }
-    }
-}
-
-impl DerefMut for ExclusiveState {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { self.write.as_mut() }
-    }
-}
-
-unsafe impl Send for ExclusiveState {}
-
-impl State {
-    async fn shared(self: Arc<Self>) -> SharedState {
-        let permit = self
-            .s
-            .clone()
-            .acquire_owned()
-            .await
-            .expect("semaphore closed");
-
-        // Find the first unused connection in the used set, mark it as used,
-        // and return it. We can do this without locking because each permit
-        // corresponds to one bit in the used set.
-        let index = loop {
-            let value = self.used.load(Ordering::Acquire);
-            let index = value.trailing_ones();
-
-            if self
-                .used
-                .compare_exchange(
-                    value,
-                    value | (1 << index),
-                    Ordering::AcqRel,
-                    Ordering::Acquire,
-                )
-                .is_ok()
-            {
-                break index as usize;
-            }
-        };
-
-        SharedState {
-            read: unsafe {
-                let slice = self.inner[index].get();
-                NonNull::new_unchecked(&mut *slice)
-            },
-            state: self,
-            index,
-            _permit: permit,
-        }
-    }
-
-    async fn exclusive(self: Arc<Self>) -> ExclusiveState {
-        let permit = self
-            .s
-            .clone()
-            .acquire_many_owned(self.wr as u32)
-            .await
-            .expect("semaphore closed");
-
-        ExclusiveState {
-            write: unsafe { NonNull::new_unchecked(&mut *self.write.get()) },
-            _state: self,
-            _permit: permit,
-        }
-    }
-}
-
 pub(crate) struct Database {
-    inner: Arc<State>,
+    inner: Arc<Pool<InnerRead, InnerWrite>>,
 }
 
 impl Clone for Database {
@@ -1261,44 +1070,27 @@ impl Database {
 
         let path = path.as_ref();
 
-        let mut read = Vec::with_capacity(read_concurrency);
-
-        let c = OpenOptions::new()
-            .extended_result_codes()
-            .read_write()
-            .create()
-            .no_mutex()
-            .open(path.as_os_str())
-            .with_context(|| anyhow!("Opening database at {}", path.display()))?;
-
-        do_migrations(&c).context("Running migrations")?;
-
-        ensure_mode(&c, mode).context("Setting database mode")?;
-
-        let write = UnsafeCell::new(InnerWrite::new(&c).context("Preparing statements")?);
-
-        for _ in 0..read_concurrency {
+        {
             let c = OpenOptions::new()
                 .extended_result_codes()
-                .read_only()
+                .read_write()
+                .create()
                 .no_mutex()
                 .open(path.as_os_str())
                 .with_context(|| anyhow!("Opening database at {}", path.display()))?;
 
-            ensure_mode(&c, mode).context("Setting database mode")?;
-
-            let inner = InnerRead::new(&c).context("Preparing statements")?;
-            read.push(UnsafeCell::new(inner));
+            do_migrations(&c).context("Running migrations")?;
         }
 
+        let mut options = OpenOptions::new();
+        options.no_mutex();
+
+        let builder = PoolBuilder::new(options, 16)
+            .with_write_setup(move |c| ensure_mode(c, mode))
+            .with_read_setup(move |c| ensure_mode(c, mode));
+
         Ok(Self {
-            inner: Arc::new(State {
-                inner: Box::from(read),
-                write,
-                used: AtomicU64::new(0),
-                wr: read_concurrency,
-                s: Arc::new(Semaphore::new(read_concurrency)),
-            }),
+            inner: Arc::new(builder.open(path)?),
         })
     }
 
@@ -1311,7 +1103,7 @@ impl Database {
     ) -> Result<()> {
         let title = title.to_owned();
         let overview = overview.to_owned();
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.insert_show
@@ -1324,7 +1116,7 @@ impl Database {
 
     pub(crate) async fn show_id_by_remote(&self, remote: &Remote) -> Result<Option<ShowId>> {
         let remote = remote.clone();
-        let mut s = self.inner.clone().shared().await;
+        let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
             s.show_id_by_remote
@@ -1343,7 +1135,7 @@ impl Database {
     ) -> Result<()> {
         let remote = remote.clone();
         let slug = slug.map(str::to_owned);
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.insert_show_remote.execute((
@@ -1360,7 +1152,7 @@ impl Database {
     }
 
     pub(crate) async fn remove_show_remote(&self, remote_id: RemoteId) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.delete_show_remote.execute((remote_id,))?;
@@ -1378,7 +1170,7 @@ impl Database {
     ) -> Result<()> {
         let slug = slug.map(str::to_owned);
         let remote = remote.clone();
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.update_show_remote.execute((
@@ -1394,7 +1186,7 @@ impl Database {
     }
 
     pub(crate) async fn shows(&self) -> Result<Vec<api::Show>> {
-        let mut s = self.inner.clone().shared().await;
+        let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
             let mut out: Vec<api::Show> = Vec::new();
@@ -1402,7 +1194,7 @@ impl Database {
 
             let mut stmt = s.list_shows.query()?;
 
-            while let Some(row) = stmt.next::<ShowRow>()? {
+            while let Some(row) = stmt.next()? {
                 let idx = out.len();
                 id_to_idx.insert(row.id, idx);
 
@@ -1464,10 +1256,10 @@ impl Database {
     }
 
     pub(crate) async fn show_by_id(&self, id: ShowId) -> Result<Option<api::Show>> {
-        let mut s = self.inner.clone().shared().await;
+        let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
-            let Some(r) = s.show_by_id.bind((id,))?.first::<ShowRow>()? else {
+            let Some(r) = s.show_by_id.bind((id,))?.first()? else {
                 return Ok(None);
             };
 
@@ -1520,7 +1312,7 @@ impl Database {
         let title = title.map(str::to_owned);
         let overview = overview.map(str::to_owned);
 
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.update_show.execute((
@@ -1537,7 +1329,7 @@ impl Database {
     }
 
     pub(crate) async fn delete_show(&self, id: ShowId) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.delete_show.execute((id,))?;
@@ -1548,7 +1340,7 @@ impl Database {
     }
 
     pub(crate) async fn set_show_tracked(&self, id: ShowId, tracked: bool) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.set_show_tracked.execute((tracked, id))?;
@@ -1563,7 +1355,7 @@ impl Database {
         id: ShowId,
         source: RemoteSource,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.set_show_sync_source.execute((source, id))?;
@@ -1578,7 +1370,7 @@ impl Database {
         id: ShowId,
         language: Option<String>,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.set_show_language.execute((language.as_deref(), id))?;
@@ -1593,7 +1385,7 @@ impl Database {
         id: ShowId,
         include_specials: Option<bool>,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.set_show_include_specials
@@ -1614,7 +1406,7 @@ impl Database {
     ) -> Result<SeasonId> {
         let name = name.map(str::to_owned);
         let overview = overview.map(str::to_owned);
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.upsert_season.execute((
@@ -1644,7 +1436,7 @@ impl Database {
         image: &api::Image,
     ) -> Result<()> {
         let image = image.clone();
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         spawn_blocking(move || {
             s.insert_season_image.execute((
@@ -1668,7 +1460,7 @@ impl Database {
         kind: ImageKind,
         image_id: ImageId,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         spawn_blocking(move || {
             s.set_season_image_selection
@@ -1679,7 +1471,7 @@ impl Database {
     }
 
     pub(crate) async fn clear_season_images(&self, season_id: SeasonId) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         spawn_blocking(move || {
             s.delete_season_images.execute((season_id,))?;
@@ -1689,7 +1481,7 @@ impl Database {
     }
 
     pub(crate) async fn seasons(&self, show_id: ShowId) -> Result<Vec<api::Season>> {
-        let mut s = self.inner.clone().shared().await;
+        let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
             let mut out = Vec::new();
@@ -1720,7 +1512,7 @@ impl Database {
             }
 
             let n = season.season;
-            let mut s = self.inner.clone().exclusive().await;
+            let mut s = self.inner.clone().exclusive().await?;
 
             let result = spawn_blocking(move || {
                 s.delete_season_episodes.execute((show_id, n))?;
@@ -1742,7 +1534,7 @@ impl Database {
         kept: &HashSet<u32>,
     ) -> Result<()> {
         let kept = kept.clone();
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             let mut to_delete = Vec::new();
@@ -1783,7 +1575,7 @@ impl Database {
         let name = name.map(str::to_owned);
         let overview = overview.map(str::to_owned);
         let remote = remote.cloned();
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.upsert_episode.execute((
@@ -1824,7 +1616,7 @@ impl Database {
         &self,
         show_id: ShowId,
     ) -> Result<HashMap<(SeasonNumber, u32), EpisodeId>> {
-        let mut s = self.inner.clone().shared().await;
+        let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
             let mut out = HashMap::new();
@@ -1846,7 +1638,7 @@ impl Database {
         show_id: ShowId,
         season: SeasonNumber,
     ) -> Result<Vec<api::Episode>> {
-        let mut s = self.inner.clone().shared().await;
+        let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
             let mut out = Vec::new();
@@ -1898,7 +1690,7 @@ impl Database {
         mark_time: MarkTime,
         now: Timestamp,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             let mut unwatched = Vec::new();
@@ -1932,7 +1724,7 @@ impl Database {
         &self,
         show_id: ShowId,
     ) -> Result<Vec<api::WatchedEpisode>> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             let mut out = Vec::new();
@@ -1950,7 +1742,7 @@ impl Database {
     }
 
     pub(crate) async fn episode_aired_by_id(&self, id: EpisodeId) -> Result<Option<Timestamp>> {
-        let mut s = self.inner.clone().shared().await;
+        let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
             let stmt = s.episode_aired_by_id.bind((id,))?;
@@ -1969,7 +1761,7 @@ impl Database {
             return Ok(());
         }
 
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             for &(season, number, aired) in &updates {
@@ -1992,7 +1784,7 @@ impl Database {
     ) -> Result<()> {
         let title = title.to_owned();
         let overview = overview.to_owned();
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.insert_movie
@@ -2005,7 +1797,7 @@ impl Database {
 
     pub(crate) async fn movie_id_by_remote(&self, remote: &Remote) -> Result<Option<MovieId>> {
         let remote = remote.clone();
-        let mut s = self.inner.clone().shared().await;
+        let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
             Ok(s.movie_id_by_remote
@@ -2025,7 +1817,7 @@ impl Database {
     ) -> Result<()> {
         let remote = remote.clone();
         let slug = slug.map(str::to_owned);
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.insert_movie_remote.execute((
@@ -2042,7 +1834,7 @@ impl Database {
     }
 
     pub(crate) async fn remove_movie_remote(&self, remote_id: RemoteId) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.delete_movie_remote.execute((remote_id,))?;
@@ -2060,7 +1852,7 @@ impl Database {
     ) -> Result<()> {
         let slug = slug.map(str::to_owned);
         let remote = remote.clone();
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.update_movie_remote.execute((
@@ -2076,7 +1868,7 @@ impl Database {
     }
 
     pub(crate) async fn movies(&self) -> Result<Vec<api::Movie>> {
-        let mut s = self.inner.clone().shared().await;
+        let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
             let mut out: Vec<api::Movie> = Vec::new();
@@ -2148,7 +1940,7 @@ impl Database {
     }
 
     pub(crate) async fn movie_by_id(&self, id: MovieId) -> Result<Option<api::Movie>> {
-        let mut s = self.inner.clone().shared().await;
+        let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
             let Some(r) = s.movie_by_id.bind((id,))?.first::<MovieRow>()? else {
@@ -2216,7 +2008,7 @@ impl Database {
     /// Earliest digital or physical release for a movie, used to date a pending
     /// slot to when the movie became available to watch.
     pub(crate) async fn earliest_movie_release(&self, id: MovieId) -> Result<Option<Timestamp>> {
-        let mut s = self.inner.clone().shared().await;
+        let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
             let mut earliest: Option<Timestamp> = None;
@@ -2239,7 +2031,7 @@ impl Database {
 
     pub(crate) async fn shows_by_remote_id(&self, remote: &Remote) -> Result<Option<api::Show>> {
         let remote = remote.clone();
-        let mut s = self.inner.clone().shared().await;
+        let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
             let Some(row) = s
@@ -2291,7 +2083,7 @@ impl Database {
 
     pub(crate) async fn movie_by_remote_id(&self, remote: &Remote) -> Result<Option<api::Movie>> {
         let remote = remote.clone();
-        let mut s = self.inner.clone().shared().await;
+        let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
             let Some(row) = s
@@ -2351,7 +2143,7 @@ impl Database {
     ) -> Result<()> {
         let title = title.map(str::to_owned);
         let overview = overview.map(str::to_owned);
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.update_movie.execute((
@@ -2367,7 +2159,7 @@ impl Database {
     }
 
     pub(crate) async fn delete_movie(&self, id: MovieId) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.delete_movie.execute((id,))?;
@@ -2378,7 +2170,7 @@ impl Database {
     }
 
     pub(crate) async fn set_movie_tracked(&self, id: MovieId, tracked: bool) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.set_movie_tracked.execute((tracked, id))?;
@@ -2393,7 +2185,7 @@ impl Database {
         id: MovieId,
         source: RemoteSource,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.set_movie_sync_source.execute((source, id))?;
@@ -2408,7 +2200,7 @@ impl Database {
         id: MovieId,
         language: Option<String>,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.set_movie_language.execute((language.as_deref(), id))?;
@@ -2419,7 +2211,7 @@ impl Database {
     }
 
     pub(crate) async fn clear_show_images(&self, show_id: ShowId) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
         spawn_blocking(move || {
             s.delete_show_images.execute((show_id,))?;
             Ok(())
@@ -2428,7 +2220,7 @@ impl Database {
     }
 
     pub(crate) async fn clear_movie_images(&self, movie_id: MovieId) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
         spawn_blocking(move || {
             s.delete_movie_images.execute((movie_id,))?;
             Ok(())
@@ -2437,7 +2229,7 @@ impl Database {
     }
 
     pub(crate) async fn clear_episode_images(&self, show_id: ShowId) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
         spawn_blocking(move || {
             s.delete_episode_images_for_show.execute((show_id,))?;
             Ok(())
@@ -2453,7 +2245,7 @@ impl Database {
         image: &Image,
     ) -> Result<()> {
         let image = image.clone();
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.insert_episode_image.execute((
@@ -2477,7 +2269,7 @@ impl Database {
         kind: ImageKind,
         image_id: ImageId,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.set_episode_image_selection
@@ -2497,7 +2289,7 @@ impl Database {
         image: &Image,
     ) -> Result<()> {
         let image = image.clone();
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.insert_show_image.execute((
@@ -2526,7 +2318,7 @@ impl Database {
         image: &Image,
     ) -> Result<()> {
         let image = image.clone();
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.insert_movie_image.execute((
@@ -2551,7 +2343,7 @@ impl Database {
         kind: ImageKind,
         image_id: ImageId,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.set_show_image_selection
@@ -2568,7 +2360,7 @@ impl Database {
         kind: ImageKind,
         image_id: ImageId,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.set_movie_image_selection
@@ -2582,7 +2374,7 @@ impl Database {
     /// Selects the given image for its owning entity + kind, replacing any
     /// prior selection. Returns which entity owns the image.
     pub(crate) async fn select_image(&self, id: ImageId) -> Result<api::ImageOwner> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             let row = s
@@ -2621,7 +2413,7 @@ impl Database {
         owner: api::ImageOwner,
         kind: ImageKind,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             match owner {
@@ -2646,7 +2438,7 @@ impl Database {
         &self,
         season_id: SeasonId,
     ) -> Result<Vec<api::MediaImage>> {
-        let mut s = self.inner.clone().shared().await;
+        let mut s = self.inner.clone().shared().await?;
 
         spawn_blocking(move || {
             let mut out = Vec::new();
@@ -2660,7 +2452,7 @@ impl Database {
     }
 
     pub(crate) async fn show_id_for_season(&self, season_id: SeasonId) -> Result<Option<ShowId>> {
-        let mut s = self.inner.clone().shared().await;
+        let mut s = self.inner.clone().shared().await?;
 
         spawn_blocking(move || s.show_id_for_season.bind((season_id,))?.first::<ShowId>()).await?
     }
@@ -2672,7 +2464,7 @@ impl Database {
         mark_time: MarkTime,
         now: Timestamp,
     ) -> Result<api::Watched> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             let (watched_id, timestamp) = match kind {
@@ -2728,7 +2520,7 @@ impl Database {
         season: api::SeasonNumber,
         episode: u32,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.insert_watched_episode
@@ -2745,7 +2537,7 @@ impl Database {
         timestamp: Timestamp,
         movie_id: MovieId,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.insert_watched_movie.execute((id, timestamp, movie_id))?;
@@ -2761,7 +2553,7 @@ impl Database {
         season: api::SeasonNumber,
         episode: u32,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.move_watched_episode.execute((season, episode, id))?;
@@ -2775,7 +2567,7 @@ impl Database {
         &self,
         show_id: ShowId,
     ) -> Result<Vec<api::OrphanedWatched>> {
-        let mut s = self.inner.clone().shared().await;
+        let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
             let mut out = Vec::new();
@@ -2799,7 +2591,7 @@ impl Database {
     }
 
     pub(crate) async fn remove_watched(&self, id: WatchedId) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.delete_watched_episode.execute((id,))?;
@@ -2814,7 +2606,7 @@ impl Database {
         &self,
         episode_id: EpisodeId,
     ) -> Result<Vec<api::Watched>> {
-        let mut s = self.inner.clone().shared().await;
+        let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
             let mut out = Vec::new();
@@ -2832,7 +2624,7 @@ impl Database {
     }
 
     pub(crate) async fn watched_for_movie(&self, movie_id: MovieId) -> Result<Vec<api::Watched>> {
-        let mut s = self.inner.clone().shared().await;
+        let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
             let mut out = Vec::new();
@@ -2855,7 +2647,7 @@ impl Database {
         episode_id: api::EpisodeId,
         ts: Timestamp,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.upsert_pending_episode
@@ -2871,7 +2663,7 @@ impl Database {
         movie_id: api::MovieId,
         ts: Timestamp,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.upsert_pending_movie
@@ -2883,7 +2675,7 @@ impl Database {
     }
 
     pub(crate) async fn remove_pending_episode(&self, show_id: api::ShowId) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.delete_pending_episode.execute((show_id,))?;
@@ -2898,7 +2690,7 @@ impl Database {
         show_id: api::ShowId,
         episode_id: api::EpisodeId,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             let next_id = s
@@ -2925,7 +2717,7 @@ impl Database {
     }
 
     pub(crate) async fn remove_pending_movie(&self, movie_id: api::MovieId) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.delete_pending_movie.execute((movie_id,))?;
@@ -2943,7 +2735,7 @@ impl Database {
         include_specials: bool,
         now: Timestamp,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             let already_has = s
@@ -3002,7 +2794,7 @@ impl Database {
         episode_id: api::EpisodeId,
         now: Timestamp,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             let already_has = s
@@ -3039,7 +2831,7 @@ impl Database {
     /// clamping to `now`. This preserves the episode's original air date as the pending
     /// timestamp so dashboard ordering reflects episode order rather than import time.
     pub(crate) async fn fill_pending_for_show_import(&self, show_id: api::ShowId) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             let stmt = s.has_pending_episode_for_show.bind((show_id,))?;
@@ -3074,7 +2866,7 @@ impl Database {
         &self,
         now: Timestamp,
     ) -> Result<Vec<(MovieId, Option<Timestamp>)>> {
-        let mut s = self.inner.clone().shared().await;
+        let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
             let mut out = Vec::new();
@@ -3096,7 +2888,7 @@ impl Database {
         &self,
         now: Timestamp,
     ) -> Result<Vec<(MovieId, Option<Timestamp>)>> {
-        let mut s = self.inner.clone().shared().await;
+        let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
             let mut out = Vec::new();
@@ -3114,7 +2906,7 @@ impl Database {
     }
 
     pub(crate) async fn set_show_synced_at(&self, id: ShowId, at: Timestamp) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
         let result = spawn_blocking(move || {
             s.set_show_synced_at.execute((at, id))?;
             Ok(())
@@ -3124,7 +2916,7 @@ impl Database {
     }
 
     pub(crate) async fn set_movie_synced_at(&self, id: MovieId, at: Timestamp) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
         let result = spawn_blocking(move || {
             s.set_movie_synced_at.execute((at, id))?;
             Ok(())
@@ -3142,7 +2934,7 @@ impl Database {
     ) -> Result<()> {
         let country = country.to_owned();
         let timestamp = *timestamp;
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.upsert_movie_release.execute((
@@ -3161,7 +2953,7 @@ impl Database {
 
     pub(crate) async fn shows_needing_sync(&self, interval_hours: u32) -> Result<Vec<api::Show>> {
         let cutoff = cutoff_timestamp(interval_hours);
-        let mut s = self.inner.clone().shared().await;
+        let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
             let mut out = Vec::new();
@@ -3180,7 +2972,7 @@ impl Database {
 
     pub(crate) async fn movies_needing_sync(&self, interval_hours: u32) -> Result<Vec<api::Movie>> {
         let cutoff = cutoff_timestamp(interval_hours);
-        let mut s = self.inner.clone().shared().await;
+        let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
             let mut out = Vec::new();
@@ -3199,7 +2991,7 @@ impl Database {
 
     /// Unified pending list replacing pending_episodes + pending_movies.
     pub(crate) async fn pending(&self, now: Timestamp) -> Result<Vec<api::Pending>> {
-        let mut s = self.inner.clone().shared().await;
+        let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
             let mut out = Vec::new();
@@ -3295,7 +3087,7 @@ impl Database {
 
         let end = end.to_timestamp_at_midnight_zoned(tz.clone())?;
 
-        let mut s = self.inner.clone().shared().await;
+        let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
             // Episode remotes for the same window, looked up by episode id.
@@ -3368,7 +3160,7 @@ impl Database {
     }
 
     pub(crate) async fn load_config(&self) -> Result<Config> {
-        let mut s = self.inner.clone().shared().await;
+        let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
             let theme = s
@@ -3437,7 +3229,7 @@ impl Database {
     pub(crate) async fn save_config(&self, config: &Config) -> Result<()> {
         let config = config.clone();
 
-        let mut s = self.inner.clone().exclusive().await;
+        let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.set_config("theme", config.theme.to_string().as_str())?;
@@ -3689,7 +3481,7 @@ fn do_migrations(c: &sqll::Connection) -> Result<()> {
     Ok(())
 }
 
-fn ensure_mode(c: &sqll::Connection, mode: OpenMode) -> Result<()> {
+fn ensure_mode(c: &mut sqll::Connection, mode: OpenMode) -> Result<(), sqll::Error> {
     // Enforce foreign keys so ON DELETE CASCADE actually fires. Must run
     // outside any transaction.
     c.execute("PRAGMA foreign_keys = ON;")?;
