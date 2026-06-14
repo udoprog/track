@@ -941,6 +941,10 @@ impl MovieDetail {
                 </div>
             </div>
 
+            if let Some(ref overview) = movie.overview {
+                <p class="overview">{overview}</p>
+            }
+
             <div class="detail-layout">
                 <Image class="banner hide-desktop" src={movie.banner.clone()} />
 
@@ -949,14 +953,6 @@ impl MovieDetail {
                 </div>
 
                 <div class="detail-content">
-                    if let Some(date) = movie.release_date {
-                        <div class="text-muted">{date.display(self.tz.clone())}</div>
-                    }
-
-                    if let Some(ref overview) = movie.overview {
-                        <p class="overview">{overview}</p>
-                    }
-
                     {actions}
 
                     if !self.watched.is_empty() {

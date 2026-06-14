@@ -331,15 +331,15 @@ impl Component for ShowDetail {
                             <span class={classes!("icon", if self.actions_expanded { "ellipsis-horizontal" } else { "bars-2" })} />
                         </button>
                     </div>
-
-                    if let Some(ref overview) = show.overview {
-                        <p class="overview hide-mobile">{overview}</p>
-                    }
                 </div>
 
                 <div class={classes!("desktop-row-fill", "mobile-column", "actions", (!self.actions_expanded).then_some("hide-mobile"))}>
                     {actions}
                 </div>
+
+                if let Some(ref overview) = show.overview {
+                    <p class="overview">{overview}</p>
+                }
 
                 <div class="detail-layout">
                     <div class="hide-desktop">
@@ -349,10 +349,6 @@ impl Component for ShowDetail {
                             <Image class="backdrop" src={backdrop.clone()} />
                         }
                     </div>
-
-                    if let Some(ref overview) = show.overview {
-                        <p class="overview hide-desktop">{overview}</p>
-                    }
 
                     { self.view_sidebar(ctx, show, season) }
 
