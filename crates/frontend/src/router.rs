@@ -38,10 +38,40 @@ impl DashboardQuery {
     }
 }
 
+/// Field a media list is ordered by.
+#[derive(Default, Debug, Clone, Copy, PartialEq)]
+pub(super) enum SortField {
+    #[default]
+    Title,
+    Release,
+    Watched,
+}
+
+impl SortField {
+    fn as_str(self) -> &'static str {
+        match self {
+            SortField::Title => "title",
+            SortField::Release => "release",
+            SortField::Watched => "watched",
+        }
+    }
+
+    fn parse(value: &str) -> Option<Self> {
+        match value {
+            "title" => Some(SortField::Title),
+            "release" => Some(SortField::Release),
+            "watched" => Some(SortField::Watched),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Default, Debug, Clone, PartialEq)]
 pub(super) struct PagedQuery {
     pub(super) page: usize,
     pub(super) filter: String,
+    pub(super) sort: SortField,
+    pub(super) desc: bool,
 }
 
 impl PagedQuery {
@@ -50,6 +80,14 @@ impl PagedQuery {
 
         if !self.filter.is_empty() {
             s.append_pair("filter", &self.filter);
+        }
+
+        if self.sort != SortField::default() {
+            s.append_pair("sort", self.sort.as_str());
+        }
+
+        if self.desc {
+            s.append_pair("dir", "desc");
         }
 
         if self.page > 0 {
@@ -66,6 +104,14 @@ impl PagedQuery {
             match key.as_ref() {
                 "filter" => {
                     this.filter = value.into_owned();
+                }
+                "sort" => {
+                    if let Some(sort) = SortField::parse(value.as_ref()) {
+                        this.sort = sort;
+                    }
+                }
+                "dir" => {
+                    this.desc = value.as_ref() == "desc";
                 }
                 "page" => {
                     this.page = value.parse::<usize>().unwrap_or(0);
@@ -316,6 +362,14 @@ impl fmt::Display for Route {
 }
 
 impl Route {
+    /// Build the list route for the given media kind, preserving its paging/sort query.
+    pub(super) fn media(kind: api::MediaKind, query: PagedQuery) -> Self {
+        match kind {
+            api::MediaKind::Shows => Route::Shows(query),
+            api::MediaKind::Movies => Route::Movies(query),
+        }
+    }
+
     fn from_location(path: &str, search: &str) -> Self {
         let mut parts = path.split('/').filter(|s| !s.is_empty());
         let search = search.strip_prefix('?').unwrap_or(search);

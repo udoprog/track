@@ -1634,6 +1634,32 @@ pub struct SearchMovie {
     pub already_tracked: Option<MovieId>,
 }
 
+/// Which kind of tracked media a list view is showing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub enum MediaKind {
+    #[default]
+    Shows,
+    Movies,
+}
+
+/// A slim row used by the movies/shows list views — only the fields needed to
+/// filter, reorder, and render a list entry.
+#[derive(Debug, Clone, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct MediaItem {
+    /// Raw id; the consumer rebuilds `ShowId`/`MovieId` based on the list kind.
+    pub id: u64,
+    pub title: Option<String>,
+    /// Release date (movie) or first-air date (show).
+    pub date: Option<Timestamp>,
+    pub overview: Option<String>,
+    pub poster: Option<Image>,
+    pub banner: Option<Image>,
+    pub tracked: bool,
+    pub last_watched_at: Option<Timestamp>,
+}
+
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub enum TaskKind {
@@ -1687,12 +1713,14 @@ pub struct CompletedTask {
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
-pub struct ListShowRequest;
+pub struct ListMediaRequest {
+    pub kind: MediaKind,
+}
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
-pub struct ListShowResponse {
-    pub shows: Vec<Show>,
+pub struct ListMediaResponse {
+    pub items: Vec<MediaItem>,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -1757,16 +1785,6 @@ pub struct ListEpisodesRequest {
 pub struct ListEpisodesResponse {
     pub episodes: Vec<Episode>,
     pub watched: Vec<WatchedEpisode>,
-}
-
-#[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
-pub struct ListMoviesRequest;
-
-#[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
-pub struct ListMoviesResponse {
-    pub movies: Vec<Movie>,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -2180,10 +2198,10 @@ pub enum AppEventKind {
 }
 
 api::define! {
-    pub type ListShow;
-    impl Endpoint for ListShow {
-        impl Request for ListShowRequest;
-        type Response<'de> = ListShowResponse;
+    pub type ListMedia;
+    impl Endpoint for ListMedia {
+        impl Request for ListMediaRequest;
+        type Response<'de> = ListMediaResponse;
     }
 
     pub type GetShow;
@@ -2226,12 +2244,6 @@ api::define! {
     impl Endpoint for ListEpisodes {
         impl Request for ListEpisodesRequest;
         type Response<'de> = ListEpisodesResponse;
-    }
-
-    pub type ListMovies;
-    impl Endpoint for ListMovies {
-        impl Request for ListMoviesRequest;
-        type Response<'de> = ListMoviesResponse;
     }
 
     pub type GetMovie;

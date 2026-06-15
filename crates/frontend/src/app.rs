@@ -8,7 +8,7 @@ use crate::error::{CustomContext, Error, Message, RcError};
 use crate::router::{DashboardQuery, PagedQuery, QueueQuery, Route, SearchQuery};
 use crate::setup_channel::SetupChannel;
 use crate::ui::{ErrorBox, Loading};
-use crate::{Dashboard, MovieDetail, MoviesList, Queue, Search, Settings, ShowDetail, ShowList};
+use crate::{Dashboard, MediaList, MovieDetail, Queue, Search, Settings, ShowDetail};
 
 pub(super) struct App {
     channel: ws::Channel,
@@ -190,7 +190,15 @@ impl App {
                 <Queue {onerror} {on_navigate} focus={query.focus} page={query.page} />
             },
             Route::Shows(query) => html! {
-                <ShowList {onerror} {on_navigate} page={query.page} filter={query.filter.clone()} />
+                <MediaList
+                    kind={api::MediaKind::Shows}
+                    {onerror}
+                    {on_navigate}
+                    page={query.page}
+                    filter={query.filter.clone()}
+                    sort={query.sort}
+                    desc={query.desc}
+                />
             },
             Route::ShowDetail(show_id, query) => {
                 let show_id = *show_id;
@@ -201,7 +209,15 @@ impl App {
                 }
             }
             Route::Movies(query) => html! {
-                <MoviesList {onerror} {on_navigate} page={query.page} filter={query.filter.clone()} />
+                <MediaList
+                    kind={api::MediaKind::Movies}
+                    {onerror}
+                    {on_navigate}
+                    page={query.page}
+                    filter={query.filter.clone()}
+                    sort={query.sort}
+                    desc={query.desc}
+                />
             },
             Route::MovieDetail(movie_id) => {
                 let movie_id = *movie_id;

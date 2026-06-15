@@ -91,12 +91,16 @@ impl WsHandler {
         outgoing: &mut ws::Outgoing<'_>,
     ) -> Result<()> {
         match id {
-            api::Request::ListShow => {
-                let _req = incoming
-                    .read::<api::ListShowRequest>()
+            api::Request::ListMedia => {
+                let req = incoming
+                    .read::<api::ListMediaRequest>()
                     .context("Expected a request payload")?;
-                let shows = self.db.shows().await.context("Loading show")?;
-                outgoing.write(api::ListShowResponse { shows });
+                let items = self
+                    .db
+                    .media_items(req.kind)
+                    .await
+                    .context("Loading media")?;
+                outgoing.write(api::ListMediaResponse { items });
             }
             api::Request::GetShow => {
                 let req = incoming
@@ -218,13 +222,6 @@ impl WsHandler {
                 let episodes = self.db.episodes(req.show_id, req.season).await?;
                 let watched = self.db.episodes_watched(req.show_id).await?;
                 outgoing.write(api::ListEpisodesResponse { episodes, watched });
-            }
-            api::Request::ListMovies => {
-                let _req = incoming
-                    .read::<api::ListMoviesRequest>()
-                    .context("Expected a request payload")?;
-                let movies = self.db.movies().await?;
-                outgoing.write(api::ListMoviesResponse { movies });
             }
             api::Request::GetMovie => {
                 let req = incoming

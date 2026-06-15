@@ -179,6 +179,28 @@ struct MovieReleaseRow {
 }
 
 #[derive(Row)]
+struct MediaItemRow {
+    // SQLite stores ids as signed integers; reinterpret to u64 (matches `define_id`).
+    id: i64,
+    title: Option<String>,
+    date: Option<Timestamp>,
+    overview: Option<String>,
+    tracked: bool,
+}
+
+#[derive(Row)]
+struct LastWatchedMovieRow {
+    movie_id: MovieId,
+    last_watched: Timestamp,
+}
+
+#[derive(Row)]
+struct LastWatchedShowRow {
+    show_id: ShowId,
+    last_watched: Timestamp,
+}
+
+#[derive(Row)]
 struct WatchedRow {
     id: WatchedId,
     timestamp: Timestamp,
@@ -412,6 +434,17 @@ struct InnerRead {
     list_episodes_watched: TypedStatement<(ShowId,), WatchedEpisodeRow>,
     #[sql = "SELECT aired FROM episodes WHERE id = ?"]
     episode_aired_by_id: TypedStatement<(EpisodeId,), Option<Timestamp>>,
+
+    // slim list views
+    #[sql = "SELECT id, title, release_date AS date, overview, tracked FROM movies ORDER BY title"]
+    list_movie_items: TypedStatement<(), MediaItemRow>,
+    #[sql = "SELECT id, title, first_air AS date, overview, tracked FROM shows ORDER BY title"]
+    list_show_items: TypedStatement<(), MediaItemRow>,
+    #[sql = "SELECT movie_id, MAX(timestamp) AS last_watched FROM watched_movies"]
+    #[sql = "WHERE movie_id IS NOT NULL GROUP BY movie_id"]
+    last_watched_movies: TypedStatement<(), LastWatchedMovieRow>,
+    #[sql = "SELECT show_id, MAX(timestamp) AS last_watched FROM watched_episodes GROUP BY show_id"]
+    last_watched_shows: TypedStatement<(), LastWatchedShowRow>,
 
     // movies
     #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.sync_source, m.last_synced_at, m.language"]
@@ -1771,6 +1804,79 @@ impl Database {
                 remote_id,
             ))?;
             Ok(())
+        });
+
+        result.await?
+    }
+
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn media_items(&self, kind: api::MediaKind) -> Result<Vec<api::MediaItem>> {
+        let mut s = self.inner.clone().shared().await?;
+
+        let result = spawn_blocking(move || {
+            let mut out: Vec<api::MediaItem> = Vec::new();
+            let mut id_to_idx: HashMap<u64, usize> = HashMap::new();
+
+            match kind {
+                api::MediaKind::Movies => {
+                    let mut stmt = s.list_movie_items.query()?;
+
+                    while let Some(row) = stmt.next()? {
+                        let item = media_item_from_row(row);
+                        id_to_idx.insert(item.id, out.len());
+                        out.push(item);
+                    }
+
+                    stmt.reset()?;
+
+                    for item in &mut out {
+                        let id = MovieId::new(item.id);
+                        item.poster = s.image_for_movie(id, ImageKind::Poster)?;
+                        item.banner = s.image_for_movie(id, ImageKind::Banner)?;
+                    }
+
+                    let mut stmt = s.last_watched_movies.query()?;
+
+                    while let Some(row) = stmt.next()? {
+                        if let Some(o) = id_to_idx
+                            .get(&row.movie_id.get())
+                            .and_then(|&i| out.get_mut(i))
+                        {
+                            o.last_watched_at = Some(row.last_watched);
+                        }
+                    }
+                }
+                api::MediaKind::Shows => {
+                    let mut stmt = s.list_show_items.query()?;
+
+                    while let Some(row) = stmt.next()? {
+                        let item = media_item_from_row(row);
+                        id_to_idx.insert(item.id, out.len());
+                        out.push(item);
+                    }
+
+                    stmt.reset()?;
+
+                    for item in &mut out {
+                        let id = ShowId::new(item.id);
+                        item.poster = s.image_for_show(id, ImageKind::Poster)?;
+                        item.banner = s.image_for_show(id, ImageKind::Banner)?;
+                    }
+
+                    let mut stmt = s.last_watched_shows.query()?;
+
+                    while let Some(row) = stmt.next()? {
+                        if let Some(o) = id_to_idx
+                            .get(&row.show_id.get())
+                            .and_then(|&i| out.get_mut(i))
+                        {
+                            o.last_watched_at = Some(row.last_watched);
+                        }
+                    }
+                }
+            }
+
+            Ok(out)
         });
 
         result.await?
@@ -3359,6 +3465,19 @@ fn movie_from_row(r: MovieRow) -> api::Movie {
         last_synced_at: r.last_synced_at,
         releases: Vec::new(),
         language: r.language,
+    }
+}
+
+fn media_item_from_row(r: MediaItemRow) -> api::MediaItem {
+    api::MediaItem {
+        id: r.id.cast_unsigned(),
+        title: r.title,
+        date: r.date,
+        overview: r.overview,
+        poster: None,
+        banner: None,
+        tracked: r.tracked,
+        last_watched_at: None,
     }
 }
 
