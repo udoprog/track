@@ -56,13 +56,9 @@ impl BackgroundState {
         }
     }
 
-    /// The inline `--background` custom property for the current value, ready to
-    /// drop onto the root element's `style` attribute.
-    pub(super) fn style(&self) -> String {
-        match &self.value {
-            Some(url) => format!("--background: url('{url}')"),
-            None => String::new(),
-        }
+    /// The current background image URL, if any.
+    pub(super) fn url(&self) -> Option<&str> {
+        self.value.as_deref()
     }
 }
 

@@ -557,6 +557,7 @@ fn parse_remote(source: &api::RemoteSource, value: &str) -> Result<api::Remote, 
 #[derive(Properties, PartialEq)]
 pub(super) struct RemoteEditorProps {
     pub(super) title: String,
+    pub(super) kind: RemoteSourceKind,
     pub(super) remotes: Vec<api::RemoteEntry>,
     pub(super) on_add: Callback<(Option<String>, api::Remote)>,
     pub(super) on_edit: Callback<(api::RemoteId, Option<String>, api::Remote)>,
@@ -569,6 +570,7 @@ pub(super) enum RemoteEditorMsg {
     SetValue(String),
     SetSlug(String),
     ToggleSlug,
+    ClearSlug,
     Submit,
     Edit(api::RemoteEntry),
     CancelEdit,
@@ -650,6 +652,10 @@ impl Component for RemoteEditor {
             }
             RemoteEditorMsg::ToggleSlug => {
                 self.show_slug = !self.show_slug;
+                true
+            }
+            RemoteEditorMsg::ClearSlug => {
+                self.slug.clear();
                 true
             }
             RemoteEditorMsg::Submit => {
@@ -776,31 +782,48 @@ impl Component for RemoteEditor {
                         let edit_entry = r.clone();
                         let remove_entry = r.clone();
 
+                        let url = match props.kind {
+                            RemoteSourceKind::Show => r.remote.show_url(r.slug.as_deref()),
+                            RemoteSourceKind::Movie => r.remote.movie_url(),
+                        };
+
+                        let identifier = html! {
+                            <>
+                                <span class="item-inline-lg">
+                                    <span class={classes!("logo", r.remote.source().as_str().to_owned())} />
+                                </span>
+
+                                <span>{r.remote.value().to_string()}</span>
+
+                                if let Some(slug) = r.slug.as_deref() {
+                                    <span>{format!("/{slug}")}</span>
+                                }
+
+                            </>
+                        };
+
                         html! {
                             <div key={key} class={classes!("row-fill", editing_this.then_some("active"))}>
-                                <div class="row clickable">
-                                    <span class="item-inline-lg">
-                                        <span class={classes!("logo", r.remote.source().as_str().to_owned())} />
-                                    </span>
+                                if let Some(url) = url {
+                                    <a class="row clickable" href={url} target="_blank" rel="noopener noreferrer" title="Visit remote">
+                                        {identifier}
+                                    </a>
+                                } else {
+                                    <div class="row">
+                                        {identifier}
+                                    </div>
+                                }
 
-                                    <span>{r.remote.value().to_string()}</span>
+                                <div class="row end">
+                                    <div class="input-group">
+                                        <button class="btn" onclick={link.callback(move |_| RemoteEditorMsg::Edit(edit_entry.clone()))} title="Edit identifier">
+                                            <span class="icon pencil-square" />
+                                        </button>
 
-                                    if let Some(slug) = r.slug.as_deref() {
-                                        <span class="item-inline text-muted">
-                                            <span class="icon link" />
-                                            {slug.to_owned()}
-                                        </span>
-                                    }
-                                </div>
-
-                                <div class="input-group end">
-                                    <button class="btn" onclick={link.callback(move |_| RemoteEditorMsg::Edit(edit_entry.clone()))} title="Edit identifier">
-                                        <span class="icon pencil-square" />
-                                    </button>
-
-                                    <button class="btn-danger" onclick={link.callback(move |_| RemoteEditorMsg::AskRemove(remove_entry.clone()))} title="Remove identifier">
-                                        <span class="icon trash" />
-                                    </button>
+                                        <button class="btn-danger" onclick={link.callback(move |_| RemoteEditorMsg::AskRemove(remove_entry.clone()))} title="Remove identifier">
+                                            <span class="icon trash" />
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         }
@@ -836,7 +859,15 @@ impl Component for RemoteEditor {
 
                         if self.show_slug {
                             <div class="input-group fill">
-                                <input type="text" class="input-text fill" placeholder="Slug (optional)" value={self.slug.clone()} oninput={on_slug} />
+                                <span class="input-label" title="Slug">{"/"}</span>
+                                <input type="text" class="input-text fill" placeholder="slug" value={self.slug.clone()} oninput={on_slug} />
+
+                                if !self.slug.is_empty() {
+                                    <button class="btn" title="Clear slug"
+                                        onclick={link.callback(|_| RemoteEditorMsg::ClearSlug)}>
+                                        <span class="icon backspace" />
+                                    </button>
+                                }
                             </div>
                         }
 

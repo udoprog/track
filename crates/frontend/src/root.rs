@@ -78,11 +78,18 @@ impl Component for Root {
         let on_navigate = link.callback(Msg::Navigate);
         let on_background = link.callback(Msg::SetBackground);
         let on_title = link.callback(Msg::SetTitle);
-        let style = self.background.style();
 
         html! {
             <>
-                <div class="background" {style} />
+                <div class="background">
+                    if let Some(url) = self.background.url() {
+                        <div
+                            key={url.to_owned()}
+                            class="background-image"
+                            style={format!("background-image: url('{url}')")}
+                        />
+                    }
+                </div>
                 <App error={self.error.clone()} {route} {onerror} {on_navigate} {on_background} {on_title} />
             </>
         }

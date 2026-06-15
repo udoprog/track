@@ -25,6 +25,7 @@ $color-danger: #a24949;
 $color-danger-bg: #5a1a1a;
 $color-success: #73b173;
 $color-title: #97d9e6;
+$link-color: rgb(87, 127, 195);
 
 $font-title: 24px;
 $font-xl: 20px;
@@ -78,6 +79,11 @@ body {
     font-size: $font-base;
     --icon-color: #{$text-primary};
     --icon-color-invert: #{$bg-dark};
+}
+
+a {
+    color: $link-color;
+    text-decoration: none;
 }
 
 p {
@@ -709,7 +715,6 @@ image {
 }
 
 .background {
-    --background: none;
     position: fixed;
     inset: 0;
     isolation: isolate;
@@ -717,11 +722,14 @@ image {
     overflow: hidden;
 }
 
-.background::before {
-    content: '';
+.background > * {
+    position: relative;
+    z-index: 1;
+}
+
+.background-image {
     position: fixed;
     inset: 0;
-    background: var(--background);
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
@@ -730,11 +738,18 @@ image {
     opacity: 0.35;
     pointer-events: none;
     z-index: 0;
+    // Each backdrop is a fresh, keyed element, so this replays on every switch.
+    animation: background-fade-in 0.6s ease-in-out;
 }
 
-.background > * {
-    position: relative;
-    z-index: 1;
+@keyframes background-fade-in {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 0.35;
+    }
 }
 
 @mixin input-group-base {

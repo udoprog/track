@@ -1,5 +1,7 @@
 use api::TimeZone;
+use gloo::events::EventListener;
 use musli_web::web03::prelude::*;
+use web_sys::HtmlImageElement;
 use yew::prelude::*;
 
 use crate::background::Background;
@@ -39,8 +41,11 @@ pub(super) struct MediaList {
     _track_req: ws::Request,
     /// Movie id currently awaiting watch confirmation (movies only).
     confirming_watch: Option<u64>,
-    /// Backdrop URL last pushed as the page background, to avoid re-emitting.
+    /// Backdrop URL last requested as the page background, to avoid re-emitting.
     applied_backdrop: Option<String>,
+    /// The image element preloading the next backdrop, kept alive until it loads.
+    _preload_img: Option<HtmlImageElement>,
+    _preload_load: Option<EventListener>,
 }
 
 pub(super) enum Msg {
@@ -117,6 +122,8 @@ impl Component for MediaList {
             _track_req: ws::Request::default(),
             confirming_watch: None,
             applied_backdrop: None,
+            _preload_img: None,
+            _preload_load: None,
         }
     }
 
@@ -149,12 +156,13 @@ impl Component for MediaList {
         }
 
         // Drive the page background from the first backdrop on the current page.
-        // Only emit on change, since `SetBackground` always triggers a re-render.
+        // Track the requested URL so we only react to changes (and never re-emit
+        // the same value, since `SetBackground` always triggers a re-render).
         if let Some(url) = self.current_backdrop()
             && self.applied_backdrop.as_ref() != Some(&url)
         {
             self.applied_backdrop = Some(url.clone());
-            self.background.background(Some(url));
+            self.preload_background(url);
         }
     }
 
@@ -518,6 +526,28 @@ impl MediaList {
             .skip(page * PAGE_SIZE)
             .take(PAGE_SIZE)
             .find_map(|m| m.backdrop.as_ref().map(|i| i.proxy_url()))
+    }
+
+    /// Preload `url` into an off-screen image, only switching the page
+    /// background to it once the browser has the image ready. This avoids a
+    /// flash of a half-loaded backdrop and lets the CSS cross-fade run smoothly.
+    fn preload_background(&mut self, url: String) {
+        let Ok(img) = HtmlImageElement::new() else {
+            // Fall back to switching immediately if we can't preload.
+            self.background.background(Some(url));
+            return;
+        };
+
+        let background = self.background.clone();
+        let load = EventListener::once(&img, "load", {
+            let url = url.clone();
+            move |_| background.background(Some(url))
+        });
+
+        img.set_src(&url);
+
+        self._preload_img = Some(img);
+        self._preload_load = Some(load);
     }
 
     fn emit_navigate(&self, ctx: &Context<Self>) {

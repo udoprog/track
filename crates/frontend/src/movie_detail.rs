@@ -1027,6 +1027,7 @@ impl MovieDetail {
             if self.remote_editor {
                 <RemoteEditor
                     title={movie.title.as_deref().unwrap_or("Untitled Movie").to_owned()}
+                    kind={RemoteSourceKind::Movie}
                     remotes={movie.remotes.clone()}
                     on_add={link.callback(|(slug, remote)| Msg::AddRemote(slug, remote))}
                     on_edit={link.callback(|(id, slug, remote)| Msg::EditRemote(id, slug, remote))}
