@@ -1,12 +1,8 @@
 #![allow(clippy::too_many_arguments)]
-// Typed statement bind tuples are intentionally explicit; the column list is the
-// documentation, so don't ask for them to be factored into type aliases.
 #![allow(clippy::type_complexity)]
 
-use core::marker::PhantomData;
-use core::mem::ManuallyDrop;
 use core::ops::{Deref, DerefMut};
-use core::{fmt, str};
+use core::str;
 
 use std::path::Path;
 use std::sync::Arc;
@@ -20,7 +16,7 @@ use api::{
     SeasonNumber, ShowId, ThemeType, Timestamp, WatchedId, WatchedKind,
 };
 use rust_embed::RustEmbed;
-use sqll::{Bind, OpenOptions, Pool, PoolBuilder, Row, SendStatement, Statements};
+use sqll::{OpenOptions, Pool, PoolBuilder, Row, Statements, TypedStatement};
 use tokio::task::spawn_blocking;
 
 const MIGRATIONS_INIT: &str = r#"
@@ -29,163 +25,6 @@ CREATE TABLE IF NOT EXISTS migrations (
     applied_at TEXT NOT NULL
 );
 "#;
-
-struct Stmt<I, O> {
-    inner: SendStatement,
-    _marker: PhantomData<(I, O)>,
-}
-
-impl<O> Stmt<(), O> {
-    fn query(&mut self) -> Result<Bound<'_, (), O>> {
-        self.inner.reset()?;
-
-        Ok(Bound {
-            stmt: &mut self.inner,
-            _marker: PhantomData,
-        })
-    }
-}
-
-impl<I, O> Stmt<I, O>
-where
-    I: Bind,
-{
-    #[track_caller]
-    fn bind<B>(&mut self, bind: B) -> Result<Bound<'_, I, O>>
-    where
-        B: Bind,
-    {
-        const {
-            assert!(
-                I::COUNT == B::COUNT,
-                "unexpected bind parameter count for statement",
-            );
-        }
-
-        self.inner.reset()?;
-        self.inner.bind(bind)?;
-        Ok(Bound {
-            stmt: &mut self.inner,
-            _marker: PhantomData,
-        })
-    }
-
-    #[track_caller]
-    fn execute<B>(&mut self, bind: B) -> Result<()>
-    where
-        B: Bind,
-    {
-        const {
-            assert!(
-                I::COUNT == B::COUNT,
-                "unexpected bind parameter count for statement",
-            );
-        }
-
-        self.inner.reset()?;
-        self.inner.bind(bind)?;
-        while !self.inner.step()?.is_done() {}
-        Ok(())
-    }
-}
-
-#[derive(Debug)]
-enum TryFromStmtError {
-    BindParameterCount { expected: i32, actual: i32 },
-    ColumnCount { expected: i32, actual: i32 },
-}
-
-impl fmt::Display for TryFromStmtError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::BindParameterCount { expected, actual } => write!(
-                f,
-                "unexpected bind parameter count for statement: expected {}, got {}",
-                expected, actual
-            ),
-            Self::ColumnCount { expected, actual } => write!(
-                f,
-                "unexpected column count for statement: expected {}, got {}",
-                expected, actual
-            ),
-        }
-    }
-}
-
-impl core::error::Error for TryFromStmtError {}
-
-impl<I, O> TryFrom<SendStatement> for Stmt<I, O>
-where
-    I: Bind,
-    O: for<'stmt> Row<'stmt>,
-{
-    type Error = TryFromStmtError;
-
-    fn try_from(inner: SendStatement) -> Result<Self, TryFromStmtError> {
-        if inner.bind_parameter_count() != I::COUNT as i32 {
-            return Err(TryFromStmtError::BindParameterCount {
-                expected: I::COUNT as i32,
-                actual: inner.bind_parameter_count(),
-            });
-        }
-
-        if inner.column_count() != O::COUNT as i32 {
-            return Err(TryFromStmtError::ColumnCount {
-                expected: O::COUNT as i32,
-                actual: inner.column_count(),
-            });
-        }
-
-        Ok(Self {
-            inner,
-            _marker: PhantomData,
-        })
-    }
-}
-
-struct Bound<'stmt, I, O> {
-    stmt: &'stmt mut SendStatement,
-    _marker: PhantomData<(I, O)>,
-}
-
-impl<I, O> Bound<'_, I, O> {
-    fn first(self) -> Result<Option<O>>
-    where
-        O: for<'stmt> Row<'stmt>,
-    {
-        let value = self.stmt.next()?;
-        let mut this = ManuallyDrop::new(self);
-        this.stmt.reset()?;
-        Ok(value)
-    }
-
-    #[inline]
-    fn next(&mut self) -> Result<Option<O>>
-    where
-        O: for<'stmt> Row<'stmt>,
-    {
-        Ok(self.stmt.next()?)
-    }
-
-    /// Consume the bound statement and reset the underlying statement,
-    /// surfacing any error. Unlike `Drop` (which resets silently), this lets a
-    /// caller release the statement between sequential uses without a scope and
-    /// still propagate a reset failure.
-    fn reset(self) -> Result<()> {
-        // Skip the `Drop` reset: we reset here and surface the error instead.
-        let mut this = ManuallyDrop::new(self);
-        this.stmt.reset()?;
-        Ok(())
-    }
-}
-
-impl<I, O> Drop for Bound<'_, I, O> {
-    fn drop(&mut self) {
-        // Ensure the statement is reset when the bound statement goes out of
-        // scope, so that the underlying statement can be reused.
-        let _ = self.stmt.reset();
-    }
-}
 
 #[derive(RustEmbed)]
 #[folder = "migrations"]
@@ -475,64 +314,65 @@ struct InnerRead {
     // shows
     #[sql = "SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at, language, include_specials"]
     #[sql = "FROM shows ORDER BY title"]
-    list_shows: Stmt<(), ShowRow>,
+    list_shows: TypedStatement<(), ShowRow>,
     #[sql = "SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at, language, include_specials"]
     #[sql = "FROM shows WHERE id = ?"]
-    show_by_id: Stmt<(ShowId,), ShowRow>,
+    show_by_id: TypedStatement<(ShowId,), ShowRow>,
     #[sql = "SELECT s.id, s.title, s.first_air, s.overview, s.tracked, s.sync_source, s.last_synced_at, s.language, s.include_specials"]
     #[sql = "FROM shows s"]
     #[sql = "JOIN show_remotes r ON r.show_id = s.id"]
     #[sql = "WHERE r.source = ? AND r.value = ?"]
-    shows_by_remote: Stmt<(RemoteSource, RemoteValue), ShowRow>,
+    shows_by_remote: TypedStatement<(RemoteSource, RemoteValue), ShowRow>,
 
     // remotes (one table per owner; source is a numeric enum, value is dynamic)
     #[sql = "SELECT id, slug, source, value FROM show_remotes WHERE show_id = ? ORDER BY id"]
-    list_show_remotes: Stmt<(ShowId,), RemoteRow>,
+    list_show_remotes: TypedStatement<(ShowId,), RemoteRow>,
     #[sql = "SELECT show_id, id, slug, source, value FROM show_remotes ORDER BY show_id, id"]
-    list_all_show_remotes: Stmt<(), AllShowRemoteRow>,
+    list_all_show_remotes: TypedStatement<(), AllShowRemoteRow>,
     #[sql = "SELECT show_id FROM show_remotes WHERE source = ? AND value = ? LIMIT 1"]
-    show_id_by_remote: Stmt<(RemoteSource, RemoteValue), ShowId>,
+    show_id_by_remote: TypedStatement<(RemoteSource, RemoteValue), ShowId>,
 
     // images (shows and movies share one table)
     #[sql = "SELECT id, kind, source, path FROM images"]
     #[sql = "WHERE show_id = ? ORDER BY kind, rank, id"]
-    list_show_images: Stmt<(ShowId,), ImageRow>,
+    list_show_images: TypedStatement<(ShowId,), ImageRow>,
     #[sql = "SELECT id, kind, source, path, show_id FROM images"]
     #[sql = "WHERE show_id IS NOT NULL ORDER BY show_id, kind, rank, id"]
-    list_all_show_images: Stmt<(), ShowImageRow>,
+    list_all_show_images: TypedStatement<(), ShowImageRow>,
     #[sql = "SELECT ei.episode_id, i.source, i.path, i.width, i.height"]
     #[sql = "FROM episode_images ei JOIN images i ON i.id = ei.image_id"]
     #[sql = "WHERE ei.kind = ? AND ei.episode_id IN (SELECT id FROM episodes WHERE show_id = ? AND season = ?)"]
-    list_season_episode_screenshots: Stmt<(ImageKind, ShowId, SeasonNumber), EpisodeScreenshotRow>,
+    list_season_episode_screenshots:
+        TypedStatement<(ImageKind, ShowId, SeasonNumber), EpisodeScreenshotRow>,
     #[sql = "SELECT id, kind, source, path FROM images"]
     #[sql = "WHERE movie_id = ? ORDER BY kind, rank, id"]
-    list_movie_images: Stmt<(MovieId,), ImageRow>,
+    list_movie_images: TypedStatement<(MovieId,), ImageRow>,
     #[sql = "SELECT id, kind, source, path, movie_id FROM images"]
     #[sql = "WHERE movie_id IS NOT NULL ORDER BY movie_id, kind, rank, id"]
-    list_all_movie_images: Stmt<(), MovieImageRow>,
+    list_all_movie_images: TypedStatement<(), MovieImageRow>,
     #[sql = "SELECT kind, show_id, movie_id, season_id FROM images WHERE id = ?"]
-    image_by_id: Stmt<(ImageId,), ImageMetaRow>,
+    image_by_id: TypedStatement<(ImageId,), ImageMetaRow>,
     #[sql = "SELECT id, kind, source, path FROM images"]
     #[sql = "WHERE season_id = ? ORDER BY kind, rank, id"]
-    list_season_images: Stmt<(SeasonId,), ImageRow>,
+    list_season_images: TypedStatement<(SeasonId,), ImageRow>,
     #[sql = "SELECT show_id FROM seasons WHERE id = ?"]
-    show_id_for_season: Stmt<(SeasonId,), ShowId>,
+    show_id_for_season: TypedStatement<(SeasonId,), ShowId>,
 
     // selection tables
     #[sql = "SELECT si.kind, i.source, i.path, i.width, i.height"]
     #[sql = "FROM show_images si JOIN images i ON i.id = si.image_id"]
     #[sql = "WHERE si.show_id = ?"]
-    list_show_image_selections: Stmt<(ShowId,), ImageSelectionRow>,
+    list_show_image_selections: TypedStatement<(ShowId,), ImageSelectionRow>,
     #[sql = "SELECT si.show_id, si.kind, i.source, i.path, i.width, i.height"]
     #[sql = "FROM show_images si JOIN images i ON i.id = si.image_id"]
-    list_all_show_image_selections: Stmt<(), AllShowImageSelectionRow>,
+    list_all_show_image_selections: TypedStatement<(), AllShowImageSelectionRow>,
     #[sql = "SELECT mi.kind, i.source, i.path, i.width, i.height"]
     #[sql = "FROM movie_images mi JOIN images i ON i.id = mi.image_id"]
     #[sql = "WHERE mi.movie_id = ?"]
-    list_movie_image_selections: Stmt<(MovieId,), ImageSelectionRow>,
+    list_movie_image_selections: TypedStatement<(MovieId,), ImageSelectionRow>,
     #[sql = "SELECT mi.movie_id, mi.kind, i.source, i.path, i.width, i.height"]
     #[sql = "FROM movie_images mi JOIN images i ON i.id = mi.image_id"]
-    list_all_movie_image_selections: Stmt<(), AllMovieImageSelectionRow>,
+    list_all_movie_image_selections: TypedStatement<(), AllMovieImageSelectionRow>,
 
     // seasons
     #[sql = "SELECT s.id, s.show_id, s.season, s.air_date, s.name, s.overview,"]
@@ -543,56 +383,56 @@ struct InnerRead {
     #[sql = "LEFT JOIN season_images si ON si.season_id = s.id AND si.kind = 1"]
     #[sql = "LEFT JOIN images i ON i.id = si.image_id"]
     #[sql = "WHERE s.show_id = ? ORDER BY s.season"]
-    list_seasons: Stmt<(ShowId,), SeasonRow>,
+    list_seasons: TypedStatement<(ShowId,), SeasonRow>,
     #[sql = "SELECT episode FROM episodes WHERE show_id = ? AND season = ?"]
-    episode_numbers_for_season: Stmt<(ShowId, SeasonNumber), u32>,
+    episode_numbers_for_season: TypedStatement<(ShowId, SeasonNumber), u32>,
 
     // episodes
     #[sql = "SELECT show_id, season, episode FROM episodes WHERE id = ?"]
-    episode_natural_key: Stmt<(EpisodeId,), EpisodeNaturalKeyRow>,
+    episode_natural_key: TypedStatement<(EpisodeId,), EpisodeNaturalKeyRow>,
     #[sql = "SELECT id, season, episode FROM episodes WHERE show_id = ?"]
-    list_episode_ids_for_show: Stmt<(ShowId,), EpisodeIdRow>,
+    list_episode_ids_for_show: TypedStatement<(ShowId,), EpisodeIdRow>,
     #[sql = "SELECT e.id, e.show_id, e.season, e.episode, e.absolute_number, e.name, e.overview, e.aired,"]
     #[sql = "    EXISTS(SELECT 1 FROM pending p WHERE p.episode_id = e.id) AS pending,"]
     #[sql = "    (SELECT COUNT(*) FROM watched_episodes we WHERE we.show_id = e.show_id AND we.season = e.season AND we.episode = e.episode) AS watched_count"]
     #[sql = "FROM episodes e"]
     #[sql = "WHERE e.show_id = ? AND e.season = ?"]
     #[sql = "ORDER BY e.episode"]
-    list_episodes: Stmt<(ShowId, SeasonNumber), EpisodeRow>,
+    list_episodes: TypedStatement<(ShowId, SeasonNumber), EpisodeRow>,
     #[sql = "SELECT er.episode_id, er.source, er.value"]
     #[sql = "FROM episode_remotes er"]
     #[sql = "JOIN episodes e ON e.id = er.episode_id"]
     #[sql = "WHERE e.show_id = ? AND e.season = ?"]
-    list_season_episode_remotes: Stmt<(ShowId, SeasonNumber), EpisodeRemoteRow>,
+    list_season_episode_remotes: TypedStatement<(ShowId, SeasonNumber), EpisodeRemoteRow>,
     #[sql = "SELECT we.id, we.timestamp, we.season, we.episode, e.id AS episode_id"]
     #[sql = "FROM watched_episodes we"]
     #[sql = "JOIN episodes e ON e.show_id = we.show_id AND e.season = we.season AND e.episode = we.episode"]
     #[sql = "WHERE we.show_id = ?"]
     #[sql = "ORDER BY we.timestamp DESC"]
-    list_episodes_watched: Stmt<(ShowId,), WatchedEpisodeRow>,
+    list_episodes_watched: TypedStatement<(ShowId,), WatchedEpisodeRow>,
     #[sql = "SELECT aired FROM episodes WHERE id = ?"]
-    episode_aired_by_id: Stmt<(EpisodeId,), Option<Timestamp>>,
+    episode_aired_by_id: TypedStatement<(EpisodeId,), Option<Timestamp>>,
 
     // movies
     #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.sync_source, m.last_synced_at, m.language"]
     #[sql = "FROM movies m ORDER BY m.title"]
-    list_movies: Stmt<(), MovieRow>,
+    list_movies: TypedStatement<(), MovieRow>,
     #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.sync_source, m.last_synced_at, m.language"]
     #[sql = "FROM movies m WHERE m.id = ?"]
-    movie_by_id: Stmt<(MovieId,), MovieRow>,
+    movie_by_id: TypedStatement<(MovieId,), MovieRow>,
     #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.sync_source, m.last_synced_at, m.language"]
     #[sql = "FROM movies m"]
     #[sql = "JOIN movie_remotes r ON r.movie_id = m.id"]
     #[sql = "WHERE r.source = ? AND r.value = ?"]
-    movie_by_remote: Stmt<(RemoteSource, RemoteValue), MovieRow>,
+    movie_by_remote: TypedStatement<(RemoteSource, RemoteValue), MovieRow>,
     #[sql = "SELECT id, slug, source, value FROM movie_remotes WHERE movie_id = ? ORDER BY id"]
-    list_movie_remotes: Stmt<(MovieId,), RemoteRow>,
+    list_movie_remotes: TypedStatement<(MovieId,), RemoteRow>,
     #[sql = "SELECT movie_id, id, slug, source, value FROM movie_remotes ORDER BY movie_id, id"]
-    list_all_movie_remotes: Stmt<(), AllMovieRemoteRow>,
+    list_all_movie_remotes: TypedStatement<(), AllMovieRemoteRow>,
     #[sql = "SELECT movie_id FROM movie_remotes WHERE source = ? AND value = ? LIMIT 1"]
-    movie_id_by_remote: Stmt<(RemoteSource, RemoteValue), Option<MovieId>>,
+    movie_id_by_remote: TypedStatement<(RemoteSource, RemoteValue), Option<MovieId>>,
     #[sql = "SELECT release_date FROM movies WHERE id = ?"]
-    movie_released_by_id: Stmt<(MovieId,), Option<Timestamp>>,
+    movie_released_by_id: TypedStatement<(MovieId,), Option<Timestamp>>,
 
     // watched
     #[sql = "SELECT we.id, we.timestamp, e.id AS episode_id, NULL AS movie_id, e.show_id"]
@@ -600,17 +440,17 @@ struct InnerRead {
     #[sql = "JOIN episodes e ON e.show_id = we.show_id AND e.season = we.season AND e.episode = we.episode"]
     #[sql = "WHERE e.id = ?"]
     #[sql = "ORDER BY we.timestamp DESC"]
-    list_watched_by_episode: Stmt<(EpisodeId,), WatchedRow>,
+    list_watched_by_episode: TypedStatement<(EpisodeId,), WatchedRow>,
     #[sql = "SELECT id, timestamp, NULL AS episode_id, movie_id, NULL AS show_id"]
     #[sql = "FROM watched_movies WHERE movie_id = ? ORDER BY timestamp DESC"]
-    list_watched_by_movie: Stmt<(MovieId,), WatchedRow>,
+    list_watched_by_movie: TypedStatement<(MovieId,), WatchedRow>,
     #[sql = "SELECT we.id, we.timestamp, we.show_id, we.season, we.episode"]
     #[sql = "FROM watched_episodes we"]
     #[sql = "LEFT JOIN episodes e"]
     #[sql = "    ON e.show_id = we.show_id AND e.season = we.season AND e.episode = we.episode"]
     #[sql = "WHERE we.show_id = ? AND e.id IS NULL"]
     #[sql = "ORDER BY we.timestamp ASC"]
-    list_orphaned_for_show: Stmt<(ShowId,), OrphanedWatchedRow>,
+    list_orphaned_for_show: TypedStatement<(ShowId,), OrphanedWatchedRow>,
     // select episodes which have 0 watched by show and season.
     #[sql = "SELECT id, show_id, season, episode FROM episodes"]
     #[sql = "WHERE show_id = ? AND season = ?"]
@@ -620,18 +460,18 @@ struct InnerRead {
     #[sql = "        AND we.season = episodes.season"]
     #[sql = "        AND we.episode = episodes.episode"]
     #[sql = "    )"]
-    select_unwatched_by_show_season: Stmt<(ShowId, SeasonNumber), UnwatchedEpisodeRow>,
+    select_unwatched_by_show_season: TypedStatement<(ShowId, SeasonNumber), UnwatchedEpisodeRow>,
 
     // pending table management
     #[sql = "SELECT 1 FROM pending WHERE movie_id = ? LIMIT 1"]
-    has_pending_movie: Stmt<(MovieId,), (i64,)>,
+    has_pending_movie: TypedStatement<(MovieId,), (i64,)>,
     #[sql = "SELECT 1 FROM pending WHERE show_id = ? LIMIT 1"]
-    has_pending_episode_for_show: Stmt<(ShowId,), (i64,)>,
+    has_pending_episode_for_show: TypedStatement<(ShowId,), (i64,)>,
     #[sql = "SELECT e.aired, p.timestamp"]
     #[sql = "FROM pending p"]
     #[sql = "JOIN episodes e ON e.id = p.episode_id"]
     #[sql = "WHERE p.show_id = ?"]
-    pending_episode_aired_for_show: Stmt<(ShowId,), PendingEpisodeAiredRow>,
+    pending_episode_aired_for_show: TypedStatement<(ShowId,), PendingEpisodeAiredRow>,
     #[sql = "SELECT e.id, e.aired"]
     #[sql = "FROM episodes e"]
     #[sql = "WHERE e.show_id = ?1"]
@@ -643,7 +483,7 @@ struct InnerRead {
     #[sql = "    )"]
     #[sql = "ORDER BY e.season, e.episode"]
     #[sql = "LIMIT 1"]
-    next_pending_episode_for_show: Stmt<(ShowId, bool), NextEpisodeRow>,
+    next_pending_episode_for_show: TypedStatement<(ShowId, bool), NextEpisodeRow>,
     #[sql = "SELECT e.id, e.aired"]
     #[sql = "FROM episodes e"]
     #[sql = "WHERE e.show_id = ?"]
@@ -653,43 +493,43 @@ struct InnerRead {
     #[sql = "    )"]
     #[sql = "ORDER BY e.season, e.episode"]
     #[sql = "LIMIT 1"]
-    first_unwatched_episode_for_show: Stmt<(ShowId,), NextEpisodeRow>,
+    first_unwatched_episode_for_show: TypedStatement<(ShowId,), NextEpisodeRow>,
     #[sql = "SELECT m.id, m.release_date"]
     #[sql = "FROM movies m"]
     #[sql = "WHERE m.tracked = 1"]
     #[sql = "    AND (m.release_date IS NOT NULL AND m.release_date <= ?)"]
     #[sql = "    AND NOT EXISTS (SELECT 1 FROM watched_movies wm WHERE wm.movie_id = m.id)"]
     #[sql = "    AND NOT EXISTS (SELECT 1 FROM pending p WHERE p.movie_id = m.id)"]
-    movies_needing_pending: Stmt<(Timestamp,), PendingMovieCandidateRow>,
+    movies_needing_pending: TypedStatement<(Timestamp,), PendingMovieCandidateRow>,
     #[sql = "SELECT episode_id, movie_id"]
     #[sql = "FROM pending"]
     #[sql = "WHERE timestamp <= ?"]
     #[sql = "ORDER BY timestamp DESC"]
-    list_pending_before: Stmt<(Timestamp,), PendingBaseRow>,
+    list_pending_before: TypedStatement<(Timestamp,), PendingBaseRow>,
     #[sql = "SELECT e.show_id, s.title AS show_title, e.season, e.episode, e.name AS episode_name, e.aired"]
     #[sql = "FROM episodes e"]
     #[sql = "JOIN shows s ON s.id = e.show_id"]
     #[sql = "WHERE e.id = ?"]
-    pending_episode_detail: Stmt<(EpisodeId,), PendingEpisodeDetailRow>,
+    pending_episode_detail: TypedStatement<(EpisodeId,), PendingEpisodeDetailRow>,
     #[sql = "SELECT title, release_date FROM movies WHERE id = ?"]
-    pending_movie_detail: Stmt<(MovieId,), PendingMovieDetailRow>,
+    pending_movie_detail: TypedStatement<(MovieId,), PendingMovieDetailRow>,
     #[sql = "SELECT i.source, i.path"]
     #[sql = "FROM show_images si JOIN images i ON i.id = si.image_id"]
     #[sql = "WHERE si.show_id = ? AND si.kind = ?"]
-    image_for_show: Stmt<(ShowId, ImageKind), PendingImageRow>,
+    image_for_show: TypedStatement<(ShowId, ImageKind), PendingImageRow>,
     #[sql = "SELECT i.source, i.path"]
     #[sql = "FROM movie_images mi JOIN images i ON i.id = mi.image_id"]
     #[sql = "WHERE mi.movie_id = ? AND mi.kind = ?"]
-    image_for_movie: Stmt<(MovieId, ImageKind), PendingImageRow>,
+    image_for_movie: TypedStatement<(MovieId, ImageKind), PendingImageRow>,
     #[sql = "SELECT id FROM seasons WHERE show_id = ? AND season = ?"]
-    season_id_for: Stmt<(ShowId, SeasonNumber), SeasonId>,
+    season_id_for: TypedStatement<(ShowId, SeasonNumber), SeasonId>,
     #[sql = "SELECT e.id, e.aired FROM episodes e"]
     #[sql = "JOIN episodes c ON c.id = ?2"]
     #[sql = "WHERE e.show_id = ?1"]
     #[sql = "    AND (e.season > c.season OR (e.season = c.season AND e.episode > c.episode))"]
     #[sql = "ORDER BY e.season, e.episode"]
     #[sql = "LIMIT 1"]
-    next_episode_after: Stmt<(ShowId, EpisodeId), (EpisodeId, Option<Timestamp>)>,
+    next_episode_after: TypedStatement<(ShowId, EpisodeId), (EpisodeId, Option<Timestamp>)>,
 
     // schedule: episodes airing in the next N days
     #[sql = "SELECT e.show_id, s.title AS show_title,"]
@@ -701,7 +541,7 @@ struct InnerRead {
     #[sql = "    AND e.aired > ?"]
     #[sql = "    AND e.aired <= ?"]
     #[sql = "ORDER BY e.aired, s.title, e.season, e.episode"]
-    list_schedule: Stmt<(Timestamp, Timestamp), ScheduleRow>,
+    list_schedule: TypedStatement<(Timestamp, Timestamp), ScheduleRow>,
     #[sql = "SELECT er.episode_id, er.source, er.value"]
     #[sql = "FROM episode_remotes er"]
     #[sql = "JOIN episodes e ON e.id = er.episode_id"]
@@ -709,13 +549,13 @@ struct InnerRead {
     #[sql = "WHERE s.tracked = 1"]
     #[sql = "    AND e.aired > ?"]
     #[sql = "    AND e.aired <= ?"]
-    list_schedule_remotes: Stmt<(Timestamp, Timestamp), EpisodeRemoteRow>,
+    list_schedule_remotes: TypedStatement<(Timestamp, Timestamp), EpisodeRemoteRow>,
 
     // all watched (for import dedup) see list_all_watched_episodes / list_all_watched_movies
 
     // config
     #[sql = "SELECT value FROM config WHERE key = ?"]
-    get_config: Stmt<(String,), String>,
+    get_config: TypedStatement<(String,), String>,
 
     // stale-item queries
     #[sql = "SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at, language, include_specials"]
@@ -723,25 +563,25 @@ struct InnerRead {
     #[sql = "WHERE tracked = 1"]
     #[sql = "    AND (last_synced_at IS NULL OR last_synced_at < ?)"]
     #[sql = "ORDER BY last_synced_at IS NOT NULL, last_synced_at"]
-    shows_needing_sync: Stmt<(Timestamp,), ShowRow>,
+    shows_needing_sync: TypedStatement<(Timestamp,), ShowRow>,
     #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.sync_source, m.last_synced_at, m.language"]
     #[sql = "FROM movies m"]
     #[sql = "WHERE m.tracked = 1"]
     #[sql = "    AND (m.last_synced_at IS NULL OR m.last_synced_at < ?)"]
     #[sql = "ORDER BY m.last_synced_at IS NOT NULL, m.last_synced_at"]
-    movies_needing_sync: Stmt<(Timestamp,), MovieRow>,
+    movies_needing_sync: TypedStatement<(Timestamp,), MovieRow>,
 
     // movie releases
     #[sql = "SELECT country, release_type, timestamp"]
     #[sql = "FROM movie_releases"]
     #[sql = "WHERE movie_id = ?"]
     #[sql = "ORDER BY timestamp, country, release_type"]
-    list_movie_releases: Stmt<(MovieId,), MovieReleaseRow>,
+    list_movie_releases: TypedStatement<(MovieId,), MovieReleaseRow>,
     #[sql = "SELECT timestamp"]
     #[sql = "FROM movie_releases"]
     #[sql = "WHERE movie_id = ? AND release_type = ?"]
     #[sql = "ORDER BY timestamp"]
-    movie_release_by_type: Stmt<(MovieId, ReleaseType), Timestamp>,
+    movie_release_by_type: TypedStatement<(MovieId, ReleaseType), Timestamp>,
 
     // digital-release pending discovery
     #[sql = "SELECT m.id, MIN(mr.timestamp) AS release_timestamp"]
@@ -752,7 +592,7 @@ struct InnerRead {
     #[sql = "    AND NOT EXISTS (SELECT 1 FROM watched_movies wm WHERE wm.movie_id = m.id)"]
     #[sql = "    AND NOT EXISTS (SELECT 1 FROM pending p WHERE p.movie_id = m.id)"]
     #[sql = "GROUP BY m.id"]
-    movies_needing_pending_digital: Stmt<(Timestamp,), PendingMovieCandidateRow>,
+    movies_needing_pending_digital: TypedStatement<(Timestamp,), PendingMovieCandidateRow>,
 }
 
 #[derive(Statements)]
@@ -763,11 +603,11 @@ struct InnerWrite {
     // shows
     #[sql = "INSERT INTO shows (id, title, first_air, overview, tracked)"]
     #[sql = "VALUES (?, ?, ?, ?, ?)"]
-    insert_show: Stmt<(ShowId, String, Option<Timestamp>, String, bool), ()>,
+    insert_show: TypedStatement<(ShowId, String, Option<Timestamp>, String, bool), ()>,
     #[sql = "UPDATE shows"]
     #[sql = "SET title = ?, first_air = ?, overview = ?, tracked = ?"]
     #[sql = "WHERE id = ?"]
-    update_show: Stmt<
+    update_show: TypedStatement<
         (
             Option<String>,
             Option<Timestamp>,
@@ -778,30 +618,31 @@ struct InnerWrite {
         (),
     >,
     #[sql = "DELETE FROM shows WHERE id = ?"]
-    delete_show: Stmt<(ShowId,), ()>,
+    delete_show: TypedStatement<(ShowId,), ()>,
     #[sql = "UPDATE shows SET tracked = ? WHERE id = ?"]
-    set_show_tracked: Stmt<(bool, ShowId), ()>,
+    set_show_tracked: TypedStatement<(bool, ShowId), ()>,
     #[sql = "UPDATE shows SET sync_source = ? WHERE id = ?"]
-    set_show_sync_source: Stmt<(RemoteSource, ShowId), ()>,
+    set_show_sync_source: TypedStatement<(RemoteSource, ShowId), ()>,
     #[sql = "UPDATE shows SET language = ? WHERE id = ?"]
-    set_show_language: Stmt<(Option<String>, ShowId), ()>,
+    set_show_language: TypedStatement<(Option<String>, ShowId), ()>,
     #[sql = "UPDATE shows SET include_specials = ? WHERE id = ?"]
-    set_show_include_specials: Stmt<(Option<bool>, ShowId), ()>,
+    set_show_include_specials: TypedStatement<(Option<bool>, ShowId), ()>,
 
     // remotes (one table per owner; source is a numeric enum, value is dynamic)
     #[sql = "INSERT OR IGNORE INTO show_remotes (id, slug, show_id, source, value) VALUES (?, ?, ?, ?, ?)"]
-    insert_show_remote: Stmt<(RemoteId, Option<String>, ShowId, RemoteSource, RemoteValue), ()>,
+    insert_show_remote:
+        TypedStatement<(RemoteId, Option<String>, ShowId, RemoteSource, RemoteValue), ()>,
     #[sql = "DELETE FROM show_remotes WHERE id = ?"]
-    delete_show_remote: Stmt<(RemoteId,), ()>,
+    delete_show_remote: TypedStatement<(RemoteId,), ()>,
     #[sql = "UPDATE show_remotes SET slug = ?, source = ?, value = ? WHERE id = ?"]
-    update_show_remote: Stmt<(Option<String>, RemoteSource, RemoteValue, RemoteId), ()>,
+    update_show_remote: TypedStatement<(Option<String>, RemoteSource, RemoteValue, RemoteId), ()>,
 
     // images (shows and movies share one table)
     #[sql = "DELETE FROM images WHERE show_id = ?"]
-    delete_show_images: Stmt<(ShowId,), ()>,
+    delete_show_images: TypedStatement<(ShowId,), ()>,
     #[sql = "INSERT INTO images (id, show_id, kind, source, path, width, height, rank) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"]
     #[sql = "ON CONFLICT(show_id, kind, path) WHERE show_id IS NOT NULL DO NOTHING"]
-    insert_show_image: Stmt<
+    insert_show_image: TypedStatement<
         (
             ImageId,
             ShowId,
@@ -816,14 +657,15 @@ struct InnerWrite {
     >,
     #[sql = "INSERT INTO images (id, episode_id, kind, source, path, width, height) VALUES (?, ?, ?, ?, ?, ?, ?)"]
     #[sql = "ON CONFLICT(episode_id, kind, path) WHERE episode_id IS NOT NULL DO NOTHING"]
-    insert_episode_image: Stmt<(ImageId, EpisodeId, ImageKind, ImageSource, String, u32, u32), ()>,
+    insert_episode_image:
+        TypedStatement<(ImageId, EpisodeId, ImageKind, ImageSource, String, u32, u32), ()>,
     #[sql = "DELETE FROM images WHERE episode_id IN (SELECT id FROM episodes WHERE show_id = ?)"]
-    delete_episode_images_for_show: Stmt<(ShowId,), ()>,
+    delete_episode_images_for_show: TypedStatement<(ShowId,), ()>,
     #[sql = "DELETE FROM images WHERE movie_id = ?"]
-    delete_movie_images: Stmt<(MovieId,), ()>,
+    delete_movie_images: TypedStatement<(MovieId,), ()>,
     #[sql = "INSERT INTO images (id, movie_id, kind, source, path, width, height, rank) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"]
     #[sql = "ON CONFLICT(movie_id, kind, path) WHERE movie_id IS NOT NULL DO NOTHING"]
-    insert_movie_image: Stmt<
+    insert_movie_image: TypedStatement<
         (
             ImageId,
             MovieId,
@@ -837,24 +679,24 @@ struct InnerWrite {
         (),
     >,
     #[sql = "DELETE FROM season_images WHERE season_id = ? AND kind = ?"]
-    delete_season_image_selection: Stmt<(SeasonId, ImageKind), ()>,
+    delete_season_image_selection: TypedStatement<(SeasonId, ImageKind), ()>,
 
     // selection tables
     #[sql = "INSERT OR REPLACE INTO show_images (show_id, kind, image_id) VALUES (?, ?, ?)"]
-    set_show_image_selection: Stmt<(ShowId, ImageKind, ImageId), ()>,
+    set_show_image_selection: TypedStatement<(ShowId, ImageKind, ImageId), ()>,
     #[sql = "DELETE FROM show_images WHERE show_id = ? AND kind = ?"]
-    delete_show_image_selection: Stmt<(ShowId, ImageKind), ()>,
+    delete_show_image_selection: TypedStatement<(ShowId, ImageKind), ()>,
     #[sql = "INSERT OR REPLACE INTO movie_images (movie_id, kind, image_id) VALUES (?, ?, ?)"]
-    set_movie_image_selection: Stmt<(MovieId, ImageKind, ImageId), ()>,
+    set_movie_image_selection: TypedStatement<(MovieId, ImageKind, ImageId), ()>,
     #[sql = "DELETE FROM movie_images WHERE movie_id = ? AND kind = ?"]
-    delete_movie_image_selection: Stmt<(MovieId, ImageKind), ()>,
+    delete_movie_image_selection: TypedStatement<(MovieId, ImageKind), ()>,
     #[sql = "INSERT OR REPLACE INTO episode_images (episode_id, kind, image_id) VALUES (?, ?, ?)"]
-    set_episode_image_selection: Stmt<(EpisodeId, ImageKind, ImageId), ()>,
+    set_episode_image_selection: TypedStatement<(EpisodeId, ImageKind, ImageId), ()>,
     #[sql = "DELETE FROM images WHERE season_id = ?"]
-    delete_season_images: Stmt<(SeasonId,), ()>,
+    delete_season_images: TypedStatement<(SeasonId,), ()>,
     #[sql = "INSERT INTO images (id, season_id, kind, source, path, width, height, rank) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"]
     #[sql = "ON CONFLICT(season_id, kind, path) WHERE season_id IS NOT NULL DO NOTHING"]
-    insert_season_image: Stmt<
+    insert_season_image: TypedStatement<
         (
             ImageId,
             SeasonId,
@@ -868,7 +710,7 @@ struct InnerWrite {
         (),
     >,
     #[sql = "INSERT OR REPLACE INTO season_images (season_id, kind, image_id) VALUES (?, ?, ?)"]
-    set_season_image_selection: Stmt<(SeasonId, ImageKind, ImageId), ()>,
+    set_season_image_selection: TypedStatement<(SeasonId, ImageKind, ImageId), ()>,
 
     // seasons
     #[sql = "INSERT INTO seasons (id, show_id, season, air_date, name, overview)"]
@@ -877,7 +719,7 @@ struct InnerWrite {
     #[sql = "    air_date  = excluded.air_date,"]
     #[sql = "    name      = excluded.name,"]
     #[sql = "    overview  = excluded.overview"]
-    upsert_season: Stmt<
+    upsert_season: TypedStatement<
         (
             SeasonId,
             ShowId,
@@ -889,11 +731,11 @@ struct InnerWrite {
         (),
     >,
     #[sql = "DELETE FROM seasons WHERE show_id = ?1 AND season = ?2"]
-    delete_season: Stmt<(ShowId, SeasonNumber), ()>,
+    delete_season: TypedStatement<(ShowId, SeasonNumber), ()>,
     #[sql = "DELETE FROM episodes WHERE show_id = ?1 AND season = ?2"]
-    delete_season_episodes: Stmt<(ShowId, SeasonNumber), ()>,
+    delete_season_episodes: TypedStatement<(ShowId, SeasonNumber), ()>,
     #[sql = "DELETE FROM episodes WHERE show_id = ? AND season = ? AND episode = ?"]
-    delete_episode_by_place: Stmt<(ShowId, SeasonNumber, u32), ()>,
+    delete_episode_by_place: TypedStatement<(ShowId, SeasonNumber, u32), ()>,
 
     // episodes
     #[sql = "INSERT INTO episodes (id, show_id, season, episode, absolute_number, name, overview, aired)"]
@@ -903,7 +745,7 @@ struct InnerWrite {
     #[sql = "    name            = excluded.name,"]
     #[sql = "    overview        = excluded.overview,"]
     #[sql = "    aired           = excluded.aired"]
-    upsert_episode: Stmt<
+    upsert_episode: TypedStatement<
         (
             EpisodeId,
             ShowId,
@@ -917,86 +759,88 @@ struct InnerWrite {
         (),
     >,
     #[sql = "DELETE FROM episode_remotes WHERE episode_id = ?"]
-    delete_episode_remotes: Stmt<(EpisodeId,), ()>,
+    delete_episode_remotes: TypedStatement<(EpisodeId,), ()>,
     #[sql = "INSERT INTO episode_remotes (id, episode_id, source, value) VALUES (?, ?, ?, ?)"]
-    insert_episode_remote: Stmt<(RemoteId, EpisodeId, RemoteSource, RemoteValue), ()>,
+    insert_episode_remote: TypedStatement<(RemoteId, EpisodeId, RemoteSource, RemoteValue), ()>,
     #[sql = "UPDATE episodes SET remote_id = ? WHERE id = ?"]
-    set_episode_remote: Stmt<(RemoteId, EpisodeId), ()>,
+    set_episode_remote: TypedStatement<(RemoteId, EpisodeId), ()>,
     #[sql = "UPDATE episodes SET aired = ? WHERE show_id = ? AND season = ? AND episode = ?"]
-    update_episode_aired: Stmt<(Timestamp, ShowId, SeasonNumber, u32), ()>,
+    update_episode_aired: TypedStatement<(Timestamp, ShowId, SeasonNumber, u32), ()>,
 
     // movies
     #[sql = "INSERT INTO movies (id, title, release_date, overview, tracked)"]
     #[sql = "VALUES (?, ?, ?, ?, ?)"]
-    insert_movie: Stmt<(MovieId, String, Option<Timestamp>, String, bool), ()>,
+    insert_movie: TypedStatement<(MovieId, String, Option<Timestamp>, String, bool), ()>,
     #[sql = "UPDATE movies SET tracked = ? WHERE id = ?"]
-    set_movie_tracked: Stmt<(bool, MovieId), ()>,
+    set_movie_tracked: TypedStatement<(bool, MovieId), ()>,
     #[sql = "UPDATE movies SET sync_source = ? WHERE id = ?"]
-    set_movie_sync_source: Stmt<(RemoteSource, MovieId), ()>,
+    set_movie_sync_source: TypedStatement<(RemoteSource, MovieId), ()>,
     #[sql = "UPDATE movies SET language = ? WHERE id = ?"]
-    set_movie_language: Stmt<(Option<String>, MovieId), ()>,
+    set_movie_language: TypedStatement<(Option<String>, MovieId), ()>,
     #[sql = "UPDATE movies"]
     #[sql = "SET title = ?, release_date = ?, overview = ?"]
     #[sql = "WHERE id = ?"]
-    update_movie: Stmt<(Option<String>, Option<Timestamp>, Option<String>, MovieId), ()>,
+    update_movie: TypedStatement<(Option<String>, Option<Timestamp>, Option<String>, MovieId), ()>,
     #[sql = "DELETE FROM movies WHERE id = ?"]
-    delete_movie: Stmt<(MovieId,), ()>,
+    delete_movie: TypedStatement<(MovieId,), ()>,
     #[sql = "INSERT OR IGNORE INTO movie_remotes (id, slug, movie_id, source, value) VALUES (?, ?, ?, ?, ?)"]
-    insert_movie_remote: Stmt<(RemoteId, Option<String>, MovieId, RemoteSource, RemoteValue), ()>,
+    insert_movie_remote:
+        TypedStatement<(RemoteId, Option<String>, MovieId, RemoteSource, RemoteValue), ()>,
     #[sql = "DELETE FROM movie_remotes WHERE id = ?"]
-    delete_movie_remote: Stmt<(RemoteId,), ()>,
+    delete_movie_remote: TypedStatement<(RemoteId,), ()>,
     #[sql = "UPDATE movie_remotes SET slug = ?, source = ?, value = ? WHERE id = ?"]
-    update_movie_remote: Stmt<(Option<String>, RemoteSource, RemoteValue, RemoteId), ()>,
+    update_movie_remote: TypedStatement<(Option<String>, RemoteSource, RemoteValue, RemoteId), ()>,
 
     // watched
     #[sql = "INSERT OR IGNORE INTO watched_episodes (id, timestamp, show_id, season, episode)"]
     #[sql = "VALUES (?, ?, ?, ?, ?)"]
-    insert_watched_episode: Stmt<(WatchedId, Timestamp, ShowId, SeasonNumber, u32), ()>,
+    insert_watched_episode: TypedStatement<(WatchedId, Timestamp, ShowId, SeasonNumber, u32), ()>,
     #[sql = "INSERT OR IGNORE INTO watched_movies (id, timestamp, movie_id)"]
     #[sql = "VALUES (?, ?, ?)"]
-    insert_watched_movie: Stmt<(WatchedId, Timestamp, MovieId), ()>,
+    insert_watched_movie: TypedStatement<(WatchedId, Timestamp, MovieId), ()>,
     #[sql = "DELETE FROM watched_episodes WHERE id = ?"]
-    delete_watched_episode: Stmt<(WatchedId,), ()>,
+    delete_watched_episode: TypedStatement<(WatchedId,), ()>,
     #[sql = "DELETE FROM watched_movies WHERE id = ?"]
-    delete_watched_movie: Stmt<(WatchedId,), ()>,
+    delete_watched_movie: TypedStatement<(WatchedId,), ()>,
     #[sql = "UPDATE watched_episodes SET season = ?, episode = ? WHERE id = ?"]
-    move_watched_episode: Stmt<(SeasonNumber, u32, WatchedId), ()>,
+    move_watched_episode: TypedStatement<(SeasonNumber, u32, WatchedId), ()>,
 
     // pending table management
     #[sql = "INSERT INTO pending (id, timestamp, show_id, episode_id) VALUES (?, ?, ?, ?)"]
     #[sql = "ON CONFLICT(show_id) WHERE show_id IS NOT NULL"]
     #[sql = "    DO UPDATE SET episode_id = excluded.episode_id, timestamp = excluded.timestamp"]
-    upsert_pending_episode: Stmt<(PendingId, Timestamp, ShowId, EpisodeId), ()>,
+    upsert_pending_episode: TypedStatement<(PendingId, Timestamp, ShowId, EpisodeId), ()>,
     #[sql = "INSERT INTO pending (id, timestamp, movie_id) VALUES (?, ?, ?)"]
     #[sql = "ON CONFLICT(movie_id) WHERE movie_id IS NOT NULL"]
     #[sql = "    DO UPDATE SET timestamp = excluded.timestamp"]
-    upsert_pending_movie: Stmt<(PendingId, Timestamp, MovieId), ()>,
+    upsert_pending_movie: TypedStatement<(PendingId, Timestamp, MovieId), ()>,
     #[sql = "UPDATE pending SET timestamp = ? WHERE show_id = ?"]
-    update_pending_episode_timestamp: Stmt<(Timestamp, ShowId), ()>,
+    update_pending_episode_timestamp: TypedStatement<(Timestamp, ShowId), ()>,
     #[sql = "DELETE FROM pending WHERE show_id = ?"]
-    delete_pending_episode: Stmt<(ShowId,), ()>,
+    delete_pending_episode: TypedStatement<(ShowId,), ()>,
     #[sql = "DELETE FROM pending WHERE movie_id = ?"]
-    delete_pending_movie: Stmt<(MovieId,), ()>,
+    delete_pending_movie: TypedStatement<(MovieId,), ()>,
 
     // config
     #[sql = "INSERT INTO config (key, value) VALUES (?, ?)"]
     #[sql = "ON CONFLICT (key) DO UPDATE SET value = excluded.value"]
-    set_config: Stmt<(String, String), ()>,
+    set_config: TypedStatement<(String, String), ()>,
     #[sql = "DELETE FROM config WHERE key = ?"]
-    delete_config: Stmt<(String,), ()>,
+    delete_config: TypedStatement<(String,), ()>,
 
     // movie releases
     #[sql = "INSERT INTO movie_releases (id, movie_id, country, release_type, timestamp)"]
     #[sql = "VALUES (?, ?, ?, ?, ?)"]
     #[sql = "ON CONFLICT(movie_id, country, release_type)"]
     #[sql = "    DO UPDATE SET timestamp = excluded.timestamp"]
-    upsert_movie_release: Stmt<(MovieReleaseId, MovieId, String, ReleaseType, Timestamp), ()>,
+    upsert_movie_release:
+        TypedStatement<(MovieReleaseId, MovieId, String, ReleaseType, Timestamp), ()>,
 
     // last_synced_at stamping
     #[sql = "UPDATE shows SET last_synced_at = ? WHERE id = ?"]
-    set_show_synced_at: Stmt<(Timestamp, ShowId), ()>,
+    set_show_synced_at: TypedStatement<(Timestamp, ShowId), ()>,
     #[sql = "UPDATE movies SET last_synced_at = ? WHERE id = ?"]
-    set_movie_synced_at: Stmt<(Timestamp, MovieId), ()>,
+    set_movie_synced_at: TypedStatement<(Timestamp, MovieId), ()>,
 }
 
 impl Deref for InnerWrite {
@@ -1017,7 +861,7 @@ impl DerefMut for InnerWrite {
 
 impl InnerRead {
     fn get_config(&mut self, key: &str) -> Result<Option<String>> {
-        self.get_config.bind((key,))?.first()
+        Ok(self.get_config.bind((key,))?.first()?)
     }
 }
 
@@ -1161,7 +1005,7 @@ impl Database {
                 .first()
         });
 
-        result.await?
+        Ok(result.await??)
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -1182,23 +1026,21 @@ impl Database {
                 show_id,
                 remote.source(),
                 remote.value(),
-            ))?;
-            Ok(())
+            ))
         });
 
-        result.await?
+        result.await??;
+        Ok(())
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn remove_show_remote(&self, remote_id: RemoteId) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
-        let result = spawn_blocking(move || {
-            s.delete_show_remote.execute((remote_id,))?;
-            Ok(())
-        });
+        let result = spawn_blocking(move || s.delete_show_remote.execute((remote_id,)));
 
-        result.await?
+        result.await??;
+        Ok(())
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -1218,11 +1060,11 @@ impl Database {
                 remote.source(),
                 remote.value(),
                 remote_id,
-            ))?;
-            Ok(())
+            ))
         });
 
-        result.await?
+        result.await??;
+        Ok(())
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -2535,8 +2377,7 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn show_id_for_season(&self, season_id: SeasonId) -> Result<Option<ShowId>> {
         let mut s = self.inner.clone().shared().await?;
-
-        spawn_blocking(move || s.show_id_for_season.bind((season_id,))?.first()).await?
+        spawn_blocking(move || Ok(s.show_id_for_season.bind((season_id,))?.first()?)).await?
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
