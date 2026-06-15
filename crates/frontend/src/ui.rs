@@ -568,6 +568,7 @@ pub(super) enum RemoteEditorMsg {
     SetSource(api::RemoteSource),
     SetValue(String),
     SetSlug(String),
+    ToggleSlug,
     Submit,
     Edit(api::RemoteEntry),
     CancelEdit,
@@ -583,6 +584,8 @@ pub(super) struct RemoteEditor {
     value: String,
     /// Raw input value for the slug to use for this remote.
     slug: String,
+    /// Whether the optional slug input is revealed for editing.
+    show_slug: bool,
     /// When set, the form edits the remote with this id instead of adding.
     editing: Option<api::RemoteId>,
     /// When set, awaiting confirmation to remove this identifier.
@@ -598,6 +601,7 @@ impl RemoteEditor {
         self.source = REMOTE_SOURCES[0].0;
         self.value.clear();
         self.slug.clear();
+        self.show_slug = false;
         self.editing = None;
         self.error = None;
     }
@@ -612,6 +616,7 @@ impl Component for RemoteEditor {
             source: REMOTE_SOURCES[0].0,
             value: String::new(),
             slug: String::new(),
+            show_slug: false,
             editing: None,
             confirming_remove: None,
             error: None,
@@ -641,6 +646,10 @@ impl Component for RemoteEditor {
             }
             RemoteEditorMsg::SetSlug(slug) => {
                 self.slug = slug;
+                true
+            }
+            RemoteEditorMsg::ToggleSlug => {
+                self.show_slug = !self.show_slug;
                 true
             }
             RemoteEditorMsg::Submit => {
@@ -673,6 +682,7 @@ impl Component for RemoteEditor {
                 self.source = *entry.remote.source();
                 self.value = entry.remote.value().to_string();
                 self.slug = entry.slug.unwrap_or_default();
+                self.show_slug = !self.slug.is_empty();
                 self.editing = Some(entry.id);
                 self.confirming_remove = None;
                 self.error = None;
@@ -774,6 +784,13 @@ impl Component for RemoteEditor {
                                     </span>
 
                                     <span>{r.remote.value().to_string()}</span>
+
+                                    if let Some(slug) = r.slug.as_deref() {
+                                        <span class="item-inline text-muted">
+                                            <span class="icon link" />
+                                            {slug.to_owned()}
+                                        </span>
+                                    }
                                 </div>
 
                                 <div class="input-group end">
@@ -801,7 +818,9 @@ impl Component for RemoteEditor {
 
                             <input type="text" class="input-text fill" placeholder="Identifier" value={self.value.clone()} oninput={on_value} />
 
-                            <input type="text" class="input-text" placeholder="Slug (optional)" value={self.slug.clone()} oninput={on_slug} />
+                            <button class={classes!("btn", self.show_slug.then_some("selected"))} onclick={link.callback(|_| RemoteEditorMsg::ToggleSlug)} title="Edit slug">
+                                <span class="icon link" />
+                            </button>
 
                             <button class="btn-success" onclick={link.callback(|_| RemoteEditorMsg::Submit)} disabled={self.value.trim().is_empty()} title={if editing { "Save identifier" } else { "Add identifier" }}>
                                 <span class={classes!("icon", if editing { "check" } else { "plus" })} />
@@ -814,6 +833,12 @@ impl Component for RemoteEditor {
                                 </button>
                             }
                         </div>
+
+                        if self.show_slug {
+                            <div class="input-group fill">
+                                <input type="text" class="input-text fill" placeholder="Slug (optional)" value={self.slug.clone()} oninput={on_slug} />
+                            </div>
+                        }
 
                         if let Some(ref error) = self.error {
                             <label>{error}</label>

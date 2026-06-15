@@ -1658,8 +1658,12 @@ pub struct MediaItem {
     pub overview: Option<String>,
     pub poster: Option<Image>,
     pub banner: Option<Image>,
+    /// Backdrop image, used to set the page background.
+    pub backdrop: Option<Image>,
     pub tracked: bool,
     pub last_watched_at: Option<Timestamp>,
+    /// Remote identifiers, used to render external links in the list.
+    pub remotes: Vec<RemoteEntry>,
 }
 
 #[derive(Debug, Clone, Encode, Decode)]

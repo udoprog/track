@@ -1837,16 +1837,34 @@ impl Database {
                     let id = MovieId::new(item.id);
                     item.poster = s.image_for_movie(id, ImageKind::Poster)?;
                     item.banner = s.image_for_movie(id, ImageKind::Banner)?;
+                    item.backdrop = s.image_for_movie(id, ImageKind::Backdrop)?;
                 }
 
-                let mut stmt = s.last_watched_movies.query()?;
+                {
+                    let mut stmt = s.last_watched_movies.query()?;
 
-                while let Some(row) = stmt.next()? {
+                    while let Some(row) = stmt.next()? {
+                        if let Some(o) = id_to_idx
+                            .get(&row.movie_id.get())
+                            .and_then(|&i| out.get_mut(i))
+                        {
+                            o.last_watched_at = Some(row.last_watched);
+                        }
+                    }
+                }
+
+                let mut stmt = s.list_all_movie_remotes.query()?;
+
+                while let Some(r) = stmt.next()? {
                     if let Some(o) = id_to_idx
-                        .get(&row.movie_id.get())
+                        .get(&r.movie_id.get())
                         .and_then(|&i| out.get_mut(i))
                     {
-                        o.last_watched_at = Some(row.last_watched);
+                        o.remotes.push(api::RemoteEntry {
+                            id: r.id,
+                            slug: r.slug,
+                            remote: Remote::new(r.source, r.value),
+                        });
                     }
                 }
             }
@@ -1870,16 +1888,34 @@ impl Database {
                     let id = ShowId::new(item.id);
                     item.poster = s.image_for_show(id, ImageKind::Poster)?;
                     item.banner = s.image_for_show(id, ImageKind::Banner)?;
+                    item.backdrop = s.image_for_show(id, ImageKind::Backdrop)?;
                 }
 
-                let mut stmt = s.last_watched_shows.query()?;
+                {
+                    let mut stmt = s.last_watched_shows.query()?;
 
-                while let Some(row) = stmt.next()? {
+                    while let Some(row) = stmt.next()? {
+                        if let Some(o) = id_to_idx
+                            .get(&row.show_id.get())
+                            .and_then(|&i| out.get_mut(i))
+                        {
+                            o.last_watched_at = Some(row.last_watched);
+                        }
+                    }
+                }
+
+                let mut stmt = s.list_all_show_remotes.query()?;
+
+                while let Some(r) = stmt.next()? {
                     if let Some(o) = id_to_idx
-                        .get(&row.show_id.get())
+                        .get(&r.show_id.get())
                         .and_then(|&i| out.get_mut(i))
                     {
-                        o.last_watched_at = Some(row.last_watched);
+                        o.remotes.push(api::RemoteEntry {
+                            id: r.id,
+                            slug: r.slug,
+                            remote: Remote::new(r.source, r.value),
+                        });
                     }
                 }
             }
@@ -3485,8 +3521,10 @@ fn media_item_from_row(r: MediaItemRow, kind: api::MediaKind) -> api::MediaItem 
         overview: r.overview,
         poster: None,
         banner: None,
+        backdrop: None,
         tracked: r.tracked,
         last_watched_at: None,
+        remotes: Vec::new(),
     }
 }
 

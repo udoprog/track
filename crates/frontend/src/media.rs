@@ -36,8 +36,11 @@ pub(super) struct MediaList {
     _broadcast: ws::Listener,
     list_req: ws::Request,
     _mark_req: ws::Request,
+    _track_req: ws::Request,
     /// Movie id currently awaiting watch confirmation (movies only).
     confirming_watch: Option<u64>,
+    /// Backdrop URL last pushed as the page background, to avoid re-emitting.
+    applied_backdrop: Option<String>,
 }
 
 pub(super) enum Msg {
@@ -48,6 +51,8 @@ pub(super) enum Msg {
     CancelMarkWatch,
     MarkWatched(u64, api::MarkTime),
     MarkWatchedDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
+    SetTracked(api::MediaKind, u64, bool),
+    SetTrackedDone(Result<(), ws::Error>),
     Filter(String),
     SetSort(SortField),
     ToggleDir,
@@ -109,7 +114,9 @@ impl Component for MediaList {
             _broadcast,
             list_req: ws::Request::default(),
             _mark_req: ws::Request::default(),
+            _track_req: ws::Request::default(),
             confirming_watch: None,
+            applied_backdrop: None,
         }
     }
 
@@ -140,6 +147,15 @@ impl Component for MediaList {
         if first_render {
             self.background.title(Some("Media".to_string()));
         }
+
+        // Drive the page background from the first backdrop on the current page.
+        // Only emit on change, since `SetBackground` always triggers a re-render.
+        if let Some(url) = self.current_backdrop()
+            && self.applied_backdrop.as_ref() != Some(&url)
+        {
+            self.applied_backdrop = Some(url.clone());
+            self.background.background(Some(url));
+        }
     }
 
     fn destroy(&mut self, _ctx: &Context<Self>) {
@@ -149,34 +165,7 @@ impl Component for MediaList {
     fn view(&self, ctx: &Context<Self>) -> Html {
         let link = ctx.link();
 
-        let filter = self.filter.to_lowercase();
-
-        let mut filtered: Vec<&api::MediaItem> = self
-            .items
-            .iter()
-            .filter(|m| self.selection.contains(m.kind))
-            .filter(|m| match self.tracked {
-                TrackedFilter::All => true,
-                TrackedFilter::Tracked => m.tracked,
-                TrackedFilter::Untracked => !m.tracked,
-            })
-            .filter(|m| {
-                filter.is_empty()
-                    || m.title
-                        .as_ref()
-                        .is_some_and(|t| t.to_lowercase().contains(&filter))
-            })
-            .collect();
-
-        match self.sort {
-            SortField::Title => filtered.sort_by_key(|m| m.title.as_deref().map(str::to_lowercase)),
-            SortField::Release => filtered.sort_by_key(|m| m.date),
-            SortField::Watched => filtered.sort_by_key(|m| m.last_watched_at),
-        }
-
-        if self.desc {
-            filtered.reverse();
-        }
+        let filtered = self.filtered_sorted();
 
         let total = filtered.len();
         let total_pages = total.div_ceil(PAGE_SIZE).max(1);
@@ -394,6 +383,47 @@ impl MediaList {
 
                 Ok(false)
             }
+            Msg::SetTracked(kind, id, tracked) => {
+                self._track_req = match kind {
+                    api::MediaKind::Shows => self
+                        .channel
+                        .request()
+                        .body(api::UntrackShowRequest {
+                            id: api::ShowId::new(id),
+                            tracked,
+                        })
+                        .on_packet(ctx.link().callback(
+                            |r: Result<ws::Packet<api::UntrackShow>, ws::Error>| {
+                                Msg::SetTrackedDone(r.map(drop))
+                            },
+                        ))
+                        .send(),
+                    api::MediaKind::Movies => self
+                        .channel
+                        .request()
+                        .body(api::UntrackMovieRequest {
+                            id: api::MovieId::new(id),
+                            tracked,
+                        })
+                        .on_packet(ctx.link().callback(
+                            |r: Result<ws::Packet<api::UntrackMovie>, ws::Error>| {
+                                Msg::SetTrackedDone(r.map(drop))
+                            },
+                        ))
+                        .send(),
+                };
+
+                Ok(false)
+            }
+            Msg::SetTrackedDone(result) => {
+                result.context(Message::TrackingShow)?;
+
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self.load(ctx);
+                }
+
+                Ok(false)
+            }
             Msg::Filter(s) => {
                 self.filter = s;
                 self.page = 0;
@@ -443,6 +473,53 @@ impl MediaList {
         }
     }
 
+    /// Items matching the current filter/selection, ordered by the active sort.
+    fn filtered_sorted(&self) -> Vec<&api::MediaItem> {
+        let filter = self.filter.to_lowercase();
+
+        let mut filtered: Vec<&api::MediaItem> = self
+            .items
+            .iter()
+            .filter(|m| self.selection.contains(m.kind))
+            .filter(|m| match self.tracked {
+                TrackedFilter::All => true,
+                TrackedFilter::Tracked => m.tracked,
+                TrackedFilter::Untracked => !m.tracked,
+            })
+            .filter(|m| {
+                filter.is_empty()
+                    || m.title
+                        .as_ref()
+                        .is_some_and(|t| t.to_lowercase().contains(&filter))
+            })
+            .collect();
+
+        match self.sort {
+            SortField::Title => filtered.sort_by_key(|m| m.title.as_deref().map(str::to_lowercase)),
+            SortField::Release => filtered.sort_by_key(|m| m.date),
+            SortField::Watched => filtered.sort_by_key(|m| m.last_watched_at),
+        }
+
+        if self.desc {
+            filtered.reverse();
+        }
+
+        filtered
+    }
+
+    /// First backdrop set on the current page, used as the page background.
+    fn current_backdrop(&self) -> Option<String> {
+        let filtered = self.filtered_sorted();
+        let total_pages = filtered.len().div_ceil(PAGE_SIZE).max(1);
+        let page = self.page.min(total_pages - 1);
+
+        filtered
+            .into_iter()
+            .skip(page * PAGE_SIZE)
+            .take(PAGE_SIZE)
+            .find_map(|m| m.backdrop.as_ref().map(|i| i.proxy_url()))
+    }
+
     fn emit_navigate(&self, ctx: &Context<Self>) {
         ctx.props().on_navigate.emit(Route::Media(MediaQuery {
             page: self.page,
@@ -486,7 +563,7 @@ impl MediaList {
             <div class="table-entry">
                 <div class="desktop-row mobile-column">
                     <Image class="banner clickable hide-desktop" onclick={&onclick} src={m.banner.clone()} />
-                    <Image class="poster poster-side clickable hide-mobile" onclick={&onclick} src={m.poster.clone()} />
+                    <Image class="poster poster-side clickable hide-mobile top" onclick={&onclick} src={m.poster.clone()} />
 
                     <div class="column fill top">
                         if is_movie && self.confirming_watch == Some(id) {
@@ -505,6 +582,24 @@ impl MediaList {
 
                                         <span class="item-title">{m.title.as_deref().unwrap_or("Untitled Media")}</span>
                                     </div>
+
+                                    if !m.remotes.is_empty() {
+                                        <div class="row">
+                                            { for m.remotes.iter().filter_map(|r| {
+                                                let url = match m.kind {
+                                                    api::MediaKind::Shows => r.remote.show_url(r.slug.as_deref()),
+                                                    api::MediaKind::Movies => r.remote.movie_url(),
+                                                }?;
+                                                let label = r.remote.source().as_str();
+
+                                                Some(html! {
+                                                    <a class="item-inline-source" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
+                                                        <span class={classes!("logo", label.to_owned())} />
+                                                    </a>
+                                                })
+                                            }) }
+                                        </div>
+                                    }
 
                                     <div class="row">
                                         if let Some(date) = m.date {
@@ -554,9 +649,11 @@ impl MediaList {
                                     </div>
 
                                     if !m.tracked {
-                                        <span class="end item-inline" title="Untracked">
+                                        <button class="btn" title="Track"
+                                            onclick={ctx.link().callback(move |_| Msg::SetTracked(kind, id, true))}>
                                             <span class="icon eye-slash" />
-                                        </span>
+                                            <span class="hide-mobile">{"Track"}</span>
+                                        </button>
                                     }
                                 </div>
                             </div>
