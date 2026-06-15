@@ -6,7 +6,7 @@ use yew::prelude::*;
 
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{PagedQuery, Route};
+use crate::router::{MediaQuery, Route};
 use crate::ui::{
     ConfirmDanger, Loading, MarkWatchedPicker, MediaSettingsModal, RemoteEditor, RemoteSourceKind,
     Tracked,
@@ -257,7 +257,7 @@ impl MovieDetail {
                     {
                         ctx.props()
                             .on_navigate
-                            .emit(Route::Movies(PagedQuery::default()));
+                            .emit(Route::Media(MediaQuery::default()));
                         Ok(false)
                     }
                     api::AppEventKind::WatchedChanged { event: kind } => {
@@ -387,7 +387,7 @@ impl MovieDetail {
                 result.context(Message::RemovingMovie)?;
                 ctx.props()
                     .on_navigate
-                    .emit(Route::Movies(PagedQuery::default()));
+                    .emit(Route::Media(MediaQuery::default()));
                 Ok(false)
             }
             Msg::SyncMovie => {

@@ -1810,68 +1810,76 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn media_items(&self, kind: api::MediaKind) -> Result<Vec<api::MediaItem>> {
+    /// List every show and movie as slim [`api::MediaItem`]s, each tagged with
+    /// its [`api::MediaKind`]. The frontend filters and sorts client-side.
+    pub(crate) async fn media_items(&self) -> Result<Vec<api::MediaItem>> {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
             let mut out: Vec<api::MediaItem> = Vec::new();
-            let mut id_to_idx: HashMap<u64, usize> = HashMap::new();
 
-            match kind {
-                api::MediaKind::Movies => {
-                    let mut stmt = s.list_movie_items.query()?;
+            // Movies. Keyed separately from shows so the raw ids can't collide.
+            {
+                let base = out.len();
+                let mut id_to_idx: HashMap<u64, usize> = HashMap::new();
 
-                    while let Some(row) = stmt.next()? {
-                        let item = media_item_from_row(row);
-                        id_to_idx.insert(item.id, out.len());
-                        out.push(item);
-                    }
+                let mut stmt = s.list_movie_items.query()?;
 
-                    stmt.reset()?;
+                while let Some(row) = stmt.next()? {
+                    let item = media_item_from_row(row, api::MediaKind::Movies);
+                    id_to_idx.insert(item.id, out.len());
+                    out.push(item);
+                }
 
-                    for item in &mut out {
-                        let id = MovieId::new(item.id);
-                        item.poster = s.image_for_movie(id, ImageKind::Poster)?;
-                        item.banner = s.image_for_movie(id, ImageKind::Banner)?;
-                    }
+                stmt.reset()?;
 
-                    let mut stmt = s.last_watched_movies.query()?;
+                for item in &mut out[base..] {
+                    let id = MovieId::new(item.id);
+                    item.poster = s.image_for_movie(id, ImageKind::Poster)?;
+                    item.banner = s.image_for_movie(id, ImageKind::Banner)?;
+                }
 
-                    while let Some(row) = stmt.next()? {
-                        if let Some(o) = id_to_idx
-                            .get(&row.movie_id.get())
-                            .and_then(|&i| out.get_mut(i))
-                        {
-                            o.last_watched_at = Some(row.last_watched);
-                        }
+                let mut stmt = s.last_watched_movies.query()?;
+
+                while let Some(row) = stmt.next()? {
+                    if let Some(o) = id_to_idx
+                        .get(&row.movie_id.get())
+                        .and_then(|&i| out.get_mut(i))
+                    {
+                        o.last_watched_at = Some(row.last_watched);
                     }
                 }
-                api::MediaKind::Shows => {
-                    let mut stmt = s.list_show_items.query()?;
+            }
 
-                    while let Some(row) = stmt.next()? {
-                        let item = media_item_from_row(row);
-                        id_to_idx.insert(item.id, out.len());
-                        out.push(item);
-                    }
+            // Shows.
+            {
+                let base = out.len();
+                let mut id_to_idx: HashMap<u64, usize> = HashMap::new();
 
-                    stmt.reset()?;
+                let mut stmt = s.list_show_items.query()?;
 
-                    for item in &mut out {
-                        let id = ShowId::new(item.id);
-                        item.poster = s.image_for_show(id, ImageKind::Poster)?;
-                        item.banner = s.image_for_show(id, ImageKind::Banner)?;
-                    }
+                while let Some(row) = stmt.next()? {
+                    let item = media_item_from_row(row, api::MediaKind::Shows);
+                    id_to_idx.insert(item.id, out.len());
+                    out.push(item);
+                }
 
-                    let mut stmt = s.last_watched_shows.query()?;
+                stmt.reset()?;
 
-                    while let Some(row) = stmt.next()? {
-                        if let Some(o) = id_to_idx
-                            .get(&row.show_id.get())
-                            .and_then(|&i| out.get_mut(i))
-                        {
-                            o.last_watched_at = Some(row.last_watched);
-                        }
+                for item in &mut out[base..] {
+                    let id = ShowId::new(item.id);
+                    item.poster = s.image_for_show(id, ImageKind::Poster)?;
+                    item.banner = s.image_for_show(id, ImageKind::Banner)?;
+                }
+
+                let mut stmt = s.last_watched_shows.query()?;
+
+                while let Some(row) = stmt.next()? {
+                    if let Some(o) = id_to_idx
+                        .get(&row.show_id.get())
+                        .and_then(|&i| out.get_mut(i))
+                    {
+                        o.last_watched_at = Some(row.last_watched);
                     }
                 }
             }
@@ -3468,9 +3476,10 @@ fn movie_from_row(r: MovieRow) -> api::Movie {
     }
 }
 
-fn media_item_from_row(r: MediaItemRow) -> api::MediaItem {
+fn media_item_from_row(r: MediaItemRow, kind: api::MediaKind) -> api::MediaItem {
     api::MediaItem {
         id: r.id.cast_unsigned(),
+        kind,
         title: r.title,
         date: r.date,
         overview: r.overview,

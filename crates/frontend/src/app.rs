@@ -5,7 +5,7 @@ use yew::prelude::*;
 
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message, RcError};
-use crate::router::{DashboardQuery, PagedQuery, QueueQuery, Route, SearchQuery};
+use crate::router::{DashboardQuery, MediaQuery, QueueQuery, Route, SearchQuery};
 use crate::setup_channel::SetupChannel;
 use crate::ui::{ErrorBox, Loading};
 use crate::{Dashboard, MediaList, MovieDetail, Queue, Search, Settings, ShowDetail};
@@ -189,15 +189,16 @@ impl App {
             Route::Queue(query) => html! {
                 <Queue {onerror} {on_navigate} focus={query.focus} page={query.page} />
             },
-            Route::Shows(query) => html! {
+            Route::Media(query) => html! {
                 <MediaList
-                    kind={api::MediaKind::Shows}
                     {onerror}
                     {on_navigate}
                     page={query.page}
                     filter={query.filter.clone()}
                     sort={query.sort}
                     desc={query.desc}
+                    tracked={query.tracked}
+                    selection={query.selection}
                 />
             },
             Route::ShowDetail(show_id, query) => {
@@ -208,17 +209,6 @@ impl App {
                     <ShowDetail {onerror} {show_id} {initial_season} {on_navigate} />
                 }
             }
-            Route::Movies(query) => html! {
-                <MediaList
-                    kind={api::MediaKind::Movies}
-                    {onerror}
-                    {on_navigate}
-                    page={query.page}
-                    filter={query.filter.clone()}
-                    sort={query.sort}
-                    desc={query.desc}
-                />
-            },
             Route::MovieDetail(movie_id) => {
                 let movie_id = *movie_id;
                 html! { <MovieDetail {onerror} {movie_id} {on_navigate} /> }
@@ -273,13 +263,9 @@ fn Toolbar(props: &ToolbarProps) -> Html {
                     <span class="icon rectangle-stack" />
                     <span>{"Dashboard"}</span>
                 </button>
-                <button onclick={on_nav(Route::Shows(PagedQuery::default()))} class="toolbar-item" title="Shows">
-                    <span class="icon tv" />
-                    <span>{"Shows"}</span>
-                </button>
-                <button onclick={on_nav(Route::Movies(PagedQuery::default()))} class="toolbar-item" title="Movies">
+                <button onclick={on_nav(Route::Media(MediaQuery::default()))} class="toolbar-item" title="Media">
                     <span class="icon film" />
-                    <span>{"Movies"}</span>
+                    <span>{"Media"}</span>
                 </button>
                 <button onclick={on_nav(Route::Search(SearchQuery::default()))} class="toolbar-item" title="Search">
                     <span class="icon magnifying-glass" />

@@ -1634,7 +1634,7 @@ pub struct SearchMovie {
     pub already_tracked: Option<MovieId>,
 }
 
-/// Which kind of tracked media a list view is showing.
+/// Whether a media item is a show or a movie.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub enum MediaKind {
@@ -1648,8 +1648,10 @@ pub enum MediaKind {
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct MediaItem {
-    /// Raw id; the consumer rebuilds `ShowId`/`MovieId` based on the list kind.
+    /// Raw id; the consumer rebuilds `ShowId`/`MovieId` based on `kind`.
     pub id: u64,
+    /// Whether this item is a show or a movie.
+    pub kind: MediaKind,
     pub title: Option<String>,
     /// Release date (movie) or first-air date (show).
     pub date: Option<Timestamp>,
@@ -1713,9 +1715,7 @@ pub struct CompletedTask {
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
-pub struct ListMediaRequest {
-    pub kind: MediaKind,
-}
+pub struct ListMediaRequest;
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]

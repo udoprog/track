@@ -4,18 +4,11 @@ use yew::prelude::*;
 
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{PagedQuery, Route, ShowDetailQuery, SortField};
+use crate::router::{MediaQuery, MediaSelection, Route, ShowDetailQuery, SortField, TrackedFilter};
 use crate::ui::{Loading, MarkWatchedPicker, PaginationButtons};
 use crate::{Image, SetupChannel};
 
 const PAGE_SIZE: usize = 20;
-
-fn kind_title(kind: api::MediaKind) -> &'static str {
-    match kind {
-        api::MediaKind::Shows => "Shows",
-        api::MediaKind::Movies => "Movies",
-    }
-}
 
 /// Route to the detail view for a list item of the given kind.
 fn detail_route(kind: api::MediaKind, id: u64) -> Route {
@@ -29,12 +22,13 @@ fn detail_route(kind: api::MediaKind, id: u64) -> Route {
 
 pub(super) struct MediaList {
     channel: ws::Channel,
-    kind: api::MediaKind,
     items: Vec<api::MediaItem>,
     filter: String,
     page: usize,
     sort: SortField,
     desc: bool,
+    tracked: TrackedFilter,
+    selection: MediaSelection,
     tz: TimeZone,
     background: Background,
     _tz_handle: ContextHandle<TimeZone>,
@@ -57,6 +51,8 @@ pub(super) enum Msg {
     Filter(String),
     SetSort(SortField),
     ToggleDir,
+    CycleTracked,
+    ToggleKind(api::MediaKind),
     SetPage(usize),
     Navigate(Route),
     SetTz(TimeZone),
@@ -64,12 +60,13 @@ pub(super) enum Msg {
 
 #[derive(Properties, PartialEq)]
 pub(super) struct Props {
-    pub(super) kind: api::MediaKind,
     pub(super) onerror: Callback<Option<Error>>,
     pub(super) page: usize,
     pub(super) filter: String,
     pub(super) sort: SortField,
     pub(super) desc: bool,
+    pub(super) tracked: TrackedFilter,
+    pub(super) selection: MediaSelection,
     pub(super) on_navigate: Callback<Route>,
 }
 
@@ -98,12 +95,13 @@ impl Component for MediaList {
 
         Self {
             channel: ws::Channel::default(),
-            kind: ctx.props().kind,
             items: Vec::new(),
             filter: ctx.props().filter.clone(),
             page: ctx.props().page,
             sort: ctx.props().sort,
             desc: ctx.props().desc,
+            tracked: ctx.props().tracked,
+            selection: ctx.props().selection,
             tz,
             background,
             _tz_handle,
@@ -125,33 +123,22 @@ impl Component for MediaList {
         }
     }
 
-    fn changed(&mut self, ctx: &Context<Self>, old_props: &Self::Properties) -> bool {
+    fn changed(&mut self, ctx: &Context<Self>, _old_props: &Self::Properties) -> bool {
         let props = ctx.props();
-        let kind_changed = props.kind != old_props.kind;
 
-        self.kind = props.kind;
         self.page = props.page;
         self.filter = props.filter.clone();
         self.sort = props.sort;
         self.desc = props.desc;
-
-        if kind_changed {
-            self.confirming_watch = None;
-            self.background
-                .title(Some(kind_title(props.kind).to_string()));
-
-            if self.channel.id() != ws::ChannelId::NONE {
-                self.load(ctx);
-            }
-        }
+        self.tracked = props.tracked;
+        self.selection = props.selection;
 
         true
     }
 
-    fn rendered(&mut self, ctx: &Context<Self>, first_render: bool) {
+    fn rendered(&mut self, _ctx: &Context<Self>, first_render: bool) {
         if first_render {
-            self.background
-                .title(Some(kind_title(ctx.props().kind).to_string()));
+            self.background.title(Some("Media".to_string()));
         }
     }
 
@@ -167,6 +154,12 @@ impl Component for MediaList {
         let mut filtered: Vec<&api::MediaItem> = self
             .items
             .iter()
+            .filter(|m| self.selection.contains(m.kind))
+            .filter(|m| match self.tracked {
+                TrackedFilter::All => true,
+                TrackedFilter::Tracked => m.tracked,
+                TrackedFilter::Untracked => !m.tracked,
+            })
             .filter(|m| {
                 filter.is_empty()
                     || m.title
@@ -211,18 +204,28 @@ impl Component for MediaList {
             SortField::Watched => "watched",
         };
 
-        let dir_icon = if self.desc { "arrow-down" } else { "arrow-up" };
+        let dir_icon = if self.desc {
+            "bars-arrow-down"
+        } else {
+            "bars-arrow-up"
+        };
         let dir_title = if self.desc { "Descending" } else { "Ascending" };
+
+        let (tracked_icon, tracked_label) = match self.tracked {
+            TrackedFilter::All => ("funnel", "All"),
+            TrackedFilter::Tracked => ("eye", "Tracked"),
+            TrackedFilter::Untracked => ("eye-slash", "Untracked"),
+        };
 
         html! {
             <>
                 <div class="row-fill">
-                    <h1>{kind_title(self.kind)}</h1>
+                    <h1>{"Media"}</h1>
                     <h4 class="text-muted end">{total}</h4>
                 </div>
 
-                <div class="row">
-                    <div class="input-group fill">
+                <div class="input-controls">
+                    <div class="input-group">
                         <input
                             type="text"
                             placeholder="Filter"
@@ -237,32 +240,66 @@ impl Component for MediaList {
                                 <span class="icon backspace" />
                             </button>
                         }
+                    </div>
 
-                        <select class="input-select" onchange={on_sort} value={sort_value}>
-                            <option value="title" selected={matches!(self.sort, SortField::Title)}>
-                                {"Title"}
-                            </option>
-                            <option value="release" selected={matches!(self.sort, SortField::Release)}>
-                                {"Release date"}
-                            </option>
-                            <option value="watched" selected={matches!(self.sort, SortField::Watched)}>
-                                {"Last watched"}
-                            </option>
-                        </select>
+                    <div class="row">
+                        <div class="input-group">
+                            <div class="input-text">
+                                {"Sort by:"}
+                            </div>
 
-                        <button class="btn" title={dir_title}
-                            onclick={link.callback(|_| Msg::ToggleDir)}>
-                            <span class={classes!("icon", dir_icon)} />
-                        </button>
+                            <select class="input-select" onchange={on_sort} value={sort_value}>
+                                <option value="title" selected={matches!(self.sort, SortField::Title)}>
+                                    {"Title"}
+                                </option>
+                                <option value="release" selected={matches!(self.sort, SortField::Release)}>
+                                    {"Release date"}
+                                </option>
+                                <option value="watched" selected={matches!(self.sort, SortField::Watched)}>
+                                    {"Last watched"}
+                                </option>
+                            </select>
 
-                        <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
+                            <button class="btn" title={dir_title}
+                                onclick={link.callback(|_| Msg::ToggleDir)}>
+                                <span class={classes!("icon", dir_icon)} />
+                            </button>
+                        </div>
+
+                        <div class="input-group">
+                            <button class="btn" title={format!("Showing: {tracked_label}")}
+                                onclick={link.callback(|_| Msg::CycleTracked)}>
+                                <span class={classes!("icon", tracked_icon)} />
+                                <span class="hide-mobile">{tracked_label}</span>
+                            </button>
+
+                            <span
+                                class={classes!("input-checkbox", self.selection.shows.then_some("checked"))}
+                                title="Show series"
+                                onclick={link.callback(|_| Msg::ToggleKind(api::MediaKind::Shows))}>
+                                <span class="icon tv" />
+                                <span class="mark" />
+                            </span>
+
+                            <span
+                                class={classes!("input-checkbox", self.selection.movies.then_some("checked"))}
+                                title="Show movies"
+                                onclick={link.callback(|_| Msg::ToggleKind(api::MediaKind::Movies))}>
+                                <span class="icon film" />
+                                <span class="mark" />
+                            </span>
+                        </div>
+
+                        <div class="input-group">
+                            <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
+                        </div>
                     </div>
                 </div>
 
                 if self.list_req.is_pending() {
                     <Loading />
                 } else if items.len() == 0 {
-                    <div class="text-muted">{"Nothing tracked."}</div>
+                    <div class="text-muted">{"Nothing to show."}</div>
                 } else {
                     <div class="table">
                         { for items.into_iter().map(|m| self.view_row(ctx, m)) }
@@ -300,22 +337,16 @@ impl MediaList {
                     return Ok(false);
                 }
 
-                let relevant = match self.kind {
-                    api::MediaKind::Movies => matches!(
-                        event.kind,
-                        api::AppEventKind::MovieCreated { .. }
-                            | api::AppEventKind::MovieChanged { .. }
-                            | api::AppEventKind::MovieDeleted { .. }
-                            | api::AppEventKind::WatchedChanged { .. }
-                    ),
-                    api::MediaKind::Shows => matches!(
-                        event.kind,
-                        api::AppEventKind::ShowCreated { .. }
-                            | api::AppEventKind::ShowChanged { .. }
-                            | api::AppEventKind::ShowDeleted { .. }
-                            | api::AppEventKind::WatchedChanged { .. }
-                    ),
-                };
+                let relevant = matches!(
+                    event.kind,
+                    api::AppEventKind::MovieCreated { .. }
+                        | api::AppEventKind::MovieChanged { .. }
+                        | api::AppEventKind::MovieDeleted { .. }
+                        | api::AppEventKind::ShowCreated { .. }
+                        | api::AppEventKind::ShowChanged { .. }
+                        | api::AppEventKind::ShowDeleted { .. }
+                        | api::AppEventKind::WatchedChanged { .. }
+                );
 
                 if relevant && self.channel.id() != ws::ChannelId::NONE {
                     self.load(ctx);
@@ -381,6 +412,21 @@ impl MediaList {
                 self.emit_navigate(ctx);
                 Ok(true)
             }
+            Msg::CycleTracked => {
+                self.tracked = self.tracked.next();
+                self.page = 0;
+                self.emit_navigate(ctx);
+                Ok(true)
+            }
+            Msg::ToggleKind(kind) => {
+                match kind {
+                    api::MediaKind::Shows => self.selection.shows = !self.selection.shows,
+                    api::MediaKind::Movies => self.selection.movies = !self.selection.movies,
+                }
+                self.page = 0;
+                self.emit_navigate(ctx);
+                Ok(true)
+            }
             Msg::SetPage(p) => {
                 self.page = p;
                 self.emit_navigate(ctx);
@@ -398,34 +444,43 @@ impl MediaList {
     }
 
     fn emit_navigate(&self, ctx: &Context<Self>) {
-        ctx.props().on_navigate.emit(Route::media(
-            self.kind,
-            PagedQuery {
-                page: self.page,
-                filter: self.filter.clone(),
-                sort: self.sort,
-                desc: self.desc,
-            },
-        ));
+        ctx.props().on_navigate.emit(Route::Media(MediaQuery {
+            page: self.page,
+            filter: self.filter.clone(),
+            sort: self.sort,
+            desc: self.desc,
+            tracked: self.tracked,
+            selection: self.selection,
+        }));
     }
 
     fn load(&mut self, ctx: &Context<Self>) {
         self.list_req = self
             .channel
             .request()
-            .body(api::ListMediaRequest { kind: self.kind })
+            .body(api::ListMediaRequest)
             .on_packet(ctx.link().callback(Msg::Loaded))
             .send();
     }
 
     fn view_row(&self, ctx: &Context<Self>, m: &api::MediaItem) -> Html {
         let id = m.id;
-        let kind = self.kind;
+        let kind = m.kind;
         let onclick = ctx
             .link()
             .callback(move |_| Msg::Navigate(detail_route(kind, id)));
 
-        let is_movie = matches!(self.kind, api::MediaKind::Movies);
+        let is_movie = matches!(m.kind, api::MediaKind::Movies);
+
+        let kind_icon = match m.kind {
+            api::MediaKind::Shows => "tv",
+            api::MediaKind::Movies => "film",
+        };
+
+        let kind_title = match m.kind {
+            api::MediaKind::Shows => "Show",
+            api::MediaKind::Movies => "Movie",
+        };
 
         html! {
             <div class="table-entry">
@@ -434,7 +489,7 @@ impl MediaList {
                     <Image class="poster poster-side clickable hide-mobile" onclick={&onclick} src={m.poster.clone()} />
 
                     <div class="column fill top">
-                        if self.confirming_watch == Some(id) {
+                        if is_movie && self.confirming_watch == Some(id) {
                             <MarkWatchedPicker
                                 aired_label="Released"
                                 on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(id, mark_time))}
@@ -443,9 +498,13 @@ impl MediaList {
                         } else {
                             <div class="row-fill fill">
                                 <div class="column fill">
-                                    if let Some(ref title) = m.title {
-                                        <span class="item-title clickable" onclick={&onclick}>{title}</span>
-                                    }
+                                    <div class="row clickable" onclick={&onclick}>
+                                        <div class="item-inline" title={kind_title}>
+                                            <div class={classes!("icon", kind_icon)} />
+                                        </div>
+
+                                        <span class="item-title">{m.title.as_deref().unwrap_or("Untitled Media")}</span>
+                                    </div>
 
                                     <div class="row">
                                         if let Some(date) = m.date {
@@ -486,11 +545,13 @@ impl MediaList {
                                 </div>
 
                                 <div class="row end top">
-                                    if is_movie {
-                                        <button class="btn-success" title="Mark watched" onclick={ctx.link().callback(move |_| Msg::AskMarkWatched(id))}>
-                                            <span class="icon check" />
-                                        </button>
-                                    }
+                                    <div class="row">
+                                        if is_movie {
+                                            <button class="btn-success" title="Mark watched" onclick={ctx.link().callback(move |_| Msg::AskMarkWatched(id))}>
+                                                <span class="icon check" />
+                                            </button>
+                                        }
+                                    </div>
 
                                     if !m.tracked {
                                         <span class="end item-inline" title="Untracked">

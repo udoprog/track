@@ -272,11 +272,18 @@ p {
     border: none;
     border-radius: $radius-sm;
     cursor: pointer;
-    height: $input-height;
-    min-width: $input-height;
     font-size: $font-sm;
     font-family: $sans-serif-font;
+
+    min-width: $input-height;
+    height: $input-height;
     padding: $padding-md;
+
+    @include until-mobile {
+        min-width: $input-height-touch;
+        height: $input-height-touch;
+        padding: $padding-lg;
+    }
 
     &.fill {
         flex: 1;
@@ -289,12 +296,6 @@ p {
 
     &.selected {
         background: $color-selected;
-    }
-
-    @include until-mobile {
-        height: $input-height-touch;
-        min-width: $input-height-touch;
-        padding: $padding-lg;
     }
 }
 
@@ -773,6 +774,33 @@ image {
     }
 }
 
+// A filter/search field paired with a cluster of controls. The first child is
+// the input field, the second is the controls. On desktop they sit on one row
+// (input fills, controls hug the right); on mobile the controls flow onto the
+// next row(s) and wrap as needed.
+.input-controls {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: $gap-xs;
+    align-items: center;
+
+    >:last-child {
+        display: flex;
+        flex-wrap: wrap;
+        gap: $gap-xs;
+        align-items: center;
+        justify-content: flex-end;
+    }
+
+    @include until-mobile {
+        grid-template-columns: 1fr;
+
+        >:last-child {
+            justify-content: flex-start;
+        }
+    }
+}
+
 .table {
     display: flex;
     flex-direction: column;
@@ -859,23 +887,46 @@ image {
     display: flex;
     justify-content: center;
     align-items: center;
+    gap: $padding;
 
+    box-sizing: border-box;
     color: $text-primary;
     border: 1px solid $border-input;
     border-radius: $radius-sm;
-    height: $input-height;
-    width: $input-height;
 
     border-width: 1px;
     border-style: solid;
     border-color: $border-input;
     background: $bg-surface;
 
+    min-width: $input-height;
+    height: $input-height;
+    padding: $padding-md;
+
+    @include until-mobile {
+        min-width: $input-height-touch;
+        height: $input-height-touch;
+        padding: $padding-lg;
+    }
+
     cursor: pointer;
+
+    >.icon {
+        height: $input-height * 0.8;
+
+        @include until-mobile {
+            height: $input-height-touch * 0.8;
+        }
+    }
 
     >.mark {
         width: $input-height * 0.8;
         height: $input-height * 0.8;
+
+        @include until-mobile {
+            width: $input-height-touch * 0.8;
+            height: $input-height-touch * 0.8;
+        }
     }
 
     &.checked>.mark {
@@ -891,11 +942,6 @@ image {
     &:focus {
         outline: none;
         border-color: $color-primary;
-    }
-
-    @include until-mobile {
-        width: $input-height-touch;
-        height: $input-height-touch;
     }
 }
 

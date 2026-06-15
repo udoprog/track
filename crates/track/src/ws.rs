@@ -92,14 +92,10 @@ impl WsHandler {
     ) -> Result<()> {
         match id {
             api::Request::ListMedia => {
-                let req = incoming
+                incoming
                     .read::<api::ListMediaRequest>()
                     .context("Expected a request payload")?;
-                let items = self
-                    .db
-                    .media_items(req.kind)
-                    .await
-                    .context("Loading media")?;
+                let items = self.db.media_items().await.context("Loading media")?;
                 outgoing.write(api::ListMediaResponse { items });
             }
             api::Request::GetShow => {

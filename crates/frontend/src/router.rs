@@ -66,15 +66,89 @@ impl SortField {
     }
 }
 
+/// Tracked-state filter applied to a media list.
+#[derive(Default, Debug, Clone, Copy, PartialEq)]
+pub(super) enum TrackedFilter {
+    #[default]
+    All,
+    Tracked,
+    Untracked,
+}
+
+impl TrackedFilter {
+    fn as_str(self) -> &'static str {
+        match self {
+            TrackedFilter::All => "all",
+            TrackedFilter::Tracked => "tracked",
+            TrackedFilter::Untracked => "untracked",
+        }
+    }
+
+    fn parse(value: &str) -> Option<Self> {
+        match value {
+            "all" => Some(TrackedFilter::All),
+            "tracked" => Some(TrackedFilter::Tracked),
+            "untracked" => Some(TrackedFilter::Untracked),
+            _ => None,
+        }
+    }
+
+    /// Next state when cycling the toggle.
+    pub(super) fn next(self) -> Self {
+        match self {
+            TrackedFilter::All => TrackedFilter::Tracked,
+            TrackedFilter::Tracked => TrackedFilter::Untracked,
+            TrackedFilter::Untracked => TrackedFilter::All,
+        }
+    }
+}
+
+/// Which media kinds the list shows. Two independent toggles, defaulting to
+/// both enabled; serialized exclusionarily via a repeatable `hide` key.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) struct MediaSelection {
+    pub(super) shows: bool,
+    pub(super) movies: bool,
+}
+
+impl Default for MediaSelection {
+    fn default() -> Self {
+        Self {
+            shows: true,
+            movies: true,
+        }
+    }
+}
+
+impl MediaSelection {
+    /// Whether the given item kind is currently shown.
+    pub(super) fn contains(self, kind: api::MediaKind) -> bool {
+        match kind {
+            api::MediaKind::Shows => self.shows,
+            api::MediaKind::Movies => self.movies,
+        }
+    }
+
+    /// Selection showing only the given kind.
+    fn only(kind: api::MediaKind) -> Self {
+        Self {
+            shows: matches!(kind, api::MediaKind::Shows),
+            movies: matches!(kind, api::MediaKind::Movies),
+        }
+    }
+}
+
 #[derive(Default, Debug, Clone, PartialEq)]
-pub(super) struct PagedQuery {
+pub(super) struct MediaQuery {
     pub(super) page: usize,
     pub(super) filter: String,
     pub(super) sort: SortField,
     pub(super) desc: bool,
+    pub(super) tracked: TrackedFilter,
+    pub(super) selection: MediaSelection,
 }
 
-impl PagedQuery {
+impl MediaQuery {
     fn to_query_string(&self) -> String {
         let mut s = form_urlencoded::Serializer::new(String::new());
 
@@ -88,6 +162,19 @@ impl PagedQuery {
 
         if self.desc {
             s.append_pair("dir", "desc");
+        }
+
+        if self.tracked != TrackedFilter::default() {
+            s.append_pair("tracked", self.tracked.as_str());
+        }
+
+        // Exclusionary: default is both shown, so only serialize deselected kinds.
+        if !self.selection.shows {
+            s.append_pair("hide", "shows");
+        }
+
+        if !self.selection.movies {
+            s.append_pair("hide", "movies");
         }
 
         if self.page > 0 {
@@ -113,6 +200,16 @@ impl PagedQuery {
                 "dir" => {
                     this.desc = value.as_ref() == "desc";
                 }
+                "tracked" => {
+                    if let Some(tracked) = TrackedFilter::parse(value.as_ref()) {
+                        this.tracked = tracked;
+                    }
+                }
+                "hide" => match value.as_ref() {
+                    "shows" => this.selection.shows = false,
+                    "movies" => this.selection.movies = false,
+                    _ => {}
+                },
                 "page" => {
                     this.page = value.parse::<usize>().unwrap_or(0);
                 }
@@ -283,9 +380,8 @@ impl ShowDetailQuery {
 pub(super) enum Route {
     Dashboard(DashboardQuery),
     Queue(QueueQuery),
-    Shows(PagedQuery),
+    Media(MediaQuery),
     ShowDetail(api::ShowId, ShowDetailQuery),
-    Movies(PagedQuery),
     MovieDetail(api::MovieId),
     Search(SearchQuery),
     Settings,
@@ -319,13 +415,13 @@ impl fmt::Display for Route {
                     write!(f, "/queue?{qs}")
                 }
             }
-            Route::Shows(q) => {
+            Route::Media(q) => {
                 let qs = q.to_query_string();
 
                 if qs.is_empty() {
-                    f.write_str("/shows")
+                    f.write_str("/media")
                 } else {
-                    write!(f, "/shows?{qs}")
+                    write!(f, "/media?{qs}")
                 }
             }
             Route::ShowDetail(id, q) => {
@@ -335,15 +431,6 @@ impl fmt::Display for Route {
                     write!(f, "/shows/{id}")
                 } else {
                     write!(f, "/shows/{id}?{qs}")
-                }
-            }
-            Route::Movies(q) => {
-                let qs = q.to_query_string();
-
-                if qs.is_empty() {
-                    f.write_str("/movies")
-                } else {
-                    write!(f, "/movies?{qs}")
                 }
             }
             Route::MovieDetail(id) => write!(f, "/movies/{id}"),
@@ -362,33 +449,34 @@ impl fmt::Display for Route {
 }
 
 impl Route {
-    /// Build the list route for the given media kind, preserving its paging/sort query.
-    pub(super) fn media(kind: api::MediaKind, query: PagedQuery) -> Self {
-        match kind {
-            api::MediaKind::Shows => Route::Shows(query),
-            api::MediaKind::Movies => Route::Movies(query),
-        }
-    }
-
     fn from_location(path: &str, search: &str) -> Self {
         let mut parts = path.split('/').filter(|s| !s.is_empty());
         let search = search.strip_prefix('?').unwrap_or(search);
 
         match parts.next() {
             Some("queue") => Route::Queue(QueueQuery::from_search(search)),
+            Some("media") => Route::Media(MediaQuery::from_search(search)),
+            // Detail routes keep their /shows/{id} and /movies/{id} URLs; the
+            // bare list paths redirect to the unified /media view, pre-filtered.
             Some("shows") => match parts.next() {
                 Some(id) => id
                     .parse()
                     .map(|id| Route::ShowDetail(id, ShowDetailQuery::from_search(search)))
-                    .unwrap_or(Route::Shows(PagedQuery::default())),
-                None => Route::Shows(PagedQuery::from_search(search)),
+                    .unwrap_or_else(|_| Route::Media(MediaQuery::default())),
+                None => Route::Media(MediaQuery {
+                    selection: MediaSelection::only(api::MediaKind::Shows),
+                    ..MediaQuery::from_search(search)
+                }),
             },
             Some("movies") => match parts.next() {
                 Some(id) => id
                     .parse()
                     .map(Route::MovieDetail)
-                    .unwrap_or(Route::Movies(PagedQuery::default())),
-                None => Route::Movies(PagedQuery::from_search(search)),
+                    .unwrap_or_else(|_| Route::Media(MediaQuery::default())),
+                None => Route::Media(MediaQuery {
+                    selection: MediaSelection::only(api::MediaKind::Movies),
+                    ..MediaQuery::from_search(search)
+                }),
             },
             Some("search") => Route::Search(SearchQuery::from_search(search)),
             Some("settings") => Route::Settings,

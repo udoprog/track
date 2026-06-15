@@ -7,7 +7,7 @@ use api::{HasAired, TimeZone};
 
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{PagedQuery, Route, ShowDetailQuery};
+use crate::router::{MediaQuery, Route, ShowDetailQuery};
 use crate::ui::{
     ConfirmDanger, EpisodePicker, Loading, MDASH, MarkWatchedPicker, MediaSettingsModal,
     RemoteEditor, RemoteSourceKind, Tracked,
@@ -820,7 +820,7 @@ impl ShowDetail {
                 result.context(Message::RemovingShow)?;
                 ctx.props()
                     .on_navigate
-                    .emit(Route::Shows(PagedQuery::default()));
+                    .emit(Route::Media(MediaQuery::default()));
                 Ok(false)
             }
             Msg::SyncShow => {

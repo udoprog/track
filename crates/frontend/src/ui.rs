@@ -84,7 +84,9 @@ pub(super) fn PaginationButtons(props: &PaginationButtonsProps) -> Html {
                 <span class="icon chevron-left" />
             </button>
 
-            <span class="input-text">{format!("{} / {}", page.saturating_add(1), props.total_pages)}</span>
+            <span class="input-text">
+                {format!("{} / {}", page.saturating_add(1), props.total_pages)}
+            </span>
 
             <button class={classes!("btn", next.is_none().then_some("disabled"))} onclick={on_next}>
                 <span class="icon chevron-right" />
