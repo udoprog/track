@@ -4,7 +4,7 @@ use yew::prelude::*;
 use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::ui::{LanguagePicker, SecretInput};
+use crate::ui::{LanguagePicker, ReleaseFiltersEditor, SecretInput};
 
 fn tz_is_valid(name: &str) -> bool {
     name.is_empty() || jiff_tzdb::get(name).is_some()
@@ -36,6 +36,7 @@ pub(super) enum Msg {
     AutoSyncEnabledToggle,
     AutoSyncIntervalChanged(String),
     IncludeSpecialsChanged(bool),
+    ReleaseFiltersChanged(Vec<api::ReleaseFilter>),
     Save,
     SaveDone(Result<ws::Packet<api::SetConfig>, ws::Error>),
 }
@@ -268,9 +269,11 @@ impl Component for Settings {
                         <div class="field">
                             <label class="clickable" onclick={&on_auto_sync_toggle}>{"Auto-sync enabled"}</label>
 
-                            <span class={classes!("input-checkbox", self.config.auto_sync_enabled.then_some("checked"))} id="auto-sync-enabled" onclick={on_auto_sync_toggle}>
-                                <span class="mark" />
-                            </span>
+                            <div class="row">
+                                <span class={classes!("input-checkbox", self.config.auto_sync_enabled.then_some("checked"))} id="auto-sync-enabled" onclick={on_auto_sync_toggle}>
+                                    <span class="mark" />
+                                </span>
+                            </div>
                         </div>
 
                         <div class="field">
@@ -291,6 +294,15 @@ impl Component for Settings {
                                 <option value="include" selected={self.config.include_specials}>{"Include"}</option>
                                 <option value="skip" selected={!self.config.include_specials}>{"Skip"}</option>
                             </select>
+                        </div>
+
+                        <div class="field">
+                            <label>{"Release dates"}</label>
+                            <span class="hint">{"Release types (and countries) used to determine when a movie becomes available. The earliest matching date is used."}</span>
+                            <ReleaseFiltersEditor
+                                filters={self.config.release_filters.clone()}
+                                on_change={link.callback(Msg::ReleaseFiltersChanged)}
+                            />
                         </div>
                     </div>
                 </div>
@@ -389,6 +401,10 @@ impl Settings {
             }
             Msg::IncludeSpecialsChanged(include) => {
                 self.config.include_specials = include;
+                Ok(true)
+            }
+            Msg::ReleaseFiltersChanged(filters) => {
+                self.config.release_filters = filters;
                 Ok(true)
             }
             Msg::Save => {

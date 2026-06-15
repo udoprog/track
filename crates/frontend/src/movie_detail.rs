@@ -28,6 +28,7 @@ pub(super) struct MovieDetail {
     detailed_expand: bool,
     releases_expanded: HashSet<api::ReleaseType>,
     movie_releases: Vec<(api::ReleaseType, Vec<api::MovieRelease>)>,
+    default_release_filters: Vec<api::ReleaseFilter>,
     image_modal: bool,
     settings_modal: bool,
     remote_editor: bool,
@@ -48,6 +49,8 @@ pub(super) struct MovieDetail {
     _clear_image_req: ws::Request,
     _set_sync_source_req: ws::Request,
     _set_language_req: ws::Request,
+    _set_release_filters_req: ws::Request,
+    _config_req: ws::Request,
     _remote_req: ws::Request,
 }
 
@@ -93,6 +96,12 @@ pub(super) enum Msg {
     SetLanguageDone(
         Option<String>,
         Result<ws::Packet<api::SetMovieLanguage>, ws::Error>,
+    ),
+    ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
+    SetReleaseFilters(Option<Vec<api::ReleaseFilter>>),
+    SetReleaseFiltersDone(
+        Option<Vec<api::ReleaseFilter>>,
+        Result<ws::Packet<api::SetMovieReleaseFilters>, ws::Error>,
     ),
     SetTracked(bool),
     SetTrackedDone(bool, Result<ws::Packet<api::UntrackMovie>, ws::Error>),
@@ -153,6 +162,7 @@ impl Component for MovieDetail {
             detailed_expand: false,
             releases_expanded: HashSet::new(),
             movie_releases: Vec::new(),
+            default_release_filters: api::ReleaseFilter::default_filters(),
             image_modal: false,
             settings_modal: false,
             remote_editor: false,
@@ -173,6 +183,8 @@ impl Component for MovieDetail {
             _clear_image_req: ws::Request::default(),
             _set_sync_source_req: ws::Request::default(),
             _set_language_req: ws::Request::default(),
+            _set_release_filters_req: ws::Request::default(),
+            _config_req: ws::Request::default(),
             _remote_req: ws::Request::default(),
         }
     }
@@ -231,6 +243,7 @@ impl MovieDetail {
                 if self.channel.id() != ws::ChannelId::NONE {
                     self.load_movie(ctx);
                     self.load_watched(ctx);
+                    self.load_config(ctx);
                 } else {
                     self.movie = None;
                     self.movie_releases.clear();
@@ -451,6 +464,41 @@ impl MovieDetail {
 
                 if let Some(ref mut movie) = self.movie {
                     movie.language = language;
+                }
+
+                Ok(true)
+            }
+            Msg::ConfigLoaded(result) => {
+                self.default_release_filters = result
+                    .context(Message::LoadingConfig)?
+                    .decode()
+                    .context(Message::LoadingConfig)?
+                    .config
+                    .release_filters;
+                Ok(true)
+            }
+            Msg::SetReleaseFilters(release_filters) => {
+                let id = ctx.props().movie_id;
+
+                self._set_release_filters_req =
+                    self.channel
+                        .request()
+                        .body(api::SetMovieReleaseFiltersRequest {
+                            id,
+                            release_filters: release_filters.clone(),
+                        })
+                        .on_packet(ctx.link().callback(move |r| {
+                            Msg::SetReleaseFiltersDone(release_filters.clone(), r)
+                        }))
+                        .send();
+
+                Ok(false)
+            }
+            Msg::SetReleaseFiltersDone(release_filters, result) => {
+                result.context(Message::SettingReleaseFilters)?;
+
+                if let Some(ref mut movie) = self.movie {
+                    movie.release_filters = release_filters;
                 }
 
                 Ok(true)
@@ -745,6 +793,15 @@ impl MovieDetail {
             .send();
     }
 
+    fn load_config(&mut self, ctx: &Context<Self>) {
+        self._config_req = self
+            .channel
+            .request()
+            .body(api::GetConfigRequest)
+            .on_packet(ctx.link().callback(Msg::ConfigLoaded))
+            .send();
+    }
+
     fn view_header(&self, ctx: &Context<Self>, movie: &api::Movie) -> Html {
         let link = ctx.link();
 
@@ -1018,6 +1075,9 @@ impl MovieDetail {
                     on_sync_source_change={link.callback(Msg::SetSyncSource)}
                     on_sync={link.callback(|_| Msg::SyncMovie)}
                     on_language_change={link.callback(Msg::SetLanguage)}
+                    release_filters={movie.release_filters.clone()}
+                    default_release_filters={self.default_release_filters.clone()}
+                    on_release_filters_change={link.callback(Msg::SetReleaseFilters)}
                     on_edit_graphics={link.callback(|_| Msg::OpenImageModal)}
                     on_edit_identifiers={link.callback(|_| Msg::OpenRemoteEditor)}
                     on_close={link.callback(|_| Msg::CloseSettingsModal)}

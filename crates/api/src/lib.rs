@@ -1253,6 +1253,59 @@ pub struct MovieRelease {
     pub timestamp: Timestamp,
 }
 
+/// A release type that contributes to a movie's effective release date, optionally restricted to a
+/// set of countries.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize)]
+#[musli(crate = musli_core)]
+pub struct ReleaseFilter {
+    pub release_type: ReleaseType,
+    /// Countries (ISO 3166-1 alpha-2) of interest for this release type. Empty means all countries.
+    #[serde(default)]
+    pub countries: Vec<String>,
+}
+
+impl ReleaseFilter {
+    /// The default set of release filters: Digital, Physical and Tv across all countries.
+    pub fn default_filters() -> Vec<ReleaseFilter> {
+        [ReleaseType::Digital, ReleaseType::Physical, ReleaseType::Tv]
+            .into_iter()
+            .map(|release_type| ReleaseFilter {
+                release_type,
+                countries: Vec::new(),
+            })
+            .collect()
+    }
+
+    /// Whether the given release matches this filter.
+    pub fn matches(&self, release: &MovieRelease) -> bool {
+        self.release_type == release.release_type
+            && (self.countries.is_empty()
+                || self
+                    .countries
+                    .iter()
+                    .any(|c| c.eq_ignore_ascii_case(&release.country)))
+    }
+}
+
+/// The earliest timestamp among `releases` that matches any of the given `filters`.
+pub fn earliest_release(releases: &[MovieRelease], filters: &[ReleaseFilter]) -> Option<Timestamp> {
+    releases
+        .iter()
+        .filter(|r| filters.iter().any(|f| f.matches(r)))
+        .map(|r| r.timestamp)
+        .min()
+}
+
+/// Serialize release filters for storage in a text column.
+pub fn encode_release_filters(filters: &[ReleaseFilter]) -> String {
+    serde_json::to_string(filters).unwrap_or_else(|_| "[]".to_string())
+}
+
+/// Parse release filters previously written by [`encode_release_filters`].
+pub fn decode_release_filters(s: &str) -> Option<Vec<ReleaseFilter>> {
+    serde_json::from_str(s).ok()
+}
+
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct MediaImage {
@@ -1405,9 +1458,26 @@ pub struct Movie {
     pub last_synced_at: Option<Timestamp>,
     pub releases: Vec<MovieRelease>,
     pub language: Option<String>,
+    /// Per-movie override of which release types/countries determine the release date.
+    /// `None` means use the global default from [`Config::release_filters`].
+    pub release_filters: Option<Vec<ReleaseFilter>>,
 }
 
 impl Movie {
+    /// The release filters in effect for this movie, falling back to the global `default`.
+    pub fn effective_release_filters<'a>(
+        &'a self,
+        default: &'a [ReleaseFilter],
+    ) -> &'a [ReleaseFilter] {
+        self.release_filters.as_deref().unwrap_or(default)
+    }
+
+    /// The effective release timestamp used to determine when this movie becomes pending, picking
+    /// the earliest release matching the effective filters.
+    pub fn pending_release(&self, default: &[ReleaseFilter]) -> Option<Timestamp> {
+        earliest_release(&self.releases, self.effective_release_filters(default))
+    }
+
     pub fn remote_by_source(&self, source: RemoteSource) -> Option<&Remote> {
         self.remotes
             .iter()
@@ -1575,6 +1645,8 @@ pub struct Config {
     pub timezone: String,
     pub language: Option<String>,
     pub include_specials: bool,
+    /// Default release types/countries that determine a movie's release date.
+    pub release_filters: Vec<ReleaseFilter>,
 }
 
 impl Default for Config {
@@ -1591,6 +1663,7 @@ impl Default for Config {
             timezone: String::new(),
             language: None,
             include_specials: false,
+            release_filters: ReleaseFilter::default_filters(),
         }
     }
 }
@@ -2006,6 +2079,13 @@ pub struct SetMovieLanguageRequest {
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
+pub struct SetMovieReleaseFiltersRequest {
+    pub id: MovieId,
+    pub release_filters: Option<Vec<ReleaseFilter>>,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
 pub struct AddShowRemoteRequest {
     pub id: ShowId,
     pub slug: Option<String>,
@@ -2379,6 +2459,12 @@ api::define! {
     pub type SetMovieLanguage;
     impl Endpoint for SetMovieLanguage {
         impl Request for SetMovieLanguageRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type SetMovieReleaseFilters;
+    impl Endpoint for SetMovieReleaseFilters {
+        impl Request for SetMovieReleaseFiltersRequest;
         type Response<'de> = Empty;
     }
 

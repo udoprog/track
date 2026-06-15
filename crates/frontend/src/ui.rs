@@ -3,6 +3,7 @@ use web_sys::{Event, InputEvent, MouseEvent};
 use yew::prelude::*;
 
 use iso639::{LanguageToCountry, Languages};
+use iso3166::{Countries, Country};
 use musli_web::web03::prelude::*;
 
 use crate::error::RcError;
@@ -223,6 +224,16 @@ pub(super) struct MediaSettingsModalProps {
     /// When set, the "Specials when syncing" field is rendered.
     #[prop_or_default]
     pub(super) on_include_specials_change: Option<Callback<Option<bool>>>,
+    /// Current per-movie release-filter override (`None` = use the global default). Only meaningful
+    /// when `on_release_filters_change` is set.
+    #[prop_or_default]
+    pub(super) release_filters: Option<Vec<api::ReleaseFilter>>,
+    /// Global default release filters, used to seed the editor when switching to a custom override.
+    #[prop_or_default]
+    pub(super) default_release_filters: Vec<api::ReleaseFilter>,
+    /// When set, the "Release dates" override field is rendered.
+    #[prop_or_default]
+    pub(super) on_release_filters_change: Option<Callback<Option<Vec<api::ReleaseFilter>>>>,
 }
 
 #[function_component]
@@ -260,6 +271,40 @@ pub(super) fn MediaSettingsModal(props: &MediaSettingsModalProps) -> Html {
         }
     });
 
+    let release = props.on_release_filters_change.as_ref().map(|cb| {
+        let is_custom = props.release_filters.is_some();
+
+        let on_mode = {
+            let cb = cb.clone();
+            let default = props.default_release_filters.clone();
+            Callback::from(move |e: Event| {
+                let select: web_sys::HtmlSelectElement = e.target_unchecked_into();
+                match select.value().as_str() {
+                    "custom" => cb.emit(Some(default.clone())),
+                    _ => cb.emit(None),
+                }
+            })
+        };
+
+        let editor = props.release_filters.as_ref().map(|filters| {
+            let on_change = cb.reform(|f: Vec<api::ReleaseFilter>| Some(f));
+            html! {
+                <ReleaseFiltersEditor filters={filters.clone()} on_change={on_change} />
+            }
+        });
+
+        html! {
+            <div class="field">
+                <label>{"Release dates"}</label>
+                <select class="input-select" onchange={on_mode}>
+                    <option value="default" selected={!is_custom}>{"Default"}</option>
+                    <option value="custom" selected={is_custom}>{"Customize"}</option>
+                </select>
+                {editor}
+            </div>
+        }
+    });
+
     html! {
         <Modal title={props.title.clone()} on_close={props.on_close.reform(|_| ())}>
             <div class="form">
@@ -273,6 +318,8 @@ pub(super) fn MediaSettingsModal(props: &MediaSettingsModalProps) -> Html {
                 </div>
 
                 {specials}
+
+                {release}
 
                 <div class="field">
                     <label>{"Sync"}</label>
@@ -1050,6 +1097,265 @@ impl Component for LanguagePicker {
                 </Modal>
             </>
         }
+    }
+}
+
+const COUNTRY_PAGE_SIZE: usize = 8;
+
+#[derive(Properties, PartialEq)]
+pub(super) struct CountryPickerProps {
+    /// Selected country alpha-2 codes. Empty means "all countries".
+    pub(super) current: Vec<String>,
+    pub(super) on_change: Callback<Vec<String>>,
+}
+
+pub(super) enum CountryMsg {
+    Open,
+    Close,
+    Filter(String),
+    Page(usize),
+    Toggle(String),
+    All,
+}
+
+/// Multi-select picker for countries, modeled on [`LanguagePicker`]. An empty
+/// selection represents "all countries".
+pub(super) struct CountryPicker {
+    countries: Countries,
+    open: bool,
+    filter: String,
+    page: usize,
+}
+
+impl Component for CountryPicker {
+    type Message = CountryMsg;
+    type Properties = CountryPickerProps;
+
+    fn create(_ctx: &Context<Self>) -> Self {
+        Self {
+            countries: Countries::new(),
+            open: false,
+            filter: String::new(),
+            page: 0,
+        }
+    }
+
+    fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
+        match msg {
+            CountryMsg::Open => {
+                self.open = true;
+                self.filter.clear();
+                self.page = 0;
+            }
+            CountryMsg::Close => {
+                self.open = false;
+            }
+            CountryMsg::Filter(s) => {
+                self.filter = s;
+                self.page = 0;
+            }
+            CountryMsg::Page(p) => {
+                self.page = p;
+            }
+            CountryMsg::Toggle(code) => {
+                let mut next = ctx.props().current.clone();
+
+                if let Some(pos) = next.iter().position(|c| c.eq_ignore_ascii_case(&code)) {
+                    next.remove(pos);
+                } else {
+                    next.push(code);
+                }
+
+                ctx.props().on_change.emit(next);
+            }
+            CountryMsg::All => {
+                ctx.props().on_change.emit(Vec::new());
+            }
+        }
+
+        true
+    }
+
+    fn view(&self, ctx: &Context<Self>) -> Html {
+        let link = ctx.link();
+        let current = &ctx.props().current;
+
+        let trigger = html! {
+            <button class="btn" onclick={link.callback(|_| CountryMsg::Open)} title="Select countries">
+                <span class="icon globe-alt" />
+
+                if current.is_empty() {
+                    <span>{"All countries"}</span>
+                } else {
+                    <span>{format!("{} selected", current.len())}</span>
+                    {
+                        for current.iter().filter_map(|code| {
+                            self.countries.flag(code).map(|flag| html! {
+                                <span class={classes!("item-inline", "flag", flag)} />
+                            })
+                        })
+                    }
+                }
+            </button>
+        };
+
+        if !self.open {
+            return trigger;
+        }
+
+        let needle = self.filter.to_lowercase();
+
+        let filtered: Vec<&'static Country> = self
+            .countries
+            .iter()
+            .filter(|country| {
+                needle.is_empty()
+                    || country.name.to_lowercase().contains(&needle)
+                    || country.alpha2.contains(&needle)
+            })
+            .collect();
+
+        let total_pages = filtered.len().div_ceil(COUNTRY_PAGE_SIZE).max(1);
+        let page = self.page.min(total_pages.saturating_sub(1));
+
+        let on_filter = link.callback(|e: InputEvent| {
+            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+            CountryMsg::Filter(input.value())
+        });
+
+        html! {
+            <>
+                {trigger}
+
+                <Modal title="Select Countries" on_close={link.callback(|_| CountryMsg::Close)}>
+                    <div class="row">
+                        <input autofocus={true} type="text" class="input-text fill" placeholder="Filter" value={self.filter.clone()} oninput={on_filter} />
+                    </div>
+
+                    <div class="table">
+                        <div class="table-entry row clickable" onclick={link.callback(|_| CountryMsg::All)}>
+                            <span class="fill">{"All countries"}</span>
+
+                            <span class="item-inline">
+                                <span class="icon globe-alt" />
+                            </span>
+
+                            <span class="item-inline">
+                                <span class={classes!("icon", if current.is_empty() { "check" } else { "x-mark" })} />
+                            </span>
+                        </div>
+
+                        {
+                            for filtered.iter()
+                                .skip(page.saturating_mul(COUNTRY_PAGE_SIZE))
+                                .take(COUNTRY_PAGE_SIZE)
+                                .map(|country| {
+                                    let code = country.alpha2;
+                                    let selected = current.iter().any(|c| c.eq_ignore_ascii_case(code));
+
+                                    html! {
+                                        <div key={code} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| CountryMsg::Toggle(code.to_string()))}>
+                                            <span class="fill">{country.name}</span>
+
+                                            if let Some(flag) = self.countries.flag(code) {
+                                                <span class={classes!("item-inline", "flag", flag)} />
+                                            }
+
+                                            <span class="item-inline" title={code}>
+                                                <span class={classes!("icon", if selected { "check" } else { "x-mark" })} />
+                                            </span>
+                                        </div>
+                                    }
+                                })
+                        }
+                    </div>
+
+                    <div class="row center">
+                        <div class="input-group">
+                            <PaginationButtons
+                                page={page}
+                                total_pages={total_pages}
+                                on_page={link.callback(CountryMsg::Page)}
+                            />
+                        </div>
+                    </div>
+                </Modal>
+            </>
+        }
+    }
+}
+
+/// Release types that may contribute to a movie's release date (excludes `Unknown`).
+const RELEASE_TYPES: &[api::ReleaseType] = &[
+    api::ReleaseType::Premiere,
+    api::ReleaseType::TheatricalLimited,
+    api::ReleaseType::Theatrical,
+    api::ReleaseType::Digital,
+    api::ReleaseType::Physical,
+    api::ReleaseType::Tv,
+];
+
+#[derive(Properties, PartialEq)]
+pub(super) struct ReleaseFiltersEditorProps {
+    pub(super) filters: Vec<api::ReleaseFilter>,
+    pub(super) on_change: Callback<Vec<api::ReleaseFilter>>,
+}
+
+/// Editor for a set of [`api::ReleaseFilter`]s: a checkbox per release type and,
+/// when enabled, a [`CountryPicker`] restricting that type to certain countries.
+#[function_component]
+pub(super) fn ReleaseFiltersEditor(props: &ReleaseFiltersEditorProps) -> Html {
+    html! {
+        <div class="form">
+            {
+                for RELEASE_TYPES.iter().copied().map(|rt| {
+                    let existing = props.filters.iter().find(|f| f.release_type == rt);
+                    let enabled = existing.is_some();
+                    let countries = existing.map(|f| f.countries.clone()).unwrap_or_default();
+
+                    let on_toggle = {
+                        let filters = props.filters.clone();
+                        let cb = props.on_change.clone();
+                        Callback::from(move |_: MouseEvent| {
+                            let mut next = filters.clone();
+                            if let Some(pos) = next.iter().position(|f| f.release_type == rt) {
+                                next.remove(pos);
+                            } else {
+                                next.push(api::ReleaseFilter { release_type: rt, countries: Vec::new() });
+                            }
+                            cb.emit(next);
+                        })
+                    };
+
+                    let on_countries = {
+                        let filters = props.filters.clone();
+                        let cb = props.on_change.clone();
+                        Callback::from(move |countries: Vec<String>| {
+                            let mut next = filters.clone();
+                            if let Some(f) = next.iter_mut().find(|f| f.release_type == rt) {
+                                f.countries = countries;
+                            }
+                            cb.emit(next);
+                        })
+                    };
+
+                    html! {
+                        <div class="field">
+                            <label class="clickable" onclick={on_toggle.clone()}>{rt.as_str()}</label>
+                            <div class="row input-group">
+                                <span class={classes!("input-checkbox", enabled.then_some("checked"))} onclick={on_toggle}>
+                                    <span class="mark" />
+                                </span>
+
+                                if enabled {
+                                    <CountryPicker current={countries} on_change={on_countries} />
+                                }
+                            </div>
+                        </div>
+                    }
+                })
+            }
+        </div>
     }
 }
 

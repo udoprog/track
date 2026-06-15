@@ -96,6 +96,8 @@ pub(crate) enum Message {
     EditingRemotes,
     #[display("Setting language")]
     SettingLanguage,
+    #[display("Setting release dates")]
+    SettingReleaseFilters,
     #[display("Loading tasks")]
     LoadingTasks,
     #[display("Searching")]

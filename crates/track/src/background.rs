@@ -13,17 +13,43 @@ const POLL: Duration = Duration::from_secs(15 * 60);
 
 pub(crate) async fn discover_pending_movies(db: &Database) -> anyhow::Result<()> {
     let now = api::Timestamp::now();
+    let default = db.load_config().await?.release_filters;
 
-    for (id, ts) in db.theatrical_movie_candidates(now).await? {
-        let ts = ts.unwrap_or_else(api::Timestamp::now);
+    for (id, raw) in db.movie_pending_candidates().await? {
+        let filters = raw.as_deref().and_then(api::decode_release_filters);
+        let releases = db.movie_releases(id).await?;
 
-        db.add_pending_movie(id, ts).await?;
+        if let Some(ts) = api::earliest_release(&releases, filters.as_deref().unwrap_or(&default))
+            && ts <= now
+        {
+            db.add_pending_movie(id, ts).await?;
+        }
     }
 
-    for (id, ts) in db.digital_movie_candidates(now).await? {
-        let ts = ts.unwrap_or_else(api::Timestamp::now);
+    Ok(())
+}
 
-        db.add_pending_movie(id, ts).await?;
+/// Recompute a single movie's pending entry from its effective release filters. Movies with watches
+/// are left to the watch flow; otherwise the earliest matching, already-released timestamp makes the
+/// movie pending, and a stale or no-longer-matching entry is removed.
+pub(crate) async fn update_movie_pending(
+    db: &Database,
+    movie_id: api::MovieId,
+) -> anyhow::Result<()> {
+    if db.has_movie_watches(movie_id).await? {
+        return Ok(());
+    }
+
+    let Some(movie) = db.movie_by_id(movie_id).await? else {
+        return Ok(());
+    };
+
+    let now = api::Timestamp::now();
+    let default = db.load_config().await?.release_filters;
+
+    match movie.pending_release(&default) {
+        Some(ts) if ts <= now => db.add_pending_movie(movie_id, ts).await?,
+        _ => db.remove_pending_movie(movie_id).await?,
     }
 
     Ok(())

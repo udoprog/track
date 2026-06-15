@@ -387,6 +387,7 @@ pub async fn import() -> Result<()> {
             timezone: String::new(),
             language: None,
             include_specials: false,
+            release_filters: api::ReleaseFilter::default_filters(),
         })
         .await
         .context("Saving config")?;
@@ -636,8 +637,6 @@ pub async fn import() -> Result<()> {
         tracing::info!("Added {added} remote IDs");
     }
 
-    let now = api::Timestamp::now();
-
     tracing::info!("Filling pending episodes for {} show", show_by_uuid.len());
     let mut pending_filled = 0usize;
 
@@ -650,15 +649,7 @@ pub async fn import() -> Result<()> {
 
     tracing::info!("Discovering pending movies");
 
-    for (id, ts) in db.theatrical_movie_candidates(now).await? {
-        let ts = ts.unwrap_or(now);
-        db.add_pending_movie(id, ts).await?;
-    }
-
-    for (id, ts) in db.digital_movie_candidates(now).await? {
-        let ts = ts.unwrap_or(now);
-        db.add_pending_movie(id, ts).await?;
-    }
+    crate::background::discover_pending_movies(&db).await?;
 
     tracing::info!("Import complete");
     Ok(())

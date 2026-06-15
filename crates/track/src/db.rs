@@ -169,6 +169,7 @@ struct MovieRow {
     sync_source: Option<RemoteSource>,
     last_synced_at: Option<Timestamp>,
     language: Option<String>,
+    release_filters: Option<String>,
 }
 
 #[derive(Row)]
@@ -283,9 +284,9 @@ struct PendingEpisodeAiredRow {
 }
 
 #[derive(Row)]
-struct PendingMovieCandidateRow {
+struct MoviePendingCandidateRow {
     id: api::MovieId,
-    release_date: Option<Timestamp>,
+    release_filters: Option<String>,
 }
 
 #[derive(Row)]
@@ -447,13 +448,13 @@ struct InnerRead {
     last_watched_shows: TypedStatement<(), LastWatchedShowRow>,
 
     // movies
-    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.sync_source, m.last_synced_at, m.language"]
+    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.sync_source, m.last_synced_at, m.language, m.release_filters"]
     #[sql = "FROM movies m ORDER BY m.title"]
     list_movies: TypedStatement<(), MovieRow>,
-    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.sync_source, m.last_synced_at, m.language"]
+    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.sync_source, m.last_synced_at, m.language, m.release_filters"]
     #[sql = "FROM movies m WHERE m.id = ?"]
     movie_by_id: TypedStatement<(MovieId,), MovieRow>,
-    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.sync_source, m.last_synced_at, m.language"]
+    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.sync_source, m.last_synced_at, m.language, m.release_filters"]
     #[sql = "FROM movies m"]
     #[sql = "JOIN movie_remotes r ON r.movie_id = m.id"]
     #[sql = "WHERE r.source = ? AND r.value = ?"]
@@ -527,13 +528,14 @@ struct InnerRead {
     #[sql = "ORDER BY e.season, e.episode"]
     #[sql = "LIMIT 1"]
     first_unwatched_episode_for_show: TypedStatement<(ShowId,), NextEpisodeRow>,
-    #[sql = "SELECT m.id, m.release_date"]
+    #[sql = "SELECT m.id, m.release_filters"]
     #[sql = "FROM movies m"]
     #[sql = "WHERE m.tracked = 1"]
-    #[sql = "    AND (m.release_date IS NOT NULL AND m.release_date <= ?)"]
     #[sql = "    AND NOT EXISTS (SELECT 1 FROM watched_movies wm WHERE wm.movie_id = m.id)"]
     #[sql = "    AND NOT EXISTS (SELECT 1 FROM pending p WHERE p.movie_id = m.id)"]
-    movies_needing_pending: TypedStatement<(Timestamp,), PendingMovieCandidateRow>,
+    movie_pending_candidates: TypedStatement<(), MoviePendingCandidateRow>,
+    #[sql = "SELECT 1 FROM watched_movies WHERE movie_id = ? LIMIT 1"]
+    has_watched_movie: TypedStatement<(MovieId,), (i64,)>,
     #[sql = "SELECT episode_id, movie_id"]
     #[sql = "FROM pending"]
     #[sql = "WHERE timestamp <= ?"]
@@ -597,7 +599,7 @@ struct InnerRead {
     #[sql = "    AND (last_synced_at IS NULL OR last_synced_at < ?)"]
     #[sql = "ORDER BY last_synced_at IS NOT NULL, last_synced_at"]
     shows_needing_sync: TypedStatement<(Timestamp,), ShowRow>,
-    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.sync_source, m.last_synced_at, m.language"]
+    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.sync_source, m.last_synced_at, m.language, m.release_filters"]
     #[sql = "FROM movies m"]
     #[sql = "WHERE m.tracked = 1"]
     #[sql = "    AND (m.last_synced_at IS NULL OR m.last_synced_at < ?)"]
@@ -615,17 +617,6 @@ struct InnerRead {
     #[sql = "WHERE movie_id = ? AND release_type = ?"]
     #[sql = "ORDER BY timestamp"]
     movie_release_by_type: TypedStatement<(MovieId, ReleaseType), Timestamp>,
-
-    // digital-release pending discovery
-    #[sql = "SELECT m.id, MIN(mr.timestamp) AS release_timestamp"]
-    #[sql = "FROM movies m"]
-    #[sql = "JOIN movie_releases mr ON mr.movie_id = m.id AND mr.release_type = 'digital'"]
-    #[sql = "WHERE m.tracked = 1"]
-    #[sql = "    AND mr.timestamp <= ?"]
-    #[sql = "    AND NOT EXISTS (SELECT 1 FROM watched_movies wm WHERE wm.movie_id = m.id)"]
-    #[sql = "    AND NOT EXISTS (SELECT 1 FROM pending p WHERE p.movie_id = m.id)"]
-    #[sql = "GROUP BY m.id"]
-    movies_needing_pending_digital: TypedStatement<(Timestamp,), PendingMovieCandidateRow>,
 }
 
 #[derive(Statements)]
@@ -810,6 +801,8 @@ struct InnerWrite {
     set_movie_sync_source: TypedStatement<(RemoteSource, MovieId), ()>,
     #[sql = "UPDATE movies SET language = ? WHERE id = ?"]
     set_movie_language: TypedStatement<(Option<String>, MovieId), ()>,
+    #[sql = "UPDATE movies SET release_filters = ? WHERE id = ?"]
+    set_movie_release_filters: TypedStatement<(Option<String>, MovieId), ()>,
     #[sql = "UPDATE movies"]
     #[sql = "SET title = ?, release_date = ?, overview = ?"]
     #[sql = "WHERE id = ?"]
@@ -2272,6 +2265,25 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn set_movie_release_filters(
+        &self,
+        id: MovieId,
+        release_filters: Option<Vec<api::ReleaseFilter>>,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let encoded = release_filters.as_deref().map(api::encode_release_filters);
+
+        let result = spawn_blocking(move || {
+            s.set_movie_release_filters
+                .execute((encoded.as_deref(), id))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn clear_show_images(&self, show_id: ShowId) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
         spawn_blocking(move || {
@@ -2945,21 +2957,19 @@ impl Database {
         result.await?
     }
 
-    /// Tracked movies with a passed theatrical release date that are not yet pending or watched.
+    /// Tracked movies that are not yet pending or watched, paired with their per-movie release
+    /// filter override (raw JSON, `None` = use global default).
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn theatrical_movie_candidates(
-        &self,
-        now: Timestamp,
-    ) -> Result<Vec<(MovieId, Option<Timestamp>)>> {
+    pub(crate) async fn movie_pending_candidates(&self) -> Result<Vec<(MovieId, Option<String>)>> {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
             let mut out = Vec::new();
 
-            let mut stmt = s.movies_needing_pending.bind((now,))?;
+            let mut stmt = s.movie_pending_candidates.query()?;
 
             while let Some(r) = stmt.next()? {
-                out.push((r.id, r.release_date));
+                out.push((r.id, r.release_filters));
             }
 
             Ok(out)
@@ -2968,21 +2978,33 @@ impl Database {
         result.await?
     }
 
-    /// Tracked movies with a passed digital release date (type 4) that are not yet pending or watched.
+    /// Whether the given movie has any watches.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn digital_movie_candidates(
-        &self,
-        now: Timestamp,
-    ) -> Result<Vec<(MovieId, Option<Timestamp>)>> {
+    pub(crate) async fn has_movie_watches(&self, id: MovieId) -> Result<bool> {
+        let mut s = self.inner.clone().shared().await?;
+
+        let result =
+            spawn_blocking(move || Ok(s.has_watched_movie.bind((id,))?.first()?.is_some()));
+
+        result.await?
+    }
+
+    /// The release dates recorded for a movie.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn movie_releases(&self, id: MovieId) -> Result<Vec<api::MovieRelease>> {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
             let mut out = Vec::new();
 
-            let mut stmt = s.movies_needing_pending_digital.bind((now,))?;
+            let mut stmt = s.list_movie_releases.bind((id,))?;
 
             while let Some(r) = stmt.next()? {
-                out.push((r.id, r.release_date));
+                out.push(api::MovieRelease {
+                    country: r.country,
+                    release_type: r.release_type,
+                    timestamp: r.timestamp,
+                });
             }
 
             Ok(out)
@@ -3296,6 +3318,12 @@ impl Database {
                 .map(|v| v == "true")
                 .unwrap_or(false);
 
+            let release_filters = s
+                .get_config("release_filters")?
+                .as_deref()
+                .and_then(api::decode_release_filters)
+                .unwrap_or_else(api::ReleaseFilter::default_filters);
+
             Ok(Config {
                 theme,
                 tvdb_api_key,
@@ -3308,6 +3336,7 @@ impl Database {
                 timezone,
                 language,
                 include_specials,
+                release_filters,
             })
         });
 
@@ -3363,6 +3392,10 @@ impl Database {
                 } else {
                     "false"
                 },
+            )?;
+            s.set_config(
+                "release_filters",
+                &api::encode_release_filters(&config.release_filters),
             )?;
             Ok(())
         });
@@ -3509,6 +3542,10 @@ fn movie_from_row(r: MovieRow) -> api::Movie {
         last_synced_at: r.last_synced_at,
         releases: Vec::new(),
         language: r.language,
+        release_filters: r
+            .release_filters
+            .as_deref()
+            .and_then(api::decode_release_filters),
     }
 }
 

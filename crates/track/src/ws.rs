@@ -939,6 +939,37 @@ impl WsHandler {
 
                 outgoing.write(api::Empty);
             }
+            api::Request::SetMovieReleaseFilters => {
+                let req = incoming
+                    .read::<api::SetMovieReleaseFiltersRequest>()
+                    .context("Expected a request payload")?;
+
+                self.db
+                    .set_movie_release_filters(req.id, req.release_filters)
+                    .await?;
+
+                // Recompute pending against the new filters and surface the updated movie.
+                crate::background::update_movie_pending(&self.db, req.id).await?;
+
+                let movie = self
+                    .db
+                    .movie_by_id(req.id)
+                    .await?
+                    .context("Expected movie to exist")?;
+
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::MovieChanged {
+                        movie: movie.clone(),
+                    },
+                    "ws set movie release filters changed",
+                );
+
+                self.broadcast
+                    .broadcast_event(api::AppEventKind::PendingChanged);
+
+                outgoing.write(api::Empty);
+            }
             api::Request::SyncAll => {
                 let _req = incoming
                     .read::<api::SyncAllRequest>()

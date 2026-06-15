@@ -531,7 +531,9 @@ pub(crate) async fn sync_movie(
         _ => anyhow::bail!("Movie has no syncable remote"),
     }
 
-    crate::background::discover_pending_movies(db).await?;
+    // Recompute the pending entry from the movie's effective release filters.
+    crate::background::update_movie_pending(db, movie_id).await?;
+
     db.set_movie_synced_at(movie_id, api::Timestamp::now())
         .await?;
     broadcast.broadcast_event(api::AppEventKind::PendingChanged);

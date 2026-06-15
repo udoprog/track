@@ -15,4 +15,5 @@ musli-core = { version = "0.1.4", default-features = false, features = ["alloc",
 musli-web = { version = "0.4.3", features = ["api"] }
 rand = { version = "0.10.1", optional = true }
 serde = { version = "1", features = ["derive"] }
+serde_json = "1.0.150"
 sqll = { version = "0.14.3", optional = true }
