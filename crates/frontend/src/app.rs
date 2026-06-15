@@ -5,7 +5,7 @@ use yew::prelude::*;
 
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message, RcError};
-use crate::router::{DashboardQuery, PagedQuery, Route, SearchQuery};
+use crate::router::{DashboardQuery, PagedQuery, QueueQuery, Route, SearchQuery};
 use crate::setup_channel::SetupChannel;
 use crate::ui::{ErrorBox, Loading};
 use crate::{Dashboard, MovieDetail, MoviesList, Queue, Search, Settings, ShowDetail, ShowList};
@@ -186,7 +186,9 @@ impl App {
             Route::Dashboard(query) => {
                 html! { <Dashboard {onerror} {on_navigate} page={query.page} /> }
             }
-            Route::Queue => html! { <Queue {onerror} {on_navigate} /> },
+            Route::Queue(query) => html! {
+                <Queue {onerror} {on_navigate} focus={query.focus} page={query.page} />
+            },
             Route::Shows(query) => html! {
                 <ShowList {onerror} {on_navigate} page={query.page} filter={query.filter.clone()} />
             },
@@ -267,7 +269,7 @@ fn Toolbar(props: &ToolbarProps) -> Html {
                     <span class="icon magnifying-glass" />
                     <span class="hide-desktop">{"Search"}</span>
                 </button>
-                <button onclick={on_nav(Route::Queue)} class="toolbar-item" title="Queue">
+                <button onclick={on_nav(Route::Queue(QueueQuery::default()))} class="toolbar-item" title="Queue">
                     <span class="icon queue-list" />
                     <span class="hide-desktop">{"Queue"}</span>
                 </button>

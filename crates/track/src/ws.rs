@@ -974,6 +974,24 @@ impl WsHandler {
 
                 outgoing.write(tasks);
             }
+            api::Request::RemoveTask => {
+                let req = incoming
+                    .read::<api::RemoveTaskRequest>()
+                    .context("Expected a request payload")?;
+
+                self.queue.remove(req.id, &self.broadcast).await;
+
+                outgoing.write(api::Empty);
+            }
+            api::Request::BumpTask => {
+                let req = incoming
+                    .read::<api::BumpTaskRequest>()
+                    .context("Expected a request payload")?;
+
+                self.queue.bump(req.id, &self.broadcast).await;
+
+                outgoing.write(api::Empty);
+            }
             api::Request::GetConfig => {
                 let _req = incoming
                     .read::<api::GetConfigRequest>()

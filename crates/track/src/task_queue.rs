@@ -15,11 +15,22 @@ use crate::remote::RemoteClients;
 use crate::sync;
 
 const TASK_DELAY: Duration = Duration::from_secs(5);
-const MAX_COMPLETED: usize = 20;
 
 struct ScheduledTask {
     run_at: Instant,
     task: api::Task,
+}
+
+impl ScheduledTask {
+    /// Build a client-facing task with the wall-clock time it is expected to
+    /// run, derived from the remaining delay measured against `now`.
+    fn to_api(&self, now: Instant) -> api::Task {
+        let mut task = self.task.clone();
+        task.run_at = Some(api::Timestamp::from_now(
+            self.run_at.saturating_duration_since(now),
+        ));
+        task
+    }
 }
 
 struct Inner {
@@ -64,7 +75,6 @@ impl TaskQueue {
     ) -> bool {
         let mut inner = self.inner.lock().await;
 
-        // Deduplication check
         let already_queued = match &kind {
             api::TaskKind::SyncShow { show_id, .. } => {
                 inner.show_pending.contains_key(show_id)
@@ -83,6 +93,31 @@ impl TaskQueue {
         };
 
         if already_queued {
+            // A user-initiated (immediate) request for an already-queued task
+            // bumps the existing pending entry to the top so it runs next. A
+            // task that is only running (not in the pending deque) is already
+            // executing, so there is nothing to bump.
+            if immediate {
+                let pos = inner
+                    .pending
+                    .iter()
+                    .position(|s| match (&s.task.kind, &kind) {
+                        (
+                            api::TaskKind::SyncShow { show_id: a, .. },
+                            api::TaskKind::SyncShow { show_id: b, .. },
+                        ) => a == b,
+                        (
+                            api::TaskKind::SyncMovie { movie_id: a, .. },
+                            api::TaskKind::SyncMovie { movie_id: b, .. },
+                        ) => a == b,
+                        _ => false,
+                    });
+
+                if let Some(pos) = pos {
+                    self.bump_at(&mut inner, pos, broadcast);
+                }
+            }
+
             return false;
         }
 
@@ -113,16 +148,20 @@ impl TaskQueue {
             id,
             kind,
             status: api::TaskStatus::Pending,
+            run_at: None,
         };
 
-        inner.pending.push_back(ScheduledTask {
+        let scheduled = ScheduledTask {
             run_at,
             task: task.clone(),
-        });
+        };
+
+        let emitted = scheduled.to_api(Instant::now());
+        inner.pending.push_back(scheduled);
 
         broadcast.emit(
             ChannelId::NONE,
-            api::AppEventKind::TaskAdded { task },
+            api::AppEventKind::TaskAdded { task: emitted },
             "task queue task added",
         );
 
@@ -130,11 +169,77 @@ impl TaskQueue {
         true
     }
 
+    /// Remove a pending task from the queue. Running tasks are not removable.
+    pub(crate) async fn remove(&self, id: api::TaskId, broadcast: &Broadcaster) -> bool {
+        let mut inner = self.inner.lock().await;
+
+        let Some(pos) = inner.pending.iter().position(|s| s.task.id == id) else {
+            return false;
+        };
+
+        let removed = inner.pending.remove(pos).expect("position is valid");
+
+        match &removed.task.kind {
+            api::TaskKind::SyncShow { show_id, .. } => {
+                inner.show_pending.remove(show_id);
+            }
+            api::TaskKind::SyncMovie { movie_id, .. } => {
+                inner.movie_pending.remove(movie_id);
+            }
+        }
+
+        info!(task_id = ?id, "Task removed");
+
+        broadcast.emit(
+            ChannelId::NONE,
+            api::AppEventKind::TaskRemoved { task_id: id },
+            "task queue task removed",
+        );
+
+        // The front entry may have changed, so wake the worker to recompute its
+        // sleep deadline.
+        self.notify.notify_one();
+        true
+    }
+
+    /// Bump a pending task to the top of the queue so it runs immediately.
+    /// Running tasks are already executing and cannot be bumped.
+    pub(crate) async fn bump(&self, id: api::TaskId, broadcast: &Broadcaster) -> bool {
+        let mut inner = self.inner.lock().await;
+
+        let Some(pos) = inner.pending.iter().position(|s| s.task.id == id) else {
+            return false;
+        };
+
+        self.bump_at(&mut inner, pos, broadcast);
+        true
+    }
+
+    /// Move the pending entry at `pos` to the front, reset its run time to now,
+    /// notify the worker, and broadcast the bump. Caller holds the lock.
+    fn bump_at(&self, inner: &mut Inner, pos: usize, broadcast: &Broadcaster) {
+        let mut scheduled = inner.pending.remove(pos).expect("position is valid");
+        scheduled.run_at = Instant::now();
+        let emitted = scheduled.to_api(scheduled.run_at);
+        inner.pending.push_front(scheduled);
+
+        info!(task_id = ?emitted.id, "Task bumped");
+
+        broadcast.emit(
+            ChannelId::NONE,
+            api::AppEventKind::TaskBumped { task: emitted },
+            "task queue task bumped",
+        );
+
+        self.notify.notify_one();
+    }
+
     pub(crate) async fn list(&self) -> api::ListTasksResponse {
         let inner = self.inner.lock().await;
+        let now = Instant::now();
 
         api::ListTasksResponse {
-            pending: inner.pending.iter().map(|s| s.task.clone()).collect(),
+            pending: inner.pending.iter().map(|s| s.to_api(now)).collect(),
             running: inner.running.iter().cloned().collect(),
             completed: inner.completed.iter().cloned().collect(),
         }
@@ -237,6 +342,7 @@ impl TaskQueue {
             let completed = api::CompletedTask {
                 id: task.id,
                 kind: task.kind.clone(),
+                completed_at: api::Timestamp::now(),
             };
 
             {
@@ -251,7 +357,6 @@ impl TaskQueue {
                     }
                 }
                 inner.completed.push_front(completed.clone());
-                inner.completed.truncate(MAX_COMPLETED);
             }
 
             broadcast.emit(

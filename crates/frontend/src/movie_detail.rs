@@ -946,7 +946,13 @@ impl MovieDetail {
             }
 
             <div class="detail-layout">
-                <Image class="banner hide-desktop" src={movie.banner.clone()} />
+                <div class="hide-desktop">
+                    if let Some(ref banner) = movie.banner {
+                        <Image class="banner" src={banner.clone()} />
+                    } else if let Some(ref backdrop) = movie.backdrop {
+                        <Image class="backdrop" src={backdrop.clone()} />
+                    }
+                </div>
 
                 <div class="detail-sidebar">
                     <Image class="poster hide-mobile" src={movie.poster.clone()} />

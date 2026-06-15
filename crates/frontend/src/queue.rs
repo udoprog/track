@@ -1,24 +1,28 @@
+use gloo::timers::callback::Interval;
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
 use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{Route, ShowDetailQuery};
+use crate::router::{QueueFocus, QueueQuery, Route, ShowDetailQuery};
 use crate::ui::{MDASH, PaginationButtons};
 
 const PAGE_SIZE: usize = 20;
+
 pub(super) struct Queue {
     channel: ws::Channel,
     background: Background,
     pending: Vec<api::Task>,
     running: Vec<api::Task>,
     completed: Vec<api::CompletedTask>,
-    page: usize,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
+    _tick: Interval,
     _list_req: ws::Request,
     _sync_req: ws::Request,
+    _remove_req: ws::Request,
+    _bump_req: ws::Request,
 }
 pub(super) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
@@ -26,6 +30,12 @@ pub(super) enum Msg {
     TasksLoaded(Result<ws::Packet<api::ListTasks>, ws::Error>),
     SyncAll,
     SyncAllDone(Result<ws::Packet<api::SyncAll>, ws::Error>),
+    Remove(api::TaskId),
+    RemoveDone(Result<ws::Packet<api::RemoveTask>, ws::Error>),
+    Bump(api::TaskId),
+    BumpDone(Result<ws::Packet<api::BumpTask>, ws::Error>),
+    Tick,
+    Focus(Option<QueueFocus>),
     SetPage(usize),
     Navigate(Route),
 }
@@ -34,6 +44,10 @@ pub(super) enum Msg {
 pub(super) struct Props {
     pub(super) onerror: Callback<Option<Error>>,
     pub(super) on_navigate: Callback<Route>,
+    /// Which list is focused, persisted in the route query. `None` is the overview.
+    pub(super) focus: Option<QueueFocus>,
+    /// Current page of the focused pending list, persisted in the route query.
+    pub(super) page: usize,
 }
 
 impl Component for Queue {
@@ -54,17 +68,22 @@ impl Component for Queue {
             .context::<Background>(Callback::noop())
             .expect("Expected background handle in context");
 
+        let tick_link = ctx.link().clone();
+        let _tick = Interval::new(1000, move || tick_link.send_message(Msg::Tick));
+
         Self {
             channel: ws::Channel::default(),
             background,
             pending: Vec::new(),
             running: Vec::new(),
             completed: Vec::new(),
-            page: 0,
             _setup,
             _broadcast,
+            _tick,
             _list_req: ws::Request::default(),
             _sync_req: ws::Request::default(),
+            _remove_req: ws::Request::default(),
+            _bump_req: ws::Request::default(),
         }
     }
 
@@ -91,17 +110,6 @@ impl Component for Queue {
     fn view(&self, ctx: &Context<Self>) -> Html {
         let link = ctx.link();
 
-        let total_pending = self.pending.len();
-        let total_pages = total_pending.div_ceil(PAGE_SIZE).max(1);
-        let page = self.page.min(total_pages - 1);
-
-        let page_pending: Vec<&api::Task> = self
-            .pending
-            .iter()
-            .skip(page * PAGE_SIZE)
-            .take(PAGE_SIZE)
-            .collect();
-
         html! {
             <>
                 <div class="row-fill">
@@ -114,33 +122,11 @@ impl Component for Queue {
                     </button>
                 </div>
 
-                if total_pending == 0 {
-                    <h4 class="text-muted">{"No pending tasks"}</h4>
+                if let Some(focus) = ctx.props().focus {
+                    { self.view_focused(ctx, focus) }
                 } else {
-                    <h4 class="text-muted">{format!("{} pending tasks", total_pending)}</h4>
+                    { self.view_overview(ctx) }
                 }
-
-                { self.view_section(ctx, "Running", &self.running, true) }
-
-                if !page_pending.is_empty() {
-                    <div class="column">
-                        <div class="row-fill">
-                            <h3>{"Pending"}</h3>
-
-                            <div class="row end">
-                                <div class="input-group">
-                                    <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="table">
-                            { for page_pending.iter().map(|t| self.view_task_row(ctx, t, false)) }
-                        </div>
-                    </div>
-                }
-
-                { self.view_completed(ctx) }
             </>
         }
     }
@@ -167,6 +153,15 @@ impl Queue {
                         self.pending.push(task);
                         Ok(true)
                     }
+                    api::AppEventKind::TaskBumped { task } => {
+                        self.pending.retain(|t| t.id != task.id);
+                        self.pending.insert(0, task);
+                        Ok(true)
+                    }
+                    api::AppEventKind::TaskRemoved { task_id } => {
+                        self.pending.retain(|t| t.id != task_id);
+                        Ok(true)
+                    }
                     api::AppEventKind::TaskStarted { task } => {
                         self.pending.retain(|t| t.id != task.id);
                         self.running.push(task);
@@ -175,7 +170,6 @@ impl Queue {
                     api::AppEventKind::TaskCompleted { task } => {
                         self.running.retain(|t| t.id != task.id);
                         self.completed.insert(0, task);
-                        self.completed.truncate(20);
                         Ok(true)
                     }
                     _ => Ok(false),
@@ -204,9 +198,49 @@ impl Queue {
                 result.context(Message::SyncingShow)?;
                 Ok(false)
             }
-            Msg::SetPage(p) => {
-                self.page = p;
-                Ok(true)
+            Msg::Remove(id) => {
+                self._remove_req = self
+                    .channel
+                    .request()
+                    .body(api::RemoveTaskRequest { id })
+                    .on_packet(ctx.link().callback(Msg::RemoveDone))
+                    .send();
+                Ok(false)
+            }
+            Msg::RemoveDone(result) => {
+                result.context(Message::LoadingTasks)?;
+                Ok(false)
+            }
+            Msg::Bump(id) => {
+                self._bump_req = self
+                    .channel
+                    .request()
+                    .body(api::BumpTaskRequest { id })
+                    .on_packet(ctx.link().callback(Msg::BumpDone))
+                    .send();
+                Ok(false)
+            }
+            Msg::BumpDone(result) => {
+                result.context(Message::LoadingTasks)?;
+                Ok(false)
+            }
+            Msg::Tick => {
+                // Re-render so the relative pending ("in …") and completed
+                // ("… ago") labels refresh; they are derived from timestamps.
+                Ok(!self.pending.is_empty() || !self.completed.is_empty())
+            }
+            Msg::Focus(focus) => {
+                ctx.props()
+                    .on_navigate
+                    .emit(Route::Queue(QueueQuery { focus, page: 0 }));
+                Ok(false)
+            }
+            Msg::SetPage(page) => {
+                ctx.props().on_navigate.emit(Route::Queue(QueueQuery {
+                    focus: ctx.props().focus,
+                    page,
+                }));
+                Ok(false)
             }
             Msg::Navigate(route) => {
                 ctx.props().on_navigate.emit(route);
@@ -224,26 +258,131 @@ impl Queue {
             .send();
     }
 
-    fn view_section(
+    /// The overview: one clickable card per task list showing its count and the
+    /// current (first) task, without rendering the full, churning lists.
+    fn view_overview(&self, ctx: &Context<Self>) -> Html {
+        let running_current = self.running.first().map(|t| self.view_task_label(t, None));
+
+        let pending_current = self.pending.first().map(|t| self.view_task_label(t, None));
+
+        let completed_current = self
+            .completed
+            .first()
+            .map(|t| self.view_completed_label(t, None));
+
+        html! {
+            <div class="table">
+                { self.view_overview_card(ctx, QueueFocus::Running, "arrow-path", self.running.len(), running_current) }
+                { self.view_overview_card(ctx, QueueFocus::Pending, "clock", self.pending.len(), pending_current) }
+                { self.view_overview_card(ctx, QueueFocus::Completed, "check", self.completed.len(), completed_current) }
+            </div>
+        }
+    }
+
+    fn view_overview_card(
         &self,
         ctx: &Context<Self>,
-        title: &str,
-        tasks: &[api::Task],
-        spinning: bool,
+        focus: QueueFocus,
+        icon: &'static str,
+        count: usize,
+        current: Option<Html>,
     ) -> Html {
-        if tasks.is_empty() {
-            return html! {};
+        let onclick = (count > 0).then(|| ctx.link().callback(move |_| Msg::Focus(Some(focus))));
+        let clickable = onclick.is_some().then_some("clickable");
+
+        html! {
+            <div class={classes!("table-entry", "row", clickable)} onclick={onclick}>
+                <span class="item-inline"><span class={classes!("icon", icon)} /></span>
+
+                <span class="row fill">
+                    <strong>{focus.title()}</strong>
+
+                    <span>{MDASH}</span>
+
+                    if let Some(current) = current {
+                        { current }
+                    } else {
+                        <span class="text-muted">{"None"}</span>
+                    }
+                </span>
+
+                <span class="status">{count}</span>
+            </div>
         }
+    }
+
+    /// The focused stage: a back button and a single task list.
+    fn view_focused(&self, ctx: &Context<Self>, focus: QueueFocus) -> Html {
+        let link = ctx.link();
+
+        let (buttons, body) = match focus {
+            QueueFocus::Running => (None, self.view_running_list(ctx)),
+            QueueFocus::Pending => self.view_pending_list(ctx),
+            QueueFocus::Completed => self.view_completed_list(ctx),
+        };
 
         html! {
             <div class="column">
-                <h3>{title}</h3>
+                <h3>{focus.title()}</h3>
 
-                <div class="table">
-                    { for tasks.iter().map(|t| self.view_task_row(ctx, t, spinning)) }
+                <div class="row">
+                    <div class="input-group">
+                        <button class="btn" onclick={link.callback(|_| Msg::Focus(None))} title="Back to overview">
+                            <span class="icon arrow-uturn-left" />
+                            <span class="hide-mobile">{"Back"}</span>
+                        </button>
+
+                        {buttons}
+                    </div>
                 </div>
+
+                { body }
             </div>
         }
+    }
+
+    fn view_running_list(&self, ctx: &Context<Self>) -> Html {
+        if self.running.is_empty() {
+            return html! { <h4 class="text-muted">{"No running tasks"}</h4> };
+        }
+
+        html! {
+            <div class="table">
+                { for self.running.iter().map(|t| self.view_task_row(ctx, t, true)) }
+            </div>
+        }
+    }
+
+    fn view_pending_list(&self, ctx: &Context<Self>) -> (Option<Html>, Html) {
+        let link = ctx.link();
+
+        let total_pending = self.pending.len();
+
+        if total_pending == 0 {
+            return (
+                None,
+                html! { <h4 class="text-muted">{"No pending tasks"}</h4> },
+            );
+        }
+
+        let total_pages = total_pending.div_ceil(PAGE_SIZE).max(1);
+        let page = ctx.props().page.min(total_pages - 1);
+
+        let page_pending = self.pending.iter().skip(page * PAGE_SIZE).take(PAGE_SIZE);
+
+        let buttons = (total_pages > 1).then(|| {
+            html! {
+                <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
+            }
+        });
+
+        let body = html! {
+                <div class="table">
+                    { for page_pending.map(|t| self.view_task_row(ctx, t, false)) }
+                </div>
+        };
+
+        (buttons, body)
     }
 
     fn view_task_row(&self, ctx: &Context<Self>, task: &api::Task, spinning: bool) -> Html {
@@ -256,6 +395,8 @@ impl Queue {
 
         let on_navigate = route.map(|r| ctx.link().callback(move |_| Msg::Navigate(r.clone())));
 
+        let id = task.id;
+
         html! {
             <div class="table-entry">
                 <div class="row">
@@ -266,6 +407,18 @@ impl Queue {
                     <span class="row fill">
                         { self.view_task_label(task, on_navigate) }
                     </span>
+
+                    if !spinning {
+                        <span class="text-muted">{ eta_label(task.run_at) }</span>
+
+                        <button class="btn" onclick={ctx.link().callback(move |_| Msg::Bump(id))} title="Run now">
+                            <span class="icon forward" />
+                        </button>
+
+                        <button class="btn-danger" onclick={ctx.link().callback(move |_| Msg::Remove(id))} title="Remove from queue">
+                            <span class="icon trash" />
+                        </button>
+                    }
                 </div>
             </div>
         }
@@ -294,20 +447,36 @@ impl Queue {
         }
     }
 
-    fn view_completed(&self, ctx: &Context<Self>) -> Html {
-        if self.completed.is_empty() {
-            return html! {};
+    fn view_completed_list(&self, ctx: &Context<Self>) -> (Option<Html>, Html) {
+        let link = ctx.link();
+
+        let total = self.completed.len();
+
+        if total == 0 {
+            return (
+                None,
+                html! { <h4 class="text-muted">{"No completed tasks"}</h4> },
+            );
         }
 
-        html! {
-            <div class="column">
-                <h3>{"Completed"}</h3>
+        let total_pages = total.div_ceil(PAGE_SIZE).max(1);
+        let page = ctx.props().page.min(total_pages - 1);
 
-                <div class="table">
-                    { for self.completed.iter().map(|t| self.view_completed_row(ctx, t)) }
-                </div>
+        let page_completed = self.completed.iter().skip(page * PAGE_SIZE).take(PAGE_SIZE);
+
+        let buttons = (total_pages > 1).then(|| {
+            html! {
+                <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
+            }
+        });
+
+        let body = html! {
+            <div class="table">
+                { for page_completed.map(|t| self.view_completed_row(ctx, t)) }
             </div>
-        }
+        };
+
+        (buttons, body)
     }
 
     fn view_completed_row(&self, ctx: &Context<Self>, task: &api::CompletedTask) -> Html {
@@ -317,15 +486,19 @@ impl Queue {
             }
             api::TaskKind::SyncMovie { movie_id, .. } => Some(Route::MovieDetail(*movie_id)),
         };
+
         let on_navigate = route.map(|r| ctx.link().callback(move |_| Msg::Navigate(r.clone())));
 
         html! {
             <div class="table-entry">
                 <div class="row">
                     <span class="item-inline"><span class="icon check" /></span>
-                    <span class="fill">
+
+                    <span class="row fill">
                         { self.view_completed_label(task, on_navigate) }
                     </span>
+
+                    <span class="text-muted">{ ago_label(task.completed_at) }</span>
                 </div>
             </div>
         }
@@ -356,5 +529,62 @@ impl Queue {
                 </span>
             </>
         }
+    }
+}
+
+/// Split a whole-second duration into the largest sensible unit and its count,
+/// e.g. 90 -> (1, "minute").
+fn humanize_count(secs: u64) -> (u64, &'static str) {
+    if secs < 60 {
+        (secs, "second")
+    } else if secs < 3600 {
+        (secs / 60, "minute")
+    } else if secs < 86400 {
+        (secs / 3600, "hour")
+    } else {
+        (secs / 86400, "day")
+    }
+}
+
+/// Format when a pending task is expected to run as a human label, e.g.
+/// "in 20 seconds", "in 5 minutes", "in 1 hour", or "momentarily" when it is
+/// already due.
+fn eta_label(run_at: Option<api::Timestamp>) -> String {
+    let Some(run_at) = run_at else {
+        return "momentarily".to_string();
+    };
+
+    let Some(remaining) = run_at.checked_duration_since(api::Timestamp::now()) else {
+        return "momentarily".to_string();
+    };
+
+    let (n, unit) = humanize_count(remaining.as_secs());
+
+    if n == 0 {
+        "momentarily".to_string()
+    } else if n == 1 {
+        format!("in 1 {unit}")
+    } else {
+        format!("in {n} {unit}s")
+    }
+}
+
+/// Format how long ago a task completed as a human label, e.g. "5 seconds ago",
+/// "2 minutes ago", or "just now".
+fn ago_label(completed_at: api::Timestamp) -> String {
+    let Some(elapsed) = api::Timestamp::now().checked_duration_since(completed_at) else {
+        return "just now".to_string();
+    };
+
+    if elapsed.as_secs() < 10 {
+        return "just now".to_string();
+    }
+
+    let (n, unit) = humanize_count(elapsed.as_secs());
+
+    if n == 1 {
+        format!("1 {unit} ago")
+    } else {
+        format!("{n} {unit}s ago")
     }
 }

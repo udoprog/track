@@ -160,6 +160,21 @@ impl Timestamp {
         self.0
     }
 
+    /// The wall-clock timestamp `duration` from now.
+    #[inline]
+    pub fn from_now(duration: std::time::Duration) -> Self {
+        let ms = JiffTimestamp::now().as_millisecond() + duration.as_millis() as i64;
+        Self(JiffTimestamp::from_millisecond(ms).unwrap_or_else(|_| JiffTimestamp::now()))
+    }
+
+    /// The duration from `earlier` until this timestamp, or `None` if this
+    /// timestamp is not after `earlier`.
+    #[inline]
+    pub fn checked_duration_since(self, earlier: Timestamp) -> Option<std::time::Duration> {
+        let ms = self.0.as_millisecond() - earlier.0.as_millisecond();
+        u64::try_from(ms).ok().map(std::time::Duration::from_millis)
+    }
+
     #[inline]
     pub fn from_jiff(ts: JiffTimestamp) -> Self {
         Self(ts)
@@ -1656,6 +1671,9 @@ pub struct Task {
     pub id: TaskId,
     pub kind: TaskKind,
     pub status: TaskStatus,
+    /// Wall-clock time the task is expected to start running, or `None` when it
+    /// is already running.
+    pub run_at: Option<Timestamp>,
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
@@ -1663,6 +1681,8 @@ pub struct Task {
 pub struct CompletedTask {
     pub id: TaskId,
     pub kind: TaskKind,
+    /// Wall-clock time the task finished.
+    pub completed_at: Timestamp,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -2020,6 +2040,18 @@ pub struct ListTasksRequest;
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
+pub struct RemoveTaskRequest {
+    pub id: TaskId,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct BumpTaskRequest {
+    pub id: TaskId,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
 pub struct ListTasksResponse {
     pub pending: Vec<Task>,
     pub running: Vec<Task>,
@@ -2138,6 +2170,12 @@ pub enum AppEventKind {
     },
     TaskCompleted {
         task: CompletedTask,
+    },
+    TaskBumped {
+        task: Task,
+    },
+    TaskRemoved {
+        task_id: TaskId,
     },
 }
 
@@ -2374,6 +2412,18 @@ api::define! {
     impl Endpoint for ListTasks {
         impl Request for ListTasksRequest;
         type Response<'de> = ListTasksResponse;
+    }
+
+    pub type RemoveTask;
+    impl Endpoint for RemoveTask {
+        impl Request for RemoveTaskRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type BumpTask;
+    impl Endpoint for BumpTask {
+        impl Request for BumpTaskRequest;
+        type Response<'de> = Empty;
     }
 
     pub type GetConfig;

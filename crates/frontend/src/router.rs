@@ -122,6 +122,81 @@ impl SearchQuery {
     }
 }
 
+/// Which task list the queue overview is focused on.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) enum QueueFocus {
+    Running,
+    Pending,
+    Completed,
+}
+
+impl QueueFocus {
+    pub(super) fn title(self) -> &'static str {
+        match self {
+            QueueFocus::Running => "Running",
+            QueueFocus::Pending => "Pending",
+            QueueFocus::Completed => "Completed",
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            QueueFocus::Running => "running",
+            QueueFocus::Pending => "pending",
+            QueueFocus::Completed => "completed",
+        }
+    }
+
+    fn parse(value: &str) -> Option<Self> {
+        match value {
+            "running" => Some(QueueFocus::Running),
+            "pending" => Some(QueueFocus::Pending),
+            "completed" => Some(QueueFocus::Completed),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Default, Debug, Clone, PartialEq)]
+pub(super) struct QueueQuery {
+    pub(super) focus: Option<QueueFocus>,
+    pub(super) page: usize,
+}
+
+impl QueueQuery {
+    fn to_query_string(&self) -> String {
+        let mut s = form_urlencoded::Serializer::new(String::new());
+
+        if let Some(focus) = self.focus {
+            s.append_pair("focus", focus.as_str());
+        }
+
+        if self.page > 0 {
+            s.append_pair("page", &self.page.to_string());
+        }
+
+        s.finish()
+    }
+
+    fn from_search(search: &str) -> Self {
+        let mut this = Self::default();
+
+        for (key, value) in form_urlencoded::parse(search.as_bytes()) {
+            match key.as_ref() {
+                "focus" => {
+                    this.focus = QueueFocus::parse(value.as_ref());
+                }
+                "page" => {
+                    this.page = value.parse::<usize>().unwrap_or(0);
+                }
+                _ => continue,
+            }
+        }
+
+        this
+    }
+}
+
 #[derive(Default, Debug, Clone, PartialEq)]
 pub(super) struct ShowDetailQuery {
     pub(super) season: Option<api::SeasonNumber>,
@@ -161,7 +236,7 @@ impl ShowDetailQuery {
 #[derive(Debug, Clone, PartialEq)]
 pub(super) enum Route {
     Dashboard(DashboardQuery),
-    Queue,
+    Queue(QueueQuery),
     Shows(PagedQuery),
     ShowDetail(api::ShowId, ShowDetailQuery),
     Movies(PagedQuery),
@@ -189,7 +264,15 @@ impl fmt::Display for Route {
                     write!(f, "/?{qs}")
                 }
             }
-            Route::Queue => f.write_str("/queue"),
+            Route::Queue(q) => {
+                let qs = q.to_query_string();
+
+                if qs.is_empty() {
+                    f.write_str("/queue")
+                } else {
+                    write!(f, "/queue?{qs}")
+                }
+            }
             Route::Shows(q) => {
                 let qs = q.to_query_string();
 
@@ -238,7 +321,7 @@ impl Route {
         let search = search.strip_prefix('?').unwrap_or(search);
 
         match parts.next() {
-            Some("queue") => Route::Queue,
+            Some("queue") => Route::Queue(QueueQuery::from_search(search)),
             Some("shows") => match parts.next() {
                 Some(id) => id
                     .parse()
