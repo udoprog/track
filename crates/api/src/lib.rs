@@ -566,6 +566,47 @@ impl RemoteSource {
             _ => Self::Unknown,
         }
     }
+
+    /// The kinds of data this source can contribute during a layered sync. See
+    /// [`SyncKind`] for how a layered sync uses these.
+    pub fn sync_kinds(&self) -> &'static [SyncKind] {
+        match self {
+            Self::Tmdb | Self::Tvdb => &[SyncKind::Base, SyncKind::AirDates],
+            Self::Tvmaze => &[SyncKind::AirDates],
+            Self::Imdb | Self::Unknown => &[],
+        }
+    }
+
+    /// Whether this source contributes accumulating graphics (show-level art such
+    /// as posters, backdrops and banners) that merge across every enabled source.
+    pub fn has_graphics(&self) -> bool {
+        matches!(self, Self::Tmdb | Self::Tvdb)
+    }
+}
+
+/// A kind of data a [`RemoteSource`] can contribute during a layered sync.
+///
+/// During a sync the enabled remotes are visited in priority order and each
+/// contributes the kinds it supports ([`RemoteSource::sync_kinds`]). A draft
+/// tracks which kinds have already been contributed: an *exclusive* kind
+/// ([`SyncKind::is_exclusive`]) is taken by the first source that provides it and
+/// skipped by later layers, while a non-exclusive kind accumulates from every
+/// source. Graphics always accumulate and are tracked separately.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub enum SyncKind {
+    /// Core metadata: title, overview, seasons and episode details.
+    Base,
+    /// Episode air dates (recorded as `episode_releases` and merged by priority).
+    AirDates,
+}
+
+impl SyncKind {
+    /// Whether only the first (highest-priority) source providing this kind
+    /// contributes it. Non-exclusive kinds accumulate from every source.
+    pub fn is_exclusive(&self) -> bool {
+        matches!(self, Self::Base)
+    }
 }
 
 impl fmt::Display for RemoteSource {
@@ -2822,6 +2863,27 @@ mod tests {
             network: network.to_owned(),
             timestamp: Timestamp::from_jiff(jiff::Timestamp::from_second(ts).unwrap()),
         }
+    }
+
+    #[test]
+    fn sync_kinds_capabilities() {
+        use RemoteSource::*;
+
+        // TMDB/TVDB are full base + air-date sources; TVmaze is air-dates only;
+        // IMDb contributes nothing and no graphics.
+        assert_eq!(Tmdb.sync_kinds(), &[SyncKind::Base, SyncKind::AirDates]);
+        assert_eq!(Tvdb.sync_kinds(), &[SyncKind::Base, SyncKind::AirDates]);
+        assert_eq!(Tvmaze.sync_kinds(), &[SyncKind::AirDates]);
+        assert_eq!(Imdb.sync_kinds(), &[]);
+
+        assert!(Tmdb.has_graphics());
+        assert!(Tvdb.has_graphics());
+        assert!(!Tvmaze.has_graphics());
+        assert!(!Imdb.has_graphics());
+
+        // Base is exclusive (first source wins); air dates accumulate.
+        assert!(SyncKind::Base.is_exclusive());
+        assert!(!SyncKind::AirDates.is_exclusive());
     }
 
     #[test]

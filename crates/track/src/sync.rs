@@ -1,7 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use anyhow::{Context as _, Result};
-use api::{EpisodeId, Image, ImageId, ImageKind, SeasonNumber};
+use api::{EpisodeId, Image, ImageId, ImageKey, ImageKind, RemoteSource, SeasonNumber, SyncKind};
 use tracing::{info, warn};
 
 use crate::app_broadcast::Broadcaster;
@@ -21,49 +21,99 @@ pub(crate) async fn sync_show(
         .context("Expected show to exist")?;
 
     let config = db.load_config().await?;
-    let language = show.language.as_deref().or(config.language.as_deref());
+    let base_language = show.language.as_deref().or(config.language.as_deref());
 
-    let source = show.primary_sync_source();
-    info!(show_id = %show_id, title = show.title, ?source, ?language, "Syncing show");
-
-    match source {
-        Some(api::RemoteSource::Tmdb) => {
-            let remote_id = show
-                .remote_by_source(api::RemoteSource::Tmdb)
-                .context("Expected show to have a TMDB remote")?;
-
-            let tmdb_id: u32 = remote_id
-                .value()
-                .as_u32()
-                .context("Expected a valid TMDB id")?;
-
-            sync_show_tmdb(show_id, tmdb_id, language, remote, db, broadcast).await?;
-        }
-        Some(api::RemoteSource::Tvdb) => {
-            let remote_id = show
-                .remote_by_source(api::RemoteSource::Tvdb)
-                .context("Expected show to have a TVDB remote")?;
-
-            let tvdb_id: u32 = remote_id
-                .value()
-                .as_u32()
-                .context("Expected a valid TVDB id")?;
-
-            sync_show_tvdb(show_id, tvdb_id, language, remote, db, broadcast).await?;
-        }
-        _ => anyhow::bail!("Show has no syncable remote (TMDB or TVDB)"),
-    }
-
-    // Best-effort tvmaze enrichment for exact airtimes. Re-fetch so remotes are
-    // current.
-    if let Some(show) = db.show_by_id(show_id).await?
-        && let Err(e) = enrich_with_tvmaze(show_id, &show, remote, db).await
+    // Ensure a TVmaze remote is stored (resolved via TVDB/IMDb) so air-date
+    // enrichment participates in the layered order, as it did unconditionally
+    // before. Best-effort: a failure here just means no TVmaze layer.
+    if show.remote_by_source(RemoteSource::Tvmaze).is_none()
+        && let Err(e) = ensure_tvmaze_remote(show_id, &show, remote, db).await
     {
-        warn!("TVmaze enrichment skipped for show {show_id}: {e:#}");
+        warn!("TVmaze id resolution skipped for show {show_id}: {e:#}");
     }
+
+    // Re-read so a freshly stored TVmaze remote is included in the order.
+    let show = db
+        .show_by_id(show_id)
+        .await?
+        .context("Expected show to exist")?;
+
+    let order = api::enabled_sources_by_priority(&show.remotes);
+    info!(show_id = %show_id, title = show.title, ?order, ?base_language, "Syncing show");
+
+    // The shared model every layer contributes to.
+    let mut draft = ShowDraft::default();
+
+    for source in order {
+        // The kinds this source should still contribute: exclusive kinds only
+        // until a higher-priority layer took them, non-exclusive kinds always.
+        let kinds: Vec<SyncKind> = source
+            .sync_kinds()
+            .iter()
+            .copied()
+            .filter(|k| draft.needs(*k))
+            .collect();
+
+        // Run the source if it still owes a kind, or just to accumulate graphics.
+        if kinds.is_empty() && !source.has_graphics() {
+            continue;
+        }
+
+        let do_base = kinds.contains(&SyncKind::Base);
+        let do_airdates = kinds.contains(&SyncKind::AirDates);
+
+        let result = match source {
+            RemoteSource::Tmdb => match remote_id_u32(&show, RemoteSource::Tmdb) {
+                Some(tmdb_id) => {
+                    tmdb_layer(
+                        &mut draft,
+                        &show,
+                        tmdb_id,
+                        base_language,
+                        do_base,
+                        do_airdates,
+                        remote,
+                    )
+                    .await
+                }
+                None => continue,
+            },
+            RemoteSource::Tvdb => match remote_id_u32(&show, RemoteSource::Tvdb) {
+                Some(tvdb_id) => {
+                    tvdb_layer(&mut draft, tvdb_id, base_language, do_base, do_airdates, remote).await
+                }
+                None => continue,
+            },
+            RemoteSource::Tvmaze => match remote_id_u32(&show, RemoteSource::Tvmaze) {
+                Some(tvmaze_id) => tvmaze_layer(&mut draft, show_id, tvmaze_id, remote).await,
+                None => continue,
+            },
+            _ => continue,
+        };
+
+        // A failing layer shouldn't abort the sync: lower-priority layers and the
+        // data already collected still persist, and the kind stays unclaimed so a
+        // later layer can fill it.
+        if let Err(e) = result {
+            warn!(?source, "Sync layer failed for show {show_id}: {e:#}");
+            continue;
+        }
+
+        for k in kinds {
+            draft.provided.insert(k);
+        }
+    }
+
+    // Without base metadata there is nothing to persist; bail rather than wipe the
+    // existing show (persisting clears images and prunes seasons/episodes).
+    if !draft.provided.contains(&SyncKind::Base) {
+        anyhow::bail!("Show has no syncable remote (TMDB or TVDB)");
+    }
+
+    persist_show_draft(show_id, &show, &draft, db, broadcast).await?;
 
     // Merge all sources' air dates into the effective episodes.aired by priority,
-    // then re-broadcast each season so clients pick up the recomputed dates.
+    // then broadcast each season so clients pick up the recomputed dates.
     db.recompute_episode_aired_for_show(show_id, config.air_date_filters.clone())
         .await?;
 
@@ -85,273 +135,283 @@ pub(crate) async fn sync_show(
     Ok(())
 }
 
-async fn sync_show_tmdb(
+/// Resolve and store a TVmaze remote for the show via its TVDB or IMDb id, so
+/// TVmaze participates in the layered sync order like any other remote.
+async fn ensure_tvmaze_remote(
     show_id: api::ShowId,
-    tmdb_id: u32,
-    language: Option<&str>,
+    show: &api::Show,
     remote: &RemoteClients,
     db: &Database,
-    broadcast: &Broadcaster,
 ) -> Result<()> {
-    let show = db
-        .show_by_id(show_id)
-        .await?
-        .context("Expected show to exist")?;
-
-    info!(tmdb_id, "Fetching TMDB show");
-
-    let info = remote.fetch_tmdb_show(tmdb_id, language).await?;
-
-    // When no language is configured, use the show's own original language for
-    // episode fetches so that episode titles and overviews are also localized.
-    let effective_language: Option<&str> =
-        language.or_else(|| info.original_language.as_deref().filter(|&l| l != "en"));
-
-    db.update_show(
-        show_id,
-        info.title.as_deref(),
-        info.first_air_date.or(show.first_air_date),
-        info.overview.as_deref(),
-        show.tracked,
-    )
-    .await?;
-
-    for remote in &info.remotes {
-        db.add_show_remote(show_id, remote.slug.as_deref(), &remote.remote)
-            .await?;
-    }
-
-    db.clear_show_images(show_id).await?;
-
-    let mut selected_poster_id = None;
-    let mut selected_backdrop_id = None;
-
-    for (rank, poster) in info.posters.iter().enumerate() {
-        let id = ImageId::random();
-
-        db.upsert_show_image(id, show_id, ImageKind::Poster, rank as u32, poster)
-            .await?;
-
-        if info.selected_poster.as_ref() == Some(poster.key()) {
-            selected_poster_id = Some(id);
-        }
-    }
-
-    for (rank, backdrop) in info.backdrops.iter().enumerate() {
-        let id = ImageId::random();
-
-        db.upsert_show_image(id, show_id, ImageKind::Backdrop, rank as u32, backdrop)
-            .await?;
-
-        if info.selected_backdrop.as_ref() == Some(backdrop.key()) {
-            selected_backdrop_id = Some(id);
-        }
-    }
-
-    if let Some(id) = selected_poster_id {
-        db.set_show_image_selection(show_id, ImageKind::Poster, id)
-            .await?;
-    }
-
-    if let Some(id) = selected_backdrop_id {
-        db.set_show_image_selection(show_id, ImageKind::Backdrop, id)
-            .await?;
-    }
-
-    let updated = db
-        .show_by_id(show_id)
-        .await?
-        .context("Expected show to exist after update")?;
-    broadcast.broadcast_event(api::AppEventKind::ShowChanged { show: updated });
-
-    let mut synced_seasons = HashSet::new();
-
-    db.clear_episode_images(show_id).await?;
-
-    let existing_episode_ids = db.episode_ids(show_id).await?;
-
-    for info in &info.seasons {
-        let season_id = db
-            .upsert_season(
-                show_id,
-                info.number,
-                info.air_date,
-                info.name.as_deref(),
-                info.overview.as_deref(),
-            )
-            .await?;
-
-        db.clear_season_images(season_id).await?;
-
-        if let Some(poster) = &info.poster {
-            let image = api::Image::from(poster.clone());
-            let image_id = ImageId::random();
-            db.upsert_season_image(image_id, season_id, ImageKind::Poster, &image)
-                .await?;
-            db.set_season_image_selection(season_id, ImageKind::Poster, image_id)
-                .await?;
-        }
-
-        info!(tmdb_id, season = ?info.number, "Fetching TMDB season episodes");
-
-        let mut fetched_numbers = HashSet::new();
-
-        for ep in remote
-            .fetch_tmdb_season_episodes(tmdb_id, info.number, effective_language)
-            .await?
+    let tvmaze_id = 'id: {
+        if let Some(r) = show
+            .remotes
+            .iter()
+            .find(|r| *r.remote.source() == RemoteSource::Tvdb)
         {
-            fetched_numbers.insert(ep.number);
-
-            let episode_id = existing_episode_ids
-                .get(&(ep.season, ep.number))
-                .copied()
-                .unwrap_or_else(EpisodeId::random);
-
-            db.upsert_episode(
-                episode_id,
-                show_id,
-                ep.season,
-                ep.number,
-                None,
-                ep.name.as_deref(),
-                ep.overview.as_deref(),
-                ep.aired,
-                Some(&ep.remote),
-            )
-            .await?;
-
-            if let Some(aired) = ep.aired {
-                db.upsert_episode_release(episode_id, api::RemoteSource::Tmdb, "", "", aired)
-                    .await?;
-            }
-
-            if let Some(path) = &ep.filename {
-                let image_id = ImageId::random();
-                let image = Image::from(path.clone());
-
-                db.upsert_episode_image(image_id, episode_id, ImageKind::Screenshot, &image)
-                    .await?;
-
-                db.set_episode_image_selection(episode_id, ImageKind::Screenshot, image_id)
-                    .await?;
-            }
+            let id: u32 = r
+                .remote
+                .value()
+                .as_u32()
+                .context("Expected a valid TVDB id")?;
+            info!(tvdb_id = id, "Looking up TVmaze id via TVDB");
+            break 'id remote.lookup_tvmaze_by_tvdb(id).await?;
         }
 
-        db.prune_season_episodes(show_id, info.number, &fetched_numbers)
-            .await?;
+        if let Some(r) = show
+            .remotes
+            .iter()
+            .find(|r| *r.remote.source() == RemoteSource::Imdb)
+        {
+            let imdb_id = r
+                .remote
+                .value()
+                .as_str()
+                .context("Expected a valid IMDB id")?;
+            info!(imdb_id, "Looking up TVmaze id via IMDB");
+            break 'id remote.lookup_tvmaze_by_imdb(imdb_id).await?;
+        }
 
-        broadcast.broadcast_event(api::AppEventKind::EpisodesChanged {
-            show_id,
-            season: info.number,
-        });
+        info!(show_id = %show_id, "Skipping TVmaze id resolution: no TVDB or IMDB remote");
+        return Ok(());
+    };
 
-        synced_seasons.insert(info.number);
-    }
+    let Some(tvmaze_id) = tvmaze_id else {
+        info!(show_id = %show_id, "TVmaze id not found");
+        return Ok(());
+    };
 
-    db.prune_seasons(show_id, &synced_seasons).await?;
-
-    let seasons = db.seasons(show_id).await?;
-    broadcast.broadcast_event(api::AppEventKind::SeasonsChanged { show_id, seasons });
+    // Idempotent via INSERT OR IGNORE.
+    db.add_show_remote(show_id, None, &api::Remote::tvmaze(tvmaze_id))
+        .await?;
 
     Ok(())
 }
 
-async fn sync_show_tvdb(
-    show_id: api::ShowId,
-    tvdb_id: u32,
-    language: Option<&str>,
+/// The integer id of the show's remote for `source`, if present and numeric.
+fn remote_id_u32(show: &api::Show, source: RemoteSource) -> Option<u32> {
+    show.remote_by_source(source)?.value().as_u32()
+}
+
+/// A show-level image accumulated during sync; graphics merge across every
+/// enabled source in priority order.
+struct DraftImage {
+    kind: ImageKind,
+    image: Image,
+}
+
+/// A season's metadata contributed by the base layer.
+#[derive(Default)]
+struct SeasonDraft {
+    air_date: Option<api::Timestamp>,
+    name: Option<String>,
+    overview: Option<String>,
+    poster: Option<Image>,
+}
+
+/// An episode's metadata contributed by the base layer.
+struct EpisodeDraft {
+    absolute_number: Option<u32>,
+    name: Option<String>,
+    overview: Option<String>,
+    aired: Option<api::Timestamp>,
+    remote: api::Remote,
+    screenshot: Option<Image>,
+}
+
+/// An episode air-date release accumulated from an air-date layer, keyed by
+/// (season, number) so it can be attributed to a persisted episode.
+struct DraftRelease {
+    season: SeasonNumber,
+    number: u32,
+    source: RemoteSource,
+    country: String,
+    network: String,
+    timestamp: api::Timestamp,
+}
+
+/// The shared, mutable model the sync layers contribute to. Each layer reads
+/// [`Self::needs`] to decide whether to do work for a kind, then appends what it
+/// fetched. `provided` tracks which kinds have been contributed so an exclusive
+/// kind (Base) is taken by the first source and skipped by later layers.
+#[derive(Default)]
+struct ShowDraft {
+    provided: HashSet<SyncKind>,
+
+    // Base (exclusive): set by the first base-capable source.
+    title: Option<String>,
+    first_air_date: Option<api::Timestamp>,
+    overview: Option<String>,
+    seasons: BTreeMap<SeasonNumber, SeasonDraft>,
+    episodes: BTreeMap<(SeasonNumber, u32), EpisodeDraft>,
+
+    // External ids discovered by any source.
+    remotes: Vec<(Option<String>, api::Remote)>,
+
+    // Air dates (accumulate): one entry per source contribution.
+    releases: Vec<DraftRelease>,
+
+    // Graphics (accumulate): show-level art in source-priority order, plus the
+    // selected image key per kind from the first source that contributed it.
+    images: Vec<DraftImage>,
+    selected: HashMap<ImageKind, ImageKey>,
+}
+
+impl ShowDraft {
+    /// Whether a source should still contribute `kind`: exclusive kinds only until
+    /// the first source provides them, non-exclusive kinds always.
+    fn needs(&self, kind: SyncKind) -> bool {
+        !kind.is_exclusive() || !self.provided.contains(&kind)
+    }
+
+    fn add_remote(&mut self, slug: Option<String>, remote: api::Remote) {
+        self.remotes.push((slug, remote));
+    }
+
+    fn add_image(&mut self, kind: ImageKind, image: Image, selected: bool) {
+        if selected {
+            self.selected
+                .entry(kind)
+                .or_insert_with(|| image.key().clone());
+        }
+
+        self.images.push(DraftImage { kind, image });
+    }
+}
+
+async fn tmdb_layer(
+    draft: &mut ShowDraft,
+    show: &api::Show,
+    tmdb_id: u32,
+    base_language: Option<&str>,
+    do_base: bool,
+    do_airdates: bool,
     remote: &RemoteClients,
-    db: &Database,
-    broadcast: &Broadcaster,
 ) -> Result<()> {
-    let show = db
-        .show_by_id(show_id)
-        .await?
-        .context("Expected show to exist")?;
+    info!(tmdb_id, do_base, do_airdates, "Fetching TMDB show");
 
-    info!(tvdb_id, "Fetching TVDB show");
+    let info = remote.fetch_tmdb_show(tmdb_id, base_language).await?;
 
-    let info = remote.fetch_tvdb_show(tvdb_id, language).await?;
+    for r in &info.remotes {
+        draft.add_remote(r.slug.clone(), r.remote.clone());
+    }
+
+    // Graphics accumulate from every source.
+    for poster in &info.posters {
+        let selected = info.selected_poster.as_ref() == Some(poster.key());
+        draft.add_image(ImageKind::Poster, poster.clone(), selected);
+    }
+
+    for backdrop in &info.backdrops {
+        let selected = info.selected_backdrop.as_ref() == Some(backdrop.key());
+        draft.add_image(ImageKind::Backdrop, backdrop.clone(), selected);
+    }
+
+    if !do_base && !do_airdates {
+        return Ok(());
+    }
+
+    // When no language is configured, use the show's own original language for
+    // episode fetches so episode titles and overviews are also localized.
+    let effective_language: Option<&str> =
+        base_language.or_else(|| info.original_language.as_deref().filter(|&l| l != "en"));
+
+    if do_base {
+        draft.title = info.title.clone();
+        draft.overview = info.overview.clone();
+        draft.first_air_date = info.first_air_date.or(show.first_air_date);
+    }
+
+    for season in &info.seasons {
+        if do_base {
+            let entry = draft.seasons.entry(season.number).or_default();
+            entry.air_date = season.air_date;
+            entry.name = season.name.clone();
+            entry.overview = season.overview.clone();
+            entry.poster = season.poster.clone().map(Image::from);
+        }
+
+        info!(tmdb_id, season = ?season.number, "Fetching TMDB season episodes");
+
+        for ep in remote
+            .fetch_tmdb_season_episodes(tmdb_id, season.number, effective_language)
+            .await?
+        {
+            if do_base {
+                draft.episodes.insert(
+                    (ep.season, ep.number),
+                    EpisodeDraft {
+                        absolute_number: None,
+                        name: ep.name,
+                        overview: ep.overview,
+                        aired: ep.aired,
+                        remote: ep.remote,
+                        screenshot: ep.filename.map(Image::from),
+                    },
+                );
+            }
+
+            if do_airdates && let Some(aired) = ep.aired {
+                draft.releases.push(DraftRelease {
+                    season: ep.season,
+                    number: ep.number,
+                    source: RemoteSource::Tmdb,
+                    country: String::new(),
+                    network: String::new(),
+                    timestamp: aired,
+                });
+            }
+        }
+    }
+
+    Ok(())
+}
+
+async fn tvdb_layer(
+    draft: &mut ShowDraft,
+    tvdb_id: u32,
+    base_language: Option<&str>,
+    do_base: bool,
+    do_airdates: bool,
+    remote: &RemoteClients,
+) -> Result<()> {
+    info!(tvdb_id, do_base, do_airdates, "Fetching TVDB show");
+
+    let info = remote.fetch_tvdb_show(tvdb_id, base_language).await?;
+
+    for r in &info.remotes {
+        draft.add_remote(r.slug.clone(), r.remote.clone());
+    }
+
+    for poster in &info.poster {
+        let selected = info.selected_poster.as_ref() == Some(poster.key());
+        draft.add_image(ImageKind::Poster, poster.clone(), selected);
+    }
+
+    for banner in &info.banner {
+        let selected = info.selected_banner.as_ref() == Some(banner.key());
+        draft.add_image(ImageKind::Banner, banner.clone(), selected);
+    }
+
+    for fanart in &info.fanart {
+        let selected = info.selected_fanart.as_ref() == Some(fanart.key());
+        draft.add_image(ImageKind::Backdrop, fanart.clone(), selected);
+    }
+
+    if !do_base && !do_airdates {
+        return Ok(());
+    }
+
+    if do_base {
+        draft.title = info.title.clone();
+        draft.overview = info.overview.clone();
+        // TVDB has no first-air-date field; persist falls back to the existing value.
+    }
 
     // When no language is configured, use the show's own original language for
     // episode fetches. TVDB uses 3-letter language codes; "eng" is the default.
     let effective_language: Option<&str> =
-        language.or_else(|| info.original_language.as_deref().filter(|&l| l != "eng"));
-
-    db.update_show(
-        show_id,
-        info.title.as_deref(),
-        show.first_air_date,
-        info.overview.as_deref(),
-        show.tracked,
-    )
-    .await?;
-
-    for remote in &info.remotes {
-        db.add_show_remote(show_id, remote.slug.as_deref(), &remote.remote)
-            .await?;
-    }
-
-    db.clear_show_images(show_id).await?;
-
-    let mut selected_poster_id = None;
-    let mut selected_banner_id = None;
-    let mut selected_fanart_id = None;
-
-    for (rank, poster) in info.poster.iter().enumerate() {
-        let id = ImageId::random();
-
-        db.upsert_show_image(id, show_id, ImageKind::Poster, rank as u32, poster)
-            .await?;
-
-        if info.selected_poster.as_ref() == Some(poster.key()) {
-            selected_poster_id = Some(id);
-        }
-    }
-
-    for (rank, banner) in info.banner.iter().enumerate() {
-        let id = ImageId::random();
-
-        db.upsert_show_image(id, show_id, ImageKind::Banner, rank as u32, banner)
-            .await?;
-
-        if info.selected_banner.as_ref() == Some(banner.key()) {
-            selected_banner_id = Some(id);
-        }
-    }
-
-    for (rank, fanart) in info.fanart.iter().enumerate() {
-        let id = ImageId::random();
-
-        db.upsert_show_image(id, show_id, ImageKind::Backdrop, rank as u32, fanart)
-            .await?;
-
-        if info.selected_fanart.as_ref() == Some(fanart.key()) {
-            selected_fanart_id = Some(id);
-        }
-    }
-
-    if let Some(id) = selected_poster_id {
-        db.set_show_image_selection(show_id, ImageKind::Poster, id)
-            .await?;
-    }
-
-    if let Some(id) = selected_banner_id {
-        db.set_show_image_selection(show_id, ImageKind::Banner, id)
-            .await?;
-    }
-
-    if let Some(id) = selected_fanart_id {
-        db.set_show_image_selection(show_id, ImageKind::Backdrop, id)
-            .await?;
-    }
-
-    let updated = db
-        .show_by_id(show_id)
-        .await?
-        .context("Expected show to exist after update")?;
-
-    broadcast.broadcast_event(api::AppEventKind::ShowChanged { show: updated });
+        base_language.or_else(|| info.original_language.as_deref().filter(|&l| l != "eng"));
 
     info!(tvdb_id, "Fetching TVDB episodes");
     let episodes = remote
@@ -359,39 +419,160 @@ async fn sync_show_tvdb(
         .await?;
     info!(count = episodes.len(), "Got episodes from TVDB");
 
-    let mut seasons_seen: HashSet<SeasonNumber> = HashSet::new();
-    let mut season_air_dates: HashMap<SeasonNumber, api::Timestamp> = HashMap::new();
-    let mut season_episode_numbers: HashMap<SeasonNumber, HashSet<u32>> = HashMap::new();
+    for ep in episodes {
+        if do_base {
+            // TVDB has no season records; derive the air date as the earliest
+            // episode air date in the season.
+            let entry = draft.seasons.entry(ep.season).or_default();
 
-    db.clear_episode_images(show_id).await?;
-
-    let existing_episode_ids = db.episode_ids(show_id).await?;
-
-    for ep in &episodes {
-        seasons_seen.insert(ep.season);
-        season_episode_numbers
-            .entry(ep.season)
-            .or_default()
-            .insert(ep.number);
-
-        if let Some(aired) = ep.aired {
-            let entry = season_air_dates.entry(ep.season).or_insert(aired);
-
-            if aired < *entry {
-                *entry = aired;
+            if let Some(aired) = ep.aired {
+                entry.air_date = Some(match entry.air_date {
+                    Some(cur) if cur <= aired => cur,
+                    _ => aired,
+                });
             }
+
+            let screenshot = ep
+                .image
+                .as_ref()
+                .map(|(source, path)| Image::new(*source, path));
+
+            draft.episodes.insert(
+                (ep.season, ep.number),
+                EpisodeDraft {
+                    absolute_number: ep.absolute_number,
+                    name: ep.name,
+                    overview: ep.overview,
+                    aired: ep.aired,
+                    remote: ep.remote,
+                    screenshot,
+                },
+            );
         }
 
+        if do_airdates && let Some(aired) = ep.aired {
+            draft.releases.push(DraftRelease {
+                season: ep.season,
+                number: ep.number,
+                source: RemoteSource::Tvdb,
+                country: String::new(),
+                network: String::new(),
+                timestamp: aired,
+            });
+        }
+    }
+
+    Ok(())
+}
+
+#[tracing::instrument(skip_all, fields(show_id = %show_id))]
+async fn tvmaze_layer(
+    draft: &mut ShowDraft,
+    show_id: api::ShowId,
+    tvmaze_id: u32,
+    remote: &RemoteClients,
+) -> Result<()> {
+    let network = match remote.fetch_tvmaze_show_network(tvmaze_id).await {
+        Ok(network) => network,
+        Err(e) => {
+            warn!("TVmaze network lookup failed for show {show_id}: {e:#}");
+            Default::default()
+        }
+    };
+
+    info!(tvmaze_id, "Fetching TVmaze episodes");
+
+    let episodes = remote.fetch_tvmaze_episodes(tvmaze_id).await?;
+    let count = episodes.len();
+
+    for ep in episodes {
+        draft.releases.push(DraftRelease {
+            season: ep.season,
+            number: ep.number,
+            source: RemoteSource::Tvmaze,
+            country: network.country.clone(),
+            network: network.network.clone(),
+            timestamp: ep.aired_at,
+        });
+    }
+
+    info!(episodes = count, "Collected TVmaze air dates");
+
+    Ok(())
+}
+
+/// Write the accumulated [`ShowDraft`] to the database in one pass: base
+/// metadata, accumulated graphics, seasons, episodes (with stable ids), and
+/// per-source air-date releases; prune anything no longer present.
+async fn persist_show_draft(
+    show_id: api::ShowId,
+    show: &api::Show,
+    draft: &ShowDraft,
+    db: &Database,
+    broadcast: &Broadcaster,
+) -> Result<()> {
+    db.update_show(
+        show_id,
+        draft.title.as_deref(),
+        draft.first_air_date.or(show.first_air_date),
+        draft.overview.as_deref(),
+        show.tracked,
+    )
+    .await?;
+
+    for (slug, remote) in &draft.remotes {
+        db.add_show_remote(show_id, slug.as_deref(), remote).await?;
+    }
+
+    // Graphics: replace all show images with the accumulated set, ranked in
+    // source-priority (accumulation) order, selecting the highest-priority pick.
+    db.clear_show_images(show_id).await?;
+
+    let mut ranks: HashMap<ImageKind, u32> = HashMap::new();
+    let mut selected_ids: HashMap<ImageKind, ImageId> = HashMap::new();
+
+    for draft_image in &draft.images {
+        let id = ImageId::random();
+        let rank = ranks.entry(draft_image.kind).or_default();
+
+        db.upsert_show_image(id, show_id, draft_image.kind, *rank, &draft_image.image)
+            .await?;
+        *rank += 1;
+
+        if draft.selected.get(&draft_image.kind) == Some(draft_image.image.key()) {
+            selected_ids.entry(draft_image.kind).or_insert(id);
+        }
+    }
+
+    for (kind, id) in selected_ids {
+        db.set_show_image_selection(show_id, kind, id).await?;
+    }
+
+    // Episodes: assign stable ids (reuse existing) so air-date releases attribute
+    // to the right row.
+    let existing_episode_ids = db.episode_ids(show_id).await?;
+    db.clear_episode_images(show_id).await?;
+
+    let mut episode_ids: HashMap<(SeasonNumber, u32), EpisodeId> = HashMap::new();
+    let mut season_episode_numbers: HashMap<SeasonNumber, HashSet<u32>> = HashMap::new();
+
+    for ((season, number), ep) in &draft.episodes {
         let episode_id = existing_episode_ids
-            .get(&(ep.season, ep.number))
+            .get(&(*season, *number))
             .copied()
             .unwrap_or_else(EpisodeId::random);
+
+        episode_ids.insert((*season, *number), episode_id);
+        season_episode_numbers
+            .entry(*season)
+            .or_default()
+            .insert(*number);
 
         db.upsert_episode(
             episode_id,
             show_id,
-            ep.season,
-            ep.number,
+            *season,
+            *number,
             ep.absolute_number,
             ep.name.as_deref(),
             ep.overview.as_deref(),
@@ -400,41 +581,63 @@ async fn sync_show_tvdb(
         )
         .await?;
 
-        if let Some(aired) = ep.aired {
-            db.upsert_episode_release(episode_id, api::RemoteSource::Tvdb, "", "", aired)
-                .await?;
-        }
-
-        if let Some((source, path)) = &ep.image {
+        if let Some(screenshot) = &ep.screenshot {
             let image_id = ImageId::random();
-
-            db.upsert_episode_image(
-                image_id,
-                episode_id,
-                ImageKind::Screenshot,
-                &api::Image::new(*source, path),
-            )
-            .await?;
-
+            db.upsert_episode_image(image_id, episode_id, ImageKind::Screenshot, screenshot)
+                .await?;
             db.set_episode_image_selection(episode_id, ImageKind::Screenshot, image_id)
                 .await?;
         }
     }
 
-    for &season in &seasons_seen {
-        let air_date = season_air_dates.get(&season).copied();
+    // Seasons.
+    let mut synced_seasons = HashSet::new();
 
-        db.upsert_season(show_id, season, air_date, None, None)
+    for (number, season) in &draft.seasons {
+        let season_id = db
+            .upsert_season(
+                show_id,
+                *number,
+                season.air_date,
+                season.name.as_deref(),
+                season.overview.as_deref(),
+            )
             .await?;
 
-        if let Some(kept) = season_episode_numbers.get(&season) {
-            db.prune_season_episodes(show_id, season, kept).await?;
+        db.clear_season_images(season_id).await?;
+
+        if let Some(poster) = &season.poster {
+            let image_id = ImageId::random();
+            db.upsert_season_image(image_id, season_id, ImageKind::Poster, poster)
+                .await?;
+            db.set_season_image_selection(season_id, ImageKind::Poster, image_id)
+                .await?;
         }
 
-        broadcast.broadcast_event(api::AppEventKind::EpisodesChanged { show_id, season });
+        synced_seasons.insert(*number);
     }
 
-    db.prune_seasons(show_id, &seasons_seen).await?;
+    for (season, kept) in &season_episode_numbers {
+        db.prune_season_episodes(show_id, *season, kept).await?;
+    }
+
+    db.prune_seasons(show_id, &synced_seasons).await?;
+
+    // Air-date releases, attributed per source; skip episodes we didn't persist.
+    for r in &draft.releases {
+        let Some(&episode_id) = episode_ids.get(&(r.season, r.number)) else {
+            continue;
+        };
+
+        db.upsert_episode_release(episode_id, r.source, &r.country, &r.network, r.timestamp)
+            .await?;
+    }
+
+    let updated = db
+        .show_by_id(show_id)
+        .await?
+        .context("Expected show to exist after update")?;
+    broadcast.broadcast_event(api::AppEventKind::ShowChanged { show: updated });
 
     let seasons = db.seasons(show_id).await?;
     broadcast.broadcast_event(api::AppEventKind::SeasonsChanged { show_id, seasons });
@@ -561,92 +764,5 @@ pub(crate) async fn sync_movie(
         .await?;
     broadcast.broadcast_event(api::AppEventKind::PendingChanged);
     info!(movie_id = %movie_id, "Sync complete");
-    Ok(())
-}
-
-#[tracing::instrument(skip_all, fields(show_id = %show_id))]
-async fn enrich_with_tvmaze(
-    show_id: api::ShowId,
-    show: &api::Show,
-    remote: &RemoteClients,
-    db: &Database,
-) -> Result<()> {
-    let tvmaze_id = 'id: {
-        if let Some(r) = show
-            .remotes
-            .iter()
-            .find(|r| *r.remote.source() == api::RemoteSource::Tvdb)
-        {
-            let id: u32 = r
-                .remote
-                .value()
-                .as_u32()
-                .context("Expected a valid TVDB id")?;
-            info!(tvdb_id = id, "Looking up TVmaze id via TVDB");
-            break 'id remote.lookup_tvmaze_by_tvdb(id).await?;
-        }
-
-        if let Some(r) = show
-            .remotes
-            .iter()
-            .find(|r| *r.remote.source() == api::RemoteSource::Imdb)
-        {
-            let imdb_id = r
-                .remote
-                .value()
-                .as_str()
-                .context("Expected a valid IMDB id")?;
-            info!(imdb_id, "Looking up TVmaze id via IMDB");
-            break 'id remote.lookup_tvmaze_by_imdb(imdb_id).await?;
-        }
-
-        info!(show_id = %show_id, "Skipping TVmaze enrichment: no TVDB or IMDB remote");
-        return Ok(());
-    };
-
-    let Some(tvmaze_id) = tvmaze_id else {
-        info!(show_id = %show_id, "Skipping TVmaze enrichment: not found on TVmaze");
-        return Ok(());
-    };
-
-    // Persist the resolved TVmaze id as a remote so its air-date contributions
-    // reference a stored source (idempotent via INSERT OR IGNORE).
-    db.add_show_remote(show_id, None, &api::Remote::tvmaze(tvmaze_id))
-        .await?;
-
-    let network = match remote.fetch_tvmaze_show_network(tvmaze_id).await {
-        Ok(network) => network,
-        Err(e) => {
-            warn!("TVmaze network lookup failed for show {show_id}: {e:#}");
-            Default::default()
-        }
-    };
-
-    info!(tvmaze_id, "Fetching TVmaze episodes");
-
-    let tvmaze_eps = remote.fetch_tvmaze_episodes(tvmaze_id).await?;
-    let episode_ids = db.episode_ids(show_id).await?;
-
-    let mut count = 0;
-
-    for ep in tvmaze_eps {
-        let Some(&episode_id) = episode_ids.get(&(ep.season, ep.number)) else {
-            continue;
-        };
-
-        db.upsert_episode_release(
-            episode_id,
-            api::RemoteSource::Tvmaze,
-            &network.country,
-            &network.network,
-            ep.aired_at,
-        )
-        .await?;
-
-        count += 1;
-    }
-
-    info!(episodes = count, "Stored TVmaze air dates");
-
     Ok(())
 }
