@@ -38,9 +38,12 @@ struct ShowRow {
     overview: Option<String>,
     tracked: bool,
     last_synced_at: Option<Timestamp>,
+    // Legacy per-show settings columns (dormant once a `show_settings` row exists).
     language: Option<String>,
     include_specials: Option<bool>,
     air_date_filters: Option<String>,
+    // The `show_settings.data` JSON blob, when present, supersedes the columns above.
+    settings_data: Option<String>,
 }
 
 #[derive(Row)]
@@ -167,8 +170,11 @@ struct MovieRow {
     overview: Option<String>,
     tracked: bool,
     last_synced_at: Option<Timestamp>,
+    // Legacy per-movie settings columns (dormant once a `movie_settings` row exists).
     language: Option<String>,
     release_filters: Option<String>,
+    // The `movie_settings.data` JSON blob, when present, supersedes the columns above.
+    settings_data: Option<String>,
 }
 
 #[derive(Row)]
@@ -320,6 +326,7 @@ struct RemoteRow {
     value: RemoteValue,
     enabled: bool,
     priority: i32,
+    sync_kinds: Option<api::SyncKindSet>,
 }
 
 /// A remote owned by a show (`list_all_show_remotes`) or movie
@@ -333,6 +340,7 @@ struct AllShowRemoteRow {
     value: RemoteValue,
     enabled: bool,
     priority: i32,
+    sync_kinds: Option<api::SyncKindSet>,
 }
 
 #[derive(Row)]
@@ -344,28 +352,30 @@ struct AllMovieRemoteRow {
     value: RemoteValue,
     enabled: bool,
     priority: i32,
+    sync_kinds: Option<api::SyncKindSet>,
 }
 
 #[derive(Statements)]
 #[sql(read_only)]
 struct InnerRead {
     // shows
-    #[sql = "SELECT id, title, first_air, overview, tracked, last_synced_at, language, include_specials, air_date_filters"]
-    #[sql = "FROM shows ORDER BY title"]
+    #[sql = "SELECT shows.id, title, first_air, overview, tracked, last_synced_at, language, include_specials, air_date_filters, show_settings.data AS settings_data"]
+    #[sql = "FROM shows LEFT JOIN show_settings ON show_settings.show_id = shows.id ORDER BY title"]
     list_shows: TypedStatement<(), ShowRow>,
-    #[sql = "SELECT id, title, first_air, overview, tracked, last_synced_at, language, include_specials, air_date_filters"]
-    #[sql = "FROM shows WHERE id = ?"]
+    #[sql = "SELECT shows.id, title, first_air, overview, tracked, last_synced_at, language, include_specials, air_date_filters, show_settings.data AS settings_data"]
+    #[sql = "FROM shows LEFT JOIN show_settings ON show_settings.show_id = shows.id WHERE shows.id = ?"]
     show_by_id: TypedStatement<(ShowId,), ShowRow>,
-    #[sql = "SELECT s.id, s.title, s.first_air, s.overview, s.tracked, s.last_synced_at, s.language, s.include_specials, s.air_date_filters"]
+    #[sql = "SELECT s.id, s.title, s.first_air, s.overview, s.tracked, s.last_synced_at, s.language, s.include_specials, s.air_date_filters, ss.data AS settings_data"]
     #[sql = "FROM shows s"]
     #[sql = "JOIN show_remotes r ON r.show_id = s.id"]
+    #[sql = "LEFT JOIN show_settings ss ON ss.show_id = s.id"]
     #[sql = "WHERE r.source = ? AND r.value = ?"]
     shows_by_remote: TypedStatement<(RemoteSource, RemoteValue), ShowRow>,
 
     // remotes (one table per owner; source is a numeric enum, value is dynamic)
-    #[sql = "SELECT id, slug, source, value, enabled, priority FROM show_remotes WHERE show_id = ? ORDER BY priority, id"]
+    #[sql = "SELECT id, slug, source, value, enabled, priority, sync_kinds FROM show_remotes WHERE show_id = ? ORDER BY priority, id"]
     list_show_remotes: TypedStatement<(ShowId,), RemoteRow>,
-    #[sql = "SELECT show_id, id, slug, source, value, enabled, priority FROM show_remotes ORDER BY show_id, priority, id"]
+    #[sql = "SELECT show_id, id, slug, source, value, enabled, priority, sync_kinds FROM show_remotes ORDER BY show_id, priority, id"]
     list_all_show_remotes: TypedStatement<(), AllShowRemoteRow>,
     #[sql = "SELECT show_id FROM show_remotes WHERE source = ? AND value = ? LIMIT 1"]
     show_id_by_remote: TypedStatement<(RemoteSource, RemoteValue), ShowId>,
@@ -463,20 +473,21 @@ struct InnerRead {
     last_watched_shows: TypedStatement<(), LastWatchedShowRow>,
 
     // movies
-    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.last_synced_at, m.language, m.release_filters"]
-    #[sql = "FROM movies m ORDER BY m.title"]
+    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.last_synced_at, m.language, m.release_filters, ms.data AS settings_data"]
+    #[sql = "FROM movies m LEFT JOIN movie_settings ms ON ms.movie_id = m.id ORDER BY m.title"]
     list_movies: TypedStatement<(), MovieRow>,
-    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.last_synced_at, m.language, m.release_filters"]
-    #[sql = "FROM movies m WHERE m.id = ?"]
+    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.last_synced_at, m.language, m.release_filters, ms.data AS settings_data"]
+    #[sql = "FROM movies m LEFT JOIN movie_settings ms ON ms.movie_id = m.id WHERE m.id = ?"]
     movie_by_id: TypedStatement<(MovieId,), MovieRow>,
-    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.last_synced_at, m.language, m.release_filters"]
+    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.last_synced_at, m.language, m.release_filters, ms.data AS settings_data"]
     #[sql = "FROM movies m"]
     #[sql = "JOIN movie_remotes r ON r.movie_id = m.id"]
+    #[sql = "LEFT JOIN movie_settings ms ON ms.movie_id = m.id"]
     #[sql = "WHERE r.source = ? AND r.value = ?"]
     movie_by_remote: TypedStatement<(RemoteSource, RemoteValue), MovieRow>,
-    #[sql = "SELECT id, slug, source, value, enabled, priority FROM movie_remotes WHERE movie_id = ? ORDER BY priority, id"]
+    #[sql = "SELECT id, slug, source, value, enabled, priority, sync_kinds FROM movie_remotes WHERE movie_id = ? ORDER BY priority, id"]
     list_movie_remotes: TypedStatement<(MovieId,), RemoteRow>,
-    #[sql = "SELECT movie_id, id, slug, source, value, enabled, priority FROM movie_remotes ORDER BY movie_id, priority, id"]
+    #[sql = "SELECT movie_id, id, slug, source, value, enabled, priority, sync_kinds FROM movie_remotes ORDER BY movie_id, priority, id"]
     list_all_movie_remotes: TypedStatement<(), AllMovieRemoteRow>,
     #[sql = "SELECT movie_id FROM movie_remotes WHERE source = ? AND value = ? LIMIT 1"]
     movie_id_by_remote: TypedStatement<(RemoteSource, RemoteValue), Option<MovieId>>,
@@ -608,14 +619,14 @@ struct InnerRead {
     get_config: TypedStatement<(String,), String>,
 
     // stale-item queries
-    #[sql = "SELECT id, title, first_air, overview, tracked, last_synced_at, language, include_specials, air_date_filters"]
-    #[sql = "FROM shows"]
+    #[sql = "SELECT shows.id, title, first_air, overview, tracked, last_synced_at, language, include_specials, air_date_filters, show_settings.data AS settings_data"]
+    #[sql = "FROM shows LEFT JOIN show_settings ON show_settings.show_id = shows.id"]
     #[sql = "WHERE tracked = 1"]
     #[sql = "    AND (last_synced_at IS NULL OR last_synced_at < ?)"]
     #[sql = "ORDER BY last_synced_at IS NOT NULL, last_synced_at"]
     shows_needing_sync: TypedStatement<(Timestamp,), ShowRow>,
-    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.last_synced_at, m.language, m.release_filters"]
-    #[sql = "FROM movies m"]
+    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.last_synced_at, m.language, m.release_filters, ms.data AS settings_data"]
+    #[sql = "FROM movies m LEFT JOIN movie_settings ms ON ms.movie_id = m.id"]
     #[sql = "WHERE m.tracked = 1"]
     #[sql = "    AND (m.last_synced_at IS NULL OR m.last_synced_at < ?)"]
     #[sql = "ORDER BY m.last_synced_at IS NOT NULL, m.last_synced_at"]
@@ -667,15 +678,12 @@ struct InnerWrite {
     delete_show: TypedStatement<(ShowId,), ()>,
     #[sql = "UPDATE shows SET tracked = ? WHERE id = ?"]
     set_show_tracked: TypedStatement<(bool, ShowId), ()>,
-    #[sql = "UPDATE shows SET language = ? WHERE id = ?"]
-    set_show_language: TypedStatement<(Option<String>, ShowId), ()>,
-    #[sql = "UPDATE shows SET include_specials = ? WHERE id = ?"]
-    set_show_include_specials: TypedStatement<(Option<bool>, ShowId), ()>,
-    #[sql = "UPDATE shows SET air_date_filters = ? WHERE id = ?"]
-    set_show_air_date_filters: TypedStatement<(Option<String>, ShowId), ()>,
+    // Per-show settings live in a single JSON blob; see api::ShowSettings.
+    #[sql = "INSERT OR REPLACE INTO show_settings (show_id, data) VALUES (?, ?)"]
+    upsert_show_settings: TypedStatement<(ShowId, String), ()>,
 
     // remotes (one table per owner; source is a numeric enum, value is dynamic)
-    #[sql = "INSERT OR IGNORE INTO show_remotes (id, slug, show_id, source, value, enabled, priority) VALUES (?, ?, ?, ?, ?, ?, ?)"]
+    #[sql = "INSERT OR IGNORE INTO show_remotes (id, slug, show_id, source, value, enabled, priority, sync_kinds) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"]
     insert_show_remote: TypedStatement<
         (
             RemoteId,
@@ -685,6 +693,7 @@ struct InnerWrite {
             RemoteValue,
             bool,
             i32,
+            Option<api::SyncKindSet>,
         ),
         (),
     >,
@@ -696,6 +705,8 @@ struct InnerWrite {
     set_show_remote_enabled: TypedStatement<(bool, RemoteId), ()>,
     #[sql = "UPDATE show_remotes SET priority = ? WHERE id = ?"]
     set_show_remote_priority: TypedStatement<(i32, RemoteId), ()>,
+    #[sql = "UPDATE show_remotes SET sync_kinds = ? WHERE id = ?"]
+    set_show_remote_sync_kinds: TypedStatement<(Option<api::SyncKindSet>, RemoteId), ()>,
 
     // images (shows and movies share one table)
     #[sql = "DELETE FROM images WHERE show_id = ?"]
@@ -839,10 +850,9 @@ struct InnerWrite {
     insert_movie: TypedStatement<(MovieId, String, Option<Timestamp>, String, bool), ()>,
     #[sql = "UPDATE movies SET tracked = ? WHERE id = ?"]
     set_movie_tracked: TypedStatement<(bool, MovieId), ()>,
-    #[sql = "UPDATE movies SET language = ? WHERE id = ?"]
-    set_movie_language: TypedStatement<(Option<String>, MovieId), ()>,
-    #[sql = "UPDATE movies SET release_filters = ? WHERE id = ?"]
-    set_movie_release_filters: TypedStatement<(Option<String>, MovieId), ()>,
+    // Per-movie settings live in a single JSON blob; see api::MovieSettings.
+    #[sql = "INSERT OR REPLACE INTO movie_settings (movie_id, data) VALUES (?, ?)"]
+    upsert_movie_settings: TypedStatement<(MovieId, String), ()>,
     #[sql = "UPDATE movies"]
     #[sql = "SET title = ?, release_date = ?, overview = ?"]
     #[sql = "WHERE id = ?"]
@@ -851,7 +861,7 @@ struct InnerWrite {
     set_movie_release_date: TypedStatement<(Option<Timestamp>, MovieId), ()>,
     #[sql = "DELETE FROM movies WHERE id = ?"]
     delete_movie: TypedStatement<(MovieId,), ()>,
-    #[sql = "INSERT OR IGNORE INTO movie_remotes (id, slug, movie_id, source, value, enabled, priority) VALUES (?, ?, ?, ?, ?, ?, ?)"]
+    #[sql = "INSERT OR IGNORE INTO movie_remotes (id, slug, movie_id, source, value, enabled, priority, sync_kinds) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"]
     insert_movie_remote: TypedStatement<
         (
             RemoteId,
@@ -861,6 +871,7 @@ struct InnerWrite {
             RemoteValue,
             bool,
             i32,
+            Option<api::SyncKindSet>,
         ),
         (),
     >,
@@ -872,6 +883,8 @@ struct InnerWrite {
     set_movie_remote_enabled: TypedStatement<(bool, RemoteId), ()>,
     #[sql = "UPDATE movie_remotes SET priority = ? WHERE id = ?"]
     set_movie_remote_priority: TypedStatement<(i32, RemoteId), ()>,
+    #[sql = "UPDATE movie_remotes SET sync_kinds = ? WHERE id = ?"]
+    set_movie_remote_sync_kinds: TypedStatement<(Option<api::SyncKindSet>, RemoteId), ()>,
 
     // watched
     #[sql = "INSERT OR IGNORE INTO watched_episodes (id, timestamp, show_id, season, episode)"]
@@ -1110,6 +1123,8 @@ impl Database {
                 remote.value(),
                 true,
                 default_remote_priority(*remote.source()),
+                // NULL = inherit the global per-source sync-kinds default.
+                None::<api::SyncKindSet>,
             ))
         });
 
@@ -1185,6 +1200,7 @@ impl Database {
                         remote: Remote::new(r.source, r.value),
                         enabled: r.enabled,
                         priority: r.priority,
+                        sync_kinds: r.sync_kinds,
                     });
                 }
             }
@@ -1244,6 +1260,7 @@ impl Database {
                     remote: Remote::new(r.source, r.value),
                     enabled: r.enabled,
                     priority: r.priority,
+                    sync_kinds: r.sync_kinds,
                 });
             }
 
@@ -1341,6 +1358,23 @@ impl Database {
         result.await?
     }
 
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn set_show_remote_sync_kinds(
+        &self,
+        remote_id: RemoteId,
+        sync_kinds: Option<api::SyncKindSet>,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.set_show_remote_sync_kinds
+                .execute((sync_kinds, remote_id))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
     /// Set remote priority to match the given order (first = highest priority).
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn reorder_show_remotes(&self, remote_ids: Vec<RemoteId>) -> Result<()> {
@@ -1365,7 +1399,10 @@ impl Database {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            s.set_show_language.execute((language.as_deref(), id))?;
+            let mut settings = current_show_settings(&mut s, id)?;
+            settings.language = language;
+            s.upsert_show_settings
+                .execute((id, api::encode_show_settings(&settings)))?;
             Ok(())
         });
 
@@ -1381,8 +1418,10 @@ impl Database {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            s.set_show_include_specials
-                .execute((include_specials, id))?;
+            let mut settings = current_show_settings(&mut s, id)?;
+            settings.include_specials = include_specials;
+            s.upsert_show_settings
+                .execute((id, api::encode_show_settings(&settings)))?;
             Ok(())
         });
 
@@ -1787,13 +1826,13 @@ impl Database {
         id: ShowId,
         air_date_filters: Option<Vec<api::AirDateFilter>>,
     ) -> Result<()> {
-        let encoded = air_date_filters
-            .as_deref()
-            .map(api::encode_air_date_filters);
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            s.set_show_air_date_filters.execute((encoded, id))?;
+            let mut settings = current_show_settings(&mut s, id)?;
+            settings.air_date_filters = air_date_filters;
+            s.upsert_show_settings
+                .execute((id, api::encode_show_settings(&settings)))?;
             Ok(())
         });
 
@@ -1906,6 +1945,8 @@ impl Database {
                 remote.value(),
                 true,
                 default_remote_priority(*remote.source()),
+                // NULL = inherit the global per-source sync-kinds default.
+                None::<api::SyncKindSet>,
             ))?;
             Ok(())
         });
@@ -2006,6 +2047,7 @@ impl Database {
                             remote: Remote::new(r.source, r.value),
                             enabled: r.enabled,
                             priority: r.priority,
+                            sync_kinds: r.sync_kinds,
                         });
                     }
                 }
@@ -2059,6 +2101,7 @@ impl Database {
                             remote: Remote::new(r.source, r.value),
                             enabled: r.enabled,
                             priority: r.priority,
+                            sync_kinds: r.sync_kinds,
                         });
                     }
                 }
@@ -2106,6 +2149,7 @@ impl Database {
                         remote: Remote::new(r.source, r.value),
                         enabled: r.enabled,
                         priority: r.priority,
+                        sync_kinds: r.sync_kinds,
                     });
                 }
             }
@@ -2166,6 +2210,7 @@ impl Database {
                     remote: Remote::new(r.source, r.value),
                     enabled: r.enabled,
                     priority: r.priority,
+                    sync_kinds: r.sync_kinds,
                 });
             }
 
@@ -2257,6 +2302,7 @@ impl Database {
                     remote: Remote::new(r.source, r.value),
                     enabled: r.enabled,
                     priority: r.priority,
+                    sync_kinds: r.sync_kinds,
                 });
             }
 
@@ -2312,6 +2358,7 @@ impl Database {
                     remote: Remote::new(r.source, r.value),
                     enabled: r.enabled,
                     priority: r.priority,
+                    sync_kinds: r.sync_kinds,
                 });
             }
 
@@ -2424,6 +2471,23 @@ impl Database {
         result.await?
     }
 
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn set_movie_remote_sync_kinds(
+        &self,
+        remote_id: RemoteId,
+        sync_kinds: Option<api::SyncKindSet>,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.set_movie_remote_sync_kinds
+                .execute((sync_kinds, remote_id))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
     /// Set remote priority to match the given order (first = highest priority).
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn reorder_movie_remotes(&self, remote_ids: Vec<RemoteId>) -> Result<()> {
@@ -2448,7 +2512,10 @@ impl Database {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            s.set_movie_language.execute((language.as_deref(), id))?;
+            let mut settings = current_movie_settings(&mut s, id)?;
+            settings.language = language;
+            s.upsert_movie_settings
+                .execute((id, api::encode_movie_settings(&settings)))?;
             Ok(())
         });
 
@@ -2463,11 +2530,11 @@ impl Database {
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
-        let encoded = release_filters.as_deref().map(api::encode_release_filters);
-
         let result = spawn_blocking(move || {
-            s.set_movie_release_filters
-                .execute((encoded.as_deref(), id))?;
+            let mut settings = current_movie_settings(&mut s, id)?;
+            settings.release_filters = release_filters;
+            s.upsert_movie_settings
+                .execute((id, api::encode_movie_settings(&settings)))?;
             Ok(())
         });
 
@@ -3521,6 +3588,12 @@ impl Database {
                 .and_then(api::decode_air_date_filters)
                 .unwrap_or_default();
 
+            let sync_kinds = s
+                .get_config("sync_kinds")?
+                .as_deref()
+                .and_then(api::decode_sync_kinds)
+                .unwrap_or_default();
+
             Ok(Config {
                 theme,
                 tvdb_api_key,
@@ -3535,6 +3608,7 @@ impl Database {
                 include_specials,
                 release_filters,
                 air_date_filters,
+                sync_kinds,
             })
         });
 
@@ -3599,6 +3673,7 @@ impl Database {
                 "air_date_filters",
                 &api::encode_air_date_filters(&config.air_date_filters),
             )?;
+            s.set_config("sync_kinds", &api::encode_sync_kinds(&config.sync_kinds))?;
             Ok(())
         });
 
@@ -3615,7 +3690,76 @@ fn cutoff_timestamp(interval_hours: u32) -> Timestamp {
     Timestamp::from_jiff(ts)
 }
 
+/// The current per-show settings: the stored JSON blob if present, otherwise
+/// synthesized from the legacy columns (un-migrated row), else defaults. Used by
+/// the setters to read-modify-write a single field.
+fn current_show_settings(s: &mut InnerWrite, id: ShowId) -> Result<api::ShowSettings> {
+    let Some(row) = s.show_by_id.bind((id,))?.first()? else {
+        return Ok(api::ShowSettings::default());
+    };
+
+    Ok(
+        match row
+            .settings_data
+            .as_deref()
+            .and_then(api::decode_show_settings)
+        {
+            Some(settings) => settings,
+            None => api::ShowSettings {
+                language: row.language,
+                include_specials: row.include_specials,
+                air_date_filters: row
+                    .air_date_filters
+                    .as_deref()
+                    .and_then(api::decode_air_date_filters),
+            },
+        },
+    )
+}
+
+/// The current per-movie settings; see [`current_show_settings`].
+fn current_movie_settings(s: &mut InnerWrite, id: MovieId) -> Result<api::MovieSettings> {
+    let Some(row) = s.movie_by_id.bind((id,))?.first()? else {
+        return Ok(api::MovieSettings::default());
+    };
+
+    Ok(
+        match row
+            .settings_data
+            .as_deref()
+            .and_then(api::decode_movie_settings)
+        {
+            Some(settings) => settings,
+            None => api::MovieSettings {
+                language: row.language,
+                release_filters: row
+                    .release_filters
+                    .as_deref()
+                    .and_then(api::decode_release_filters),
+            },
+        },
+    )
+}
+
 fn show_from_row(r: ShowRow) -> api::Show {
+    // The settings blob, once present, is authoritative; otherwise fall back to
+    // the legacy per-show columns (un-migrated rows).
+    let settings = r
+        .settings_data
+        .as_deref()
+        .and_then(api::decode_show_settings);
+
+    let (language, include_specials, air_date_filters) = match settings {
+        Some(s) => (s.language, s.include_specials, s.air_date_filters),
+        None => (
+            r.language,
+            r.include_specials,
+            r.air_date_filters
+                .as_deref()
+                .and_then(api::decode_air_date_filters),
+        ),
+    };
+
     api::Show {
         id: r.id,
         title: r.title,
@@ -3628,12 +3772,9 @@ fn show_from_row(r: ShowRow) -> api::Show {
         banner: None,
         backdrop: None,
         last_synced_at: r.last_synced_at,
-        language: r.language,
-        include_specials: r.include_specials,
-        air_date_filters: r
-            .air_date_filters
-            .as_deref()
-            .and_then(api::decode_air_date_filters),
+        language,
+        include_specials,
+        air_date_filters,
     }
 }
 
@@ -3743,6 +3884,23 @@ fn watched_episode_from_row(r: WatchedEpisodeRow) -> api::WatchedEpisode {
 }
 
 fn movie_from_row(r: MovieRow) -> api::Movie {
+    // The settings blob, once present, is authoritative; otherwise fall back to
+    // the legacy per-movie columns (un-migrated rows).
+    let settings = r
+        .settings_data
+        .as_deref()
+        .and_then(api::decode_movie_settings);
+
+    let (language, release_filters) = match settings {
+        Some(s) => (s.language, s.release_filters),
+        None => (
+            r.language,
+            r.release_filters
+                .as_deref()
+                .and_then(api::decode_release_filters),
+        ),
+    };
+
     api::Movie {
         id: r.id,
         title: r.title,
@@ -3757,11 +3915,8 @@ fn movie_from_row(r: MovieRow) -> api::Movie {
         backdrop: None,
         last_synced_at: r.last_synced_at,
         releases: Vec::new(),
-        language: r.language,
-        release_filters: r
-            .release_filters
-            .as_deref()
-            .and_then(api::decode_release_filters),
+        language,
+        release_filters,
     }
 }
 

@@ -1,7 +1,10 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use anyhow::{Context as _, Result};
-use api::{EpisodeId, Image, ImageId, ImageKey, ImageKind, RemoteSource, SeasonNumber, SyncKind};
+use api::{
+    EpisodeId, Image, ImageId, ImageKey, ImageKind, RemoteSource, SeasonNumber, SyncKind,
+    SyncKindSet,
+};
 use tracing::{info, warn};
 
 use crate::app_broadcast::Broadcaster;
@@ -38,32 +41,45 @@ pub(crate) async fn sync_show(
         .await?
         .context("Expected show to exist")?;
 
-    let order = api::enabled_sources_by_priority(&show.remotes);
-    info!(show_id = %show_id, title = show.title, ?order, ?base_language, "Syncing show");
+    info!(show_id = %show_id, title = show.title, ?base_language, "Syncing show");
+
+    // Visit enabled remotes in priority order, one layer per source (the
+    // highest-priority entry of each source wins). Each layer contributes the
+    // kinds it's configured for (global default, or its own override).
+    let mut entries = show
+        .remotes
+        .iter()
+        .filter(|e| e.enabled)
+        .collect::<Vec<_>>();
+
+    entries.sort_by_key(|e| e.priority);
 
     // The shared model every layer contributes to.
     let mut draft = ShowDraft::default();
+    let mut seen = HashSet::new();
 
-    for source in order {
-        // The kinds this source should still contribute: exclusive kinds only
+    for entry in entries {
+        let source = *entry.remote.source();
+
+        if !seen.insert(source) {
+            continue;
+        }
+
+        // The kinds this remote should still contribute: exclusive kinds only
         // until a higher-priority layer took them, non-exclusive kinds always.
-        let kinds: Vec<SyncKind> = source
-            .sync_kinds()
-            .iter()
-            .copied()
-            .filter(|k| draft.needs(*k))
-            .collect();
+        let configured = api::effective_remote_sync_kinds(entry, &config);
+        let kinds: SyncKindSet = configured.iter().filter(|k| draft.needs(*k)).collect();
 
         // Run the source if it still owes a kind, or just to accumulate graphics.
         if kinds.is_empty() && !source.has_graphics() {
             continue;
         }
 
-        let do_base = kinds.contains(&SyncKind::Base);
-        let do_airdates = kinds.contains(&SyncKind::AirDates);
+        let do_base = kinds.contains(SyncKind::Base);
+        let do_air_date = kinds.contains(SyncKind::AirDate);
 
         let result = match source {
-            RemoteSource::Tmdb => match remote_id_u32(&show, RemoteSource::Tmdb) {
+            RemoteSource::Tmdb => match entry.remote.value().as_u32() {
                 Some(tmdb_id) => {
                     tmdb_layer(
                         &mut draft,
@@ -71,20 +87,28 @@ pub(crate) async fn sync_show(
                         tmdb_id,
                         base_language,
                         do_base,
-                        do_airdates,
+                        do_air_date,
                         remote,
                     )
                     .await
                 }
                 None => continue,
             },
-            RemoteSource::Tvdb => match remote_id_u32(&show, RemoteSource::Tvdb) {
+            RemoteSource::Tvdb => match entry.remote.value().as_u32() {
                 Some(tvdb_id) => {
-                    tvdb_layer(&mut draft, tvdb_id, base_language, do_base, do_airdates, remote).await
+                    tvdb_layer(
+                        &mut draft,
+                        tvdb_id,
+                        base_language,
+                        do_base,
+                        do_air_date,
+                        remote,
+                    )
+                    .await
                 }
                 None => continue,
             },
-            RemoteSource::Tvmaze => match remote_id_u32(&show, RemoteSource::Tvmaze) {
+            RemoteSource::Tvmaze => match entry.remote.value().as_u32() {
                 Some(tvmaze_id) => tvmaze_layer(&mut draft, show_id, tvmaze_id, remote).await,
                 None => continue,
             },
@@ -106,7 +130,7 @@ pub(crate) async fn sync_show(
 
     // Without base metadata there is nothing to persist; bail rather than wipe the
     // existing show (persisting clears images and prunes seasons/episodes).
-    if !draft.provided.contains(&SyncKind::Base) {
+    if !draft.provided.contains(SyncKind::Base) {
         anyhow::bail!("Show has no syncable remote (TMDB or TVDB)");
     }
 
@@ -188,11 +212,6 @@ async fn ensure_tvmaze_remote(
     Ok(())
 }
 
-/// The integer id of the show's remote for `source`, if present and numeric.
-fn remote_id_u32(show: &api::Show, source: RemoteSource) -> Option<u32> {
-    show.remote_by_source(source)?.value().as_u32()
-}
-
 /// A show-level image accumulated during sync; graphics merge across every
 /// enabled source in priority order.
 struct DraftImage {
@@ -236,23 +255,14 @@ struct DraftRelease {
 /// kind (Base) is taken by the first source and skipped by later layers.
 #[derive(Default)]
 struct ShowDraft {
-    provided: HashSet<SyncKind>,
-
-    // Base (exclusive): set by the first base-capable source.
+    provided: SyncKindSet,
     title: Option<String>,
     first_air_date: Option<api::Timestamp>,
     overview: Option<String>,
     seasons: BTreeMap<SeasonNumber, SeasonDraft>,
     episodes: BTreeMap<(SeasonNumber, u32), EpisodeDraft>,
-
-    // External ids discovered by any source.
     remotes: Vec<(Option<String>, api::Remote)>,
-
-    // Air dates (accumulate): one entry per source contribution.
     releases: Vec<DraftRelease>,
-
-    // Graphics (accumulate): show-level art in source-priority order, plus the
-    // selected image key per kind from the first source that contributed it.
     images: Vec<DraftImage>,
     selected: HashMap<ImageKind, ImageKey>,
 }
@@ -261,7 +271,7 @@ impl ShowDraft {
     /// Whether a source should still contribute `kind`: exclusive kinds only until
     /// the first source provides them, non-exclusive kinds always.
     fn needs(&self, kind: SyncKind) -> bool {
-        !kind.is_exclusive() || !self.provided.contains(&kind)
+        !kind.is_exclusive() || !self.provided.contains(kind)
     }
 
     fn add_remote(&mut self, slug: Option<String>, remote: api::Remote) {
@@ -285,10 +295,10 @@ async fn tmdb_layer(
     tmdb_id: u32,
     base_language: Option<&str>,
     do_base: bool,
-    do_airdates: bool,
+    do_air_date: bool,
     remote: &RemoteClients,
 ) -> Result<()> {
-    info!(tmdb_id, do_base, do_airdates, "Fetching TMDB show");
+    info!(tmdb_id, do_base, do_air_date, "Fetching TMDB show");
 
     let info = remote.fetch_tmdb_show(tmdb_id, base_language).await?;
 
@@ -307,7 +317,7 @@ async fn tmdb_layer(
         draft.add_image(ImageKind::Backdrop, backdrop.clone(), selected);
     }
 
-    if !do_base && !do_airdates {
+    if !do_base && !do_air_date {
         return Ok(());
     }
 
@@ -351,7 +361,7 @@ async fn tmdb_layer(
                 );
             }
 
-            if do_airdates && let Some(aired) = ep.aired {
+            if do_air_date && let Some(aired) = ep.aired {
                 draft.releases.push(DraftRelease {
                     season: ep.season,
                     number: ep.number,
@@ -372,10 +382,10 @@ async fn tvdb_layer(
     tvdb_id: u32,
     base_language: Option<&str>,
     do_base: bool,
-    do_airdates: bool,
+    do_air_date: bool,
     remote: &RemoteClients,
 ) -> Result<()> {
-    info!(tvdb_id, do_base, do_airdates, "Fetching TVDB show");
+    info!(tvdb_id, do_base, do_air_date, "Fetching TVDB show");
 
     let info = remote.fetch_tvdb_show(tvdb_id, base_language).await?;
 
@@ -398,7 +408,7 @@ async fn tvdb_layer(
         draft.add_image(ImageKind::Backdrop, fanart.clone(), selected);
     }
 
-    if !do_base && !do_airdates {
+    if !do_base && !do_air_date {
         return Ok(());
     }
 
@@ -450,7 +460,7 @@ async fn tvdb_layer(
             );
         }
 
-        if do_airdates && let Some(aired) = ep.aired {
+        if do_air_date && let Some(aired) = ep.aired {
             draft.releases.push(DraftRelease {
                 season: ep.season,
                 number: ep.number,
@@ -548,9 +558,10 @@ async fn persist_show_draft(
         db.set_show_image_selection(show_id, kind, id).await?;
     }
 
-    // Episodes: assign stable ids (reuse existing) so air-date releases attribute
-    // to the right row.
+    // Episodes: assign stable ids (reuse existing) so air-date releases
+    // attribute to the right row.
     let existing_episode_ids = db.episode_ids(show_id).await?;
+
     db.clear_episode_images(show_id).await?;
 
     let mut episode_ids: HashMap<(SeasonNumber, u32), EpisodeId> = HashMap::new();
@@ -563,6 +574,7 @@ async fn persist_show_draft(
             .unwrap_or_else(EpisodeId::random);
 
         episode_ids.insert((*season, *number), episode_id);
+
         season_episode_numbers
             .entry(*season)
             .or_default()

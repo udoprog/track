@@ -4,7 +4,9 @@ use yew::prelude::*;
 use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::ui::{AirDateFiltersEditor, LanguagePicker, ReleaseFiltersEditor, SecretInput};
+use crate::ui::{
+    AirDateFiltersEditor, LanguagePicker, ReleaseFiltersEditor, SecretInput, SyncKindsEditor,
+};
 
 fn tz_is_valid(name: &str) -> bool {
     name.is_empty() || jiff_tzdb::get(name).is_some()
@@ -38,6 +40,7 @@ pub(super) enum Msg {
     IncludeSpecialsChanged(bool),
     ReleaseFiltersChanged(Vec<api::ReleaseFilter>),
     AirDateFiltersChanged(Vec<api::AirDateFilter>),
+    SyncKindsChanged(Vec<api::SourceSyncKinds>),
     Save,
     SaveDone(Result<ws::Packet<api::SetConfig>, ws::Error>),
 }
@@ -304,7 +307,7 @@ impl Component for Settings {
                         </div>
 
                         <div class="field">
-                            <label>{"Release dates"}</label>
+                            <label>{"Release Date"}</label>
                             <span class="hint">{"Release types (and countries) used to determine when a movie becomes available. The earliest matching date is used."}</span>
                             <ReleaseFiltersEditor
                                 filters={self.config.release_filters.clone()}
@@ -313,11 +316,20 @@ impl Component for Settings {
                         </div>
 
                         <div class="field">
-                            <label>{"Air dates"}</label>
+                            <label>{"Air Date"}</label>
                             <span class="hint">{"Restrict which sources' episode air dates qualify, by country and network. Source priority comes from each show's remote order (TVmaze ranks above TMDB by default)."}</span>
                             <AirDateFiltersEditor
                                 filters={self.config.air_date_filters.clone()}
                                 on_change={link.callback(Msg::AirDateFiltersChanged)}
+                            />
+                        </div>
+
+                        <div class="field">
+                            <label>{"Sync sources"}</label>
+                            <span class="hint">{"Which kinds of data each source contributes by default. Base covers titles, overviews and episodes; air dates merge by remote priority. Graphics always accumulate from every source. Individual shows and movies can override this per remote."}</span>
+                            <SyncKindsEditor
+                                kinds={self.config.sync_kinds.clone()}
+                                on_change={link.callback(Msg::SyncKindsChanged)}
                             />
                         </div>
                     </div>
@@ -425,6 +437,10 @@ impl Settings {
             }
             Msg::AirDateFiltersChanged(filters) => {
                 self.config.air_date_filters = filters;
+                Ok(true)
+            }
+            Msg::SyncKindsChanged(kinds) => {
+                self.config.sync_kinds = kinds;
                 Ok(true)
             }
             Msg::Save => {

@@ -516,7 +516,7 @@ impl ::sqll::BindValue for Date {
 
 /// The source of a remote identifier.
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize,
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Encode, Decode, serde::Serialize, serde::Deserialize,
 )]
 #[musli(crate = musli_core)]
 #[serde(rename_all = "lowercase")]
@@ -571,8 +571,8 @@ impl RemoteSource {
     /// [`SyncKind`] for how a layered sync uses these.
     pub fn sync_kinds(&self) -> &'static [SyncKind] {
         match self {
-            Self::Tmdb | Self::Tvdb => &[SyncKind::Base, SyncKind::AirDates],
-            Self::Tvmaze => &[SyncKind::AirDates],
+            Self::Tmdb | Self::Tvdb => &[SyncKind::Base, SyncKind::AirDate],
+            Self::Tvmaze => &[SyncKind::AirDate],
             Self::Imdb | Self::Unknown => &[],
         }
     }
@@ -581,6 +581,12 @@ impl RemoteSource {
     /// as posters, backdrops and banners) that merge across every enabled source.
     pub fn has_graphics(&self) -> bool {
         matches!(self, Self::Tmdb | Self::Tvdb)
+    }
+
+    /// The capability ceiling: every kind this source can possibly provide, as a
+    /// set. Configured selections are always clamped to this.
+    pub fn default_sync_kinds(&self) -> SyncKindSet {
+        SyncKindSet::from_kinds(self.sync_kinds().iter().copied())
     }
 }
 
@@ -598,15 +604,210 @@ pub enum SyncKind {
     /// Core metadata: title, overview, seasons and episode details.
     Base,
     /// Episode air dates (recorded as `episode_releases` and merged by priority).
-    AirDates,
+    AirDate,
 }
 
 impl SyncKind {
+    /// All sync kinds, in a stable order.
+    pub const ALL: &[Self] = &[Self::Base, Self::AirDate];
+
     /// Whether only the first (highest-priority) source providing this kind
     /// contributes it. Non-exclusive kinds accumulate from every source.
     pub fn is_exclusive(&self) -> bool {
         matches!(self, Self::Base)
     }
+
+    /// Human-readable label.
+    pub fn as_label(&self) -> &'static str {
+        match self {
+            Self::Base => "Base",
+            Self::AirDate => "Air Date",
+        }
+    }
+
+    /// The single bit representing this kind in a [`SyncKindSet`].
+    pub fn bit(&self) -> u32 {
+        match self {
+            Self::Base => 1 << 0,
+            Self::AirDate => 1 << 1,
+        }
+    }
+}
+
+/// A set of [`SyncKind`]s, stored compactly as a bitmask. Used both as a
+/// source's capability ceiling ([`RemoteSource::default_sync_kinds`]) and as the
+/// configured selection (global default or per-remote override).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SyncKindSet(u32);
+
+impl SyncKindSet {
+    pub const fn empty() -> Self {
+        Self(0)
+    }
+
+    pub fn from_kinds<'a>(kinds: impl IntoIterator<Item = SyncKind>) -> Self {
+        let mut set = Self::empty();
+
+        for k in kinds {
+            set.0 |= k.bit();
+        }
+
+        set
+    }
+
+    /// Reconstruct from raw bits, masking off any unknown bits.
+    pub fn from_bits(bits: u32) -> Self {
+        let known: u32 = SyncKind::ALL.iter().map(SyncKind::bit).sum();
+        Self(bits & known)
+    }
+
+    pub fn bits(&self) -> u32 {
+        self.0
+    }
+
+    pub fn contains(&self, kind: SyncKind) -> bool {
+        self.0 & kind.bit() != 0
+    }
+
+    pub fn insert(&mut self, kind: SyncKind) {
+        self.0 |= kind.bit();
+    }
+
+    pub fn with(mut self, kind: SyncKind, on: bool) -> Self {
+        if on {
+            self.0 |= kind.bit();
+        } else {
+            self.0 &= !kind.bit();
+        }
+
+        self
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0 == 0
+    }
+
+    /// The kinds present in both sets.
+    pub fn intersect(self, other: Self) -> Self {
+        Self(self.0 & other.0)
+    }
+
+    /// The kinds present, in [`SyncKind::ALL`] order.
+    #[inline]
+    pub fn iter(&self) -> SyncKindSetIter {
+        SyncKindSetIter { base: self.0 }
+    }
+}
+
+impl IntoIterator for SyncKindSet {
+    type Item = SyncKind;
+    type IntoIter = SyncKindSetIter;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+/// An iterator over the kinds present in a [`SyncKindSet`].
+pub struct SyncKindSetIter {
+    base: u32,
+}
+
+impl Iterator for SyncKindSetIter {
+    type Item = SyncKind;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.base == 0 {
+            return None;
+        }
+
+        let bit = self.base.trailing_zeros();
+        self.base &= !(1 << bit);
+
+        match bit {
+            0 => Some(SyncKind::Base),
+            1 => Some(SyncKind::AirDate),
+            _ => None,
+        }
+    }
+}
+
+impl FromIterator<SyncKind> for SyncKindSet {
+    fn from_iter<T: IntoIterator<Item = SyncKind>>(iter: T) -> Self {
+        Self::from_kinds(iter.into_iter())
+    }
+}
+
+impl<M> musli_core::Encode<M> for SyncKindSet {
+    type Encode = Self;
+
+    fn encode<E>(&self, encoder: E) -> Result<(), E::Error>
+    where
+        E: musli_core::Encoder<Mode = M>,
+    {
+        self.0.encode(encoder)
+    }
+
+    fn as_encode(&self) -> &Self::Encode {
+        self
+    }
+}
+
+impl<'de, M, A> musli_core::Decode<'de, M, A> for SyncKindSet
+where
+    A: musli_core::Allocator,
+{
+    fn decode<D>(decoder: D) -> Result<Self, D::Error>
+    where
+        D: musli_core::Decoder<'de, Mode = M, Allocator = A>,
+    {
+        Ok(Self::from_bits(u32::decode(decoder)?))
+    }
+}
+
+impl serde::Serialize for SyncKindSet {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_u32(self.0)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for SyncKindSet {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Ok(Self::from_bits(u32::deserialize(deserializer)?))
+    }
+}
+
+#[cfg(feature = "sqll")]
+impl ::sqll::FromColumn<'_> for SyncKindSet {
+    type Type = ::sqll::ty::Integer;
+
+    fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Integer) -> ::sqll::Result<Self> {
+        Ok(Self::from_bits(u32::from_column(stmt, index)?))
+    }
+}
+
+#[cfg(feature = "sqll")]
+impl ::sqll::BindValue for SyncKindSet {
+    fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
+        self.0.bind_value(stmt, index)
+    }
+}
+
+/// A global, per-source selection of which [`SyncKind`]s that source contributes,
+/// stored in [`Config::sync_kinds`].
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize)]
+#[musli(crate = musli_core)]
+pub struct SourceSyncKinds {
+    pub source: RemoteSource,
+    pub kinds: SyncKindSet,
 }
 
 impl fmt::Display for RemoteSource {
@@ -844,6 +1045,20 @@ pub struct RemoteEntry {
     pub enabled: bool,
     /// Merge priority; lower numbers win. See [`enabled_sources_by_priority`].
     pub priority: i32,
+    /// Per-remote override of which kinds this remote contributes; `None` inherits
+    /// the global default for its source. See [`effective_remote_sync_kinds`].
+    pub sync_kinds: Option<SyncKindSet>,
+}
+
+/// The kinds a remote actually contributes during a sync: its per-remote override
+/// if set, otherwise the global default for its source ([`Config::sync_kinds_for`]),
+/// in either case clamped to the source's capability.
+pub fn effective_remote_sync_kinds(entry: &RemoteEntry, config: &Config) -> SyncKindSet {
+    let source = *entry.remote.source();
+    entry
+        .sync_kinds
+        .unwrap_or_else(|| config.sync_kinds_for(source))
+        .intersect(source.default_sync_kinds())
 }
 
 /// Sources of the enabled remotes ordered by priority (lowest number = highest
@@ -1554,6 +1769,57 @@ pub fn decode_air_date_filters(s: &str) -> Option<Vec<AirDateFilter>> {
     serde_json::from_str(s).ok()
 }
 
+/// Serialize the global per-source sync-kind defaults for storage in a text column.
+pub fn encode_sync_kinds(kinds: &[SourceSyncKinds]) -> String {
+    serde_json::to_string(kinds).unwrap_or_else(|_| "[]".to_string())
+}
+
+/// Parse global per-source sync-kind defaults written by [`encode_sync_kinds`].
+pub fn decode_sync_kinds(s: &str) -> Option<Vec<SourceSyncKinds>> {
+    serde_json::from_str(s).ok()
+}
+
+/// All per-show settings, stored as a single JSON blob in `show_settings`. Adding
+/// a new setting is a `#[serde(default)]` field here — no migration required.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ShowSettings {
+    #[serde(default)]
+    pub language: Option<String>,
+    #[serde(default)]
+    pub include_specials: Option<bool>,
+    #[serde(default)]
+    pub air_date_filters: Option<Vec<AirDateFilter>>,
+}
+
+/// All per-movie settings, stored as a single JSON blob in `movie_settings`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct MovieSettings {
+    #[serde(default)]
+    pub language: Option<String>,
+    #[serde(default)]
+    pub release_filters: Option<Vec<ReleaseFilter>>,
+}
+
+/// Serialize per-media settings for storage in a text column.
+pub fn encode_show_settings(settings: &ShowSettings) -> String {
+    serde_json::to_string(settings).unwrap_or_else(|_| "{}".to_string())
+}
+
+/// Parse per-show settings written by [`encode_show_settings`].
+pub fn decode_show_settings(s: &str) -> Option<ShowSettings> {
+    serde_json::from_str(s).ok()
+}
+
+/// Serialize per-movie settings for storage in a text column.
+pub fn encode_movie_settings(settings: &MovieSettings) -> String {
+    serde_json::to_string(settings).unwrap_or_else(|_| "{}".to_string())
+}
+
+/// Parse per-movie settings written by [`encode_movie_settings`].
+pub fn decode_movie_settings(s: &str) -> Option<MovieSettings> {
+    serde_json::from_str(s).ok()
+}
+
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct MediaImage {
@@ -1879,6 +2145,10 @@ pub struct Config {
     pub release_filters: Vec<ReleaseFilter>,
     /// Default air-date qualification filters for episodes (empty = all qualify).
     pub air_date_filters: Vec<AirDateFilter>,
+    /// Global per-source selection of which kinds each source contributes during
+    /// sync. A source absent here uses its full capability. Per-remote overrides
+    /// take precedence. See [`Config::sync_kinds_for`].
+    pub sync_kinds: Vec<SourceSyncKinds>,
 }
 
 impl Default for Config {
@@ -1897,7 +2167,21 @@ impl Default for Config {
             include_specials: false,
             release_filters: ReleaseFilter::default_filters(),
             air_date_filters: Vec::new(),
+            sync_kinds: Vec::new(),
         }
+    }
+}
+
+impl Config {
+    /// The global default sync kinds for `source`: the configured entry if present,
+    /// otherwise the source's full capability — in both cases clamped to capability.
+    pub fn sync_kinds_for(&self, source: RemoteSource) -> SyncKindSet {
+        self.sync_kinds
+            .iter()
+            .find(|s| s.source == source)
+            .map(|s| s.kinds)
+            .unwrap_or_else(|| source.default_sync_kinds())
+            .intersect(source.default_sync_kinds())
     }
 }
 
@@ -2309,6 +2593,24 @@ pub struct ReorderMovieRemotesRequest {
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
+pub struct SetShowRemoteSyncKindsRequest {
+    pub id: ShowId,
+    pub remote_id: RemoteId,
+    /// `None` clears the override so the remote inherits the global default.
+    pub sync_kinds: Option<SyncKindSet>,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct SetMovieRemoteSyncKindsRequest {
+    pub id: MovieId,
+    pub remote_id: RemoteId,
+    /// `None` clears the override so the remote inherits the global default.
+    pub sync_kinds: Option<SyncKindSet>,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
 pub struct SetShowLanguageRequest {
     pub id: ShowId,
     pub language: Option<String>,
@@ -2714,6 +3016,18 @@ api::define! {
         type Response<'de> = Empty;
     }
 
+    pub type SetShowRemoteSyncKinds;
+    impl Endpoint for SetShowRemoteSyncKinds {
+        impl Request for SetShowRemoteSyncKindsRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type SetMovieRemoteSyncKinds;
+    impl Endpoint for SetMovieRemoteSyncKinds {
+        impl Request for SetMovieRemoteSyncKindsRequest;
+        type Response<'de> = Empty;
+    }
+
     pub type SetShowLanguage;
     impl Endpoint for SetShowLanguage {
         impl Request for SetShowLanguageRequest;
@@ -2865,15 +3179,100 @@ mod tests {
         }
     }
 
+    fn entry(source: RemoteSource, sync_kinds: Option<SyncKindSet>) -> RemoteEntry {
+        RemoteEntry {
+            id: RemoteId::new(1),
+            slug: None,
+            remote: Remote::new(source, RemoteValue::Int(1)),
+            enabled: true,
+            priority: 0,
+            sync_kinds,
+        }
+    }
+
+    #[test]
+    fn sync_kind_set_bits_round_trip() {
+        let set = SyncKindSet::from_kinds([SyncKind::AirDate]);
+        assert!(set.contains(SyncKind::AirDate));
+        assert!(!set.contains(SyncKind::Base));
+        assert_eq!(SyncKindSet::from_bits(set.bits()), set);
+
+        // Unknown bits are masked off.
+        let masked = SyncKindSet::from_bits(0xFFFF_FFFF);
+        assert_eq!(
+            masked,
+            SyncKindSet::from_kinds(SyncKind::ALL.iter().copied())
+        );
+
+        let toggled = SyncKindSet::empty()
+            .with(SyncKind::Base, true)
+            .with(SyncKind::AirDate, true)
+            .with(SyncKind::Base, false);
+
+        assert_eq!(toggled, SyncKindSet::from_kinds([SyncKind::AirDate]));
+        assert_eq!(toggled.iter().collect::<Vec<_>>(), vec![SyncKind::AirDate]);
+    }
+
+    #[test]
+    fn config_sync_kinds_for_clamps_to_capability() {
+        // Absent source falls back to its full capability.
+        let config = Config::default();
+        assert_eq!(
+            config.sync_kinds_for(RemoteSource::Tvmaze),
+            SyncKindSet::from_kinds([SyncKind::AirDate])
+        );
+
+        // A configured entry granting more than the capability is clamped.
+        let config = Config {
+            sync_kinds: vec![SourceSyncKinds {
+                source: RemoteSource::Tvmaze,
+                kinds: SyncKindSet::from_kinds(SyncKind::ALL.iter().copied()),
+            }],
+            ..Config::default()
+        };
+        assert_eq!(
+            config.sync_kinds_for(RemoteSource::Tvmaze),
+            SyncKindSet::from_kinds([SyncKind::AirDate])
+        );
+    }
+
+    #[test]
+    fn effective_remote_sync_kinds_override_beats_global() {
+        let config = Config {
+            sync_kinds: vec![SourceSyncKinds {
+                source: RemoteSource::Tmdb,
+                kinds: SyncKindSet::from_kinds([SyncKind::AirDate]),
+            }],
+            ..Config::default()
+        };
+
+        // No override inherits the global default.
+        let inherited = entry(RemoteSource::Tmdb, None);
+        assert_eq!(
+            effective_remote_sync_kinds(&inherited, &config),
+            SyncKindSet::from_kinds([SyncKind::AirDate])
+        );
+
+        // An override wins, still clamped to capability.
+        let overridden = entry(
+            RemoteSource::Tmdb,
+            Some(SyncKindSet::from_kinds([SyncKind::Base])),
+        );
+        assert_eq!(
+            effective_remote_sync_kinds(&overridden, &config),
+            SyncKindSet::from_kinds([SyncKind::Base])
+        );
+    }
+
     #[test]
     fn sync_kinds_capabilities() {
         use RemoteSource::*;
 
         // TMDB/TVDB are full base + air-date sources; TVmaze is air-dates only;
         // IMDb contributes nothing and no graphics.
-        assert_eq!(Tmdb.sync_kinds(), &[SyncKind::Base, SyncKind::AirDates]);
-        assert_eq!(Tvdb.sync_kinds(), &[SyncKind::Base, SyncKind::AirDates]);
-        assert_eq!(Tvmaze.sync_kinds(), &[SyncKind::AirDates]);
+        assert_eq!(Tmdb.sync_kinds(), &[SyncKind::Base, SyncKind::AirDate]);
+        assert_eq!(Tvdb.sync_kinds(), &[SyncKind::Base, SyncKind::AirDate]);
+        assert_eq!(Tvmaze.sync_kinds(), &[SyncKind::AirDate]);
         assert_eq!(Imdb.sync_kinds(), &[]);
 
         assert!(Tmdb.has_graphics());
@@ -2883,7 +3282,7 @@ mod tests {
 
         // Base is exclusive (first source wins); air dates accumulate.
         assert!(SyncKind::Base.is_exclusive());
-        assert!(!SyncKind::AirDates.is_exclusive());
+        assert!(!SyncKind::AirDate.is_exclusive());
     }
 
     #[test]

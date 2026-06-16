@@ -205,38 +205,24 @@ pub(super) struct MediaSettingsModalProps {
     pub(super) on_edit_graphics: Callback<()>,
     pub(super) on_edit_remotes: Callback<()>,
     pub(super) on_close: Callback<()>,
-    /// Whether any remote identifier is available for syncing.
     pub(super) has_remotes: bool,
-    /// Formatted "last synced at" timestamp, or `None` if never synced.
     pub(super) last_synced: Option<AttrValue>,
-    /// Whether a sync is currently in progress (spins the sync icon).
     pub(super) syncing: bool,
     pub(super) on_sync: Callback<()>,
-    /// Current specials override. Only meaningful when
-    /// `on_include_specials_change` is set.
     #[prop_or_default]
     pub(super) include_specials: Option<bool>,
-    /// When set, the "Specials when syncing" field is rendered.
     #[prop_or_default]
     pub(super) on_include_specials_change: Option<Callback<Option<bool>>>,
-    /// Current per-movie release-filter override (`None` = use the global default). Only meaningful
-    /// when `on_release_filters_change` is set.
     #[prop_or_default]
     pub(super) release_filters: Option<Vec<api::ReleaseFilter>>,
-    /// Global default release filters, used to seed the editor when switching to a custom override.
     #[prop_or_default]
     pub(super) default_release_filters: Vec<api::ReleaseFilter>,
-    /// When set, the "Release dates" override field is rendered.
     #[prop_or_default]
     pub(super) on_release_filters_change: Option<Callback<Option<Vec<api::ReleaseFilter>>>>,
-    /// Current per-show air-date filter override (`None` = use the global default). Only meaningful
-    /// when `on_air_date_filters_change` is set.
     #[prop_or_default]
     pub(super) air_date_filters: Option<Vec<api::AirDateFilter>>,
-    /// Global default air-date filters, used to seed the editor when switching to a custom override.
     #[prop_or_default]
     pub(super) default_air_date_filters: Vec<api::AirDateFilter>,
-    /// When set, the "Air dates" override field is rendered.
     #[prop_or_default]
     pub(super) on_air_date_filters_change: Option<Callback<Option<Vec<api::AirDateFilter>>>>,
 }
@@ -300,11 +286,13 @@ pub(super) fn MediaSettingsModal(props: &MediaSettingsModalProps) -> Html {
 
         html! {
             <div class="field">
-                <label>{"Release dates"}</label>
+                <label>{"Release Date"}</label>
+
                 <select class="input-select" onchange={on_mode}>
                     <option value="default" selected={!is_custom}>{"Default"}</option>
                     <option value="custom" selected={is_custom}>{"Customize"}</option>
                 </select>
+
                 {editor}
             </div>
         }
@@ -334,11 +322,13 @@ pub(super) fn MediaSettingsModal(props: &MediaSettingsModalProps) -> Html {
 
         html! {
             <div class="field">
-                <label>{"Air dates"}</label>
+                <label>{"Air Date"}</label>
+
                 <select class="input-select" onchange={on_mode}>
                     <option value="default" selected={!is_custom}>{"Default"}</option>
                     <option value="custom" selected={is_custom}>{"Customize"}</option>
                 </select>
+
                 {editor}
             </div>
         }
@@ -592,10 +582,10 @@ pub(super) struct RemoteEditorProps {
     pub(super) on_add: Callback<(Option<String>, api::Remote)>,
     pub(super) on_edit: Callback<(api::RemoteId, Option<String>, api::Remote)>,
     pub(super) on_remove: Callback<api::RemoteId>,
-    /// Toggle whether a remote contributes to merged data (air dates) and sync.
     pub(super) on_set_enabled: Callback<(api::RemoteId, bool)>,
-    /// New priority order (highest priority first).
     pub(super) on_reorder: Callback<Vec<api::RemoteId>>,
+    pub(super) on_set_sync_kinds: Callback<(api::RemoteId, Option<api::SyncKindSet>)>,
+    pub(super) global_sync_kinds: Vec<api::SourceSyncKinds>,
     pub(super) on_close: Callback<()>,
 }
 
@@ -612,7 +602,7 @@ pub(super) enum RemoteEditorMsg {
     CancelRemove,
     ConfirmRemove(api::RemoteId),
     SetEnabled(api::RemoteId, bool),
-    /// Move the remote at the given index by `delta` positions (priority order).
+    SetSyncKinds(api::RemoteId, Option<api::SyncKindSet>),
     Move(usize, isize),
     Close,
 }
@@ -757,6 +747,10 @@ impl Component for RemoteEditor {
                 ctx.props().on_set_enabled.emit((remote_id, enabled));
                 false
             }
+            RemoteEditorMsg::SetSyncKinds(remote_id, sync_kinds) => {
+                ctx.props().on_set_sync_kinds.emit((remote_id, sync_kinds));
+                false
+            }
             RemoteEditorMsg::Move(index, delta) => {
                 let mut ids: Vec<api::RemoteId> =
                     ctx.props().remotes.iter().map(|r| r.id).collect();
@@ -841,6 +835,48 @@ impl Component for RemoteEditor {
                         let enable_id = r.id;
                         let enabled = r.enabled;
 
+                        // Per-remote sync-kind selection: show the effective set
+                        // (this remote's override, else the global default for its
+                        // source), clamped to what the source can provide.
+                        let source = *r.remote.source();
+                        let capability = source.default_sync_kinds();
+                        let global_default = props
+                            .global_sync_kinds
+                            .iter()
+                            .find(|s| s.source == source)
+                            .map(|s| s.kinds)
+                            .unwrap_or(capability)
+                            .intersect(capability);
+
+                        let effective = r.sync_kinds.unwrap_or(global_default).intersect(capability);
+                        let overriding = r.sync_kinds.is_some();
+                        let sync_id = r.id;
+
+                        let kind_toggles = (!capability.is_empty()).then(|| html! {
+                            <div class="input-group" title="Kinds synced from this source">
+                                { for capability.iter().map(|kind| {
+                                    let on = effective.contains(kind);
+                                    let next = effective.with(kind, !on);
+                                    html! {
+                                        <span
+                                            class={classes!("input-checkbox", on.then_some("checked"))}
+                                            onclick={link.callback(move |_| RemoteEditorMsg::SetSyncKinds(sync_id, Some(next)))}
+                                            title={kind.as_label()}
+                                        >
+                                            <span class="mark" />
+                                            <span>{kind.as_label()}</span>
+                                        </span>
+                                    }
+                                }) }
+
+                                if overriding {
+                                    <button class="btn" onclick={link.callback(move |_| RemoteEditorMsg::SetSyncKinds(sync_id, None))} title="Reset to global default">
+                                        <span class="icon arrow-path" />
+                                    </button>
+                                }
+                            </div>
+                        });
+
                         let url = match props.kind {
                             RemoteSourceKind::Show => r.remote.show_url(r.slug.as_deref()),
                             RemoteSourceKind::Movie => r.remote.movie_url(),
@@ -862,42 +898,48 @@ impl Component for RemoteEditor {
                         };
 
                         html! {
-                            <div key={key} class={classes!("row-fill", editing_this.then_some("active"))}>
-                                if let Some(url) = url {
-                                    <a class="row clickable" href={url} target="_blank" rel="noopener noreferrer" title="Visit remote">
-                                        {identifier}
-                                    </a>
-                                } else {
-                                    <div class="row">
-                                        {identifier}
+                            <div class="column">
+                                <div key={key} class={classes!("row-fill", editing_this.then_some("active"))}>
+                                    if let Some(url) = url {
+                                        <a class="row clickable" href={url} target="_blank" rel="noopener noreferrer" title="Visit remote">
+                                            {identifier}
+                                        </a>
+                                    } else {
+                                        <div class="row">
+                                            {identifier}
+                                        </div>
+                                    }
+
+                                    <div class="row end">
+                                        <div class="input-group">
+                                            <button class="btn" disabled={index == 0} onclick={link.callback(move |_| RemoteEditorMsg::Move(index, -1))} title="Higher priority">
+                                                <span class="icon chevron-up" />
+                                            </button>
+
+                                            <button class="btn" disabled={index + 1 == count} onclick={link.callback(move |_| RemoteEditorMsg::Move(index, 1))} title="Lower priority">
+                                                <span class="icon chevron-down" />
+                                            </button>
+
+                                            <button class="btn" onclick={link.callback(move |_| RemoteEditorMsg::Edit(edit_entry.clone()))} title="Edit identifier">
+                                                <span class="icon pencil-square" />
+                                            </button>
+
+                                            <button class="btn-danger" onclick={link.callback(move |_| RemoteEditorMsg::AskRemove(remove_entry.clone()))} title="Remove identifier">
+                                                <span class="icon trash" />
+                                            </button>
+                                        </div>
                                     </div>
-                                }
+                                </div>
 
-                                <div class="row end">
-                                    <span
-                                        class={classes!("input-checkbox", enabled.then_some("checked"))}
-                                        onclick={link.callback(move |_| RemoteEditorMsg::SetEnabled(enable_id, !enabled))}
-                                        title="Use this source for air dates and sync"
-                                    >
-                                        <span class="mark" />
-                                    </span>
+                                <div class="row-fill">
+                                    <div class="row">
+                                        { for kind_toggles }
+                                    </div>
 
-                                    <div class="input-group">
-                                        <button class="btn" disabled={index == 0} onclick={link.callback(move |_| RemoteEditorMsg::Move(index, -1))} title="Higher priority">
-                                            <span class="icon chevron-up" />
-                                        </button>
-
-                                        <button class="btn" disabled={index + 1 == count} onclick={link.callback(move |_| RemoteEditorMsg::Move(index, 1))} title="Lower priority">
-                                            <span class="icon chevron-down" />
-                                        </button>
-
-                                        <button class="btn" onclick={link.callback(move |_| RemoteEditorMsg::Edit(edit_entry.clone()))} title="Edit identifier">
-                                            <span class="icon pencil-square" />
-                                        </button>
-
-                                        <button class="btn-danger" onclick={link.callback(move |_| RemoteEditorMsg::AskRemove(remove_entry.clone()))} title="Remove identifier">
-                                            <span class="icon trash" />
-                                        </button>
+                                    <div class="row end">
+                                        <span class={classes!("input-checkbox", enabled.then_some("checked"))} onclick={link.callback(move |_| RemoteEditorMsg::SetEnabled(enable_id, !enabled))} title="Use this source for air dates and sync">
+                                            <span class="mark" />
+                                        </span>
                                     </div>
                                 </div>
                             </div>
@@ -1087,8 +1129,14 @@ impl Component for LanguagePicker {
                             <span class="fill">{props.placeholder}</span>
 
                             if current.is_none() {
-                                <span class="icon check" />
+                                <span class="item-inline">
+                                    <span class="icon check" />
+                                </span>
                             }
+
+                            <span class="item-inline">
+                                <span class="icon icon-4x3 language" />
+                            </span>
                         </div>
 
                         {
@@ -1102,11 +1150,19 @@ impl Component for LanguagePicker {
                                         <div key={part1} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| Msg::Pick(Some(part1.to_string())))}>
                                             <span class="fill">{entry.ref_name}</span>
 
-                                            if let Some(code) = self.language_to_country.get_by_part1(part1) {
-                                                <span class={classes!("item-inline", "flag", code)} />
+                                            if selected {
+                                                <span class="item-inline">
+                                                    <span class="icon check" />
+                                                </span>
                                             }
 
-                                            <span class="text-muted">{part1}</span>
+                                            if let Some(code) = self.language_to_country.get_by_part1(part1) {
+                                                <span class={classes!("item-inline", "flag", code)} />
+                                            } else {
+                                                <span class="item-inline">
+                                                    <span class="text-muted">{part1}</span>
+                                                </span>
+                                            }
                                         </div>
                                     }
                                 })
@@ -1477,6 +1533,80 @@ pub(super) fn AirDateFiltersEditor(props: &AirDateFiltersEditorProps) -> Html {
                                         onchange={on_networks}
                                     />
                                 }
+                            </div>
+                        </div>
+                    }
+                })
+            }
+        </div>
+    }
+}
+
+/// Sources that can contribute syncable data, with the kinds they support fixed
+/// by [`api::RemoteSource::default_sync_kinds`].
+const SYNC_KIND_SOURCES: &[(api::RemoteSource, &str)] = &[
+    (api::RemoteSource::Tmdb, "TMDB"),
+    (api::RemoteSource::Tvdb, "TVDB"),
+    (api::RemoteSource::Tvmaze, "TVmaze"),
+];
+
+#[derive(Properties, PartialEq)]
+pub(super) struct SyncKindsEditorProps {
+    pub(super) kinds: Vec<api::SourceSyncKinds>,
+    pub(super) on_change: Callback<Vec<api::SourceSyncKinds>>,
+}
+
+/// Global editor for the per-source sync-kind defaults: a checkbox per kind a
+/// source can contribute. Graphics always accumulate from every source and are
+/// not selectable here. Per-remote overrides live in the remote editor.
+#[function_component]
+pub(super) fn SyncKindsEditor(props: &SyncKindsEditorProps) -> Html {
+    html! {
+        <div class="form">
+            {
+                for SYNC_KIND_SOURCES.iter().copied().map(|(source, label)| {
+                    let capability = source.default_sync_kinds();
+                    let current = props
+                        .kinds
+                        .iter()
+                        .find(|s| s.source == source)
+                        .map(|s| s.kinds)
+                        .unwrap_or(capability)
+                        .intersect(capability);
+
+                    html! {
+                        <div class="field">
+                            <label>{label}</label>
+                            <div class="row input-group">
+                                { for capability.iter().map(|kind| {
+                                    let on = current.contains(kind);
+                                    let next_kinds = current.with(kind, !on);
+
+                                    let on_toggle = {
+                                        let all = props.kinds.clone();
+                                        let cb = props.on_change.clone();
+                                        Callback::from(move |_: MouseEvent| {
+                                            let mut next = all.clone();
+                                            if let Some(e) = next.iter_mut().find(|s| s.source == source) {
+                                                e.kinds = next_kinds;
+                                            } else {
+                                                next.push(api::SourceSyncKinds { source, kinds: next_kinds });
+                                            }
+                                            cb.emit(next);
+                                        })
+                                    };
+
+                                    html! {
+                                        <span
+                                            class={classes!("input-checkbox", on.then_some("checked"))}
+                                            onclick={on_toggle}
+                                            title={kind.as_label()}
+                                        >
+                                            <span class="mark" />
+                                            <span>{kind.as_label()}</span>
+                                        </span>
+                                    }
+                                }) }
                             </div>
                         </div>
                     }

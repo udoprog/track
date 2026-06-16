@@ -43,6 +43,7 @@ pub(super) struct ShowDetail {
     season_image_modal: bool,
     settings_modal: bool,
     remote_editor: bool,
+    global_sync_kinds: Vec<api::SourceSyncKinds>,
     background: Background,
     tz: TimeZone,
     _tz_handle: ContextHandle<TimeZone>,
@@ -66,9 +67,11 @@ pub(super) struct ShowDetail {
     _clear_season_image_req: ws::Request,
     _set_remote_enabled_req: ws::Request,
     _reorder_remotes_req: ws::Request,
+    _set_remote_sync_kinds_req: ws::Request,
     _set_language_req: ws::Request,
     _set_include_specials_req: ws::Request,
     _set_air_date_filters_req: ws::Request,
+    _config_req: ws::Request,
     _orphaned_req: ws::Request,
     _move_req: ws::Request,
     _remote_req: ws::Request,
@@ -117,8 +120,11 @@ pub(super) enum Msg {
     ClearSelectedImageDone(Result<ws::Packet<api::ClearSelectedImage>, ws::Error>),
     SetRemoteEnabled(api::RemoteId, bool),
     SetRemoteEnabledDone(Result<ws::Packet<api::SetShowRemoteEnabled>, ws::Error>),
+    SetRemoteSyncKinds(api::RemoteId, Option<api::SyncKindSet>),
+    SetRemoteSyncKindsDone(Result<ws::Packet<api::SetShowRemoteSyncKinds>, ws::Error>),
     ReorderRemotes(Vec<api::RemoteId>),
     ReorderRemotesDone(Result<ws::Packet<api::ReorderShowRemotes>, ws::Error>),
+    ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
     SetLanguage(Option<String>),
     SetLanguageDone(
         Option<String>,
@@ -220,6 +226,7 @@ impl Component for ShowDetail {
             season_image_modal: false,
             settings_modal: false,
             remote_editor: false,
+            global_sync_kinds: Vec::new(),
             background,
             tz,
             _tz_handle,
@@ -243,9 +250,11 @@ impl Component for ShowDetail {
             _clear_season_image_req: ws::Request::default(),
             _set_remote_enabled_req: ws::Request::default(),
             _reorder_remotes_req: ws::Request::default(),
+            _set_remote_sync_kinds_req: ws::Request::default(),
             _set_language_req: ws::Request::default(),
             _set_include_specials_req: ws::Request::default(),
             _set_air_date_filters_req: ws::Request::default(),
+            _config_req: ws::Request::default(),
             _orphaned_req: ws::Request::default(),
             _move_req: ws::Request::default(),
             _remote_req: ws::Request::default(),
@@ -401,6 +410,8 @@ impl Component for ShowDetail {
                         on_remove={link.callback(Msg::RemoveRemote)}
                         on_set_enabled={link.callback(|(id, enabled)| Msg::SetRemoteEnabled(id, enabled))}
                         on_reorder={link.callback(Msg::ReorderRemotes)}
+                        on_set_sync_kinds={link.callback(|(id, kinds)| Msg::SetRemoteSyncKinds(id, kinds))}
+                        global_sync_kinds={self.global_sync_kinds.clone()}
                         on_close={link.callback(|_| Msg::CloseRemoteEditor)}
                     />
                 }
@@ -463,6 +474,7 @@ impl ShowDetail {
                     self.load_show(ctx);
                     self.load_seasons(ctx);
                     self.load_orphaned(ctx);
+                    self.load_config(ctx);
                 } else {
                     self.show = None;
                     self.seasons.clear();
@@ -1028,6 +1040,41 @@ impl ShowDetail {
                 result.context(Message::SettingSyncSource)?;
                 Ok(true)
             }
+            Msg::SetRemoteSyncKinds(remote_id, sync_kinds) => {
+                if let Some(ref mut show) = self.show
+                    && let Some(entry) = show.remotes.iter_mut().find(|e| e.id == remote_id)
+                {
+                    entry.sync_kinds = sync_kinds;
+                }
+
+                let id = ctx.props().show_id;
+
+                self._set_remote_sync_kinds_req = self
+                    .channel
+                    .request()
+                    .body(api::SetShowRemoteSyncKindsRequest {
+                        id,
+                        remote_id,
+                        sync_kinds,
+                    })
+                    .on_packet(ctx.link().callback(Msg::SetRemoteSyncKindsDone))
+                    .send();
+
+                Ok(true)
+            }
+            Msg::SetRemoteSyncKindsDone(result) => {
+                result.context(Message::SettingSyncSource)?;
+                Ok(true)
+            }
+            Msg::ConfigLoaded(result) => {
+                self.global_sync_kinds = result
+                    .context(Message::LoadingConfig)?
+                    .decode()
+                    .context(Message::LoadingConfig)?
+                    .config
+                    .sync_kinds;
+                Ok(true)
+            }
             Msg::ReorderRemotes(remote_ids) => {
                 if let Some(ref mut show) = self.show {
                     show.remotes
@@ -1449,6 +1496,17 @@ impl ShowDetail {
             .request()
             .body(api::ListOrphanedWatchedRequest { show_id })
             .on_packet(ctx.link().callback(Msg::OrphanedLoaded))
+            .send();
+    }
+
+    /// Load the global config for the per-source sync-kind defaults shown (as
+    /// inherited values) in the remote editor.
+    fn load_config(&mut self, ctx: &Context<Self>) {
+        self._config_req = self
+            .channel
+            .request()
+            .body(api::GetConfigRequest)
+            .on_packet(ctx.link().callback(Msg::ConfigLoaded))
             .send();
     }
 

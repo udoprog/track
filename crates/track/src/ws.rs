@@ -664,6 +664,58 @@ impl WsHandler {
 
                 outgoing.write(api::Empty);
             }
+            api::Request::SetShowRemoteSyncKinds => {
+                let req = incoming
+                    .read::<api::SetShowRemoteSyncKindsRequest>()
+                    .context("Expected a request payload")?;
+
+                self.db
+                    .set_show_remote_sync_kinds(req.remote_id, req.sync_kinds)
+                    .await?;
+
+                let show = self
+                    .db
+                    .show_by_id(req.id)
+                    .await?
+                    .context("Expected show to exist")?;
+
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::ShowChanged { show: show.clone() },
+                    "ws set show remote sync kinds changed",
+                );
+
+                self.enqueue_show_sync(show.id, show.title, true).await;
+
+                outgoing.write(api::Empty);
+            }
+            api::Request::SetMovieRemoteSyncKinds => {
+                let req = incoming
+                    .read::<api::SetMovieRemoteSyncKindsRequest>()
+                    .context("Expected a request payload")?;
+
+                self.db
+                    .set_movie_remote_sync_kinds(req.remote_id, req.sync_kinds)
+                    .await?;
+
+                let movie = self
+                    .db
+                    .movie_by_id(req.id)
+                    .await?
+                    .context("Expected movie to exist")?;
+
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::MovieChanged {
+                        movie: movie.clone(),
+                    },
+                    "ws set movie remote sync kinds changed",
+                );
+
+                self.enqueue_movie_sync(movie.id, movie.title, true).await;
+
+                outgoing.write(api::Empty);
+            }
             api::Request::AddShowRemote => {
                 let req = incoming
                     .read::<api::AddShowRemoteRequest>()

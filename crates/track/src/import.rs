@@ -389,6 +389,7 @@ pub async fn import() -> Result<()> {
             include_specials: false,
             release_filters: api::ReleaseFilter::default_filters(),
             air_date_filters: Vec::new(),
+            sync_kinds: Vec::new(),
         })
         .await
         .context("Saving config")?;

@@ -29,6 +29,7 @@ pub(super) struct MovieDetail {
     releases_expanded: HashSet<api::ReleaseType>,
     movie_releases: Vec<(api::ReleaseType, Vec<api::MovieRelease>)>,
     default_release_filters: Vec<api::ReleaseFilter>,
+    global_sync_kinds: Vec<api::SourceSyncKinds>,
     image_modal: bool,
     settings_modal: bool,
     remote_editor: bool,
@@ -49,6 +50,7 @@ pub(super) struct MovieDetail {
     _clear_image_req: ws::Request,
     _set_remote_enabled_req: ws::Request,
     _reorder_remotes_req: ws::Request,
+    _set_remote_sync_kinds_req: ws::Request,
     _set_language_req: ws::Request,
     _set_release_filters_req: ws::Request,
     _config_req: ws::Request,
@@ -90,6 +92,8 @@ pub(super) enum Msg {
     SyncDone(Result<ws::Packet<api::SyncMovie>, ws::Error>),
     SetRemoteEnabled(api::RemoteId, bool),
     SetRemoteEnabledDone(Result<ws::Packet<api::SetMovieRemoteEnabled>, ws::Error>),
+    SetRemoteSyncKinds(api::RemoteId, Option<api::SyncKindSet>),
+    SetRemoteSyncKindsDone(Result<ws::Packet<api::SetMovieRemoteSyncKinds>, ws::Error>),
     ReorderRemotes(Vec<api::RemoteId>),
     ReorderRemotesDone(Result<ws::Packet<api::ReorderMovieRemotes>, ws::Error>),
     SetLanguage(Option<String>),
@@ -163,6 +167,7 @@ impl Component for MovieDetail {
             releases_expanded: HashSet::new(),
             movie_releases: Vec::new(),
             default_release_filters: api::ReleaseFilter::default_filters(),
+            global_sync_kinds: Vec::new(),
             image_modal: false,
             settings_modal: false,
             remote_editor: false,
@@ -183,6 +188,7 @@ impl Component for MovieDetail {
             _clear_image_req: ws::Request::default(),
             _set_remote_enabled_req: ws::Request::default(),
             _reorder_remotes_req: ws::Request::default(),
+            _set_remote_sync_kinds_req: ws::Request::default(),
             _set_language_req: ws::Request::default(),
             _set_release_filters_req: ws::Request::default(),
             _config_req: ws::Request::default(),
@@ -444,6 +450,30 @@ impl MovieDetail {
                 result.context(Message::SettingSyncSource)?;
                 Ok(false)
             }
+            Msg::SetRemoteSyncKinds(remote_id, sync_kinds) => {
+                if let Some(ref mut movie) = self.movie
+                    && let Some(entry) = movie.remotes.iter_mut().find(|e| e.id == remote_id)
+                {
+                    entry.sync_kinds = sync_kinds;
+                }
+
+                let id = ctx.props().movie_id;
+                self._set_remote_sync_kinds_req = self
+                    .channel
+                    .request()
+                    .body(api::SetMovieRemoteSyncKindsRequest {
+                        id,
+                        remote_id,
+                        sync_kinds,
+                    })
+                    .on_packet(ctx.link().callback(Msg::SetRemoteSyncKindsDone))
+                    .send();
+                Ok(true)
+            }
+            Msg::SetRemoteSyncKindsDone(result) => {
+                result.context(Message::SettingSyncSource)?;
+                Ok(false)
+            }
             Msg::ReorderRemotes(remote_ids) => {
                 if let Some(ref mut movie) = self.movie {
                     movie
@@ -492,12 +522,13 @@ impl MovieDetail {
                 Ok(true)
             }
             Msg::ConfigLoaded(result) => {
-                self.default_release_filters = result
+                let config = result
                     .context(Message::LoadingConfig)?
                     .decode()
                     .context(Message::LoadingConfig)?
-                    .config
-                    .release_filters;
+                    .config;
+                self.default_release_filters = config.release_filters;
+                self.global_sync_kinds = config.sync_kinds;
                 Ok(true)
             }
             Msg::SetReleaseFilters(release_filters) => {
@@ -1126,6 +1157,8 @@ impl MovieDetail {
                     on_remove={link.callback(Msg::RemoveRemote)}
                     on_set_enabled={link.callback(|(id, enabled)| Msg::SetRemoteEnabled(id, enabled))}
                     on_reorder={link.callback(Msg::ReorderRemotes)}
+                    on_set_sync_kinds={link.callback(|(id, kinds)| Msg::SetRemoteSyncKinds(id, kinds))}
+                    global_sync_kinds={self.global_sync_kinds.clone()}
                     on_close={link.callback(|_| Msg::CloseRemoteEditor)}
                 />
             }
