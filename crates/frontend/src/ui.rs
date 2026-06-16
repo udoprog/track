@@ -544,13 +544,6 @@ pub(super) enum RemoteSourceKind {
     Movie,
 }
 
-/// Sources offered when adding a remote identifier, as `(value, label)`.
-const REMOTE_SOURCES: &[(api::RemoteSource, &str)] = &[
-    (api::RemoteSource::Tmdb, "TMDB"),
-    (api::RemoteSource::Tvdb, "TVDB"),
-    (api::RemoteSource::Imdb, "IMDb"),
-];
-
 /// Validate a source/value pair and build the `Remote`, or return a
 /// user-facing error explaining why the identifier is invalid.
 fn parse_remote(source: &api::RemoteSource, value: &str) -> Result<api::Remote, String> {
@@ -636,6 +629,7 @@ pub(super) struct RemoteEditor {
     editing: Option<api::RemoteId>,
     /// When set, awaiting confirmation to remove this identifier.
     confirming_remove: Option<api::RemoteEntry>,
+    /// When set, display this error message related to the identifier form.
     error: Option<String>,
     /// The source `<select>`; its displayed selection is a DOM property that
     /// must be set imperatively when `source` changes programmatically.
@@ -644,7 +638,7 @@ pub(super) struct RemoteEditor {
 
 impl RemoteEditor {
     fn reset_form(&mut self) {
-        self.source = REMOTE_SOURCES[0].0;
+        self.source = api::RemoteSource::Tmdb;
         self.value.clear();
         self.slug.clear();
         self.show_slug = false;
@@ -659,7 +653,7 @@ impl Component for RemoteEditor {
 
     fn create(_ctx: &Context<Self>) -> Self {
         Self {
-            source: REMOTE_SOURCES[0].0,
+            source: api::RemoteSource::Tmdb,
             value: String::new(),
             slug: String::new(),
             show_slug: false,
@@ -789,13 +783,14 @@ impl Component for RemoteEditor {
         let on_source = link.callback(|e: Event| {
             let select: web_sys::HtmlSelectElement = e.target_unchecked_into();
             let value = select.value();
-            let source = REMOTE_SOURCES
-                .iter()
-                .find(|(source, _)| source.as_id() == value)
-                .map(|(source, _)| source)
-                .unwrap_or(&REMOTE_SOURCES[0].0);
 
-            RemoteEditorMsg::SetSource(*source)
+            let source = api::RemoteSource::ALL
+                .iter()
+                .find(|source| source.as_id() == value)
+                .copied()
+                .unwrap_or(api::RemoteSource::Tmdb);
+
+            RemoteEditorMsg::SetSource(source)
         });
 
         let on_value = link.callback(|e: InputEvent| {
@@ -914,8 +909,8 @@ impl Component for RemoteEditor {
                     <div class={classes!("field", self.error.is_some().then_some("error"))}>
                         <div class="input-group fill">
                             <select ref={self.source_ref.clone()} class="input-select" onchange={on_source} title="Source">
-                                { for REMOTE_SOURCES.iter().map(|(value, label)| html! {
-                                    <option value={value.as_id()} selected={self.source == *value}>{label}</option>
+                                { for api::RemoteSource::ALL.iter().map(|source| html! {
+                                    <option value={source.as_id()} selected={self.source == *source}>{source.as_label()}</option>
                                 }) }
                             </select>
 

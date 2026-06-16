@@ -529,6 +529,10 @@ pub enum RemoteSource {
 }
 
 impl RemoteSource {
+    /// All known remote sources, in arbitrary but deterministic order.
+    pub const ALL: &[Self] = &[Self::Tvdb, Self::Tmdb, Self::Imdb, Self::Tvmaze];
+
+    /// Whether this source is unknown.
     pub fn is_unknown(&self) -> bool {
         matches!(self, Self::Unknown)
     }
@@ -539,7 +543,7 @@ impl RemoteSource {
             Self::Tmdb => "TMDB",
             Self::Imdb => "IMDb",
             Self::Tvmaze => "TVmaze",
-            Self::Unknown => "unknown",
+            Self::Unknown => "Unknown",
         }
     }
 
