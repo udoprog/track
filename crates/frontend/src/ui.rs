@@ -143,9 +143,10 @@ pub(super) fn ConfirmDanger(props: &ConfirmDangerProps) -> Html {
 #[derive(Properties, PartialEq)]
 pub(super) struct MarkWatchedPickerProps {
     #[prop_or_default]
+    pub(super) icon_class: Classes,
+    #[prop_or_default]
     pub(super) class: Classes,
     /// Heading shown above the choices. Defaults to "Watched when?".
-    #[prop_or(AttrValue::Static("Watched when?"))]
     pub(super) prompt: AttrValue,
     /// Label for the "when aired" choice. Defaults to "Aired"; movies pass
     /// "Released" since "aired" reads oddly for them.
@@ -171,9 +172,21 @@ pub(super) fn MarkWatchedPicker(props: &MarkWatchedPickerProps) -> Html {
         e.stop_propagation();
     });
 
+    let icon_class = if props.icon_class.is_empty() {
+        classes!("item-inline")
+    } else {
+        props.icon_class.clone()
+    };
+
     html! {
         <div class={classes!("row-fill", "fill", &props.class)}>
-            <span>{&props.prompt}</span>
+            <div class="row">
+                <span class={icon_class}>
+                    <span class="icon exclamation-circle" />
+                </span>
+
+                <span>{&props.prompt}</span>
+            </div>
 
             <div class="end">
                 <div class="input-group">

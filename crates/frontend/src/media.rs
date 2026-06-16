@@ -599,6 +599,7 @@ impl MediaList {
                         if is_movie && self.confirming_watch == Some(id) {
                             <MarkWatchedPicker
                                 aired_label="Released"
+                                prompt="Watched when?"
                                 on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(id, mark_time))}
                                 on_cancel={ctx.link().callback(|_| Msg::CancelMarkWatch)}
                             />

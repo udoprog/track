@@ -1635,7 +1635,6 @@ impl ShowDetail {
             if let Some((ref label, episode_id)) = self.confirming_pending_header {
                 break 'header html! {
                     <MarkWatchedPicker
-                        class="lg"
                         prompt={format!("Pending {label} since when?")}
                         on_confirm={link.callback(move |mark_time| Msg::OnWatchNext(episode_id, mark_time))}
                         on_cancel={link.callback(move |_| Msg::CancelWatchNext(episode_id))}
@@ -1665,6 +1664,11 @@ impl ShowDetail {
 
             html! {
                 <>
+                    <button class="btn" onclick={link.callback(|_| Msg::OpenSeasonImageModal)} title="Season Graphics">
+                        <span class="icon photo" />
+                        <span class="hide-mobile">{"Graphics"}</span>
+                    </button>
+
                     if !self.orphaned.is_empty() {
                         <button class="btn-danger" onclick={link.callback(|_| Msg::ToggleOrphaned)} title="View orphaned watched episodes">
                             <span class={classes!("icon", if self.view_orphaned { "ellipsis-horizontal" } else { "exclamation-triangle" })} />
@@ -1708,6 +1712,8 @@ impl ShowDetail {
 
                 break 'actions html! {
                     <MarkWatchedPicker
+                        prompt="Watched when?"
+                        icon_class="item-inline-lg"
                         on_confirm={link.callback(move |mark_time| Msg::WatchRemaining(season, mark_time))}
                         on_cancel={link.callback(|_| Msg::CancelMarkRemainingWatch)}
                     />
@@ -1737,18 +1743,13 @@ impl ShowDetail {
                             <h4>{format!("{watched_count} / {total} watched")}</h4>
                         }
 
-                        <div class="row end">
-                            <div class="input-group">
-                                <button class="btn" onclick={link.callback(|_| Msg::OpenSeasonImageModal)} title="Season Graphics">
-                                    <span class="icon photo" />
-                                    <span class="hide-mobile">{"Graphics"}</span>
-                                </button>
-
-                                if self.view_orphaned || (!self.orphaned.is_empty() || watched_count < total) {
+                        if self.view_orphaned || (!self.orphaned.is_empty() || watched_count < total) {
+                            <div class="row end">
+                                <div class="input-group">
                                     {header}
-                                }
+                                </div>
                             </div>
-                        </div>
+                        }
                     </div>
                 </div>
             }
@@ -1850,7 +1851,8 @@ impl ShowDetail {
             if confirming_mark {
                 break 'actions html! {
                     <MarkWatchedPicker
-                        class="lg"
+                        prompt="Watched when?"
+                        icon_class="item-inline-lg"
                         on_confirm={link.callback(move |mark_time| Msg::MarkWatched(show_id, episode_id, mark_time))}
                         on_cancel={link.callback(move |_| Msg::CancelMarkWatch(episode_id))}
                     />
@@ -1860,8 +1862,8 @@ impl ShowDetail {
             if confirming_pending {
                 break 'actions html! {
                     <MarkWatchedPicker
-                        class="lg"
                         prompt="Pending since when?"
+                        icon_class="item-inline-lg"
                         on_confirm={link.callback(move |mark_time| Msg::OnWatchNext(episode_id, mark_time))}
                         on_cancel={link.callback(move |_| Msg::CancelWatchNext(episode_id))}
                     />
@@ -1872,6 +1874,10 @@ impl ShowDetail {
                 <div class="actions row-fill">
                     <div class="column fill">
                         <div class="row-fill">
+                            <a class="episode-code">
+                                { format!("{}E{:02}", episode.season.short(), episode.episode) }
+                            </a>
+
                             <div class="row">
                                 if !watched.is_empty() {
                                     <span class="item-inline-lg" title="Watched"><span class="icon primary check-circle" /></span>
@@ -1919,85 +1925,83 @@ impl ShowDetail {
 
         html! {
             <div class={classes!("episode", (!watched.is_empty()).then_some("watched"))} id={format!("{}E{:02}", episode.season.short(), episode.episode)}>
-                <Image class="screenshot" src={episode.screenshot.clone()} />
-
-                <a class="episode-code">
-                    { format!("{}E{:02}", episode.season.short(), episode.episode) }
-                </a>
-
                 {actions}
 
-                if !history_expanded {
-                    <h3 class="row">
-                        { episode.name.as_deref().unwrap_or(MDASH) }
-                    </h3>
+                <div class="desktop-row mobile-column">
+                    <Image class="screenshot" src={episode.screenshot.clone()} />
 
-                    if let Some(aired) = episode.display_at(self.tz.clone()) {
-                        <span class="text-muted">{aired}</span>
-                    }
+                    <div class="column top">
+                        if !history_expanded {
+                            <h3>{ episode.name.as_deref().unwrap_or(MDASH) }</h3>
 
-                    if let Some(ref overview) = episode.overview {
-                        <p class="overview">{overview}</p>
-                    }
-                }
+                            if let Some(aired) = episode.display_at(self.tz.clone()) {
+                                <span class="text-muted">{aired}</span>
+                            }
 
-                if history_expanded {
-                    <div class="column">
-                        <h3>{"Watch history"}</h3>
+                            if let Some(ref overview) = episode.overview {
+                                <p class="overview">{overview}</p>
+                            }
+                        }
 
-                        <div class="column">
-                            { for watched.iter().map(|w| {
-                                let wid = w.id;
-                                let kind = api::WatchedKind::Episode { show: show_id, episode: episode_id };
+                        if history_expanded {
+                            <div class="column">
+                                <h3>{"Watch history"}</h3>
 
-                                if self.confirm_remove_watch == Some(wid) {
-                                    html! {
-                                        <ConfirmDanger
-                                            prompt="Remove watch at"
-                                            label={w.timestamp.display(self.tz.clone())}
-                                            on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, kind))}
-                                            on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
-                                        />
-                                    }
-                                } else if self.fixing_watched == Some(wid) {
-                                    html! {
-                                        <EpisodePicker
-                                            prompt="Move watch at"
-                                            label={w.timestamp.display(self.tz.clone())}
-                                            show_id={show_id}
-                                            seasons={self.seasons.clone()}
-                                            selected_season={episode.season}
-                                            selected_episode={episode.episode}
-                                            on_confirm={link.callback(move |(season, ep)| Msg::MoveWatched(wid, season, ep))}
-                                            on_cancel={link.callback(|_| Msg::CancelFixWatched)}
-                                        />
-                                    }
-                                } else {
-                                    html! {
-                                        <div class="row-fill">
-                                            <div class="row">
-                                                <span>{w.timestamp.display(self.tz.clone())}</span>
-                                            </div>
+                                <div class="column">
+                                    { for watched.iter().map(|w| {
+                                        let wid = w.id;
+                                        let kind = api::WatchedKind::Episode { show: show_id, episode: episode_id };
 
-                                            <div class="row end">
-                                                <div class="input-group">
-                                                    <button class="btn" onclick={link.callback(move |_| Msg::FixWatched(wid))} title="Move to different episode">
-                                                        <span class="icon pencil-square" />
-                                                        <span>{"Move"}</span>
-                                                    </button>
+                                        if self.confirm_remove_watch == Some(wid) {
+                                            html! {
+                                                <ConfirmDanger
+                                                    prompt="Remove watch at"
+                                                    label={w.timestamp.display(self.tz.clone())}
+                                                    on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, kind))}
+                                                    on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
+                                                />
+                                            }
+                                        } else if self.fixing_watched == Some(wid) {
+                                            html! {
+                                                <EpisodePicker
+                                                    prompt="Move watch at"
+                                                    label={w.timestamp.display(self.tz.clone())}
+                                                    show_id={show_id}
+                                                    seasons={self.seasons.clone()}
+                                                    selected_season={episode.season}
+                                                    selected_episode={episode.episode}
+                                                    on_confirm={link.callback(move |(season, ep)| Msg::MoveWatched(wid, season, ep))}
+                                                    on_cancel={link.callback(|_| Msg::CancelFixWatched)}
+                                                />
+                                            }
+                                        } else {
+                                            html! {
+                                                <div class="row-fill">
+                                                    <div class="row">
+                                                        <span>{w.timestamp.display(self.tz.clone())}</span>
+                                                    </div>
 
-                                                    <button class="btn-danger" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
-                                                        <span class="icon trash" />
-                                                    </button>
+                                                    <div class="row end">
+                                                        <div class="input-group">
+                                                            <button class="btn" onclick={link.callback(move |_| Msg::FixWatched(wid))} title="Move to different episode">
+                                                                <span class="icon pencil-square" />
+                                                                <span>{"Move"}</span>
+                                                            </button>
+
+                                                            <button class="btn-danger" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
+                                                                <span class="icon trash" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        </div>
-                                    }
-                                }
-                            }) }
-                        </div>
+                                            }
+                                        }
+                                    }) }
+                                </div>
+                            </div>
+                        }
                     </div>
-                }
+                </div>
             </div>
         }
     }

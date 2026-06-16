@@ -689,6 +689,12 @@ image {
         &:not(:last-child) {
             border-bottom: 1px solid $border-subtle;
         }
+
+        @include from-desktop {
+            .screenshot {
+                max-width: 24vh;
+            }
+        }
     }
 }
 

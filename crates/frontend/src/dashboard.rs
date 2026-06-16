@@ -452,6 +452,7 @@ impl Dashboard {
                 break 'actions html! {
                     <MarkWatchedPicker
                         {aired_label}
+                        prompt="Watched when?"
                         on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(kind, mark_time))}
                         on_cancel={ctx.link().callback(|_| Msg::CancelMarkWatch)}
                     />
