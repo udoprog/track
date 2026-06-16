@@ -692,7 +692,7 @@ image {
 
         @include from-desktop {
             .screenshot {
-                max-width: 24vh;
+                height: 180px;
             }
         }
     }
