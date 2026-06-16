@@ -501,6 +501,10 @@ impl MovieDetail {
                     movie.release_filters = release_filters;
                 }
 
+                // The server recomputes the effective release date from the new filters; reload to
+                // reflect it (the change broadcast excludes this originating channel).
+                self.load_movie(ctx);
+
                 Ok(true)
             }
             Msg::SetTracked(tracked) => {
@@ -1054,6 +1058,14 @@ impl MovieDetail {
                         </div>
                     }
 
+                    if let Some(date) = movie.release_date {
+                        <div class="column">
+                            <h3>{"Release date"}</h3>
+
+                            <span>{date.display(self.tz.clone())}</span>
+                        </div>
+                    }
+
                     {self.view_releases(ctx)}
                 </div>
             </div>
@@ -1110,6 +1122,30 @@ impl MovieDetail {
             return html! {};
         }
 
+        // The release filters in effect for this movie (per-movie override or global default).
+        // A release is "considered" when it matches any of them, i.e. it feeds into the release
+        // date the earliest considered release determines.
+        let filters: &[api::ReleaseFilter] = match self.movie.as_ref() {
+            Some(movie) => movie.effective_release_filters(&self.default_release_filters),
+            None => &self.default_release_filters,
+        };
+
+        let considered = |r: &api::MovieRelease| filters.iter().any(|f| f.matches(r));
+
+        let indicator = |on: bool| {
+            let (icon, title) = if on {
+                ("check", "Considered for the release date")
+            } else {
+                ("minus", "Excluded by the current release date settings")
+            };
+
+            html! {
+                <span class={classes!("item-inline", (!on).then_some("text-muted"))} title={title}>
+                    <span class={classes!("icon", icon)} />
+                </span>
+            }
+        };
+
         html! {
             <div class="column">
                 <h3>{"Releases"}</h3>
@@ -1119,38 +1155,50 @@ impl MovieDetail {
                         let ty = *ty;
                         let earliest = releases.iter().min_by_key(|r| r.timestamp).unwrap();
                         let expanded = self.releases_expanded.contains(&ty);
+                        let type_considered = releases.iter().any(&considered);
 
                         html! {
-                            <div class="column">
-                                <div class="row-fill clickable" onclick={link.callback(move |_| Msg::ToggleReleaseType(ty))}>
-                                    <span>{ty.as_str()}</span>
-                                    <div class="row">
-                                        <span class="text-muted">{earliest.timestamp.display(self.tz.clone())}</span>
-                                        <span class="item-inline">
-                                            <span class={classes!("icon", if expanded { "ellipsis-horizontal" } else { "chevron-right" })} />
-                                        </span>
+                            <div class="row clickable" onclick={link.callback(move |_| Msg::ToggleReleaseType(ty))}>
+                                <span class="item-inline top">
+                                    <span class={classes!("icon", if expanded { "ellipsis-horizontal" } else { "chevron-right" })} />
+                                </span>
+
+                                <div class="column fill">
+                                    <div class="row-fill">
+                                        <div class="row">
+                                            {indicator(type_considered)}
+                                            <span>{ty.as_str()}</span>
+                                        </div>
+
+                                        <div class="row end">
+                                            <span class="text-muted">{earliest.timestamp.display(self.tz.clone())}</span>
+                                        </div>
                                     </div>
+
+                                    if expanded {
+                                        <div class="column">
+                                            { for releases.iter().map(|r| html! {
+                                                <div class="row-fill">
+                                                    <div class="row">
+                                                        {indicator(considered(r))}
+
+                                                        if let Some(code) = self.countries.get(&r.country) {
+                                                            <span class="item-inline" title={r.country.clone()}>
+                                                                <span class={classes!("flag", code)}></span>
+                                                            </span>
+                                                        } else {
+                                                            <span class="text-muted">
+                                                                {r.country.clone()}
+                                                            </span>
+                                                        }
+                                                    </div>
+
+                                                    <span class="text-muted">{r.timestamp.display(self.tz.clone())}</span>
+                                                </div>
+                                            }) }
+                                        </div>
+                                    }
                                 </div>
-
-                                if expanded {
-                                    <div class="column">
-                                        { for releases.iter().map(|r| html! {
-                                            <div class="row-fill">
-                                                if let Some(code) = self.countries.get(&r.country) {
-                                                    <span class="item-inline" title={r.country.clone()}>
-                                                        <span class={classes!("flag", code)}></span>
-                                                    </span>
-                                                } else {
-                                                    <span class="text-muted">
-                                                        {r.country.clone()}
-                                                    </span>
-                                                }
-
-                                                <span class="text-muted">{r.timestamp.display(self.tz.clone())}</span>
-                                            </div>
-                                        }) }
-                                    </div>
-                                }
                             </div>
                         }
                     }) }

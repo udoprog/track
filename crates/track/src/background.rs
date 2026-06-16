@@ -29,25 +29,37 @@ pub(crate) async fn discover_pending_movies(db: &Database) -> anyhow::Result<()>
     Ok(())
 }
 
-/// Recompute a single movie's pending entry from its effective release filters. Movies with watches
-/// are left to the watch flow; otherwise the earliest matching, already-released timestamp makes the
-/// movie pending, and a stale or no-longer-matching entry is removed.
+/// Recompute a movie's effective release date and pending entry from its release filters.
+///
+/// The effective release date is the earliest release matching the filters; it is written back to
+/// `movies.release_date` so the displayed date reflects the settings (when no release matches, the
+/// existing date is kept rather than cleared, e.g. when release detail could not be fetched).
+/// Movies with watches keep their release date but are left to the watch flow for pending; otherwise
+/// an already-released date makes the movie pending and a stale/future/no-longer-matching entry is
+/// removed.
 pub(crate) async fn update_movie_pending(
     db: &Database,
     movie_id: api::MovieId,
 ) -> anyhow::Result<()> {
-    if db.has_movie_watches(movie_id).await? {
-        return Ok(());
-    }
-
     let Some(movie) = db.movie_by_id(movie_id).await? else {
         return Ok(());
     };
 
     let now = api::Timestamp::now();
     let default = db.load_config().await?.release_filters;
+    let release = movie.pending_release(&default);
 
-    match movie.pending_release(&default) {
+    if let Some(ts) = release
+        && movie.release_date != Some(ts)
+    {
+        db.set_movie_release_date(movie_id, Some(ts)).await?;
+    }
+
+    if db.has_movie_watches(movie_id).await? {
+        return Ok(());
+    }
+
+    match release {
         Some(ts) if ts <= now => db.add_pending_movie(movie_id, ts).await?,
         _ => db.remove_pending_movie(movie_id).await?,
     }

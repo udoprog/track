@@ -807,6 +807,8 @@ struct InnerWrite {
     #[sql = "SET title = ?, release_date = ?, overview = ?"]
     #[sql = "WHERE id = ?"]
     update_movie: TypedStatement<(Option<String>, Option<Timestamp>, Option<String>, MovieId), ()>,
+    #[sql = "UPDATE movies SET release_date = ? WHERE id = ?"]
+    set_movie_release_date: TypedStatement<(Option<Timestamp>, MovieId), ()>,
     #[sql = "DELETE FROM movies WHERE id = ?"]
     delete_movie: TypedStatement<(MovieId,), ()>,
     #[sql = "INSERT OR IGNORE INTO movie_remotes (id, slug, movie_id, source, value) VALUES (?, ?, ?, ?, ?)"]
@@ -2202,6 +2204,23 @@ impl Database {
                 overview.as_deref(),
                 id,
             ))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn set_movie_release_date(
+        &self,
+        id: MovieId,
+        release_date: Option<Timestamp>,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.set_movie_release_date
+                .execute((release_date.as_ref(), id))?;
             Ok(())
         });
 

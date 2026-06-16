@@ -519,20 +519,21 @@ pub(crate) async fn sync_movie(
                 }
                 Err(e) => warn!(movie_id = %movie_id, "Movie release dates skipped: {e:#}"),
             }
-
-            let updated = db
-                .movie_by_id(movie_id)
-                .await?
-                .context("Expected movie to exist after update")?;
-
-            broadcast.broadcast_event(api::AppEventKind::MovieChanged { movie: updated });
         }
         Some(api::RemoteSource::Tvdb) => anyhow::bail!("Unsupported movie sync source: TVDB"),
         _ => anyhow::bail!("Movie has no syncable remote"),
     }
 
-    // Recompute the pending entry from the movie's effective release filters.
+    // Recompute the effective release date + pending entry from the movie's release filters before
+    // broadcasting, so the emitted movie reflects the filtered release date.
     crate::background::update_movie_pending(db, movie_id).await?;
+
+    let updated = db
+        .movie_by_id(movie_id)
+        .await?
+        .context("Expected movie to exist after update")?;
+
+    broadcast.broadcast_event(api::AppEventKind::MovieChanged { movie: updated });
 
     db.set_movie_synced_at(movie_id, api::Timestamp::now())
         .await?;

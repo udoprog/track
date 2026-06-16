@@ -341,18 +341,35 @@ p {
     display: flex;
     flex-direction: column;
     gap: $gap-sm;
-
-    label {
-        font-size: $font-xs;
-        color: $text-muted;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
+    align-items: stretch;
 
     .field {
         display: flex;
         flex-direction: column;
         gap: $padding;
+
+        @include from-desktop {
+            align-items: flex-start;
+        }
+
+        > .input-group, .input-number, .input-text, .input-controls, .input-checkbox, .input-select {
+            align-self: stretch;
+        }
+
+        label {
+            display: flex;
+            align-items: center;
+            flex-direction: row;
+            height: $input-height;
+            font-size: $font-sm;
+            color: $text-muted;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+
+            @include until-mobile {
+                height: $input-height-touch;
+            }
+        }
 
         &.error {
             color: $color-danger;

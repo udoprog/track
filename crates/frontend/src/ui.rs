@@ -380,6 +380,8 @@ const SECRET_REVEAL_MS: u32 = 3000;
 /// the parent and edits are emitted through `on_change`.
 #[derive(Properties, PartialEq)]
 pub(super) struct SecretInputProps {
+    #[prop_or_default]
+    pub(super) id: Option<AttrValue>,
     pub(super) value: String,
     #[prop_or_default]
     pub(super) placeholder: AttrValue,
@@ -476,6 +478,7 @@ impl Component for SecretInput {
         html! {
             <div class="input-group">
                 <input
+                    id={props.id.clone()}
                     type={if revealed { "text" } else { "password" }}
                     class="input-text fill"
                     placeholder={props.placeholder.clone()}

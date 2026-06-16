@@ -169,24 +169,30 @@ impl Component for Settings {
 
                     <div class="form">
                         <div class="field">
-                            <label>{"TheTVDB API Key"}</label>
+                            <label for="tvdb-api-key">{"TheTVDB API Key"}</label>
+
                             <SecretInput
+                                id="tvdb-api-key"
                                 placeholder="Enter TVDB API key"
                                 value={self.config.tvdb_api_key.clone()}
                                 on_change={link.callback(Msg::TvdbKeyChanged)}
                             />
                         </div>
                         <div class="field">
-                            <label>{"TheTVDB Subscriber PIN (optional)"}</label>
+                            <label for="tvdb-pin">{"TheTVDB Subscriber PIN (optional)"}</label>
+
                             <SecretInput
+                                id="tvdb-pin"
                                 placeholder="Enter TVDB subscriber PIN"
                                 value={self.config.tvdb_pin.clone().unwrap_or_default()}
                                 on_change={link.callback(Msg::TvdbPinChanged)}
                             />
                         </div>
                         <div class="field">
-                            <label>{"TheMovieDB API Key"}</label>
+                            <label for="tmdb-api-key">{"TheMovieDB API Key"}</label>
+
                             <SecretInput
+                                id="tmdb-api-key"
                                 placeholder="Enter TMDB API key"
                                 value={self.config.tmdb_api_key.clone()}
                                 on_change={link.callback(Msg::TmdbKeyChanged)}
