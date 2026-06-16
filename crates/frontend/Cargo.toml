@@ -7,7 +7,7 @@ publish = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-api = { path = "../api", features = ["js"] }
+api = { path = "../api", features = ["js", "yew"] }
 iso639 = { path = "../iso639" }
 iso3166 = { path = "../iso3166" }
 

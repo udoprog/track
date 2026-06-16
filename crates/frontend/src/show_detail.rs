@@ -23,8 +23,8 @@ pub(super) struct ShowDetail {
     selected: Option<usize>,
     expanded_seasons: bool,
     episodes: Vec<api::Episode>,
-    pending_episode: Option<(String, api::EpisodeId)>,
-    next_unwatched: Option<(String, api::EpisodeId)>,
+    pending_episode: Option<(api::Code, api::EpisodeId)>,
+    next_unwatched: Option<(api::Code, api::EpisodeId)>,
     view_orphaned: bool,
     confirm_remove: bool,
     syncing: bool,
@@ -33,7 +33,7 @@ pub(super) struct ShowDetail {
     confirm_remove_watch: Option<api::WatchedId>,
     confirming_mark_watch: Option<api::EpisodeId>,
     confirming_pending: Option<api::EpisodeId>,
-    confirming_pending_header: Option<(String, api::EpisodeId)>,
+    confirming_pending_header: Option<(api::Code, api::EpisodeId)>,
     select_mark_remaining: bool,
     watched_by_episode: HashMap<api::EpisodeId, Vec<api::WatchedEpisode>>,
     history_expanded: HashSet<api::EpisodeId>,
@@ -108,7 +108,7 @@ pub(super) enum Msg {
     ToggleHistory(api::EpisodeId),
     WatchedLoaded(Result<ws::Packet<api::ListEpisodesWatched>, ws::Error>),
     AskWatchNext(api::EpisodeId),
-    AskWatchNextHeader(String, api::EpisodeId),
+    AskWatchNextHeader(api::Code, api::EpisodeId),
     CancelWatchNext(api::EpisodeId),
     OnWatchNext(api::EpisodeId, api::MarkTime),
     AddPendingDone(Result<ws::Packet<api::AddPending>, ws::Error>),
@@ -654,13 +654,13 @@ impl ShowDetail {
                     .episodes
                     .iter()
                     .find(|e| e.pending)
-                    .map(|e| (format!("{}E{:02}", e.season.short(), e.episode), e.id));
+                    .map(|e| (e.code(), e.id));
 
                 self.next_unwatched = self
                     .episodes
                     .iter()
                     .find(|e| e.watched_count == 0)
-                    .map(|e| (format!("{}E{:02}", e.season.short(), e.episode), e.id));
+                    .map(|e| (e.code(), e.id));
 
                 for w in result.watched {
                     self.watched_by_episode
@@ -1642,25 +1642,19 @@ impl ShowDetail {
                 };
             }
 
-            let next_unwatched = self
-                .next_unwatched
-                .as_ref()
-                .map(|&(ref label, episode_id)| {
-                    let callback = link.callback({
-                        let label = label.clone();
-                        move |_| Msg::AskWatchNextHeader(label.clone(), episode_id)
-                    });
-
-                    (label.as_str(), callback)
+            let next_unwatched = self.next_unwatched.as_ref().map(|&(label, episode_id)| {
+                let callback = link.callback({
+                    let label = label.clone();
+                    move |_| Msg::AskWatchNextHeader(label, episode_id)
                 });
 
-            let pending_episode = self
-                .pending_episode
-                .as_ref()
-                .map(|&(ref label, episode_id)| {
-                    let callback = link.callback(move |_| Msg::OnRemoveNext(episode_id));
-                    (label.as_str(), callback)
-                });
+                (label, callback)
+            });
+
+            let pending_episode = self.pending_episode.as_ref().map(|&(label, episode_id)| {
+                let callback = link.callback(move |_| Msg::OnRemoveNext(episode_id));
+                (label, callback)
+            });
 
             html! {
                 <>
@@ -1679,7 +1673,7 @@ impl ShowDetail {
                         </button>
                     }
 
-                    if let Some((ref label, on_remove_next)) = pending_episode {
+                    if let Some((label, on_remove_next)) = pending_episode {
                         <a class="btn-primary" href={format!("#{label}")} title="Jump to pending episode">
                             <span class="icon bookmark" />
                             <span class="icon chevron-down" />
@@ -1689,7 +1683,7 @@ impl ShowDetail {
                             <span class="icon bookmark" />
                             <span>{label}</span>
                         </button>
-                    } else if let Some((ref label, onclick)) = next_unwatched {
+                    } else if let Some((label, onclick)) = next_unwatched {
                         <button class="btn" title="Make next episode" {onclick}>
                             <span class="icon bookmark-slash" />
                             <span>{label}</span>
@@ -1851,7 +1845,7 @@ impl ShowDetail {
             if confirming_mark {
                 break 'actions html! {
                     <MarkWatchedPicker
-                        prompt="Watched when?"
+                        prompt={format!("When did you watch {}?", episode.code())}
                         icon_class="item-inline-lg"
                         on_confirm={link.callback(move |mark_time| Msg::MarkWatched(show_id, episode_id, mark_time))}
                         on_cancel={link.callback(move |_| Msg::CancelMarkWatch(episode_id))}
@@ -1874,24 +1868,28 @@ impl ShowDetail {
                 <div class="actions row-fill">
                     <div class="column fill">
                         <div class="row-fill">
-                            <a class="episode-code">
-                                { format!("{}E{:02}", episode.season.short(), episode.episode) }
-                            </a>
+                            <a class="episode-code">{episode.code()}</a>
 
                             <div class="row">
-                                if !watched.is_empty() {
+                                if episode.pending {
+                                    <span class="item-inline-lg" title="Next episode"><span class="icon primary exclamation-circle" /></span>
+                                } else if !watched.is_empty() {
                                     <span class="item-inline-lg" title="Watched"><span class="icon primary check-circle" /></span>
                                 } else {
                                     <span class="item-inline-lg" title="Never watched"><span class="icon secondary x-circle" /></span>
                                 }
 
-                                <span class="text-muted fill">
-                                    {match watched {
-                                        [] => "Never watched".to_string(),
-                                        [w] => format!("Watched at {}", w.timestamp.display(self.tz.clone())),
-                                        [first, ..] => format!("Watched {} times, first at {}", watched.len(), first.timestamp.display(self.tz.clone())),
-                                    }}
-                                </span>
+                                if episode.pending {
+                                    <span class="text-muted">{"Next episode"}</span>
+                                } else {
+                                    <span class="text-muted">
+                                        {match watched {
+                                            [] => "Never watched".to_string(),
+                                            [w] => format!("Watched at {}", w.timestamp.display(self.tz.clone())),
+                                            [first, ..] => format!("Watched {} times, first at {}", watched.len(), first.timestamp.display(self.tz.clone())),
+                                        }}
+                                    </span>
+                                }
                             </div>
 
                             <div class="row end">
@@ -1924,7 +1922,7 @@ impl ShowDetail {
         };
 
         html! {
-            <div class={classes!("episode", (!watched.is_empty()).then_some("watched"))} id={format!("{}E{:02}", episode.season.short(), episode.episode)}>
+            <div class={classes!("episode", (!watched.is_empty()).then_some("watched"))} id={episode.code()}>
                 {actions}
 
                 <div class="desktop-row mobile-column">
@@ -2068,7 +2066,7 @@ impl ShowDetail {
                             html! {
                                 <div class="row-fill">
                                     <div class="row">
-                                        <span class="text-muted">{format!("{}E{:02}", w.season.short(), w.episode)}</span>
+                                        <span class="text-muted">{w.code()}</span>
                                         <span>{w.timestamp.display(self.tz.clone())}</span>
                                     </div>
 

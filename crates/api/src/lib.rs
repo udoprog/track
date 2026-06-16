@@ -8,6 +8,13 @@ use jiff::tz::TimeZone as JiffTimeZone;
 use musli_core::{Context, Decode, Encode};
 use musli_web::api::{self, ChannelId};
 
+#[cfg(feature = "yew")]
+use implicit_clone::unsync::IString;
+#[cfg(feature = "yew")]
+use yew::html::IntoPropValue;
+#[cfg(feature = "yew")]
+use yew::virtual_dom::VNode;
+
 macro_rules! define_id {
     ($name:ident) => {
         #[derive(
@@ -1940,6 +1947,43 @@ pub struct Episode {
     pub screenshot: Option<Image>,
 }
 
+impl Episode {
+    #[inline]
+    pub fn code(&self) -> Code {
+        Code {
+            season: self.season,
+            episode: self.episode,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Code {
+    season: SeasonNumber,
+    episode: u32,
+}
+
+impl fmt::Display for Code {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}E{:02}", self.season.short(), self.episode)
+    }
+}
+
+impl IntoPropValue<Option<IString>> for Code {
+    #[inline]
+    fn into_prop_value(self) -> Option<IString> {
+        Some(self.to_string().into())
+    }
+}
+
+impl IntoPropValue<VNode> for Code {
+    #[inline]
+    fn into_prop_value(self) -> VNode {
+        self.to_string().into()
+    }
+}
+
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct WatchedEpisode {
@@ -2474,6 +2518,16 @@ pub struct OrphanedWatched {
     pub show_id: ShowId,
     pub season: SeasonNumber,
     pub episode: u32,
+}
+
+impl OrphanedWatched {
+    #[inline]
+    pub fn code(&self) -> Code {
+        Code {
+            season: self.season,
+            episode: self.episode,
+        }
+    }
 }
 
 #[derive(Debug, Encode, Decode)]
