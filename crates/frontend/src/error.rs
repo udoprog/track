@@ -92,7 +92,7 @@ pub(crate) enum Message {
     SyncingShow,
     #[display("Setting sync source")]
     SettingSyncSource,
-    #[display("Editing remote identifiers")]
+    #[display("Editing remotes")]
     EditingRemotes,
     #[display("Setting language")]
     SettingLanguage,

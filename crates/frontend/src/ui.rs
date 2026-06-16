@@ -203,19 +203,14 @@ pub(super) struct MediaSettingsModalProps {
     pub(super) has_images: bool,
     pub(super) on_language_change: Callback<Option<String>>,
     pub(super) on_edit_graphics: Callback<()>,
-    pub(super) on_edit_identifiers: Callback<()>,
+    pub(super) on_edit_remotes: Callback<()>,
     pub(super) on_close: Callback<()>,
-    /// Remote identifiers available for syncing.
-    pub(super) remotes: Vec<api::Remote>,
-    /// Whether to scope the sync-source select to show or movie remotes.
-    pub(super) kind: RemoteSourceKind,
-    /// Currently selected sync source.
-    pub(super) current_source: Option<api::RemoteSource>,
+    /// Whether any remote identifier is available for syncing.
+    pub(super) has_remotes: bool,
     /// Formatted "last synced at" timestamp, or `None` if never synced.
     pub(super) last_synced: Option<AttrValue>,
     /// Whether a sync is currently in progress (spins the sync icon).
     pub(super) syncing: bool,
-    pub(super) on_sync_source_change: Callback<api::RemoteSource>,
     pub(super) on_sync: Callback<()>,
     /// Current specials override. Only meaningful when
     /// `on_include_specials_change` is set.
@@ -234,12 +229,22 @@ pub(super) struct MediaSettingsModalProps {
     /// When set, the "Release dates" override field is rendered.
     #[prop_or_default]
     pub(super) on_release_filters_change: Option<Callback<Option<Vec<api::ReleaseFilter>>>>,
+    /// Current per-show air-date filter override (`None` = use the global default). Only meaningful
+    /// when `on_air_date_filters_change` is set.
+    #[prop_or_default]
+    pub(super) air_date_filters: Option<Vec<api::AirDateFilter>>,
+    /// Global default air-date filters, used to seed the editor when switching to a custom override.
+    #[prop_or_default]
+    pub(super) default_air_date_filters: Vec<api::AirDateFilter>,
+    /// When set, the "Air dates" override field is rendered.
+    #[prop_or_default]
+    pub(super) on_air_date_filters_change: Option<Callback<Option<Vec<api::AirDateFilter>>>>,
 }
 
 #[function_component]
 pub(super) fn MediaSettingsModal(props: &MediaSettingsModalProps) -> Html {
     let on_edit_graphics = props.on_edit_graphics.reform(|_: MouseEvent| ());
-    let on_edit_identifiers = props.on_edit_identifiers.reform(|_: MouseEvent| ());
+    let on_edit_remotes = props.on_edit_remotes.reform(|_: MouseEvent| ());
     let on_sync = props.on_sync.reform(|_: MouseEvent| ());
 
     let specials = props.on_include_specials_change.as_ref().map(|cb| {
@@ -305,6 +310,40 @@ pub(super) fn MediaSettingsModal(props: &MediaSettingsModalProps) -> Html {
         }
     });
 
+    let air_dates = props.on_air_date_filters_change.as_ref().map(|cb| {
+        let is_custom = props.air_date_filters.is_some();
+
+        let on_mode = {
+            let cb = cb.clone();
+            let default = props.default_air_date_filters.clone();
+            Callback::from(move |e: Event| {
+                let select: web_sys::HtmlSelectElement = e.target_unchecked_into();
+                match select.value().as_str() {
+                    "custom" => cb.emit(Some(default.clone())),
+                    _ => cb.emit(None),
+                }
+            })
+        };
+
+        let editor = props.air_date_filters.as_ref().map(|filters| {
+            let on_change = cb.reform(|f: Vec<api::AirDateFilter>| Some(f));
+            html! {
+                <AirDateFiltersEditor filters={filters.clone()} on_change={on_change} />
+            }
+        });
+
+        html! {
+            <div class="field">
+                <label>{"Air dates"}</label>
+                <select class="input-select" onchange={on_mode}>
+                    <option value="default" selected={!is_custom}>{"Default"}</option>
+                    <option value="custom" selected={is_custom}>{"Customize"}</option>
+                </select>
+                {editor}
+            </div>
+        }
+    });
+
     html! {
         <Modal title={props.title.clone()} on_close={props.on_close.reform(|_| ())}>
             <div class="form">
@@ -321,23 +360,18 @@ pub(super) fn MediaSettingsModal(props: &MediaSettingsModalProps) -> Html {
 
                 {release}
 
+                {air_dates}
+
                 <div class="field">
                     <label>{"Sync"}</label>
                     <div class="input-group">
-                        <RemoteSourceSelect
-                            kind={props.kind}
-                            remotes={props.remotes.clone()}
-                            current_source={props.current_source}
-                            on_change={props.on_sync_source_change.clone()}
-                        />
-
                         if let Some(ref ts) = props.last_synced {
                             <div class="input-text fill" title="Last synced at">{ts}</div>
                         } else {
                             <div class="input-text fill text-muted">{"Never synced"}</div>
                         }
 
-                        if !props.remotes.is_empty() {
+                        if props.has_remotes {
                             <button class="btn" onclick={on_sync} title="Sync now">
                                 <span class={classes!("icon", "arrow-path", props.syncing.then_some("spin"))} />
                             </button>
@@ -346,12 +380,12 @@ pub(super) fn MediaSettingsModal(props: &MediaSettingsModalProps) -> Html {
                 </div>
 
                 <div class="field">
-                    <label>{"Graphics"}</label>
                     if props.has_images {
                         <button class="btn" onclick={on_edit_graphics}>
                             <span class="icon photo" />
                             <span>{"Edit graphics"}</span>
                         </button>
+
                         <span class="hint">{"Choose the poster, backdrop, banner, and other artwork."}</span>
                     } else {
                         <span class="hint">{"No graphics available. Sync to fetch artwork."}</span>
@@ -359,12 +393,12 @@ pub(super) fn MediaSettingsModal(props: &MediaSettingsModalProps) -> Html {
                 </div>
 
                 <div class="field">
-                    <label>{"Identifiers"}</label>
-                    <button class="btn" onclick={on_edit_identifiers}>
+                    <button class="btn" onclick={on_edit_remotes}>
                         <span class="icon identification" />
-                        <span>{"Edit identifiers"}</span>
+                        <span>{"Edit remotes"}</span>
                     </button>
-                    <span class="hint">{"Repair the TMDB, TVDB, and other remote ids used to sync."}</span>
+
+                    <span class="hint">{"Edit the TMDB, TVDB, and other remote identifiers used to sync."}</span>
                 </div>
             </div>
         </Modal>
@@ -510,53 +544,6 @@ pub(super) enum RemoteSourceKind {
     Movie,
 }
 
-#[derive(Properties, PartialEq)]
-pub(super) struct RemoteSourceSelectProps {
-    pub(super) remotes: Vec<api::Remote>,
-    pub(super) current_source: Option<api::RemoteSource>,
-    pub(super) kind: RemoteSourceKind,
-    pub(super) on_change: Callback<api::RemoteSource>,
-}
-
-#[function_component]
-pub(super) fn RemoteSourceSelect(props: &RemoteSourceSelectProps) -> Html {
-    if props.remotes.is_empty() {
-        return Html::default();
-    }
-
-    let selected = props.current_source.filter(|source| {
-        props
-            .remotes
-            .iter()
-            .any(|remote| *remote.source() == *source)
-    });
-
-    let on_change = {
-        let cb = props.on_change.clone();
-
-        Callback::from(move |e: Event| {
-            let input: web_sys::HtmlSelectElement = e.target_unchecked_into();
-            let source = api::RemoteSource::from_raw(&input.value());
-
-            if !source.is_unknown() {
-                cb.emit(source);
-            }
-        })
-    };
-
-    html! {
-        <select class="input-select" onchange={on_change} title="Select remote source">
-            {for props.remotes.iter().map(|remote| {
-                let label = remote.source().as_str().to_uppercase();
-
-                html! {
-                    <option value={remote.source().as_str().to_owned()} selected={Some(remote.source()) == selected.as_ref()}>{label}</option>
-                }
-            })}
-        </select>
-    }
-}
-
 /// Sources offered when adding a remote identifier, as `(value, label)`.
 const REMOTE_SOURCES: &[(api::RemoteSource, &str)] = &[
     (api::RemoteSource::Tmdb, "TMDB"),
@@ -576,7 +563,7 @@ fn parse_remote(source: &api::RemoteSource, value: &str) -> Result<api::Remote, 
     let value = match *source {
         api::RemoteSource::Tvdb | api::RemoteSource::Tmdb => {
             let Ok(value) = value.parse::<u32>() else {
-                return Err(format!("{} identifier must be a number", source.as_str()));
+                return Err(format!("{} identifier must be a number", source.as_label()));
             };
 
             api::RemoteValue::Int(value)
@@ -612,6 +599,10 @@ pub(super) struct RemoteEditorProps {
     pub(super) on_add: Callback<(Option<String>, api::Remote)>,
     pub(super) on_edit: Callback<(api::RemoteId, Option<String>, api::Remote)>,
     pub(super) on_remove: Callback<api::RemoteId>,
+    /// Toggle whether a remote contributes to merged data (air dates) and sync.
+    pub(super) on_set_enabled: Callback<(api::RemoteId, bool)>,
+    /// New priority order (highest priority first).
+    pub(super) on_reorder: Callback<Vec<api::RemoteId>>,
     pub(super) on_close: Callback<()>,
 }
 
@@ -627,6 +618,9 @@ pub(super) enum RemoteEditorMsg {
     AskRemove(api::RemoteEntry),
     CancelRemove,
     ConfirmRemove(api::RemoteId),
+    SetEnabled(api::RemoteId, bool),
+    /// Move the remote at the given index by `delta` positions (priority order).
+    Move(usize, isize),
     Close,
 }
 
@@ -680,7 +674,7 @@ impl Component for RemoteEditor {
         // The displayed option is a DOM property, not an attribute, so it must
         // be assigned imperatively to track `source` (e.g. after Edit).
         if let Some(select) = self.source_ref.cast::<web_sys::HtmlSelectElement>() {
-            select.set_value(self.source.as_str());
+            select.set_value(self.source.as_id());
         }
     }
 
@@ -765,6 +759,22 @@ impl Component for RemoteEditor {
                 ctx.props().on_remove.emit(remote_id);
                 true
             }
+            RemoteEditorMsg::SetEnabled(remote_id, enabled) => {
+                ctx.props().on_set_enabled.emit((remote_id, enabled));
+                false
+            }
+            RemoteEditorMsg::Move(index, delta) => {
+                let mut ids: Vec<api::RemoteId> =
+                    ctx.props().remotes.iter().map(|r| r.id).collect();
+                let target = index as isize + delta;
+
+                if target >= 0 && (target as usize) < ids.len() {
+                    ids.swap(index, target as usize);
+                    ctx.props().on_reorder.emit(ids);
+                }
+
+                false
+            }
             RemoteEditorMsg::Close => {
                 ctx.props().on_close.emit(());
                 false
@@ -781,9 +791,10 @@ impl Component for RemoteEditor {
             let value = select.value();
             let source = REMOTE_SOURCES
                 .iter()
-                .find(|(source, _)| source.as_str() == value)
+                .find(|(source, _)| source.as_id() == value)
                 .map(|(source, _)| source)
                 .unwrap_or(&REMOTE_SOURCES[0].0);
+
             RemoteEditorMsg::SetSource(*source)
         });
 
@@ -802,17 +813,18 @@ impl Component for RemoteEditor {
         let title = html! {
             <>
                 <span class="icon identification" />
-                <span>{format!("Identifiers {MDASH} {}", props.title)}</span>
+                <span>{format!("Remotes {MDASH} {}", props.title)}</span>
             </>
         };
 
         html! {
             <Modal {title} on_close={link.callback(|_| RemoteEditorMsg::Close)}>
                 if props.remotes.is_empty() {
-                    <div class="text-muted">{"No remote identifiers"}</div>
+                    <div class="text-muted">{"No remotes"}</div>
                 } else {
-                    { for props.remotes.iter().map(|r| {
+                    { for props.remotes.iter().enumerate().map(|(index, r)| {
                         let key = r.remote.to_string();
+                        let count = props.remotes.len();
 
                         if self.confirming_remove.as_ref() == Some(r) {
                             let remote_id = r.id;
@@ -831,6 +843,8 @@ impl Component for RemoteEditor {
                         let editing_this = self.editing == Some(r.id);
                         let edit_entry = r.clone();
                         let remove_entry = r.clone();
+                        let enable_id = r.id;
+                        let enabled = r.enabled;
 
                         let url = match props.kind {
                             RemoteSourceKind::Show => r.remote.show_url(r.slug.as_deref()),
@@ -840,7 +854,7 @@ impl Component for RemoteEditor {
                         let identifier = html! {
                             <>
                                 <span class="item-inline-lg">
-                                    <span class={classes!("logo", r.remote.source().as_str().to_owned())} />
+                                    <span class={classes!("logo", r.remote.source().as_id())} />
                                 </span>
 
                                 <span>{r.remote.value().to_string()}</span>
@@ -865,7 +879,23 @@ impl Component for RemoteEditor {
                                 }
 
                                 <div class="row end">
+                                    <span
+                                        class={classes!("input-checkbox", enabled.then_some("checked"))}
+                                        onclick={link.callback(move |_| RemoteEditorMsg::SetEnabled(enable_id, !enabled))}
+                                        title="Use this source for air dates and sync"
+                                    >
+                                        <span class="mark" />
+                                    </span>
+
                                     <div class="input-group">
+                                        <button class="btn" disabled={index == 0} onclick={link.callback(move |_| RemoteEditorMsg::Move(index, -1))} title="Higher priority">
+                                            <span class="icon chevron-up" />
+                                        </button>
+
+                                        <button class="btn" disabled={index + 1 == count} onclick={link.callback(move |_| RemoteEditorMsg::Move(index, 1))} title="Lower priority">
+                                            <span class="icon chevron-down" />
+                                        </button>
+
                                         <button class="btn" onclick={link.callback(move |_| RemoteEditorMsg::Edit(edit_entry.clone()))} title="Edit identifier">
                                             <span class="icon pencil-square" />
                                         </button>
@@ -885,7 +915,7 @@ impl Component for RemoteEditor {
                         <div class="input-group fill">
                             <select ref={self.source_ref.clone()} class="input-select" onchange={on_source} title="Source">
                                 { for REMOTE_SOURCES.iter().map(|(value, label)| html! {
-                                    <option value={value.as_str()} selected={self.source == *value}>{label}</option>
+                                    <option value={value.as_id()} selected={self.source == *value}>{label}</option>
                                 }) }
                             </select>
 
@@ -1352,6 +1382,105 @@ pub(super) fn ReleaseFiltersEditor(props: &ReleaseFiltersEditorProps) -> Html {
 
                                 if enabled {
                                     <CountryPicker current={countries} on_change={on_countries} />
+                                }
+                            </div>
+                        </div>
+                    }
+                })
+            }
+        </div>
+    }
+}
+
+/// Enriching sources that can contribute episode air dates.
+const AIR_DATE_SOURCES: &[(api::RemoteSource, &str)] = &[
+    (api::RemoteSource::Tvmaze, "TVmaze"),
+    (api::RemoteSource::Tmdb, "TMDB"),
+    (api::RemoteSource::Tvdb, "TVDB"),
+];
+
+#[derive(Properties, PartialEq)]
+pub(super) struct AirDateFiltersEditorProps {
+    pub(super) filters: Vec<api::AirDateFilter>,
+    pub(super) on_change: Callback<Vec<api::AirDateFilter>>,
+}
+
+/// Editor for a set of [`api::AirDateFilter`]s: a checkbox per source and, when
+/// enabled, a [`CountryPicker`] and a network text input restricting which of
+/// that source's air dates qualify. Priority between sources is the remote order.
+#[function_component]
+pub(super) fn AirDateFiltersEditor(props: &AirDateFiltersEditorProps) -> Html {
+    html! {
+        <div class="form">
+            {
+                for AIR_DATE_SOURCES.iter().copied().map(|(source, label)| {
+                    let existing = props.filters.iter().find(|f| f.source == source);
+                    let enabled = existing.is_some();
+                    let countries = existing.map(|f| f.countries.clone()).unwrap_or_default();
+                    let networks = existing.map(|f| f.networks.clone()).unwrap_or_default();
+
+                    let on_toggle = {
+                        let filters = props.filters.clone();
+                        let cb = props.on_change.clone();
+                        Callback::from(move |_: MouseEvent| {
+                            let mut next = filters.clone();
+                            if let Some(pos) = next.iter().position(|f| f.source == source) {
+                                next.remove(pos);
+                            } else {
+                                next.push(api::AirDateFilter { source, countries: Vec::new(), networks: Vec::new() });
+                            }
+                            cb.emit(next);
+                        })
+                    };
+
+                    let on_countries = {
+                        let filters = props.filters.clone();
+                        let cb = props.on_change.clone();
+                        Callback::from(move |countries: Vec<String>| {
+                            let mut next = filters.clone();
+                            if let Some(f) = next.iter_mut().find(|f| f.source == source) {
+                                f.countries = countries;
+                            }
+                            cb.emit(next);
+                        })
+                    };
+
+                    let on_networks = {
+                        let filters = props.filters.clone();
+                        let cb = props.on_change.clone();
+                        Callback::from(move |e: Event| {
+                            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+                            let networks = input
+                                .value()
+                                .split(',')
+                                .map(|s| s.trim().to_owned())
+                                .filter(|s| !s.is_empty())
+                                .collect::<Vec<_>>();
+                            let mut next = filters.clone();
+                            if let Some(f) = next.iter_mut().find(|f| f.source == source) {
+                                f.networks = networks;
+                            }
+                            cb.emit(next);
+                        })
+                    };
+
+                    html! {
+                        <div class="field">
+                            <label class="clickable" onclick={on_toggle.clone()}>{label}</label>
+                            <div class="row input-group">
+                                <span class={classes!("input-checkbox", enabled.then_some("checked"))} onclick={on_toggle}>
+                                    <span class="mark" />
+                                </span>
+
+                                if enabled {
+                                    <CountryPicker current={countries} on_change={on_countries} />
+                                    <input
+                                        type="text"
+                                        class="input-text fill"
+                                        placeholder="Networks (comma separated)"
+                                        value={networks.join(", ")}
+                                        onchange={on_networks}
+                                    />
                                 }
                             </div>
                         </div>

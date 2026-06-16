@@ -47,7 +47,8 @@ pub(super) struct MovieDetail {
     _pending_req: ws::Request,
     _select_image_req: ws::Request,
     _clear_image_req: ws::Request,
-    _set_sync_source_req: ws::Request,
+    _set_remote_enabled_req: ws::Request,
+    _reorder_remotes_req: ws::Request,
     _set_language_req: ws::Request,
     _set_release_filters_req: ws::Request,
     _config_req: ws::Request,
@@ -87,11 +88,10 @@ pub(super) enum Msg {
     RemoveDone(Result<ws::Packet<api::RemoveMovie>, ws::Error>),
     SyncMovie,
     SyncDone(Result<ws::Packet<api::SyncMovie>, ws::Error>),
-    SetSyncSource(api::RemoteSource),
-    SetSyncSourceDone(
-        api::RemoteSource,
-        Result<ws::Packet<api::SetMovieSyncSource>, ws::Error>,
-    ),
+    SetRemoteEnabled(api::RemoteId, bool),
+    SetRemoteEnabledDone(Result<ws::Packet<api::SetMovieRemoteEnabled>, ws::Error>),
+    ReorderRemotes(Vec<api::RemoteId>),
+    ReorderRemotesDone(Result<ws::Packet<api::ReorderMovieRemotes>, ws::Error>),
     SetLanguage(Option<String>),
     SetLanguageDone(
         Option<String>,
@@ -181,7 +181,8 @@ impl Component for MovieDetail {
             _pending_req: ws::Request::default(),
             _select_image_req: ws::Request::default(),
             _clear_image_req: ws::Request::default(),
-            _set_sync_source_req: ws::Request::default(),
+            _set_remote_enabled_req: ws::Request::default(),
+            _reorder_remotes_req: ws::Request::default(),
             _set_language_req: ws::Request::default(),
             _set_release_filters_req: ws::Request::default(),
             _config_req: ws::Request::default(),
@@ -419,27 +420,49 @@ impl MovieDetail {
                 result.context(Message::SyncingShow)?;
                 Ok(false)
             }
-            Msg::SetSyncSource(source) => {
-                let id = ctx.props().movie_id;
-                self._set_sync_source_req = self
-                    .channel
-                    .request()
-                    .body(api::SetMovieSyncSourceRequest { id, source })
-                    .on_packet(
-                        ctx.link()
-                            .callback(move |r| Msg::SetSyncSourceDone(source, r)),
-                    )
-                    .send();
-                Ok(false)
-            }
-            Msg::SetSyncSourceDone(source, result) => {
-                result.context(Message::SettingSyncSource)?;
-
-                if let Some(ref mut movie) = self.movie {
-                    movie.sync_source = Some(source);
+            Msg::SetRemoteEnabled(remote_id, enabled) => {
+                if let Some(ref mut movie) = self.movie
+                    && let Some(entry) = movie.remotes.iter_mut().find(|e| e.id == remote_id)
+                {
+                    entry.enabled = enabled;
                 }
 
+                let id = ctx.props().movie_id;
+                self._set_remote_enabled_req = self
+                    .channel
+                    .request()
+                    .body(api::SetMovieRemoteEnabledRequest {
+                        id,
+                        remote_id,
+                        enabled,
+                    })
+                    .on_packet(ctx.link().callback(Msg::SetRemoteEnabledDone))
+                    .send();
                 Ok(true)
+            }
+            Msg::SetRemoteEnabledDone(result) => {
+                result.context(Message::SettingSyncSource)?;
+                Ok(false)
+            }
+            Msg::ReorderRemotes(remote_ids) => {
+                if let Some(ref mut movie) = self.movie {
+                    movie
+                        .remotes
+                        .sort_by_key(|e| remote_ids.iter().position(|id| *id == e.id));
+                }
+
+                let id = ctx.props().movie_id;
+                self._reorder_remotes_req = self
+                    .channel
+                    .request()
+                    .body(api::ReorderMovieRemotesRequest { id, remote_ids })
+                    .on_packet(ctx.link().callback(Msg::ReorderRemotesDone))
+                    .send();
+                Ok(true)
+            }
+            Msg::ReorderRemotesDone(result) => {
+                result.context(Message::SettingSyncSource)?;
+                Ok(false)
             }
             Msg::SetLanguage(language) => {
                 let id = ctx.props().movie_id;
@@ -959,11 +982,11 @@ impl MovieDetail {
                         <div class="row justify-around">
                             {for movie.remotes.iter().filter_map(|r| {
                                 let url = r.remote.movie_url()?;
-                                let label = r.remote.source().as_str();
+                                let id = r.remote.source().as_id();
 
                                 Some(html! {
-                                    <a class="item-inline-source" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
-                                        <span class={classes!("logo", label.to_owned())} />
+                                    <a class="item-inline-source" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {id}")}>
+                                        <span class={classes!("logo", id)} />
                                     </a>
                                 })
                             })}
@@ -1079,19 +1102,16 @@ impl MovieDetail {
                     title="Movie settings"
                     language={movie.language.clone()}
                     has_images={!movie.images.is_empty()}
-                    kind={RemoteSourceKind::Movie}
-                    remotes={movie.remotes.iter().map(|e| e.remote.clone()).collect::<Vec<_>>()}
-                    current_source={movie.effective_sync_source()}
+                    has_remotes={!movie.remotes.is_empty()}
                     last_synced={movie.last_synced_at.map(|ts| AttrValue::from(ts.display(self.tz.clone())))}
                     syncing={self.syncing}
-                    on_sync_source_change={link.callback(Msg::SetSyncSource)}
                     on_sync={link.callback(|_| Msg::SyncMovie)}
                     on_language_change={link.callback(Msg::SetLanguage)}
                     release_filters={movie.release_filters.clone()}
                     default_release_filters={self.default_release_filters.clone()}
                     on_release_filters_change={link.callback(Msg::SetReleaseFilters)}
                     on_edit_graphics={link.callback(|_| Msg::OpenImageModal)}
-                    on_edit_identifiers={link.callback(|_| Msg::OpenRemoteEditor)}
+                    on_edit_remotes={link.callback(|_| Msg::OpenRemoteEditor)}
                     on_close={link.callback(|_| Msg::CloseSettingsModal)}
                 />
             }
@@ -1104,6 +1124,8 @@ impl MovieDetail {
                     on_add={link.callback(|(slug, remote)| Msg::AddRemote(slug, remote))}
                     on_edit={link.callback(|(id, slug, remote)| Msg::EditRemote(id, slug, remote))}
                     on_remove={link.callback(Msg::RemoveRemote)}
+                    on_set_enabled={link.callback(|(id, enabled)| Msg::SetRemoteEnabled(id, enabled))}
+                    on_reorder={link.callback(Msg::ReorderRemotes)}
                     on_close={link.callback(|_| Msg::CloseRemoteEditor)}
                 />
             }

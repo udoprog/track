@@ -23,7 +23,7 @@ pub(crate) async fn sync_show(
     let config = db.load_config().await?;
     let language = show.language.as_deref().or(config.language.as_deref());
 
-    let source = show.effective_sync_source();
+    let source = show.primary_sync_source();
     info!(show_id = %show_id, title = show.title, ?source, ?language, "Syncing show");
 
     match source {
@@ -57,9 +57,21 @@ pub(crate) async fn sync_show(
     // Best-effort tvmaze enrichment for exact airtimes. Re-fetch so remotes are
     // current.
     if let Some(show) = db.show_by_id(show_id).await?
-        && let Err(e) = enrich_with_tvmaze(show_id, &show, remote, db, broadcast).await
+        && let Err(e) = enrich_with_tvmaze(show_id, &show, remote, db).await
     {
         warn!("TVmaze enrichment skipped for show {show_id}: {e:#}");
+    }
+
+    // Merge all sources' air dates into the effective episodes.aired by priority,
+    // then re-broadcast each season so clients pick up the recomputed dates.
+    db.recompute_episode_aired_for_show(show_id, config.air_date_filters.clone())
+        .await?;
+
+    for season in db.seasons(show_id).await? {
+        broadcast.broadcast_event(api::AppEventKind::EpisodesChanged {
+            show_id,
+            season: season.season,
+        });
     }
 
     let now = api::Timestamp::now();
@@ -207,6 +219,11 @@ async fn sync_show_tmdb(
                 Some(&ep.remote),
             )
             .await?;
+
+            if let Some(aired) = ep.aired {
+                db.upsert_episode_release(episode_id, api::RemoteSource::Tmdb, "", "", aired)
+                    .await?;
+            }
 
             if let Some(path) = &ep.filename {
                 let image_id = ImageId::random();
@@ -383,6 +400,11 @@ async fn sync_show_tvdb(
         )
         .await?;
 
+        if let Some(aired) = ep.aired {
+            db.upsert_episode_release(episode_id, api::RemoteSource::Tvdb, "", "", aired)
+                .await?;
+        }
+
         if let Some((source, path)) = &ep.image {
             let image_id = ImageId::random();
 
@@ -434,7 +456,7 @@ pub(crate) async fn sync_movie(
     let config = db.load_config().await?;
     let language = movie.language.as_deref().or(config.language.as_deref());
 
-    let source = movie.effective_sync_source();
+    let source = movie.primary_sync_source();
     info!(movie_id = %movie_id, title = movie.title, ?source, ?language, "Syncing movie");
 
     match source {
@@ -548,7 +570,6 @@ async fn enrich_with_tvmaze(
     show: &api::Show,
     remote: &RemoteClients,
     db: &Database,
-    broadcast: &Broadcaster,
 ) -> Result<()> {
     let tvmaze_id = 'id: {
         if let Some(r) = show
@@ -588,30 +609,44 @@ async fn enrich_with_tvmaze(
         return Ok(());
     };
 
+    // Persist the resolved TVmaze id as a remote so its air-date contributions
+    // reference a stored source (idempotent via INSERT OR IGNORE).
+    db.add_show_remote(show_id, None, &api::Remote::tvmaze(tvmaze_id))
+        .await?;
+
+    let network = match remote.fetch_tvmaze_show_network(tvmaze_id).await {
+        Ok(network) => network,
+        Err(e) => {
+            warn!("TVmaze network lookup failed for show {show_id}: {e:#}");
+            Default::default()
+        }
+    };
+
     info!(tvmaze_id, "Fetching TVmaze episodes");
 
     let tvmaze_eps = remote.fetch_tvmaze_episodes(tvmaze_id).await?;
+    let episode_ids = db.episode_ids(show_id).await?;
 
-    let mut seasons_updated: HashSet<SeasonNumber> = HashSet::new();
-    let updates: Vec<(SeasonNumber, u32, api::Timestamp)> = tvmaze_eps
-        .into_iter()
-        .map(|ep| {
-            seasons_updated.insert(ep.season);
-            (ep.season, ep.number, ep.aired_at)
-        })
-        .collect();
+    let mut count = 0;
 
-    info!(
-        episodes = updates.len(),
-        seasons = seasons_updated.len(),
-        "Updating episodes with exact airtimes"
-    );
+    for ep in tvmaze_eps {
+        let Some(&episode_id) = episode_ids.get(&(ep.season, ep.number)) else {
+            continue;
+        };
 
-    db.update_episodes_aired(show_id, updates).await?;
+        db.upsert_episode_release(
+            episode_id,
+            api::RemoteSource::Tvmaze,
+            &network.country,
+            &network.network,
+            ep.aired_at,
+        )
+        .await?;
 
-    for season in seasons_updated {
-        broadcast.broadcast_event(api::AppEventKind::EpisodesChanged { show_id, season });
+        count += 1;
     }
+
+    info!(episodes = count, "Stored TVmaze air dates");
 
     Ok(())
 }

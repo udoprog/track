@@ -515,12 +515,16 @@ impl ::sqll::BindValue for Date {
 }
 
 /// The source of a remote identifier.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize,
+)]
 #[musli(crate = musli_core)]
+#[serde(rename_all = "lowercase")]
 pub enum RemoteSource {
     Tvdb,
     Tmdb,
     Imdb,
+    Tvmaze,
     Unknown,
 }
 
@@ -529,28 +533,41 @@ impl RemoteSource {
         matches!(self, Self::Unknown)
     }
 
-    pub fn as_str(&self) -> &str {
+    pub fn as_label(&self) -> &'static str {
         match self {
-            Self::Tvdb => "tvdb",
-            Self::Tmdb => "tmdb",
-            Self::Imdb => "imdb",
+            Self::Tvdb => "TheTVDB",
+            Self::Tmdb => "TMDB",
+            Self::Imdb => "IMDb",
+            Self::Tvmaze => "TVmaze",
             Self::Unknown => "unknown",
         }
     }
 
-    pub fn from_raw(s: &str) -> Self {
+    pub fn as_id(&self) -> &'static str {
+        match self {
+            Self::Tvdb => "tvdb",
+            Self::Tmdb => "tmdb",
+            Self::Imdb => "imdb",
+            Self::Tvmaze => "tvmaze",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    pub fn from_id(s: &str) -> Self {
         match s {
             "tvdb" => Self::Tvdb,
             "tmdb" => Self::Tmdb,
             "imdb" => Self::Imdb,
+            "tvmaze" => Self::Tvmaze,
             _ => Self::Unknown,
         }
     }
 }
 
 impl fmt::Display for RemoteSource {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
+        f.write_str(self.as_label())
     }
 }
 
@@ -565,6 +582,7 @@ impl ::sqll::FromColumn<'_> for RemoteSource {
             1 => Ok(RemoteSource::Tvdb),
             2 => Ok(RemoteSource::Tmdb),
             3 => Ok(RemoteSource::Imdb),
+            4 => Ok(RemoteSource::Tvmaze),
             _ => Ok(RemoteSource::Unknown),
         }
     }
@@ -578,6 +596,7 @@ impl ::sqll::BindValue for RemoteSource {
             RemoteSource::Tvdb => 1,
             RemoteSource::Tmdb => 2,
             RemoteSource::Imdb => 3,
+            RemoteSource::Tvmaze => 4,
         };
 
         n.bind_value(stmt, index)
@@ -694,10 +713,17 @@ impl Remote {
         }
     }
 
+    pub fn tvmaze(id: u32) -> Self {
+        Self {
+            source: RemoteSource::Tvmaze,
+            value: RemoteValue::Int(id),
+        }
+    }
+
     pub fn from_raw(s: &str) -> Self {
         match s.split_once(':') {
             Some((src, val)) => Self {
-                source: RemoteSource::from_raw(src),
+                source: RemoteSource::from_id(src),
                 value: RemoteValue::parse(val),
             },
             None => Self {
@@ -725,6 +751,9 @@ impl Remote {
                 Some(format!("https://www.themoviedb.org/tv/{}", self.value))
             }
             (RemoteSource::Imdb, _) => Some(format!("https://www.imdb.com/title/{}/", self.value)),
+            (RemoteSource::Tvmaze, _) => {
+                Some(format!("https://www.tvmaze.com/shows/{}", self.value))
+            }
             _ => None,
         }
     }
@@ -766,6 +795,42 @@ pub struct RemoteEntry {
     pub id: RemoteId,
     pub slug: Option<String>,
     pub remote: Remote,
+    /// Whether this remote contributes to merged data (air dates, and metadata sync).
+    pub enabled: bool,
+    /// Merge priority; lower numbers win. See [`enabled_sources_by_priority`].
+    pub priority: i32,
+}
+
+/// Sources of the enabled remotes ordered by priority (lowest number = highest
+/// priority), de-duplicated keeping the highest-priority occurrence of each source.
+pub fn enabled_sources_by_priority(remotes: &[RemoteEntry]) -> Vec<RemoteSource> {
+    let mut entries: Vec<&RemoteEntry> = remotes.iter().filter(|e| e.enabled).collect();
+    entries.sort_by_key(|e| e.priority);
+
+    let mut out = Vec::new();
+
+    for e in entries {
+        let source = *e.remote.source();
+
+        if !out.contains(&source) {
+            out.push(source);
+        }
+    }
+
+    out
+}
+
+/// The remote source that drives full metadata sync: the highest-priority enabled
+/// remote whose source supports full sync ([`RemoteSource::Tmdb`] or
+/// [`RemoteSource::Tvdb`]).
+pub fn primary_sync_source(remotes: &[RemoteEntry]) -> Option<RemoteSource> {
+    remotes
+        .iter()
+        .filter(|e| {
+            e.enabled && matches!(e.remote.source(), RemoteSource::Tmdb | RemoteSource::Tvdb)
+        })
+        .max_by_key(|e| e.priority)
+        .map(|r| *r.remote.source())
 }
 
 /// Image reference: "tvdb:/banners/abc.jpg", "tmdb:/xy.jpg".
@@ -1306,6 +1371,144 @@ pub fn decode_release_filters(s: &str) -> Option<Vec<ReleaseFilter>> {
     serde_json::from_str(s).ok()
 }
 
+/// A candidate value contributed by a specific remote source.
+pub struct Sourced<T> {
+    pub source: RemoteSource,
+    pub value: T,
+}
+
+/// Values contributed by several remotes, resolved against a priority order
+/// (a slice of [`RemoteSource`], lowest index = highest priority). This is the
+/// shared merge primitive: air dates use it now, image merging can reuse it.
+pub struct Prioritized<T> {
+    items: Vec<Sourced<T>>,
+}
+
+impl<T> Default for Prioritized<T> {
+    fn default() -> Self {
+        Self { items: Vec::new() }
+    }
+}
+
+impl<T> Prioritized<T>
+where
+    T: Copy,
+{
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn push(&mut self, source: RemoteSource, value: T) {
+        self.items.push(Sourced { source, value });
+    }
+
+    /// Rank of a source in the priority order; sources absent from the order
+    /// rank last (so they only contribute as a fallback).
+    fn rank(priority: &[RemoteSource], source: RemoteSource) -> usize {
+        priority
+            .iter()
+            .position(|s| *s == source)
+            .unwrap_or(usize::MAX)
+    }
+
+    /// Values contributed by the single highest-priority source present.
+    pub fn best(&self, priority: &[RemoteSource]) -> Vec<T> {
+        let Some(min_rank) = self
+            .items
+            .iter()
+            .map(|s| Self::rank(priority, s.source))
+            .min()
+        else {
+            return Vec::new();
+        };
+
+        self.items
+            .iter()
+            .filter(|s| Self::rank(priority, s.source) == min_rank)
+            .map(|s| s.value)
+            .collect()
+    }
+}
+
+/// A known air date for an episode, attributed to the remote `source` it came
+/// from and optionally the `country`/`network` it aired on.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct EpisodeRelease {
+    pub source: RemoteSource,
+    pub country: String,
+    pub network: String,
+    pub timestamp: Timestamp,
+}
+
+/// Restricts which of a source's air dates qualify, by country and/or network.
+/// Empty `countries`/`networks` mean "any". Priority between sources comes from
+/// the media's remote order, not from this filter.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize)]
+#[musli(crate = musli_core)]
+pub struct AirDateFilter {
+    pub source: RemoteSource,
+    #[serde(default)]
+    pub countries: Vec<String>,
+    #[serde(default)]
+    pub networks: Vec<String>,
+}
+
+impl AirDateFilter {
+    /// Whether `release` is allowed by this filter (source, country and network).
+    pub fn matches(&self, release: &EpisodeRelease) -> bool {
+        self.source == release.source
+            && (self.countries.is_empty()
+                || self
+                    .countries
+                    .iter()
+                    .any(|c| c.eq_ignore_ascii_case(&release.country)))
+            && (self.networks.is_empty()
+                || self
+                    .networks
+                    .iter()
+                    .any(|n| n.eq_ignore_ascii_case(&release.network)))
+    }
+}
+
+/// The effective air date for an episode: the earliest qualifying release from
+/// the highest-priority source. A source with no filter entry qualifies fully;
+/// a source with filter entries qualifies only for matching country/network.
+/// Returns `None` when nothing qualifies (callers keep the existing date).
+pub fn effective_aired(
+    releases: &[EpisodeRelease],
+    priority: &[RemoteSource],
+    filters: &[AirDateFilter],
+) -> Option<Timestamp> {
+    let qualifies = |r: &EpisodeRelease| {
+        let has_source_filter = filters.iter().any(|f| f.source == r.source);
+        !has_source_filter || filters.iter().any(|f| f.matches(r))
+    };
+
+    let mut merged = Prioritized::new();
+
+    for r in releases.iter().filter(|r| qualifies(r)) {
+        merged.push(r.source, r.timestamp);
+    }
+
+    merged.best(priority).into_iter().min()
+}
+
+/// Default air-date source priority: TVmaze (exact airtimes) over TMDB over TVDB.
+pub fn default_air_date_priority() -> Vec<RemoteSource> {
+    vec![RemoteSource::Tvmaze, RemoteSource::Tmdb, RemoteSource::Tvdb]
+}
+
+/// Serialize air-date filters for storage in a text column.
+pub fn encode_air_date_filters(filters: &[AirDateFilter]) -> String {
+    serde_json::to_string(filters).unwrap_or_else(|_| "[]".to_string())
+}
+
+/// Parse air-date filters previously written by [`encode_air_date_filters`].
+pub fn decode_air_date_filters(s: &str) -> Option<Vec<AirDateFilter>> {
+    serde_json::from_str(s).ok()
+}
+
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct MediaImage {
@@ -1323,7 +1526,6 @@ pub struct Show {
     pub first_air_date: Option<Timestamp>,
     pub overview: Option<String>,
     pub tracked: bool,
-    pub sync_source: Option<RemoteSource>,
     pub remotes: Vec<RemoteEntry>,
     pub images: Vec<MediaImage>,
     pub poster: Option<Image>,
@@ -1332,11 +1534,21 @@ pub struct Show {
     pub last_synced_at: Option<Timestamp>,
     pub language: Option<String>,
     pub include_specials: Option<bool>,
+    /// Per-show override of which air dates qualify (`None` = global default).
+    pub air_date_filters: Option<Vec<AirDateFilter>>,
 }
 
 impl Show {
     pub fn effective_include_specials(&self, default: bool) -> bool {
         self.include_specials.unwrap_or(default)
+    }
+
+    /// The air-date filters in effect for this show, falling back to `default`.
+    pub fn effective_air_date_filters<'a>(
+        &'a self,
+        default: &'a [AirDateFilter],
+    ) -> &'a [AirDateFilter] {
+        self.air_date_filters.as_deref().unwrap_or(default)
     }
 
     pub fn remote_by_source(&self, source: RemoteSource) -> Option<&Remote> {
@@ -1346,22 +1558,9 @@ impl Show {
             .find(|r| *r.source() == source)
     }
 
-    pub fn effective_sync_source(&self) -> Option<RemoteSource> {
-        if let Some(source) = self.sync_source
-            && self.remote_by_source(source).is_some()
-        {
-            return Some(source);
-        }
-
-        if self.remote_by_source(RemoteSource::Tmdb).is_some() {
-            return Some(RemoteSource::Tmdb);
-        }
-
-        if self.remote_by_source(RemoteSource::Tvdb).is_some() {
-            return Some(RemoteSource::Tvdb);
-        }
-
-        None
+    /// The remote source that drives full metadata sync for this media.
+    pub fn primary_sync_source(&self) -> Option<RemoteSource> {
+        primary_sync_source(&self.remotes)
     }
 
     pub fn is_selected(&self, kind: ImageKind, key: &ImageKey) -> bool {
@@ -1448,7 +1647,6 @@ pub struct Movie {
     pub release_date: Option<Timestamp>,
     pub overview: Option<String>,
     pub remotes: Vec<RemoteEntry>,
-    pub sync_source: Option<RemoteSource>,
     pub tracked: bool,
     pub pending: bool,
     pub images: Vec<MediaImage>,
@@ -1485,22 +1683,9 @@ impl Movie {
             .find(|r| *r.source() == source)
     }
 
-    pub fn effective_sync_source(&self) -> Option<RemoteSource> {
-        if let Some(source) = self.sync_source
-            && self.remote_by_source(source).is_some()
-        {
-            return Some(source);
-        }
-
-        if self.remote_by_source(RemoteSource::Tmdb).is_some() {
-            return Some(RemoteSource::Tmdb);
-        }
-
-        if self.remote_by_source(RemoteSource::Tvdb).is_some() {
-            return Some(RemoteSource::Tvdb);
-        }
-
-        None
+    /// The remote source that drives full metadata sync for this media.
+    pub fn primary_sync_source(&self) -> Option<RemoteSource> {
+        primary_sync_source(&self.remotes)
     }
 
     pub fn is_selected(&self, kind: ImageKind, key: &ImageKey) -> bool {
@@ -1647,6 +1832,8 @@ pub struct Config {
     pub include_specials: bool,
     /// Default release types/countries that determine a movie's release date.
     pub release_filters: Vec<ReleaseFilter>,
+    /// Default air-date qualification filters for episodes (empty = all qualify).
+    pub air_date_filters: Vec<AirDateFilter>,
 }
 
 impl Default for Config {
@@ -1664,6 +1851,7 @@ impl Default for Config {
             language: None,
             include_specials: false,
             release_filters: ReleaseFilter::default_filters(),
+            air_date_filters: Vec::new(),
         }
     }
 }
@@ -1735,7 +1923,7 @@ pub struct MediaItem {
     pub backdrop: Option<Image>,
     pub tracked: bool,
     pub last_watched_at: Option<Timestamp>,
-    /// Remote identifiers, used to render external links in the list.
+    /// Remote entries, used to render external links in the list.
     pub remotes: Vec<RemoteEntry>,
 }
 
@@ -2044,16 +2232,34 @@ pub struct SyncMovieRequest {
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
-pub struct SetShowSyncSourceRequest {
+pub struct SetShowRemoteEnabledRequest {
     pub id: ShowId,
-    pub source: RemoteSource,
+    pub remote_id: RemoteId,
+    pub enabled: bool,
 }
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
-pub struct SetMovieSyncSourceRequest {
+pub struct ReorderShowRemotesRequest {
+    pub id: ShowId,
+    /// Remote ids in the desired priority order (first = highest priority).
+    pub remote_ids: Vec<RemoteId>,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct SetMovieRemoteEnabledRequest {
     pub id: MovieId,
-    pub source: RemoteSource,
+    pub remote_id: RemoteId,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct ReorderMovieRemotesRequest {
+    pub id: MovieId,
+    /// Remote ids in the desired priority order (first = highest priority).
+    pub remote_ids: Vec<RemoteId>,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -2068,6 +2274,13 @@ pub struct SetShowLanguageRequest {
 pub struct SetShowIncludeSpecialsRequest {
     pub id: ShowId,
     pub include_specials: Option<bool>,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct SetShowAirDateFiltersRequest {
+    pub id: ShowId,
+    pub air_date_filters: Option<Vec<AirDateFilter>>,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -2432,15 +2645,27 @@ api::define! {
         type Response<'de> = Empty;
     }
 
-    pub type SetShowSyncSource;
-    impl Endpoint for SetShowSyncSource {
-        impl Request for SetShowSyncSourceRequest;
+    pub type SetShowRemoteEnabled;
+    impl Endpoint for SetShowRemoteEnabled {
+        impl Request for SetShowRemoteEnabledRequest;
         type Response<'de> = Empty;
     }
 
-    pub type SetMovieSyncSource;
-    impl Endpoint for SetMovieSyncSource {
-        impl Request for SetMovieSyncSourceRequest;
+    pub type ReorderShowRemotes;
+    impl Endpoint for ReorderShowRemotes {
+        impl Request for ReorderShowRemotesRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type SetMovieRemoteEnabled;
+    impl Endpoint for SetMovieRemoteEnabled {
+        impl Request for SetMovieRemoteEnabledRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type ReorderMovieRemotes;
+    impl Endpoint for ReorderMovieRemotes {
+        impl Request for ReorderMovieRemotesRequest;
         type Response<'de> = Empty;
     }
 
@@ -2453,6 +2678,12 @@ api::define! {
     pub type SetShowIncludeSpecials;
     impl Endpoint for SetShowIncludeSpecials {
         impl Request for SetShowIncludeSpecialsRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type SetShowAirDateFilters;
+    impl Endpoint for SetShowAirDateFilters {
+        impl Request for SetShowAirDateFiltersRequest;
         type Response<'de> = Empty;
     }
 
@@ -2573,5 +2804,75 @@ api::define! {
     pub type AppBroadcast;
     impl Broadcast for AppBroadcast {
         impl Event for AppEvent;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rel(source: RemoteSource, country: &str, network: &str, ts: i64) -> EpisodeRelease {
+        EpisodeRelease {
+            source,
+            country: country.to_owned(),
+            network: network.to_owned(),
+            timestamp: Timestamp::from_jiff(jiff::Timestamp::from_second(ts).unwrap()),
+        }
+    }
+
+    #[test]
+    fn air_date_priority_prefers_higher_ranked_source() {
+        let releases = [
+            rel(RemoteSource::Tmdb, "", "", 200),
+            rel(RemoteSource::Tvmaze, "", "", 300),
+        ];
+        let priority = default_air_date_priority();
+
+        // TVmaze outranks TMDB even though its date is later.
+        let aired = effective_aired(&releases, &priority, &[]).unwrap();
+        assert_eq!(aired.inner().as_second(), 300);
+
+        // Flip the priority and TMDB wins.
+        let flipped = [RemoteSource::Tmdb, RemoteSource::Tvmaze];
+        let aired = effective_aired(&releases, &flipped, &[]).unwrap();
+        assert_eq!(aired.inner().as_second(), 200);
+    }
+
+    #[test]
+    fn air_date_filter_restricts_country() {
+        let releases = [
+            rel(RemoteSource::Tvmaze, "US", "", 300),
+            rel(RemoteSource::Tvmaze, "GB", "", 100),
+        ];
+        let priority = default_air_date_priority();
+        let filters = [AirDateFilter {
+            source: RemoteSource::Tvmaze,
+            countries: vec!["gb".to_owned()],
+            networks: Vec::new(),
+        }];
+
+        // Only the GB date qualifies for TVmaze.
+        let aired = effective_aired(&releases, &priority, &filters).unwrap();
+        assert_eq!(aired.inner().as_second(), 100);
+    }
+
+    #[test]
+    fn air_date_falls_back_to_unranked_source() {
+        // Unknown-source backfill still yields a date when no ranked source has one.
+        let releases = [rel(RemoteSource::Unknown, "", "", 50)];
+        let aired = effective_aired(&releases, &default_air_date_priority(), &[]).unwrap();
+        assert_eq!(aired.inner().as_second(), 50);
+    }
+
+    #[test]
+    fn air_date_earliest_within_winning_source() {
+        let releases = [
+            rel(RemoteSource::Tvmaze, "US", "", 300),
+            rel(RemoteSource::Tvmaze, "JP", "", 150),
+            rel(RemoteSource::Tmdb, "", "", 10),
+        ];
+        let aired = effective_aired(&releases, &default_air_date_priority(), &[]).unwrap();
+        // TVmaze wins by priority; earliest of its dates is used.
+        assert_eq!(aired.inner().as_second(), 150);
     }
 }

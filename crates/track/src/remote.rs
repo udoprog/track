@@ -298,4 +298,14 @@ impl RemoteClients {
             .fetch_episodes(tvmaze_id)
             .await
     }
+
+    pub(crate) async fn fetch_tvmaze_show_network(
+        &self,
+        tvmaze_id: u32,
+    ) -> Result<crate::tvmaze::ShowNetwork> {
+        self.tvmaze()
+            .context("Expected a configured TVmaze client")?
+            .fetch_show_network(tvmaze_id)
+            .await
+    }
 }

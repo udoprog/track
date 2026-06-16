@@ -620,11 +620,12 @@ impl MediaList {
                                                     api::MediaKind::Shows => r.remote.show_url(r.slug.as_deref()),
                                                     api::MediaKind::Movies => r.remote.movie_url(),
                                                 }?;
-                                                let label = r.remote.source().as_str();
+                                                let label = r.remote.source().as_label();
+                                                let id = r.remote.source().as_id();
 
                                                 Some(html! {
                                                     <a class="item-inline-source" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
-                                                        <span class={classes!("logo", label.to_owned())} />
+                                                        <span class={classes!("logo", id)} />
                                                     </a>
                                                 })
                                             }) }

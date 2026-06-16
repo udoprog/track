@@ -37,10 +37,10 @@ struct ShowRow {
     first_air: Option<Timestamp>,
     overview: Option<String>,
     tracked: bool,
-    sync_source: Option<RemoteSource>,
     last_synced_at: Option<Timestamp>,
     language: Option<String>,
     include_specials: Option<bool>,
+    air_date_filters: Option<String>,
 }
 
 #[derive(Row)]
@@ -166,7 +166,6 @@ struct MovieRow {
     release_date: Option<Timestamp>,
     overview: Option<String>,
     tracked: bool,
-    sync_source: Option<RemoteSource>,
     last_synced_at: Option<Timestamp>,
     language: Option<String>,
     release_filters: Option<String>,
@@ -176,6 +175,16 @@ struct MovieRow {
 struct MovieReleaseRow {
     country: String,
     release_type: ReleaseType,
+    timestamp: Timestamp,
+}
+
+/// One stored air date for an episode (joined back onto its episode in Rust).
+#[derive(Row)]
+struct EpisodeReleaseRow {
+    episode_id: EpisodeId,
+    source: RemoteSource,
+    country: String,
+    network: String,
     timestamp: Timestamp,
 }
 
@@ -309,6 +318,8 @@ struct RemoteRow {
     slug: Option<String>,
     source: RemoteSource,
     value: RemoteValue,
+    enabled: bool,
+    priority: i32,
 }
 
 /// A remote owned by a show (`list_all_show_remotes`) or movie
@@ -320,6 +331,8 @@ struct AllShowRemoteRow {
     slug: Option<String>,
     source: RemoteSource,
     value: RemoteValue,
+    enabled: bool,
+    priority: i32,
 }
 
 #[derive(Row)]
@@ -329,28 +342,30 @@ struct AllMovieRemoteRow {
     slug: Option<String>,
     source: RemoteSource,
     value: RemoteValue,
+    enabled: bool,
+    priority: i32,
 }
 
 #[derive(Statements)]
 #[sql(read_only)]
 struct InnerRead {
     // shows
-    #[sql = "SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at, language, include_specials"]
+    #[sql = "SELECT id, title, first_air, overview, tracked, last_synced_at, language, include_specials, air_date_filters"]
     #[sql = "FROM shows ORDER BY title"]
     list_shows: TypedStatement<(), ShowRow>,
-    #[sql = "SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at, language, include_specials"]
+    #[sql = "SELECT id, title, first_air, overview, tracked, last_synced_at, language, include_specials, air_date_filters"]
     #[sql = "FROM shows WHERE id = ?"]
     show_by_id: TypedStatement<(ShowId,), ShowRow>,
-    #[sql = "SELECT s.id, s.title, s.first_air, s.overview, s.tracked, s.sync_source, s.last_synced_at, s.language, s.include_specials"]
+    #[sql = "SELECT s.id, s.title, s.first_air, s.overview, s.tracked, s.last_synced_at, s.language, s.include_specials, s.air_date_filters"]
     #[sql = "FROM shows s"]
     #[sql = "JOIN show_remotes r ON r.show_id = s.id"]
     #[sql = "WHERE r.source = ? AND r.value = ?"]
     shows_by_remote: TypedStatement<(RemoteSource, RemoteValue), ShowRow>,
 
     // remotes (one table per owner; source is a numeric enum, value is dynamic)
-    #[sql = "SELECT id, slug, source, value FROM show_remotes WHERE show_id = ? ORDER BY id"]
+    #[sql = "SELECT id, slug, source, value, enabled, priority FROM show_remotes WHERE show_id = ? ORDER BY priority, id"]
     list_show_remotes: TypedStatement<(ShowId,), RemoteRow>,
-    #[sql = "SELECT show_id, id, slug, source, value FROM show_remotes ORDER BY show_id, id"]
+    #[sql = "SELECT show_id, id, slug, source, value, enabled, priority FROM show_remotes ORDER BY show_id, priority, id"]
     list_all_show_remotes: TypedStatement<(), AllShowRemoteRow>,
     #[sql = "SELECT show_id FROM show_remotes WHERE source = ? AND value = ? LIMIT 1"]
     show_id_by_remote: TypedStatement<(RemoteSource, RemoteValue), ShowId>,
@@ -448,20 +463,20 @@ struct InnerRead {
     last_watched_shows: TypedStatement<(), LastWatchedShowRow>,
 
     // movies
-    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.sync_source, m.last_synced_at, m.language, m.release_filters"]
+    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.last_synced_at, m.language, m.release_filters"]
     #[sql = "FROM movies m ORDER BY m.title"]
     list_movies: TypedStatement<(), MovieRow>,
-    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.sync_source, m.last_synced_at, m.language, m.release_filters"]
+    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.last_synced_at, m.language, m.release_filters"]
     #[sql = "FROM movies m WHERE m.id = ?"]
     movie_by_id: TypedStatement<(MovieId,), MovieRow>,
-    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.sync_source, m.last_synced_at, m.language, m.release_filters"]
+    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.last_synced_at, m.language, m.release_filters"]
     #[sql = "FROM movies m"]
     #[sql = "JOIN movie_remotes r ON r.movie_id = m.id"]
     #[sql = "WHERE r.source = ? AND r.value = ?"]
     movie_by_remote: TypedStatement<(RemoteSource, RemoteValue), MovieRow>,
-    #[sql = "SELECT id, slug, source, value FROM movie_remotes WHERE movie_id = ? ORDER BY id"]
+    #[sql = "SELECT id, slug, source, value, enabled, priority FROM movie_remotes WHERE movie_id = ? ORDER BY priority, id"]
     list_movie_remotes: TypedStatement<(MovieId,), RemoteRow>,
-    #[sql = "SELECT movie_id, id, slug, source, value FROM movie_remotes ORDER BY movie_id, id"]
+    #[sql = "SELECT movie_id, id, slug, source, value, enabled, priority FROM movie_remotes ORDER BY movie_id, priority, id"]
     list_all_movie_remotes: TypedStatement<(), AllMovieRemoteRow>,
     #[sql = "SELECT movie_id FROM movie_remotes WHERE source = ? AND value = ? LIMIT 1"]
     movie_id_by_remote: TypedStatement<(RemoteSource, RemoteValue), Option<MovieId>>,
@@ -593,13 +608,13 @@ struct InnerRead {
     get_config: TypedStatement<(String,), String>,
 
     // stale-item queries
-    #[sql = "SELECT id, title, first_air, overview, tracked, sync_source, last_synced_at, language, include_specials"]
+    #[sql = "SELECT id, title, first_air, overview, tracked, last_synced_at, language, include_specials, air_date_filters"]
     #[sql = "FROM shows"]
     #[sql = "WHERE tracked = 1"]
     #[sql = "    AND (last_synced_at IS NULL OR last_synced_at < ?)"]
     #[sql = "ORDER BY last_synced_at IS NOT NULL, last_synced_at"]
     shows_needing_sync: TypedStatement<(Timestamp,), ShowRow>,
-    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.sync_source, m.last_synced_at, m.language, m.release_filters"]
+    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.last_synced_at, m.language, m.release_filters"]
     #[sql = "FROM movies m"]
     #[sql = "WHERE m.tracked = 1"]
     #[sql = "    AND (m.last_synced_at IS NULL OR m.last_synced_at < ?)"]
@@ -617,6 +632,13 @@ struct InnerRead {
     #[sql = "WHERE movie_id = ? AND release_type = ?"]
     #[sql = "ORDER BY timestamp"]
     movie_release_by_type: TypedStatement<(MovieId, ReleaseType), Timestamp>,
+
+    // episode releases (air dates attributed to a source/country/network)
+    #[sql = "SELECT er.episode_id, er.source, er.country, er.network, er.timestamp"]
+    #[sql = "FROM episode_releases er"]
+    #[sql = "JOIN episodes e ON e.id = er.episode_id"]
+    #[sql = "WHERE e.show_id = ?"]
+    list_episode_releases_for_show: TypedStatement<(ShowId,), EpisodeReleaseRow>,
 }
 
 #[derive(Statements)]
@@ -645,21 +667,35 @@ struct InnerWrite {
     delete_show: TypedStatement<(ShowId,), ()>,
     #[sql = "UPDATE shows SET tracked = ? WHERE id = ?"]
     set_show_tracked: TypedStatement<(bool, ShowId), ()>,
-    #[sql = "UPDATE shows SET sync_source = ? WHERE id = ?"]
-    set_show_sync_source: TypedStatement<(RemoteSource, ShowId), ()>,
     #[sql = "UPDATE shows SET language = ? WHERE id = ?"]
     set_show_language: TypedStatement<(Option<String>, ShowId), ()>,
     #[sql = "UPDATE shows SET include_specials = ? WHERE id = ?"]
     set_show_include_specials: TypedStatement<(Option<bool>, ShowId), ()>,
+    #[sql = "UPDATE shows SET air_date_filters = ? WHERE id = ?"]
+    set_show_air_date_filters: TypedStatement<(Option<String>, ShowId), ()>,
 
     // remotes (one table per owner; source is a numeric enum, value is dynamic)
-    #[sql = "INSERT OR IGNORE INTO show_remotes (id, slug, show_id, source, value) VALUES (?, ?, ?, ?, ?)"]
-    insert_show_remote:
-        TypedStatement<(RemoteId, Option<String>, ShowId, RemoteSource, RemoteValue), ()>,
+    #[sql = "INSERT OR IGNORE INTO show_remotes (id, slug, show_id, source, value, enabled, priority) VALUES (?, ?, ?, ?, ?, ?, ?)"]
+    insert_show_remote: TypedStatement<
+        (
+            RemoteId,
+            Option<String>,
+            ShowId,
+            RemoteSource,
+            RemoteValue,
+            bool,
+            i32,
+        ),
+        (),
+    >,
     #[sql = "DELETE FROM show_remotes WHERE id = ?"]
     delete_show_remote: TypedStatement<(RemoteId,), ()>,
     #[sql = "UPDATE show_remotes SET slug = ?, source = ?, value = ? WHERE id = ?"]
     update_show_remote: TypedStatement<(Option<String>, RemoteSource, RemoteValue, RemoteId), ()>,
+    #[sql = "UPDATE show_remotes SET enabled = ? WHERE id = ?"]
+    set_show_remote_enabled: TypedStatement<(bool, RemoteId), ()>,
+    #[sql = "UPDATE show_remotes SET priority = ? WHERE id = ?"]
+    set_show_remote_priority: TypedStatement<(i32, RemoteId), ()>,
 
     // images (shows and movies share one table)
     #[sql = "DELETE FROM images WHERE show_id = ?"]
@@ -788,8 +824,14 @@ struct InnerWrite {
     insert_episode_remote: TypedStatement<(RemoteId, EpisodeId, RemoteSource, RemoteValue), ()>,
     #[sql = "UPDATE episodes SET remote_id = ? WHERE id = ?"]
     set_episode_remote: TypedStatement<(RemoteId, EpisodeId), ()>,
-    #[sql = "UPDATE episodes SET aired = ? WHERE show_id = ? AND season = ? AND episode = ?"]
-    update_episode_aired: TypedStatement<(Timestamp, ShowId, SeasonNumber, u32), ()>,
+    #[sql = "UPDATE episodes SET aired = ? WHERE id = ?"]
+    set_episode_aired_by_id: TypedStatement<(Timestamp, EpisodeId), ()>,
+    #[sql = "INSERT INTO episode_releases (episode_id, source, country, network, timestamp)"]
+    #[sql = "VALUES (?, ?, ?, ?, ?)"]
+    #[sql = "ON CONFLICT(episode_id, source, country, network)"]
+    #[sql = "    DO UPDATE SET timestamp = excluded.timestamp"]
+    upsert_episode_release:
+        TypedStatement<(EpisodeId, RemoteSource, String, String, Timestamp), ()>,
 
     // movies
     #[sql = "INSERT INTO movies (id, title, release_date, overview, tracked)"]
@@ -797,8 +839,6 @@ struct InnerWrite {
     insert_movie: TypedStatement<(MovieId, String, Option<Timestamp>, String, bool), ()>,
     #[sql = "UPDATE movies SET tracked = ? WHERE id = ?"]
     set_movie_tracked: TypedStatement<(bool, MovieId), ()>,
-    #[sql = "UPDATE movies SET sync_source = ? WHERE id = ?"]
-    set_movie_sync_source: TypedStatement<(RemoteSource, MovieId), ()>,
     #[sql = "UPDATE movies SET language = ? WHERE id = ?"]
     set_movie_language: TypedStatement<(Option<String>, MovieId), ()>,
     #[sql = "UPDATE movies SET release_filters = ? WHERE id = ?"]
@@ -811,13 +851,27 @@ struct InnerWrite {
     set_movie_release_date: TypedStatement<(Option<Timestamp>, MovieId), ()>,
     #[sql = "DELETE FROM movies WHERE id = ?"]
     delete_movie: TypedStatement<(MovieId,), ()>,
-    #[sql = "INSERT OR IGNORE INTO movie_remotes (id, slug, movie_id, source, value) VALUES (?, ?, ?, ?, ?)"]
-    insert_movie_remote:
-        TypedStatement<(RemoteId, Option<String>, MovieId, RemoteSource, RemoteValue), ()>,
+    #[sql = "INSERT OR IGNORE INTO movie_remotes (id, slug, movie_id, source, value, enabled, priority) VALUES (?, ?, ?, ?, ?, ?, ?)"]
+    insert_movie_remote: TypedStatement<
+        (
+            RemoteId,
+            Option<String>,
+            MovieId,
+            RemoteSource,
+            RemoteValue,
+            bool,
+            i32,
+        ),
+        (),
+    >,
     #[sql = "DELETE FROM movie_remotes WHERE id = ?"]
     delete_movie_remote: TypedStatement<(RemoteId,), ()>,
     #[sql = "UPDATE movie_remotes SET slug = ?, source = ?, value = ? WHERE id = ?"]
     update_movie_remote: TypedStatement<(Option<String>, RemoteSource, RemoteValue, RemoteId), ()>,
+    #[sql = "UPDATE movie_remotes SET enabled = ? WHERE id = ?"]
+    set_movie_remote_enabled: TypedStatement<(bool, RemoteId), ()>,
+    #[sql = "UPDATE movie_remotes SET priority = ? WHERE id = ?"]
+    set_movie_remote_priority: TypedStatement<(i32, RemoteId), ()>,
 
     // watched
     #[sql = "INSERT OR IGNORE INTO watched_episodes (id, timestamp, show_id, season, episode)"]
@@ -1054,6 +1108,8 @@ impl Database {
                 show_id,
                 remote.source(),
                 remote.value(),
+                true,
+                default_remote_priority(*remote.source()),
             ))
         });
 
@@ -1127,6 +1183,8 @@ impl Database {
                         id: r.id,
                         slug: r.slug,
                         remote: Remote::new(r.source, r.value),
+                        enabled: r.enabled,
+                        priority: r.priority,
                     });
                 }
             }
@@ -1184,6 +1242,8 @@ impl Database {
                     id: r.id,
                     slug: r.slug,
                     remote: Remote::new(r.source, r.value),
+                    enabled: r.enabled,
+                    priority: r.priority,
                 });
             }
 
@@ -1266,15 +1326,30 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn set_show_sync_source(
+    pub(crate) async fn set_show_remote_enabled(
         &self,
-        id: ShowId,
-        source: RemoteSource,
+        remote_id: RemoteId,
+        enabled: bool,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            s.set_show_sync_source.execute((source, id))?;
+            s.set_show_remote_enabled.execute((enabled, remote_id))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    /// Set remote priority to match the given order (first = highest priority).
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn reorder_show_remotes(&self, remote_ids: Vec<RemoteId>) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            for (idx, id) in remote_ids.iter().enumerate() {
+                s.set_show_remote_priority.execute((idx as i32, *id))?;
+            }
             Ok(())
         });
 
@@ -1684,22 +1759,90 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn update_episodes_aired(
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn upsert_episode_release(
+        &self,
+        episode_id: EpisodeId,
+        source: RemoteSource,
+        country: &str,
+        network: &str,
+        timestamp: Timestamp,
+    ) -> Result<()> {
+        let country = country.to_owned();
+        let network = network.to_owned();
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.upsert_episode_release
+                .execute((episode_id, source, country, network, timestamp))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn set_show_air_date_filters(
+        &self,
+        id: ShowId,
+        air_date_filters: Option<Vec<api::AirDateFilter>>,
+    ) -> Result<()> {
+        let encoded = air_date_filters
+            .as_deref()
+            .map(api::encode_air_date_filters);
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.set_show_air_date_filters.execute((encoded, id))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    /// Recompute each episode's effective `aired` from its stored releases, using
+    /// the show's enabled-remote priority and air-date filters (falling back to
+    /// `default_filters`). Episodes with no qualifying release keep their date.
+    #[tracing::instrument(skip(self, default_filters), ret(level = "trace"))]
+    pub(crate) async fn recompute_episode_aired_for_show(
         &self,
         show_id: ShowId,
-        updates: Vec<(SeasonNumber, u32, Timestamp)>,
+        default_filters: Vec<api::AirDateFilter>,
     ) -> Result<()> {
-        if updates.is_empty() {
+        let Some(show) = self.show_by_id(show_id).await? else {
             return Ok(());
-        }
+        };
+
+        let priority = api::enabled_sources_by_priority(&show.remotes);
+        let filters = show.air_date_filters.unwrap_or(default_filters);
 
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            for &(season, number, aired) in &updates {
-                s.update_episode_aired
-                    .execute((aired, show_id, season, number))?;
+            let mut by_episode: HashMap<EpisodeId, Vec<api::EpisodeRelease>> = HashMap::new();
+
+            {
+                let mut stmt = s.list_episode_releases_for_show.bind((show_id,))?;
+
+                while let Some(r) = stmt.next()? {
+                    by_episode
+                        .entry(r.episode_id)
+                        .or_default()
+                        .push(api::EpisodeRelease {
+                            source: r.source,
+                            country: r.country,
+                            network: r.network,
+                            timestamp: r.timestamp,
+                        });
+                }
             }
+
+            for (episode_id, releases) in by_episode {
+                if let Some(ts) = api::effective_aired(&releases, &priority, &filters) {
+                    s.set_episode_aired_by_id.execute((ts, episode_id))?;
+                }
+            }
+
             Ok(())
         });
 
@@ -1761,6 +1904,8 @@ impl Database {
                 movie_id,
                 remote.source(),
                 remote.value(),
+                true,
+                default_remote_priority(*remote.source()),
             ))?;
             Ok(())
         });
@@ -1859,6 +2004,8 @@ impl Database {
                             id: r.id,
                             slug: r.slug,
                             remote: Remote::new(r.source, r.value),
+                            enabled: r.enabled,
+                            priority: r.priority,
                         });
                     }
                 }
@@ -1910,6 +2057,8 @@ impl Database {
                             id: r.id,
                             slug: r.slug,
                             remote: Remote::new(r.source, r.value),
+                            enabled: r.enabled,
+                            priority: r.priority,
                         });
                     }
                 }
@@ -1955,6 +2104,8 @@ impl Database {
                         id: r.id,
                         slug: r.slug,
                         remote: Remote::new(r.source, r.value),
+                        enabled: r.enabled,
+                        priority: r.priority,
                     });
                 }
             }
@@ -2013,6 +2164,8 @@ impl Database {
                     id: r.id,
                     slug: r.slug,
                     remote: Remote::new(r.source, r.value),
+                    enabled: r.enabled,
+                    priority: r.priority,
                 });
             }
 
@@ -2102,6 +2255,8 @@ impl Database {
                     id: r.id,
                     slug: r.slug,
                     remote: Remote::new(r.source, r.value),
+                    enabled: r.enabled,
+                    priority: r.priority,
                 });
             }
 
@@ -2155,6 +2310,8 @@ impl Database {
                     id: r.id,
                     slug: r.slug,
                     remote: Remote::new(r.source, r.value),
+                    enabled: r.enabled,
+                    priority: r.priority,
                 });
             }
 
@@ -2252,15 +2409,30 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn set_movie_sync_source(
+    pub(crate) async fn set_movie_remote_enabled(
         &self,
-        id: MovieId,
-        source: RemoteSource,
+        remote_id: RemoteId,
+        enabled: bool,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            s.set_movie_sync_source.execute((source, id))?;
+            s.set_movie_remote_enabled.execute((enabled, remote_id))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    /// Set remote priority to match the given order (first = highest priority).
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn reorder_movie_remotes(&self, remote_ids: Vec<RemoteId>) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            for (idx, id) in remote_ids.iter().enumerate() {
+                s.set_movie_remote_priority.execute((idx as i32, *id))?;
+            }
             Ok(())
         });
 
@@ -3343,6 +3515,12 @@ impl Database {
                 .and_then(api::decode_release_filters)
                 .unwrap_or_else(api::ReleaseFilter::default_filters);
 
+            let air_date_filters = s
+                .get_config("air_date_filters")?
+                .as_deref()
+                .and_then(api::decode_air_date_filters)
+                .unwrap_or_default();
+
             Ok(Config {
                 theme,
                 tvdb_api_key,
@@ -3356,6 +3534,7 @@ impl Database {
                 language,
                 include_specials,
                 release_filters,
+                air_date_filters,
             })
         });
 
@@ -3416,6 +3595,10 @@ impl Database {
                 "release_filters",
                 &api::encode_release_filters(&config.release_filters),
             )?;
+            s.set_config(
+                "air_date_filters",
+                &api::encode_air_date_filters(&config.air_date_filters),
+            )?;
             Ok(())
         });
 
@@ -3439,7 +3622,6 @@ fn show_from_row(r: ShowRow) -> api::Show {
         first_air_date: r.first_air,
         overview: r.overview,
         tracked: r.tracked,
-        sync_source: r.sync_source,
         remotes: Vec::new(),
         images: Vec::new(),
         poster: None,
@@ -3448,6 +3630,22 @@ fn show_from_row(r: ShowRow) -> api::Show {
         last_synced_at: r.last_synced_at,
         language: r.language,
         include_specials: r.include_specials,
+        air_date_filters: r
+            .air_date_filters
+            .as_deref()
+            .and_then(api::decode_air_date_filters),
+    }
+}
+
+/// Default merge priority for a freshly-added remote (lower wins). TVmaze ranks
+/// highest so its air dates win by default; matches the migration backfill.
+fn default_remote_priority(source: RemoteSource) -> i32 {
+    match source {
+        RemoteSource::Tvmaze => 0,
+        RemoteSource::Tmdb => 2,
+        RemoteSource::Tvdb => 3,
+        RemoteSource::Imdb => 4,
+        RemoteSource::Unknown => 9,
     }
 }
 
@@ -3551,7 +3749,6 @@ fn movie_from_row(r: MovieRow) -> api::Movie {
         release_date: r.release_date,
         overview: r.overview,
         remotes: Vec::new(),
-        sync_source: r.sync_source,
         tracked: r.tracked,
         pending: false,
         images: Vec::new(),
@@ -3629,6 +3826,7 @@ fn do_migrations(c: &sqll::Connection) -> Result<()> {
                 .with_context(|| anyhow!("Executing migration {id}"))?;
 
             let now = Timestamp::now().to_string();
+            insert.reset()?;
             insert
                 .execute((id, now.as_str()))
                 .with_context(|| anyhow!("Updating migrations table {id}"))?;
@@ -3669,4 +3867,29 @@ fn ensure_mode(c: &mut sqll::Connection, mode: OpenMode) -> Result<(), sqll::Err
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod migration_tests {
+    use super::*;
+
+    #[test]
+    fn migrations_apply_on_fresh_db() {
+        let dir = std::env::temp_dir().join(format!("ontv-mig-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("test.db");
+        let _ = std::fs::remove_file(&path);
+
+        let c = OpenOptions::new()
+            .extended_result_codes()
+            .read_write()
+            .create()
+            .no_mutex()
+            .open(path.as_os_str())
+            .unwrap();
+
+        do_migrations(&c).expect("migrations should apply");
+
+        let _ = std::fs::remove_file(&path);
+    }
 }

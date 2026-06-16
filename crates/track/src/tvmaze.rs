@@ -56,6 +56,48 @@ impl Client {
         Ok(Some(show.id))
     }
 
+    /// Fetch the show's primary network (or web channel) name and country code,
+    /// applied to all of its TVmaze episode air dates.
+    pub(crate) async fn fetch_show_network(&self, id: u32) -> Result<ShowNetwork> {
+        #[derive(Deserialize)]
+        struct Country {
+            code: Option<String>,
+        }
+
+        #[derive(Deserialize)]
+        struct Network {
+            name: Option<String>,
+            country: Option<Country>,
+        }
+
+        #[derive(Deserialize)]
+        struct Show {
+            network: Option<Network>,
+            #[serde(rename = "webChannel")]
+            web_channel: Option<Network>,
+        }
+
+        let bytes = self
+            .http
+            .get(format!("{BASE}/shows/{id}"))
+            .send()
+            .await?
+            .error_for_status()?
+            .bytes()
+            .await?;
+        let show: Show = serde_json::from_slice(&bytes)?;
+
+        let net = show.network.or(show.web_channel);
+
+        Ok(match net {
+            Some(n) => ShowNetwork {
+                network: n.name.unwrap_or_default(),
+                country: n.country.and_then(|c| c.code).unwrap_or_default(),
+            },
+            None => ShowNetwork::default(),
+        })
+    }
+
     pub(crate) async fn fetch_episodes(&self, id: u32) -> Result<Vec<EpisodeInfo>> {
         #[derive(Deserialize)]
         struct Row {
@@ -102,4 +144,11 @@ pub(crate) struct EpisodeInfo {
     pub season: SeasonNumber,
     pub number: u32,
     pub aired_at: Timestamp,
+}
+
+/// The network/country a show airs on, applied to its TVmaze air dates.
+#[derive(Default)]
+pub(crate) struct ShowNetwork {
+    pub network: String,
+    pub country: String,
 }

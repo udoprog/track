@@ -143,12 +143,6 @@ impl WsHandler {
                     .add_show_remote(show_id, req.slug.as_deref(), &req.remote)
                     .await?;
 
-                let source = *req.remote.source();
-
-                if !source.is_unknown() {
-                    self.db.set_show_sync_source(show_id, source).await?;
-                }
-
                 let show = self
                     .db
                     .show_by_id(show_id)
@@ -247,12 +241,6 @@ impl WsHandler {
                 self.db
                     .add_movie_remote(movie_id, req.slug.as_deref(), &req.remote)
                     .await?;
-
-                let source = *req.remote.source();
-
-                if !source.is_unknown() {
-                    self.db.set_movie_sync_source(movie_id, source).await?;
-                }
 
                 let movie = self
                     .db
@@ -576,24 +564,14 @@ impl WsHandler {
 
                 outgoing.write(api::Empty);
             }
-            api::Request::SetShowSyncSource => {
+            api::Request::SetShowRemoteEnabled => {
                 let req = incoming
-                    .read::<api::SetShowSyncSourceRequest>()
+                    .read::<api::SetShowRemoteEnabledRequest>()
                     .context("Expected a request payload")?;
 
-                tracing::warn!(?req);
-
-                let show = self
-                    .db
-                    .show_by_id(req.id)
-                    .await?
-                    .context("Expected show to exist")?;
-
-                if show.remote_by_source(req.source).is_none() {
-                    anyhow::bail!("Show does not have remote for source: {}", req.source);
-                }
-
-                self.db.set_show_sync_source(req.id, req.source).await?;
+                self.db
+                    .set_show_remote_enabled(req.remote_id, req.enabled)
+                    .await?;
 
                 let show = self
                     .db
@@ -604,39 +582,44 @@ impl WsHandler {
                 self.broadcast.emit(
                     incoming.channel(),
                     api::AppEventKind::ShowChanged { show: show.clone() },
-                    "ws set show sync source changed",
-                );
-
-                self.broadcast.emit(
-                    incoming.channel(),
-                    api::AppEventKind::PendingChanged,
-                    "ws set show sync source pending changed",
+                    "ws set show remote enabled changed",
                 );
 
                 self.enqueue_show_sync(show.id, show.title, true).await;
 
                 outgoing.write(api::Empty);
             }
-            api::Request::SetMovieSyncSource => {
+            api::Request::ReorderShowRemotes => {
                 let req = incoming
-                    .read::<api::SetMovieSyncSourceRequest>()
+                    .read::<api::ReorderShowRemotesRequest>()
                     .context("Expected a request payload")?;
 
-                let movie = self
+                self.db.reorder_show_remotes(req.remote_ids).await?;
+
+                let show = self
                     .db
-                    .movie_by_id(req.id)
+                    .show_by_id(req.id)
                     .await?
-                    .context("Expected movie to exist")?;
+                    .context("Expected show to exist")?;
 
-                if req.source != api::RemoteSource::Tmdb {
-                    anyhow::bail!("Unsupported movie sync source: {}", req.source);
-                }
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::ShowChanged { show: show.clone() },
+                    "ws reorder show remotes changed",
+                );
 
-                if movie.remote_by_source(req.source).is_none() {
-                    anyhow::bail!("Movie does not have remote for source: {}", req.source);
-                }
+                self.enqueue_show_sync(show.id, show.title, true).await;
 
-                self.db.set_movie_sync_source(req.id, req.source).await?;
+                outgoing.write(api::Empty);
+            }
+            api::Request::SetMovieRemoteEnabled => {
+                let req = incoming
+                    .read::<api::SetMovieRemoteEnabledRequest>()
+                    .context("Expected a request payload")?;
+
+                self.db
+                    .set_movie_remote_enabled(req.remote_id, req.enabled)
+                    .await?;
 
                 let movie = self
                     .db
@@ -649,13 +632,32 @@ impl WsHandler {
                     api::AppEventKind::MovieChanged {
                         movie: movie.clone(),
                     },
-                    "ws set movie sync source changed",
+                    "ws set movie remote enabled changed",
                 );
+
+                self.enqueue_movie_sync(movie.id, movie.title, true).await;
+
+                outgoing.write(api::Empty);
+            }
+            api::Request::ReorderMovieRemotes => {
+                let req = incoming
+                    .read::<api::ReorderMovieRemotesRequest>()
+                    .context("Expected a request payload")?;
+
+                self.db.reorder_movie_remotes(req.remote_ids).await?;
+
+                let movie = self
+                    .db
+                    .movie_by_id(req.id)
+                    .await?
+                    .context("Expected movie to exist")?;
 
                 self.broadcast.emit(
                     incoming.channel(),
-                    api::AppEventKind::PendingChanged,
-                    "ws set movie sync source pending changed",
+                    api::AppEventKind::MovieChanged {
+                        movie: movie.clone(),
+                    },
+                    "ws reorder movie remotes changed",
                 );
 
                 self.enqueue_movie_sync(movie.id, movie.title, true).await;
@@ -914,6 +916,46 @@ impl WsHandler {
 
                 outgoing.write(api::Empty);
             }
+            api::Request::SetShowAirDateFilters => {
+                let req = incoming
+                    .read::<api::SetShowAirDateFiltersRequest>()
+                    .context("Expected a request payload")?;
+
+                self.db
+                    .set_show_air_date_filters(req.id, req.air_date_filters)
+                    .await?;
+
+                // Recompute effective air dates against the new filters.
+                let default = self.db.load_config().await?.air_date_filters;
+                self.db
+                    .recompute_episode_aired_for_show(req.id, default)
+                    .await?;
+
+                let show = self
+                    .db
+                    .show_by_id(req.id)
+                    .await?
+                    .context("Expected show to exist")?;
+
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::ShowChanged { show: show.clone() },
+                    "ws set show air date filters changed",
+                );
+
+                for season in self.db.seasons(req.id).await? {
+                    self.broadcast.emit(
+                        incoming.channel(),
+                        api::AppEventKind::EpisodesChanged {
+                            show_id: req.id,
+                            season: season.season,
+                        },
+                        "ws set show air date filters episodes changed",
+                    );
+                }
+
+                outgoing.write(api::Empty);
+            }
             api::Request::SetMovieLanguage => {
                 let req = incoming
                     .read::<api::SetMovieLanguageRequest>()
@@ -1030,6 +1072,8 @@ impl WsHandler {
                     .read::<api::SetConfigRequest>()
                     .context("Expected a request payload")?;
 
+                let prev = self.db.load_config().await?;
+
                 self.db.save_config(&req.config).await?;
                 self.remote.configure(&req.config)?;
 
@@ -1042,6 +1086,24 @@ impl WsHandler {
                     },
                     "ws config changed",
                 );
+
+                // The global air-date filters feed every show's effective dates;
+                // recompute when they change (per-show overrides use their own).
+                if prev.air_date_filters != req.config.air_date_filters {
+                    let default = req.config.air_date_filters.clone();
+
+                    for show in self.db.shows().await? {
+                        self.db
+                            .recompute_episode_aired_for_show(show.id, default.clone())
+                            .await?;
+                    }
+
+                    self.broadcast.emit(
+                        incoming.channel(),
+                        api::AppEventKind::PendingChanged,
+                        "ws air date filters recompute",
+                    );
+                }
 
                 outgoing.write(api::Empty);
             }

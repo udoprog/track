@@ -64,9 +64,11 @@ pub(super) struct ShowDetail {
     _season_images_req: ws::Request,
     _select_season_image_req: ws::Request,
     _clear_season_image_req: ws::Request,
-    _set_sync_source_req: ws::Request,
+    _set_remote_enabled_req: ws::Request,
+    _reorder_remotes_req: ws::Request,
     _set_language_req: ws::Request,
     _set_include_specials_req: ws::Request,
+    _set_air_date_filters_req: ws::Request,
     _orphaned_req: ws::Request,
     _move_req: ws::Request,
     _remote_req: ws::Request,
@@ -113,8 +115,10 @@ pub(super) enum Msg {
     ClearSelectedImage(api::ImageKind),
     SelectImageDone(Result<ws::Packet<api::SelectImage>, ws::Error>),
     ClearSelectedImageDone(Result<ws::Packet<api::ClearSelectedImage>, ws::Error>),
-    SetSyncSource(api::RemoteSource),
-    SetSyncSourceDone(Result<ws::Packet<api::SetShowSyncSource>, ws::Error>),
+    SetRemoteEnabled(api::RemoteId, bool),
+    SetRemoteEnabledDone(Result<ws::Packet<api::SetShowRemoteEnabled>, ws::Error>),
+    ReorderRemotes(Vec<api::RemoteId>),
+    ReorderRemotesDone(Result<ws::Packet<api::ReorderShowRemotes>, ws::Error>),
     SetLanguage(Option<String>),
     SetLanguageDone(
         Option<String>,
@@ -136,6 +140,8 @@ pub(super) enum Msg {
         Option<bool>,
         Result<ws::Packet<api::SetShowIncludeSpecials>, ws::Error>,
     ),
+    SetAirDateFilters(Option<Vec<api::AirDateFilter>>),
+    SetAirDateFiltersDone(Result<ws::Packet<api::SetShowAirDateFilters>, ws::Error>),
     OpenRemoteEditor,
     CloseRemoteEditor,
     AddRemote(Option<String>, api::Remote),
@@ -235,9 +241,11 @@ impl Component for ShowDetail {
             _season_images_req: ws::Request::default(),
             _select_season_image_req: ws::Request::default(),
             _clear_season_image_req: ws::Request::default(),
-            _set_sync_source_req: ws::Request::default(),
+            _set_remote_enabled_req: ws::Request::default(),
+            _reorder_remotes_req: ws::Request::default(),
             _set_language_req: ws::Request::default(),
             _set_include_specials_req: ws::Request::default(),
+            _set_air_date_filters_req: ws::Request::default(),
             _orphaned_req: ws::Request::default(),
             _move_req: ws::Request::default(),
             _remote_req: ws::Request::default(),
@@ -279,11 +287,11 @@ impl Component for ShowDetail {
                             <div class="row justify-around">
                                 {for show.remotes.iter().filter_map(|r| {
                                     let url = r.remote.show_url(r.slug.as_deref())?;
-                                    let label = r.remote.source().as_str();
+                                    let id = r.remote.source().as_id();
 
                                     Some(html! {
-                                        <a class="item-inline-source" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
-                                            <span class={classes!("logo", label.to_owned())} />
+                                        <a class="item-inline-source" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {id}")}>
+                                            <span class={classes!("logo", id)} />
                                         </a>
                                     })
                                 })}
@@ -369,17 +377,16 @@ impl Component for ShowDetail {
                         language={show.language.clone()}
                         include_specials={show.include_specials}
                         has_images={!show.images.is_empty()}
-                        kind={RemoteSourceKind::Show}
-                        remotes={show.remotes.iter().map(|e| e.remote.clone()).collect::<Vec<_>>()}
-                        current_source={show.effective_sync_source()}
+                        has_remotes={!show.remotes.is_empty()}
                         last_synced={show.last_synced_at.map(|ts| AttrValue::from(ts.display(self.tz.clone())))}
                         syncing={self.syncing}
-                        on_sync_source_change={link.callback(Msg::SetSyncSource)}
                         on_sync={link.callback(|_| Msg::SyncShow)}
                         on_language_change={link.callback(Msg::SetLanguage)}
                         on_include_specials_change={Some(link.callback(Msg::SetIncludeSpecials))}
+                        air_date_filters={show.air_date_filters.clone()}
+                        on_air_date_filters_change={Some(link.callback(Msg::SetAirDateFilters))}
                         on_edit_graphics={link.callback(|_| Msg::OpenImageModal)}
-                        on_edit_identifiers={link.callback(|_| Msg::OpenRemoteEditor)}
+                        on_edit_remotes={link.callback(|_| Msg::OpenRemoteEditor)}
                         on_close={link.callback(|_| Msg::CloseSettingsModal)}
                     />
                 }
@@ -392,6 +399,8 @@ impl Component for ShowDetail {
                         on_add={link.callback(|(slug, remote)| Msg::AddRemote(slug, remote))}
                         on_edit={link.callback(|(id, slug, remote)| Msg::EditRemote(id, slug, remote))}
                         on_remove={link.callback(Msg::RemoveRemote)}
+                        on_set_enabled={link.callback(|(id, enabled)| Msg::SetRemoteEnabled(id, enabled))}
+                        on_reorder={link.callback(Msg::ReorderRemotes)}
                         on_close={link.callback(|_| Msg::CloseRemoteEditor)}
                     />
                 }
@@ -993,23 +1002,50 @@ impl ShowDetail {
                 self.load_show(ctx);
                 Ok(true)
             }
-            Msg::SetSyncSource(source) => {
-                if let Some(ref mut show) = self.show {
-                    show.sync_source = Some(source);
+            Msg::SetRemoteEnabled(remote_id, enabled) => {
+                if let Some(ref mut show) = self.show
+                    && let Some(entry) = show.remotes.iter_mut().find(|e| e.id == remote_id)
+                {
+                    entry.enabled = enabled;
                 }
 
                 let id = ctx.props().show_id;
 
-                self._set_sync_source_req = self
+                self._set_remote_enabled_req = self
                     .channel
                     .request()
-                    .body(api::SetShowSyncSourceRequest { id, source })
-                    .on_packet(ctx.link().callback(Msg::SetSyncSourceDone))
+                    .body(api::SetShowRemoteEnabledRequest {
+                        id,
+                        remote_id,
+                        enabled,
+                    })
+                    .on_packet(ctx.link().callback(Msg::SetRemoteEnabledDone))
                     .send();
 
-                Ok(false)
+                Ok(true)
             }
-            Msg::SetSyncSourceDone(result) => {
+            Msg::SetRemoteEnabledDone(result) => {
+                result.context(Message::SettingSyncSource)?;
+                Ok(true)
+            }
+            Msg::ReorderRemotes(remote_ids) => {
+                if let Some(ref mut show) = self.show {
+                    show.remotes
+                        .sort_by_key(|e| remote_ids.iter().position(|id| *id == e.id));
+                }
+
+                let id = ctx.props().show_id;
+
+                self._reorder_remotes_req = self
+                    .channel
+                    .request()
+                    .body(api::ReorderShowRemotesRequest { id, remote_ids })
+                    .on_packet(ctx.link().callback(Msg::ReorderRemotesDone))
+                    .send();
+
+                Ok(true)
+            }
+            Msg::ReorderRemotesDone(result) => {
                 result.context(Message::SettingSyncSource)?;
                 Ok(true)
             }
@@ -1168,6 +1204,29 @@ impl ShowDetail {
                     show.include_specials = include_specials;
                 }
                 Ok(true)
+            }
+            Msg::SetAirDateFilters(air_date_filters) => {
+                if let Some(ref mut show) = self.show {
+                    show.air_date_filters = air_date_filters.clone();
+                }
+
+                let id = ctx.props().show_id;
+
+                self._set_air_date_filters_req = self
+                    .channel
+                    .request()
+                    .body(api::SetShowAirDateFiltersRequest {
+                        id,
+                        air_date_filters,
+                    })
+                    .on_packet(ctx.link().callback(Msg::SetAirDateFiltersDone))
+                    .send();
+
+                Ok(true)
+            }
+            Msg::SetAirDateFiltersDone(result) => {
+                result.context(Message::SettingLanguage)?;
+                Ok(false)
             }
             Msg::OpenRemoteEditor => {
                 self.remote_editor = true;

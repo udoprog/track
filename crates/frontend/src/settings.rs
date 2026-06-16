@@ -4,7 +4,7 @@ use yew::prelude::*;
 use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::ui::{LanguagePicker, ReleaseFiltersEditor, SecretInput};
+use crate::ui::{AirDateFiltersEditor, LanguagePicker, ReleaseFiltersEditor, SecretInput};
 
 fn tz_is_valid(name: &str) -> bool {
     name.is_empty() || jiff_tzdb::get(name).is_some()
@@ -37,6 +37,7 @@ pub(super) enum Msg {
     AutoSyncIntervalChanged(String),
     IncludeSpecialsChanged(bool),
     ReleaseFiltersChanged(Vec<api::ReleaseFilter>),
+    AirDateFiltersChanged(Vec<api::AirDateFilter>),
     Save,
     SaveDone(Result<ws::Packet<api::SetConfig>, ws::Error>),
 }
@@ -310,6 +311,15 @@ impl Component for Settings {
                                 on_change={link.callback(Msg::ReleaseFiltersChanged)}
                             />
                         </div>
+
+                        <div class="field">
+                            <label>{"Air dates"}</label>
+                            <span class="hint">{"Restrict which sources' episode air dates qualify, by country and network. Source priority comes from each show's remote order (TVmaze ranks above TMDB by default)."}</span>
+                            <AirDateFiltersEditor
+                                filters={self.config.air_date_filters.clone()}
+                                on_change={link.callback(Msg::AirDateFiltersChanged)}
+                            />
+                        </div>
                     </div>
                 </div>
 
@@ -411,6 +421,10 @@ impl Settings {
             }
             Msg::ReleaseFiltersChanged(filters) => {
                 self.config.release_filters = filters;
+                Ok(true)
+            }
+            Msg::AirDateFiltersChanged(filters) => {
+                self.config.air_date_filters = filters;
                 Ok(true)
             }
             Msg::Save => {
