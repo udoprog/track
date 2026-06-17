@@ -305,6 +305,18 @@ impl Weekday {
         self as u32
     }
 
+    pub fn long_name(self) -> &'static str {
+        match self {
+            Weekday::Monday => "Monday",
+            Weekday::Tuesday => "Tuesday",
+            Weekday::Wednesday => "Wednesday",
+            Weekday::Thursday => "Thursday",
+            Weekday::Friday => "Friday",
+            Weekday::Saturday => "Saturday",
+            Weekday::Sunday => "Sunday",
+        }
+    }
+
     pub fn short_name(self) -> &'static str {
         match self {
             Weekday::Monday => "Mon",

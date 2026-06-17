@@ -152,3 +152,9 @@
         font-size: $font-xs;
     }
 }
+
+.day-of-week {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+}

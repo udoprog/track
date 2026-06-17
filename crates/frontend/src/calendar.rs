@@ -8,6 +8,7 @@ use yew::prelude::*;
 use crate::SetupChannel;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{Route, Router, ShowDetailQuery};
+use crate::ui::DOT;
 
 pub(super) struct Calendar {
     channel: ws::Channel,
@@ -118,14 +119,23 @@ impl Component for Calendar {
                                         is_today.then_some("today"),
                                         is_past.then_some("past"),
                                         is_past.then_some("hide-mobile"),
+                                        (shows.is_empty() && movies.is_empty()).then_some("hide-mobile"),
                                     )}>
                                         <div class="calendar-day-number">
                                             <span class="bullet">{day.day()}</span>
 
                                             if is_today {
-                                                <div class="day-of-week">{"Today"}</div>
+                                                <div class="day-of-week">
+                                                    <span>{"Today"}</span>
+                                                    <span class="hide-desktop">{DOT}</span>
+                                                    <span class="hide-desktop">{day.weekday().long_name()}</span>
+                                                </div>
                                             } else if is_tomorrow {
-                                                <div class="day-of-week">{"Tomorrow"}</div>
+                                                <div class="day-of-week">
+                                                    <span>{"Tomorrow"}</span>
+                                                    <span class="hide-desktop">{DOT}</span>
+                                                    <span class="hide-desktop">{day.weekday().long_name()}</span>
+                                                </div>
                                             } else {
                                                 <span class="day-of-week hide-desktop">{day.weekday().short_name()}</span>
                                             }

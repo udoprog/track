@@ -13,6 +13,7 @@ use crate::{Modal, SetupChannel};
 pub(crate) const MDASH: &str = "—";
 pub(crate) const LOADING: &str = "Loading…";
 pub(crate) const SEARCH: &str = "Search…";
+pub(crate) const DOT: &str = "•";
 
 /// App-wide context: the most-used custom language codes (ISO 639-1), ordered
 /// most-used first, recomputed periodically by the backend. Surfaced as quick

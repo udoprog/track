@@ -9,7 +9,7 @@ use crate::error::{CustomContext, Error, Message};
 use crate::router::{
     MediaQuery, MediaSelection, Route, Router, ShowDetailQuery, SortField, TrackedFilter,
 };
-use crate::ui::{Loading, MarkWatchedPicker, MediaKindToggle, PaginationButtons};
+use crate::ui::{MarkWatchedPicker, MediaKindToggle, PaginationButtons};
 use crate::{Image, SetupChannel};
 
 const PAGE_SIZE: usize = 20;
