@@ -46,6 +46,11 @@ pub(super) struct ShowDetail {
     global_sync_kinds: Vec<api::SourceSyncKinds>,
     background: Background,
     router: Router,
+    /// Fragment (episode code) from the initial URL hash to scroll to once the
+    /// referenced element has been rendered. Episodes load asynchronously, so
+    /// the element does not exist when the browser first tries to honor the
+    /// hash; we retry on each render until it appears, then clear this.
+    scroll_target: Option<String>,
     tz: TimeZone,
     _tz_handle: ContextHandle<TimeZone>,
     _setup: SetupChannel,
@@ -205,6 +210,8 @@ impl Component for ShowDetail {
             .context::<Router>(Callback::noop())
             .expect("Expected router in context");
 
+        let scroll_target = router.hash();
+
         Self {
             channel: ws::Channel::default(),
             show: None,
@@ -237,6 +244,7 @@ impl Component for ShowDetail {
             global_sync_kinds: Vec::new(),
             background,
             router,
+            scroll_target,
             tz,
             _tz_handle,
             _setup,
@@ -283,6 +291,19 @@ impl Component for ShowDetail {
 
     fn destroy(&mut self, _ctx: &Context<Self>) {
         self.background.title(None);
+    }
+
+    fn rendered(&mut self, _ctx: &Context<Self>, _first_render: bool) {
+        // Honor an initial URL hash (e.g. `#S01E05`) once its episode has been
+        // rendered. The element is absent on the first renders while episodes
+        // stream in, so we retry each render and clear the target on success.
+        let Some(target) = self.scroll_target.as_deref() else {
+            return;
+        };
+
+        if self.router.scroll_to_id(target) {
+            self.scroll_target = None;
+        }
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
@@ -641,6 +662,7 @@ impl ShowDetail {
                         id,
                         ShowDetailQuery {
                             season: Some(season),
+                            episode: None,
                         },
                     ));
                 }
@@ -1903,7 +1925,13 @@ impl ShowDetail {
                 <div class="actions row-fill">
                     <div class="column fill">
                         <div class="row-fill">
-                            <a class="episode-code">{episode.code()}</a>
+                            <a class="episode-code" href={format!("#{}", episode.code())}>
+                                <span class="item-inline-xs">
+                                    <span class="icon link" />
+                                </span>
+
+                                <span>{episode.code()}</span>
+                            </a>
 
                             <div class="row">
                                 if episode.pending {

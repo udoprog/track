@@ -381,14 +381,16 @@ impl Dashboard {
         let confirming_watch = self.confirming_watch.as_ref() == Some(&p.kind);
 
         let route = match (p.kind, &p.info) {
-            (api::PendingKind::Episode { show, .. }, api::PendingInfo::Episode { season, .. }) => {
-                Route::ShowDetail(
-                    show,
-                    ShowDetailQuery {
-                        season: Some(*season),
-                    },
-                )
-            }
+            (
+                api::PendingKind::Episode { show, .. },
+                api::PendingInfo::Episode { season, number, .. },
+            ) => Route::ShowDetail(
+                show,
+                ShowDetailQuery {
+                    season: Some(*season),
+                    episode: Some(api::Code::new(*season, *number)),
+                },
+            ),
             (api::PendingKind::Episode { show, .. }, _) => {
                 Route::ShowDetail(show, ShowDetailQuery::default())
             }

@@ -42,10 +42,13 @@ $gap-xs: 8px;
 $gap-sm: 12px;
 $gap: 16px;
 $input-height: 32px;
+$input-height-xs: 14px;
 $input-height-sm: 24px;
 $input-height-lg: 44px;
 $input-height-xl: 56px;
 $input-height-touch: 44px;
+$input-height-touch-xs: 14px;
+$input-height-touch-sm: 24px;
 $input-height-touch-lg: 44px;
 $input-height-touch-xl: 56px;
 $icon-padding: 8px;
@@ -229,7 +232,7 @@ p {
     }
 }
 
-.item-inline {
+@mixin item-inline-base($input-height, $input-height-touch) {
     display: inline-flex;
     vertical-align: middle;
     height: $input-height;
@@ -240,15 +243,21 @@ p {
     }
 }
 
-.item-inline-lg {
+.item-inline {
+    @include item-inline-base($input-height, $input-height-touch);
+}
+
+.item-inline-xs {
     display: inline-flex;
-    vertical-align: middle;
-    height: $input-height-lg;
-    padding: $item-inline-padding 0;
+    height: $input-height-xs;
 
     @include until-mobile {
-        height: $input-height-touch-lg;
+        height: $input-height-touch-xs;
     }
+}
+
+.item-inline-lg {
+    @include item-inline-base($input-height-lg, $input-height-touch-lg);
 }
 
 .item-inline-more {
@@ -712,6 +721,10 @@ image {
 }
 
 .episode-code {
+    display: inline-flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.25em;
     font-family: $monospace-font;
     font-size: $font-lg;
     color: $text-muted;

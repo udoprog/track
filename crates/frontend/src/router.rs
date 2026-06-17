@@ -347,6 +347,10 @@ impl QueueQuery {
 #[derive(Default, Debug, Clone, PartialEq)]
 pub(super) struct ShowDetailQuery {
     pub(super) season: Option<api::SeasonNumber>,
+    /// Episode to scroll to, emitted as the URL fragment (`#S01E05`). Write-only:
+    /// it is never parsed back from the location, since the fragment is read
+    /// directly by the detail page (see [`Router::hash`]).
+    pub(super) episode: Option<api::Code>,
 }
 
 impl ShowDetailQuery {
@@ -432,10 +436,16 @@ impl fmt::Display for Route {
                 let qs = q.to_query_string();
 
                 if qs.is_empty() {
-                    write!(f, "/shows/{id}")
+                    write!(f, "/shows/{id}")?;
                 } else {
-                    write!(f, "/shows/{id}?{qs}")
+                    write!(f, "/shows/{id}?{qs}")?;
                 }
+
+                if let Some(episode) = q.episode {
+                    write!(f, "#{episode}")?;
+                }
+
+                Ok(())
             }
             Route::MovieDetail(id) => write!(f, "/movies/{id}"),
             Route::Search(q) => {
@@ -489,6 +499,46 @@ impl Route {
     }
 }
 
+/// Thin handle over the browser window, resolved once. Every method degrades to
+/// a no-op (or `None`) when the window, document, or target element is
+/// unavailable, so call sites never have to deal with the fallible `web_sys`
+/// access chain.
+#[derive(Clone, PartialEq)]
+struct Dom {
+    window: Option<web_sys::Window>,
+}
+
+impl Dom {
+    fn new() -> Self {
+        Self {
+            window: web_sys::window(),
+        }
+    }
+
+    /// The current URL fragment without its leading `#`, or `None` when there is
+    /// no (non-empty) fragment.
+    fn hash(&self) -> Option<String> {
+        let hash = self.window.as_ref()?.location().hash().ok()?;
+        let hash = hash.trim_start_matches('#');
+        (!hash.is_empty()).then(|| hash.to_owned())
+    }
+
+    /// Scroll the element with the given id into view, returning whether it was
+    /// found and scrolled.
+    fn scroll_to_id(&self, id: &str) -> bool {
+        let Some(window) = &self.window else {
+            return false;
+        };
+
+        let Some(element) = window.document().and_then(|d| d.get_element_by_id(id)) else {
+            return false;
+        };
+
+        element.scroll_into_view();
+        true
+    }
+}
+
 /// Context handed to descendant components so they can navigate without
 /// threading callbacks through props. Backed by callbacks into
 /// [`crate::root::Root`], which owns the [`RouterState`].
@@ -496,11 +546,28 @@ impl Route {
 pub(super) struct Router {
     navigate: Callback<Route>,
     replace: Callback<Route>,
+    dom: Dom,
 }
 
 impl Router {
     pub(super) fn new(navigate: Callback<Route>, replace: Callback<Route>) -> Self {
-        Self { navigate, replace }
+        Self {
+            navigate,
+            replace,
+            dom: Dom::new(),
+        }
+    }
+
+    /// The current URL fragment (without the leading `#`), if any. Used to honor
+    /// deep links to in-page anchors whose content loads asynchronously.
+    pub(super) fn hash(&self) -> Option<String> {
+        self.dom.hash()
+    }
+
+    /// Scroll the element with the given id into view, returning whether it was
+    /// found. No-op when the element is not (yet) present.
+    pub(super) fn scroll_to_id(&self, id: &str) -> bool {
+        self.dom.scroll_to_id(id)
     }
 
     /// Navigate to `route`, pushing a new browser history entry.

@@ -143,39 +143,38 @@ impl Component for Calendar {
 
                                         if !shows.is_empty() || !movies.is_empty() {
                                             <div class="calendar-items">
-                                                { for shows.iter().flat_map(|entry| {
+                                                { for shows.iter().map(|entry| {
                                                     let show_id = entry.show_id;
+                                                    let episode = entry.episodes.last().map(|ep| ep.code());
+                                                    let onclick = link.callback(move |_|
+                                                        Msg::Navigate(Route::ShowDetail(show_id, ShowDetailQuery { season: episode.map(|e| e.season), episode }))
+                                                    );
 
-                                                    // Episodes for a show on a single day can span seasons (e.g. a
-                                                    // special plus a regular episode). Render one clickable row per
-                                                    // season so each links to its own season rather than all of them
-                                                    // pointing at the first (often a special).
-                                                    group_by_season(&entry.episodes).into_iter().map(move |(season, eps)| {
-                                                        let on_click = link.callback(move |_|
-                                                            Msg::Navigate(Route::ShowDetail(show_id, ShowDetailQuery { season: Some(season) }))
-                                                        );
+                                                    html! {
+                                                        <div class="calendar-item" title={format!("Open {}", entry.show_title)}>
+                                                            <div class="calendar-item-title clickable" {onclick}>
+                                                                <span class="item-inline">
+                                                                    <span class="icon tv" />
+                                                                </span>
 
-                                                        html! {
-                                                            <div class="calendar-item clickable" onclick={on_click} title={entry.show_title.clone()}>
-                                                                <div class="calendar-item-title">
-                                                                    <span class="item-inline">
-                                                                        <span class="icon tv" />
-                                                                    </span>
-
-                                                                    {&entry.show_title}
-                                                                </div>
-
-                                                                {for eps.iter().map(|ep| {
-                                                                    html! {
-                                                                        <div class="calendar-item-code">
-                                                                            <span>{ep.aired.time_of_day(self.tz.clone())}</span>
-                                                                            <span>{ep.code().to_string()}</span>
-                                                                        </div>
-                                                                    }
-                                                                })}
+                                                                {&entry.show_title}
                                                             </div>
-                                                        }
-                                                    })
+
+                                                            {for entry.episodes.iter().map(move |ep| {
+                                                                let episode = ep.code();
+                                                                let onclick = link.callback(move |_|
+                                                                    Msg::Navigate(Route::ShowDetail(show_id, ShowDetailQuery { season: Some(episode.season), episode: Some(episode) }))
+                                                                );
+
+                                                                html! {
+                                                                    <div class="calendar-item-code clickable" onclick={onclick} title={format!("Open {} {}", entry.show_title, ep.code())}>
+                                                                        <span>{ep.aired.time_of_day(self.tz.clone())}</span>
+                                                                        <span>{ep.code().to_string()}</span>
+                                                                    </div>
+                                                                }
+                                                            })}
+                                                        </div>
+                                                    }
                                                 }) }
 
                                                 { for movies.iter().map(|movie| {
@@ -285,24 +284,6 @@ impl Calendar {
             .on_packet(ctx.link().callback(Msg::ScheduleLoaded))
             .send();
     }
-}
-
-/// Group a day's episodes for a single show by season, preserving the order in
-/// which each season first appears.
-fn group_by_season(
-    episodes: &[api::ScheduleEpisode],
-) -> Vec<(api::SeasonNumber, Vec<&api::ScheduleEpisode>)> {
-    let mut groups: Vec<(api::SeasonNumber, Vec<&api::ScheduleEpisode>)> = Vec::new();
-
-    for ep in episodes {
-        if let Some((_, eps)) = groups.iter_mut().find(|(season, _)| *season == ep.season) {
-            eps.push(ep);
-        } else {
-            groups.push((ep.season, vec![ep]));
-        }
-    }
-
-    groups
 }
 
 fn build_weeks(

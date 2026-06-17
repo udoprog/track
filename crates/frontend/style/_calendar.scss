@@ -98,19 +98,17 @@
 .calendar-item {
     display: flex;
     flex-direction: column;
-    gap: $gap-xs;
+    border: 1px solid $border-subtle-transparent;
 
     background: $bg-dark-transparent;
     color: $text-primary;
-    padding: $gap-xs;
     min-height: $input-height;
-    border: 1px solid $border-subtle-transparent;
 
     @include until-mobile {
         min-height: $input-height-touch;
     }
 
-    &:hover {
+    &.clickable:hover {
         background: $color-primary;
         color: #fff;
 
@@ -123,6 +121,7 @@
 .calendar-item-title {
     @include row-base;
     gap: 0.5em;
+    padding: $gap-sm;
 
     @include until-mobile {
         text-overflow: ellipsis;
@@ -137,19 +136,41 @@
     .item-inline {
         align-self: flex-start;
     }
+
+    &.clickable:hover {
+        background: $color-primary;
+        color: #fff;
+
+        .calendar-item-code {
+            color: inherit;
+        }
+    }
 }
 
 .calendar-item-code {
     display: flex;
     flex-direction: row;
-    gap: 0.5em;
     justify-content: space-between;
+    align-items: center;
+    gap: 0.5em;
+    padding: 0 $gap-sm;
 
     color: $text-muted;
     font-family: monospace;
+    height: $input-height-touch;
 
     @include from-desktop {
         font-size: $font-xs;
+        height: $input-height;
+    }
+
+    &.clickable:hover {
+        background: $color-primary;
+        color: #fff;
+
+        .calendar-item-code {
+            color: inherit;
+        }
     }
 }
 

@@ -2039,8 +2039,18 @@ impl Episode {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Code {
-    season: SeasonNumber,
-    episode: u32,
+    pub season: SeasonNumber,
+    pub episode: u32,
+}
+
+impl Code {
+    /// Construct a code from a season and episode number. Matches the value
+    /// returned by [`Episode::code`], so it can be used to target an episode's
+    /// rendered element (its `id`).
+    #[inline]
+    pub fn new(season: SeasonNumber, episode: u32) -> Self {
+        Self { season, episode }
+    }
 }
 
 impl fmt::Display for Code {
