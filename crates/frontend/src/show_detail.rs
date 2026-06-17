@@ -939,7 +939,7 @@ impl ShowDetail {
                 Ok(true)
             }
             Msg::AddPendingDone(result) => {
-                result.context(Message::SyncingShow)?;
+                result.context(Message::AddingPending)?;
 
                 if let Some(season) = self.selected() {
                     self.load_episodes(ctx, season.season);
@@ -967,7 +967,7 @@ impl ShowDetail {
                 Ok(false)
             }
             Msg::RemovePendingDone(result) => {
-                result.context(Message::SyncingShow)?;
+                result.context(Message::RemovingPending)?;
 
                 if let Some(season) = self.selected() {
                     self.load_episodes(ctx, season.season);
@@ -1011,13 +1011,13 @@ impl ShowDetail {
                 Ok(false)
             }
             Msg::SelectImageDone(result) => {
-                result.context(Message::SyncingShow)?;
+                result.context(Message::SelectingImage)?;
                 self.image_modal = false;
                 self.load_show(ctx);
                 Ok(true)
             }
             Msg::ClearSelectedImageDone(result) => {
-                result.context(Message::SyncingShow)?;
+                result.context(Message::ClearingImage)?;
                 self.image_modal = false;
                 self.load_show(ctx);
                 Ok(true)
@@ -1045,7 +1045,7 @@ impl ShowDetail {
                 Ok(true)
             }
             Msg::SetRemoteEnabledDone(result) => {
-                result.context(Message::SettingSyncSource)?;
+                result.context(Message::SettingRemoteEnabled)?;
                 Ok(true)
             }
             Msg::SetRemoteSyncKinds(remote_id, sync_kinds) => {
@@ -1071,7 +1071,7 @@ impl ShowDetail {
                 Ok(true)
             }
             Msg::SetRemoteSyncKindsDone(result) => {
-                result.context(Message::SettingSyncSource)?;
+                result.context(Message::SettingRemoteSyncKinds)?;
                 Ok(true)
             }
             Msg::ConfigLoaded(result) => {
@@ -1101,7 +1101,7 @@ impl ShowDetail {
                 Ok(true)
             }
             Msg::ReorderRemotesDone(result) => {
-                result.context(Message::SettingSyncSource)?;
+                result.context(Message::ReorderingRemotes)?;
                 Ok(true)
             }
             Msg::SetLanguage(language) => {
@@ -1123,7 +1123,7 @@ impl ShowDetail {
                 Ok(false)
             }
             Msg::SetLanguageDone(language, result) => {
-                result.context(Message::SettingLanguage)?;
+                result.context(Message::SettingLanguage(language.clone()))?;
                 if let Some(ref mut show) = self.show {
                     show.language = language;
                 }
@@ -1153,9 +1153,9 @@ impl ShowDetail {
             }
             Msg::SeasonImagesLoaded(result) => {
                 let packet = result
-                    .context(Message::SyncingShow)?
+                    .context(Message::LoadingSeasonImages)?
                     .decode()
-                    .context(Message::SyncingShow)?;
+                    .context(Message::LoadingSeasonImages)?;
 
                 self.season_graphics.clear();
 
@@ -1196,7 +1196,7 @@ impl ShowDetail {
                 Ok(true)
             }
             Msg::SelectSeasonImageDone(result) => {
-                result.context(Message::SyncingShow)?;
+                result.context(Message::SelectingImage)?;
                 self.season_image_modal = false;
                 Ok(true)
             }
@@ -1222,7 +1222,7 @@ impl ShowDetail {
                 Ok(true)
             }
             Msg::ClearSelectedSeasonImageDone(result) => {
-                result.context(Message::SyncingShow)?;
+                result.context(Message::ClearingImage)?;
                 self.season_image_modal = false;
                 Ok(true)
             }
@@ -1255,7 +1255,7 @@ impl ShowDetail {
                 Ok(false)
             }
             Msg::SetIncludeSpecialsDone(include_specials, result) => {
-                result.context(Message::SettingLanguage)?;
+                result.context(Message::SettingIncludeSpecials(include_specials))?;
                 if let Some(ref mut show) = self.show {
                     show.include_specials = include_specials;
                 }
@@ -1277,7 +1277,7 @@ impl ShowDetail {
                 Ok(false)
             }
             Msg::SetAutoSyncDone(auto_sync, result) => {
-                result.context(Message::SettingLanguage)?;
+                result.context(Message::SettingAutoSync(auto_sync))?;
                 if let Some(ref mut show) = self.show {
                     show.auto_sync = auto_sync;
                 }
@@ -1303,7 +1303,7 @@ impl ShowDetail {
                 Ok(true)
             }
             Msg::SetAirDateFiltersDone(result) => {
-                result.context(Message::SettingLanguage)?;
+                result.context(Message::SettingAirDateFilters)?;
                 Ok(false)
             }
             Msg::OpenRemoteEditor => {
@@ -1404,7 +1404,7 @@ impl ShowDetail {
                 Ok(false)
             }
             Msg::MoveWatchedDone(result) => {
-                result.context(Message::MarkingWatched)?;
+                result.context(Message::MovingWatched)?;
 
                 if let Some(season) = self.selected() {
                     self.load_episodes(ctx, season.season);

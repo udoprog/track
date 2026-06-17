@@ -10,6 +10,8 @@ use crate::error::RcError;
 use crate::{Modal, SetupChannel};
 
 pub(crate) const MDASH: &str = "—";
+pub(crate) const LOADING: &str = "Loading…";
+pub(crate) const SEARCH: &str = "Search…";
 
 /// App-wide context: the most-used custom language codes (ISO 639-1), ordered
 /// most-used first, recomputed periodically by the backend. Surfaced as quick
@@ -24,7 +26,7 @@ pub(super) fn Loading() -> Html {
     html! {
         <div class="box info">
             <span class="icon arrow-path spin" />
-            <span>{"Loading…"}</span>
+            <span>{LOADING}</span>
         </div>
     }
 }
@@ -255,7 +257,9 @@ pub(super) fn MediaSettingsModal(props: &MediaSettingsModalProps) -> Html {
     let on_sync = props.on_sync.reform(|_: MouseEvent| ());
 
     let auto_sync = props.auto_sync;
-    let on_auto_sync = props.on_auto_sync_change.reform(move |_: MouseEvent| !auto_sync);
+    let on_auto_sync = props
+        .on_auto_sync_change
+        .reform(move |_: MouseEvent| !auto_sync);
 
     let specials = props.on_include_specials_change.as_ref().map(|cb| {
         let include_specials = props.include_specials;

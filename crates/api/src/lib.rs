@@ -294,7 +294,7 @@ impl Weekday {
         Weekday::Sunday,
     ];
 
-    /// Days since Monday (0 = Monday … 6 = Sunday).
+    /// Days since Monday (0 = Monday to 6 = Sunday).
     pub fn from_monday(self) -> u32 {
         self as u32
     }
@@ -1791,12 +1791,12 @@ impl AirDateFilter {
 }
 
 /// The effective air date for an episode: the earliest qualifying release from
-/// the highest-priority source. Only sources present in `priority` (the eligible,
-/// AirDate-enabled sources) contribute — a release from any other source is
-/// ignored, so excluding a source's air dates drops its dates entirely and an
-/// empty `priority` yields `None`. A source with no filter entry qualifies fully;
-/// a source with filter entries qualifies only for matching country/network.
-/// Returns `None` when nothing qualifies.
+/// the highest-priority source. Only sources present in `priority` (the
+/// eligible, AirDate-enabled sources) contribute - a release from any other
+/// source is ignored, so excluding a source's air dates drops its dates
+/// entirely and an empty `priority` yields `None`. A source with no filter
+/// entry qualifies fully; a source with filter entries qualifies only for
+/// matching country/network. Returns `None` when nothing qualifies.
 pub fn effective_aired(
     releases: &[EpisodeRelease],
     priority: &[RemoteSource],
@@ -1845,8 +1845,9 @@ pub fn decode_sync_kinds(s: &str) -> Option<Vec<SourceSyncKinds>> {
     serde_json::from_str(s).ok()
 }
 
-/// All per-show settings, stored as a single JSON blob in `show_settings`. Adding
-/// a new setting is a `#[serde(default)]` field here — no migration required.
+/// All per-show settings, stored as a single JSON blob in `show_settings`.
+/// Adding a new setting is a `#[serde(default)]` field here - no migration
+/// required.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ShowSettings {
     #[serde(default)]
@@ -2282,8 +2283,9 @@ impl Default for Config {
 }
 
 impl Config {
-    /// The global default sync kinds for `source`: the configured entry if present,
-    /// otherwise the source's full capability — in both cases clamped to capability.
+    /// The global default sync kinds for `source`: the configured entry if
+    /// present, otherwise the source's full capability - in both cases clamped
+    /// to capability.
     pub fn sync_kinds_for(&self, source: RemoteSource) -> SyncKindSet {
         self.sync_kinds
             .iter()
@@ -2342,7 +2344,7 @@ pub enum MediaKind {
     Movies,
 }
 
-/// A slim row used by the movies/shows list views — only the fields needed to
+/// A slim row used by the movies/shows list views - only the fields needed to
 /// filter, reorder, and render a list entry.
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]

@@ -5,6 +5,7 @@ use yew::prelude::*;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{Route, SearchQuery, ShowDetailQuery};
+use crate::ui::SEARCH;
 use crate::{Image, SetupChannel};
 
 pub(super) struct Search {
@@ -173,7 +174,7 @@ impl Component for Search {
                     <input
                         class="input-text fill"
                         type="text"
-                        placeholder="Search…"
+                        placeholder={SEARCH}
                         autofocus=true
                         value={self.query.clone()}
                         oninput={on_input}

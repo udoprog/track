@@ -5,7 +5,8 @@ use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::ui::{
-    AirDateFiltersEditor, LanguagePicker, ReleaseFiltersEditor, SecretInput, SyncKindsEditor,
+    AirDateFiltersEditor, LOADING, LanguagePicker, ReleaseFiltersEditor, SecretInput,
+    SyncKindsEditor,
 };
 
 fn tz_is_valid(name: &str) -> bool {
@@ -150,7 +151,7 @@ impl Component for Settings {
                 if self.saving {
                     <div class="box info">
                         <span class="item-inline"><span class="icon arrow-path spin" /></span>
-                        <span>{"Loading…"}</span>
+                        <span>{LOADING}</span>
                     </div>
                 }
 

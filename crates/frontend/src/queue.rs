@@ -195,7 +195,7 @@ impl Queue {
                 Ok(false)
             }
             Msg::SyncAllDone(result) => {
-                result.context(Message::SyncingShow)?;
+                result.context(Message::SyncingAll)?;
                 Ok(false)
             }
             Msg::Remove(id) => {
@@ -225,8 +225,8 @@ impl Queue {
                 Ok(false)
             }
             Msg::Tick => {
-                // Re-render so the relative pending ("in …") and completed
-                // ("… ago") labels refresh; they are derived from timestamps.
+                // Re-render so the relative pending ("in ...") and completed
+                // ("... ago") labels refresh; they are derived from timestamps.
                 Ok(!self.pending.is_empty() || !self.completed.is_empty())
             }
             Msg::Focus(focus) => {

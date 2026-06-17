@@ -46,7 +46,10 @@ pub(crate) struct Error {
     source: Option<Box<Source>>,
 }
 
-#[derive(Debug, Clone, Copy, Display)]
+/// One variant per distinct operation, so a failure's displayed message points
+/// at exactly what was being attempted. Variants carry the relevant parameters
+/// when the failing handler already has them in scope, to aid troubleshooting.
+#[derive(Debug, Clone, Display)]
 pub(crate) enum Message {
     #[display("WebSocket Error")]
     WebSocketError,
@@ -70,8 +73,14 @@ pub(crate) enum Message {
     LoadingSeasons,
     #[display("Loading episodes")]
     LoadingEpisodes,
+    #[display("Loading season images")]
+    LoadingSeasonImages,
     #[display("Marking watched")]
     MarkingWatched,
+    #[display("Moving watch entry")]
+    MovingWatched,
+    #[display("Skipping episode")]
+    SkippingEpisode,
     #[display("Loading movies")]
     LoadingMovies,
     #[display("Loading watch history")]
@@ -90,14 +99,36 @@ pub(crate) enum Message {
     RemovingShow,
     #[display("Syncing show")]
     SyncingShow,
-    #[display("Setting sync source")]
-    SettingSyncSource,
+    #[display("Syncing movie")]
+    SyncingMovie,
+    #[display("Syncing all media")]
+    SyncingAll,
+    #[display("Toggling remote source")]
+    SettingRemoteEnabled,
+    #[display("Setting remote sync kinds")]
+    SettingRemoteSyncKinds,
+    #[display("Reordering remotes")]
+    ReorderingRemotes,
     #[display("Editing remotes")]
     EditingRemotes,
-    #[display("Setting language")]
-    SettingLanguage,
+    #[display("Adding to up next")]
+    AddingPending,
+    #[display("Removing from up next")]
+    RemovingPending,
+    #[display("Selecting image")]
+    SelectingImage,
+    #[display("Clearing image")]
+    ClearingImage,
+    #[display("Setting language to {_0:?}")]
+    SettingLanguage(Option<String>),
     #[display("Setting release dates")]
     SettingReleaseFilters,
+    #[display("Setting specials handling to {_0:?}")]
+    SettingIncludeSpecials(Option<bool>),
+    #[display("Setting air dates")]
+    SettingAirDateFilters,
+    #[display("Setting automatic sync to {_0}")]
+    SettingAutoSync(bool),
     #[display("Loading tasks")]
     LoadingTasks,
     #[display("Searching")]

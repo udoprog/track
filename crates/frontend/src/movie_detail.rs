@@ -427,7 +427,7 @@ impl MovieDetail {
                 Ok(true)
             }
             Msg::SyncDone(result) => {
-                result.context(Message::SyncingShow)?;
+                result.context(Message::SyncingMovie)?;
                 Ok(false)
             }
             Msg::SetRemoteEnabled(remote_id, enabled) => {
@@ -451,7 +451,7 @@ impl MovieDetail {
                 Ok(true)
             }
             Msg::SetRemoteEnabledDone(result) => {
-                result.context(Message::SettingSyncSource)?;
+                result.context(Message::SettingRemoteEnabled)?;
                 Ok(false)
             }
             Msg::SetRemoteSyncKinds(remote_id, sync_kinds) => {
@@ -475,7 +475,7 @@ impl MovieDetail {
                 Ok(true)
             }
             Msg::SetRemoteSyncKindsDone(result) => {
-                result.context(Message::SettingSyncSource)?;
+                result.context(Message::SettingRemoteSyncKinds)?;
                 Ok(false)
             }
             Msg::ReorderRemotes(remote_ids) => {
@@ -495,7 +495,7 @@ impl MovieDetail {
                 Ok(true)
             }
             Msg::ReorderRemotesDone(result) => {
-                result.context(Message::SettingSyncSource)?;
+                result.context(Message::ReorderingRemotes)?;
                 Ok(false)
             }
             Msg::SetLanguage(language) => {
@@ -517,7 +517,7 @@ impl MovieDetail {
                 Ok(false)
             }
             Msg::SetLanguageDone(language, result) => {
-                result.context(Message::SettingLanguage)?;
+                result.context(Message::SettingLanguage(language.clone()))?;
 
                 if let Some(ref mut movie) = self.movie {
                     movie.language = language;
@@ -581,7 +581,7 @@ impl MovieDetail {
                 Ok(false)
             }
             Msg::SetAutoSyncDone(auto_sync, result) => {
-                result.context(Message::SettingLanguage)?;
+                result.context(Message::SettingAutoSync(auto_sync))?;
 
                 if let Some(ref mut movie) = self.movie {
                     movie.auto_sync = auto_sync;
@@ -639,7 +639,7 @@ impl MovieDetail {
                 Ok(true)
             }
             Msg::AddPendingDone(result) => {
-                result.context(Message::SyncingShow)?;
+                result.context(Message::AddingPending)?;
 
                 if let Some(ref mut movie) = self.movie {
                     movie.pending = true;
@@ -660,7 +660,7 @@ impl MovieDetail {
                 Ok(false)
             }
             Msg::RemovePendingDone(result) => {
-                result.context(Message::SyncingShow)?;
+                result.context(Message::RemovingPending)?;
 
                 if let Some(ref mut movie) = self.movie {
                     movie.pending = false;
@@ -704,13 +704,13 @@ impl MovieDetail {
                 Ok(false)
             }
             Msg::SelectImageDone(result) => {
-                result.context(Message::SyncingShow)?;
+                result.context(Message::SelectingImage)?;
                 self.image_modal = false;
                 self.load_movie(ctx);
                 Ok(true)
             }
             Msg::ClearSelectedImageDone(result) => {
-                result.context(Message::SyncingShow)?;
+                result.context(Message::ClearingImage)?;
                 self.image_modal = false;
                 self.load_movie(ctx);
                 Ok(true)

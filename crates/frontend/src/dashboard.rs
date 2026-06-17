@@ -248,7 +248,7 @@ impl Dashboard {
                 Ok(true)
             }
             Msg::SkipEpisodeDone(result) => {
-                result.context(Message::SyncingShow)?;
+                result.context(Message::SkippingEpisode)?;
 
                 if self.channel.id() != ws::ChannelId::NONE {
                     self.load_pending(ctx);
@@ -276,7 +276,7 @@ impl Dashboard {
                 Ok(true)
             }
             Msg::SetConfigDone(result) => {
-                result.context(Message::SyncingShow)?;
+                result.context(Message::SavingConfig)?;
                 Ok(false)
             }
             Msg::SetPage(p) => {
