@@ -319,12 +319,8 @@ struct MoviePendingCandidateRow {
 struct ScheduleRow {
     show_id: ShowId,
     show_title: String,
-    episode_id: EpisodeId,
     season: SeasonNumber,
     number: u32,
-    absolute_number: Option<u32>,
-    name: Option<String>,
-    overview: Option<String>,
     aired: Option<Timestamp>,
 }
 
@@ -604,9 +600,7 @@ struct InnerRead {
     next_episode_after: TypedStatement<(ShowId, EpisodeId), (EpisodeId, Option<Timestamp>)>,
 
     // schedule: episodes airing in the next N days
-    #[sql = "SELECT e.show_id, s.title AS show_title,"]
-    #[sql = "        e.id AS episode_id, e.season, e.episode, e.absolute_number,"]
-    #[sql = "        e.name, e.overview, e.aired"]
+    #[sql = "SELECT e.show_id, s.title AS show_title, e.season, e.episode, e.aired"]
     #[sql = "FROM episodes e"]
     #[sql = "JOIN shows s ON s.id = e.show_id"]
     #[sql = "WHERE s.tracked = 1"]
@@ -614,14 +608,6 @@ struct InnerRead {
     #[sql = "    AND e.aired <= ?"]
     #[sql = "ORDER BY e.aired, s.title, e.season, e.episode"]
     list_schedule: TypedStatement<(Timestamp, Timestamp), ScheduleRow>,
-    #[sql = "SELECT er.episode_id, er.source, er.value"]
-    #[sql = "FROM episode_remotes er"]
-    #[sql = "JOIN episodes e ON e.id = er.episode_id"]
-    #[sql = "JOIN shows s ON s.id = e.show_id"]
-    #[sql = "WHERE s.tracked = 1"]
-    #[sql = "    AND e.aired > ?"]
-    #[sql = "    AND e.aired <= ?"]
-    list_schedule_remotes: TypedStatement<(Timestamp, Timestamp), EpisodeRemoteRow>,
 
     // all watched (for import dedup) see list_all_watched_episodes / list_all_watched_movies
 
@@ -3526,37 +3512,18 @@ impl Database {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
-            // Episode remotes for the same window, looked up by episode id.
-            let mut remotes: HashMap<EpisodeId, Remote> = HashMap::new();
-
-            let mut stmt = s.list_schedule_remotes.bind((today, end))?;
-
-            while let Some(r) = stmt.next()? {
-                remotes.insert(r.episode_id, Remote::new(r.source, r.value));
-            }
-
-            stmt.reset()?;
-
             let mut stmt = s.list_schedule.bind((today, end))?;
 
-            let mut days_map = Vec::<(Date, Vec<(ShowId, String, Vec<api::Episode>)>)>::new();
+            let mut days_map =
+                Vec::<(Date, Vec<(ShowId, String, Vec<api::ScheduleEpisode>)>)>::new();
 
             while let Some(r) = stmt.next()? {
                 let Some(day) = r.aired else { continue };
 
-                let ep = api::Episode {
-                    id: r.episode_id,
-                    show_id: r.show_id,
+                let ep = api::ScheduleEpisode {
                     season: r.season,
                     episode: r.number,
-                    absolute_number: r.absolute_number,
-                    name: r.name,
-                    overview: r.overview,
-                    aired: r.aired,
-                    remote_id: remotes.get(&r.episode_id).cloned(),
-                    pending: false,
-                    watched_count: 0,
-                    screenshot: None,
+                    aired: day,
                 };
 
                 let day = day.date(tz.clone());

@@ -202,6 +202,12 @@ impl Timestamp {
     pub fn date(&self, tz: TimeZone) -> Date {
         Date(self.0.to_zoned(tz.0).date())
     }
+
+    /// Format just the local time of day (`"HH:MM"`, 24-hour) in the given timezone.
+    #[inline]
+    pub fn time_of_day(&self, tz: TimeZone) -> String {
+        self.0.to_zoned(tz.0).strftime("%H:%M").to_string()
+    }
 }
 
 impl FromStr for Timestamp {
@@ -2222,12 +2228,24 @@ impl HasAired for Pending {
     }
 }
 
+/// Sparse episode shown in the schedule/calendar grid. The calendar only renders
+/// the `SxxEyy` code and uses the season for navigation, so it deliberately omits
+/// the heavyweight fields of [`Episode`].
+#[derive(Debug, Clone, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct ScheduleEpisode {
+    pub season: SeasonNumber,
+    pub episode: u32,
+    /// When the episode airs/becomes available, rendered as a local time of day.
+    pub aired: Timestamp,
+}
+
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct ScheduledEntry {
     pub show_id: ShowId,
     pub show_title: String,
-    pub episodes: Vec<Episode>,
+    pub episodes: Vec<ScheduleEpisode>,
 }
 
 #[derive(Debug, Clone, Encode, Decode)]

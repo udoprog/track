@@ -8,6 +8,7 @@ use yew::prelude::*;
 use crate::SetupChannel;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{Route, ShowDetailQuery};
+use crate::ui::DOT;
 
 pub(super) struct Calendar {
     channel: ws::Channel,
@@ -131,12 +132,17 @@ impl Component for Calendar {
                                                     let codes = entry.episodes.iter()
                                                         .map(|ep| format!("{}E{:02}", ep.season.short(), ep.episode))
                                                         .collect::<Vec<_>>()
-                                                        .join(" ");
+                                                        .join(", ");
+
+                                                    let code_line = match entry.episodes.first() {
+                                                        Some(ep) => format!("{codes} {DOT} {}", ep.aired.time_of_day(self.tz.clone())),
+                                                        None => codes,
+                                                    };
 
                                                     html! {
                                                         <div class="calendar-item clickable" onclick={on_click} title={entry.show_title.clone()}>
                                                             <div class="calendar-item-title">{&entry.show_title}</div>
-                                                            <div class="calendar-item-code">{codes}</div>
+                                                            <div class="calendar-item-code">{code_line}</div>
                                                         </div>
                                                     }
                                                 }) }
