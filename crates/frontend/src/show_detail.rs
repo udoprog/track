@@ -276,7 +276,7 @@ impl Component for ShowDetail {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
-        let (Some(show), Some(season)) = (&self.show, self.selected()) else {
+        let Some(ref show) = self.show else {
             return html!(<Loading />);
         };
 
@@ -367,9 +367,11 @@ impl Component for ShowDetail {
                         }
                     </div>
 
-                    { self.view_sidebar(ctx, show, season) }
+                    if let Some(season) = self.selected() {
+                        { self.view_sidebar(ctx, show, season) }
 
-                    { self.view_episodes(ctx, season) }
+                        { self.view_episodes(ctx, season) }
+                    }
                 </div>
 
                 if self.image_modal {
