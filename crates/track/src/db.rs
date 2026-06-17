@@ -855,7 +855,9 @@ struct InnerWrite {
     #[sql = "UPDATE episodes SET remote_id = ? WHERE id = ?"]
     set_episode_remote: TypedStatement<(RemoteId, EpisodeId), ()>,
     #[sql = "UPDATE episodes SET aired = ? WHERE id = ?"]
-    set_episode_aired_by_id: TypedStatement<(Timestamp, EpisodeId), ()>,
+    set_episode_aired_by_id: TypedStatement<(Option<Timestamp>, EpisodeId), ()>,
+    #[sql = "UPDATE episodes SET aired = NULL WHERE show_id = ?"]
+    clear_episode_aired_for_show: TypedStatement<(ShowId,), ()>,
     #[sql = "INSERT INTO episode_releases (episode_id, source, country, network, timestamp)"]
     #[sql = "VALUES (?, ?, ?, ?, ?)"]
     #[sql = "ON CONFLICT(episode_id, source, country, network)"]
@@ -1863,8 +1865,11 @@ impl Database {
     }
 
     /// Recompute each episode's effective `aired` from its stored releases, using
-    /// the show's enabled-remote priority and air-date filters (falling back to
-    /// `default_filters`). Episodes with no qualifying release keep their date.
+    /// the show's air-date-eligible remote priority and air-date filters (falling
+    /// back to `default_filters`). An episode whose releases all come from excluded
+    /// sources (or are filtered out) has its date cleared; when no source is
+    /// eligible at all (air dates excluded from every remote) every episode's date
+    /// is cleared. Episodes with no stored release are left untouched.
     #[tracing::instrument(skip(self, default_filters), ret(level = "trace"))]
     pub(crate) async fn recompute_episode_aired_for_show(
         &self,
@@ -1882,6 +1887,14 @@ impl Database {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
+            // No eligible source: drop every air date so excluded dates are no
+            // longer shown (stale releases may remain stored, ready to be restored
+            // if a source is re-enabled and the show recomputed).
+            if priority.is_empty() {
+                s.clear_episode_aired_for_show.execute((show_id,))?;
+                return Ok(());
+            }
+
             let mut by_episode: HashMap<EpisodeId, Vec<api::EpisodeRelease>> = HashMap::new();
 
             {
@@ -1900,10 +1913,12 @@ impl Database {
                 }
             }
 
+            // Each episode with stored releases is set to its effective date, or
+            // cleared when none of its releases qualify under the current priority
+            // and filters.
             for (episode_id, releases) in by_episode {
-                if let Some(ts) = api::effective_aired(&releases, &priority, &filters) {
-                    s.set_episode_aired_by_id.execute((ts, episode_id))?;
-                }
+                let aired = api::effective_aired(&releases, &priority, &filters);
+                s.set_episode_aired_by_id.execute((aired, episode_id))?;
             }
 
             Ok(())

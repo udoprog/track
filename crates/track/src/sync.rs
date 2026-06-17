@@ -128,13 +128,35 @@ pub(crate) async fn sync_show(
         }
     }
 
-    // Without base metadata there is nothing to persist; bail rather than wipe the
-    // existing show (persisting clears images and prunes seasons/episodes).
-    if !draft.provided.contains(SyncKind::Base) {
-        anyhow::bail!("Show has no syncable remote (TMDB or TVDB)");
-    }
+    // The kinds at least one enabled remote is configured to contribute. This
+    // tells a deliberately-excluded kind (clear its derived data) apart from a
+    // transient fetch failure (keep what's already stored), mirroring how air
+    // dates use eligibility in `recompute_episode_aired_for_show`.
+    let eligible = api::eligible_sync_kinds(&show.remotes, &config);
 
-    persist_show_draft(show_id, &show, &draft, db, broadcast).await?;
+    // Base drives the show's seasons and episodes:
+    //   - provided           → persist the fresh draft;
+    //   - eligible, missing   → a configured Base source failed this run, so keep
+    //                           the existing show rather than wiping it;
+    //   - not eligible        → no enabled remote contributes Base, so the
+    //                           seasons/episodes are orphaned and get cleared.
+    if draft.provided.contains(SyncKind::Base) {
+        persist_show_draft(show_id, &show, &draft, db, broadcast).await?;
+    } else if eligible.contains(SyncKind::Base) {
+        anyhow::bail!("Show has no syncable Base remote available");
+    } else {
+        db.prune_seasons(show_id, &HashSet::new()).await?;
+
+        let show = db
+            .show_by_id(show_id)
+            .await?
+            .context("Expected show to exist after clearing episodes")?;
+        broadcast.broadcast_event(api::AppEventKind::ShowChanged { show });
+        broadcast.broadcast_event(api::AppEventKind::SeasonsChanged {
+            show_id,
+            seasons: Vec::new(),
+        });
+    }
 
     // Merge all sources' air dates into the effective episodes.aired by priority,
     // then broadcast each season so clients pick up the recomputed dates.

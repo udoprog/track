@@ -1068,6 +1068,24 @@ pub fn effective_remote_sync_kinds(entry: &RemoteEntry, config: &Config) -> Sync
         .intersect(source.default_sync_kinds())
 }
 
+/// The union of [`SyncKind`]s that at least one enabled remote is configured to
+/// contribute. A kind absent from this set is excluded across every remote, so its
+/// derived data should be cleared on sync rather than kept; a kind present here but
+/// not produced during a given sync is a transient fetch failure, and the existing
+/// data is kept. See [`air_date_sources_by_priority`] for the air-date-specific,
+/// priority-ordered form of the same eligibility notion.
+pub fn eligible_sync_kinds(remotes: &[RemoteEntry], config: &Config) -> SyncKindSet {
+    let mut set = SyncKindSet::empty();
+
+    for entry in remotes.iter().filter(|e| e.enabled) {
+        for kind in effective_remote_sync_kinds(entry, config) {
+            set.insert(kind);
+        }
+    }
+
+    set
+}
+
 /// Sources of enabled remotes whose effective sync kinds include [`SyncKind::AirDate`],
 /// ordered by priority (lowest number = highest priority), de-duplicated keeping the
 /// highest-priority occurrence of each source. A source with AirDate disabled no longer
@@ -1773,15 +1791,22 @@ impl AirDateFilter {
 }
 
 /// The effective air date for an episode: the earliest qualifying release from
-/// the highest-priority source. A source with no filter entry qualifies fully;
+/// the highest-priority source. Only sources present in `priority` (the eligible,
+/// AirDate-enabled sources) contribute — a release from any other source is
+/// ignored, so excluding a source's air dates drops its dates entirely and an
+/// empty `priority` yields `None`. A source with no filter entry qualifies fully;
 /// a source with filter entries qualifies only for matching country/network.
-/// Returns `None` when nothing qualifies (callers keep the existing date).
+/// Returns `None` when nothing qualifies.
 pub fn effective_aired(
     releases: &[EpisodeRelease],
     priority: &[RemoteSource],
     filters: &[AirDateFilter],
 ) -> Option<Timestamp> {
     let qualifies = |r: &EpisodeRelease| {
+        if !priority.contains(&r.source) {
+            return false;
+        }
+
         let has_source_filter = filters.iter().any(|f| f.source == r.source);
         !has_source_filter || filters.iter().any(|f| f.matches(r))
     };
@@ -3399,6 +3424,46 @@ mod tests {
     }
 
     #[test]
+    fn eligible_sync_kinds_unions_enabled_remotes() {
+        let config = Config::default();
+
+        // A remote restricted to AirDate plus one restricted to Base together make
+        // both kinds eligible.
+        let both = [
+            entry(
+                RemoteSource::Tmdb,
+                Some(SyncKindSet::from_kinds([SyncKind::AirDate])),
+            ),
+            entry(
+                RemoteSource::Tvdb,
+                Some(SyncKindSet::from_kinds([SyncKind::Base])),
+            ),
+        ];
+        assert_eq!(
+            eligible_sync_kinds(&both, &config),
+            SyncKindSet::from_kinds([SyncKind::Base, SyncKind::AirDate])
+        );
+
+        // With Base excluded from every remote, Base is no longer eligible, so its
+        // derived seasons/episodes should be cleared on sync.
+        let air_only = [
+            entry(
+                RemoteSource::Tmdb,
+                Some(SyncKindSet::from_kinds([SyncKind::AirDate])),
+            ),
+            entry(RemoteSource::Tvmaze, None),
+        ];
+        let eligible = eligible_sync_kinds(&air_only, &config);
+        assert!(!eligible.contains(SyncKind::Base));
+        assert!(eligible.contains(SyncKind::AirDate));
+
+        // A disabled remote contributes nothing.
+        let mut disabled = entry(RemoteSource::Tmdb, None);
+        disabled.enabled = false;
+        assert!(eligible_sync_kinds(&[disabled], &config).is_empty());
+    }
+
+    #[test]
     fn air_date_priority_prefers_higher_ranked_source() {
         let releases = [
             rel(RemoteSource::Tmdb, "", "", 200),
@@ -3435,11 +3500,19 @@ mod tests {
     }
 
     #[test]
-    fn air_date_falls_back_to_unranked_source() {
-        // Unknown-source backfill still yields a date when no ranked source has one.
+    fn air_date_ignores_ineligible_source() {
+        // A source absent from the priority list (e.g. its AirDate kind is
+        // excluded) does not contribute, even as the only release.
         let releases = [rel(RemoteSource::Unknown, "", "", 50)];
-        let aired = effective_aired(&releases, &default_air_date_priority(), &[]).unwrap();
-        assert_eq!(aired.inner().as_second(), 50);
+        assert!(effective_aired(&releases, &default_air_date_priority(), &[]).is_none());
+    }
+
+    #[test]
+    fn air_date_none_when_no_eligible_source() {
+        // Excluding air dates from every remote leaves no eligible source, so even
+        // a stored release yields no effective date.
+        let releases = [rel(RemoteSource::Tvmaze, "", "", 50)];
+        assert!(effective_aired(&releases, &[], &[]).is_none());
     }
 
     #[test]
