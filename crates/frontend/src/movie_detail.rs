@@ -698,6 +698,7 @@ impl MovieDetail {
             }
             Msg::OpenSettingsModal => {
                 self.settings_modal = true;
+                self.actions_expanded = false;
                 Ok(true)
             }
             Msg::CloseSettingsModal => {
@@ -707,6 +708,7 @@ impl MovieDetail {
             Msg::OpenRemoteEditor => {
                 self.remote_editor = true;
                 self.settings_modal = false;
+                self.actions_expanded = false;
                 Ok(true)
             }
             Msg::CloseRemoteEditor => {
@@ -1052,9 +1054,9 @@ impl MovieDetail {
                         </button>
                     }
 
-                    <button class="btn" onclick={link.callback(|_| Msg::OpenSettingsModal)} title="Movie settings">
+                    <button class="btn" onclick={link.callback(|_| Msg::OpenSettingsModal)} title="Settings">
                         <span class="icon cog-6-tooth" />
-                        <span class="hide-desktop">{"Movie settings"}</span>
+                        <span class="hide-desktop">{"Settings"}</span>
                     </button>
                 </div>
             </div>
@@ -1133,7 +1135,7 @@ impl MovieDetail {
 
             if self.settings_modal {
                 <MediaSettingsModal
-                    title="Movie settings"
+                    title="Settings"
                     language={movie.language.clone()}
                     has_images={!movie.images.is_empty()}
                     has_remotes={!movie.remotes.is_empty()}
@@ -1269,7 +1271,7 @@ impl MovieDetail {
         let link = ctx.link();
 
         html! {
-            <Modal title="Movie Graphics" on_close={link.callback(|_| Msg::CloseImageModal)}>
+            <Modal title="Graphics" on_close={link.callback(|_| Msg::CloseImageModal)}>
                 {for self.graphics.iter().map(|(&kind, items)| {
                     html! {
                         <ImageGallery

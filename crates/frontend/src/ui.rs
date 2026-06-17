@@ -386,7 +386,7 @@ pub(super) fn MediaSettingsModal(props: &MediaSettingsModalProps) -> Html {
                     if props.has_images {
                         <button class="btn" onclick={on_edit_graphics}>
                             <span class="icon photo" />
-                            <span>{"Edit graphics"}</span>
+                            <span>{"Graphics"}</span>
                         </button>
 
                         <span class="hint">{"Choose the poster, backdrop, banner, and other artwork."}</span>
@@ -398,7 +398,7 @@ pub(super) fn MediaSettingsModal(props: &MediaSettingsModalProps) -> Html {
                 <div class="field">
                     <button class="btn" onclick={on_edit_remotes}>
                         <span class="icon identification" />
-                        <span>{"Edit remotes"}</span>
+                        <span>{"Remotes"}</span>
                     </button>
 
                     <span class="hint">{"Edit the TMDB, TVDB, and other remote identifiers used to sync."}</span>

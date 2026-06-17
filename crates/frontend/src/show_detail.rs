@@ -323,9 +323,9 @@ impl Component for ShowDetail {
                             </button>
                         }
 
-                        <button class="btn" onclick={link.callback(|_| Msg::OpenSettingsModal)} title="Show settings">
+                        <button class="btn" onclick={link.callback(|_| Msg::OpenSettingsModal)} title="Settings">
                             <span class="icon cog-6-tooth" />
-                            <span class="hide-desktop">{"Show settings"}</span>
+                            <span class="hide-desktop">{"Settings"}</span>
                         </button>
                     </div>
                 </>
@@ -382,7 +382,7 @@ impl Component for ShowDetail {
 
                 if self.settings_modal {
                     <MediaSettingsModal
-                        title="Show settings"
+                        title="Settings"
                         language={show.language.clone()}
                         include_specials={show.include_specials}
                         has_images={!show.images.is_empty()}
@@ -1221,6 +1221,7 @@ impl ShowDetail {
             Msg::OpenSettingsModal => {
                 self.settings_modal = true;
                 self.view_orphaned = false;
+                self.actions_expanded = false;
                 Ok(true)
             }
             Msg::CloseSettingsModal => {
@@ -1528,7 +1529,7 @@ impl ShowDetail {
         let link = ctx.link();
 
         html! {
-            <Modal title="Show Graphics" on_close={link.callback(|_| Msg::CloseImageModal)}>
+            <Modal title="Graphics" on_close={link.callback(|_| Msg::CloseImageModal)}>
                 {for self.graphics.iter().map(|(&kind, items)| {
                     html! {
                         <ImageGallery

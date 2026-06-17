@@ -340,13 +340,13 @@ p {
 .form {
     display: flex;
     flex-direction: column;
-    gap: $gap-sm;
+    gap: $gap;
     align-items: stretch;
 
     .field {
         display: flex;
         flex-direction: column;
-        gap: $padding;
+        gap: $gap-sm;
 
         @include from-desktop {
             align-items: flex-start;
@@ -360,15 +360,10 @@ p {
             display: flex;
             align-items: center;
             flex-direction: row;
-            height: $input-height;
             font-size: $font-sm;
             color: $text-muted;
             text-transform: uppercase;
             letter-spacing: 0.5px;
-
-            @include until-mobile {
-                height: $input-height-touch;
-            }
         }
 
         &.error {
