@@ -70,6 +70,7 @@ pub(super) struct ShowDetail {
     _set_remote_sync_kinds_req: ws::Request,
     _set_language_req: ws::Request,
     _set_include_specials_req: ws::Request,
+    _set_auto_sync_req: ws::Request,
     _set_air_date_filters_req: ws::Request,
     _config_req: ws::Request,
     _orphaned_req: ws::Request,
@@ -146,6 +147,8 @@ pub(super) enum Msg {
         Option<bool>,
         Result<ws::Packet<api::SetShowIncludeSpecials>, ws::Error>,
     ),
+    SetAutoSync(bool),
+    SetAutoSyncDone(bool, Result<ws::Packet<api::SetShowAutoSync>, ws::Error>),
     SetAirDateFilters(Option<Vec<api::AirDateFilter>>),
     SetAirDateFiltersDone(Result<ws::Packet<api::SetShowAirDateFilters>, ws::Error>),
     OpenRemoteEditor,
@@ -253,6 +256,7 @@ impl Component for ShowDetail {
             _set_remote_sync_kinds_req: ws::Request::default(),
             _set_language_req: ws::Request::default(),
             _set_include_specials_req: ws::Request::default(),
+            _set_auto_sync_req: ws::Request::default(),
             _set_air_date_filters_req: ws::Request::default(),
             _config_req: ws::Request::default(),
             _orphaned_req: ws::Request::default(),
@@ -392,6 +396,8 @@ impl Component for ShowDetail {
                         last_synced={show.last_synced_at.map(|ts| AttrValue::from(ts.display(self.tz.clone())))}
                         syncing={self.syncing}
                         on_sync={link.callback(|_| Msg::SyncShow)}
+                        auto_sync={show.auto_sync}
+                        on_auto_sync_change={link.callback(Msg::SetAutoSync)}
                         on_language_change={link.callback(Msg::SetLanguage)}
                         on_include_specials_change={Some(link.callback(Msg::SetIncludeSpecials))}
                         air_date_filters={show.air_date_filters.clone()}
@@ -1252,6 +1258,28 @@ impl ShowDetail {
                 result.context(Message::SettingLanguage)?;
                 if let Some(ref mut show) = self.show {
                     show.include_specials = include_specials;
+                }
+                Ok(true)
+            }
+            Msg::SetAutoSync(auto_sync) => {
+                let id = ctx.props().show_id;
+
+                self._set_auto_sync_req = self
+                    .channel
+                    .request()
+                    .body(api::SetShowAutoSyncRequest { id, auto_sync })
+                    .on_packet(
+                        ctx.link()
+                            .callback(move |r| Msg::SetAutoSyncDone(auto_sync, r)),
+                    )
+                    .send();
+
+                Ok(false)
+            }
+            Msg::SetAutoSyncDone(auto_sync, result) => {
+                result.context(Message::SettingLanguage)?;
+                if let Some(ref mut show) = self.show {
+                    show.auto_sync = auto_sync;
                 }
                 Ok(true)
             }

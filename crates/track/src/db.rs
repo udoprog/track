@@ -37,6 +37,7 @@ struct ShowRow {
     first_air: Option<Timestamp>,
     overview: Option<String>,
     tracked: bool,
+    auto_sync: bool,
     last_synced_at: Option<Timestamp>,
     // Legacy per-show settings columns (dormant once a `show_settings` row exists).
     language: Option<String>,
@@ -178,6 +179,7 @@ struct MovieRow {
     release_date: Option<Timestamp>,
     overview: Option<String>,
     tracked: bool,
+    auto_sync: bool,
     last_synced_at: Option<Timestamp>,
     // Legacy per-movie settings columns (dormant once a `movie_settings` row exists).
     language: Option<String>,
@@ -368,13 +370,13 @@ struct AllMovieRemoteRow {
 #[sql(read_only)]
 struct InnerRead {
     // shows
-    #[sql = "SELECT shows.id, title, first_air, overview, tracked, last_synced_at, language, include_specials, air_date_filters, show_settings.data AS settings_data"]
+    #[sql = "SELECT shows.id, title, first_air, overview, tracked, auto_sync, last_synced_at, language, include_specials, air_date_filters, show_settings.data AS settings_data"]
     #[sql = "FROM shows LEFT JOIN show_settings ON show_settings.show_id = shows.id ORDER BY title"]
     list_shows: TypedStatement<(), ShowRow>,
-    #[sql = "SELECT shows.id, title, first_air, overview, tracked, last_synced_at, language, include_specials, air_date_filters, show_settings.data AS settings_data"]
+    #[sql = "SELECT shows.id, title, first_air, overview, tracked, auto_sync, last_synced_at, language, include_specials, air_date_filters, show_settings.data AS settings_data"]
     #[sql = "FROM shows LEFT JOIN show_settings ON show_settings.show_id = shows.id WHERE shows.id = ?"]
     show_by_id: TypedStatement<(ShowId,), ShowRow>,
-    #[sql = "SELECT s.id, s.title, s.first_air, s.overview, s.tracked, s.last_synced_at, s.language, s.include_specials, s.air_date_filters, ss.data AS settings_data"]
+    #[sql = "SELECT s.id, s.title, s.first_air, s.overview, s.tracked, s.auto_sync, s.last_synced_at, s.language, s.include_specials, s.air_date_filters, ss.data AS settings_data"]
     #[sql = "FROM shows s"]
     #[sql = "JOIN show_remotes r ON r.show_id = s.id"]
     #[sql = "LEFT JOIN show_settings ss ON ss.show_id = s.id"]
@@ -482,13 +484,13 @@ struct InnerRead {
     last_watched_shows: TypedStatement<(), LastWatchedShowRow>,
 
     // movies
-    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.last_synced_at, m.language, m.release_filters, ms.data AS settings_data"]
+    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.auto_sync, m.last_synced_at, m.language, m.release_filters, ms.data AS settings_data"]
     #[sql = "FROM movies m LEFT JOIN movie_settings ms ON ms.movie_id = m.id ORDER BY m.title"]
     list_movies: TypedStatement<(), MovieRow>,
-    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.last_synced_at, m.language, m.release_filters, ms.data AS settings_data"]
+    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.auto_sync, m.last_synced_at, m.language, m.release_filters, ms.data AS settings_data"]
     #[sql = "FROM movies m LEFT JOIN movie_settings ms ON ms.movie_id = m.id WHERE m.id = ?"]
     movie_by_id: TypedStatement<(MovieId,), MovieRow>,
-    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.last_synced_at, m.language, m.release_filters, ms.data AS settings_data"]
+    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.auto_sync, m.last_synced_at, m.language, m.release_filters, ms.data AS settings_data"]
     #[sql = "FROM movies m"]
     #[sql = "JOIN movie_remotes r ON r.movie_id = m.id"]
     #[sql = "LEFT JOIN movie_settings ms ON ms.movie_id = m.id"]
@@ -579,9 +581,9 @@ struct InnerRead {
     #[sql = "SELECT e.show_id, s.title AS show_title, e.season, e.episode, e.name AS episode_name, e.aired"]
     #[sql = "FROM episodes e"]
     #[sql = "JOIN shows s ON s.id = e.show_id"]
-    #[sql = "WHERE e.id = ?"]
+    #[sql = "WHERE e.id = ? AND s.tracked = 1"]
     pending_episode_detail: TypedStatement<(EpisodeId,), PendingEpisodeDetailRow>,
-    #[sql = "SELECT title, release_date FROM movies WHERE id = ?"]
+    #[sql = "SELECT title, release_date FROM movies WHERE id = ? AND tracked = 1"]
     pending_movie_detail: TypedStatement<(MovieId,), PendingMovieDetailRow>,
     #[sql = "SELECT i.source, i.path"]
     #[sql = "FROM show_images si JOIN images i ON i.id = si.image_id"]
@@ -638,15 +640,15 @@ struct InnerRead {
     list_movie_languages: TypedStatement<(), LanguageRow>,
 
     // stale-item queries
-    #[sql = "SELECT shows.id, title, first_air, overview, tracked, last_synced_at, language, include_specials, air_date_filters, show_settings.data AS settings_data"]
+    #[sql = "SELECT shows.id, title, first_air, overview, tracked, auto_sync, last_synced_at, language, include_specials, air_date_filters, show_settings.data AS settings_data"]
     #[sql = "FROM shows LEFT JOIN show_settings ON show_settings.show_id = shows.id"]
-    #[sql = "WHERE tracked = 1"]
+    #[sql = "WHERE auto_sync = 1"]
     #[sql = "    AND (last_synced_at IS NULL OR last_synced_at < ?)"]
     #[sql = "ORDER BY last_synced_at IS NOT NULL, last_synced_at"]
     shows_needing_sync: TypedStatement<(Timestamp,), ShowRow>,
-    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.last_synced_at, m.language, m.release_filters, ms.data AS settings_data"]
+    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.auto_sync, m.last_synced_at, m.language, m.release_filters, ms.data AS settings_data"]
     #[sql = "FROM movies m LEFT JOIN movie_settings ms ON ms.movie_id = m.id"]
-    #[sql = "WHERE m.tracked = 1"]
+    #[sql = "WHERE m.auto_sync = 1"]
     #[sql = "    AND (m.last_synced_at IS NULL OR m.last_synced_at < ?)"]
     #[sql = "ORDER BY m.last_synced_at IS NOT NULL, m.last_synced_at"]
     movies_needing_sync: TypedStatement<(Timestamp,), MovieRow>,
@@ -697,6 +699,8 @@ struct InnerWrite {
     delete_show: TypedStatement<(ShowId,), ()>,
     #[sql = "UPDATE shows SET tracked = ? WHERE id = ?"]
     set_show_tracked: TypedStatement<(bool, ShowId), ()>,
+    #[sql = "UPDATE shows SET auto_sync = ? WHERE id = ?"]
+    set_show_auto_sync: TypedStatement<(bool, ShowId), ()>,
     // Per-show settings live in a single JSON blob; see api::ShowSettings.
     #[sql = "INSERT OR REPLACE INTO show_settings (show_id, data) VALUES (?, ?)"]
     upsert_show_settings: TypedStatement<(ShowId, String), ()>,
@@ -871,6 +875,8 @@ struct InnerWrite {
     insert_movie: TypedStatement<(MovieId, String, Option<Timestamp>, String, bool), ()>,
     #[sql = "UPDATE movies SET tracked = ? WHERE id = ?"]
     set_movie_tracked: TypedStatement<(bool, MovieId), ()>,
+    #[sql = "UPDATE movies SET auto_sync = ? WHERE id = ?"]
+    set_movie_auto_sync: TypedStatement<(bool, MovieId), ()>,
     // Per-movie settings live in a single JSON blob; see api::MovieSettings.
     #[sql = "INSERT OR REPLACE INTO movie_settings (movie_id, data) VALUES (?, ?)"]
     upsert_movie_settings: TypedStatement<(MovieId, String), ()>,
@@ -1361,6 +1367,18 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.set_show_tracked.execute((tracked, id))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn set_show_auto_sync(&self, id: ShowId, auto_sync: bool) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.set_show_auto_sync.execute((auto_sync, id))?;
             Ok(())
         });
 
@@ -2488,6 +2506,18 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.set_movie_tracked.execute((tracked, id))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn set_movie_auto_sync(&self, id: MovieId, auto_sync: bool) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.set_movie_auto_sync.execute((auto_sync, id))?;
             Ok(())
         });
 
@@ -3889,6 +3919,7 @@ fn show_from_row(r: ShowRow) -> api::Show {
         first_air_date: r.first_air,
         overview: r.overview,
         tracked: r.tracked,
+        auto_sync: r.auto_sync,
         remotes: Vec::new(),
         images: Vec::new(),
         poster: None,
@@ -4031,6 +4062,7 @@ fn movie_from_row(r: MovieRow) -> api::Movie {
         overview: r.overview,
         remotes: Vec::new(),
         tracked: r.tracked,
+        auto_sync: r.auto_sync,
         pending: false,
         images: Vec::new(),
         poster: None,

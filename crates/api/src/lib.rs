@@ -1903,6 +1903,8 @@ pub struct Show {
     pub first_air_date: Option<Timestamp>,
     pub overview: Option<String>,
     pub tracked: bool,
+    /// Whether the background loop automatically refreshes this show.
+    pub auto_sync: bool,
     pub remotes: Vec<RemoteEntry>,
     pub images: Vec<MediaImage>,
     pub poster: Option<Image>,
@@ -2064,6 +2066,8 @@ pub struct Movie {
     pub overview: Option<String>,
     pub remotes: Vec<RemoteEntry>,
     pub tracked: bool,
+    /// Whether the background loop automatically refreshes this movie.
+    pub auto_sync: bool,
     pub pending: bool,
     pub images: Vec<MediaImage>,
     pub poster: Option<Image>,
@@ -2743,6 +2747,20 @@ pub struct SetShowIncludeSpecialsRequest {
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
+pub struct SetShowAutoSyncRequest {
+    pub id: ShowId,
+    pub auto_sync: bool,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct SetMovieAutoSyncRequest {
+    pub id: MovieId,
+    pub auto_sync: bool,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
 pub struct SetShowAirDateFiltersRequest {
     pub id: ShowId,
     pub air_date_filters: Option<Vec<AirDateFilter>>,
@@ -3169,6 +3187,18 @@ api::define! {
     pub type SetShowIncludeSpecials;
     impl Endpoint for SetShowIncludeSpecials {
         impl Request for SetShowIncludeSpecialsRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type SetShowAutoSync;
+    impl Endpoint for SetShowAutoSync {
+        impl Request for SetShowAutoSyncRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type SetMovieAutoSync;
+    impl Endpoint for SetMovieAutoSync {
+        impl Request for SetMovieAutoSyncRequest;
         type Response<'de> = Empty;
     }
 

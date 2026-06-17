@@ -968,6 +968,50 @@ impl WsHandler {
 
                 outgoing.write(api::Empty);
             }
+            api::Request::SetShowAutoSync => {
+                let req = incoming
+                    .read::<api::SetShowAutoSyncRequest>()
+                    .context("Expected a request payload")?;
+
+                self.db.set_show_auto_sync(req.id, req.auto_sync).await?;
+
+                let show = self
+                    .db
+                    .show_by_id(req.id)
+                    .await?
+                    .context("Expected show to exist")?;
+
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::ShowChanged { show: show.clone() },
+                    "ws set show auto sync changed",
+                );
+
+                outgoing.write(api::Empty);
+            }
+            api::Request::SetMovieAutoSync => {
+                let req = incoming
+                    .read::<api::SetMovieAutoSyncRequest>()
+                    .context("Expected a request payload")?;
+
+                self.db.set_movie_auto_sync(req.id, req.auto_sync).await?;
+
+                let movie = self
+                    .db
+                    .movie_by_id(req.id)
+                    .await?
+                    .context("Expected movie to exist")?;
+
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::MovieChanged {
+                        movie: movie.clone(),
+                    },
+                    "ws set movie auto sync changed",
+                );
+
+                outgoing.write(api::Empty);
+            }
             api::Request::SetShowAirDateFilters => {
                 let req = incoming
                     .read::<api::SetShowAirDateFiltersRequest>()

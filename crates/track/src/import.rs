@@ -420,6 +420,9 @@ pub async fn import() -> Result<()> {
 
             if !s.tracked {
                 db.set_show_tracked(show_id, false).await?;
+                // Mirror the legacy single flag into auto_sync so previously
+                // untracked shows are not picked up by automatic sync.
+                db.set_show_auto_sync(show_id, false).await?;
             }
             import_show_images(&db, show_id, &s.graphics).await?;
 

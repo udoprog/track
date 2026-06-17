@@ -228,6 +228,8 @@ pub(super) struct MediaSettingsModalProps {
     pub(super) last_synced: Option<AttrValue>,
     pub(super) syncing: bool,
     pub(super) on_sync: Callback<()>,
+    pub(super) auto_sync: bool,
+    pub(super) on_auto_sync_change: Callback<bool>,
     #[prop_or_default]
     pub(super) include_specials: Option<bool>,
     #[prop_or_default]
@@ -251,6 +253,9 @@ pub(super) fn MediaSettingsModal(props: &MediaSettingsModalProps) -> Html {
     let on_edit_graphics = props.on_edit_graphics.reform(|_: MouseEvent| ());
     let on_edit_remotes = props.on_edit_remotes.reform(|_: MouseEvent| ());
     let on_sync = props.on_sync.reform(|_: MouseEvent| ());
+
+    let auto_sync = props.auto_sync;
+    let on_auto_sync = props.on_auto_sync_change.reform(move |_: MouseEvent| !auto_sync);
 
     let specials = props.on_include_specials_change.as_ref().map(|cb| {
         let include_specials = props.include_specials;
@@ -363,6 +368,14 @@ pub(super) fn MediaSettingsModal(props: &MediaSettingsModalProps) -> Html {
                         placeholder="Default"
                         on_change={props.on_language_change.clone()}
                     />
+                </div>
+
+                <div class="field">
+                    <label>{"Automatic sync"}</label>
+                    <span class={classes!("input-checkbox", auto_sync.then_some("checked"))} id="auto-sync-enabled" onclick={on_auto_sync}>
+                        <span class="mark" />
+                        {if auto_sync { "Enabled" } else { "Disabled" }}
+                    </span>
                 </div>
 
                 {specials}

@@ -53,6 +53,7 @@ pub(super) struct MovieDetail {
     _set_remote_sync_kinds_req: ws::Request,
     _set_language_req: ws::Request,
     _set_release_filters_req: ws::Request,
+    _set_auto_sync_req: ws::Request,
     _config_req: ws::Request,
     _remote_req: ws::Request,
 }
@@ -107,6 +108,8 @@ pub(super) enum Msg {
         Option<Vec<api::ReleaseFilter>>,
         Result<ws::Packet<api::SetMovieReleaseFilters>, ws::Error>,
     ),
+    SetAutoSync(bool),
+    SetAutoSyncDone(bool, Result<ws::Packet<api::SetMovieAutoSync>, ws::Error>),
     SetTracked(bool),
     SetTrackedDone(bool, Result<ws::Packet<api::UntrackMovie>, ws::Error>),
     AskWatchNext,
@@ -191,6 +194,7 @@ impl Component for MovieDetail {
             _set_remote_sync_kinds_req: ws::Request::default(),
             _set_language_req: ws::Request::default(),
             _set_release_filters_req: ws::Request::default(),
+            _set_auto_sync_req: ws::Request::default(),
             _config_req: ws::Request::default(),
             _remote_req: ws::Request::default(),
         }
@@ -558,6 +562,30 @@ impl MovieDetail {
                 // The server recomputes the effective release date from the new filters; reload to
                 // reflect it (the change broadcast excludes this originating channel).
                 self.load_movie(ctx);
+
+                Ok(true)
+            }
+            Msg::SetAutoSync(auto_sync) => {
+                let id = ctx.props().movie_id;
+
+                self._set_auto_sync_req = self
+                    .channel
+                    .request()
+                    .body(api::SetMovieAutoSyncRequest { id, auto_sync })
+                    .on_packet(
+                        ctx.link()
+                            .callback(move |r| Msg::SetAutoSyncDone(auto_sync, r)),
+                    )
+                    .send();
+
+                Ok(false)
+            }
+            Msg::SetAutoSyncDone(auto_sync, result) => {
+                result.context(Message::SettingLanguage)?;
+
+                if let Some(ref mut movie) = self.movie {
+                    movie.auto_sync = auto_sync;
+                }
 
                 Ok(true)
             }
@@ -1142,6 +1170,8 @@ impl MovieDetail {
                     last_synced={movie.last_synced_at.map(|ts| AttrValue::from(ts.display(self.tz.clone())))}
                     syncing={self.syncing}
                     on_sync={link.callback(|_| Msg::SyncMovie)}
+                    auto_sync={movie.auto_sync}
+                    on_auto_sync_change={link.callback(Msg::SetAutoSync)}
                     on_language_change={link.callback(Msg::SetLanguage)}
                     release_filters={movie.release_filters.clone()}
                     default_release_filters={self.default_release_filters.clone()}
