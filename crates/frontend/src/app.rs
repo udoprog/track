@@ -5,7 +5,7 @@ use yew::prelude::*;
 
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message, RcError};
-use crate::router::{DashboardQuery, MediaQuery, QueueQuery, Route, SearchQuery};
+use crate::router::{DashboardQuery, MediaQuery, QueueQuery, Route, Router, SearchQuery};
 use crate::setup_channel::SetupChannel;
 use crate::ui::{ErrorBox, Loading, TopLanguages};
 use crate::{Dashboard, MediaList, MovieDetail, Queue, Search, Settings, ShowDetail};
@@ -27,7 +27,6 @@ pub(super) enum Msg {
     ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
     TopLanguagesLoaded(Result<ws::Packet<api::GetTopLanguages>, ws::Error>),
     WsError(ws::Error),
-    Navigate(Route),
 }
 
 #[derive(Properties, PartialEq)]
@@ -36,6 +35,7 @@ pub(super) struct Props {
     pub(super) onerror: Callback<Option<Error>>,
     pub(super) route: Route,
     pub(super) on_navigate: Callback<Route>,
+    pub(super) on_replace: Callback<Route>,
     pub(super) on_background: Callback<String>,
     pub(super) on_title: Callback<Option<String>>,
 }
@@ -88,8 +88,10 @@ impl Component for App {
             };
         };
 
-        let link = ctx.link();
-        let on_nav = link.callback(Msg::Navigate);
+        let router = Router::new(
+            ctx.props().on_navigate.clone(),
+            ctx.props().on_replace.clone(),
+        );
         let background = Background::new(
             ctx.props().on_background.clone(),
             ctx.props().on_title.clone(),
@@ -99,9 +101,10 @@ impl Component for App {
             <ContextProvider<TimeZone> context={tz.clone()}>
                 <ContextProvider<TopLanguages> context={self.top_languages.clone()}>
                 <ContextProvider<ws::Handle> context={self.ws.handle()}>
+                    <ContextProvider<Router> context={router}>
                     <ContextProvider<Background> context={background}>
                         <div id="application">
-                            <Toolbar on_navigate={on_nav} />
+                            <Toolbar />
 
                             <div class="page">
                                 if let Some(error) = &ctx.props().error {
@@ -112,6 +115,7 @@ impl Component for App {
                             </div>
                         </div>
                     </ContextProvider<Background>>
+                    </ContextProvider<Router>>
                 </ContextProvider<ws::Handle>>
                 </ContextProvider<TopLanguages>>
             </ContextProvider<TimeZone>>
@@ -196,10 +200,6 @@ impl App {
                 Ok(false)
             }
             Msg::WsError(e) => Err(e.into()),
-            Msg::Navigate(route) => {
-                ctx.props().on_navigate.emit(route);
-                Ok(false)
-            }
         }
     }
 
@@ -214,21 +214,18 @@ impl App {
     }
 
     fn view_page(&self, ctx: &Context<Self>) -> Html {
-        let on_navigate = ctx.link().callback(Msg::Navigate);
-
         let onerror = ctx.props().onerror.clone();
 
         match &ctx.props().route {
             Route::Dashboard(query) => {
-                html! { <Dashboard {onerror} {on_navigate} page={query.page} /> }
+                html! { <Dashboard {onerror} page={query.page} /> }
             }
             Route::Queue(query) => html! {
-                <Queue {onerror} {on_navigate} focus={query.focus} page={query.page} />
+                <Queue {onerror} focus={query.focus} page={query.page} />
             },
             Route::Media(query) => html! {
                 <MediaList
                     {onerror}
-                    {on_navigate}
                     page={query.page}
                     filter={query.filter.clone()}
                     sort={query.sort}
@@ -242,29 +239,26 @@ impl App {
                 let initial_season = query.season;
 
                 html! {
-                    <ShowDetail {onerror} {show_id} {initial_season} {on_navigate} />
+                    <ShowDetail {onerror} {show_id} {initial_season} />
                 }
             }
             Route::MovieDetail(movie_id) => {
                 let movie_id = *movie_id;
-                html! { <MovieDetail {onerror} {movie_id} {on_navigate} /> }
+                html! { <MovieDetail {onerror} {movie_id} /> }
             }
             Route::Search(query) => html! {
-                <Search {onerror} {on_navigate} kind={query.kind} filter={query.filter.clone()} />
+                <Search {onerror} kind={query.kind} filter={query.filter.clone()} />
             },
             Route::Settings => html! { <Settings {onerror} /> },
         }
     }
 }
 
-#[derive(Properties, PartialEq)]
-struct ToolbarProps {
-    on_navigate: Callback<Route>,
-}
-
 #[function_component]
-fn Toolbar(props: &ToolbarProps) -> Html {
+fn Toolbar() -> Html {
     let menu_open = use_state(|| false);
+
+    let router = use_context::<Router>().expect("Expected router in context");
 
     let on_menu_toggle = {
         let menu_open = menu_open.clone();
@@ -273,13 +267,12 @@ fn Toolbar(props: &ToolbarProps) -> Html {
 
     let on_nav = {
         |route: Route| {
-            props.on_navigate.reform({
-                let menu_open = menu_open.clone();
+            let router = router.clone();
+            let menu_open = menu_open.clone();
 
-                move |_| {
-                    menu_open.set(false);
-                    route.clone()
-                }
+            Callback::from(move |_| {
+                menu_open.set(false);
+                router.push(route.clone());
             })
         }
     };

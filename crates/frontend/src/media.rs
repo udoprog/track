@@ -6,7 +6,9 @@ use yew::prelude::*;
 
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{MediaQuery, MediaSelection, Route, ShowDetailQuery, SortField, TrackedFilter};
+use crate::router::{
+    MediaQuery, MediaSelection, Route, Router, ShowDetailQuery, SortField, TrackedFilter,
+};
 use crate::ui::{Loading, MarkWatchedPicker, PaginationButtons};
 use crate::{Image, SetupChannel};
 
@@ -33,6 +35,7 @@ pub(super) struct MediaList {
     selection: MediaSelection,
     tz: TimeZone,
     background: Background,
+    router: Router,
     _tz_handle: ContextHandle<TimeZone>,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
@@ -77,7 +80,6 @@ pub(super) struct Props {
     pub(super) desc: bool,
     pub(super) tracked: TrackedFilter,
     pub(super) selection: MediaSelection,
-    pub(super) on_navigate: Callback<Route>,
 }
 
 impl Component for MediaList {
@@ -103,6 +105,11 @@ impl Component for MediaList {
             .context::<Background>(Callback::noop())
             .expect("Expected background handle in context");
 
+        let (router, _) = ctx
+            .link()
+            .context::<Router>(Callback::noop())
+            .expect("Expected router in context");
+
         Self {
             channel: ws::Channel::default(),
             items: Vec::new(),
@@ -114,6 +121,7 @@ impl Component for MediaList {
             selection: ctx.props().selection,
             tz,
             background,
+            router,
             _tz_handle,
             _setup,
             _broadcast,
@@ -435,25 +443,25 @@ impl MediaList {
             Msg::Filter(s) => {
                 self.filter = s;
                 self.page = 0;
-                self.emit_navigate(ctx);
+                self.emit_navigate();
                 Ok(true)
             }
             Msg::SetSort(sort) => {
                 self.sort = sort;
                 self.page = 0;
-                self.emit_navigate(ctx);
+                self.emit_navigate();
                 Ok(true)
             }
             Msg::ToggleDir => {
                 self.desc = !self.desc;
                 self.page = 0;
-                self.emit_navigate(ctx);
+                self.emit_navigate();
                 Ok(true)
             }
             Msg::CycleTracked => {
                 self.tracked = self.tracked.next();
                 self.page = 0;
-                self.emit_navigate(ctx);
+                self.emit_navigate();
                 Ok(true)
             }
             Msg::ToggleKind(kind) => {
@@ -462,16 +470,16 @@ impl MediaList {
                     api::MediaKind::Movies => self.selection.movies = !self.selection.movies,
                 }
                 self.page = 0;
-                self.emit_navigate(ctx);
+                self.emit_navigate();
                 Ok(true)
             }
             Msg::SetPage(p) => {
                 self.page = p;
-                self.emit_navigate(ctx);
+                self.emit_navigate();
                 Ok(true)
             }
             Msg::Navigate(route) => {
-                ctx.props().on_navigate.emit(route);
+                self.router.push(route);
                 Ok(false)
             }
             Msg::SetTz(tz) => {
@@ -550,8 +558,8 @@ impl MediaList {
         self._preload_load = Some(load);
     }
 
-    fn emit_navigate(&self, ctx: &Context<Self>) {
-        ctx.props().on_navigate.emit(Route::Media(MediaQuery {
+    fn emit_navigate(&self) {
+        self.router.push(Route::Media(MediaQuery {
             page: self.page,
             filter: self.filter.clone(),
             sort: self.sort,

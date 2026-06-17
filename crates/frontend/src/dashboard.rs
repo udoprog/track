@@ -5,16 +5,18 @@ use api::{HasAired, TimeZone};
 
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{DashboardQuery, Route, ShowDetailQuery};
+use crate::router::{DashboardQuery, Route, Router, ShowDetailQuery};
 use crate::ui::{ConfirmDanger, MarkWatchedPicker, PaginationButtons};
 use crate::{Calendar, Image, SetupChannel};
 
 pub(super) struct Dashboard {
     channel: ws::Channel,
     pending: Vec<api::Pending>,
+    pending_loaded: bool,
     config: api::Config,
     tz: TimeZone,
     background: Background,
+    router: Router,
     _tz_handle: ContextHandle<TimeZone>,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
@@ -50,7 +52,6 @@ pub(super) enum Msg {
 #[derive(Properties, PartialEq)]
 pub(super) struct Props {
     pub(super) onerror: Callback<Option<Error>>,
-    pub(super) on_navigate: Callback<Route>,
     pub(super) page: usize,
 }
 
@@ -77,12 +78,19 @@ impl Component for Dashboard {
             .context::<Background>(Callback::noop())
             .expect("Expected background handle in context");
 
+        let (router, _) = ctx
+            .link()
+            .context::<Router>(Callback::noop())
+            .expect("Expected router in context");
+
         Self {
             channel: ws::Channel::default(),
             pending: Vec::new(),
+            pending_loaded: false,
             config: api::Config::default(),
             tz,
             background,
+            router,
             _tz_handle,
             _setup,
             _broadcast,
@@ -124,10 +132,7 @@ impl Component for Dashboard {
                 <div class="column">
                     <h2>{"Schedule"}</h2>
 
-                    <Calendar
-                        onerror={ctx.props().onerror.clone()}
-                        on_navigate={ctx.props().on_navigate.clone()}
-                    />
+                    <Calendar onerror={ctx.props().onerror.clone()} />
                 </div>
             </>
         }
@@ -188,6 +193,7 @@ impl Dashboard {
                     .context(Message::LoadingPending)?
                     .pending;
 
+                self.pending_loaded = true;
                 self.clamp_page(ctx);
                 Ok(true)
             }
@@ -280,13 +286,12 @@ impl Dashboard {
                 Ok(false)
             }
             Msg::SetPage(p) => {
-                ctx.props()
-                    .on_navigate
-                    .emit(Route::Dashboard(DashboardQuery { page: p }));
+                self.router
+                    .push(Route::Dashboard(DashboardQuery { page: p }));
                 Ok(true)
             }
             Msg::Navigate(route) => {
-                ctx.props().on_navigate.emit(route);
+                self.router.push(route);
                 Ok(false)
             }
             Msg::SetTz(tz) => {
@@ -297,13 +302,21 @@ impl Dashboard {
     }
 
     fn clamp_page(&self, ctx: &Context<Self>) {
+        // Don't correct the page until the pending list has actually loaded —
+        // otherwise an early config response would clamp against an empty list
+        // and clobber a deep-linked `?page=N` before its data arrives.
+        if !self.pending_loaded {
+            return;
+        }
+
         let total_pages = self.pending.len().div_ceil(self.page_size()).max(1);
         let page = ctx.props().page.min(total_pages - 1);
 
         if page != ctx.props().page {
-            ctx.props()
-                .on_navigate
-                .emit(Route::Dashboard(DashboardQuery { page }));
+            // Replace rather than push: this is a URL correction, not a
+            // navigation, so it should not leave a back-button target.
+            self.router
+                .replace(Route::Dashboard(DashboardQuery { page }));
         }
     }
 

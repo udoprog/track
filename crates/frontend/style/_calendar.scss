@@ -86,7 +86,7 @@
 
 .calendar-day-number {
     @include row-base;
-
+    gap: 0.5em;
     font-size: $font-lg;
     color: $text-muted;
 }

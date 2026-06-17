@@ -61,6 +61,8 @@ pub(crate) enum Message {
     ReadingPathname,
     #[display("Pushing browser history state")]
     PushState,
+    #[display("Replacing browser history state")]
+    ReplaceState,
     #[display("Loading pending")]
     LoadingPending,
     #[display("Loading schedule")]

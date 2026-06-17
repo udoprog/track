@@ -4,13 +4,14 @@ use yew::prelude::*;
 
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{Route, SearchQuery, ShowDetailQuery};
+use crate::router::{Route, Router, SearchQuery, ShowDetailQuery};
 use crate::ui::SEARCH;
 use crate::{Image, SetupChannel};
 
 pub(super) struct Search {
     channel: ws::Channel,
     background: Background,
+    router: Router,
     query: String,
     kind: api::SearchKind,
     shows: Vec<api::SearchShow>,
@@ -44,7 +45,6 @@ pub(super) struct Props {
     pub(super) onerror: Callback<Option<Error>>,
     pub(super) kind: api::SearchKind,
     pub(super) filter: String,
-    pub(super) on_navigate: Callback<Route>,
 }
 
 impl Component for Search {
@@ -65,9 +65,15 @@ impl Component for Search {
             .context::<Background>(Callback::noop())
             .expect("Expected background handle in context");
 
+        let (router, _) = ctx
+            .link()
+            .context::<Router>(Callback::noop())
+            .expect("Expected router in context");
+
         Self {
             channel: ws::Channel::default(),
             background,
+            router,
             query: ctx.props().filter.clone(),
             kind: ctx.props().kind,
             shows: Vec::new(),
@@ -236,14 +242,14 @@ impl Search {
             }
             Msg::KindChanged(kind) => {
                 // Drive the search through the URL; `changed` runs the search.
-                ctx.props().on_navigate.emit(Route::Search(SearchQuery {
+                self.router.push(Route::Search(SearchQuery {
                     kind,
                     filter: self.query.clone(),
                 }));
                 Ok(false)
             }
             Msg::Submit => {
-                ctx.props().on_navigate.emit(Route::Search(SearchQuery {
+                self.router.push(Route::Search(SearchQuery {
                     kind: self.kind,
                     filter: self.query.clone(),
                 }));
@@ -295,9 +301,8 @@ impl Search {
                     .context(Message::TrackingShow)?
                     .decode()
                     .context(Message::TrackingShow)?;
-                ctx.props()
-                    .on_navigate
-                    .emit(Route::ShowDetail(show.id, ShowDetailQuery::default()));
+                self.router
+                    .push(Route::ShowDetail(show.id, ShowDetailQuery::default()));
                 Ok(false)
             }
             Msg::TrackMovieDone(result) => {
@@ -305,11 +310,11 @@ impl Search {
                     .context(Message::TrackingMovie)?
                     .decode()
                     .context(Message::TrackingMovie)?;
-                ctx.props().on_navigate.emit(Route::MovieDetail(movie.id));
+                self.router.push(Route::MovieDetail(movie.id));
                 Ok(false)
             }
             Msg::Navigate(route) => {
-                ctx.props().on_navigate.emit(route);
+                self.router.push(route);
                 Ok(false)
             }
         }

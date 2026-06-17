@@ -7,12 +7,13 @@ use yew::prelude::*;
 
 use crate::SetupChannel;
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{Route, ShowDetailQuery};
+use crate::router::{Route, Router, ShowDetailQuery};
 
 pub(super) struct Calendar {
     channel: ws::Channel,
     schedule: Vec<api::ScheduledDay>,
     tz: TimeZone,
+    router: Router,
     _tz_handle: ContextHandle<TimeZone>,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
@@ -30,7 +31,6 @@ pub(super) enum Msg {
 #[derive(Properties, PartialEq)]
 pub(super) struct Props {
     pub(super) onerror: Callback<Option<Error>>,
-    pub(super) on_navigate: Callback<Route>,
 }
 
 impl Component for Calendar {
@@ -51,10 +51,16 @@ impl Component for Calendar {
             .context::<TimeZone>(ctx.link().callback(Msg::SetTz))
             .expect("Expected a configured time zone");
 
+        let (router, _) = ctx
+            .link()
+            .context::<Router>(Callback::noop())
+            .expect("Expected router in context");
+
         Self {
             channel: ws::Channel::default(),
             schedule: Vec::new(),
             tz,
+            router,
             _tz_handle,
             _setup,
             _broadcast,
@@ -101,9 +107,10 @@ impl Component for Calendar {
                         <div class="calendar-week">
                             { for days.iter().map(|&day| {
                                 let is_today = day == today;
+                                let is_tomorrow = day == today.checked_add_days(1).unwrap_or(day);
                                 let is_past  = day < today;
-                                let entries  = schedule_lookup.get(&day).map(|d| d.entries.as_slice()).unwrap_or(&[]);
-                                let movies   = schedule_lookup.get(&day).map(|d| d.movies.as_slice()).unwrap_or(&[]);
+                                let shows = schedule_lookup.get(&day).map(|d| d.shows.as_slice()).unwrap_or(&[]);
+                                let movies = schedule_lookup.get(&day).map(|d| d.movies.as_slice()).unwrap_or(&[]);
 
                                 html! {
                                     <div class={classes!(
@@ -114,11 +121,19 @@ impl Component for Calendar {
                                     )}>
                                         <div class="calendar-day-number">
                                             <span class="bullet">{day.day()}</span>
+
+                                            if is_today {
+                                                <div class="day-of-week">{"Today"}</div>
+                                            } else if is_tomorrow {
+                                                <div class="day-of-week">{"Tomorrow"}</div>
+                                            } else {
+                                                <span class="day-of-week hide-desktop">{day.weekday().short_name()}</span>
+                                            }
                                         </div>
 
-                                        if !entries.is_empty() || !movies.is_empty() {
+                                        if !shows.is_empty() || !movies.is_empty() {
                                             <div class="calendar-items">
-                                                { for entries.iter().flat_map(|entry| {
+                                                { for shows.iter().flat_map(|entry| {
                                                     let show_id = entry.show_id;
 
                                                     // Episodes for a show on a single day can span seasons (e.g. a
@@ -169,6 +184,7 @@ impl Component for Calendar {
 
                                                                 {&movie.title}
                                                             </div>
+
                                                             <div class="calendar-item-code">
                                                                 {movie.released.time_of_day(self.tz.clone())}
                                                             </div>
@@ -233,7 +249,7 @@ impl Calendar {
                 Ok(true)
             }
             Msg::Navigate(route) => {
-                ctx.props().on_navigate.emit(route);
+                self.router.push(route);
                 Ok(false)
             }
             Msg::SetTz(tz) => {

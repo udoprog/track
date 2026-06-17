@@ -5,7 +5,7 @@ use yew::prelude::*;
 use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{QueueFocus, QueueQuery, Route, ShowDetailQuery};
+use crate::router::{QueueFocus, QueueQuery, Route, Router, ShowDetailQuery};
 use crate::ui::{MDASH, PaginationButtons};
 
 const PAGE_SIZE: usize = 20;
@@ -13,6 +13,7 @@ const PAGE_SIZE: usize = 20;
 pub(super) struct Queue {
     channel: ws::Channel,
     background: Background,
+    router: Router,
     pending: Vec<api::Task>,
     running: Vec<api::Task>,
     completed: Vec<api::CompletedTask>,
@@ -43,7 +44,6 @@ pub(super) enum Msg {
 #[derive(Properties, PartialEq)]
 pub(super) struct Props {
     pub(super) onerror: Callback<Option<Error>>,
-    pub(super) on_navigate: Callback<Route>,
     /// Which list is focused, persisted in the route query. `None` is the overview.
     pub(super) focus: Option<QueueFocus>,
     /// Current page of the focused pending list, persisted in the route query.
@@ -68,12 +68,18 @@ impl Component for Queue {
             .context::<Background>(Callback::noop())
             .expect("Expected background handle in context");
 
+        let (router, _) = ctx
+            .link()
+            .context::<Router>(Callback::noop())
+            .expect("Expected router in context");
+
         let tick_link = ctx.link().clone();
         let _tick = Interval::new(1000, move || tick_link.send_message(Msg::Tick));
 
         Self {
             channel: ws::Channel::default(),
             background,
+            router,
             pending: Vec::new(),
             running: Vec::new(),
             completed: Vec::new(),
@@ -230,20 +236,19 @@ impl Queue {
                 Ok(!self.pending.is_empty() || !self.completed.is_empty())
             }
             Msg::Focus(focus) => {
-                ctx.props()
-                    .on_navigate
-                    .emit(Route::Queue(QueueQuery { focus, page: 0 }));
+                self.router
+                    .push(Route::Queue(QueueQuery { focus, page: 0 }));
                 Ok(false)
             }
             Msg::SetPage(page) => {
-                ctx.props().on_navigate.emit(Route::Queue(QueueQuery {
+                self.router.push(Route::Queue(QueueQuery {
                     focus: ctx.props().focus,
                     page,
                 }));
                 Ok(false)
             }
             Msg::Navigate(route) => {
-                ctx.props().on_navigate.emit(route);
+                self.router.push(route);
                 Ok(false)
             }
         }

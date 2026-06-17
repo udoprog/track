@@ -6,7 +6,7 @@ use yew::prelude::*;
 
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{MediaQuery, Route};
+use crate::router::{MediaQuery, Route, Router};
 use crate::ui::{
     ConfirmDanger, Loading, MarkWatchedPicker, MediaSettingsModal, RemoteEditor, RemoteSourceKind,
     Tracked,
@@ -34,6 +34,7 @@ pub(super) struct MovieDetail {
     settings_modal: bool,
     remote_editor: bool,
     background: Background,
+    router: Router,
     tz: TimeZone,
     _tz_handle: ContextHandle<TimeZone>,
     _setup: SetupChannel,
@@ -128,7 +129,6 @@ pub(super) enum Msg {
 pub(super) struct Props {
     pub(super) onerror: Callback<Option<Error>>,
     pub(super) movie_id: api::MovieId,
-    pub(super) on_navigate: Callback<Route>,
 }
 
 impl Component for MovieDetail {
@@ -154,6 +154,11 @@ impl Component for MovieDetail {
             .context::<Background>(Callback::noop())
             .expect("Expected background handle in context");
 
+        let (router, _) = ctx
+            .link()
+            .context::<Router>(Callback::noop())
+            .expect("Expected router in context");
+
         Self {
             countries: Countries::new(),
             channel: ws::Channel::default(),
@@ -175,6 +180,7 @@ impl Component for MovieDetail {
             settings_modal: false,
             remote_editor: false,
             background,
+            router,
             tz,
             _tz_handle,
             _setup,
@@ -279,9 +285,7 @@ impl MovieDetail {
                     api::AppEventKind::MovieDeleted { movie_id }
                         if *movie_id == ctx.props().movie_id =>
                     {
-                        ctx.props()
-                            .on_navigate
-                            .emit(Route::Media(MediaQuery::default()));
+                        self.router.push(Route::Media(MediaQuery::default()));
                         Ok(false)
                     }
                     api::AppEventKind::WatchedChanged { event: kind } => {
@@ -409,9 +413,7 @@ impl MovieDetail {
             }
             Msg::RemoveDone(result) => {
                 result.context(Message::RemovingMovie)?;
-                ctx.props()
-                    .on_navigate
-                    .emit(Route::Media(MediaQuery::default()));
+                self.router.push(Route::Media(MediaQuery::default()));
                 Ok(false)
             }
             Msg::SyncMovie => {

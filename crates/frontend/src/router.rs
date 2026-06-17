@@ -485,6 +485,33 @@ impl Route {
     }
 }
 
+/// Context handed to descendant components so they can navigate without
+/// threading callbacks through props. Backed by callbacks into
+/// [`crate::root::Root`], which owns the [`RouterState`].
+#[derive(Clone, PartialEq)]
+pub(super) struct Router {
+    navigate: Callback<Route>,
+    replace: Callback<Route>,
+}
+
+impl Router {
+    pub(super) fn new(navigate: Callback<Route>, replace: Callback<Route>) -> Self {
+        Self { navigate, replace }
+    }
+
+    /// Navigate to `route`, pushing a new browser history entry.
+    pub(super) fn push(&self, route: Route) {
+        self.navigate.emit(route);
+    }
+
+    /// Navigate to `route` by replacing the current history entry. Used for URL
+    /// corrections (e.g. clamping an out-of-range page) that should not leave a
+    /// phantom entry for the back button to return to.
+    pub(super) fn replace(&self, route: Route) {
+        self.replace.emit(route);
+    }
+}
+
 pub(super) struct RouterState {
     window: web_sys::Window,
     history: web_sys::History,
@@ -516,6 +543,18 @@ impl RouterState {
         self.history
             .push_state_with_url(&JsValue::NULL, "", Some(&url))
             .context(Message::PushState)?;
+        self.route = route.clone();
+        Ok(())
+    }
+
+    /// Replace the current history entry rather than pushing a new one. Used for
+    /// URL corrections (e.g. clamping an out-of-range page) that should not leave
+    /// a phantom entry for the back button to return to.
+    pub(super) fn replace(&mut self, route: &Route) -> Result<(), Error> {
+        let url = route.to_string();
+        self.history
+            .replace_state_with_url(&JsValue::NULL, "", Some(&url))
+            .context(Message::ReplaceState)?;
         self.route = route.clone();
         Ok(())
     }

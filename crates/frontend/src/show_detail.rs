@@ -7,7 +7,7 @@ use api::{HasAired, TimeZone};
 
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{MediaQuery, Route, ShowDetailQuery};
+use crate::router::{MediaQuery, Route, Router, ShowDetailQuery};
 use crate::ui::{
     ConfirmDanger, EpisodePicker, Loading, MDASH, MarkWatchedPicker, MediaSettingsModal,
     RemoteEditor, RemoteSourceKind, Tracked,
@@ -45,6 +45,7 @@ pub(super) struct ShowDetail {
     remote_editor: bool,
     global_sync_kinds: Vec<api::SourceSyncKinds>,
     background: Background,
+    router: Router,
     tz: TimeZone,
     _tz_handle: ContextHandle<TimeZone>,
     _setup: SetupChannel,
@@ -174,7 +175,6 @@ pub(super) struct Props {
     pub(super) show_id: api::ShowId,
     #[prop_or_default]
     pub(super) initial_season: Option<api::SeasonNumber>,
-    pub(super) on_navigate: Callback<Route>,
 }
 
 impl Component for ShowDetail {
@@ -199,6 +199,11 @@ impl Component for ShowDetail {
             .link()
             .context::<Background>(Callback::noop())
             .expect("Expected background handle in context");
+
+        let (router, _) = ctx
+            .link()
+            .context::<Router>(Callback::noop())
+            .expect("Expected router in context");
 
         Self {
             channel: ws::Channel::default(),
@@ -231,6 +236,7 @@ impl Component for ShowDetail {
             remote_editor: false,
             global_sync_kinds: Vec::new(),
             background,
+            router,
             tz,
             _tz_handle,
             _setup,
@@ -631,7 +637,7 @@ impl ShowDetail {
                 if self.selected().map(|s| s.season) != Some(season) {
                     let id = ctx.props().show_id;
 
-                    ctx.props().on_navigate.emit(Route::ShowDetail(
+                    self.router.push(Route::ShowDetail(
                         id,
                         ShowDetailQuery {
                             season: Some(season),
@@ -848,9 +854,7 @@ impl ShowDetail {
             }
             Msg::RemoveDone(result) => {
                 result.context(Message::RemovingShow)?;
-                ctx.props()
-                    .on_navigate
-                    .emit(Route::Media(MediaQuery::default()));
+                self.router.push(Route::Media(MediaQuery::default()));
                 Ok(false)
             }
             Msg::SyncShow => {

@@ -15,6 +15,7 @@ pub(super) struct Root {
 
 pub(super) enum Msg {
     Navigate(Route),
+    Replace(Route),
     PopState,
     SetBackground(String),
     SetTitle(Option<String>),
@@ -48,6 +49,13 @@ impl Component for Root {
 
                 true
             }
+            Msg::Replace(route) => {
+                if let Err(e) = self.router.replace(&route) {
+                    self.error = Some(RcError::from(e));
+                }
+
+                true
+            }
             Msg::PopState => {
                 if let Err(e) = self.router.on_pop() {
                     self.error = Some(RcError::from(e));
@@ -76,6 +84,7 @@ impl Component for Root {
         let route = self.router.route.clone();
         let onerror = link.callback(Msg::Error);
         let on_navigate = link.callback(Msg::Navigate);
+        let on_replace = link.callback(Msg::Replace);
         let on_background = link.callback(Msg::SetBackground);
         let on_title = link.callback(Msg::SetTitle);
 
@@ -90,7 +99,7 @@ impl Component for Root {
                         />
                     }
                 </div>
-                <App error={self.error.clone()} {route} {onerror} {on_navigate} {on_background} {on_title} />
+                <App error={self.error.clone()} {route} {onerror} {on_navigate} {on_replace} {on_background} {on_title} />
             </>
         }
     }
