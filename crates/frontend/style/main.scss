@@ -253,13 +253,18 @@ p {
 
 .item-inline-more {
     display: inline-flex;
-    vertical-align: middle;
+    align-items: center;
     height: $input-height-xl;
+    font-size: $font-xl;
+
+    @include until-mobile {
+        height: $input-height-touch-xl;
+    }
 }
 
 .item-inline-source {
     display: inline-flex;
-    vertical-align: middle;
+    align-items: center;
     height: $input-height-lg;
 
     @include until-mobile {

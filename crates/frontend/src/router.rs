@@ -223,7 +223,7 @@ impl MediaQuery {
 
 #[derive(Default, Debug, Clone, PartialEq)]
 pub(super) struct SearchQuery {
-    pub(super) kind: api::SearchKind,
+    pub(super) selection: MediaSelection,
     pub(super) filter: String,
 }
 
@@ -231,8 +231,14 @@ impl SearchQuery {
     fn to_query_string(&self) -> String {
         let mut s = form_urlencoded::Serializer::new(String::new());
 
-        if matches!(self.kind, api::SearchKind::Movies) {
-            s.append_pair("kind", "movies");
+        // Exclusionary: search spans both kinds by default, so only serialize
+        // deselected kinds.
+        if !self.selection.shows {
+            s.append_pair("hide", "shows");
+        }
+
+        if !self.selection.movies {
+            s.append_pair("hide", "movies");
         }
 
         if !self.filter.is_empty() {
@@ -247,13 +253,11 @@ impl SearchQuery {
 
         for (key, value) in form_urlencoded::parse(search.as_bytes()) {
             match key.as_ref() {
-                "kind" => {
-                    this.kind = if value.as_ref() == "movies" {
-                        api::SearchKind::Movies
-                    } else {
-                        api::SearchKind::Show
-                    };
-                }
+                "hide" => match value.as_ref() {
+                    "shows" => this.selection.shows = false,
+                    "movies" => this.selection.movies = false,
+                    _ => {}
+                },
                 "filter" => {
                     this.filter = value.into_owned();
                 }

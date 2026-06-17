@@ -7,6 +7,7 @@ use iso3166::{Countries, Country};
 use musli_web::web03::prelude::*;
 
 use crate::error::RcError;
+use crate::router::MediaSelection;
 use crate::{Modal, SetupChannel};
 
 pub(crate) const MDASH: &str = "—";
@@ -28,6 +29,50 @@ pub(super) fn Loading() -> Html {
             <span class="icon arrow-path spin" />
             <span>{LOADING}</span>
         </div>
+    }
+}
+
+#[derive(Properties, PartialEq)]
+pub(super) struct MediaKindToggleProps {
+    pub(super) selection: MediaSelection,
+    pub(super) on_change: Callback<MediaSelection>,
+}
+
+/// The shows/movies checkbox pair shared by the media list and search. Renders
+/// as two `input-checkbox` spans (no wrapper) so it drops into an existing
+/// `input-group`.
+#[function_component]
+pub(super) fn MediaKindToggle(props: &MediaKindToggleProps) -> Html {
+    let selection = props.selection;
+
+    let on_shows = props.on_change.reform(move |_| MediaSelection {
+        shows: !selection.shows,
+        ..selection
+    });
+
+    let on_movies = props.on_change.reform(move |_| MediaSelection {
+        movies: !selection.movies,
+        ..selection
+    });
+
+    html! {
+        <>
+            <span
+                class={classes!("input-checkbox", selection.shows.then_some("checked"))}
+                title="Show series"
+                onclick={on_shows}>
+                <span class="icon tv" />
+                <span class="mark" />
+            </span>
+
+            <span
+                class={classes!("input-checkbox", selection.movies.then_some("checked"))}
+                title="Show movies"
+                onclick={on_movies}>
+                <span class="icon film" />
+                <span class="mark" />
+            </span>
+        </>
     }
 }
 

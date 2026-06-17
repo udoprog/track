@@ -247,7 +247,7 @@ impl App {
                 html! { <MovieDetail {onerror} {movie_id} /> }
             }
             Route::Search(query) => html! {
-                <Search {onerror} kind={query.kind} filter={query.filter.clone()} />
+                <Search {onerror} selection={query.selection} filter={query.filter.clone()} />
             },
             Route::Settings => html! { <Settings {onerror} /> },
         }
@@ -296,9 +296,9 @@ fn Toolbar() -> Html {
                     <span class="icon film" />
                     <span>{"Media"}</span>
                 </button>
-                <button onclick={on_nav(Route::Search(SearchQuery::default()))} class="toolbar-item" title="Search">
+                <button onclick={on_nav(Route::Search(SearchQuery::default()))} class="toolbar-item" title="Search Remotes">
                     <span class="icon magnifying-glass" />
-                    <span class="hide-desktop">{"Search"}</span>
+                    <span class="hide-desktop">{"Search Remotes"}</span>
                 </button>
                 <button onclick={on_nav(Route::Queue(QueueQuery::default()))} class="toolbar-item" title="Queue">
                     <span class="icon queue-list" />

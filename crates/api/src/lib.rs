@@ -2336,14 +2336,6 @@ impl Config {
 #[musli(crate = musli_core)]
 pub struct Empty;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Encode, Decode)]
-#[musli(crate = musli_core)]
-pub enum SearchKind {
-    #[default]
-    Show,
-    Movies,
-}
-
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct SearchShow {
@@ -2693,16 +2685,29 @@ pub struct ListWatchNextResponse {
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct SearchRequest {
-    pub kind: SearchKind,
     pub query: String,
     pub page: usize,
+    /// Whether to search remote shows. Both default on so search spans series
+    /// and movies at once.
+    pub shows: bool,
+    /// Whether to search remote movies.
+    pub movies: bool,
+}
+
+/// A single search hit, either a show or a movie. The backend interleaves the
+/// two kinds into one ordered list so results are mixed rather than grouped.
+#[derive(Debug, Clone, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub enum SearchResult {
+    Show(SearchShow),
+    Movie(SearchMovie),
 }
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct SearchResponse {
-    pub shows: Vec<SearchShow>,
-    pub movies: Vec<SearchMovie>,
+    /// Shows and movies interleaved, preserving each source's own order.
+    pub results: Vec<SearchResult>,
     /// Total number of results across the queried sources.
     pub total: usize,
 }

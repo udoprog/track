@@ -9,7 +9,7 @@ use crate::error::{CustomContext, Error, Message};
 use crate::router::{
     MediaQuery, MediaSelection, Route, Router, ShowDetailQuery, SortField, TrackedFilter,
 };
-use crate::ui::{Loading, MarkWatchedPicker, PaginationButtons};
+use crate::ui::{Loading, MarkWatchedPicker, MediaKindToggle, PaginationButtons};
 use crate::{Image, SetupChannel};
 
 const PAGE_SIZE: usize = 20;
@@ -65,7 +65,7 @@ pub(super) enum Msg {
     SetSort(SortField),
     ToggleDir,
     CycleTracked,
-    ToggleKind(api::MediaKind),
+    SetSelection(MediaSelection),
     SetPage(usize),
     Navigate(Route),
     SetTz(TimeZone),
@@ -278,21 +278,10 @@ impl Component for MediaList {
                                 <span class="hide-mobile">{tracked_label}</span>
                             </button>
 
-                            <span
-                                class={classes!("input-checkbox", self.selection.shows.then_some("checked"))}
-                                title="Show series"
-                                onclick={link.callback(|_| Msg::ToggleKind(api::MediaKind::Shows))}>
-                                <span class="icon tv" />
-                                <span class="mark" />
-                            </span>
-
-                            <span
-                                class={classes!("input-checkbox", self.selection.movies.then_some("checked"))}
-                                title="Show movies"
-                                onclick={link.callback(|_| Msg::ToggleKind(api::MediaKind::Movies))}>
-                                <span class="icon film" />
-                                <span class="mark" />
-                            </span>
+                            <MediaKindToggle
+                                selection={self.selection}
+                                on_change={link.callback(Msg::SetSelection)}
+                            />
                         </div>
 
                         <div class="input-group">
@@ -302,9 +291,13 @@ impl Component for MediaList {
                 </div>
 
                 if self.list_req.is_pending() {
-                    <Loading />
+                    <div class="row center">
+                        <span class="item-inline-more"><span class="icon arrow-path spin" /></span>
+                    </div>
                 } else if items.len() == 0 {
-                    <div class="text-muted">{"Nothing to show."}</div>
+                    <div class="row center">
+                        <span class="item-inline-more">{"Nothing to show."}</span>
+                    </div>
                 } else {
                     <div class="table">
                         { for items.into_iter().map(|m| self.view_row(ctx, m)) }
@@ -464,11 +457,8 @@ impl MediaList {
                 self.emit_navigate();
                 Ok(true)
             }
-            Msg::ToggleKind(kind) => {
-                match kind {
-                    api::MediaKind::Shows => self.selection.shows = !self.selection.shows,
-                    api::MediaKind::Movies => self.selection.movies = !self.selection.movies,
-                }
+            Msg::SetSelection(selection) => {
+                self.selection = selection;
                 self.page = 0;
                 self.emit_navigate();
                 Ok(true)

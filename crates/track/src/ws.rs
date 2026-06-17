@@ -491,48 +491,66 @@ impl WsHandler {
                 let mut shows: Vec<api::SearchShow> = Vec::new();
                 let mut movies: Vec<api::SearchMovie> = Vec::new();
 
-                let total;
+                // Search spans both kinds; query only the selected ones and sum
+                // their totals so pagination accounts for every source.
+                let mut total = 0;
 
-                match req.kind {
-                    api::SearchKind::Show => {
-                        let (results, count) =
-                            self.remote.search_show(&req.query, req.page).await?;
+                if req.shows {
+                    let (results, count) = self.remote.search_show(&req.query, req.page).await?;
 
-                        total = count;
+                    total += count;
 
-                        for r in results {
-                            let already_tracked =
-                                self.db.shows_by_remote_id(&r.remote).await?.map(|s| s.id);
+                    for r in results {
+                        let already_tracked =
+                            self.db.shows_by_remote_id(&r.remote).await?.map(|s| s.id);
 
-                            shows.push(api::SearchShow {
-                                already_tracked,
-                                ..r
-                            });
-                        }
-                    }
-                    api::SearchKind::Movies => {
-                        let (results, count) =
-                            self.remote.search_movies(&req.query, req.page).await?;
-
-                        total = count;
-
-                        for r in results {
-                            let already_tracked =
-                                self.db.movie_by_remote_id(&r.remote).await?.map(|m| m.id);
-
-                            movies.push(api::SearchMovie {
-                                already_tracked,
-                                ..r
-                            });
-                        }
+                        shows.push(api::SearchShow {
+                            already_tracked,
+                            ..r
+                        });
                     }
                 }
 
-                outgoing.write(api::SearchResponse {
-                    shows,
-                    movies,
-                    total,
-                });
+                if req.movies {
+                    let (results, count) = self.remote.search_movies(&req.query, req.page).await?;
+
+                    total += count;
+
+                    for r in results {
+                        let already_tracked =
+                            self.db.movie_by_remote_id(&r.remote).await?.map(|m| m.id);
+
+                        movies.push(api::SearchMovie {
+                            already_tracked,
+                            ..r
+                        });
+                    }
+                }
+
+                // Interleave the two kinds round-robin so results are mixed
+                // through the list, while preserving each source's own order.
+                let mut results = Vec::with_capacity(shows.len() + movies.len());
+                let mut shows = shows.into_iter();
+                let mut movies = movies.into_iter();
+
+                loop {
+                    let show = shows.next();
+                    let movie = movies.next();
+
+                    if show.is_none() && movie.is_none() {
+                        break;
+                    }
+
+                    if let Some(show) = show {
+                        results.push(api::SearchResult::Show(show));
+                    }
+
+                    if let Some(movie) = movie {
+                        results.push(api::SearchResult::Movie(movie));
+                    }
+                }
+
+                outgoing.write(api::SearchResponse { results, total });
             }
             api::Request::SyncShow => {
                 let req = incoming

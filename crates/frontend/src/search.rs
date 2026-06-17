@@ -4,8 +4,8 @@ use yew::prelude::*;
 
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{Route, Router, SearchQuery, ShowDetailQuery};
-use crate::ui::SEARCH;
+use crate::router::{MediaSelection, Route, Router, SearchQuery, ShowDetailQuery};
+use crate::ui::{MediaKindToggle, SEARCH};
 use crate::{Image, SetupChannel};
 
 pub(super) struct Search {
@@ -13,12 +13,15 @@ pub(super) struct Search {
     background: Background,
     router: Router,
     query: String,
-    kind: api::SearchKind,
-    shows: Vec<api::SearchShow>,
-    movies: Vec<api::SearchMovie>,
+    selection: MediaSelection,
+    results: Vec<api::SearchResult>,
     page: usize,
     total: usize,
     loading: bool,
+    /// Set once a "load more" page comes back empty, so the UI can say there are
+    /// no further results rather than keep offering to load more (remote totals
+    /// can over-report).
+    end: bool,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
     _search_req: ws::Request,
@@ -29,7 +32,7 @@ pub(super) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     QueryInput(String),
-    KindChanged(api::SearchKind),
+    SelectionChanged(MediaSelection),
     Submit,
     LoadMore,
     SearchDone(Result<ws::Packet<api::Search>, ws::Error>),
@@ -43,7 +46,7 @@ pub(super) enum Msg {
 #[derive(Properties, PartialEq)]
 pub(super) struct Props {
     pub(super) onerror: Callback<Option<Error>>,
-    pub(super) kind: api::SearchKind,
+    pub(super) selection: MediaSelection,
     pub(super) filter: String,
 }
 
@@ -75,12 +78,12 @@ impl Component for Search {
             background,
             router,
             query: ctx.props().filter.clone(),
-            kind: ctx.props().kind,
-            shows: Vec::new(),
-            movies: Vec::new(),
+            selection: ctx.props().selection,
+            results: Vec::new(),
             page: 0,
             total: 0,
             loading: false,
+            end: false,
             _setup,
             _broadcast,
             _search_req: ws::Request::default(),
@@ -100,7 +103,7 @@ impl Component for Search {
 
     fn rendered(&mut self, _ctx: &Context<Self>, first_render: bool) {
         if first_render {
-            self.background.title(Some("Search".to_string()));
+            self.background.title(Some("Search Remotes".to_string()));
         }
     }
 
@@ -111,13 +114,13 @@ impl Component for Search {
     fn changed(&mut self, ctx: &Context<Self>, old_props: &Self::Properties) -> bool {
         let props = ctx.props();
 
-        if props.kind != old_props.kind || props.filter != old_props.filter {
-            self.kind = props.kind;
+        if props.selection != old_props.selection || props.filter != old_props.filter {
+            self.selection = props.selection;
             self.query = props.filter.clone();
-            self.shows.clear();
-            self.movies.clear();
+            self.results.clear();
             self.page = 0;
             self.total = 0;
+            self.end = false;
             self.send_search(ctx, self.page);
         }
 
@@ -142,41 +145,13 @@ impl Component for Search {
             }
         });
 
-        let on_kind = link.callback(|e: Event| {
-            let select = e
-                .target()
-                .and_then(|t| t.dyn_into::<web_sys::HtmlSelectElement>().ok());
-            let val = select.map(|s| s.value()).unwrap_or_default();
-
-            Msg::KindChanged(if val == "movies" {
-                api::SearchKind::Movies
-            } else {
-                api::SearchKind::Show
-            })
-        });
-
         let on_submit = link.callback(|_| Msg::Submit);
-
-        let kind = match self.kind {
-            api::SearchKind::Show => "show",
-            api::SearchKind::Movies => "movies",
-        };
 
         html! {
             <>
-                <h1>{"Search"}</h1>
+                <h1>{"Search Remotes"}</h1>
 
                 <div class="input-group">
-                    <select class="input-select" onchange={on_kind} value={kind}>
-                        <option value="show" selected={matches!(self.kind, api::SearchKind::Show)}>
-                            {"Shows"}
-                        </option>
-
-                        <option value="movies" selected={matches!(self.kind, api::SearchKind::Movies)}>
-                            {"Movies"}
-                        </option>
-                    </select>
-
                     <input
                         class="input-text fill"
                         type="text"
@@ -187,9 +162,14 @@ impl Component for Search {
                         onkeydown={on_keydown}
                     />
 
+                    <MediaKindToggle
+                        selection={self.selection}
+                        on_change={link.callback(Msg::SelectionChanged)}
+                    />
+
                     <button class="btn" onclick={on_submit}>
                         <span class="icon magnifying-glass" />
-                        <span class="hide-mobile">{"Search"}</span>
+                        <span class="hide-mobile">{"Search Remotes"}</span>
                     </button>
                 </div>
 
@@ -215,9 +195,11 @@ impl Search {
                 match event.kind {
                     api::AppEventKind::ShowCreated { show } => {
                         for entry in &show.remotes {
-                            for r in &mut self.shows {
-                                if r.remote == entry.remote {
-                                    r.already_tracked = Some(show.id);
+                            for r in &mut self.results {
+                                if let api::SearchResult::Show(s) = r
+                                    && s.remote == entry.remote
+                                {
+                                    s.already_tracked = Some(show.id);
                                 }
                             }
                         }
@@ -225,9 +207,11 @@ impl Search {
                     }
                     api::AppEventKind::MovieCreated { movie } => {
                         for entry in &movie.remotes {
-                            for r in &mut self.movies {
-                                if r.remote == entry.remote {
-                                    r.already_tracked = Some(movie.id);
+                            for r in &mut self.results {
+                                if let api::SearchResult::Movie(m) = r
+                                    && m.remote == entry.remote
+                                {
+                                    m.already_tracked = Some(movie.id);
                                 }
                             }
                         }
@@ -240,17 +224,17 @@ impl Search {
                 self.query = q;
                 Ok(false)
             }
-            Msg::KindChanged(kind) => {
+            Msg::SelectionChanged(selection) => {
                 // Drive the search through the URL; `changed` runs the search.
                 self.router.push(Route::Search(SearchQuery {
-                    kind,
+                    selection,
                     filter: self.query.clone(),
                 }));
                 Ok(false)
             }
             Msg::Submit => {
                 self.router.push(Route::Search(SearchQuery {
-                    kind: self.kind,
+                    selection: self.selection,
                     filter: self.query.clone(),
                 }));
                 Ok(false)
@@ -268,13 +252,11 @@ impl Search {
                     .context(Message::Searching)?;
 
                 if self.page == 0 {
-                    self.shows = resp.shows;
-                    self.movies = resp.movies;
-                } else {
-                    self.shows.extend(resp.shows);
-                    self.movies.extend(resp.movies);
+                    self.results.clear();
                 }
 
+                self.end = resp.results.is_empty();
+                self.results.extend(resp.results);
                 self.total = resp.total;
                 Ok(true)
             }
@@ -321,7 +303,9 @@ impl Search {
     }
 
     fn send_search(&mut self, ctx: &Context<Self>, page: usize) -> bool {
-        if self.query.is_empty() || self.channel.id() == ws::ChannelId::NONE {
+        let no_kind = !self.selection.shows && !self.selection.movies;
+
+        if self.query.is_empty() || no_kind || self.channel.id() == ws::ChannelId::NONE {
             self.loading = false;
             return true;
         }
@@ -332,9 +316,10 @@ impl Search {
             .channel
             .request()
             .body(api::SearchRequest {
-                kind: self.kind,
                 query: self.query.clone(),
                 page,
+                shows: self.selection.shows,
+                movies: self.selection.movies,
             })
             .on_packet(ctx.link().callback(Msg::SearchDone))
             .send();
@@ -343,34 +328,27 @@ impl Search {
     }
 
     fn view_results(&self, ctx: &Context<Self>) -> Html {
-        if self.query.is_empty() {
-            return html! {
-                <p class="hint">{"Enter a search query to find show or movies."}</p>
-            };
-        }
-
-        if self.shows.is_empty() && self.movies.is_empty() {
-            return html! {
-                <p class="hint">{"No results found."}</p>
-            };
-        }
-
         let on_more = ctx.link().callback(|e: MouseEvent| {
             e.prevent_default();
             Msg::LoadMore
         });
 
-        let loaded = self.shows.len() + self.movies.len();
+        let loaded = self.results.len();
 
         html! {
             <>
-                { for self.shows.iter().map(|r| self.view_show_result(ctx, r)) }
-
-                { for self.movies.iter().map(|r| self.view_movie_result(ctx, r)) }
+                { for self.results.iter().map(|r| match r {
+                    api::SearchResult::Show(show) => self.view_show_result(ctx, show),
+                    api::SearchResult::Movie(movie) => self.view_movie_result(ctx, movie),
+                }) }
 
                 if self.loading {
                     <div class="row center">
                         <span class="item-inline-more"><span class="icon arrow-path spin" /></span>
+                    </div>
+                } else if self.end {
+                    <div class="row center">
+                        <span class="item-inline-more">{"No more results."}</span>
                     </div>
                 } else if loaded < self.total {
                     <a class="row center clickable" onclick={on_more}>
@@ -408,9 +386,13 @@ impl Search {
                             <span class={classes!("logo", r.remote.source().as_id())} />
                         </a>
 
-                        if let Some(ref title) = r.title {
-                            <h2 class={classes!(on_nav.is_some().then_some("clickable"))} onclick={on_nav.clone()}>{title}</h2>
-                        }
+                        <h2 class={classes!(on_nav.is_some().then_some("clickable"))} onclick={on_nav.clone()}>
+                            <div class="item-inline" title="Movie">
+                                <div class="icon tv" />
+                            </div>
+
+                            <span class="item-title">{r.title.as_deref().unwrap_or("Untitled Movie")}</span>
+                        </h2>
 
                         <div class="row end">
                             if let Some(on_nav) = on_nav {
@@ -465,9 +447,13 @@ impl Search {
                             <span class={classes!("logo", r.remote.source().as_id())} />
                         </a>
 
-                        if let Some(ref title) = r.title {
-                            <h2 class={classes!(on_nav.is_some().then_some("clickable"))} onclick={on_nav.clone()}>{title}</h2>
-                        }
+                        <h2 class={classes!(on_nav.is_some().then_some("clickable"))} onclick={on_nav.clone()}>
+                            <div class="item-inline" title="Movie">
+                                <div class="icon film" />
+                            </div>
+
+                            <span class="item-title">{r.title.as_deref().unwrap_or("Untitled Movie")}</span>
+                        </h2>
 
                         <div class="row end">
                             if let Some(on_nav) = on_nav {
