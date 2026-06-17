@@ -8,7 +8,6 @@ use yew::prelude::*;
 use crate::SetupChannel;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{Route, ShowDetailQuery};
-use crate::ui::DOT;
 
 pub(super) struct Calendar {
     channel: ws::Channel,
@@ -119,36 +118,39 @@ impl Component for Calendar {
 
                                         if !entries.is_empty() || !movies.is_empty() {
                                             <div class="calendar-items">
-                                                { for entries.iter().map(|entry| {
+                                                { for entries.iter().flat_map(|entry| {
                                                     let show_id = entry.show_id;
-                                                    let season = entry.episodes.first().map(|ep| ep.season);
 
-                                                    let on_click = link.callback(move |_|
-                                                        Msg::Navigate(Route::ShowDetail(show_id, ShowDetailQuery { season }))
-                                                    );
+                                                    // Episodes for a show on a single day can span seasons (e.g. a
+                                                    // special plus a regular episode). Render one clickable row per
+                                                    // season so each links to its own season rather than all of them
+                                                    // pointing at the first (often a special).
+                                                    group_by_season(&entry.episodes).into_iter().map(move |(season, eps)| {
+                                                        let on_click = link.callback(move |_|
+                                                            Msg::Navigate(Route::ShowDetail(show_id, ShowDetailQuery { season: Some(season) }))
+                                                        );
 
-                                                    let codes = entry.episodes.iter()
-                                                        .map(|ep| format!("{}E{:02}", ep.season.short(), ep.episode))
-                                                        .collect::<Vec<_>>()
-                                                        .join(", ");
+                                                        html! {
+                                                            <div class="calendar-item clickable" onclick={on_click} title={entry.show_title.clone()}>
+                                                                <div class="calendar-item-title">
+                                                                    <span class="item-inline">
+                                                                        <span class="icon tv" />
+                                                                    </span>
 
-                                                    let code_line = match entry.episodes.first() {
-                                                        Some(ep) => format!("{codes} {DOT} {}", ep.aired.time_of_day(self.tz.clone())),
-                                                        None => codes,
-                                                    };
+                                                                    {&entry.show_title}
+                                                                </div>
 
-                                                    html! {
-                                                        <div class="calendar-item clickable" onclick={on_click} title={entry.show_title.clone()}>
-                                                            <div class="calendar-item-title">
-                                                                <span class="item-inline">
-                                                                    <span class="icon tv" />
-                                                                </span>
-
-                                                                {&entry.show_title}
+                                                                {for eps.iter().map(|ep| {
+                                                                    html! {
+                                                                        <div class="calendar-item-code">
+                                                                            <span>{ep.aired.time_of_day(self.tz.clone())}</span>
+                                                                            <span>{ep.code().to_string()}</span>
+                                                                        </div>
+                                                                    }
+                                                                })}
                                                             </div>
-                                                            <div class="calendar-item-code">{code_line}</div>
-                                                        </div>
-                                                    }
+                                                        }
+                                                    })
                                                 }) }
 
                                                 { for movies.iter().map(|movie| {
@@ -257,6 +259,24 @@ impl Calendar {
             .on_packet(ctx.link().callback(Msg::ScheduleLoaded))
             .send();
     }
+}
+
+/// Group a day's episodes for a single show by season, preserving the order in
+/// which each season first appears.
+fn group_by_season(
+    episodes: &[api::ScheduleEpisode],
+) -> Vec<(api::SeasonNumber, Vec<&api::ScheduleEpisode>)> {
+    let mut groups: Vec<(api::SeasonNumber, Vec<&api::ScheduleEpisode>)> = Vec::new();
+
+    for ep in episodes {
+        if let Some((_, eps)) = groups.iter_mut().find(|(season, _)| *season == ep.season) {
+            eps.push(ep);
+        } else {
+            groups.push((ep.season, vec![ep]));
+        }
+    }
+
+    groups
 }
 
 fn build_weeks(

@@ -140,6 +140,15 @@
 }
 
 .calendar-item-code {
+    display: flex;
+    flex-direction: row;
+    gap: 0.5em;
+    justify-content: space-between;
+
     color: $text-muted;
     font-family: monospace;
+
+    @include from-desktop {
+        font-size: $font-xs;
+    }
 }

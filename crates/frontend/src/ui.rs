@@ -9,7 +9,6 @@ use musli_web::web03::prelude::*;
 use crate::error::RcError;
 use crate::{Modal, SetupChannel};
 
-pub(crate) const DOT: &str = "·";
 pub(crate) const MDASH: &str = "—";
 pub(crate) const LOADING: &str = "Loading…";
 pub(crate) const SEARCH: &str = "Search…";

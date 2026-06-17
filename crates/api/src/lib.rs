@@ -2240,6 +2240,15 @@ pub struct ScheduleEpisode {
     pub aired: Timestamp,
 }
 
+impl ScheduleEpisode {
+    pub fn code(&self) -> Code {
+        Code {
+            season: self.season,
+            episode: self.episode,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct ScheduledEntry {
