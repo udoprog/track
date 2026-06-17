@@ -3585,7 +3585,7 @@ impl Database {
                 .into_iter()
                 .map(|(date, show, movies)| api::ScheduledDay {
                     date,
-                    entries: show
+                    shows: show
                         .into_iter()
                         .map(|(show_id, show_title, episodes)| api::ScheduledEntry {
                             show_id,
@@ -3627,11 +3627,6 @@ impl Database {
                 .get_config("dashboard_page")?
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(5);
-
-            let schedule_duration_days = s
-                .get_config("schedule_duration_days")?
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(7);
 
             let auto_sync_enabled = s
                 .get_config("auto_sync_enabled")?
@@ -3676,7 +3671,6 @@ impl Database {
                 tvdb_api_key,
                 tvdb_pin,
                 tmdb_api_key,
-                schedule_duration_days,
                 dashboard_page,
                 auto_sync_enabled,
                 auto_sync_interval_hours,
@@ -3710,11 +3704,6 @@ impl Database {
             }
 
             s.set_config("tmdb_api_key", &config.tmdb_api_key)?;
-
-            s.set_config(
-                "schedule_duration_days",
-                &config.schedule_duration_days.to_string(),
-            )?;
 
             s.set_config("dashboard_page", &config.dashboard_page.to_string())?;
 

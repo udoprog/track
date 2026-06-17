@@ -5,8 +5,7 @@ use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::ui::{
-    AirDateFiltersEditor, LOADING, LanguagePicker, ReleaseFiltersEditor, SecretInput,
-    SyncKindsEditor,
+    AirDateFiltersEditor, LanguagePicker, ReleaseFiltersEditor, SecretInput, SyncKindsEditor,
 };
 
 fn tz_is_valid(name: &str) -> bool {
@@ -14,7 +13,6 @@ fn tz_is_valid(name: &str) -> bool {
 }
 
 pub(super) struct Settings {
-    saving: bool,
     channel: ws::Channel,
     background: Background,
     config: api::Config,
@@ -34,7 +32,6 @@ pub(super) enum Msg {
     TmdbKeyChanged(String),
     TimezoneChanged(String),
     LanguageChanged(Option<String>),
-    ScheduleDaysChanged(String),
     DashboardPageChanged(String),
     AutoSyncEnabledToggle,
     AutoSyncIntervalChanged(String),
@@ -42,7 +39,6 @@ pub(super) enum Msg {
     ReleaseFiltersChanged(Vec<api::ReleaseFilter>),
     AirDateFiltersChanged(Vec<api::AirDateFilter>),
     SyncKindsChanged(Vec<api::SourceSyncKinds>),
-    Save,
     SaveDone(Result<ws::Packet<api::SetConfig>, ws::Error>),
 }
 
@@ -70,7 +66,6 @@ impl Component for Settings {
             .expect("Expected background handle in context");
 
         Self {
-            saving: false,
             channel: ws::Channel::default(),
             background,
             config: api::Config::default(),
@@ -113,17 +108,15 @@ impl Component for Settings {
             Msg::ThemeChanged(theme)
         });
 
-        let on_schedule_days = link.callback(|e: InputEvent| {
-            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
-            Msg::ScheduleDaysChanged(input.value())
-        });
-
-        let on_dashboard_page = link.callback(|e: InputEvent| {
+        // Text and number fields commit on `change` (blur/Enter) rather than
+        // `input`, so a setting is persisted once the user finishes editing it
+        // instead of on every keystroke.
+        let on_dashboard_page = link.callback(|e: Event| {
             let input: web_sys::HtmlInputElement = e.target_unchecked_into();
             Msg::DashboardPageChanged(input.value())
         });
 
-        let on_timezone = link.callback(|e: InputEvent| {
+        let on_timezone = link.callback(|e: Event| {
             let input: web_sys::HtmlInputElement = e.target_unchecked_into();
             Msg::TimezoneChanged(input.value())
         });
@@ -134,27 +127,15 @@ impl Component for Settings {
             Msg::IncludeSpecialsChanged(select.value() == "include")
         });
 
-        let on_auto_sync_interval = link.callback(|e: InputEvent| {
+        let on_auto_sync_interval = link.callback(|e: Event| {
             let input: web_sys::HtmlInputElement = e.target_unchecked_into();
             Msg::AutoSyncIntervalChanged(input.value())
-        });
-
-        let on_save = link.callback(|e: SubmitEvent| {
-            e.prevent_default();
-            Msg::Save
         });
 
         let theme_val = self.config.theme.to_string();
 
         html! {
-            <form onsubmit={on_save} style="display: contents">
-                if self.saving {
-                    <div class="box info">
-                        <span class="item-inline"><span class="icon arrow-path spin" /></span>
-                        <span>{LOADING}</span>
-                    </div>
-                }
-
+            <>
                 <div class="column">
                     <h4>{"Appearance"}</h4>
 
@@ -219,20 +200,7 @@ impl Component for Settings {
                                 min="1"
                                 max="100"
                                 value={self.config.dashboard_page.to_string()}
-                                oninput={on_dashboard_page}
-                            />
-                        </div>
-
-                        <div class="field fill">
-                            <label>{"Schedule days"}</label>
-
-                            <input
-                                type="number"
-                                class="input-number"
-                                min="1"
-                                max="90"
-                                value={self.config.schedule_duration_days.to_string()}
-                                oninput={on_schedule_days}
+                                onchange={on_dashboard_page}
                             />
                         </div>
                     </div>
@@ -245,7 +213,7 @@ impl Component for Settings {
                         <div class={classes!("field", (!tz_is_valid(&self.config.timezone)).then_some("error"))}>
                             <label>{"Timezone (IANA name)"}</label>
 
-                            <input type="text" class="input-text" placeholder="Leave empty to use browser timezone" value={self.config.timezone.clone()} oninput={on_timezone} list="tz-datalist" autocomplete="off" />
+                            <input type="text" class="input-text" placeholder="Leave empty to use browser timezone" value={self.config.timezone.clone()} onchange={on_timezone} list="tz-datalist" autocomplete="off" />
 
                             <datalist id="tz-datalist">
                                 { for jiff_tzdb::available().map(|name| html! {
@@ -294,7 +262,7 @@ impl Component for Settings {
                             min="1"
                             max="168"
                             value={self.config.auto_sync_interval_hours.to_string()}
-                            oninput={on_auto_sync_interval}
+                            onchange={on_auto_sync_interval}
                         />
                     </div>
 
@@ -336,11 +304,7 @@ impl Component for Settings {
                         />
                     </div>
                 </div>
-
-                <div class="row">
-                    <button type="submit" class="btn">{"Save"}</button>
-                </div>
-            </form>
+            </>
         }
     }
 }
@@ -378,10 +342,12 @@ impl Settings {
             }
             Msg::ThemeChanged(theme) => {
                 self.config.theme = theme;
+                self.persist(ctx);
                 Ok(true)
             }
             Msg::TvdbKeyChanged(val) => {
                 self.config.tvdb_api_key = val;
+                self.persist(ctx);
                 Ok(true)
             }
             Msg::TvdbPinChanged(val) => {
@@ -393,78 +359,81 @@ impl Settings {
                     self.config.tvdb_pin = Some(val.to_owned());
                 }
 
+                self.persist(ctx);
                 Ok(true)
             }
             Msg::TmdbKeyChanged(val) => {
                 self.config.tmdb_api_key = val;
+                self.persist(ctx);
                 Ok(true)
             }
             Msg::TimezoneChanged(val) => {
                 self.config.timezone = val;
+                self.persist(ctx);
                 Ok(true)
             }
             Msg::LanguageChanged(val) => {
                 self.config.language = val;
+                self.persist(ctx);
                 Ok(true)
-            }
-            Msg::ScheduleDaysChanged(val) => {
-                if let Ok(n) = val.parse::<u32>() {
-                    self.config.schedule_duration_days = n;
-                }
-                Ok(false)
             }
             Msg::DashboardPageChanged(val) => {
                 if let Ok(n) = val.parse::<u32>() {
                     self.config.dashboard_page = n;
+                    self.persist(ctx);
                 }
                 Ok(false)
             }
             Msg::AutoSyncEnabledToggle => {
                 self.config.auto_sync_enabled = !self.config.auto_sync_enabled;
+                self.persist(ctx);
                 Ok(true)
             }
             Msg::AutoSyncIntervalChanged(val) => {
                 if let Ok(n) = val.parse::<u32>() {
                     self.config.auto_sync_interval_hours = n;
+                    self.persist(ctx);
                 }
                 Ok(false)
             }
             Msg::IncludeSpecialsChanged(include) => {
                 self.config.include_specials = include;
+                self.persist(ctx);
                 Ok(true)
             }
             Msg::ReleaseFiltersChanged(filters) => {
                 self.config.release_filters = filters;
+                self.persist(ctx);
                 Ok(true)
             }
             Msg::AirDateFiltersChanged(filters) => {
                 self.config.air_date_filters = filters;
+                self.persist(ctx);
                 Ok(true)
             }
             Msg::SyncKindsChanged(kinds) => {
                 self.config.sync_kinds = kinds;
-                Ok(true)
-            }
-            Msg::Save => {
-                self.saving = true;
-
-                self._save_req = self
-                    .channel
-                    .request()
-                    .body(api::SetConfigRequest {
-                        config: self.config.clone(),
-                    })
-                    .on_packet(ctx.link().callback(Msg::SaveDone))
-                    .send();
-
+                self.persist(ctx);
                 Ok(true)
             }
             Msg::SaveDone(result) => {
-                self.saving = false;
                 result.context(Message::SavingConfig)?;
-                Ok(true)
+                Ok(false)
             }
         }
+    }
+
+    /// Persist the current config to the server. Called on every edit so the
+    /// settings page has no explicit save step.
+    fn persist(&mut self, ctx: &Context<Self>) {
+        self._save_req = self
+            .channel
+            .request()
+            .body(api::SetConfigRequest {
+                config: self.config.clone(),
+            })
+            .on_packet(ctx.link().callback(Msg::SaveDone))
+            .send();
     }
 
     fn load(&mut self, ctx: &Context<Self>) {

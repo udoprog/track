@@ -138,14 +138,8 @@ struct YamlConfig {
     tvdb_pin: Option<String>,
     #[serde(default)]
     tmdb_api_key: String,
-    #[serde(default = "default_days")]
-    schedule_duration_days: u32,
     #[serde(default = "default_page")]
     dashboard_page: u32,
-}
-
-fn default_days() -> u32 {
-    7
 }
 
 fn default_page() -> u32 {
@@ -380,7 +374,6 @@ pub async fn import() -> Result<()> {
             tvdb_api_key: config.tvdb_api_key,
             tvdb_pin: config.tvdb_pin,
             tmdb_api_key: config.tmdb_api_key,
-            schedule_duration_days: config.schedule_duration_days,
             dashboard_page: config.dashboard_page,
             auto_sync_enabled: false,
             auto_sync_interval_hours: 24,

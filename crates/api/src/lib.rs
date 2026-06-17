@@ -2271,7 +2271,7 @@ pub struct ScheduleMovie {
 #[musli(crate = musli_core)]
 pub struct ScheduledDay {
     pub date: Date,
-    pub entries: Vec<ScheduledEntry>,
+    pub shows: Vec<ScheduledEntry>,
     pub movies: Vec<ScheduleMovie>,
 }
 
@@ -2282,7 +2282,6 @@ pub struct Config {
     pub tvdb_api_key: String,
     pub tvdb_pin: Option<String>,
     pub tmdb_api_key: String,
-    pub schedule_duration_days: u32,
     pub dashboard_page: u32,
     pub auto_sync_enabled: bool,
     pub auto_sync_interval_hours: u32,
@@ -2306,7 +2305,6 @@ impl Default for Config {
             tvdb_api_key: String::new(),
             tvdb_pin: None,
             tmdb_api_key: String::new(),
-            schedule_duration_days: 7,
             dashboard_page: 5,
             auto_sync_enabled: false,
             auto_sync_interval_hours: 24,

@@ -515,7 +515,9 @@ impl Component for SecretInput {
         let props = ctx.props();
         let is_empty = props.value.is_empty();
 
-        let on_input = link.callback(|e: InputEvent| {
+        // Commit on `change` (blur/Enter) rather than `input` so the value is
+        // emitted once the user finishes editing, not on every keystroke.
+        let on_change = link.callback(|e: Event| {
             let input: web_sys::HtmlInputElement = e.target_unchecked_into();
             SecretInputMsg::Input(input.value())
         });
@@ -543,7 +545,7 @@ impl Component for SecretInput {
                     class="input-text fill"
                     placeholder={props.placeholder.clone()}
                     value={props.value.clone()}
-                    oninput={on_input}
+                    onchange={on_change}
                     autocomplete="off"
                     spellcheck="false"
                 />
