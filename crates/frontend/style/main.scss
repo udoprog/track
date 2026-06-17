@@ -846,29 +846,35 @@ image {
     flex-direction: column;
     font-size: $font-sm;
     gap: $gap-xs;
-}
 
-.table-entry {
-    display: flex;
-    flex-direction: column;
-    gap: $gap-sm;
-    padding: $gap-sm;
-    border-style: solid;
-    border-color: $border-subtle-transparent;
-    background: $bg-dark-transparent;
-    border-width: 1px;
-
-    &.row {
-        flex-direction: row;
-        align-items: center;
+    &-separator {
+        height: 1px;
+        background: $border-subtle-transparent;
+        margin: $gap-xs 0;
     }
 
-    .row-fill {
-        flex-direction: row;
-    }
+    &-entry {
+        display: flex;
+        flex-direction: column;
+        gap: $gap-sm;
+        padding: $gap-sm;
+        border-style: solid;
+        border-color: $border-subtle-transparent;
+        background: $bg-dark-transparent;
+        border-width: 1px;
 
-    &.clickable:hover {
-        background: $color-secondary-transparent;
+        &.row {
+            flex-direction: row;
+            align-items: center;
+        }
+
+        .row-fill {
+            flex-direction: row;
+        }
+
+        &.clickable:hover {
+            background: $color-secondary-transparent;
+        }
     }
 }
 

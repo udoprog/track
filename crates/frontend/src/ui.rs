@@ -1157,50 +1157,52 @@ impl Component for LanguagePicker {
                     </div>
 
                     <div class="table">
-                        <div class="table-entry row clickable" onclick={link.callback(|_| Msg::Pick(None))}>
-                            <span class="fill">{props.placeholder}</span>
-
-                            if current.is_none() {
-                                <span class="item-inline">
-                                    <span class="icon check" />
-                                </span>
-                            }
-
-                            <span class="item-inline">
-                                <span class="icon icon-4x3 language" />
-                            </span>
-                        </div>
-
                         // Quick picks: the most-used custom languages, shown right
                         // below "Default". Hidden while filtering to avoid duplicates.
                         if self.filter.is_empty() {
-                            {
-                                for self.top_languages.iter().filter_map(|code| {
-                                    let entry = self.languages.get_by_part1(code)?;
-                                    let part1 = entry.part1?;
-                                    let selected = current.as_deref() == Some(part1);
+                            <div class="table-entry row clickable" onclick={link.callback(|_| Msg::Pick(None))}>
+                                <span class="fill">{props.placeholder}</span>
 
-                                    Some(html! {
-                                        <div key={format!("top-{part1}")} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| Msg::Pick(Some(part1.to_string())))}>
-                                            <span class="fill">{entry.ref_name}</span>
+                                if current.is_none() {
+                                    <span class="item-inline">
+                                        <span class="icon check" />
+                                    </span>
+                                }
 
-                                            if selected {
-                                                <span class="item-inline">
-                                                    <span class="icon check" />
-                                                </span>
-                                            }
+                                <span class="item-inline">
+                                    <span class="icon icon-4x3 language" />
+                                </span>
+                            </div>
 
-                                            if let Some(code) = self.language_to_country.get_by_part1(part1) {
-                                                <span class={classes!("item-inline", "flag", code)} />
-                                            } else {
-                                                <span class="item-inline">
-                                                    <span class="text-muted">{part1}</span>
-                                                </span>
-                                            }
-                                        </div>
-                                    })
+                            { for self.top_languages.iter().filter_map(|code| {
+                                let entry = self.languages.get_by_part1(code)?;
+                                let part1 = entry.part1?;
+                                let selected = current.as_deref() == Some(part1);
+
+                                Some(html! {
+                                    <div key={format!("top-{part1}")} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| Msg::Pick(Some(part1.to_string())))}>
+                                        <span class="fill">{entry.ref_name}</span>
+
+                                        if selected {
+                                            <span class="item-inline">
+                                                <span class="icon check" />
+                                            </span>
+                                        }
+
+                                        if let Some(code) = self.language_to_country.get_by_part1(part1) {
+                                            <span class={classes!("item-inline", "flag", code)} />
+                                        } else {
+                                            <span class="item-inline">
+                                                <span class="text-muted">{part1}</span>
+                                            </span>
+                                        }
+                                    </div>
                                 })
-                            }
+                            }) }
+                        }
+
+                        if !filtered.is_empty() {
+                            <div class="table-separator" />
                         }
 
                         {
