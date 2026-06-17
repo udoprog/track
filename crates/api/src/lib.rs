@@ -2248,11 +2248,22 @@ pub struct ScheduledEntry {
     pub episodes: Vec<ScheduleEpisode>,
 }
 
+/// Sparse movie shown in the schedule/calendar grid on its release date.
+#[derive(Debug, Clone, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct ScheduleMovie {
+    pub movie_id: MovieId,
+    pub title: String,
+    /// When the movie releases/becomes available, rendered as a local time of day.
+    pub released: Timestamp,
+}
+
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct ScheduledDay {
     pub date: Date,
     pub entries: Vec<ScheduledEntry>,
+    pub movies: Vec<ScheduleMovie>,
 }
 
 #[derive(Debug, Clone, Encode, Decode)]

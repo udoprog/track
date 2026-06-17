@@ -324,6 +324,13 @@ struct ScheduleRow {
     aired: Option<Timestamp>,
 }
 
+#[derive(Row)]
+struct ScheduleMovieRow {
+    movie_id: MovieId,
+    title: String,
+    released: Option<Timestamp>,
+}
+
 /// A single stored remote (`id`, `source`, `value`) for one show/movie.
 #[derive(Row)]
 struct RemoteRow {
@@ -608,6 +615,13 @@ struct InnerRead {
     #[sql = "    AND e.aired <= ?"]
     #[sql = "ORDER BY e.aired, s.title, e.season, e.episode"]
     list_schedule: TypedStatement<(Timestamp, Timestamp), ScheduleRow>,
+    #[sql = "SELECT m.id, m.title, m.release_date"]
+    #[sql = "FROM movies m"]
+    #[sql = "WHERE m.tracked = 1"]
+    #[sql = "    AND m.release_date > ?"]
+    #[sql = "    AND m.release_date <= ?"]
+    #[sql = "ORDER BY m.release_date, m.title"]
+    list_schedule_movies: TypedStatement<(Timestamp, Timestamp), ScheduleMovieRow>,
 
     // all watched (for import dedup) see list_all_watched_episodes / list_all_watched_movies
 
@@ -3512,10 +3526,10 @@ impl Database {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
-            let mut stmt = s.list_schedule.bind((today, end))?;
+            type DayShows = Vec<(ShowId, String, Vec<api::ScheduleEpisode>)>;
+            let mut days_map = Vec::<(Date, DayShows, Vec<api::ScheduleMovie>)>::new();
 
-            let mut days_map =
-                Vec::<(Date, Vec<(ShowId, String, Vec<api::ScheduleEpisode>)>)>::new();
+            let mut stmt = s.list_schedule.bind((today, end))?;
 
             while let Some(r) = stmt.next()? {
                 let Some(day) = r.aired else { continue };
@@ -3528,22 +3542,48 @@ impl Database {
 
                 let day = day.date(tz.clone());
 
-                if let Some(day_entry) = days_map.iter_mut().find(|(d, _)| d == &day) {
+                if let Some(day_entry) = days_map.iter_mut().find(|(d, ..)| d == &day) {
                     if let Some(show_entry) =
-                        day_entry.1.iter_mut().find(|(id, _, _)| *id == r.show_id)
+                        day_entry.1.iter_mut().find(|(id, ..)| *id == r.show_id)
                     {
                         show_entry.2.push(ep);
                     } else {
                         day_entry.1.push((r.show_id, r.show_title, vec![ep]));
                     }
                 } else {
-                    days_map.push((day, vec![(r.show_id, r.show_title, vec![ep])]));
+                    days_map.push((day, vec![(r.show_id, r.show_title, vec![ep])], Vec::new()));
                 }
             }
 
+            stmt.reset()?;
+
+            let mut stmt = s.list_schedule_movies.bind((today, end))?;
+
+            while let Some(r) = stmt.next()? {
+                let Some(released) = r.released else { continue };
+
+                let movie = api::ScheduleMovie {
+                    movie_id: r.movie_id,
+                    title: r.title,
+                    released,
+                };
+
+                let day = released.date(tz.clone());
+
+                if let Some(day_entry) = days_map.iter_mut().find(|(d, ..)| d == &day) {
+                    day_entry.2.push(movie);
+                } else {
+                    days_map.push((day, Vec::new(), vec![movie]));
+                }
+            }
+
+            // Movie-only days may be appended out of order; sort so the frontend can rely
+            // on the last day being the furthest date when extending the calendar grid.
+            days_map.sort_by(|(a, ..), (b, ..)| a.cmp(b));
+
             let out = days_map
                 .into_iter()
-                .map(|(date, show)| api::ScheduledDay {
+                .map(|(date, show, movies)| api::ScheduledDay {
                     date,
                     entries: show
                         .into_iter()
@@ -3553,6 +3593,7 @@ impl Database {
                             episodes,
                         })
                         .collect(),
+                    movies,
                 })
                 .collect();
 

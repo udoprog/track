@@ -77,11 +77,8 @@ impl Component for Calendar {
         let today = api::Date::today();
         let weeks = build_weeks(&self.schedule, today);
 
-        let schedule_lookup: HashMap<api::Date, &[api::ScheduledEntry]> = self
-            .schedule
-            .iter()
-            .map(|d| (d.date, d.entries.as_slice()))
-            .collect();
+        let schedule_lookup: HashMap<api::Date, &api::ScheduledDay> =
+            self.schedule.iter().map(|d| (d.date, d)).collect();
 
         let link = ctx.link();
 
@@ -106,7 +103,8 @@ impl Component for Calendar {
                             { for days.iter().map(|&day| {
                                 let is_today = day == today;
                                 let is_past  = day < today;
-                                let entries  = schedule_lookup.get(&day).copied().unwrap_or(&[]);
+                                let entries  = schedule_lookup.get(&day).map(|d| d.entries.as_slice()).unwrap_or(&[]);
+                                let movies   = schedule_lookup.get(&day).map(|d| d.movies.as_slice()).unwrap_or(&[]);
 
                                 html! {
                                     <div class={classes!(
@@ -119,7 +117,7 @@ impl Component for Calendar {
                                             <span class="bullet">{day.day()}</span>
                                         </div>
 
-                                        if !entries.is_empty() {
+                                        if !entries.is_empty() || !movies.is_empty() {
                                             <div class="calendar-items">
                                                 { for entries.iter().map(|entry| {
                                                     let show_id = entry.show_id;
@@ -143,6 +141,21 @@ impl Component for Calendar {
                                                         <div class="calendar-item clickable" onclick={on_click} title={entry.show_title.clone()}>
                                                             <div class="calendar-item-title">{&entry.show_title}</div>
                                                             <div class="calendar-item-code">{code_line}</div>
+                                                        </div>
+                                                    }
+                                                }) }
+
+                                                { for movies.iter().map(|movie| {
+                                                    let movie_id = movie.movie_id;
+
+                                                    let on_click = link.callback(move |_|
+                                                        Msg::Navigate(Route::MovieDetail(movie_id))
+                                                    );
+
+                                                    html! {
+                                                        <div class="calendar-item clickable" onclick={on_click} title={movie.title.clone()}>
+                                                            <div class="calendar-item-title">{&movie.title}</div>
+                                                            <div class="calendar-item-code">{movie.released.time_of_day(self.tz.clone())}</div>
                                                         </div>
                                                     }
                                                 }) }
@@ -182,6 +195,9 @@ impl Calendar {
                     | api::AppEventKind::ShowChanged { .. }
                     | api::AppEventKind::ShowCreated { .. }
                     | api::AppEventKind::ShowDeleted { .. }
+                    | api::AppEventKind::MovieChanged { .. }
+                    | api::AppEventKind::MovieCreated { .. }
+                    | api::AppEventKind::MovieDeleted { .. }
                     | api::AppEventKind::WatchedChanged { .. }
                     | api::AppEventKind::TaskCompleted { .. } => {
                         if self.channel.id() != ws::ChannelId::NONE {
