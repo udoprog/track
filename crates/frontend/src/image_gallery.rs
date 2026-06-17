@@ -45,7 +45,7 @@ pub(super) fn ImageGallery(props: &ImageGalleryProps) -> Html {
     html! {
         <>
             <div class="row-fill">
-                <h2>{format!("Select {}", props.kind)}</h2>
+                <h2>{format!("{}", props.kind.title())}</h2>
 
                 <div class="row end">
                     <button class="btn-danger" onclick={on_clear}>

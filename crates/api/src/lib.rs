@@ -1368,6 +1368,16 @@ pub enum ImageKind {
 }
 
 impl ImageKind {
+    pub fn title(self) -> &'static str {
+        match self {
+            ImageKind::Poster => "Poster",
+            ImageKind::Banner => "Banner",
+            ImageKind::Backdrop => "Backdrop",
+            ImageKind::Screenshot => "Screenshot",
+            ImageKind::Unknown => "Unknown",
+        }
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             ImageKind::Poster => "poster",
@@ -2337,6 +2347,8 @@ pub enum TaskKind {
         movie_id: MovieId,
         title: Option<String>,
     },
+    /// Recompute the most-used custom languages across shows and movies.
+    RefreshTopLanguages,
 }
 
 impl TaskKind {
@@ -2346,6 +2358,7 @@ impl TaskKind {
             TaskKind::SyncShow { title, .. } | TaskKind::SyncMovie { title, .. } => {
                 title.as_deref()
             }
+            TaskKind::RefreshTopLanguages => None,
         }
     }
 }
@@ -2812,6 +2825,17 @@ pub struct GetConfigResponse {
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
+pub struct GetTopLanguagesRequest;
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct GetTopLanguagesResponse {
+    /// Most-used custom language codes (ISO 639-1), ordered most-used first.
+    pub top_languages: Vec<String>,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
 pub struct SetConfigRequest {
     pub config: Config,
 }
@@ -2903,6 +2927,9 @@ pub enum AppEventKind {
     PendingChanged,
     ConfigChanged {
         config: Config,
+    },
+    TopLanguagesChanged {
+        top_languages: Vec<String>,
     },
     TaskAdded {
         task: Task,
@@ -3202,6 +3229,12 @@ api::define! {
     impl Endpoint for GetConfig {
         impl Request for GetConfigRequest;
         type Response<'de> = GetConfigResponse;
+    }
+
+    pub type GetTopLanguages;
+    impl Endpoint for GetTopLanguages {
+        impl Request for GetTopLanguagesRequest;
+        type Response<'de> = GetTopLanguagesResponse;
     }
 
     pub type SetConfig;

@@ -155,7 +155,7 @@ impl Component for Settings {
                 }
 
                 <div class="column">
-                    <h2>{"Appearance"}</h2>
+                    <h4>{"Appearance"}</h4>
 
                     <div class="form">
                         <div class="field">
@@ -169,7 +169,7 @@ impl Component for Settings {
                 </div>
 
                 <div class="column">
-                    <h2>{"API Keys"}</h2>
+                    <h4>{"API Keys"}</h4>
 
                     <div class="form">
                         <div class="field">
@@ -206,7 +206,7 @@ impl Component for Settings {
                 </div>
 
                 <div class="column">
-                    <h2>{"Dashboard"}</h2>
+                    <h4>{"Dashboard"}</h4>
 
                     <div class="form">
                         <div class="field fill">
@@ -238,7 +238,7 @@ impl Component for Settings {
                 </div>
 
                 <div class="column">
-                    <h2>{"Display"}</h2>
+                    <h4>{"Display"}</h4>
 
                     <div class="form">
                         <div class={classes!("field", (!tz_is_valid(&self.config.timezone)).then_some("error"))}>
@@ -273,65 +273,66 @@ impl Component for Settings {
                 </div>
 
                 <div class="column">
-                    <h2>{"Sync"}</h2>
+                    <h4>{"Sync"}</h4>
 
-                    <div class="form">
-                        <div class="field">
-                            <label class="clickable" onclick={&on_auto_sync_toggle}>{"Auto-sync enabled"}</label>
+                    <div class="field">
+                        <label class="clickable" onclick={&on_auto_sync_toggle}>{"Auto-sync enabled"}</label>
 
-                            <div class="row">
-                                <span class={classes!("input-checkbox", self.config.auto_sync_enabled.then_some("checked"))} id="auto-sync-enabled" onclick={on_auto_sync_toggle}>
-                                    <span class="mark" />
-                                </span>
-                            </div>
+                        <div class="row">
+                            <span class={classes!("input-checkbox", self.config.auto_sync_enabled.then_some("checked"))} id="auto-sync-enabled" onclick={on_auto_sync_toggle}>
+                                <span class="mark" />
+                            </span>
                         </div>
+                    </div>
 
-                        <div class="field">
-                            <label>{"Sync interval (hours)"}</label>
-                            <input
-                                type="number"
-                                class="input-number"
-                                min="1"
-                                max="168"
-                                value={self.config.auto_sync_interval_hours.to_string()}
-                                oninput={on_auto_sync_interval}
-                            />
-                        </div>
+                    <div class="field">
+                        <label>{"Sync interval (hours)"}</label>
+                        <input
+                            type="number"
+                            class="input-number"
+                            min="1"
+                            max="168"
+                            value={self.config.auto_sync_interval_hours.to_string()}
+                            oninput={on_auto_sync_interval}
+                        />
+                    </div>
 
-                        <div class="field">
-                            <label>{"Specials when syncing"}</label>
-                            <select class="input-select" onchange={on_include_specials_change}>
-                                <option value="include" selected={self.config.include_specials}>{"Include"}</option>
-                                <option value="skip" selected={!self.config.include_specials}>{"Skip"}</option>
-                            </select>
-                        </div>
+                    <div class="field">
+                        <label>{"Specials when syncing"}</label>
+                        <select class="input-select" onchange={on_include_specials_change}>
+                            <option value="include" selected={self.config.include_specials}>{"Include"}</option>
+                            <option value="skip" selected={!self.config.include_specials}>{"Skip"}</option>
+                        </select>
+                    </div>
 
-                        <div class="field">
-                            <label>{"Release Date"}</label>
-                            <span class="hint">{"Release types (and countries) used to determine when a movie becomes available. The earliest matching date is used."}</span>
-                            <ReleaseFiltersEditor
-                                filters={self.config.release_filters.clone()}
-                                on_change={link.callback(Msg::ReleaseFiltersChanged)}
-                            />
-                        </div>
+                    <h4>{"Release Date"}</h4>
 
-                        <div class="field">
-                            <label>{"Air Date"}</label>
-                            <span class="hint">{"Restrict which sources' episode air dates qualify, by country and network. Source priority comes from each show's remote order (TVmaze ranks above TMDB by default)."}</span>
-                            <AirDateFiltersEditor
-                                filters={self.config.air_date_filters.clone()}
-                                on_change={link.callback(Msg::AirDateFiltersChanged)}
-                            />
-                        </div>
+                    <div class="field">
+                        <span class="hint">{"Release types (and countries) used to determine when a movie becomes available. The earliest matching date is used."}</span>
+                        <ReleaseFiltersEditor
+                            filters={self.config.release_filters.clone()}
+                            on_change={link.callback(Msg::ReleaseFiltersChanged)}
+                        />
+                    </div>
 
-                        <div class="field">
-                            <label>{"Sync sources"}</label>
-                            <span class="hint">{"Which kinds of data each source contributes by default. Base covers titles, overviews and episodes; air dates merge by remote priority. Graphics always accumulate from every source. Individual shows and movies can override this per remote."}</span>
-                            <SyncKindsEditor
-                                kinds={self.config.sync_kinds.clone()}
-                                on_change={link.callback(Msg::SyncKindsChanged)}
-                            />
-                        </div>
+                    <h4>{"Air Date"}</h4>
+
+                    <div class="field">
+                        <span class="hint">{"Restrict which sources' episode air dates qualify, by country and network. Source priority comes from each show's remote order (TVmaze ranks above TMDB by default)."}</span>
+                        <AirDateFiltersEditor
+                            filters={self.config.air_date_filters.clone()}
+                            on_change={link.callback(Msg::AirDateFiltersChanged)}
+                        />
+                    </div>
+
+                    <h4>{"Sync sources"}</h4>
+
+                    <div class="field">
+                        <span class="hint">{"Which kinds of data each source contributes by default. Base covers titles, overviews and episodes; air dates merge by remote priority. Graphics always accumulate from every source. Individual shows and movies can override this per remote."}</span>
+                        <SyncKindsEditor
+                            kinds={self.config.sync_kinds.clone()}
+                            on_change={link.callback(Msg::SyncKindsChanged)}
+                        />
                     </div>
                 </div>
 

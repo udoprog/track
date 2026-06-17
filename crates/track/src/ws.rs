@@ -1119,6 +1119,15 @@ impl WsHandler {
 
                 outgoing.write(api::GetConfigResponse { config });
             }
+            api::Request::GetTopLanguages => {
+                let _req = incoming
+                    .read::<api::GetTopLanguagesRequest>()
+                    .context("Expected a request payload")?;
+
+                let top_languages = self.db.get_state_top_languages().await?;
+
+                outgoing.write(api::GetTopLanguagesResponse { top_languages });
+            }
             api::Request::SetConfig => {
                 let req = incoming
                     .read::<api::SetConfigRequest>()

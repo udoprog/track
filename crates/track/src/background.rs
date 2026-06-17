@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use musli_web::api::ChannelId;
 use tokio::sync::Notify;
 use tracing::info;
 
@@ -10,6 +11,27 @@ use crate::shutdown::Shutdown;
 use crate::task_queue::TaskQueue;
 
 const POLL: Duration = Duration::from_secs(15 * 60);
+
+/// Number of most-used custom languages surfaced in the LanguagePicker.
+const TOP_LANGUAGES: usize = 3;
+
+/// Recompute the most-used custom languages across shows and movies, persist them
+/// to the `state` table, and broadcast so clients refresh their LanguagePicker.
+pub(crate) async fn refresh_top_languages(
+    db: &Database,
+    broadcast: &Broadcaster,
+) -> anyhow::Result<()> {
+    let top_languages = db.compute_top_languages(TOP_LANGUAGES).await?;
+    db.set_state_top_languages(top_languages.clone()).await?;
+
+    broadcast.emit(
+        ChannelId::NONE,
+        api::AppEventKind::TopLanguagesChanged { top_languages },
+        "background top languages refreshed",
+    );
+
+    Ok(())
+}
 
 pub(crate) async fn discover_pending_movies(db: &Database) -> anyhow::Result<()> {
     let now = api::Timestamp::now();
@@ -76,6 +98,10 @@ pub(crate) async fn run(
 ) -> anyhow::Result<()> {
     discover_pending_movies(&db).await?;
 
+    queue
+        .push(api::TaskKind::RefreshTopLanguages, false, &broadcast)
+        .await;
+
     let mut interval = tokio::time::interval(POLL);
     let mut config = db.load_config().await?;
 
@@ -100,6 +126,10 @@ pub(crate) async fn run(
 
         tracing::info!("Starting background sync poll");
         discover_pending_movies(&db).await?;
+
+        queue
+            .push(api::TaskKind::RefreshTopLanguages, false, &broadcast)
+            .await;
 
         let interval_hours = config.auto_sync_interval_hours.max(1);
 

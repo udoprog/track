@@ -90,6 +90,17 @@ impl TaskQueue {
                         .as_ref()
                         .is_some_and(|t| matches!(&t.kind, api::TaskKind::SyncMovie { movie_id: id, .. } if id == movie_id))
             }
+            // Singleton task: at most one queued or running at a time.
+            api::TaskKind::RefreshTopLanguages => {
+                inner
+                    .pending
+                    .iter()
+                    .any(|s| matches!(s.task.kind, api::TaskKind::RefreshTopLanguages))
+                    || inner
+                        .running
+                        .as_ref()
+                        .is_some_and(|t| matches!(t.kind, api::TaskKind::RefreshTopLanguages))
+            }
         };
 
         if already_queued {
@@ -142,6 +153,8 @@ impl TaskQueue {
             api::TaskKind::SyncMovie { movie_id, .. } => {
                 inner.movie_pending.insert(*movie_id, id);
             }
+            // Deduped by scanning pending/running, not via an id map.
+            api::TaskKind::RefreshTopLanguages => {}
         }
 
         let task = api::Task {
@@ -186,6 +199,7 @@ impl TaskQueue {
             api::TaskKind::SyncMovie { movie_id, .. } => {
                 inner.movie_pending.remove(movie_id);
             }
+            api::TaskKind::RefreshTopLanguages => {}
         }
 
         info!(task_id = ?id, "Task removed");
@@ -332,6 +346,8 @@ impl TaskQueue {
                                 "task queue pending changed",
                             );
                         }
+                        // `execute` already broadcasts TopLanguagesChanged.
+                        api::TaskKind::RefreshTopLanguages => {}
                     }
                 }
                 Err(e) => {
@@ -355,6 +371,7 @@ impl TaskQueue {
                     api::TaskKind::SyncMovie { movie_id, .. } => {
                         inner.movie_pending.remove(movie_id);
                     }
+                    api::TaskKind::RefreshTopLanguages => {}
                 }
                 inner.completed.push_front(completed.clone());
             }
@@ -385,6 +402,9 @@ async fn execute(
         }
         api::TaskKind::SyncMovie { movie_id, .. } => {
             sync::sync_movie(*movie_id, db, remote, broadcast).await
+        }
+        api::TaskKind::RefreshTopLanguages => {
+            crate::background::refresh_top_languages(db, broadcast).await
         }
     }
 }

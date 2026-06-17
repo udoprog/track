@@ -46,6 +46,15 @@ struct ShowRow {
     settings_data: Option<String>,
 }
 
+/// A media row reduced to just its custom-language inputs: the legacy `language`
+/// column and the settings JSON blob (which, when present, supersedes it). Used to
+/// tally the most-used per-show/per-movie language overrides.
+#[derive(Row)]
+struct LanguageRow {
+    language: Option<String>,
+    settings_data: Option<String>,
+}
+
 #[derive(Row)]
 struct ImageRow {
     id: ImageId,
@@ -618,6 +627,16 @@ struct InnerRead {
     #[sql = "SELECT value FROM config WHERE key = ?"]
     get_config: TypedStatement<(String,), String>,
 
+    // derived state (recomputed periodically)
+    #[sql = "SELECT top_languages FROM state WHERE id = 0"]
+    get_state_top_languages: TypedStatement<(), String>,
+    #[sql = "SELECT language, show_settings.data AS settings_data"]
+    #[sql = "FROM shows LEFT JOIN show_settings ON show_settings.show_id = shows.id"]
+    list_show_languages: TypedStatement<(), LanguageRow>,
+    #[sql = "SELECT m.language, ms.data AS settings_data"]
+    #[sql = "FROM movies m LEFT JOIN movie_settings ms ON ms.movie_id = m.id"]
+    list_movie_languages: TypedStatement<(), LanguageRow>,
+
     // stale-item queries
     #[sql = "SELECT shows.id, title, first_air, overview, tracked, last_synced_at, language, include_specials, air_date_filters, show_settings.data AS settings_data"]
     #[sql = "FROM shows LEFT JOIN show_settings ON show_settings.show_id = shows.id"]
@@ -922,6 +941,10 @@ struct InnerWrite {
     set_config: TypedStatement<(String, String), ()>,
     #[sql = "DELETE FROM config WHERE key = ?"]
     delete_config: TypedStatement<(String,), ()>,
+
+    // derived state
+    #[sql = "UPDATE state SET top_languages = ? WHERE id = 0"]
+    set_state_top_languages: TypedStatement<(String,), ()>,
 
     // movie releases
     #[sql = "INSERT INTO movie_releases (id, movie_id, country, release_type, timestamp)"]
@@ -3676,6 +3699,90 @@ impl Database {
             )?;
             s.set_config("sync_kinds", &api::encode_sync_kinds(&config.sync_kinds))?;
             Ok(())
+        });
+
+        result.await?
+    }
+
+    /// The most-used per-show/per-movie custom language overrides, ordered
+    /// most-used first, as recomputed by the periodic task.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn get_state_top_languages(&self) -> Result<Vec<String>> {
+        let mut s = self.inner.clone().shared().await?;
+
+        let result = spawn_blocking(move || {
+            let raw = s.get_state_top_languages.query()?.next()?;
+            Ok(raw
+                .as_deref()
+                .and_then(|v| serde_json::from_str::<Vec<String>>(v).ok())
+                .unwrap_or_default())
+        });
+
+        result.await?
+    }
+
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn set_state_top_languages(&self, languages: Vec<String>) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            let encoded = serde_json::to_string(&languages).unwrap_or_else(|_| "[]".to_string());
+            s.set_state_top_languages.execute((encoded,))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    /// Tally the effective custom language of every show and movie (the settings
+    /// JSON blob's language when present, else the legacy column) and return the
+    /// `n` most-used codes, ordered most-used first (ties broken by code).
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn compute_top_languages(&self, n: usize) -> Result<Vec<String>> {
+        let mut s = self.inner.clone().shared().await?;
+
+        let result = spawn_blocking(move || {
+            let mut counts: HashMap<String, usize> = HashMap::new();
+
+            let mut tally = |language: Option<String>| {
+                if let Some(lang) = language.filter(|l| !l.trim().is_empty()) {
+                    *counts.entry(lang).or_default() += 1;
+                }
+            };
+
+            let mut stmt = s.list_show_languages.query()?;
+            while let Some(row) = stmt.next()? {
+                let language = match row
+                    .settings_data
+                    .as_deref()
+                    .and_then(api::decode_show_settings)
+                {
+                    Some(settings) => settings.language,
+                    None => row.language,
+                };
+                tally(language);
+            }
+            stmt.reset()?;
+
+            let mut stmt = s.list_movie_languages.query()?;
+            while let Some(row) = stmt.next()? {
+                let language = match row
+                    .settings_data
+                    .as_deref()
+                    .and_then(api::decode_movie_settings)
+                {
+                    Some(settings) => settings.language,
+                    None => row.language,
+                };
+                tally(language);
+            }
+            stmt.reset()?;
+
+            let mut ranked: Vec<(String, usize)> = counts.into_iter().collect();
+            // Most-used first; break ties by code for a stable result.
+            ranked.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+
+            Ok(ranked.into_iter().take(n).map(|(lang, _)| lang).collect())
         });
 
         result.await?

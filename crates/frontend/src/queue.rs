@@ -391,6 +391,7 @@ impl Queue {
                 Some(Route::ShowDetail(*show_id, ShowDetailQuery::default()))
             }
             api::TaskKind::SyncMovie { movie_id, .. } => Some(Route::MovieDetail(*movie_id)),
+            api::TaskKind::RefreshTopLanguages => None,
         };
 
         let on_navigate = route.map(|r| ctx.link().callback(move |_| Msg::Navigate(r.clone())));
@@ -428,21 +429,27 @@ impl Queue {
         let verb = match &task.kind {
             api::TaskKind::SyncShow { .. } => "Updating show",
             api::TaskKind::SyncMovie { .. } => "Updating movie",
+            api::TaskKind::RefreshTopLanguages => "Refreshing top languages",
         };
+
+        // Tasks without an associated show/movie show just the verb.
+        let has_target = !matches!(task.kind, api::TaskKind::RefreshTopLanguages);
 
         html! {
             <>
                 <span class="text-muted">{verb}</span>
 
-                <span>{MDASH}</span>
+                if has_target {
+                    <span>{MDASH}</span>
 
-                <span class={classes!(on_navigate.is_some().then_some("clickable"))} onclick={on_navigate}>
-                    if let Some(ref title) = task.kind.title() {
-                        {title}
-                    } else {
-                        <span class="text-muted">{"Untitled"}</span>
-                    }
-                </span>
+                    <span class={classes!(on_navigate.is_some().then_some("clickable"))} onclick={on_navigate}>
+                        if let Some(ref title) = task.kind.title() {
+                            {title}
+                        } else {
+                            <span class="text-muted">{"Untitled"}</span>
+                        }
+                    </span>
+                }
             </>
         }
     }
@@ -485,6 +492,7 @@ impl Queue {
                 Some(Route::ShowDetail(*show_id, ShowDetailQuery::default()))
             }
             api::TaskKind::SyncMovie { movie_id, .. } => Some(Route::MovieDetail(*movie_id)),
+            api::TaskKind::RefreshTopLanguages => None,
         };
 
         let on_navigate = route.map(|r| ctx.link().callback(move |_| Msg::Navigate(r.clone())));
@@ -512,21 +520,27 @@ impl Queue {
         let verb = match &task.kind {
             api::TaskKind::SyncShow { .. } => "Updated show",
             api::TaskKind::SyncMovie { .. } => "Updated movie",
+            api::TaskKind::RefreshTopLanguages => "Refreshed top languages",
         };
+
+        // Tasks without an associated show/movie show just the verb.
+        let has_target = !matches!(task.kind, api::TaskKind::RefreshTopLanguages);
 
         html! {
             <>
                 <span class="text-muted">{verb}</span>
 
-                <span>{MDASH}</span>
+                if has_target {
+                    <span>{MDASH}</span>
 
-                <span class="clickable" onclick={on_navigate}>
-                    if let Some(ref title) = task.kind.title() {
-                        {title}
-                    } else {
-                        <span class="text-muted">{"Untitled"}</span>
-                    }
-                </span>
+                    <span class="clickable" onclick={on_navigate}>
+                        if let Some(ref title) = task.kind.title() {
+                            {title}
+                        } else {
+                            <span class="text-muted">{"Untitled"}</span>
+                        }
+                    </span>
+                }
             </>
         }
     }

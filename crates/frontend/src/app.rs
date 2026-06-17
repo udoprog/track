@@ -7,22 +7,25 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message, RcError};
 use crate::router::{DashboardQuery, MediaQuery, QueueQuery, Route, SearchQuery};
 use crate::setup_channel::SetupChannel;
-use crate::ui::{ErrorBox, Loading};
+use crate::ui::{ErrorBox, Loading, TopLanguages};
 use crate::{Dashboard, MediaList, MovieDetail, Queue, Search, Settings, ShowDetail};
 
 pub(super) struct App {
     channel: ws::Channel,
     ws: ws::Service,
     tz: Option<TimeZone>,
+    top_languages: TopLanguages,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
     _config_req: ws::Request,
+    _top_languages_req: ws::Request,
 }
 
 pub(super) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
+    TopLanguagesLoaded(Result<ws::Packet<api::GetTopLanguages>, ws::Error>),
     WsError(ws::Error),
     Navigate(Route),
 }
@@ -58,9 +61,11 @@ impl Component for App {
             channel: ws::Channel::default(),
             ws,
             tz: None,
+            top_languages: TopLanguages::default(),
             _setup,
             _broadcast,
             _config_req: ws::Request::default(),
+            _top_languages_req: ws::Request::default(),
         }
     }
 
@@ -92,6 +97,7 @@ impl Component for App {
 
         html! {
             <ContextProvider<TimeZone> context={tz.clone()}>
+                <ContextProvider<TopLanguages> context={self.top_languages.clone()}>
                 <ContextProvider<ws::Handle> context={self.ws.handle()}>
                     <ContextProvider<Background> context={background}>
                         <div id="application">
@@ -107,6 +113,7 @@ impl Component for App {
                         </div>
                     </ContextProvider<Background>>
                 </ContextProvider<ws::Handle>>
+                </ContextProvider<TopLanguages>>
             </ContextProvider<TimeZone>>
         }
     }
@@ -125,6 +132,13 @@ impl App {
                         .body(api::GetConfigRequest)
                         .on_packet(ctx.link().callback(Msg::ConfigLoaded))
                         .send();
+
+                    self._top_languages_req = self
+                        .channel
+                        .request()
+                        .body(api::GetTopLanguagesRequest)
+                        .on_packet(ctx.link().callback(Msg::TopLanguagesLoaded))
+                        .send();
                 }
 
                 Ok(true)
@@ -132,13 +146,35 @@ impl App {
             Msg::AppBroadcast(result) => {
                 let event = result?.decode_event()?;
 
-                if let api::AppEventKind::ConfigChanged { config } = event.kind {
-                    let new_tz = Self::tz_from_config(&config);
+                match event.kind {
+                    api::AppEventKind::ConfigChanged { config } => {
+                        let new_tz = Self::tz_from_config(&config);
 
-                    if Some(&new_tz) != self.tz.as_ref() {
-                        self.tz = Some(new_tz);
-                        return Ok(true);
+                        if Some(&new_tz) != self.tz.as_ref() {
+                            self.tz = Some(new_tz);
+                            return Ok(true);
+                        }
                     }
+                    api::AppEventKind::TopLanguagesChanged { top_languages } => {
+                        let next = TopLanguages(top_languages);
+
+                        if next != self.top_languages {
+                            self.top_languages = next;
+                            return Ok(true);
+                        }
+                    }
+                    _ => {}
+                }
+
+                Ok(false)
+            }
+            Msg::TopLanguagesLoaded(result) => {
+                let top_languages = result?.decode()?.top_languages;
+                let next = TopLanguages(top_languages);
+
+                if next != self.top_languages {
+                    self.top_languages = next;
+                    return Ok(true);
                 }
 
                 Ok(false)

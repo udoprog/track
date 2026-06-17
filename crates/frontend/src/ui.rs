@@ -11,6 +11,12 @@ use crate::{Modal, SetupChannel};
 
 pub(crate) const MDASH: &str = "—";
 
+/// App-wide context: the most-used custom language codes (ISO 639-1), ordered
+/// most-used first, recomputed periodically by the backend. Surfaced as quick
+/// picks in every [`LanguagePicker`]. Provided by `App`.
+#[derive(Clone, Default, PartialEq)]
+pub(crate) struct TopLanguages(pub(crate) Vec<String>);
+
 /// Loading indicator placed inside the shared page container (rendered by
 /// `App`). Use [`LoadingPage`] for standalone, full-page loading screens.
 #[function_component]
@@ -884,7 +890,7 @@ impl Component for RemoteEditor {
 
                                 if overriding {
                                     <button class="btn" onclick={link.callback(move |_| RemoteEditorMsg::SetSyncKinds(sync_id, None))} title="Reset to global default">
-                                        <span class="icon arrow-path" />
+                                        <span class="icon arrow-uturn-left" />
                                     </button>
                                 }
                             </div>
@@ -1026,6 +1032,7 @@ pub(super) enum Msg {
     Filter(String),
     Page(usize),
     Pick(Option<String>),
+    SetTopLanguages(TopLanguages),
 }
 
 pub(super) struct LanguagePicker {
@@ -1034,19 +1041,28 @@ pub(super) struct LanguagePicker {
     open: bool,
     filter: String,
     page: usize,
+    top_languages: Vec<String>,
+    _top_languages_handle: ContextHandle<TopLanguages>,
 }
 
 impl Component for LanguagePicker {
     type Message = Msg;
     type Properties = LanguagePickerProps;
 
-    fn create(_ctx: &Context<Self>) -> Self {
+    fn create(ctx: &Context<Self>) -> Self {
+        let (top_languages, _top_languages_handle) = ctx
+            .link()
+            .context::<TopLanguages>(ctx.link().callback(Msg::SetTopLanguages))
+            .expect("Expected TopLanguages in context");
+
         Self {
             languages: Languages::new(),
             language_to_country: LanguageToCountry::new(),
             open: false,
             filter: String::new(),
             page: 0,
+            top_languages: top_languages.0,
+            _top_languages_handle,
         }
     }
 
@@ -1070,6 +1086,9 @@ impl Component for LanguagePicker {
             Msg::Pick(value) => {
                 self.open = false;
                 ctx.props().on_change.emit(value);
+            }
+            Msg::SetTopLanguages(top_languages) => {
+                self.top_languages = top_languages.0;
             }
         }
 
@@ -1151,6 +1170,38 @@ impl Component for LanguagePicker {
                                 <span class="icon icon-4x3 language" />
                             </span>
                         </div>
+
+                        // Quick picks: the most-used custom languages, shown right
+                        // below "Default". Hidden while filtering to avoid duplicates.
+                        if self.filter.is_empty() {
+                            {
+                                for self.top_languages.iter().filter_map(|code| {
+                                    let entry = self.languages.get_by_part1(code)?;
+                                    let part1 = entry.part1?;
+                                    let selected = current.as_deref() == Some(part1);
+
+                                    Some(html! {
+                                        <div key={format!("top-{part1}")} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| Msg::Pick(Some(part1.to_string())))}>
+                                            <span class="fill">{entry.ref_name}</span>
+
+                                            if selected {
+                                                <span class="item-inline">
+                                                    <span class="icon check" />
+                                                </span>
+                                            }
+
+                                            if let Some(code) = self.language_to_country.get_by_part1(part1) {
+                                                <span class={classes!("item-inline", "flag", code)} />
+                                            } else {
+                                                <span class="item-inline">
+                                                    <span class="text-muted">{part1}</span>
+                                                </span>
+                                            }
+                                        </div>
+                                    })
+                                })
+                            }
+                        }
 
                         {
                             for filtered.iter()
