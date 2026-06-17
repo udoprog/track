@@ -1887,7 +1887,7 @@ impl ShowDetail {
             if confirming_pending {
                 break 'actions html! {
                     <MarkWatchedPicker
-                        prompt="Pending since when?"
+                        prompt={format!("When do you want {} to be pending?", episode.code())}
                         icon_class="item-inline-lg"
                         on_confirm={link.callback(move |mark_time| Msg::OnWatchNext(episode_id, mark_time))}
                         on_cancel={link.callback(move |_| Msg::CancelWatchNext(episode_id))}

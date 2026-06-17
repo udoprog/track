@@ -139,7 +139,13 @@ impl Component for Calendar {
 
                                                     html! {
                                                         <div class="calendar-item clickable" onclick={on_click} title={entry.show_title.clone()}>
-                                                            <div class="calendar-item-title">{&entry.show_title}</div>
+                                                            <div class="calendar-item-title">
+                                                                <span class="item-inline">
+                                                                    <span class="icon tv" />
+                                                                </span>
+
+                                                                {&entry.show_title}
+                                                            </div>
                                                             <div class="calendar-item-code">{code_line}</div>
                                                         </div>
                                                     }
@@ -154,8 +160,16 @@ impl Component for Calendar {
 
                                                     html! {
                                                         <div class="calendar-item clickable" onclick={on_click} title={movie.title.clone()}>
-                                                            <div class="calendar-item-title">{&movie.title}</div>
-                                                            <div class="calendar-item-code">{movie.released.time_of_day(self.tz.clone())}</div>
+                                                            <div class="calendar-item-title">
+                                                                <span class="item-inline">
+                                                                    <span class="icon film" />
+                                                                </span>
+
+                                                                {&movie.title}
+                                                            </div>
+                                                            <div class="calendar-item-code">
+                                                                {movie.released.time_of_day(self.tz.clone())}
+                                                            </div>
                                                         </div>
                                                     }
                                                 }) }

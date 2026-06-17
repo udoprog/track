@@ -960,7 +960,7 @@ impl MovieDetail {
                     <div class="row actions">
                         <MarkWatchedPicker
                             aired_label="Released"
-                            prompt="Watched when?"
+                            prompt="When did you watch the movie?"
                             icon_class="item-inline-lg"
                             on_confirm={link.callback(Msg::MarkWatched)}
                             on_cancel={link.callback(|_| Msg::CancelMarkWatch)}
@@ -974,7 +974,7 @@ impl MovieDetail {
                     <div class="row actions">
                         <MarkWatchedPicker
                             icon_class="item-inline-lg"
-                            prompt="Pending since when?"
+                            prompt="When do you want the movie to be pending?"
                             aired_label="Released"
                             on_confirm={link.callback(Msg::OnWatchNext)}
                             on_cancel={link.callback(|_| Msg::CancelWatchNext)}

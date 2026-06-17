@@ -121,7 +121,7 @@ p {
     flex-direction: row;
     justify-items: stretch;
     align-items: center;
-    gap: $gap-sm;
+    gap: 0.5em;
 
     &.center {
         justify-content: center;

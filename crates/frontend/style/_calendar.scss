@@ -2,11 +2,11 @@
 
 @mixin row-base {
     display: flex;
-    height: $input-height;
+    min-height: $input-height;
     align-items: center;
 
     @include until-mobile {
-        height: $input-height-touch;
+        min-height: $input-height-touch;
     }
 }
 
@@ -121,9 +121,22 @@
 }
 
 .calendar-item-title {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    @include row-base;
+    gap: 0.5em;
+
+    @include until-mobile {
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        overflow: hidden;
+    }
+
+    @include from-desktop {
+        font-size: $font-xs;
+    }
+
+    .item-inline {
+        align-self: flex-start;
+    }
 }
 
 .calendar-item-code {
