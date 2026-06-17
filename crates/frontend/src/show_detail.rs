@@ -1928,7 +1928,7 @@ impl ShowDetail {
                 <div class="desktop-row mobile-column">
                     <Image class="screenshot" src={episode.screenshot.clone()} />
 
-                    <div class="column top">
+                    <div class="column top desktop-fill">
                         if !history_expanded {
                             <h3>{ episode.name.as_deref().unwrap_or(MDASH) }</h3>
 

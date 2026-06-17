@@ -1068,6 +1068,30 @@ pub fn effective_remote_sync_kinds(entry: &RemoteEntry, config: &Config) -> Sync
         .intersect(source.default_sync_kinds())
 }
 
+/// Sources of enabled remotes whose effective sync kinds include [`SyncKind::AirDate`],
+/// ordered by priority (lowest number = highest priority), de-duplicated keeping the
+/// highest-priority occurrence of each source. A source with AirDate disabled no longer
+/// contributes air dates even if it has stale stored releases.
+pub fn air_date_sources_by_priority(remotes: &[RemoteEntry], config: &Config) -> Vec<RemoteSource> {
+    let mut entries: Vec<&RemoteEntry> = remotes
+        .iter()
+        .filter(|e| e.enabled && effective_remote_sync_kinds(e, config).contains(SyncKind::AirDate))
+        .collect();
+    entries.sort_by_key(|e| e.priority);
+
+    let mut out = Vec::new();
+
+    for e in entries {
+        let source = *e.remote.source();
+
+        if !out.contains(&source) {
+            out.push(source);
+        }
+    }
+
+    out
+}
+
 /// Sources of the enabled remotes ordered by priority (lowest number = highest
 /// priority), de-duplicated keeping the highest-priority occurrence of each source.
 pub fn enabled_sources_by_priority(remotes: &[RemoteEntry]) -> Vec<RemoteSource> {
@@ -1970,6 +1994,7 @@ impl fmt::Display for Code {
     }
 }
 
+#[cfg(feature = "yew")]
 impl IntoPropValue<Option<IString>> for Code {
     #[inline]
     fn into_prop_value(self) -> Option<IString> {
@@ -1977,6 +2002,7 @@ impl IntoPropValue<Option<IString>> for Code {
     }
 }
 
+#[cfg(feature = "yew")]
 impl IntoPropValue<VNode> for Code {
     #[inline]
     fn into_prop_value(self) -> VNode {

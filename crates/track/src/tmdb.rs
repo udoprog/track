@@ -357,10 +357,11 @@ impl Client {
         // name, then whatever the default language returned.
         let title = localized
             .as_ref()
-            .and_then(|l| l.name.as_deref().filter(|s| !s.trim().is_empty()))
+            .and_then(|l| l.name.as_deref())
+            .or(details.name.as_deref())
+            .filter(|s| !s.trim().is_empty())
             .map(str::to_owned)
-            .or(details.original_name)
-            .or(details.name);
+            .or(details.original_name);
 
         let overview = localized
             .as_ref()
@@ -571,10 +572,11 @@ impl Client {
 
         let title = localized
             .as_ref()
-            .and_then(|l| l.title.as_deref().filter(|s| !s.trim().is_empty()))
+            .and_then(|l| l.title.as_deref())
+            .or(details.title.as_deref())
+            .filter(|s| !s.trim().is_empty())
             .map(str::to_owned)
-            .or(details.original_title)
-            .or(details.title);
+            .or(details.original_title);
 
         let overview = localized
             .as_ref()

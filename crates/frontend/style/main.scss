@@ -620,6 +620,13 @@ image {
     min-width: 0;
 }
 
+@include from-desktop {
+    .desktop-fill {
+        flex: 1;
+        min-width: 0;
+    }
+}
+
 .title {
     font-size: $font-lg;
     font-weight: $bold-weight;

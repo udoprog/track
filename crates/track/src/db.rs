@@ -1852,7 +1852,8 @@ impl Database {
             return Ok(());
         };
 
-        let priority = api::enabled_sources_by_priority(&show.remotes);
+        let config = self.load_config().await?;
+        let priority = api::air_date_sources_by_priority(&show.remotes, &config);
         let filters = show.air_date_filters.unwrap_or(default_filters);
 
         let mut s = self.inner.clone().exclusive().await?;
