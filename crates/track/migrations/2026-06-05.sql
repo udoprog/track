@@ -9,7 +9,15 @@ CREATE TABLE
         language TEXT,
         last_synced_at INTEGER,
         include_specials INTEGER,
+        auto_sync INTEGER NOT NULL DEFAULT 1,
+        air_date_filters TEXT,
         remote_id INTEGER REFERENCES show_remotes (id) ON DELETE SET NULL
+    );
+
+CREATE TABLE
+    show_settings (
+        show_id INTEGER PRIMARY KEY REFERENCES shows (id) ON DELETE CASCADE,
+        data TEXT NOT NULL
     );
 
 CREATE TABLE
@@ -51,7 +59,15 @@ CREATE TABLE
         sync_source INTEGER,
         language TEXT,
         last_synced_at INTEGER,
+        release_filters TEXT,
+        auto_sync INTEGER NOT NULL DEFAULT 1,
         remote_id INTEGER REFERENCES movie_remotes (id) ON DELETE SET NULL
+    );
+
+CREATE TABLE
+    movie_settings (
+        movie_id INTEGER PRIMARY KEY REFERENCES movies (id) ON DELETE CASCADE,
+        data TEXT NOT NULL
     );
 
 CREATE INDEX idx_movies_release_date ON movies (release_date)
@@ -131,10 +147,12 @@ CREATE TABLE
         show_id INTEGER REFERENCES shows (id) ON DELETE CASCADE,
         movie_id INTEGER REFERENCES movies (id) ON DELETE CASCADE,
         episode_id INTEGER REFERENCES episodes (id) ON DELETE CASCADE,
+        season_id INTEGER REFERENCES seasons (id) ON DELETE CASCADE,
         CHECK (
             (show_id IS NOT NULL)
             OR (movie_id IS NOT NULL)
             OR (episode_id IS NOT NULL)
+            OR (season_id IS NOT NULL)
         )
     );
 
@@ -150,7 +168,10 @@ CREATE UNIQUE INDEX idx_images_episode ON images (episode_id, kind, path)
 WHERE
     episode_id IS NOT NULL;
 
--- Ordering galleries best-first (lowest rank) within a kind.
+CREATE UNIQUE INDEX idx_images_season ON images (season_id, kind, path)
+WHERE
+    season_id IS NOT NULL;
+
 CREATE INDEX idx_images_show_rank ON images (show_id, kind, rank)
 WHERE
     show_id IS NOT NULL;
@@ -158,6 +179,10 @@ WHERE
 CREATE INDEX idx_images_movie_rank ON images (movie_id, kind, rank)
 WHERE
     movie_id IS NOT NULL;
+
+CREATE INDEX idx_images_season_rank ON images (season_id, kind, rank)
+WHERE
+    season_id IS NOT NULL;
 
 CREATE TABLE
     show_images (
@@ -183,6 +208,14 @@ CREATE TABLE
         PRIMARY KEY (episode_id, kind)
     );
 
+CREATE TABLE
+    season_images (
+        season_id INTEGER NOT NULL REFERENCES seasons (id) ON DELETE CASCADE,
+        kind INTEGER NOT NULL,
+        image_id INTEGER NOT NULL REFERENCES images (id) ON DELETE CASCADE,
+        PRIMARY KEY (season_id, kind)
+    );
+
 -- Remotes are normalized per owner: a random id, a numeric source enum
 -- (api::RemoteSource) and a dynamic (integer or text) value. The owning
 -- show/movie/episode also points back at its selected remote via remote_id.
@@ -197,6 +230,10 @@ CREATE TABLE
         show_id INTEGER NOT NULL,
         source INTEGER NOT NULL,
         value,
+        slug TEXT,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        priority INTEGER NOT NULL DEFAULT 0,
+        sync_kinds INTEGER,
         UNIQUE (show_id, source, value)
     );
 
@@ -206,6 +243,10 @@ CREATE TABLE
         movie_id INTEGER NOT NULL,
         source INTEGER NOT NULL,
         value,
+        slug TEXT,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        priority INTEGER NOT NULL DEFAULT 0,
+        sync_kinds INTEGER,
         UNIQUE (movie_id, source, value)
     );
 
@@ -218,14 +259,21 @@ CREATE TABLE
         UNIQUE (episode_id, source, value)
     );
 
--- This baseline already describes the normalized-remotes schema, so the
--- transition migration only needs to run on databases created from the
--- pre-normalization baseline. Mark it applied here so it is skipped on fresh
--- databases (it is a no-op against this schema and would otherwise conflict).
-INSERT
-OR IGNORE INTO migrations (id, applied_at)
-VALUES
-    (
-        '2026-06-13-normalize-remotes.sql',
-        '2026-06-05T00:00:00Z'
+CREATE TABLE
+    episode_releases (
+        id INTEGER PRIMARY KEY,
+        episode_id INTEGER NOT NULL REFERENCES episodes (id) ON DELETE CASCADE,
+        source INTEGER NOT NULL,
+        country TEXT NOT NULL DEFAULT '',
+        network TEXT NOT NULL DEFAULT '',
+        timestamp INTEGER NOT NULL,
+        UNIQUE (episode_id, source, country, network)
+    );
+
+CREATE INDEX idx_episode_releases_episode ON episode_releases (episode_id);
+
+CREATE TABLE
+    state (
+        id INTEGER PRIMARY KEY CHECK (id = 0),
+        top_languages TEXT NOT NULL DEFAULT '[]'
     );

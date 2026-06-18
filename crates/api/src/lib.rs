@@ -3638,7 +3638,10 @@ mod tests {
         assert!(LanguageCode::DEFAULT.is_default());
         assert_eq!(LanguageCode::DEFAULT.to_string(), "default");
         assert_eq!(LanguageCode::DEFAULT.to_iso639_3(), None);
-        assert_eq!(LanguageCode::from_iso639("default"), Some(LanguageCode::DEFAULT));
+        assert_eq!(
+            LanguageCode::from_iso639("default"),
+            Some(LanguageCode::DEFAULT)
+        );
         assert_eq!(LanguageCode::from_iso639(""), Some(LanguageCode::DEFAULT));
 
         // 3-letter packs to its own bytes.
@@ -3650,7 +3653,10 @@ mod tests {
 
         // 2-letter resolves to 3-letter.
         assert_eq!(LanguageCode::from_iso639("en"), Some(LanguageCode::ENG));
-        assert_eq!(LanguageCode::from_iso639("SV"), LanguageCode::from_iso639("swe"));
+        assert_eq!(
+            LanguageCode::from_iso639("SV"),
+            LanguageCode::from_iso639("swe")
+        );
 
         // Case-insensitive and Display/FromStr round-trip.
         let swe = LanguageCode::from_iso639("Swe").unwrap();
@@ -3660,7 +3666,10 @@ mod tests {
         let json = serde_json::to_string(&swe).unwrap();
         assert_eq!(json, "\"swe\"");
         assert_eq!(serde_json::from_str::<LanguageCode>(&json).unwrap(), swe);
-        assert_eq!(serde_json::to_string(&LanguageCode::DEFAULT).unwrap(), "\"default\"");
+        assert_eq!(
+            serde_json::to_string(&LanguageCode::DEFAULT).unwrap(),
+            "\"default\""
+        );
 
         // Garbage is rejected.
         assert_eq!(LanguageCode::from_iso639("123"), None);
