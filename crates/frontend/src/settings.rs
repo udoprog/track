@@ -6,6 +6,7 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::ui::{
     AirDateFiltersEditor, LanguagePicker, ReleaseFiltersEditor, SecretInput, SyncKindsEditor,
+    SyncLanguagesEditor,
 };
 
 fn tz_is_valid(name: &str) -> bool {
@@ -31,7 +32,8 @@ pub(super) enum Msg {
     TvdbPinChanged(String),
     TmdbKeyChanged(String),
     TimezoneChanged(String),
-    LanguageChanged(Option<String>),
+    LanguageChanged(api::LanguageCode),
+    SyncLanguagesChanged(Vec<api::LanguageCode>),
     DashboardPageChanged(String),
     AutoSyncEnabledToggle,
     AutoSyncIntervalChanged(String),
@@ -233,7 +235,7 @@ impl Component for Settings {
                             <label>{"Default language"}</label>
 
                             <LanguagePicker
-                                current={self.config.language.clone()}
+                                current={self.config.language}
                                 placeholder="Default"
                                 on_change={link.callback(Msg::LanguageChanged)}
                             />
@@ -272,6 +274,15 @@ impl Component for Settings {
                             <option value="include" selected={self.config.include_specials}>{"Include"}</option>
                             <option value="skip" selected={!self.config.include_specials}>{"Skip"}</option>
                         </select>
+                    </div>
+
+                    <div class="field">
+                        <label>{"Sync languages"}</label>
+                        <span class="hint">{"Which languages to fetch translations for during sync. \"Default\" uses each show's or movie's original language."}</span>
+                        <SyncLanguagesEditor
+                            languages={self.config.sync_languages.clone()}
+                            on_change={link.callback(Msg::SyncLanguagesChanged)}
+                        />
                     </div>
 
                     <h4>{"Release Date"}</h4>
@@ -374,6 +385,11 @@ impl Settings {
             }
             Msg::LanguageChanged(val) => {
                 self.config.language = val;
+                self.persist(ctx);
+                Ok(true)
+            }
+            Msg::SyncLanguagesChanged(val) => {
+                self.config.sync_languages = val;
                 self.persist(ctx);
                 Ok(true)
             }

@@ -24,7 +24,10 @@ pub(crate) async fn sync_show(
         .context("Expected show to exist")?;
 
     let config = db.load_config().await?;
-    let base_language = show.language.as_deref().or(config.language.as_deref());
+    // The per-show override wins, else the global default; DEFAULT yields `None`
+    // so the original-language path applies exactly as before.
+    let base_language = show.language.unwrap_or(config.language).to_iso639_1();
+    let base_language = base_language.as_deref();
 
     // Ensure a TVmaze remote is stored (resolved via TVDB/IMDb) so air-date
     // enrichment participates in the layered order, as it did unconditionally
@@ -691,7 +694,8 @@ pub(crate) async fn sync_movie(
         .context("Expected movie to exist")?;
 
     let config = db.load_config().await?;
-    let language = movie.language.as_deref().or(config.language.as_deref());
+    let language = movie.language.unwrap_or(config.language).to_iso639_1();
+    let language = language.as_deref();
 
     let source = movie.primary_sync_source();
     info!(movie_id = %movie_id, title = movie.title, ?source, ?language, "Syncing movie");

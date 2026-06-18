@@ -266,9 +266,9 @@ pub(super) fn MarkWatchedPicker(props: &MarkWatchedPickerProps) -> Html {
 #[derive(Properties, PartialEq)]
 pub(super) struct MediaSettingsModalProps {
     pub(super) title: AttrValue,
-    pub(super) language: Option<String>,
+    pub(super) language: Option<api::LanguageCode>,
     pub(super) has_images: bool,
-    pub(super) on_language_change: Callback<Option<String>>,
+    pub(super) on_language_change: Callback<Option<api::LanguageCode>>,
     pub(super) on_edit_graphics: Callback<()>,
     pub(super) on_edit_remotes: Callback<()>,
     pub(super) on_close: Callback<()>,
@@ -414,9 +414,11 @@ pub(super) fn MediaSettingsModal(props: &MediaSettingsModalProps) -> Html {
                 <div class="field">
                     <label>{"Language"}</label>
                     <LanguagePicker
-                        current={props.language.clone()}
+                        current={props.language.unwrap_or(api::LanguageCode::DEFAULT)}
                         placeholder="Default"
-                        on_change={props.on_language_change.clone()}
+                        on_change={props.on_language_change.reform(|code: api::LanguageCode| {
+                            (!code.is_default()).then_some(code)
+                        })}
                     />
                 </div>
 
@@ -1086,9 +1088,13 @@ const LANGUAGE_PAGE_SIZE: usize = 5;
 
 #[derive(Properties, PartialEq)]
 pub(super) struct LanguagePickerProps {
-    pub(super) current: Option<String>,
-    pub(super) on_change: Callback<Option<String>>,
+    pub(super) current: api::LanguageCode,
+    pub(super) on_change: Callback<api::LanguageCode>,
     pub(super) placeholder: &'static str,
+    /// Whether to show the "top languages" quick-pick section. Disable for
+    /// list-style usages (e.g. configuring which languages to sync).
+    #[prop_or(true)]
+    pub(super) show_top: bool,
 }
 
 pub(super) enum Msg {
@@ -1096,7 +1102,7 @@ pub(super) enum Msg {
     Close,
     Filter(String),
     Page(usize),
-    Pick(Option<String>),
+    Pick(api::LanguageCode),
     SetTopLanguages(TopLanguages),
 }
 
@@ -1164,19 +1170,24 @@ impl Component for LanguagePicker {
         let link = ctx.link();
         let props = ctx.props();
 
-        let value = ctx.props().current.as_ref().and_then(|code| {
-            self.languages
-                .get_by_part1(code)
-                .and_then(|entry| Some((entry.ref_name, entry.part1?)))
-        });
+        let current = props.current;
+
+        let value = if current.is_default() {
+            None
+        } else {
+            current
+                .to_iso639_3()
+                .and_then(|id| self.languages.get_by_id(&id))
+                .map(|entry| (entry.ref_name, entry.part1))
+        };
 
         let trigger = match value {
-            Some((label, code)) => html! {
+            Some((label, part1)) => html! {
                 <button class="btn" onclick={link.callback(|_| Msg::Open)} title="Select language">
                     <span class="icon language" />
                     <span>{label}</span>
 
-                    if let Some(code) = self.language_to_country.get_by_part1(code) {
+                    if let Some(code) = part1.and_then(|p| self.language_to_country.get_by_part1(p)) {
                         <span class={classes!("flag", code)}></span>
                     }
                 </button>
@@ -1210,8 +1221,6 @@ impl Component for LanguagePicker {
             Msg::Filter(input.value())
         });
 
-        let current = props.current.clone();
-
         html! {
             <>
                 {trigger}
@@ -1223,12 +1232,13 @@ impl Component for LanguagePicker {
 
                     <div class="table">
                         // Quick picks: the most-used custom languages, shown right
-                        // below "Default". Hidden while filtering to avoid duplicates.
+                        // below "Default". Hidden while filtering to avoid duplicates,
+                        // and entirely when `show_top` is disabled.
                         if self.filter.is_empty() {
-                            <div class="table-entry row clickable" onclick={link.callback(|_| Msg::Pick(None))}>
+                            <div class="table-entry row clickable" onclick={link.callback(|_| Msg::Pick(api::LanguageCode::DEFAULT))}>
                                 <span class="fill">{props.placeholder}</span>
 
-                                if current.is_none() {
+                                if current.is_default() {
                                     <span class="item-inline">
                                         <span class="icon check" />
                                     </span>
@@ -1239,31 +1249,33 @@ impl Component for LanguagePicker {
                                 </span>
                             </div>
 
-                            { for self.top_languages.iter().filter_map(|code| {
-                                let entry = self.languages.get_by_part1(code)?;
-                                let part1 = entry.part1?;
-                                let selected = current.as_deref() == Some(part1);
+                            if props.show_top {
+                                { for self.top_languages.iter().filter_map(|raw| {
+                                    let code = api::LanguageCode::from_iso639(raw)?;
+                                    let entry = code.to_iso639_3().and_then(|id| self.languages.get_by_id(&id))?;
+                                    let selected = current == code;
 
-                                Some(html! {
-                                    <div key={format!("top-{part1}")} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| Msg::Pick(Some(part1.to_string())))}>
-                                        <span class="fill">{entry.ref_name}</span>
+                                    Some(html! {
+                                        <div key={format!("top-{raw}")} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| Msg::Pick(code))}>
+                                            <span class="fill">{entry.ref_name}</span>
 
-                                        if selected {
-                                            <span class="item-inline">
-                                                <span class="icon check" />
-                                            </span>
-                                        }
+                                            if selected {
+                                                <span class="item-inline">
+                                                    <span class="icon check" />
+                                                </span>
+                                            }
 
-                                        if let Some(code) = self.language_to_country.get_by_part1(part1) {
-                                            <span class={classes!("item-inline", "flag", code)} />
-                                        } else {
-                                            <span class="item-inline">
-                                                <span class="text-muted">{part1}</span>
-                                            </span>
-                                        }
-                                    </div>
-                                })
-                            }) }
+                                            if let Some(country) = entry.part1.and_then(|p| self.language_to_country.get_by_part1(p)) {
+                                                <span class={classes!("item-inline", "flag", country)} />
+                                            } else {
+                                                <span class="item-inline">
+                                                    <span class="text-muted">{entry.id}</span>
+                                                </span>
+                                            }
+                                        </div>
+                                    })
+                                }) }
+                            }
                         }
 
                         if !filtered.is_empty() {
@@ -1275,10 +1287,12 @@ impl Component for LanguagePicker {
                                 .skip(page.saturating_mul(LANGUAGE_PAGE_SIZE))
                                 .take(LANGUAGE_PAGE_SIZE)
                                 .map(|&(part1, entry)| {
-                                    let selected = current.as_deref() == Some(part1);
+                                    let code = api::LanguageCode::from_iso639(entry.id)
+                                        .unwrap_or(api::LanguageCode::DEFAULT);
+                                    let selected = current == code;
 
                                     html! {
-                                        <div key={part1} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| Msg::Pick(Some(part1.to_string())))}>
+                                        <div key={part1} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| Msg::Pick(code))}>
                                             <span class="fill">{entry.ref_name}</span>
 
                                             if selected {
@@ -1287,8 +1301,8 @@ impl Component for LanguagePicker {
                                                 </span>
                                             }
 
-                                            if let Some(code) = self.language_to_country.get_by_part1(part1) {
-                                                <span class={classes!("item-inline", "flag", code)} />
+                                            if let Some(country) = self.language_to_country.get_by_part1(part1) {
+                                                <span class={classes!("item-inline", "flag", country)} />
                                             } else {
                                                 <span class="item-inline">
                                                     <span class="text-muted">{part1}</span>
@@ -1570,6 +1584,88 @@ pub(super) fn ReleaseFiltersEditor(props: &ReleaseFiltersEditorProps) -> Html {
                     }
                 })
             }
+        </div>
+    }
+}
+
+#[derive(Properties, PartialEq)]
+pub(super) struct SyncLanguagesEditorProps {
+    pub(super) languages: Vec<api::LanguageCode>,
+    pub(super) on_change: Callback<Vec<api::LanguageCode>>,
+}
+
+/// Editor for the list of languages the sync path populates. Renders each
+/// selected language with a remove button, plus a [`LanguagePicker`] (without the
+/// top-languages section) to add another. `Default` stands for each media's own
+/// original language.
+#[function_component]
+pub(super) fn SyncLanguagesEditor(props: &SyncLanguagesEditorProps) -> Html {
+    let languages = Languages::new();
+    let language_to_country = LanguageToCountry::new();
+
+    let on_add = {
+        let current = props.languages.clone();
+        let on_change = props.on_change.clone();
+        Callback::from(move |code: api::LanguageCode| {
+            if current.contains(&code) {
+                return;
+            }
+            let mut next = current.clone();
+            next.push(code);
+            on_change.emit(next);
+        })
+    };
+
+    html! {
+        <div class="table">
+            {
+                for props.languages.iter().copied().enumerate().map(|(index, code)| {
+                    let on_remove = {
+                        let current = props.languages.clone();
+                        let on_change = props.on_change.clone();
+                        Callback::from(move |_: MouseEvent| {
+                            let mut next = current.clone();
+                            next.remove(index);
+                            on_change.emit(next);
+                        })
+                    };
+
+                    let (label, country) = if code.is_default() {
+                        ("Default (original language)".to_owned(), None)
+                    } else {
+                        match code.to_iso639_3().and_then(|id| languages.get_by_id(&id)) {
+                            Some(entry) => (
+                                entry.ref_name.to_owned(),
+                                entry.part1.and_then(|p| language_to_country.get_by_part1(p)),
+                            ),
+                            None => (code.to_string(), None),
+                        }
+                    };
+
+                    html! {
+                        <div key={code.to_string()} class="table-entry row">
+                            <span class="fill">{label}</span>
+
+                            if let Some(country) = country {
+                                <span class={classes!("item-inline", "flag", country)} />
+                            }
+
+                            <button class="btn-danger" onclick={on_remove} title="Remove language">
+                                <span class="icon trash" />
+                            </button>
+                        </div>
+                    }
+                })
+            }
+
+            <div class="table-entry row">
+                <LanguagePicker
+                    current={api::LanguageCode::DEFAULT}
+                    placeholder="Add language"
+                    show_top={false}
+                    on_change={on_add}
+                />
+            </div>
         </div>
     }
 }

@@ -132,9 +132,9 @@ pub(super) enum Msg {
     ReorderRemotes(Vec<api::RemoteId>),
     ReorderRemotesDone(Result<ws::Packet<api::ReorderShowRemotes>, ws::Error>),
     ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
-    SetLanguage(Option<String>),
+    SetLanguage(Option<api::LanguageCode>),
     SetLanguageDone(
-        Option<String>,
+        Option<api::LanguageCode>,
         Result<ws::Packet<api::SetShowLanguage>, ws::Error>,
     ),
     OpenImageModal,

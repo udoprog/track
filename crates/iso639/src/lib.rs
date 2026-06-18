@@ -51,6 +51,7 @@ pub use generated::ENTRIES;
 #[derive(Debug, Clone)]
 pub struct Languages {
     by_part1: Arc<BTreeMap<&'static str, usize>>,
+    by_id: Arc<BTreeMap<&'static str, usize>>,
 }
 
 impl Languages {
@@ -63,13 +64,28 @@ impl Languages {
                     .collect::<BTreeMap<_, _>>(),
             )
         });
+        let by_id = LazyCell::new(|| {
+            Arc::new(
+                ENTRIES
+                    .iter()
+                    .enumerate()
+                    .map(|(index, entry)| (entry.id, index))
+                    .collect::<BTreeMap<_, _>>(),
+            )
+        });
         Self {
             by_part1: (*by_part1).clone(),
+            by_id: (*by_id).clone(),
         }
     }
 
     pub fn get_by_part1(&self, part1: &str) -> Option<&'static Entry> {
         self.by_part1.get(part1).map(|index| &ENTRIES[*index])
+    }
+
+    /// Look up an entry by its 3-letter ISO 639-3 code (`Entry::id`).
+    pub fn get_by_id(&self, id: &str) -> Option<&'static Entry> {
+        self.by_id.get(id).map(|index| &ENTRIES[*index])
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&'static str, &'static Entry)> + '_ {

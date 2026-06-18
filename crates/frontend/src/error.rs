@@ -122,7 +122,7 @@ pub(crate) enum Message {
     #[display("Clearing image")]
     ClearingImage,
     #[display("Setting language to {_0:?}")]
-    SettingLanguage(Option<String>),
+    SettingLanguage(Option<api::LanguageCode>),
     #[display("Setting release dates")]
     SettingReleaseFilters,
     #[display("Setting specials handling to {_0:?}")]

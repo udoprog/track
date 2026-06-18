@@ -1437,7 +1437,7 @@ impl Database {
     pub(crate) async fn set_show_language(
         &self,
         id: ShowId,
-        language: Option<String>,
+        language: Option<api::LanguageCode>,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
@@ -2576,7 +2576,7 @@ impl Database {
     pub(crate) async fn set_movie_language(
         &self,
         id: MovieId,
-        language: Option<String>,
+        language: Option<api::LanguageCode>,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
@@ -3641,8 +3641,9 @@ impl Database {
             let timezone = s.get_config("timezone")?.unwrap_or_default().to_owned();
             let language = s
                 .get_config("language")?
-                .filter(|v| !v.is_empty())
-                .map(|v| v.to_owned());
+                .as_deref()
+                .and_then(api::LanguageCode::from_iso639)
+                .unwrap_or(api::LanguageCode::DEFAULT);
             let include_specials = s
                 .get_config("include_specials")?
                 .map(|v| v == "true")
@@ -3666,6 +3667,12 @@ impl Database {
                 .and_then(api::decode_sync_kinds)
                 .unwrap_or_default();
 
+            let sync_languages = s
+                .get_config("sync_languages")?
+                .as_deref()
+                .and_then(api::decode_sync_languages)
+                .unwrap_or_else(|| vec![api::LanguageCode::DEFAULT, api::LanguageCode::ENG]);
+
             Ok(Config {
                 theme,
                 tvdb_api_key,
@@ -3680,6 +3687,7 @@ impl Database {
                 release_filters,
                 air_date_filters,
                 sync_kinds,
+                sync_languages,
             })
         });
 
@@ -3722,7 +3730,7 @@ impl Database {
             )?;
 
             s.set_config("timezone", &config.timezone)?;
-            s.set_config("language", config.language.as_deref().unwrap_or(""))?;
+            s.set_config("language", &config.language.to_string())?;
             s.set_config(
                 "include_specials",
                 if config.include_specials {
@@ -3740,6 +3748,10 @@ impl Database {
                 &api::encode_air_date_filters(&config.air_date_filters),
             )?;
             s.set_config("sync_kinds", &api::encode_sync_kinds(&config.sync_kinds))?;
+            s.set_config(
+                "sync_languages",
+                &api::encode_sync_languages(&config.sync_languages),
+            )?;
             Ok(())
         });
 
@@ -3786,9 +3798,9 @@ impl Database {
         let result = spawn_blocking(move || {
             let mut counts: HashMap<String, usize> = HashMap::new();
 
-            let mut tally = |language: Option<String>| {
-                if let Some(lang) = language.filter(|l| !l.trim().is_empty()) {
-                    *counts.entry(lang).or_default() += 1;
+            let mut tally = |language: Option<api::LanguageCode>| {
+                if let Some(code) = language.filter(|c| !c.is_default()) {
+                    *counts.entry(code.to_string()).or_default() += 1;
                 }
             };
 
@@ -3800,7 +3812,7 @@ impl Database {
                     .and_then(api::decode_show_settings)
                 {
                     Some(settings) => settings.language,
-                    None => row.language,
+                    None => legacy_language(row.language),
                 };
                 tally(language);
             }
@@ -3814,7 +3826,7 @@ impl Database {
                     .and_then(api::decode_movie_settings)
                 {
                     Some(settings) => settings.language,
-                    None => row.language,
+                    None => legacy_language(row.language),
                 };
                 tally(language);
             }
@@ -3840,6 +3852,15 @@ fn cutoff_timestamp(interval_hours: u32) -> Timestamp {
     Timestamp::from_jiff(ts)
 }
 
+/// Convert a legacy `language` TEXT column (a 2-letter code, or empty) into a
+/// [`api::LanguageCode`] override. Empty/unparseable values mean "no override".
+fn legacy_language(language: Option<String>) -> Option<api::LanguageCode> {
+    language
+        .as_deref()
+        .and_then(api::LanguageCode::from_iso639)
+        .filter(|c| !c.is_default())
+}
+
 /// The current per-show settings: the stored JSON blob if present, otherwise
 /// synthesized from the legacy columns (un-migrated row), else defaults. Used by
 /// the setters to read-modify-write a single field.
@@ -3856,7 +3877,7 @@ fn current_show_settings(s: &mut InnerWrite, id: ShowId) -> Result<api::ShowSett
         {
             Some(settings) => settings,
             None => api::ShowSettings {
-                language: row.language,
+                language: legacy_language(row.language),
                 include_specials: row.include_specials,
                 air_date_filters: row
                     .air_date_filters
@@ -3881,7 +3902,7 @@ fn current_movie_settings(s: &mut InnerWrite, id: MovieId) -> Result<api::MovieS
         {
             Some(settings) => settings,
             None => api::MovieSettings {
-                language: row.language,
+                language: legacy_language(row.language),
                 release_filters: row
                     .release_filters
                     .as_deref()
@@ -3902,7 +3923,7 @@ fn show_from_row(r: ShowRow) -> api::Show {
     let (language, include_specials, air_date_filters) = match settings {
         Some(s) => (s.language, s.include_specials, s.air_date_filters),
         None => (
-            r.language,
+            legacy_language(r.language),
             r.include_specials,
             r.air_date_filters
                 .as_deref()
@@ -4045,7 +4066,7 @@ fn movie_from_row(r: MovieRow) -> api::Movie {
     let (language, release_filters) = match settings {
         Some(s) => (s.language, s.release_filters),
         None => (
-            r.language,
+            legacy_language(r.language),
             r.release_filters
                 .as_deref()
                 .and_then(api::decode_release_filters),

@@ -98,9 +98,9 @@ pub(super) enum Msg {
     SetRemoteSyncKindsDone(Result<ws::Packet<api::SetMovieRemoteSyncKinds>, ws::Error>),
     ReorderRemotes(Vec<api::RemoteId>),
     ReorderRemotesDone(Result<ws::Packet<api::ReorderMovieRemotes>, ws::Error>),
-    SetLanguage(Option<String>),
+    SetLanguage(Option<api::LanguageCode>),
     SetLanguageDone(
-        Option<String>,
+        Option<api::LanguageCode>,
         Result<ws::Packet<api::SetMovieLanguage>, ws::Error>,
     ),
     ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
