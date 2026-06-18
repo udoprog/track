@@ -39,12 +39,9 @@ struct ShowRow {
     tracked: bool,
     auto_sync: bool,
     last_synced_at: Option<Timestamp>,
-    // Legacy per-show settings columns (dormant once a `show_settings` row exists).
-    language: Option<String>,
+    language: api::Language,
     include_specials: Option<bool>,
     air_date_filters: Option<String>,
-    // The `show_settings.data` JSON blob, when present, supersedes the columns above.
-    settings_data: Option<String>,
 }
 
 /// A media row reduced to just its custom-language inputs: the legacy `language`
@@ -52,8 +49,7 @@ struct ShowRow {
 /// tally the most-used per-show/per-movie language overrides.
 #[derive(Row)]
 struct LanguageRow {
-    language: Option<String>,
-    settings_data: Option<String>,
+    language: api::Language,
 }
 
 #[derive(Row)]
@@ -181,11 +177,8 @@ struct MovieRow {
     tracked: bool,
     auto_sync: bool,
     last_synced_at: Option<Timestamp>,
-    // Legacy per-movie settings columns (dormant once a `movie_settings` row exists).
-    language: Option<String>,
+    language: api::Language,
     release_filters: Option<String>,
-    // The `movie_settings.data` JSON blob, when present, supersedes the columns above.
-    settings_data: Option<String>,
 }
 
 #[derive(Row)]
@@ -373,16 +366,15 @@ struct AllMovieRemoteRow {
 #[sql(read_only)]
 struct InnerRead {
     // shows
-    #[sql = "SELECT shows.id, title, first_air, overview, tracked, auto_sync, last_synced_at, language, include_specials, air_date_filters, show_settings.data AS settings_data"]
-    #[sql = "FROM shows LEFT JOIN show_settings ON show_settings.show_id = shows.id ORDER BY title"]
+    #[sql = "SELECT shows.id, title, first_air, overview, tracked, auto_sync, last_synced_at, language, include_specials, air_date_filters"]
+    #[sql = "FROM shows ORDER BY title"]
     list_shows: TypedStatement<(), ShowRow>,
-    #[sql = "SELECT shows.id, title, first_air, overview, tracked, auto_sync, last_synced_at, language, include_specials, air_date_filters, show_settings.data AS settings_data"]
-    #[sql = "FROM shows LEFT JOIN show_settings ON show_settings.show_id = shows.id WHERE shows.id = ?"]
+    #[sql = "SELECT shows.id, title, first_air, overview, tracked, auto_sync, last_synced_at, language, include_specials, air_date_filters"]
+    #[sql = "FROM shows WHERE shows.id = ?"]
     show_by_id: TypedStatement<(ShowId,), ShowRow>,
-    #[sql = "SELECT s.id, s.title, s.first_air, s.overview, s.tracked, s.auto_sync, s.last_synced_at, s.language, s.include_specials, s.air_date_filters, ss.data AS settings_data"]
+    #[sql = "SELECT s.id, s.title, s.first_air, s.overview, s.tracked, s.auto_sync, s.last_synced_at, s.language, s.include_specials, s.air_date_filters"]
     #[sql = "FROM shows s"]
     #[sql = "JOIN show_remotes r ON r.show_id = s.id"]
-    #[sql = "LEFT JOIN show_settings ss ON ss.show_id = s.id"]
     #[sql = "WHERE r.source = ? AND r.value = ?"]
     shows_by_remote: TypedStatement<(RemoteSource, RemoteValue), ShowRow>,
 
@@ -487,16 +479,15 @@ struct InnerRead {
     last_watched_shows: TypedStatement<(), LastWatchedShowRow>,
 
     // movies
-    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.auto_sync, m.last_synced_at, m.language, m.release_filters, ms.data AS settings_data"]
-    #[sql = "FROM movies m LEFT JOIN movie_settings ms ON ms.movie_id = m.id ORDER BY m.title"]
+    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.auto_sync, m.last_synced_at, m.language, m.release_filters"]
+    #[sql = "FROM movies m ORDER BY m.title"]
     list_movies: TypedStatement<(), MovieRow>,
-    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.auto_sync, m.last_synced_at, m.language, m.release_filters, ms.data AS settings_data"]
-    #[sql = "FROM movies m LEFT JOIN movie_settings ms ON ms.movie_id = m.id WHERE m.id = ?"]
+    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.auto_sync, m.last_synced_at, m.language, m.release_filters"]
+    #[sql = "FROM movies m WHERE m.id = ?"]
     movie_by_id: TypedStatement<(MovieId,), MovieRow>,
-    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.auto_sync, m.last_synced_at, m.language, m.release_filters, ms.data AS settings_data"]
+    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.auto_sync, m.last_synced_at, m.language, m.release_filters"]
     #[sql = "FROM movies m"]
     #[sql = "JOIN movie_remotes r ON r.movie_id = m.id"]
-    #[sql = "LEFT JOIN movie_settings ms ON ms.movie_id = m.id"]
     #[sql = "WHERE r.source = ? AND r.value = ?"]
     movie_by_remote: TypedStatement<(RemoteSource, RemoteValue), MovieRow>,
     #[sql = "SELECT id, slug, source, value, enabled, priority, sync_kinds FROM movie_remotes WHERE movie_id = ? ORDER BY priority, id"]
@@ -632,22 +623,22 @@ struct InnerRead {
     // derived state (recomputed periodically)
     #[sql = "SELECT top_languages FROM state WHERE id = 0"]
     get_state_top_languages: TypedStatement<(), String>,
-    #[sql = "SELECT language, show_settings.data AS settings_data"]
-    #[sql = "FROM shows LEFT JOIN show_settings ON show_settings.show_id = shows.id"]
+    #[sql = "SELECT language"]
+    #[sql = "FROM shows"]
     list_show_languages: TypedStatement<(), LanguageRow>,
-    #[sql = "SELECT m.language, ms.data AS settings_data"]
-    #[sql = "FROM movies m LEFT JOIN movie_settings ms ON ms.movie_id = m.id"]
+    #[sql = "SELECT m.language"]
+    #[sql = "FROM movies m"]
     list_movie_languages: TypedStatement<(), LanguageRow>,
 
     // stale-item queries
-    #[sql = "SELECT shows.id, title, first_air, overview, tracked, auto_sync, last_synced_at, language, include_specials, air_date_filters, show_settings.data AS settings_data"]
-    #[sql = "FROM shows LEFT JOIN show_settings ON show_settings.show_id = shows.id"]
+    #[sql = "SELECT shows.id, title, first_air, overview, tracked, auto_sync, last_synced_at, language, include_specials, air_date_filters"]
+    #[sql = "FROM shows"]
     #[sql = "WHERE auto_sync = 1"]
     #[sql = "    AND (last_synced_at IS NULL OR last_synced_at < ?)"]
     #[sql = "ORDER BY last_synced_at IS NOT NULL, last_synced_at"]
     shows_needing_sync: TypedStatement<(Timestamp,), ShowRow>,
-    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.auto_sync, m.last_synced_at, m.language, m.release_filters, ms.data AS settings_data"]
-    #[sql = "FROM movies m LEFT JOIN movie_settings ms ON ms.movie_id = m.id"]
+    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.auto_sync, m.last_synced_at, m.language, m.release_filters"]
+    #[sql = "FROM movies m"]
     #[sql = "WHERE m.auto_sync = 1"]
     #[sql = "    AND (m.last_synced_at IS NULL OR m.last_synced_at < ?)"]
     #[sql = "ORDER BY m.last_synced_at IS NOT NULL, m.last_synced_at"]
@@ -695,15 +686,18 @@ struct InnerWrite {
         ),
         (),
     >,
+    #[sql = "UPDATE shows SET language = ? WHERE id = ?"]
+    update_show_language: TypedStatement<(api::Language, ShowId), ()>,
+    #[sql = "UPDATE shows SET include_specials = ? WHERE id = ?"]
+    update_show_include_specials: TypedStatement<(Option<bool>, ShowId), ()>,
+    #[sql = "UPDATE shows SET air_date_filters = ? WHERE id = ?"]
+    update_show_air_date_filters: TypedStatement<(Option<String>, ShowId), ()>,
     #[sql = "DELETE FROM shows WHERE id = ?"]
     delete_show: TypedStatement<(ShowId,), ()>,
     #[sql = "UPDATE shows SET tracked = ? WHERE id = ?"]
     set_show_tracked: TypedStatement<(bool, ShowId), ()>,
     #[sql = "UPDATE shows SET auto_sync = ? WHERE id = ?"]
     set_show_auto_sync: TypedStatement<(bool, ShowId), ()>,
-    // Per-show settings live in a single JSON blob; see api::ShowSettings.
-    #[sql = "INSERT OR REPLACE INTO show_settings (show_id, data) VALUES (?, ?)"]
-    upsert_show_settings: TypedStatement<(ShowId, String), ()>,
 
     // remotes (one table per owner; source is a numeric enum, value is dynamic)
     #[sql = "INSERT OR IGNORE INTO show_remotes (id, slug, show_id, source, value, enabled, priority, sync_kinds) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"]
@@ -877,9 +871,6 @@ struct InnerWrite {
     set_movie_tracked: TypedStatement<(bool, MovieId), ()>,
     #[sql = "UPDATE movies SET auto_sync = ? WHERE id = ?"]
     set_movie_auto_sync: TypedStatement<(bool, MovieId), ()>,
-    // Per-movie settings live in a single JSON blob; see api::MovieSettings.
-    #[sql = "INSERT OR REPLACE INTO movie_settings (movie_id, data) VALUES (?, ?)"]
-    upsert_movie_settings: TypedStatement<(MovieId, String), ()>,
     #[sql = "UPDATE movies"]
     #[sql = "SET title = ?, release_date = ?, overview = ?"]
     #[sql = "WHERE id = ?"]
@@ -912,6 +903,10 @@ struct InnerWrite {
     set_movie_remote_priority: TypedStatement<(i32, RemoteId), ()>,
     #[sql = "UPDATE movie_remotes SET sync_kinds = ? WHERE id = ?"]
     set_movie_remote_sync_kinds: TypedStatement<(Option<api::SyncKindSet>, RemoteId), ()>,
+    #[sql = "UPDATE movies SET language = ? WHERE id = ?"]
+    set_movie_language: TypedStatement<(Option<api::Language>, MovieId), ()>,
+    #[sql = "UPDATE movies SET release_filters = ? WHERE id = ?"]
+    set_movie_release_filters: TypedStatement<(Option<String>, MovieId), ()>,
 
     // watched
     #[sql = "INSERT OR IGNORE INTO watched_episodes (id, timestamp, show_id, season, episode)"]
@@ -1437,15 +1432,12 @@ impl Database {
     pub(crate) async fn set_show_language(
         &self,
         id: ShowId,
-        language: Option<api::LanguageCode>,
+        language: api::Language,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            let mut settings = current_show_settings(&mut s, id)?;
-            settings.language = language;
-            s.upsert_show_settings
-                .execute((id, api::encode_show_settings(&settings)))?;
+            s.update_show_language.execute((language, id))?;
             Ok(())
         });
 
@@ -1461,10 +1453,8 @@ impl Database {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            let mut settings = current_show_settings(&mut s, id)?;
-            settings.include_specials = include_specials;
-            s.upsert_show_settings
-                .execute((id, api::encode_show_settings(&settings)))?;
+            s.update_show_include_specials
+                .execute((include_specials, id))?;
             Ok(())
         });
 
@@ -1872,10 +1862,10 @@ impl Database {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            let mut settings = current_show_settings(&mut s, id)?;
-            settings.air_date_filters = air_date_filters;
-            s.upsert_show_settings
-                .execute((id, api::encode_show_settings(&settings)))?;
+            let text = air_date_filters
+                .as_deref()
+                .map(api::encode_air_date_filters);
+            s.update_show_air_date_filters.execute((text, id))?;
             Ok(())
         });
 
@@ -2576,17 +2566,15 @@ impl Database {
     pub(crate) async fn set_movie_language(
         &self,
         id: MovieId,
-        language: Option<api::LanguageCode>,
+        language: api::Language,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
-        let result = spawn_blocking(move || {
-            let mut settings = current_movie_settings(&mut s, id)?;
-            settings.language = language;
-            s.upsert_movie_settings
-                .execute((id, api::encode_movie_settings(&settings)))?;
-            Ok(())
-        });
+        let result: tokio::task::JoinHandle<std::prelude::v1::Result<(), anyhow::Error>> =
+            spawn_blocking(move || {
+                s.set_movie_language.execute((language, id))?;
+                Ok(())
+            });
 
         result.await?
     }
@@ -2600,10 +2588,8 @@ impl Database {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            let mut settings = current_movie_settings(&mut s, id)?;
-            settings.release_filters = release_filters;
-            s.upsert_movie_settings
-                .execute((id, api::encode_movie_settings(&settings)))?;
+            let text = release_filters.as_deref().map(api::encode_release_filters);
+            s.set_movie_release_filters.execute((text, id))?;
             Ok(())
         });
 
@@ -3639,11 +3625,13 @@ impl Database {
                 .unwrap_or(24);
 
             let timezone = s.get_config("timezone")?.unwrap_or_default().to_owned();
+
             let language = s
                 .get_config("language")?
                 .as_deref()
-                .and_then(api::LanguageCode::from_iso639)
-                .unwrap_or(api::LanguageCode::DEFAULT);
+                .and_then(api::Language::from_iso639)
+                .unwrap_or(api::Language::DEFAULT);
+
             let include_specials = s
                 .get_config("include_specials")?
                 .map(|v| v == "true")
@@ -3671,7 +3659,7 @@ impl Database {
                 .get_config("sync_languages")?
                 .as_deref()
                 .and_then(api::decode_sync_languages)
-                .unwrap_or_else(|| vec![api::LanguageCode::DEFAULT, api::LanguageCode::ENG]);
+                .unwrap_or_else(|| vec![api::Language::DEFAULT, api::Language::ENG]);
 
             Ok(Config {
                 theme,
@@ -3761,14 +3749,15 @@ impl Database {
     /// The most-used per-show/per-movie custom language overrides, ordered
     /// most-used first, as recomputed by the periodic task.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn get_state_top_languages(&self) -> Result<Vec<String>> {
+    pub(crate) async fn get_state_top_languages(&self) -> Result<Vec<api::Language>> {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
             let raw = s.get_state_top_languages.query()?.next()?;
+
             Ok(raw
                 .as_deref()
-                .and_then(|v| serde_json::from_str::<Vec<String>>(v).ok())
+                .and_then(|v| serde_json::from_str::<Vec<api::Language>>(v).ok())
                 .unwrap_or_default())
         });
 
@@ -3776,7 +3765,10 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn set_state_top_languages(&self, languages: Vec<String>) -> Result<()> {
+    pub(crate) async fn set_state_top_languages(
+        &self,
+        languages: Vec<api::Language>,
+    ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
@@ -3792,47 +3784,35 @@ impl Database {
     /// JSON blob's language when present, else the legacy column) and return the
     /// `n` most-used codes, ordered most-used first (ties broken by code).
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn compute_top_languages(&self, n: usize) -> Result<Vec<String>> {
+    pub(crate) async fn compute_top_languages(&self, n: usize) -> Result<Vec<api::Language>> {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
-            let mut counts: HashMap<String, usize> = HashMap::new();
+            let mut counts: HashMap<api::Language, usize> = HashMap::new();
 
-            let mut tally = |language: Option<api::LanguageCode>| {
-                if let Some(code) = language.filter(|c| !c.is_default()) {
-                    *counts.entry(code.to_string()).or_default() += 1;
+            let mut tally = |language: api::Language| {
+                if !language.is_default() {
+                    *counts.entry(language).or_default() += 1;
                 }
             };
 
             let mut stmt = s.list_show_languages.query()?;
+
             while let Some(row) = stmt.next()? {
-                let language = match row
-                    .settings_data
-                    .as_deref()
-                    .and_then(api::decode_show_settings)
-                {
-                    Some(settings) => settings.language,
-                    None => legacy_language(row.language),
-                };
-                tally(language);
+                tally(row.language);
             }
+
             stmt.reset()?;
 
             let mut stmt = s.list_movie_languages.query()?;
+
             while let Some(row) = stmt.next()? {
-                let language = match row
-                    .settings_data
-                    .as_deref()
-                    .and_then(api::decode_movie_settings)
-                {
-                    Some(settings) => settings.language,
-                    None => legacy_language(row.language),
-                };
-                tally(language);
+                tally(row.language);
             }
+
             stmt.reset()?;
 
-            let mut ranked: Vec<(String, usize)> = counts.into_iter().collect();
+            let mut ranked: Vec<(api::Language, usize)> = counts.into_iter().collect();
             // Most-used first; break ties by code for a stable result.
             ranked.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
 
@@ -3852,101 +3832,26 @@ fn cutoff_timestamp(interval_hours: u32) -> Timestamp {
     Timestamp::from_jiff(ts)
 }
 
-/// Convert a legacy `language` TEXT column (a 2-letter code, or empty) into a
-/// [`api::LanguageCode`] override. Empty/unparseable values mean "no override".
-fn legacy_language(language: Option<String>) -> Option<api::LanguageCode> {
-    language
-        .as_deref()
-        .and_then(api::LanguageCode::from_iso639)
-        .filter(|c| !c.is_default())
-}
-
-/// The current per-show settings: the stored JSON blob if present, otherwise
-/// synthesized from the legacy columns (un-migrated row), else defaults. Used by
-/// the setters to read-modify-write a single field.
-fn current_show_settings(s: &mut InnerWrite, id: ShowId) -> Result<api::ShowSettings> {
-    let Some(row) = s.show_by_id.bind((id,))?.first()? else {
-        return Ok(api::ShowSettings::default());
-    };
-
-    Ok(
-        match row
-            .settings_data
-            .as_deref()
-            .and_then(api::decode_show_settings)
-        {
-            Some(settings) => settings,
-            None => api::ShowSettings {
-                language: legacy_language(row.language),
-                include_specials: row.include_specials,
-                air_date_filters: row
-                    .air_date_filters
-                    .as_deref()
-                    .and_then(api::decode_air_date_filters),
-            },
-        },
-    )
-}
-
-/// The current per-movie settings; see [`current_show_settings`].
-fn current_movie_settings(s: &mut InnerWrite, id: MovieId) -> Result<api::MovieSettings> {
-    let Some(row) = s.movie_by_id.bind((id,))?.first()? else {
-        return Ok(api::MovieSettings::default());
-    };
-
-    Ok(
-        match row
-            .settings_data
-            .as_deref()
-            .and_then(api::decode_movie_settings)
-        {
-            Some(settings) => settings,
-            None => api::MovieSettings {
-                language: legacy_language(row.language),
-                release_filters: row
-                    .release_filters
-                    .as_deref()
-                    .and_then(api::decode_release_filters),
-            },
-        },
-    )
-}
-
-fn show_from_row(r: ShowRow) -> api::Show {
-    // The settings blob, once present, is authoritative; otherwise fall back to
-    // the legacy per-show columns (un-migrated rows).
-    let settings = r
-        .settings_data
-        .as_deref()
-        .and_then(api::decode_show_settings);
-
-    let (language, include_specials, air_date_filters) = match settings {
-        Some(s) => (s.language, s.include_specials, s.air_date_filters),
-        None => (
-            legacy_language(r.language),
-            r.include_specials,
-            r.air_date_filters
-                .as_deref()
-                .and_then(api::decode_air_date_filters),
-        ),
-    };
-
+fn show_from_row(row: ShowRow) -> api::Show {
     api::Show {
-        id: r.id,
-        title: r.title,
-        first_air_date: r.first_air,
-        overview: r.overview,
-        tracked: r.tracked,
-        auto_sync: r.auto_sync,
+        id: row.id,
+        title: row.title,
+        first_air_date: row.first_air,
+        overview: row.overview,
+        tracked: row.tracked,
+        auto_sync: row.auto_sync,
         remotes: Vec::new(),
         images: Vec::new(),
         poster: None,
         banner: None,
         backdrop: None,
-        last_synced_at: r.last_synced_at,
-        language,
-        include_specials,
-        air_date_filters,
+        last_synced_at: row.last_synced_at,
+        language: row.language,
+        include_specials: row.include_specials,
+        air_date_filters: row
+            .air_date_filters
+            .as_deref()
+            .and_then(api::decode_air_date_filters),
     }
 }
 
@@ -3962,21 +3867,21 @@ fn default_remote_priority(source: RemoteSource) -> i32 {
     }
 }
 
-fn image_from_row(r: ImageRow) -> api::MediaImage {
+fn image_from_row(row: ImageRow) -> api::MediaImage {
     api::MediaImage {
-        id: r.id,
-        kind: r.kind,
-        source: r.source,
-        image: Image::new(r.source, &r.path),
+        id: row.id,
+        kind: row.kind,
+        source: row.source,
+        image: Image::new(row.source, &row.path),
     }
 }
 
-fn show_image_from_row(r: ShowImageRow) -> api::MediaImage {
+fn show_image_from_row(row: ShowImageRow) -> api::MediaImage {
     api::MediaImage {
-        id: r.id,
-        kind: r.kind,
-        source: r.source,
-        image: Image::new(r.source, &r.path),
+        id: row.id,
+        kind: row.kind,
+        source: row.source,
+        image: Image::new(row.source, &row.path),
     }
 }
 
@@ -4055,41 +3960,27 @@ fn watched_episode_from_row(r: WatchedEpisodeRow) -> api::WatchedEpisode {
     }
 }
 
-fn movie_from_row(r: MovieRow) -> api::Movie {
-    // The settings blob, once present, is authoritative; otherwise fall back to
-    // the legacy per-movie columns (un-migrated rows).
-    let settings = r
-        .settings_data
-        .as_deref()
-        .and_then(api::decode_movie_settings);
-
-    let (language, release_filters) = match settings {
-        Some(s) => (s.language, s.release_filters),
-        None => (
-            legacy_language(r.language),
-            r.release_filters
-                .as_deref()
-                .and_then(api::decode_release_filters),
-        ),
-    };
-
+fn movie_from_row(row: MovieRow) -> api::Movie {
     api::Movie {
-        id: r.id,
-        title: r.title,
-        release_date: r.release_date,
-        overview: r.overview,
+        id: row.id,
+        title: row.title,
+        release_date: row.release_date,
+        overview: row.overview,
         remotes: Vec::new(),
-        tracked: r.tracked,
-        auto_sync: r.auto_sync,
+        tracked: row.tracked,
+        auto_sync: row.auto_sync,
         pending: false,
         images: Vec::new(),
         poster: None,
         banner: None,
         backdrop: None,
-        last_synced_at: r.last_synced_at,
+        last_synced_at: row.last_synced_at,
         releases: Vec::new(),
-        language,
-        release_filters,
+        language: row.language,
+        release_filters: row
+            .release_filters
+            .as_deref()
+            .and_then(api::decode_release_filters),
     }
 }
 
@@ -4217,7 +4108,6 @@ mod migration_tests {
             .unwrap();
 
         do_migrations(&c).expect("migrations should apply");
-
         let _ = std::fs::remove_file(&path);
     }
 }

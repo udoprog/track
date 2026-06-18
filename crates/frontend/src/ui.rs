@@ -2,8 +2,7 @@ use gloo::timers::callback::Timeout;
 use web_sys::{Event, InputEvent, MouseEvent};
 use yew::prelude::*;
 
-use iso639::{LanguageToCountry, Languages};
-use iso3166::{Countries, Country};
+use iso3166::Country;
 use musli_web::web03::prelude::*;
 
 use crate::error::RcError;
@@ -19,7 +18,7 @@ pub(crate) const DOT: &str = "•";
 /// most-used first, recomputed periodically by the backend. Surfaced as quick
 /// picks in every [`LanguagePicker`]. Provided by `App`.
 #[derive(Clone, Default, PartialEq)]
-pub(crate) struct TopLanguages(pub(crate) Vec<String>);
+pub(crate) struct TopLanguages(pub(crate) Vec<api::Language>);
 
 /// Loading indicator placed inside the shared page container (rendered by
 /// `App`). Use [`LoadingPage`] for standalone, full-page loading screens.
@@ -266,9 +265,9 @@ pub(super) fn MarkWatchedPicker(props: &MarkWatchedPickerProps) -> Html {
 #[derive(Properties, PartialEq)]
 pub(super) struct MediaSettingsModalProps {
     pub(super) title: AttrValue,
-    pub(super) language: Option<api::LanguageCode>,
+    pub(super) language: api::Language,
     pub(super) has_images: bool,
-    pub(super) on_language_change: Callback<Option<api::LanguageCode>>,
+    pub(super) on_language_change: Callback<api::Language>,
     pub(super) on_edit_graphics: Callback<()>,
     pub(super) on_edit_remotes: Callback<()>,
     pub(super) on_close: Callback<()>,
@@ -413,12 +412,11 @@ pub(super) fn MediaSettingsModal(props: &MediaSettingsModalProps) -> Html {
             <div class="form">
                 <div class="field">
                     <label>{"Language"}</label>
+
                     <LanguagePicker
-                        current={props.language.unwrap_or(api::LanguageCode::DEFAULT)}
+                        current={props.language}
                         placeholder="Default"
-                        on_change={props.on_language_change.reform(|code: api::LanguageCode| {
-                            (!code.is_default()).then_some(code)
-                        })}
+                        on_change={props.on_language_change.clone()}
                     />
                 </div>
 
@@ -1088,8 +1086,8 @@ const LANGUAGE_PAGE_SIZE: usize = 5;
 
 #[derive(Properties, PartialEq)]
 pub(super) struct LanguagePickerProps {
-    pub(super) current: api::LanguageCode,
-    pub(super) on_change: Callback<api::LanguageCode>,
+    pub(super) current: api::Language,
+    pub(super) on_change: Callback<api::Language>,
     pub(super) placeholder: &'static str,
     /// Whether to show the "top languages" quick-pick section. Disable for
     /// list-style usages (e.g. configuring which languages to sync).
@@ -1102,17 +1100,15 @@ pub(super) enum Msg {
     Close,
     Filter(String),
     Page(usize),
-    Pick(api::LanguageCode),
+    Pick(api::Language),
     SetTopLanguages(TopLanguages),
 }
 
 pub(super) struct LanguagePicker {
-    languages: Languages,
-    language_to_country: LanguageToCountry,
     open: bool,
     filter: String,
     page: usize,
-    top_languages: Vec<String>,
+    top_languages: Vec<api::Language>,
     _top_languages_handle: ContextHandle<TopLanguages>,
 }
 
@@ -1127,8 +1123,6 @@ impl Component for LanguagePicker {
             .expect("Expected TopLanguages in context");
 
         Self {
-            languages: Languages::new(),
-            language_to_country: LanguageToCountry::new(),
             open: false,
             filter: String::new(),
             page: 0,
@@ -1177,7 +1171,7 @@ impl Component for LanguagePicker {
         } else {
             current
                 .to_iso639_3()
-                .and_then(|id| self.languages.get_by_id(&id))
+                .and_then(|id| iso639::by_id(&id))
                 .map(|entry| (entry.ref_name, entry.part1))
         };
 
@@ -1187,7 +1181,7 @@ impl Component for LanguagePicker {
                     <span class="icon language" />
                     <span>{label}</span>
 
-                    if let Some(code) = part1.and_then(|p| self.language_to_country.get_by_part1(p)) {
+                    if let Some(code) = part1.and_then(iso639::country_by_part1) {
                         <span class={classes!("flag", code)}></span>
                     }
                 </button>
@@ -1205,11 +1199,10 @@ impl Component for LanguagePicker {
         }
 
         let needle = self.filter.to_lowercase();
-        let filtered: Vec<(&'static str, &'static iso639::Entry)> = self
-            .languages
-            .iter()
-            .filter(|(_, entry)| {
-                needle.is_empty() || entry.ref_name.to_lowercase().contains(&needle)
+        let filtered: Vec<&'static iso639::Entry> = iso639::iter()
+            .filter(|entry| {
+                entry.part1.is_some()
+                    && (needle.is_empty() || entry.ref_name.to_lowercase().contains(&needle))
             })
             .collect();
 
@@ -1235,7 +1228,7 @@ impl Component for LanguagePicker {
                         // below "Default". Hidden while filtering to avoid duplicates,
                         // and entirely when `show_top` is disabled.
                         if self.filter.is_empty() {
-                            <div class="table-entry row clickable" onclick={link.callback(|_| Msg::Pick(api::LanguageCode::DEFAULT))}>
+                            <div class="table-entry row clickable" onclick={link.callback(|_| Msg::Pick(api::Language::DEFAULT))}>
                                 <span class="fill">{props.placeholder}</span>
 
                                 if current.is_default() {
@@ -1250,13 +1243,13 @@ impl Component for LanguagePicker {
                             </div>
 
                             if props.show_top {
-                                { for self.top_languages.iter().filter_map(|raw| {
-                                    let code = api::LanguageCode::from_iso639(raw)?;
-                                    let entry = code.to_iso639_3().and_then(|id| self.languages.get_by_id(&id))?;
+                                { for self.top_languages.iter().filter_map(|code| {
+                                    let code = *code;
+                                    let entry = code.to_iso639_3().and_then(iso639::by_id)?;
                                     let selected = current == code;
 
                                     Some(html! {
-                                        <div key={format!("top-{raw}")} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| Msg::Pick(code))}>
+                                        <div key={format!("top-{code}")} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| Msg::Pick(code))}>
                                             <span class="fill">{entry.ref_name}</span>
 
                                             if selected {
@@ -1265,7 +1258,7 @@ impl Component for LanguagePicker {
                                                 </span>
                                             }
 
-                                            if let Some(country) = entry.part1.and_then(|p| self.language_to_country.get_by_part1(p)) {
+                                            if let Some(country) = entry.part1.and_then(iso639::country_by_part1) {
                                                 <span class={classes!("item-inline", "flag", country)} />
                                             } else {
                                                 <span class="item-inline">
@@ -1286,13 +1279,13 @@ impl Component for LanguagePicker {
                             for filtered.iter()
                                 .skip(page.saturating_mul(LANGUAGE_PAGE_SIZE))
                                 .take(LANGUAGE_PAGE_SIZE)
-                                .map(|&(part1, entry)| {
-                                    let code = api::LanguageCode::from_iso639(entry.id)
-                                        .unwrap_or(api::LanguageCode::DEFAULT);
+                                .map(|entry| {
+                                    let code = api::Language::from_iso639(entry.id)
+                                        .unwrap_or(api::Language::DEFAULT);
                                     let selected = current == code;
 
                                     html! {
-                                        <div key={part1} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| Msg::Pick(code))}>
+                                        <div key={entry.id} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| Msg::Pick(code))}>
                                             <span class="fill">{entry.ref_name}</span>
 
                                             if selected {
@@ -1301,11 +1294,11 @@ impl Component for LanguagePicker {
                                                 </span>
                                             }
 
-                                            if let Some(country) = self.language_to_country.get_by_part1(part1) {
+                                            if let Some(country) = entry.part1.and_then(iso639::country_by_part1) {
                                                 <span class={classes!("item-inline", "flag", country)} />
                                             } else {
                                                 <span class="item-inline">
-                                                    <span class="text-muted">{part1}</span>
+                                                    <span class="text-muted">{entry.id}</span>
                                                 </span>
                                             }
                                         </div>
@@ -1350,7 +1343,6 @@ pub(super) enum CountryMsg {
 /// Multi-select picker for countries, modeled on [`LanguagePicker`]. An empty
 /// selection represents "all countries".
 pub(super) struct CountryPicker {
-    countries: Countries,
     open: bool,
     filter: String,
     page: usize,
@@ -1362,7 +1354,6 @@ impl Component for CountryPicker {
 
     fn create(_ctx: &Context<Self>) -> Self {
         Self {
-            countries: Countries::new(),
             open: false,
             filter: String::new(),
             page: 0,
@@ -1419,7 +1410,7 @@ impl Component for CountryPicker {
                     <span>{format!("{} selected", current.len())}</span>
                     {
                         for current.iter().filter_map(|code| {
-                            self.countries.flag(code).map(|flag| html! {
+                            iso3166::flag_by_alpha2(code).map(|flag| html! {
                                 <span class={classes!("item-inline", "flag", flag)} />
                             })
                         })
@@ -1434,9 +1425,7 @@ impl Component for CountryPicker {
 
         let needle = self.filter.to_lowercase();
 
-        let filtered: Vec<&'static Country> = self
-            .countries
-            .iter()
+        let filtered: Vec<&'static Country> = iso3166::iter()
             .filter(|country| {
                 needle.is_empty()
                     || country.name.to_lowercase().contains(&needle)
@@ -1486,7 +1475,7 @@ impl Component for CountryPicker {
                                         <div key={code} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| CountryMsg::Toggle(code.to_string()))}>
                                             <span class="fill">{country.name}</span>
 
-                                            if let Some(flag) = self.countries.flag(code) {
+                                            if let Some(flag) = iso3166::flag_by_alpha2(code) {
                                                 <span class={classes!("item-inline", "flag", flag)} />
                                             }
 
@@ -1590,8 +1579,8 @@ pub(super) fn ReleaseFiltersEditor(props: &ReleaseFiltersEditorProps) -> Html {
 
 #[derive(Properties, PartialEq)]
 pub(super) struct SyncLanguagesEditorProps {
-    pub(super) languages: Vec<api::LanguageCode>,
-    pub(super) on_change: Callback<Vec<api::LanguageCode>>,
+    pub(super) languages: Vec<api::Language>,
+    pub(super) on_change: Callback<Vec<api::Language>>,
 }
 
 /// Editor for the list of languages the sync path populates. Renders each
@@ -1600,13 +1589,10 @@ pub(super) struct SyncLanguagesEditorProps {
 /// original language.
 #[function_component]
 pub(super) fn SyncLanguagesEditor(props: &SyncLanguagesEditorProps) -> Html {
-    let languages = Languages::new();
-    let language_to_country = LanguageToCountry::new();
-
     let on_add = {
         let current = props.languages.clone();
         let on_change = props.on_change.clone();
-        Callback::from(move |code: api::LanguageCode| {
+        Callback::from(move |code: api::Language| {
             if current.contains(&code) {
                 return;
             }
@@ -1633,10 +1619,10 @@ pub(super) fn SyncLanguagesEditor(props: &SyncLanguagesEditorProps) -> Html {
                     let (label, country) = if code.is_default() {
                         ("Default (original language)".to_owned(), None)
                     } else {
-                        match code.to_iso639_3().and_then(|id| languages.get_by_id(&id)) {
+                        match code.to_iso639_3().and_then(iso639::by_id) {
                             Some(entry) => (
                                 entry.ref_name.to_owned(),
-                                entry.part1.and_then(|p| language_to_country.get_by_part1(p)),
+                                entry.part1.and_then(iso639::country_by_part1),
                             ),
                             None => (code.to_string(), None),
                         }
@@ -1660,7 +1646,7 @@ pub(super) fn SyncLanguagesEditor(props: &SyncLanguagesEditorProps) -> Html {
 
             <div class="table-entry row">
                 <LanguagePicker
-                    current={api::LanguageCode::DEFAULT}
+                    current={api::Language::DEFAULT}
                     placeholder="Add language"
                     show_top={false}
                     on_change={on_add}

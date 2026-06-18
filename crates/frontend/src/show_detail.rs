@@ -132,9 +132,9 @@ pub(super) enum Msg {
     ReorderRemotes(Vec<api::RemoteId>),
     ReorderRemotesDone(Result<ws::Packet<api::ReorderShowRemotes>, ws::Error>),
     ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
-    SetLanguage(Option<api::LanguageCode>),
+    SetLanguage(api::Language),
     SetLanguageDone(
-        Option<api::LanguageCode>,
+        api::Language,
         Result<ws::Packet<api::SetShowLanguage>, ws::Error>,
     ),
     OpenImageModal,
@@ -1136,23 +1136,22 @@ impl ShowDetail {
                 self._set_language_req = self
                     .channel
                     .request()
-                    .body(api::SetShowLanguageRequest {
-                        id,
-                        language: language.clone(),
-                    })
+                    .body(api::SetShowLanguageRequest { id, language })
                     .on_packet(
                         ctx.link()
-                            .callback(move |r| Msg::SetLanguageDone(language.clone(), r)),
+                            .callback(move |r| Msg::SetLanguageDone(language, r)),
                     )
                     .send();
 
                 Ok(false)
             }
             Msg::SetLanguageDone(language, result) => {
-                result.context(Message::SettingLanguage(language.clone()))?;
+                result.context(Message::SettingLanguage(language))?;
+
                 if let Some(ref mut show) = self.show {
                     show.language = language;
                 }
+
                 Ok(true)
             }
             Msg::OpenImageModal => {

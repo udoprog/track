@@ -9,8 +9,7 @@
 //! uses for its country flags.
 
 use std::cell::LazyCell;
-use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Country {
@@ -30,51 +29,33 @@ mod generated_countries {
 
 pub use generated_countries::ENTRIES;
 
-#[derive(Debug, Clone)]
-pub struct Countries {
-    by_alpha2: Arc<BTreeMap<&'static str, usize>>,
+fn with_alpha2<T, O>(f: T) -> O
+where
+    T: FnOnce(&HashMap<&'static str, usize>) -> O,
+{
+    let by_alpha2 = LazyCell::new(|| {
+        ENTRIES
+            .iter()
+            .enumerate()
+            .map(|(index, entry)| (entry.alpha2, index))
+            .collect::<HashMap<_, _>>()
+    });
+
+    f(&by_alpha2)
 }
 
-impl Countries {
-    pub fn new() -> Self {
-        let by_alpha2 = LazyCell::new(|| {
-            Arc::new(
-                ENTRIES
-                    .iter()
-                    .enumerate()
-                    .map(|(index, entry)| (entry.alpha2, index))
-                    .collect::<BTreeMap<_, _>>(),
-            )
-        });
-
-        Self {
-            by_alpha2: (*by_alpha2).clone(),
-        }
-    }
-
-    /// Look up a country by its alpha-2 code (case-insensitive).
-    pub fn get(&self, alpha2: &str) -> Option<&'static Country> {
-        let alpha2 = alpha2.trim().to_lowercase();
-        self.by_alpha2
-            .get(alpha2.as_str())
-            .map(|index| &ENTRIES[*index])
-    }
-
-    /// Iterate over all known countries, ordered by alpha-2 code.
-    pub fn iter(&self) -> impl Iterator<Item = &'static Country> + '_ {
-        self.by_alpha2.values().map(|index| &ENTRIES[*index])
-    }
-
-    /// The flag code to render for a country, if a flag asset is available.
-    pub fn flag(&self, alpha2: &str) -> Option<&'static str> {
-        let entry = self.get(alpha2)?;
-        entry.has_flag.then_some(entry.alpha2)
-    }
+/// Look up a country by its alpha-2 code (case-insensitive).
+pub fn by_alpha2(alpha2: &str) -> Option<&'static Country> {
+    with_alpha2(|map| map.get(alpha2).map(|&i| &ENTRIES[i]))
 }
 
-impl Default for Countries {
-    #[inline]
-    fn default() -> Self {
-        Self::new()
-    }
+/// Iterate over all known countries, ordered by alpha-2 code.
+pub fn iter() -> impl Iterator<Item = &'static Country> {
+    generated_countries::ENTRIES.iter()
+}
+
+/// The flag code to render for a country, if a flag asset is available.
+pub fn flag_by_alpha2(alpha2: &str) -> Option<&'static str> {
+    let entry = by_alpha2(alpha2)?;
+    entry.has_flag.then_some(entry.alpha2)
 }

@@ -584,9 +584,7 @@ fn tvdb_language(code: &str) -> Option<String> {
         return Some(code);
     }
 
-    iso639::Languages::new()
-        .get_by_part1(&code)
-        .map(|e| e.id.to_string())
+    iso639::by_part1(&code).map(|e| e.id.to_owned())
 }
 
 fn opt_date(s: Option<&str>) -> Option<Date> {

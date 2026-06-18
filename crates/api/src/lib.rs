@@ -136,60 +136,92 @@ define_id!(RemoteId);
 /// bytes are turned into an integer is the SQLite conversion below, which pins
 /// the byte order so the stored value is identical regardless of host endianness.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct LanguageCode([u8; 4]);
+pub struct Language([u8; 4]);
 
 /// Error produced when a string cannot be parsed as a [`LanguageCode`].
 #[derive(Debug)]
-pub struct InvalidLanguageCode;
+pub struct ParseLanguageErr;
 
-impl fmt::Display for InvalidLanguageCode {
+impl fmt::Display for ParseLanguageErr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("invalid language code")
     }
 }
 
-impl core::error::Error for InvalidLanguageCode {}
+impl core::error::Error for ParseLanguageErr {}
 
-impl LanguageCode {
+impl Language {
     /// Sentinel meaning "use the media's own default (original) language".
-    pub const DEFAULT: LanguageCode = LanguageCode([0; 4]);
+    pub const DEFAULT: Language = Language([0; 4]);
 
     /// English (`eng`).
-    pub const ENG: LanguageCode = LanguageCode(*b"eng\0");
+    pub const ENG: Language = Language(*b"eng\0");
+
+    /// Unwrap the current language or fall back to other if the current
+    /// language is `DEFAULT`.
+    pub fn or(self, other: Self) -> Self {
+        if self.is_default() { other } else { self }
+    }
+
+    /// The ascii string corresponding to this language code.
+    pub fn as_str(&self) -> &str {
+        if self.is_default() {
+            return "default";
+        }
+
+        self.as_raw_code()
+    }
+
+    fn as_raw_code(&self) -> &str {
+        let end = self.0.iter().position(|&b| b == 0).unwrap_or(self.0.len());
+
+        // SAFETY: The language code is valid through construction.
+        unsafe { str::from_utf8_unchecked(&self.0[..end]) }
+    }
 
     /// Build from a 2- or 3-letter ISO 639 code (case-insensitive). A 2-letter
     /// code is resolved to its 3-letter form via the `iso639` data. An empty
     /// string or `"default"` maps to [`LanguageCode::DEFAULT`]. Returns `None`
     /// for anything else.
     pub fn from_iso639(code: &str) -> Option<Self> {
+        fn to_lower<'a>(buf: &'a mut [u8; 4], input: &str) -> Option<&'a str> {
+            let bytes = input.as_bytes();
+
+            if bytes.len() > buf.len() {
+                return None;
+            }
+
+            for (b, o) in bytes.iter().zip(buf.iter_mut()) {
+                if !b.is_ascii_alphabetic() {
+                    return None;
+                }
+
+                *o = b.to_ascii_lowercase();
+            }
+
+            Some(unsafe { str::from_utf8_unchecked(&buf[..bytes.len()]) })
+        }
+
         let code = code.trim();
 
         if code.is_empty() || code.eq_ignore_ascii_case("default") {
             return Some(Self::DEFAULT);
         }
 
-        let lower = code.to_ascii_lowercase();
+        let mut bytes = [0u8; 4];
+        let lower = to_lower(&mut bytes, code)?;
 
-        let bytes: [u8; 4] = match lower.len() {
+        let bytes = match lower.len() {
             2 => {
-                let id = iso639::Languages::new().get_by_part1(&lower)?.id;
-                let b = id.as_bytes();
+                let id = iso639::by_part1(lower)?.id;
 
-                if b.len() != 3 {
+                let &[a, b, c] = id.as_bytes() else {
                     return None;
-                }
+                };
 
-                [b[0], b[1], b[2], 0]
+                [a, b, c, 0]
             }
-            3 => {
-                let b = lower.as_bytes();
-
-                if !b.iter().all(u8::is_ascii_lowercase) {
-                    return None;
-                }
-
-                [b[0], b[1], b[2], 0]
-            }
+            3 => bytes,
             _ => return None,
         };
 
@@ -199,78 +231,84 @@ impl LanguageCode {
     /// Whether this is the [`LanguageCode::DEFAULT`] sentinel.
     #[inline]
     pub const fn is_default(self) -> bool {
-        self.0[0] == 0
+        matches!(self.0, [0, 0, 0, 0])
     }
 
     /// The 3-letter ISO 639-3 code, or `None` for [`LanguageCode::DEFAULT`].
-    pub fn to_iso639_3(self) -> Option<String> {
+    pub fn to_iso639_3(&self) -> Option<&str> {
         if self.is_default() {
             return None;
         }
 
-        let end = self.0.iter().position(|&b| b == 0).unwrap_or(self.0.len());
-        core::str::from_utf8(&self.0[..end]).ok().map(str::to_owned)
+        Some(self.as_raw_code())
     }
 
     /// The 2-letter ISO 639-1 code, if one exists (`None` for `DEFAULT` or codes
     /// without a 2-letter form). Used for remotes that key on ISO 639-1.
-    pub fn to_iso639_1(self) -> Option<String> {
+    pub fn to_iso639_1(&self) -> Option<&str> {
         let id = self.to_iso639_3()?;
-        iso639::Languages::new()
-            .get_by_id(&id)?
-            .part1
-            .map(str::to_owned)
+        iso639::by_id(&id)?.part1
     }
 }
 
-impl fmt::Display for LanguageCode {
+impl fmt::Display for Language {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.is_default() {
-            return f.write_str("default");
-        }
-
-        let end = self.0.iter().position(|&b| b == 0).unwrap_or(self.0.len());
-        let s = core::str::from_utf8(&self.0[..end]).map_err(|_| fmt::Error)?;
-        f.write_str(s)
+        f.write_str(self.as_str())
     }
 }
 
-impl fmt::Debug for LanguageCode {
+impl fmt::Debug for Language {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "LanguageCode({self})")
     }
 }
 
-impl FromStr for LanguageCode {
-    type Err = InvalidLanguageCode;
+impl FromStr for Language {
+    type Err = ParseLanguageErr;
 
     #[inline]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::from_iso639(s).ok_or(InvalidLanguageCode)
+        Self::from_iso639(s).ok_or(ParseLanguageErr)
     }
 }
 
-impl serde::Serialize for LanguageCode {
+impl serde::Serialize for Language {
     #[inline]
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
-        serializer.collect_str(self)
+        self.as_str().serialize(serializer)
     }
 }
 
-impl<'de> serde::Deserialize<'de> for LanguageCode {
+impl<'de> serde::Deserialize<'de> for Language {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        let s = String::deserialize(deserializer)?;
-        s.parse().map_err(serde::de::Error::custom)
+        struct Visitor;
+
+        impl serde::de::Visitor<'_> for Visitor {
+            type Value = Language;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a 2- or 3-letter ISO 639 language code or 'default'")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                v.parse().map_err(serde::de::Error::custom)
+            }
+        }
+
+        deserializer.deserialize_str(Visitor)
     }
 }
 
-impl<M> musli_core::Encode<M> for LanguageCode {
+impl<M> musli_core::Encode<M> for Language {
     type Encode = Self;
 
     fn encode<E>(&self, encoder: E) -> Result<(), E::Error>
@@ -285,7 +323,7 @@ impl<M> musli_core::Encode<M> for LanguageCode {
     }
 }
 
-impl<'de, M, A> musli_core::Decode<'de, M, A> for LanguageCode
+impl<'de, M, A> musli_core::Decode<'de, M, A> for Language
 where
     A: musli_core::Allocator,
 {
@@ -294,23 +332,23 @@ where
         D: musli_core::Decoder<'de, Mode = M, Allocator = A>,
     {
         let cx = decoder.cx();
-        decoder.decode_unsized(|s: &str| s.parse::<LanguageCode>().map_err(cx.map()))
+        decoder.decode_unsized(|s: &str| s.parse::<Language>().map_err(cx.map()))
     }
 }
 
 #[cfg(feature = "sqll")]
-impl ::sqll::FromColumn<'_> for LanguageCode {
+impl ::sqll::FromColumn<'_> for Language {
     type Type = ::sqll::ty::Integer;
 
     #[inline]
     fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Integer) -> ::sqll::Result<Self> {
         let value = i64::from_column(stmt, index)?;
-        Ok(LanguageCode((value as u32).to_be_bytes()))
+        Ok(Language((value as u32).to_be_bytes()))
     }
 }
 
 #[cfg(feature = "sqll")]
-impl ::sqll::BindValue for LanguageCode {
+impl ::sqll::BindValue for Language {
     #[inline]
     fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
         i64::from(u32::from_be_bytes(self.0)).bind_value(stmt, index)
@@ -2057,54 +2095,12 @@ pub fn decode_sync_kinds(s: &str) -> Option<Vec<SourceSyncKinds>> {
 
 /// Serialize the languages the sync path populates, for storage in a text column.
 /// Each entry is its string form (`"default"` / `"eng"`).
-pub fn encode_sync_languages(languages: &[LanguageCode]) -> String {
+pub fn encode_sync_languages(languages: &[Language]) -> String {
     serde_json::to_string(languages).unwrap_or_else(|_| "[]".to_string())
 }
 
 /// Parse sync languages written by [`encode_sync_languages`].
-pub fn decode_sync_languages(s: &str) -> Option<Vec<LanguageCode>> {
-    serde_json::from_str(s).ok()
-}
-
-/// All per-show settings, stored as a single JSON blob in `show_settings`.
-/// Adding a new setting is a `#[serde(default)]` field here - no migration
-/// required.
-#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ShowSettings {
-    #[serde(default)]
-    pub language: Option<LanguageCode>,
-    #[serde(default)]
-    pub include_specials: Option<bool>,
-    #[serde(default)]
-    pub air_date_filters: Option<Vec<AirDateFilter>>,
-}
-
-/// All per-movie settings, stored as a single JSON blob in `movie_settings`.
-#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct MovieSettings {
-    #[serde(default)]
-    pub language: Option<LanguageCode>,
-    #[serde(default)]
-    pub release_filters: Option<Vec<ReleaseFilter>>,
-}
-
-/// Serialize per-media settings for storage in a text column.
-pub fn encode_show_settings(settings: &ShowSettings) -> String {
-    serde_json::to_string(settings).unwrap_or_else(|_| "{}".to_string())
-}
-
-/// Parse per-show settings written by [`encode_show_settings`].
-pub fn decode_show_settings(s: &str) -> Option<ShowSettings> {
-    serde_json::from_str(s).ok()
-}
-
-/// Serialize per-movie settings for storage in a text column.
-pub fn encode_movie_settings(settings: &MovieSettings) -> String {
-    serde_json::to_string(settings).unwrap_or_else(|_| "{}".to_string())
-}
-
-/// Parse per-movie settings written by [`encode_movie_settings`].
-pub fn decode_movie_settings(s: &str) -> Option<MovieSettings> {
+pub fn decode_sync_languages(s: &str) -> Option<Vec<Language>> {
     serde_json::from_str(s).ok()
 }
 
@@ -2125,7 +2121,6 @@ pub struct Show {
     pub first_air_date: Option<Timestamp>,
     pub overview: Option<String>,
     pub tracked: bool,
-    /// Whether the background loop automatically refreshes this show.
     pub auto_sync: bool,
     pub remotes: Vec<RemoteEntry>,
     pub images: Vec<MediaImage>,
@@ -2133,9 +2128,8 @@ pub struct Show {
     pub banner: Option<Image>,
     pub backdrop: Option<Image>,
     pub last_synced_at: Option<Timestamp>,
-    pub language: Option<LanguageCode>,
+    pub language: Language,
     pub include_specials: Option<bool>,
-    /// Per-show override of which air dates qualify (`None` = global default).
     pub air_date_filters: Option<Vec<AirDateFilter>>,
 }
 
@@ -2307,9 +2301,7 @@ pub struct Movie {
     pub backdrop: Option<Image>,
     pub last_synced_at: Option<Timestamp>,
     pub releases: Vec<MovieRelease>,
-    pub language: Option<LanguageCode>,
-    /// Per-movie override of which release types/countries determine the release date.
-    /// `None` means use the global default from [`Config::release_filters`].
+    pub language: Language,
     pub release_filters: Option<Vec<ReleaseFilter>>,
 }
 
@@ -2513,7 +2505,7 @@ pub struct Config {
     pub timezone: String,
     /// The default display language. [`LanguageCode::DEFAULT`] means "use each
     /// show's/movie's own original language".
-    pub language: LanguageCode,
+    pub language: Language,
     pub include_specials: bool,
     /// Default release types/countries that determine a movie's release date.
     pub release_filters: Vec<ReleaseFilter>,
@@ -2525,7 +2517,7 @@ pub struct Config {
     pub sync_kinds: Vec<SourceSyncKinds>,
     /// Which languages the sync path populates translations for.
     /// [`LanguageCode::DEFAULT`] stands for each media's own original language.
-    pub sync_languages: Vec<LanguageCode>,
+    pub sync_languages: Vec<Language>,
 }
 
 impl Default for Config {
@@ -2539,12 +2531,12 @@ impl Default for Config {
             auto_sync_enabled: false,
             auto_sync_interval_hours: 24,
             timezone: String::new(),
-            language: LanguageCode::DEFAULT,
+            language: Language::DEFAULT,
             include_specials: false,
             release_filters: ReleaseFilter::default_filters(),
             air_date_filters: Vec::new(),
             sync_kinds: Vec::new(),
-            sync_languages: vec![LanguageCode::DEFAULT, LanguageCode::ENG],
+            sync_languages: vec![Language::DEFAULT, Language::ENG],
         }
     }
 }
@@ -3009,7 +3001,7 @@ pub struct SetMovieRemoteSyncKindsRequest {
 #[musli(crate = musli_core)]
 pub struct SetShowLanguageRequest {
     pub id: ShowId,
-    pub language: Option<LanguageCode>,
+    pub language: Language,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -3044,7 +3036,7 @@ pub struct SetShowAirDateFiltersRequest {
 #[musli(crate = musli_core)]
 pub struct SetMovieLanguageRequest {
     pub id: MovieId,
-    pub language: Option<LanguageCode>,
+    pub language: Language,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -3148,7 +3140,7 @@ pub struct GetTopLanguagesRequest;
 #[musli(crate = musli_core)]
 pub struct GetTopLanguagesResponse {
     /// Most-used custom language codes (ISO 639-1), ordered most-used first.
-    pub top_languages: Vec<String>,
+    pub top_languages: Vec<Language>,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -3246,7 +3238,7 @@ pub enum AppEventKind {
         config: Config,
     },
     TopLanguagesChanged {
-        top_languages: Vec<String>,
+        top_languages: Vec<Language>,
     },
     TaskAdded {
         task: Task,
@@ -3635,45 +3627,39 @@ mod tests {
     #[test]
     fn language_code_round_trip() {
         // Default sentinel.
-        assert!(LanguageCode::DEFAULT.is_default());
-        assert_eq!(LanguageCode::DEFAULT.to_string(), "default");
-        assert_eq!(LanguageCode::DEFAULT.to_iso639_3(), None);
-        assert_eq!(
-            LanguageCode::from_iso639("default"),
-            Some(LanguageCode::DEFAULT)
-        );
-        assert_eq!(LanguageCode::from_iso639(""), Some(LanguageCode::DEFAULT));
+        assert!(Language::DEFAULT.is_default());
+        assert_eq!(Language::DEFAULT.to_string(), "default");
+        assert_eq!(Language::DEFAULT.to_iso639_3(), None);
+        assert_eq!(Language::from_iso639("default"), Some(Language::DEFAULT));
+        assert_eq!(Language::from_iso639(""), Some(Language::DEFAULT));
 
         // 3-letter packs to its own bytes.
-        let eng = LanguageCode::from_iso639("eng").unwrap();
-        assert_eq!(eng, LanguageCode::ENG);
+        let eng = Language::from_iso639("eng").unwrap();
+        assert_eq!(eng, Language::ENG);
         assert_eq!(eng.to_string(), "eng");
         assert_eq!(eng.to_iso639_3().as_deref(), Some("eng"));
         assert_eq!(eng.to_iso639_1().as_deref(), Some("en"));
 
         // 2-letter resolves to 3-letter.
-        assert_eq!(LanguageCode::from_iso639("en"), Some(LanguageCode::ENG));
-        assert_eq!(
-            LanguageCode::from_iso639("SV"),
-            LanguageCode::from_iso639("swe")
-        );
+        assert_eq!(Language::from_iso639("en"), Some(Language::ENG));
+        assert_eq!(Language::from_iso639("SV"), Language::from_iso639("swe"));
 
         // Case-insensitive and Display/FromStr round-trip.
-        let swe = LanguageCode::from_iso639("Swe").unwrap();
-        assert_eq!(swe.to_string().parse::<LanguageCode>().unwrap(), swe);
+        let swe = Language::from_iso639("Swe").unwrap();
+        assert_eq!(swe.to_string().parse::<Language>().unwrap(), swe);
 
         // serde round-trips through the string form.
         let json = serde_json::to_string(&swe).unwrap();
         assert_eq!(json, "\"swe\"");
-        assert_eq!(serde_json::from_str::<LanguageCode>(&json).unwrap(), swe);
+        assert_eq!(serde_json::from_str::<Language>(&json).unwrap(), swe);
         assert_eq!(
-            serde_json::to_string(&LanguageCode::DEFAULT).unwrap(),
+            serde_json::to_string(&Language::DEFAULT).unwrap(),
             "\"default\""
         );
 
         // Garbage is rejected.
-        assert_eq!(LanguageCode::from_iso639("123"), None);
-        assert_eq!(LanguageCode::from_iso639("toolong"), None);
+        assert_eq!(Language::from_iso639("123"), None);
+        assert_eq!(Language::from_iso639("toolong"), None);
     }
 
     #[test]

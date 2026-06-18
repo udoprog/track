@@ -1,6 +1,5 @@
-use std::cell::LazyCell;
-use std::collections::{BTreeMap, HashSet};
-use std::sync::Arc;
+use std::collections::{HashMap, HashSet};
+use std::sync::LazyLock;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Scope {
@@ -48,152 +47,79 @@ mod generated_countries {
 
 pub use generated::ENTRIES;
 
-#[derive(Debug, Clone)]
-pub struct Languages {
-    by_part1: Arc<BTreeMap<&'static str, usize>>,
-    by_id: Arc<BTreeMap<&'static str, usize>>,
-}
+const BY_PART1: LazyLock<HashMap<&'static str, usize>> = LazyLock::new(|| {
+    generated::ENTRIES
+        .iter()
+        .enumerate()
+        .flat_map(|(index, entry)| Some((entry.part1?, index)))
+        .collect::<HashMap<_, _>>()
+});
 
-impl Languages {
-    pub fn new() -> Self {
-        let by_part1 = LazyCell::new(|| {
-            Arc::new(
-                generated::PART1_MAP
-                    .iter()
-                    .copied()
-                    .collect::<BTreeMap<_, _>>(),
-            )
-        });
-        let by_id = LazyCell::new(|| {
-            Arc::new(
-                ENTRIES
-                    .iter()
-                    .enumerate()
-                    .map(|(index, entry)| (entry.id, index))
-                    .collect::<BTreeMap<_, _>>(),
-            )
-        });
-        Self {
-            by_part1: (*by_part1).clone(),
-            by_id: (*by_id).clone(),
-        }
-    }
+const BY_ID: LazyLock<HashMap<&'static str, usize>> = LazyLock::new(|| {
+    generated::ENTRIES
+        .iter()
+        .enumerate()
+        .map(|(index, entry)| (entry.id, index))
+        .collect::<HashMap<_, _>>()
+});
 
-    pub fn get_by_part1(&self, part1: &str) -> Option<&'static Entry> {
-        self.by_part1.get(part1).map(|index| &ENTRIES[*index])
-    }
-
-    /// Look up an entry by its 3-letter ISO 639-3 code (`Entry::id`).
-    pub fn get_by_id(&self, id: &str) -> Option<&'static Entry> {
-        self.by_id.get(id).map(|index| &ENTRIES[*index])
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = (&'static str, &'static Entry)> + '_ {
-        self.by_part1
+const LANGUAGE_PART1_TO_COUNTRY: LazyLock<HashMap<&'static str, &'static str>> =
+    LazyLock::new(|| {
+        generated_to_3166_1::TO_3166_1
             .iter()
-            .map(|(part1, index)| (*part1, &ENTRIES[*index]))
-    }
+            .copied()
+            .collect::<HashMap<_, _>>()
+    });
+
+const COUNTRIES: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
+    generated_countries::COUNTRIES
+        .iter()
+        .copied()
+        .collect::<HashSet<_>>()
+});
+
+pub fn by_part1(part1: &str) -> Option<&'static Entry> {
+    BY_PART1.get(part1).map(|&i| &ENTRIES[i])
 }
 
-impl Default for Languages {
-    fn default() -> Self {
-        Self::new()
-    }
+/// Look up an entry by its 3-letter ISO 639-3 code (`Entry::id`).
+pub fn by_id(id: &str) -> Option<&'static Entry> {
+    BY_ID.get(id).map(|&i| &ENTRIES[i])
 }
 
-#[derive(Debug, Clone)]
-pub struct LanguageToCountry {
-    by_part1: Arc<BTreeMap<&'static str, &'static str>>,
+pub fn iter() -> impl Iterator<Item = &'static Entry> {
+    ENTRIES.iter()
 }
 
-impl LanguageToCountry {
-    pub fn new() -> Self {
-        let by_part1 = LazyCell::new(|| {
-            Arc::new(
-                generated_to_3166_1::TO_3166_1
-                    .iter()
-                    .copied()
-                    .collect::<BTreeMap<_, _>>(),
-            )
-        });
-
-        Self {
-            by_part1: (*by_part1).clone(),
-        }
-    }
-
-    pub fn get_by_part1(&self, part1: &str) -> Option<&'static str> {
-        self.by_part1.get(part1).copied()
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = (&'static str, &'static str)> + '_ {
-        self.by_part1
-            .iter()
-            .map(|(part1, country)| (*part1, *country))
-    }
+/// Return the ISO 3166-1 alpha-2 country code corresponding to the given ISO
+/// 639-1 language code, if any.
+pub fn country_by_part1(part1: &str) -> Option<&'static str> {
+    LANGUAGE_PART1_TO_COUNTRY.get(part1).copied()
 }
 
-impl Default for LanguageToCountry {
-    #[inline]
-    fn default() -> Self {
-        Self::new()
-    }
-}
+pub fn is_id_country(code: &str) -> bool {
+    let Some(entry) = by_id(code) else {
+        return false;
+    };
 
-pub struct Countries {
-    values: Arc<HashSet<&'static str>>,
-}
+    let Some(part1) = entry.part1 else {
+        return false;
+    };
 
-impl Countries {
-    pub fn new() -> Self {
-        let values = LazyCell::new(|| {
-            Arc::new(
-                generated_countries::COUNTRIES
-                    .iter()
-                    .copied()
-                    .collect::<HashSet<_>>(),
-            )
-        });
-
-        Self {
-            values: (*values).clone(),
-        }
-    }
-
-    pub fn get(&self, country: &str) -> Option<String> {
-        let country = country.trim().to_lowercase();
-
-        if self.values.contains(country.as_str()) {
-            Some(country)
-        } else {
-            None
-        }
-    }
-}
-
-impl Default for Countries {
-    #[inline]
-    fn default() -> Self {
-        Self::new()
-    }
+    COUNTRIES.contains(part1)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{LanguageToCountry, Languages};
-
     #[test]
     fn test_languages() {
-        let languages = Languages::new();
-        let language_to_country = LanguageToCountry::new();
-
-        for (_, entry) in languages.iter() {
+        for (_, entry) in super::iter() {
             let Some(part1) = entry.part1 else {
                 continue;
             };
 
             assert!(
-                language_to_country.get_by_part1(part1).is_some(),
+                super::country_by_part1(part1).is_some(),
                 "language with ISO-639-1 code {part1:?} is missing from to-3166-1 mapping"
             );
         }

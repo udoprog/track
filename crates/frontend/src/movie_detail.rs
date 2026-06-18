@@ -1,5 +1,4 @@
 use api::TimeZone;
-use iso639::Countries;
 use musli_web::web03::prelude::*;
 use std::collections::{BTreeMap, HashSet};
 use yew::prelude::*;
@@ -14,7 +13,6 @@ use crate::ui::{
 use crate::{Image, ImageGallery, ImageItem, Modal, SetupChannel};
 
 pub(super) struct MovieDetail {
-    countries: Countries,
     channel: ws::Channel,
     movie: Option<api::Movie>,
     graphics: BTreeMap<api::ImageKind, Vec<ImageItem>>,
@@ -98,9 +96,9 @@ pub(super) enum Msg {
     SetRemoteSyncKindsDone(Result<ws::Packet<api::SetMovieRemoteSyncKinds>, ws::Error>),
     ReorderRemotes(Vec<api::RemoteId>),
     ReorderRemotesDone(Result<ws::Packet<api::ReorderMovieRemotes>, ws::Error>),
-    SetLanguage(Option<api::LanguageCode>),
+    SetLanguage(api::Language),
     SetLanguageDone(
-        Option<api::LanguageCode>,
+        api::Language,
         Result<ws::Packet<api::SetMovieLanguage>, ws::Error>,
     ),
     ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
@@ -160,7 +158,6 @@ impl Component for MovieDetail {
             .expect("Expected router in context");
 
         Self {
-            countries: Countries::new(),
             channel: ws::Channel::default(),
             movie: None,
             graphics: BTreeMap::new(),
@@ -1274,9 +1271,9 @@ impl MovieDetail {
                                                     <div class="row">
                                                         {indicator(considered(r))}
 
-                                                        if let Some(code) = self.countries.get(&r.country) {
+                                                        if iso639::is_id_country(&r.country) {
                                                             <span class="item-inline" title={r.country.clone()}>
-                                                                <span class={classes!("flag", code)}></span>
+                                                                <span class={classes!("flag", &r.country)}></span>
                                                             </span>
                                                         } else {
                                                             <span class="text-muted">

@@ -378,12 +378,12 @@ pub async fn import() -> Result<()> {
             auto_sync_enabled: false,
             auto_sync_interval_hours: 24,
             timezone: String::new(),
-            language: api::LanguageCode::DEFAULT,
+            language: api::Language::DEFAULT,
             include_specials: false,
             release_filters: api::ReleaseFilter::default_filters(),
             air_date_filters: Vec::new(),
             sync_kinds: Vec::new(),
-            sync_languages: vec![api::LanguageCode::DEFAULT, api::LanguageCode::ENG],
+            sync_languages: vec![api::Language::DEFAULT, api::Language::ENG],
         })
         .await
         .context("Saving config")?;

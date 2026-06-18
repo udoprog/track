@@ -6,18 +6,12 @@ CREATE TABLE
         overview TEXT,
         tracked INTEGER NOT NULL DEFAULT 1,
         sync_source INTEGER,
-        language TEXT,
+        language INTEGER NOT NULL DEFAULT 0,
         last_synced_at INTEGER,
         include_specials INTEGER,
         auto_sync INTEGER NOT NULL DEFAULT 1,
         air_date_filters TEXT,
         remote_id INTEGER REFERENCES show_remotes (id) ON DELETE SET NULL
-    );
-
-CREATE TABLE
-    show_settings (
-        show_id INTEGER PRIMARY KEY REFERENCES shows (id) ON DELETE CASCADE,
-        data TEXT NOT NULL
     );
 
 CREATE TABLE
@@ -57,17 +51,11 @@ CREATE TABLE
         overview TEXT,
         tracked INTEGER NOT NULL DEFAULT 1,
         sync_source INTEGER,
-        language TEXT,
+        language INTEGER NOT NULL DEFAULT 0,
         last_synced_at INTEGER,
         release_filters TEXT,
         auto_sync INTEGER NOT NULL DEFAULT 1,
         remote_id INTEGER REFERENCES movie_remotes (id) ON DELETE SET NULL
-    );
-
-CREATE TABLE
-    movie_settings (
-        movie_id INTEGER PRIMARY KEY REFERENCES movies (id) ON DELETE CASCADE,
-        data TEXT NOT NULL
     );
 
 CREATE INDEX idx_movies_release_date ON movies (release_date)
