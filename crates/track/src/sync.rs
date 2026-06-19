@@ -257,7 +257,6 @@ struct EpisodeDraft {
     name: Option<String>,
     overview: Option<String>,
     aired: Option<api::Timestamp>,
-    remote: api::Remote,
     screenshot: Option<Image>,
 }
 
@@ -378,7 +377,6 @@ async fn tmdb_layer(
                         name: ep.name,
                         overview: ep.overview,
                         aired: ep.aired,
-                        remote: ep.remote,
                         screenshot: ep.filename.map(Image::from),
                     },
                 );
@@ -477,7 +475,6 @@ async fn tvdb_layer(
                     name: ep.name,
                     overview: ep.overview,
                     aired: ep.aired,
-                    remote: ep.remote,
                     screenshot,
                 },
             );
@@ -612,7 +609,6 @@ async fn persist_show_draft(
             ep.name.as_deref(),
             ep.overview.as_deref(),
             ep.aired,
-            Some(&ep.remote),
         )
         .await?;
 

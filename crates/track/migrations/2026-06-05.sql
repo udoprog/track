@@ -35,7 +35,6 @@ CREATE TABLE
         name TEXT,
         overview TEXT,
         aired INTEGER,
-        remote_id INTEGER REFERENCES episode_remotes (id) ON DELETE SET NULL,
         UNIQUE (show_id, season, episode)
     );
 
@@ -210,8 +209,8 @@ CREATE TABLE
 --
 -- show_remotes/movie_remotes intentionally have NO foreign key on their owner:
 -- remote identifiers must outlive deletion of the show/movie (so re-adding the
--- same id re-links them), so the owner column is a plain id. episode_remotes
--- stays tied to its episode and cascades.
+-- same id re-links them), so the owner column is a plain id. stays tied to its
+-- episode and cascades.
 CREATE TABLE
     show_remotes (
         id INTEGER PRIMARY KEY,
@@ -236,15 +235,6 @@ CREATE TABLE
         priority INTEGER NOT NULL DEFAULT 0,
         sync_kinds INTEGER,
         UNIQUE (movie_id, source, value)
-    );
-
-CREATE TABLE
-    episode_remotes (
-        id INTEGER PRIMARY KEY,
-        episode_id INTEGER NOT NULL REFERENCES episodes (id) ON DELETE CASCADE,
-        source INTEGER NOT NULL,
-        value,
-        UNIQUE (episode_id, source, value)
     );
 
 CREATE TABLE

@@ -91,8 +91,6 @@ struct YamlEpisode {
     number: u32,
     #[serde(default)]
     aired: Option<NaiveDate>,
-    #[serde(default)]
-    remote_id: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -232,14 +230,6 @@ async fn import_movie_images(
     }
 
     Ok(())
-}
-
-fn remote_id(s: Option<&String>) -> Option<api::Remote> {
-    let s = s?;
-    if s.is_empty() {
-        return None;
-    }
-    Some(api::Remote::from_raw(s.as_str()))
 }
 
 #[derive(Debug, Deserialize)]
@@ -486,7 +476,6 @@ pub async fn import() -> Result<()> {
                     ep.name.as_deref().filter(|s| !s.trim().is_empty()),
                     ep.overview.as_deref().filter(|s| !s.trim().is_empty()),
                     aired,
-                    remote_id(ep.remote_id.as_ref()).as_ref(),
                 )
                 .await
                 .with_context(|| anyhow!("Inserting episode {} for show {}", ep.number, s.id))?;

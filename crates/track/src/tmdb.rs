@@ -393,7 +393,6 @@ impl Client {
     ) -> Result<Vec<EpisodeInfo>> {
         #[derive(Debug, Deserialize)]
         struct EpisodeResponse {
-            id: u32,
             #[serde(default)]
             episode_number: u32,
             #[serde(default)]
@@ -431,7 +430,6 @@ impl Client {
                     .map(|d| d.to_timestamp_at_midnight_utc())
                     .transpose()?,
                 filename: e.still_path.as_deref().map(ImageKey::tmdb),
-                remote: Remote::tmdb(e.id),
             });
         }
 
@@ -633,7 +631,6 @@ pub(crate) struct EpisodeInfo {
     pub overview: Option<String>,
     pub aired: Option<Timestamp>,
     pub filename: Option<ImageKey>,
-    pub remote: Remote,
 }
 
 pub(crate) struct MovieInfo {

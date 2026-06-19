@@ -435,7 +435,6 @@ impl Client {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct Row {
-            id: u32,
             #[serde(default)]
             season_number: Option<u32>,
             #[serde(default)]
@@ -510,7 +509,6 @@ impl Client {
                         .map(|d| d.to_timestamp_at_midnight_utc())
                         .transpose()?,
                     image: opt_image(row.image.as_deref()),
-                    remote: Remote::tvdb(row.id),
                 });
             }
 
@@ -559,7 +557,6 @@ pub(crate) struct EpisodeInfo {
     pub overview: Option<String>,
     pub aired: Option<Timestamp>,
     pub image: Option<(ImageSource, String)>,
-    pub remote: Remote,
 }
 
 pub(crate) struct SearchSeriesResult {

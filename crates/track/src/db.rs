@@ -152,15 +152,6 @@ struct EpisodeRow {
     watched_count: u32,
 }
 
-/// A remote (source + value) attached to an episode, fetched separately and
-/// joined onto episodes in Rust by `episode_id`.
-#[derive(Row)]
-struct EpisodeRemoteRow {
-    episode_id: EpisodeId,
-    source: RemoteSource,
-    value: RemoteValue,
-}
-
 #[derive(Row)]
 struct EpisodeIdRow {
     id: EpisodeId,
@@ -453,11 +444,6 @@ struct InnerRead {
     #[sql = "WHERE e.show_id = ? AND e.season = ?"]
     #[sql = "ORDER BY e.episode"]
     list_episodes: TypedStatement<(ShowId, SeasonNumber), EpisodeRow>,
-    #[sql = "SELECT er.episode_id, er.source, er.value"]
-    #[sql = "FROM episode_remotes er"]
-    #[sql = "JOIN episodes e ON e.id = er.episode_id"]
-    #[sql = "WHERE e.show_id = ? AND e.season = ?"]
-    list_season_episode_remotes: TypedStatement<(ShowId, SeasonNumber), EpisodeRemoteRow>,
     #[sql = "SELECT we.id, we.timestamp, we.season, we.episode, e.id AS episode_id"]
     #[sql = "FROM watched_episodes we"]
     #[sql = "JOIN episodes e ON e.show_id = we.show_id AND e.season = we.season AND e.episode = we.episode"]
@@ -846,12 +832,6 @@ struct InnerWrite {
         ),
         (),
     >,
-    #[sql = "DELETE FROM episode_remotes WHERE episode_id = ?"]
-    delete_episode_remotes: TypedStatement<(EpisodeId,), ()>,
-    #[sql = "INSERT INTO episode_remotes (id, episode_id, source, value) VALUES (?, ?, ?, ?)"]
-    insert_episode_remote: TypedStatement<(RemoteId, EpisodeId, RemoteSource, RemoteValue), ()>,
-    #[sql = "UPDATE episodes SET remote_id = ? WHERE id = ?"]
-    set_episode_remote: TypedStatement<(RemoteId, EpisodeId), ()>,
     #[sql = "UPDATE episodes SET aired = ? WHERE id = ?"]
     set_episode_aired_by_id: TypedStatement<(Option<Timestamp>, EpisodeId), ()>,
     #[sql = "UPDATE episodes SET aired = NULL WHERE show_id = ?"]
@@ -1643,11 +1623,9 @@ impl Database {
         name: Option<&str>,
         overview: Option<&str>,
         aired: Option<Timestamp>,
-        remote: Option<&Remote>,
     ) -> Result<()> {
         let name = name.map(str::to_owned);
         let overview = overview.map(str::to_owned);
-        let remote = remote.cloned();
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
@@ -1661,21 +1639,6 @@ impl Database {
                 overview.as_deref(),
                 aired.as_ref(),
             ))?;
-
-            // Reset the episode's single remote to the synced value. Deleting
-            // the old row clears episodes.remote_id via ON DELETE SET NULL.
-            s.delete_episode_remotes.execute((id,))?;
-
-            if let Some(remote) = &remote {
-                let remote_id = RemoteId::random();
-                s.insert_episode_remote.execute((
-                    remote_id,
-                    id,
-                    remote.source(),
-                    remote.value(),
-                ))?;
-                s.set_episode_remote.execute((remote_id, id))?;
-            }
 
             Ok(())
         });
@@ -1741,17 +1704,6 @@ impl Database {
             }
 
             stmt.reset()?;
-
-            let mut stmt = s.list_season_episode_remotes.bind((show_id, season))?;
-
-            while let Some(r) = stmt.next()? {
-                if let Some(&i) = idx_by_id.get(&r.episode_id)
-                    && let Some(o) = out.get_mut(i)
-                {
-                    o.remote_id = Some(Remote::new(r.source, r.value));
-                }
-            }
-
             Ok(out)
         });
 
@@ -3943,7 +3895,6 @@ fn episode_from_row(r: EpisodeRow) -> api::Episode {
         name: r.name,
         overview: r.overview,
         aired: r.aired,
-        remote_id: None,
         pending: r.pending,
         watched_count: r.watched_count,
         screenshot: None,

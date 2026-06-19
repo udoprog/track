@@ -2218,7 +2218,6 @@ pub struct Episode {
     pub name: Option<String>,
     pub overview: Option<String>,
     pub aired: Option<Timestamp>,
-    pub remote_id: Option<Remote>,
     pub pending: bool,
     pub watched_count: u32,
     pub screenshot: Option<Image>,
