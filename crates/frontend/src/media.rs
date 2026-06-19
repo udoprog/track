@@ -9,7 +9,7 @@ use crate::error::{CustomContext, Error, Message};
 use crate::router::{
     MediaQuery, MediaSelection, Route, Router, ShowDetailQuery, SortField, TrackedFilter,
 };
-use crate::ui::{MarkWatchedPicker, MediaKindToggle, PaginationButtons};
+use crate::ui::{MarkPendingPicker, MediaKindToggle, PaginationButtons};
 use crate::{Image, SetupChannel};
 
 const PAGE_SIZE: usize = 20;
@@ -595,7 +595,7 @@ impl MediaList {
 
                     <div class="column fill top">
                         if is_movie && self.confirming_watch == Some(id) {
-                            <MarkWatchedPicker
+                            <MarkPendingPicker
                                 aired_label="Released"
                                 prompt="Watched when?"
                                 on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(id, mark_time))}

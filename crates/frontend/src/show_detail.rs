@@ -9,7 +9,7 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaQuery, Route, Router, ShowDetailQuery};
 use crate::ui::{
-    ConfirmDanger, EpisodePicker, Loading, MDASH, MarkWatchedPicker, MediaSettingsModal,
+    ConfirmDanger, EpisodePicker, Loading, MDASH, MarkPendingPicker, MediaSettingsModal,
     RemoteEditor, RemoteSourceKind, Tracked,
 };
 use crate::{Image, ImageGallery, ImageItem, Modal, SetupChannel};
@@ -1690,7 +1690,7 @@ impl ShowDetail {
         let header = 'header: {
             if let Some((ref label, episode_id)) = self.confirming_pending_header {
                 break 'header html! {
-                    <MarkWatchedPicker
+                    <MarkPendingPicker
                         prompt={format!("Pending {label} since when?")}
                         on_confirm={link.callback(move |mark_time| Msg::OnWatchNext(episode_id, mark_time))}
                         on_cancel={link.callback(move |_| Msg::CancelWatchNext(episode_id))}
@@ -1761,7 +1761,7 @@ impl ShowDetail {
                 let season = season.season;
 
                 break 'actions html! {
-                    <MarkWatchedPicker
+                    <MarkPendingPicker
                         prompt="Watched when?"
                         icon_class="item-inline-lg"
                         on_confirm={link.callback(move |mark_time| Msg::WatchRemaining(season, mark_time))}
@@ -1900,7 +1900,7 @@ impl ShowDetail {
         let actions = 'actions: {
             if confirming_mark {
                 break 'actions html! {
-                    <MarkWatchedPicker
+                    <MarkPendingPicker
                         prompt={format!("When did you watch {}?", episode.code())}
                         icon_class="item-inline-lg"
                         on_confirm={link.callback(move |mark_time| Msg::MarkWatched(show_id, episode_id, mark_time))}
@@ -1911,7 +1911,7 @@ impl ShowDetail {
 
             if confirming_pending {
                 break 'actions html! {
-                    <MarkWatchedPicker
+                    <MarkPendingPicker
                         prompt={format!("When do you want {} to be pending?", episode.code())}
                         icon_class="item-inline-lg"
                         on_confirm={link.callback(move |mark_time| Msg::OnWatchNext(episode_id, mark_time))}

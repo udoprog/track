@@ -7,7 +7,7 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaQuery, Route, Router};
 use crate::ui::{
-    ConfirmDanger, Loading, MarkWatchedPicker, MediaSettingsModal, RemoteEditor, RemoteSourceKind,
+    ConfirmDanger, Loading, MarkPendingPicker, MediaSettingsModal, RemoteEditor, RemoteSourceKind,
     Tracked,
 };
 use crate::{Image, ImageGallery, ImageItem, Modal, SetupChannel};
@@ -957,7 +957,7 @@ impl MovieDetail {
             if self.confirm_mark_watch {
                 break 'actions html! {
                     <div class="row actions">
-                        <MarkWatchedPicker
+                        <MarkPendingPicker
                             aired_label="Released"
                             prompt="When did you watch the movie?"
                             icon_class="item-inline-lg"
@@ -971,7 +971,7 @@ impl MovieDetail {
             if self.confirm_pending {
                 break 'actions html! {
                     <div class="row actions">
-                        <MarkWatchedPicker
+                        <MarkPendingPicker
                             icon_class="item-inline-lg"
                             prompt="When do you want the movie to be pending?"
                             aired_label="Released"

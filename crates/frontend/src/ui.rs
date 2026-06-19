@@ -191,10 +191,11 @@ pub(super) fn ConfirmDanger(props: &ConfirmDangerProps) -> Html {
     }
 }
 
-/// Two-button step shown after clicking "Mark watched": choose now or when aired.
-/// Renders as a `row-fill fill` that can replace the watch button's action area.
+/// Two-step picker for choosing a [`api::MarkTime`]: now or when aired. Shared by
+/// the "mark watched" and "mark pending" flows. Renders as a `row-fill fill` that
+/// can replace a button's action area.
 #[derive(Properties, PartialEq)]
-pub(super) struct MarkWatchedPickerProps {
+pub(super) struct MarkPendingPickerProps {
     #[prop_or_default]
     pub(super) icon_class: Classes,
     #[prop_or_default]
@@ -210,7 +211,7 @@ pub(super) struct MarkWatchedPickerProps {
 }
 
 #[function_component]
-pub(super) fn MarkWatchedPicker(props: &MarkWatchedPickerProps) -> Html {
+pub(super) fn MarkPendingPicker(props: &MarkPendingPickerProps) -> Html {
     let on_now = props.on_confirm.reform(|e: MouseEvent| {
         e.stop_propagation();
         api::MarkTime::Now
