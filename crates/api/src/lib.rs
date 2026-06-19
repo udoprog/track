@@ -2416,6 +2416,8 @@ pub struct Pending {
     pub kind: PendingKind,
     pub info: PendingInfo,
     pub aired: Option<Timestamp>,
+    /// The pending slot's date; the list is ordered by this, most recent first.
+    pub timestamp: Timestamp,
     pub poster: Option<Image>,
     pub banner: Option<Image>,
 }
@@ -3166,6 +3168,13 @@ pub struct AddPendingRequest {
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
+pub struct AddPendingResponse {
+    /// The rebuilt pending entry, or `None` if the media is no longer tracked.
+    pub pending: Option<Pending>,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
 pub struct RemovePendingRequest {
     pub kind: PendingKind,
 }
@@ -3233,6 +3242,11 @@ pub enum AppEventKind {
         event: WatchedEvent,
     },
     PendingChanged,
+    /// A single pending entry was added or re-dated. Carries the rebuilt entry so
+    /// listeners can update just that row instead of reloading the whole list.
+    PendingEntryChanged {
+        pending: Pending,
+    },
     ConfigChanged {
         config: Config,
     },
@@ -3566,7 +3580,7 @@ api::define! {
     pub type AddPending;
     impl Endpoint for AddPending {
         impl Request for AddPendingRequest;
-        type Response<'de> = Empty;
+        type Response<'de> = AddPendingResponse;
     }
 
     pub type RemovePending;

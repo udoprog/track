@@ -124,7 +124,11 @@ p {
     flex-direction: row;
     justify-items: stretch;
     align-items: center;
-    gap: 0.5em;
+    gap: 0.25em;
+
+    &.gap {
+        gap: $gap;
+    }
 
     &.center {
         justify-content: center;
@@ -392,11 +396,14 @@ p {
 }
 
 .pending-title {
+    display: flex;
+    align-items: center;
+
     color: $color-title;
     font-size: $font-lg;
-    font-weight: $bold-weight;
     color: $text-primary;
     white-space: wrap;
+    min-height: $input-height;
 
     @include from-desktop {
         white-space: nowrap;
@@ -431,6 +438,10 @@ p {
     padding: 0;
     font-size: $font-size;
     font-weight: $bold-weight;
+
+    &.center {
+        justify-content: center;
+    }
 
     height: $input-height;
 

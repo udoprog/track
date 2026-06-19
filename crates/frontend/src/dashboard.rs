@@ -138,7 +138,7 @@ impl Component for Dashboard {
                 { self.view_pending(ctx) }
 
                 <div class="column">
-                    <h2>{"Schedule"}</h2>
+                    <h1 class="center">{"Schedule"}</h1>
 
                     <Calendar onerror={ctx.props().onerror.clone()} />
                 </div>
@@ -177,6 +177,10 @@ impl Dashboard {
                     api::AppEventKind::ConfigChanged { config } => {
                         self.config = config;
                         self.clamp_page(ctx);
+                        Ok(true)
+                    }
+                    api::AppEventKind::PendingEntryChanged { pending } => {
+                        self.upsert_pending(ctx, pending);
                         Ok(true)
                     }
                     api::AppEventKind::PendingChanged
@@ -293,13 +297,20 @@ impl Dashboard {
                 Ok(true)
             }
             Msg::MarkPendingDone(result) => {
-                result.context(Message::AddingPending)?;
+                let resp = result
+                    .context(Message::AddingPending)?
+                    .decode()
+                    .context(Message::AddingPending)?;
 
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self.load_pending(ctx);
+                match resp.pending {
+                    // Update just the affected row in place.
+                    Some(pending) => self.upsert_pending(ctx, pending),
+                    // Media is no longer tracked; reconcile by reloading.
+                    None if self.channel.id() != ws::ChannelId::NONE => self.load_pending(ctx),
+                    None => {}
                 }
 
-                Ok(false)
+                Ok(true)
             }
             Msg::AdjustPageSize(delta) => {
                 let new_size = self
@@ -368,6 +379,20 @@ impl Dashboard {
             .send();
     }
 
+    /// Insert or replace a single pending row, keeping the list ordered by its
+    /// pending timestamp (most recent first), matching the server's ordering. An
+    /// entry dated in the future falls outside the "next" view and is dropped.
+    fn upsert_pending(&mut self, ctx: &Context<Self>, pending: api::Pending) {
+        self.pending.retain(|p| p.kind != pending.kind);
+
+        if pending.timestamp <= api::Timestamp::now() {
+            self.pending.push(pending);
+            self.pending.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        }
+
+        self.clamp_page(ctx);
+    }
+
     fn load_config(&mut self, ctx: &Context<Self>) {
         self._config_req = self
             .channel
@@ -386,11 +411,11 @@ impl Dashboard {
 
         html! {
             <div class="column">
-                <div class="row-fill">
-                    <h2>{"Next"}</h2>
+                <h1 class="center">{"What's next?"}</h1>
 
+                <div class="row-fill">
                     <div class="row end">
-                        <div class="input-group">
+                        <div class="input-group hide-mobile">
                             <button class="btn" title="Show fewer" onclick={link.callback(|_| Msg::AdjustPageSize(-1))}>
                                 <span class="icon minus" />
                             </button>
@@ -398,7 +423,9 @@ impl Dashboard {
                             <button class="btn" title="Show more" onclick={link.callback(|_| Msg::AdjustPageSize(1))}>
                                 <span class="icon plus" />
                             </button>
+                        </div>
 
+                        <div class="input-group">
                             <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
                         </div>
                     </div>
@@ -411,6 +438,22 @@ impl Dashboard {
                         { for self.pending.iter().skip(page * page_size).take(page_size).map(|p| self.view_pending_item(ctx, p)) }
                     </div>
                 }
+
+                <div class="row-fill hide-desktop">
+                    <div class="input-group">
+                        <button class="btn" title="Show fewer" onclick={link.callback(|_| Msg::AdjustPageSize(-1))}>
+                            <span class="icon minus" />
+                        </button>
+
+                        <button class="btn" title="Show more" onclick={link.callback(|_| Msg::AdjustPageSize(1))}>
+                            <span class="icon plus" />
+                        </button>
+                    </div>
+
+                    <div class="input-group end">
+                        <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
+                    </div>
+                </div>
             </div>
         }
     }
@@ -472,6 +515,12 @@ impl Dashboard {
             None
         };
 
+        let this_code = if let api::PendingInfo::Episode { season, number, .. } = p.info {
+            Some(api::Code::new(season, number))
+        } else {
+            None
+        };
+
         let confirming_skip = self.confirming_skip == skip_ids;
 
         let title = match &p.info {
@@ -514,10 +563,12 @@ impl Dashboard {
                 };
             }
 
-            if confirming_skip && let Some((show, episode)) = skip_ids {
+            if confirming_skip && let (Some((show, episode)), Some(code)) = (skip_ids, this_code) {
                 break 'actions html! {
                     <ConfirmDanger
-                        prompt="Skip"
+                        icon="forward"
+                        prompt={format!("Skip episode")}
+                        label={code.to_string()}
                         on_confirm={ctx.link().callback(move |_| Msg::SkipEpisode(show, episode))}
                         on_cancel={ctx.link().callback(|_| Msg::CancelSkipEpisode)}
                     />
@@ -541,8 +592,8 @@ impl Dashboard {
                         <span class="icon check" />
                     </button>
 
-                    <button class="btn" onclick={ctx.link().callback(move |_| Msg::AskMarkPending(pending_kind))} title="Mark pending">
-                        <span class="icon clock" />
+                    <button class="btn-primary" onclick={ctx.link().callback(move |_| Msg::AskMarkPending(pending_kind))} title="Move pending">
+                        <span class="icon bookmark" />
                     </button>
 
                     if let Some((show, episode)) = skip_ids {

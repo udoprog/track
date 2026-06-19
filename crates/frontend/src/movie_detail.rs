@@ -1042,7 +1042,7 @@ impl MovieDetail {
             <div class={classes!("desktop-row-fill", "mobile-column", "actions", (!self.actions_expanded).then_some("hide-mobile"))}>
                 <div class="desktop-row mobile-column fill start">
                     if !movie.remotes.is_empty() {
-                        <div class="row justify-around">
+                        <div class="row gap justify-around">
                             {for movie.remotes.iter().filter_map(|r| {
                                 let url = r.remote.movie_url()?;
                                 let id = r.remote.source().as_id();

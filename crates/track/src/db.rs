@@ -257,6 +257,7 @@ struct UnwatchedEpisodeRow {
 struct PendingBaseRow {
     episode_id: Option<api::EpisodeId>,
     movie_id: Option<api::MovieId>,
+    timestamp: Timestamp,
 }
 
 #[derive(Row)]
@@ -553,11 +554,15 @@ struct InnerRead {
     movie_pending_candidates: TypedStatement<(), MoviePendingCandidateRow>,
     #[sql = "SELECT 1 FROM watched_movies WHERE movie_id = ? LIMIT 1"]
     has_watched_movie: TypedStatement<(MovieId,), (i64,)>,
-    #[sql = "SELECT episode_id, movie_id"]
+    #[sql = "SELECT episode_id, movie_id, timestamp"]
     #[sql = "FROM pending"]
     #[sql = "WHERE timestamp <= ?"]
     #[sql = "ORDER BY timestamp DESC"]
     list_pending_before: TypedStatement<(Timestamp,), PendingBaseRow>,
+    #[sql = "SELECT timestamp FROM pending WHERE episode_id = ?"]
+    pending_timestamp_for_episode: TypedStatement<(EpisodeId,), (Timestamp,)>,
+    #[sql = "SELECT timestamp FROM pending WHERE movie_id = ?"]
+    pending_timestamp_for_movie: TypedStatement<(MovieId,), (Timestamp,)>,
     #[sql = "SELECT e.show_id, s.title AS show_title, e.season, e.episode, e.name AS episode_name, e.aired"]
     #[sql = "FROM episodes e"]
     #[sql = "JOIN shows s ON s.id = e.show_id"]
@@ -3410,6 +3415,7 @@ impl Database {
                                 number: d.number,
                             },
                             aired: d.aired,
+                            timestamp: r.timestamp,
                             poster,
                             banner,
                         };
@@ -3429,6 +3435,7 @@ impl Database {
                             kind: api::PendingKind::Movie { movie: movie_id },
                             info: api::PendingInfo::Movie { title: d.title },
                             aired: d.release_date,
+                            timestamp: r.timestamp,
                             poster,
                             banner,
                         };
@@ -3441,6 +3448,72 @@ impl Database {
             }
 
             Ok(out)
+        });
+
+        result.await?
+    }
+
+    /// Build the single denormalized [`api::Pending`] for one entry, or `None` if
+    /// the media is no longer tracked or has no pending row. Used to emit granular
+    /// pending updates without reloading the whole list.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn pending_entry(
+        &self,
+        kind: api::PendingKind,
+    ) -> Result<Option<api::Pending>> {
+        let mut s = self.inner.clone().shared().await?;
+
+        let result = spawn_blocking(move || match kind {
+            api::PendingKind::Episode { show, episode } => {
+                let Some((timestamp,)) =
+                    s.pending_timestamp_for_episode.bind((episode,))?.first()?
+                else {
+                    return Ok(None);
+                };
+
+                let Some(d) = s.pending_episode_detail.bind((episode,))?.first()? else {
+                    return Ok(None);
+                };
+
+                let poster = s.image_for_show(d.show_id, ImageKind::Poster)?;
+                let banner = s.image_for_show(d.show_id, ImageKind::Banner)?;
+
+                Ok(Some(api::Pending {
+                    kind: api::PendingKind::Episode { show, episode },
+                    info: api::PendingInfo::Episode {
+                        show: d.show_title,
+                        episode: d.episode_name,
+                        season: d.season,
+                        number: d.number,
+                    },
+                    aired: d.aired,
+                    timestamp,
+                    poster,
+                    banner,
+                }))
+            }
+            api::PendingKind::Movie { movie } => {
+                let Some((timestamp,)) = s.pending_timestamp_for_movie.bind((movie,))?.first()?
+                else {
+                    return Ok(None);
+                };
+
+                let Some(d) = s.pending_movie_detail.bind((movie,))?.first()? else {
+                    return Ok(None);
+                };
+
+                let poster = s.image_for_movie(movie, ImageKind::Poster)?;
+                let banner = s.image_for_movie(movie, ImageKind::Banner)?;
+
+                Ok(Some(api::Pending {
+                    kind: api::PendingKind::Movie { movie },
+                    info: api::PendingInfo::Movie { title: d.title },
+                    aired: d.release_date,
+                    timestamp,
+                    poster,
+                    banner,
+                }))
+            }
         });
 
         result.await?

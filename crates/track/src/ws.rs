@@ -1268,13 +1268,24 @@ impl WsHandler {
                     }
                 }
 
-                self.broadcast.emit(
-                    incoming.channel(),
-                    api::AppEventKind::PendingChanged,
-                    "ws add pending",
-                );
+                // Rebuild just the affected entry so listeners can update a single
+                // row instead of reloading the whole pending list.
+                let pending = self.db.pending_entry(req.kind).await?;
 
-                outgoing.write(api::Empty);
+                match pending.clone() {
+                    Some(pending) => self.broadcast.emit(
+                        incoming.channel(),
+                        api::AppEventKind::PendingEntryChanged { pending },
+                        "ws add pending",
+                    ),
+                    None => self.broadcast.emit(
+                        incoming.channel(),
+                        api::AppEventKind::PendingChanged,
+                        "ws add pending",
+                    ),
+                }
+
+                outgoing.write(api::AddPendingResponse { pending });
             }
             api::Request::RemovePending => {
                 let req = incoming

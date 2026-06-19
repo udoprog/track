@@ -324,7 +324,7 @@ impl Component for ShowDetail {
                 <>
                     if !show.remotes.is_empty() {
                         <div class="desktop-row mobile-column fill start">
-                            <div class="row justify-around">
+                            <div class="row gap justify-around">
                                 {for show.remotes.iter().filter_map(|r| {
                                     let url = r.remote.show_url(r.slug.as_deref())?;
                                     let id = r.remote.source().as_id();
@@ -553,7 +553,8 @@ impl ShowDetail {
                         self.load_orphaned(ctx);
                         Ok(false)
                     }
-                    api::AppEventKind::PendingChanged => {
+                    api::AppEventKind::PendingChanged
+                    | api::AppEventKind::PendingEntryChanged { .. } => {
                         if let Some(season) = self.selected() {
                             self.load_episodes(ctx, season.season);
                         }
@@ -1633,10 +1634,9 @@ impl ShowDetail {
 
         let style = if s.total_count > 0 {
             let frac = (s.watched_count.min(s.total_count) as f64 * 100.0) / s.total_count as f64;
-
-            Some(format!("width: {frac:.0}%"))
+            format!("width: {frac:.0}%")
         } else {
-            None
+            format!("width: 0%")
         };
 
         html! {
@@ -1784,15 +1784,15 @@ impl ShowDetail {
                         </h2>
                     }
 
+                    if total > 0 {
+                        <h2 class="center">{format!("{watched_count} / {total} watched")}</h2>
+                    }
+
                     if let Some(ref overview) = season.overview {
                         <p class="overview">{overview}</p>
                     }
 
                     <div class="row-fill">
-                        if total > 0 {
-                            <h4>{format!("{watched_count} / {total} watched")}</h4>
-                        }
-
                         if self.view_orphaned || (!self.orphaned.is_empty() || watched_count < total) {
                             <div class="row end">
                                 <div class="input-group">
