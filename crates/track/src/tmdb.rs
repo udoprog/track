@@ -551,6 +551,7 @@ impl Client {
         let poster_path = details.poster_path;
         let backdrop_path = details.backdrop_path;
         let release_date = details.release_date;
+        let original_language = details.original_language;
 
         let mut remotes = vec![Remote::tmdb(id)];
 
@@ -585,6 +586,7 @@ impl Client {
         Ok(MovieInfo {
             title,
             overview,
+            original_language,
             release_date: opt_date(release_date.as_deref())
                 .map(|d| d.to_timestamp_at_midnight_utc())
                 .transpose()?,
@@ -636,6 +638,7 @@ pub(crate) struct EpisodeInfo {
 pub(crate) struct MovieInfo {
     pub title: Option<String>,
     pub overview: Option<String>,
+    pub original_language: Option<String>,
     pub release_date: Option<Timestamp>,
     pub posters: Vec<Image>,
     pub backdrops: Vec<Image>,

@@ -893,6 +893,29 @@ struct InnerWrite {
     #[sql = "UPDATE movies SET release_filters = ? WHERE id = ?"]
     set_movie_release_filters: TypedStatement<(Option<String>, MovieId), ()>,
 
+    // per-language translated strings (populated alongside the direct columns
+    // during sync; the owner's set is cleared and re-inserted each time)
+    #[sql = "UPDATE shows SET default_language = ? WHERE id = ?"]
+    set_show_default_language: TypedStatement<(api::Language, ShowId), ()>,
+    #[sql = "UPDATE movies SET default_language = ? WHERE id = ?"]
+    set_movie_default_language: TypedStatement<(api::Language, MovieId), ()>,
+    #[sql = "DELETE FROM show_strings WHERE show_id = ?"]
+    clear_show_strings: TypedStatement<(ShowId,), ()>,
+    #[sql = "INSERT INTO show_strings (show_id, language, kind, text) VALUES (?, ?, ?, ?)"]
+    insert_show_string: TypedStatement<(ShowId, api::Language, api::StringKind, String), ()>,
+    #[sql = "DELETE FROM movie_strings WHERE movie_id = ?"]
+    clear_movie_strings: TypedStatement<(MovieId,), ()>,
+    #[sql = "INSERT INTO movie_strings (movie_id, language, kind, text) VALUES (?, ?, ?, ?)"]
+    insert_movie_string: TypedStatement<(MovieId, api::Language, api::StringKind, String), ()>,
+    #[sql = "DELETE FROM episode_strings WHERE episode_id = ?"]
+    clear_episode_strings: TypedStatement<(EpisodeId,), ()>,
+    #[sql = "INSERT INTO episode_strings (episode_id, language, kind, text) VALUES (?, ?, ?, ?)"]
+    insert_episode_string: TypedStatement<(EpisodeId, api::Language, api::StringKind, String), ()>,
+    #[sql = "DELETE FROM season_strings WHERE season_id = ?"]
+    clear_season_strings: TypedStatement<(SeasonId,), ()>,
+    #[sql = "INSERT INTO season_strings (season_id, language, kind, text) VALUES (?, ?, ?, ?)"]
+    insert_season_string: TypedStatement<(SeasonId, api::Language, api::StringKind, String), ()>,
+
     // watched
     #[sql = "INSERT OR IGNORE INTO watched_episodes (id, timestamp, show_id, season, episode)"]
     #[sql = "VALUES (?, ?, ?, ?, ?)"]
@@ -2578,6 +2601,108 @@ impl Database {
         let mut s = self.inner.clone().exclusive().await?;
         spawn_blocking(move || {
             s.delete_episode_images_for_show.execute((show_id,))?;
+            Ok(())
+        })
+        .await?
+    }
+
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn set_show_default_language(
+        &self,
+        show_id: ShowId,
+        language: api::Language,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+        spawn_blocking(move || {
+            s.set_show_default_language.execute((language, show_id))?;
+            Ok(())
+        })
+        .await?
+    }
+
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn set_movie_default_language(
+        &self,
+        movie_id: MovieId,
+        language: api::Language,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+        spawn_blocking(move || {
+            s.set_movie_default_language.execute((language, movie_id))?;
+            Ok(())
+        })
+        .await?
+    }
+
+    /// Replace the owner's translated strings with `strings` (clear then insert),
+    /// so languages no longer produced by the sync don't linger.
+    #[tracing::instrument(skip(self, strings), ret(level = "trace"))]
+    pub(crate) async fn replace_show_strings(
+        &self,
+        show_id: ShowId,
+        strings: Vec<(api::Language, api::StringKind, String)>,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+        spawn_blocking(move || {
+            s.clear_show_strings.execute((show_id,))?;
+            for (language, kind, text) in strings {
+                s.insert_show_string
+                    .execute((show_id, language, kind, text))?;
+            }
+            Ok(())
+        })
+        .await?
+    }
+
+    #[tracing::instrument(skip(self, strings), ret(level = "trace"))]
+    pub(crate) async fn replace_movie_strings(
+        &self,
+        movie_id: MovieId,
+        strings: Vec<(api::Language, api::StringKind, String)>,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+        spawn_blocking(move || {
+            s.clear_movie_strings.execute((movie_id,))?;
+            for (language, kind, text) in strings {
+                s.insert_movie_string
+                    .execute((movie_id, language, kind, text))?;
+            }
+            Ok(())
+        })
+        .await?
+    }
+
+    #[tracing::instrument(skip(self, strings), ret(level = "trace"))]
+    pub(crate) async fn replace_episode_strings(
+        &self,
+        episode_id: EpisodeId,
+        strings: Vec<(api::Language, api::StringKind, String)>,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+        spawn_blocking(move || {
+            s.clear_episode_strings.execute((episode_id,))?;
+            for (language, kind, text) in strings {
+                s.insert_episode_string
+                    .execute((episode_id, language, kind, text))?;
+            }
+            Ok(())
+        })
+        .await?
+    }
+
+    #[tracing::instrument(skip(self, strings), ret(level = "trace"))]
+    pub(crate) async fn replace_season_strings(
+        &self,
+        season_id: SeasonId,
+        strings: Vec<(api::Language, api::StringKind, String)>,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+        spawn_blocking(move || {
+            s.clear_season_strings.execute((season_id,))?;
+            for (language, kind, text) in strings {
+                s.insert_season_string
+                    .execute((season_id, language, kind, text))?;
+            }
             Ok(())
         })
         .await?

@@ -1691,6 +1691,73 @@ impl ::sqll::BindValue for ImageKind {
     }
 }
 
+/// The kind of a translated string stored in a `*_strings` table. The owning
+/// table supplies the context, so a show/movie `title` and an episode/season
+/// `name` both use [`StringKind::Title`].
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    Encode,
+    Decode,
+    serde::Serialize,
+    serde::Deserialize,
+)]
+#[musli(crate = musli_core)]
+#[serde(rename_all = "lowercase")]
+pub enum StringKind {
+    Title,
+    Overview,
+    Unknown,
+}
+
+impl StringKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            StringKind::Title => "title",
+            StringKind::Overview => "overview",
+            StringKind::Unknown => "unknown",
+        }
+    }
+}
+
+impl fmt::Display for StringKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+#[cfg(feature = "sqll")]
+impl ::sqll::FromColumn<'_> for StringKind {
+    type Type = ::sqll::ty::Integer;
+
+    fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Integer) -> ::sqll::Result<Self> {
+        match u32::from_column(stmt, index)? {
+            1 => Ok(StringKind::Title),
+            2 => Ok(StringKind::Overview),
+            _ => Ok(StringKind::Unknown),
+        }
+    }
+}
+
+#[cfg(feature = "sqll")]
+impl ::sqll::BindValue for StringKind {
+    fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
+        let n: u32 = match self {
+            StringKind::Title => 1,
+            StringKind::Overview => 2,
+            StringKind::Unknown => 0,
+        };
+
+        n.bind_value(stmt, index)
+    }
+}
+
 #[derive(Debug, Clone, Copy, Encode, Decode, serde::Serialize, serde::Deserialize)]
 #[musli(crate = musli_core)]
 #[serde(rename_all = "lowercase")]
@@ -2102,6 +2169,22 @@ pub fn encode_sync_languages(languages: &[Language]) -> String {
 /// Parse sync languages written by [`encode_sync_languages`].
 pub fn decode_sync_languages(s: &str) -> Option<Vec<Language>> {
     serde_json::from_str(s).ok()
+}
+
+/// Resolve the configured [`Config::sync_languages`] against an entity's own
+/// `original` language into the concrete set of languages a sync should populate
+/// strings for: each [`Language::DEFAULT`] entry becomes `original`, concrete
+/// entries stay as-is, anything still unresolved (`DEFAULT`) is dropped, and the
+/// `BTreeSet` deduplicates.
+pub fn expand_sync_languages(
+    sync_languages: &[Language],
+    original: Language,
+) -> std::collections::BTreeSet<Language> {
+    sync_languages
+        .iter()
+        .map(|l| l.or(original))
+        .filter(|l| !l.is_default())
+        .collect()
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
@@ -3673,6 +3756,31 @@ mod tests {
         // Garbage is rejected.
         assert_eq!(Language::from_iso639("123"), None);
         assert_eq!(Language::from_iso639("toolong"), None);
+    }
+
+    #[test]
+    fn expand_sync_languages_resolves_and_dedupes() {
+        use std::collections::BTreeSet;
+
+        let eng = Language::ENG;
+        let fra = Language::from_iso639("fra").unwrap();
+        let default = Language::DEFAULT;
+
+        // [DEFAULT, ENG] with a non-English original yields both languages.
+        let set = expand_sync_languages(&[default, eng], fra);
+        assert_eq!(set, BTreeSet::from([fra, eng]));
+
+        // When the original is English, DEFAULT collapses onto ENG.
+        let set = expand_sync_languages(&[default, eng], eng);
+        assert_eq!(set, BTreeSet::from([eng]));
+
+        // A concrete duplicate is deduped.
+        let set = expand_sync_languages(&[eng, eng], fra);
+        assert_eq!(set, BTreeSet::from([eng]));
+
+        // An unresolved DEFAULT (unknown original) is dropped.
+        let set = expand_sync_languages(&[default], default);
+        assert!(set.is_empty());
     }
 
     #[test]

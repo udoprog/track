@@ -113,7 +113,7 @@ pub fn is_id_country(code: &str) -> bool {
 mod tests {
     #[test]
     fn test_languages() {
-        for (_, entry) in super::iter() {
+        for entry in super::iter() {
             let Some(part1) = entry.part1 else {
                 continue;
             };
