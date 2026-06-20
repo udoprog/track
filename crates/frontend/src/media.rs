@@ -610,11 +610,11 @@ impl MediaList {
 
         html! {
             <div class="table-entry">
-                <div class="desktop-row mobile-column">
+                <div class="desktop-row mobile-column align-top">
                     <Image class="banner clickable hide-desktop" onclick={&onclick} src={m.banner.clone()} />
-                    <Image class="poster poster-side clickable hide-mobile top" onclick={&onclick} src={m.poster.clone()} />
+                    <Image class="poster poster-side clickable hide-mobile" onclick={&onclick} src={m.poster.clone()} />
 
-                    <div class="column fill top">
+                    <div class="column fill">
                         if is_movie && self.confirming_watch == Some(id) {
                             <MarkPendingPicker
                                 aired_label="Released"
@@ -623,7 +623,7 @@ impl MediaList {
                                 on_cancel={ctx.link().callback(|_| Msg::CancelMarkWatch)}
                             />
                         } else {
-                            <div class="row-fill fill">
+                            <div class="row-fill fill align-top">
                                 <div class="column fill">
                                     <div class="row clickable" onclick={&onclick}>
                                         <div class="item-inline" title={kind_title}>
@@ -697,7 +697,7 @@ impl MediaList {
                                     </div>
                                 </div>
 
-                                <div class="row end top">
+                                <div class="row end">
                                     <div class="row">
                                         if is_movie {
                                             <button class="btn-success" title="Mark watched" onclick={ctx.link().callback(move |_| Msg::AskMarkWatched(id))}>

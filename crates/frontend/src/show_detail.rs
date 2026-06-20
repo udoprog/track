@@ -2037,6 +2037,10 @@ impl ShowDetail {
                             <div class="row end">
                                 <div class="hide-desktop">
                                     <div class="input-group">
+                                        <button class="btn-success" onclick={on_ask_mark.clone()} title="Mark watched">
+                                            <span class="icon check" />
+                                        </button>
+
                                         {toggle_pending(true)}
 
                                         <button class="btn" onclick={link.callback(move |_| Msg::ToggleEpisodeActionsExpanded(episode_id))}>
@@ -2067,11 +2071,11 @@ impl ShowDetail {
             <div class={classes!("episode", (!watched.is_empty()).then_some("watched"))} id={episode.code()}>
                 {actions}
 
-                <div class="desktop-row mobile-column">
+                <div class="desktop-row mobile-column align-top">
                     <Image class="screenshot" src={episode.screenshot.clone()} />
 
-                    <div class="column top desktop-fill">
-                        if !history_expanded {
+                    if !history_expanded {
+                        <div class="column desktop-fill">
                             <h3>{ episode.name.as_deref().unwrap_or(MDASH) }</h3>
 
                             if let Some(aired) = episode.display_at(self.tz.clone()) {
@@ -2081,66 +2085,62 @@ impl ShowDetail {
                             if let Some(ref overview) = episode.overview {
                                 <p class="overview">{overview}</p>
                             }
-                        }
+                        </div>
+                    } else {
+                        <div class="column fill">
+                            <h3>{"Watch history"}</h3>
 
-                        if history_expanded {
-                            <div class="column">
-                                <h3>{"Watch history"}</h3>
+                            { for watched.iter().map(|w| {
+                                let wid = w.id;
+                                let kind = api::WatchedKind::Episode { show: show_id, episode: episode_id };
 
-                                <div class="column">
-                                    { for watched.iter().map(|w| {
-                                        let wid = w.id;
-                                        let kind = api::WatchedKind::Episode { show: show_id, episode: episode_id };
+                                if self.confirm_remove_watch == Some(wid) {
+                                    html! {
+                                        <ConfirmDanger
+                                            prompt="Remove watch at"
+                                            label={w.timestamp.display(self.tz.clone())}
+                                            on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, kind))}
+                                            on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
+                                        />
+                                    }
+                                } else if self.fixing_watched == Some(wid) {
+                                    html! {
+                                        <EpisodePicker
+                                            prompt="Move watch at"
+                                            label={w.timestamp.display(self.tz.clone())}
+                                            show_id={show_id}
+                                            seasons={self.seasons.clone()}
+                                            selected_season={episode.season}
+                                            selected_episode={episode.episode}
+                                            on_confirm={link.callback(move |(season, ep)| Msg::MoveWatched(wid, season, ep))}
+                                            on_cancel={link.callback(|_| Msg::CancelFixWatched)}
+                                        />
+                                    }
+                                } else {
+                                    html! {
+                                        <div class="row-fill">
+                                            <div class="row">
+                                                <span>{w.timestamp.display(self.tz.clone())}</span>
+                                            </div>
 
-                                        if self.confirm_remove_watch == Some(wid) {
-                                            html! {
-                                                <ConfirmDanger
-                                                    prompt="Remove watch at"
-                                                    label={w.timestamp.display(self.tz.clone())}
-                                                    on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, kind))}
-                                                    on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
-                                                />
-                                            }
-                                        } else if self.fixing_watched == Some(wid) {
-                                            html! {
-                                                <EpisodePicker
-                                                    prompt="Move watch at"
-                                                    label={w.timestamp.display(self.tz.clone())}
-                                                    show_id={show_id}
-                                                    seasons={self.seasons.clone()}
-                                                    selected_season={episode.season}
-                                                    selected_episode={episode.episode}
-                                                    on_confirm={link.callback(move |(season, ep)| Msg::MoveWatched(wid, season, ep))}
-                                                    on_cancel={link.callback(|_| Msg::CancelFixWatched)}
-                                                />
-                                            }
-                                        } else {
-                                            html! {
-                                                <div class="row-fill">
-                                                    <div class="row">
-                                                        <span>{w.timestamp.display(self.tz.clone())}</span>
-                                                    </div>
+                                            <div class="row end">
+                                                <div class="input-group">
+                                                    <button class="btn" onclick={link.callback(move |_| Msg::FixWatched(wid))} title="Move to different episode">
+                                                        <span class="icon pencil-square" />
+                                                        <span>{"Move"}</span>
+                                                    </button>
 
-                                                    <div class="row end">
-                                                        <div class="input-group">
-                                                            <button class="btn" onclick={link.callback(move |_| Msg::FixWatched(wid))} title="Move to different episode">
-                                                                <span class="icon pencil-square" />
-                                                                <span>{"Move"}</span>
-                                                            </button>
-
-                                                            <button class="btn-danger" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
-                                                                <span class="icon trash" />
-                                                            </button>
-                                                        </div>
-                                                    </div>
+                                                    <button class="btn-danger" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
+                                                        <span class="icon trash" />
+                                                    </button>
                                                 </div>
-                                            }
-                                        }
-                                    }) }
-                                </div>
-                            </div>
-                        }
-                    </div>
+                                            </div>
+                                        </div>
+                                    }
+                                }
+                            }) }
+                        </div>
+                    }
                 </div>
             </div>
         }

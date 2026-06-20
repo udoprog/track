@@ -141,6 +141,8 @@ pub(crate) enum Message {
     TrackingShow,
     #[display("Tracking movie")]
     TrackingMovie,
+    #[display("Setting outline style")]
+    SetOutlineStyle,
 }
 
 pub(crate) trait CustomContext<T> {

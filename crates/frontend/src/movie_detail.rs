@@ -1273,8 +1273,8 @@ impl MovieDetail {
                         let type_considered = releases.iter().any(&considered);
 
                         html! {
-                            <div class="row clickable" onclick={link.callback(move |_| Msg::ToggleReleaseType(ty))}>
-                                <span class="item-inline top">
+                            <div class="row clickable align-top" onclick={link.callback(move |_| Msg::ToggleReleaseType(ty))}>
+                                <span class="item-inline">
                                     <span class={classes!("icon", if expanded { "ellipsis-horizontal" } else { "chevron-right" })} />
                                 </span>
 

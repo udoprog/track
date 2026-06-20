@@ -110,13 +110,30 @@ p {
     margin: 0 auto;
 }
 
-.page {
+#content {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    min-height: 0;
+}
+
+#page {
     display: flex;
     flex-direction: column;
-    fill: 1;
     padding: $gap;
     gap: $gap;
     overflow-y: auto;
+    min-height: 0;
+}
+
+#outline {
+    display: none;
+    width: 120px;
+    min-height: 0;
+
+    &-mark {
+        position: relative;
+        background-color: blue;
+    }
 }
 
 @mixin row-base {
@@ -648,10 +665,6 @@ image {
     font-size: $font-lg;
     font-weight: $bold-weight;
     color: $text-primary;
-}
-
-.top {
-    align-self: flex-start;
 }
 
 .status {

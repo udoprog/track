@@ -420,7 +420,7 @@ impl Search {
                     </div>
 
                     if let Some(ref overview) = r.overview {
-                        <p class="overview text-muted top">{overview}</p>
+                        <p class="overview text-muted">{overview}</p>
                     }
                 </div>
             </div>
@@ -441,11 +441,11 @@ impl Search {
             .callback(move |_| Msg::TrackMovie(None, remote.clone()));
 
         html! {
-            <div key={r.remote.to_string()} class="desktop-row mobile-column">
+            <div key={r.remote.to_string()} class="desktop-row mobile-column align-top">
                 <Image class="poster poster-side top hide-mobile" src={r.poster.clone()} placeholder=true />
                 <Image class="banner hide-desktop" src={r.banner.clone()} placeholder=true />
 
-                <div class="column top fill">
+                <div class="column fill">
                     <div class="row-fill">
                         <a class="item-inline-lg" href={r.remote.movie_url()} target="_blank" rel="noopener noreferrer" title={format!("Open on {}", r.remote.source())}>
                             <span class={classes!("logo", r.remote.source().as_id())} />
@@ -481,7 +481,7 @@ impl Search {
                     </div>
 
                     if let Some(ref overview) = r.overview {
-                        <p class="overview text-muted top">{overview}</p>
+                        <p class="overview text-muted">{overview}</p>
                     }
                 </div>
             </div>

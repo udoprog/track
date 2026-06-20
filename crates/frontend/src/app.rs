@@ -1,6 +1,7 @@
 use api::TimeZone;
 use jiff::tz::TimeZone as JiffTimeZone;
 use musli_web::web03::prelude::*;
+use web_sys::HtmlElement;
 use yew::prelude::*;
 
 use crate::background::Background;
@@ -15,6 +16,7 @@ pub(super) struct App {
     ws: ws::Service,
     tz: Option<TimeZone>,
     top_languages: TopLanguages,
+    outline_mark: NodeRef,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
     _config_req: ws::Request,
@@ -26,6 +28,7 @@ pub(super) enum Msg {
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
     TopLanguagesLoaded(Result<ws::Packet<api::GetTopLanguages>, ws::Error>),
+    OnScroll(Event),
     WsError(ws::Error),
 }
 
@@ -62,6 +65,7 @@ impl Component for App {
             ws,
             tz: None,
             top_languages: TopLanguages::default(),
+            outline_mark: NodeRef::default(),
             _setup,
             _broadcast,
             _config_req: ws::Request::default(),
@@ -82,7 +86,7 @@ impl Component for App {
     fn view(&self, ctx: &Context<Self>) -> Html {
         let Some(tz) = &self.tz else {
             return html! {
-                <div class="page">
+                <div id="page">
                     <Loading />
                 </div>
             };
@@ -97,28 +101,36 @@ impl Component for App {
             ctx.props().on_title.clone(),
         );
 
+        let onscroll = ctx.link().callback(Msg::OnScroll);
+
         html! {
+            <ContextProvider<ws::Handle> context={self.ws.handle()}>
             <ContextProvider<TimeZone> context={tz.clone()}>
-                <ContextProvider<TopLanguages> context={self.top_languages.clone()}>
-                <ContextProvider<ws::Handle> context={self.ws.handle()}>
-                    <ContextProvider<Router> context={router}>
-                    <ContextProvider<Background> context={background}>
-                        <div id="application">
-                            <Toolbar />
+            <ContextProvider<TopLanguages> context={self.top_languages.clone()}>
+            <ContextProvider<Router> context={router}>
+            <ContextProvider<Background> context={background}>
+                <div id="application">
+                    <Toolbar />
 
-                            <div class="page">
-                                if let Some(error) = &ctx.props().error {
-                                    <ErrorBox error={error.clone()} onclearerror={ctx.props().onerror.reform(|()| None)} />
-                                }
+                    <div id="content">
+                        <div id="page" {onscroll}>
+                            if let Some(error) = &ctx.props().error {
+                                <ErrorBox error={error.clone()} onclearerror={ctx.props().onerror.reform(|()| None)} />
+                            }
 
-                                { self.view_page(ctx) }
-                            </div>
+                            { self.view_page(ctx) }
                         </div>
-                    </ContextProvider<Background>>
-                    </ContextProvider<Router>>
-                </ContextProvider<ws::Handle>>
-                </ContextProvider<TopLanguages>>
+
+                        <div id="outline">
+                            <div id="outline-mark" ref={self.outline_mark.clone()} />
+                        </div>
+                    </div>
+                </div>
+            </ContextProvider<Background>>
+            </ContextProvider<Router>>
+            </ContextProvider<TopLanguages>>
             </ContextProvider<TimeZone>>
+            </ContextProvider<ws::Handle>>
         }
     }
 }
@@ -180,6 +192,30 @@ impl App {
                     self.top_languages = next;
                     return Ok(true);
                 }
+
+                Ok(false)
+            }
+            Msg::OnScroll(e) => {
+                let Some(div) = e.target_dyn_into::<HtmlElement>() else {
+                    return Ok(false);
+                };
+
+                let Some(outline) = self.outline_mark.cast::<HtmlElement>() else {
+                    return Ok(false);
+                };
+
+                let scroll_top = div.scroll_top() as f64;
+                let scroll_height = div.scroll_height() as f64;
+                let client_height = div.client_height() as f64;
+
+                let top = (scroll_top / scroll_height) * 100.0;
+                let height = (client_height / scroll_height) * 100.0;
+
+                let style = format!("top: {top}%; height: {height}%;");
+
+                outline
+                    .set_attribute("style", &style)
+                    .context(Message::SetOutlineStyle)?;
 
                 Ok(false)
             }
