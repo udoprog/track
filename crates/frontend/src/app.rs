@@ -1,11 +1,13 @@
+use std::rc::Rc;
+
 use api::TimeZone;
 use jiff::tz::TimeZone as JiffTimeZone;
 use musli_web::web03::prelude::*;
-use web_sys::HtmlElement;
 use yew::prelude::*;
 
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message, RcError};
+use crate::outline::{Outline, OutlineControl, OutlineEntry};
 use crate::router::{DashboardQuery, MediaQuery, QueueQuery, Route, Router, SearchQuery};
 use crate::setup_channel::SetupChannel;
 use crate::ui::{ErrorBox, Loading, TopLanguages};
@@ -16,7 +18,13 @@ pub(super) struct App {
     ws: ws::Service,
     tz: Option<TimeZone>,
     top_languages: TopLanguages,
-    outline_mark: NodeRef,
+    /// Scroll container the outline reflects and drives; passed to [`Outline`].
+    page: NodeRef,
+    /// Entries currently shown in the outline, pushed in by a consumer through
+    /// [`OutlineControl`] and forwarded to [`Outline`]. `None` hides it.
+    outline_entries: Option<Rc<[OutlineEntry]>>,
+    /// Control handed to consumers via context.
+    outline_control: OutlineControl,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
     _config_req: ws::Request,
@@ -28,7 +36,8 @@ pub(super) enum Msg {
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
     TopLanguagesLoaded(Result<ws::Packet<api::GetTopLanguages>, ws::Error>),
-    OnScroll(Event),
+    /// A consumer set (or cleared) the outline contents.
+    SetOutline(Option<Rc<[OutlineEntry]>>),
     WsError(ws::Error),
 }
 
@@ -60,12 +69,16 @@ impl Component for App {
             .clone()
             .on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
+        let outline_control = OutlineControl::new(ctx.link().callback(Msg::SetOutline));
+
         Self {
             channel: ws::Channel::default(),
             ws,
             tz: None,
             top_languages: TopLanguages::default(),
-            outline_mark: NodeRef::default(),
+            page: NodeRef::default(),
+            outline_entries: None,
+            outline_control,
             _setup,
             _broadcast,
             _config_req: ws::Request::default(),
@@ -101,31 +114,35 @@ impl Component for App {
             ctx.props().on_title.clone(),
         );
 
-        let onscroll = ctx.link().callback(Msg::OnScroll);
-
         html! {
             <ContextProvider<ws::Handle> context={self.ws.handle()}>
             <ContextProvider<TimeZone> context={tz.clone()}>
             <ContextProvider<TopLanguages> context={self.top_languages.clone()}>
             <ContextProvider<Router> context={router}>
             <ContextProvider<Background> context={background}>
+            <ContextProvider<OutlineControl> context={self.outline_control.clone()}>
                 <div id="application">
+                    if let Some(error) = &ctx.props().error {
+                        <div id="error">
+                            <ErrorBox error={error.clone()} onclearerror={ctx.props().onerror.reform(|()| None)} />
+                        </div>
+                    }
+
                     <Toolbar />
 
                     <div id="content">
-                        <div id="page" {onscroll}>
-                            if let Some(error) = &ctx.props().error {
-                                <ErrorBox error={error.clone()} onclearerror={ctx.props().onerror.reform(|()| None)} />
-                            }
-
+                        <div id="page" ref={self.page.clone()}>
                             { self.view_page(ctx) }
                         </div>
 
-                        <div id="outline">
-                            <div id="outline-mark" ref={self.outline_mark.clone()} />
-                        </div>
+                        <Outline
+                            page={self.page.clone()}
+                            entries={self.outline_entries.clone()}
+                            onerror={ctx.props().onerror.clone()}
+                        />
                     </div>
                 </div>
+            </ContextProvider<OutlineControl>>
             </ContextProvider<Background>>
             </ContextProvider<Router>>
             </ContextProvider<TopLanguages>>
@@ -195,29 +212,13 @@ impl App {
 
                 Ok(false)
             }
-            Msg::OnScroll(e) => {
-                let Some(div) = e.target_dyn_into::<HtmlElement>() else {
+            Msg::SetOutline(entries) => {
+                if self.outline_entries == entries {
                     return Ok(false);
-                };
+                }
 
-                let Some(outline) = self.outline_mark.cast::<HtmlElement>() else {
-                    return Ok(false);
-                };
-
-                let scroll_top = div.scroll_top() as f64;
-                let scroll_height = div.scroll_height() as f64;
-                let client_height = div.client_height() as f64;
-
-                let top = (scroll_top / scroll_height) * 100.0;
-                let height = (client_height / scroll_height) * 100.0;
-
-                let style = format!("top: {top}%; height: {height}%;");
-
-                outline
-                    .set_attribute("style", &style)
-                    .context(Message::SetOutlineStyle)?;
-
-                Ok(false)
+                self.outline_entries = entries;
+                Ok(true)
             }
             Msg::ConfigLoaded(result) => {
                 let config = result

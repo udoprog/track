@@ -102,15 +102,30 @@ p {
 #application {
     position: fixed;
     inset: 0;
-    display: grid;
-    grid-template-rows: min-content 1fr;
+    display: flex;
+    flex-direction: column;
     justify-items: stretch;
     background: $bg-dark-transparent;
     max-width: $page-width;
     margin: 0 auto;
 }
 
+#error {
+    display: flex;
+    flex-direction: row;
+    gap: $gap;
+    padding: $gap;
+    align-items: start;
+
+    background: $color-danger-bg;
+    border-style: solid;
+    border-width: 0;
+    border-color: $color-danger;
+    color: $text-primary;
+}
+
 #content {
+    flex: 1;
     display: grid;
     grid-template-columns: 1fr auto;
     min-height: 0;
@@ -123,16 +138,49 @@ p {
     gap: $gap;
     overflow-y: auto;
     min-height: 0;
+    // Positioning context so episode `offsetTop` is measured against the page.
+    position: relative;
 }
 
 #outline {
     display: none;
-    width: 120px;
     min-height: 0;
+    position: relative;
+    touch-action: none;
+    user-select: none;
+    cursor: pointer;
+    width: 64px;
+
+    // Grid that stacks every marker into a single full-height cell: the markers
+    // overlap (like absolute positioning) but stay in flow, so the widest one
+    // drives the column — and therefore the outline's — width.
+    &.visible {
+        display: grid;
+        grid-template-rows: 1fr;
+    }
 
     &-mark {
+        grid-area: 1 / 1;
+        align-self: start;
         position: relative;
-        background-color: blue;
+        background-color: rgba($color-primary, 0.8);
+    }
+}
+
+.outline-sample {
+    padding: $gap-xs;
+    grid-area: 1 / 1;
+    align-self: start;
+    position: relative;
+    font-size: 0.8em;
+    text-align: center;
+    color: rgba($text-primary, 0.8);
+    user-select: none;
+
+    // Culled markers keep their layout/geometry so overlap detection stays
+    // stable across passes; only their visibility is removed.
+    &.hidden {
+        visibility: hidden;
     }
 }
 
@@ -765,12 +813,6 @@ image {
     align-items: center;
     width: 100%;
     margin: 0 auto;
-
-    &.error {
-        background: $color-danger-bg;
-        border: 1px solid $color-danger;
-        color: $text-primary;
-    }
 
     &.info {
         background: $bg-dark-transparent;

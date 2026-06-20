@@ -10,6 +10,7 @@ mod image_gallery;
 mod media;
 mod modal;
 mod movie_detail;
+mod outline;
 mod queue;
 mod root;
 mod router;

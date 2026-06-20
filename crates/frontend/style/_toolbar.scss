@@ -19,7 +19,6 @@
     flex: 1;
     align-items: center;
     gap: $gap-xs;
-    padding: 0 $gap;
     cursor: pointer;
 
     height: $input-height * 1.5;
@@ -44,7 +43,6 @@
     display: flex;
     align-items: center;
     gap: $gap-xs;
-    padding: 0 $gap;
     cursor: pointer;
 
     height: $input-height-touch;

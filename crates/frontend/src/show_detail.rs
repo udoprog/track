@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::rc::Rc;
 
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
@@ -7,6 +8,7 @@ use api::{HasAired, TimeZone};
 
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
+use crate::outline::{OutlineControl, OutlineEntry, OutlineHandle};
 use crate::router::{MediaQuery, Route, Router, ShowDetailQuery};
 use crate::ui::{
     ConfirmDanger, EpisodePicker, Loading, MDASH, MarkPendingPicker, MediaSettingsModal,
@@ -49,6 +51,10 @@ pub(super) struct ShowDetail {
     global_sync_kinds: Vec<api::SourceSyncKinds>,
     background: Background,
     router: Router,
+    /// Control for the shared outline rail. `_outline` is the live handle whose
+    /// drop clears the outline when this view is destroyed.
+    outline: OutlineControl,
+    _outline: Option<OutlineHandle>,
     /// Fragment (episode code) from the initial URL hash to scroll to once the
     /// referenced element has been rendered. Episodes load asynchronously, so
     /// the element does not exist when the browser first tries to honor the
@@ -219,6 +225,11 @@ impl Component for ShowDetail {
             .context::<Router>(Callback::noop())
             .expect("Expected router in context");
 
+        let (outline, _) = ctx
+            .link()
+            .context::<OutlineControl>(Callback::noop())
+            .expect("Expected outline control in context");
+
         let scroll_target = router.hash();
 
         Self {
@@ -256,6 +267,8 @@ impl Component for ShowDetail {
             global_sync_kinds: Vec::new(),
             background,
             router,
+            outline,
+            _outline: None,
             scroll_target,
             tz,
             _tz_handle,
@@ -741,6 +754,8 @@ impl ShowDetail {
                     .iter()
                     .find(|e| e.watched_count == 0)
                     .map(|e| (e.code(), e.id));
+
+                self.update_outline();
 
                 for w in result.watched {
                     self.watched_by_episode
@@ -1602,6 +1617,34 @@ impl ShowDetail {
             .send();
     }
 
+    /// Sync the shared outline rail with the currently loaded episodes. Pushes
+    /// the entries through the existing handle, or attaches a new one; clears
+    /// the outline (by dropping the handle) when there are no episodes.
+    fn update_outline(&mut self) {
+        if self.episodes.is_empty() {
+            self._outline = None;
+            return;
+        }
+
+        let entries: Rc<[OutlineEntry]> = self
+            .episodes
+            .iter()
+            .map(|e| {
+                let code = AttrValue::from(e.code().to_string());
+
+                OutlineEntry {
+                    code: code.clone(),
+                    label: code,
+                }
+            })
+            .collect();
+
+        match &self._outline {
+            Some(handle) => handle.set(entries),
+            None => self._outline = Some(self.outline.attach(entries)),
+        }
+    }
+
     fn load_history(&mut self, ctx: &Context<Self>) {
         let show_id = ctx.props().show_id;
 
@@ -1782,11 +1825,6 @@ impl ShowDetail {
 
             html! {
                 <>
-                    <button class="btn" onclick={link.callback(|_| Msg::OpenSeasonImageModal)} title="Season Graphics">
-                        <span class="icon photo" />
-                        <span class="hide-mobile">{"Graphics"}</span>
-                    </button>
-
                     if !self.orphaned.is_empty() {
                         <button class="btn-danger" onclick={link.callback(|_| Msg::ToggleOrphaned)} title="View orphaned watched episodes">
                             <span class={classes!("icon", if self.view_orphaned { "ellipsis-horizontal" } else { "exclamation-triangle" })} />
@@ -1861,18 +1899,27 @@ impl ShowDetail {
                     }
 
                     <div class="row-fill">
-                        <div class="row end">
+                        <div class="row">
                             <div class="input-group">
                                 <button class="btn" onclick={link.callback(|_| Msg::OpenSeasonTranslations)} title="Season Translations">
                                     <span class="icon language" />
                                     <span class="hide-mobile">{"Translations"}</span>
                                 </button>
 
-                                if self.view_orphaned || (!self.orphaned.is_empty() || watched_count < total) {
-                                    {header}
-                                }
+                                <button class="btn" onclick={link.callback(|_| Msg::OpenSeasonImageModal)} title="Season Graphics">
+                                    <span class="icon photo" />
+                                    <span class="hide-mobile">{"Graphics"}</span>
+                                </button>
                             </div>
                         </div>
+
+                        if self.view_orphaned || (!self.orphaned.is_empty() || watched_count < total) {
+                            <div class="row end">
+                                <div class="input-group">
+                                    {header}
+                                </div>
+                            </div>
+                        }
                     </div>
                 </div>
             }

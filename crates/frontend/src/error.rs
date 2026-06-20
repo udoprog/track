@@ -143,6 +143,10 @@ pub(crate) enum Message {
     TrackingMovie,
     #[display("Setting outline style")]
     SetOutlineStyle,
+    #[display("Capturing outline pointer")]
+    CapturingOutlinePointer,
+    #[display("Releasing outline pointer")]
+    ReleasingOutlinePointer,
 }
 
 pub(crate) trait CustomContext<T> {

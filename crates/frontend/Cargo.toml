@@ -28,9 +28,11 @@ version = "0.3"
 features = [
     "Clipboard",
     "Document",
+    "DomRect",
     "Element",
     "EventTarget",
     "History",
+    "HtmlCollection",
     "HtmlElement",
     "HtmlImageElement",
     "HtmlInputElement",
@@ -39,6 +41,8 @@ features = [
     "Location",
     "MouseEvent",
     "Navigator",
+    "PointerEvent",
     "Storage",
+    "WheelEvent",
     "Window",
 ]

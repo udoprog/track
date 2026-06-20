@@ -26,7 +26,10 @@ pub(crate) struct TopLanguages(pub(crate) Vec<api::Language>);
 pub(super) fn Loading() -> Html {
     html! {
         <div class="box info">
-            <span class="icon arrow-path spin" />
+            <span class="item-inline">
+                <span class="icon arrow-path spin" />
+            </span>
+
             <span>{LOADING}</span>
         </div>
     }
@@ -85,16 +88,15 @@ pub(super) struct ErrorBoxProps {
 #[function_component]
 pub(super) fn ErrorBox(props: &ErrorBoxProps) -> Html {
     html! {
-        <div class="box error">
+        <>
             <div class="column fill">
                 { for props.error.sources().map(|e| html! { <p>{e.to_string()}</p> }) }
-
-                <button class="btn-danger" onclick={props.onclearerror.reform(|_| ())}>
-                    <span class="icon x-mark" />
-                    <span>{"Dismiss"}</span>
-                </button>
             </div>
-        </div>
+
+            <button class="btn-danger" onclick={props.onclearerror.reform(|_| ())}>
+                <span class="icon x-mark" />
+            </button>
+        </>
     }
 }
 
