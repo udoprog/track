@@ -354,6 +354,20 @@ struct AllMovieRemoteRow {
     sync_kinds: Option<api::SyncKindSet>,
 }
 
+/// A title translation for a show (`list_all_show_titles`) or movie
+/// (`list_all_movie_titles`), grouped onto its owner in Rust.
+#[derive(Row)]
+struct AllShowTitleRow {
+    show_id: ShowId,
+    text: String,
+}
+
+#[derive(Row)]
+struct AllMovieTitleRow {
+    movie_id: MovieId,
+    text: String,
+}
+
 #[derive(Statements)]
 #[sql(read_only)]
 struct InnerRead {
@@ -375,6 +389,8 @@ struct InnerRead {
     list_show_remotes: TypedStatement<(ShowId,), RemoteRow>,
     #[sql = "SELECT show_id, id, slug, source, value, enabled, priority, sync_kinds FROM show_remotes ORDER BY show_id, priority, id"]
     list_all_show_remotes: TypedStatement<(), AllShowRemoteRow>,
+    #[sql = "SELECT show_id, text FROM show_strings WHERE kind = ? ORDER BY show_id"]
+    list_all_show_titles: TypedStatement<(api::StringKind,), AllShowTitleRow>,
     #[sql = "SELECT show_id FROM show_remotes WHERE source = ? AND value = ? LIMIT 1"]
     show_id_by_remote: TypedStatement<(RemoteSource, RemoteValue), ShowId>,
 
@@ -481,6 +497,8 @@ struct InnerRead {
     list_movie_remotes: TypedStatement<(MovieId,), RemoteRow>,
     #[sql = "SELECT movie_id, id, slug, source, value, enabled, priority, sync_kinds FROM movie_remotes ORDER BY movie_id, priority, id"]
     list_all_movie_remotes: TypedStatement<(), AllMovieRemoteRow>,
+    #[sql = "SELECT movie_id, text FROM movie_strings WHERE kind = ? ORDER BY movie_id"]
+    list_all_movie_titles: TypedStatement<(api::StringKind,), AllMovieTitleRow>,
     #[sql = "SELECT movie_id FROM movie_remotes WHERE source = ? AND value = ? LIMIT 1"]
     movie_id_by_remote: TypedStatement<(RemoteSource, RemoteValue), Option<MovieId>>,
     #[sql = "SELECT release_date FROM movies WHERE id = ?"]
@@ -2071,21 +2089,35 @@ impl Database {
                     }
                 }
 
-                let mut stmt = s.list_all_movie_remotes.query()?;
+                {
+                    let mut stmt = s.list_all_movie_remotes.query()?;
+
+                    while let Some(r) = stmt.next()? {
+                        if let Some(o) = id_to_idx
+                            .get(&r.movie_id.get())
+                            .and_then(|&i| out.get_mut(i))
+                        {
+                            o.remotes.push(api::RemoteEntry {
+                                id: r.id,
+                                slug: r.slug,
+                                remote: Remote::new(r.source, r.value),
+                                enabled: r.enabled,
+                                priority: r.priority,
+                                sync_kinds: r.sync_kinds,
+                            });
+                        }
+                    }
+                }
+
+                let mut stmt = s.list_all_movie_titles.bind((api::StringKind::Title,))?;
 
                 while let Some(r) = stmt.next()? {
                     if let Some(o) = id_to_idx
                         .get(&r.movie_id.get())
                         .and_then(|&i| out.get_mut(i))
+                        && o.title.as_deref() != Some(r.text.as_str())
                     {
-                        o.remotes.push(api::RemoteEntry {
-                            id: r.id,
-                            slug: r.slug,
-                            remote: Remote::new(r.source, r.value),
-                            enabled: r.enabled,
-                            priority: r.priority,
-                            sync_kinds: r.sync_kinds,
-                        });
+                        o.alt_titles.push(r.text);
                     }
                 }
             }
@@ -2125,21 +2157,35 @@ impl Database {
                     }
                 }
 
-                let mut stmt = s.list_all_show_remotes.query()?;
+                {
+                    let mut stmt = s.list_all_show_remotes.query()?;
+
+                    while let Some(r) = stmt.next()? {
+                        if let Some(o) = id_to_idx
+                            .get(&r.show_id.get())
+                            .and_then(|&i| out.get_mut(i))
+                        {
+                            o.remotes.push(api::RemoteEntry {
+                                id: r.id,
+                                slug: r.slug,
+                                remote: Remote::new(r.source, r.value),
+                                enabled: r.enabled,
+                                priority: r.priority,
+                                sync_kinds: r.sync_kinds,
+                            });
+                        }
+                    }
+                }
+
+                let mut stmt = s.list_all_show_titles.bind((api::StringKind::Title,))?;
 
                 while let Some(r) = stmt.next()? {
                     if let Some(o) = id_to_idx
                         .get(&r.show_id.get())
                         .and_then(|&i| out.get_mut(i))
+                        && o.title.as_deref() != Some(r.text.as_str())
                     {
-                        o.remotes.push(api::RemoteEntry {
-                            id: r.id,
-                            slug: r.slug,
-                            remote: Remote::new(r.source, r.value),
-                            enabled: r.enabled,
-                            priority: r.priority,
-                            sync_kinds: r.sync_kinds,
-                        });
+                        o.alt_titles.push(r.text);
                     }
                 }
             }
@@ -4227,6 +4273,7 @@ fn media_item_from_row(r: MediaItemRow, kind: api::MediaKind) -> api::MediaItem 
         id: r.id.cast_unsigned(),
         kind,
         title: r.title,
+        alt_titles: Vec::new(),
         date: r.date,
         overview: r.overview,
         poster: None,

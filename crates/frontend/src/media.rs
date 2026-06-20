@@ -495,8 +495,11 @@ impl MediaList {
             .filter(|m| {
                 filter.is_empty()
                     || m.title
-                        .as_ref()
+                        .as_deref()
                         .is_some_and(|t| t.to_lowercase().contains(&filter))
+                    || m.alt_titles
+                        .iter()
+                        .any(|t| t.to_lowercase().contains(&filter))
             })
             .collect();
 
@@ -587,6 +590,24 @@ impl MediaList {
             api::MediaKind::Movies => "Movie",
         };
 
+        // When the filter matched an alternate-language title rather than the
+        // primary one, surface that alt title so it's clear why the row matched.
+        let matched_alt = {
+            let filter = self.filter.to_lowercase();
+            let primary_matches = m
+                .title
+                .as_deref()
+                .is_some_and(|t| t.to_lowercase().contains(&filter));
+
+            (!filter.is_empty() && !primary_matches)
+                .then(|| {
+                    m.alt_titles
+                        .iter()
+                        .find(|t| t.to_lowercase().contains(&filter))
+                })
+                .flatten()
+        };
+
         html! {
             <div class="table-entry">
                 <div class="desktop-row mobile-column">
@@ -611,6 +632,13 @@ impl MediaList {
 
                                         <span class="item-title">{m.title.as_deref().unwrap_or("Untitled Media")}</span>
                                     </div>
+
+                                    if let Some(alt) = matched_alt {
+                                        <div class="row text-gap text-muted">
+                                            <span>{"Alt:"}</span>
+                                            <span>{alt}</span>
+                                        </div>
+                                    }
 
                                     if !m.remotes.is_empty() {
                                         <div class="row">

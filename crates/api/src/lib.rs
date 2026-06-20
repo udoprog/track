@@ -2689,6 +2689,9 @@ pub struct MediaItem {
     /// Whether this item is a show or a movie.
     pub kind: MediaKind,
     pub title: Option<String>,
+    /// Alternate-language titles (kind = Title), excluding the primary `title`.
+    /// Used for cross-translation filtering and to show why a row matched.
+    pub alt_titles: Vec<String>,
     /// Release date (movie) or first-air date (show).
     pub date: Option<Timestamp>,
     pub overview: Option<String>,
