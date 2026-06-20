@@ -906,19 +906,35 @@ impl MovieDetail {
         let link = ctx.link();
 
         html! {
-            <div class="row-fill">
-                <div class="column desktop-center fill">
-                    <h1>{movie.title.as_deref().unwrap_or("Untitled Movie")}</h1>
+            <div class="column">
+                <div class="row-fill">
+                    <div class="column desktop-center fill">
+                        <h1>{movie.title.as_deref().unwrap_or("Untitled Movie")}</h1>
+                    </div>
 
-                    if let Some(date) = movie.release_date {
-                        <span class="text-muted">{date.date(self.tz.clone()).year()}</span>
-                    }
+                    <div class="hide-desktop row end">
+                        <button class="btn" onclick={link.callback(|_| Msg::ToggleActionsExpanded)}>
+                            <span class={classes!("icon", if self.actions_expanded { "ellipsis-horizontal" } else { "bars-3" })} />
+                        </button>
+                    </div>
                 </div>
 
-                <div class="hide-desktop row end">
-                    <button class="btn" onclick={link.callback(|_| Msg::ToggleActionsExpanded)}>
-                        <span class={classes!("icon", if self.actions_expanded { "ellipsis-horizontal" } else { "bars-3" })} />
-                    </button>
+                <div class="column desktop-center fill">
+                    <div class="row text-gap desktop-center" title="Release date">
+                        if let Some(date) = movie.release_date {
+                            <span class="item-inline-lg">
+                                <span class="icon clock" />
+                            </span>
+
+                            <span class="text-muted">{date.date(self.tz.clone())}</span>
+                        } else {
+                            <span class="item-inline">
+                                <span class="icon exclamation-circle" />
+                            </span>
+
+                            <span class="text-muted">{"No release date"}</span>
+                        }
+                    </div>
                 </div>
             </div>
         }
@@ -999,7 +1015,7 @@ impl MovieDetail {
                 <div class="actions row-fill">
                     <div class="column fill">
                         <div class="row-fill">
-                            <div class="row lg">
+                            <div class="row lg text-gap">
                                 if !self.watched.is_empty() {
                                     <span class="item-inline-lg" title="Watched"><span class="icon primary check-circle" /></span>
                                 } else {

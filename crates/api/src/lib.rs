@@ -769,6 +769,14 @@ impl ::sqll::BindValue for Date {
     }
 }
 
+#[cfg(feature = "yew")]
+impl IntoPropValue<VNode> for Date {
+    #[inline]
+    fn into_prop_value(self) -> VNode {
+        self.to_string().into()
+    }
+}
+
 /// The source of a remote identifier.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Encode, Decode, serde::Serialize, serde::Deserialize,

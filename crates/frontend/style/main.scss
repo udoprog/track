@@ -85,7 +85,7 @@ body {
 }
 
 a {
-    color: $link-color;
+    color: $color-title;
     text-decoration: none;
 }
 
@@ -748,8 +748,12 @@ image {
     gap: 0.25em;
     font-family: $monospace-font;
     font-size: $font-lg;
-    color: $text-muted;
     text-decoration: none;
+    min-height: $input-height;
+
+    @include until-mobile {
+        min-height: $input-height-touch;
+    }
 }
 
 .box {

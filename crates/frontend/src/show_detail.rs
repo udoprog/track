@@ -2001,74 +2001,86 @@ impl ShowDetail {
             }
 
             html! {
-                <div class="actions row-fill">
-                    <div class="column fill">
-                        <div class="row-fill">
-                            <a class="episode-code" href={format!("#{}", episode.code())}>
-                                <span class="item-inline-xs">
-                                    <span class="icon link" />
+                <div class="column">
+                    <div class="row-fill">
+                        <div class="row text-gap">
+                            if episode.pending {
+                                <span class="item-inline-lg" title="Next episode"><span class="icon primary exclamation-circle" /></span>
+                            } else if !watched.is_empty() {
+                                <span class="item-inline-lg" title="Watched"><span class="icon primary check-circle" /></span>
+                            } else {
+                                <span class="item-inline-lg" title="Never watched"><span class="icon secondary x-circle" /></span>
+                            }
+
+                            if episode.pending {
+                                <span class="text-muted">{"Next episode"}</span>
+                            } else {
+                                <span class="text-muted">
+                                    {match watched {
+                                        [] => "Never watched".to_string(),
+                                        [w] => format!("Watched at {}", w.timestamp.display(self.tz.clone())),
+                                        [first, ..] => format!("Watched {} times, first at {}", watched.len(), first.timestamp.display(self.tz.clone())),
+                                    }}
                                 </span>
+                            }
+                        </div>
 
-                                <span>{episode.code()}</span>
-                            </a>
+                        <div class="row end">
+                            <div class="hide-desktop">
+                                <div class="input-group">
+                                    <button class="btn-success" onclick={on_ask_mark.clone()} title="Mark watched">
+                                        <span class="icon check" />
+                                    </button>
 
-                            <div class="row">
-                                if episode.pending {
-                                    <span class="item-inline-lg" title="Next episode"><span class="icon primary exclamation-circle" /></span>
-                                } else if !watched.is_empty() {
-                                    <span class="item-inline-lg" title="Watched"><span class="icon primary check-circle" /></span>
-                                } else {
-                                    <span class="item-inline-lg" title="Never watched"><span class="icon secondary x-circle" /></span>
-                                }
+                                    {toggle_pending(true)}
 
-                                if episode.pending {
-                                    <span class="text-muted">{"Next episode"}</span>
-                                } else {
-                                    <span class="text-muted">
-                                        {match watched {
-                                            [] => "Never watched".to_string(),
-                                            [w] => format!("Watched at {}", w.timestamp.display(self.tz.clone())),
-                                            [first, ..] => format!("Watched {} times, first at {}", watched.len(), first.timestamp.display(self.tz.clone())),
-                                        }}
-                                    </span>
-                                }
+                                    <button class="btn" onclick={link.callback(move |_| Msg::ToggleEpisodeActionsExpanded(episode_id))}>
+                                        <span class={classes!("icon", if actions_expanded { "ellipsis-horizontal" } else { "bars-2" })} />
+                                    </button>
+                                </div>
                             </div>
 
-                            <div class="row end">
-                                <div class="hide-desktop">
-                                    <div class="input-group">
-                                        <button class="btn-success" onclick={on_ask_mark.clone()} title="Mark watched">
-                                            <span class="icon check" />
-                                        </button>
-
-                                        {toggle_pending(true)}
-
-                                        <button class="btn" onclick={link.callback(move |_| Msg::ToggleEpisodeActionsExpanded(episode_id))}>
-                                            <span class={classes!("icon", if actions_expanded { "ellipsis-horizontal" } else { "bars-2" })} />
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <div class="hide-mobile">
-                                    <div class="input-group">
-                                        {main_actions.clone()}
-                                    </div>
+                            <div class="hide-mobile">
+                                <div class="input-group">
+                                    {main_actions.clone()}
                                 </div>
                             </div>
                         </div>
-
-                        if !history_expanded {
-                            <div class={classes!("column", "hide-desktop", (!actions_expanded).then_some("hide-mobile"))}>
-                                {main_actions.clone()}
-                            </div>
-                        }
                     </div>
+
+                    if !history_expanded {
+                        <div class={classes!("column", "hide-desktop", (!actions_expanded).then_some("hide-mobile"))}>
+                            {main_actions.clone()}
+                        </div>
+                    }
                 </div>
             }
         };
 
         html! {
             <div class={classes!("episode", (!watched.is_empty()).then_some("watched"))} id={episode.code()}>
+                <div class="row">
+                    <a class="episode-code" href={format!("#{}", episode.code())}>
+                        <span>{episode.code()}</span>
+
+                        <span class="item-inline-xs">
+                            <span class="icon link" />
+                        </span>
+                    </a>
+
+                    <h3 class="end">{ episode.name.as_deref().unwrap_or(MDASH) }</h3>
+                </div>
+
+                if let Some(aired) = episode.display_at(self.tz.clone()) {
+                    <div class="row text-gap" title="Air date">
+                        <span class="item-inline-lg">
+                            <span class="icon clock" />
+                        </span>
+
+                        <span class="text-muted">{aired}</span>
+                    </div>
+                }
+
                 {actions}
 
                 <div class="desktop-row mobile-column align-top">
@@ -2076,12 +2088,6 @@ impl ShowDetail {
 
                     if !history_expanded {
                         <div class="column desktop-fill">
-                            <h3>{ episode.name.as_deref().unwrap_or(MDASH) }</h3>
-
-                            if let Some(aired) = episode.display_at(self.tz.clone()) {
-                                <span class="text-muted">{aired}</span>
-                            }
-
                             if let Some(ref overview) = episode.overview {
                                 <p class="overview">{overview}</p>
                             }
