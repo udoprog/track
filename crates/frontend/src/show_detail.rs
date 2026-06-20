@@ -12,7 +12,7 @@ use crate::ui::{
     ConfirmDanger, EpisodePicker, Loading, MDASH, MarkPendingPicker, MediaSettingsModal,
     RemoteEditor, RemoteSourceKind, Tracked,
 };
-use crate::{Image, ImageGallery, ImageItem, Modal, SetupChannel};
+use crate::{Image, ImageGallery, ImageItem, Modal, SetupChannel, TranslationsModal};
 
 pub(super) struct ShowDetail {
     channel: ws::Channel,
@@ -43,6 +43,9 @@ pub(super) struct ShowDetail {
     season_image_modal: bool,
     settings_modal: bool,
     remote_editor: bool,
+    show_translations_modal: bool,
+    season_translations_modal: bool,
+    episode_translations: Option<api::EpisodeId>,
     global_sync_kinds: Vec<api::SourceSyncKinds>,
     background: Background,
     router: Router,
@@ -148,6 +151,12 @@ pub(super) enum Msg {
     ClearSelectedSeasonImageDone(Result<ws::Packet<api::ClearSelectedImage>, ws::Error>),
     OpenSettingsModal,
     CloseSettingsModal,
+    OpenShowTranslations,
+    CloseShowTranslations,
+    OpenSeasonTranslations,
+    CloseSeasonTranslations,
+    OpenEpisodeTranslations(api::EpisodeId),
+    CloseEpisodeTranslations,
     SetIncludeSpecials(Option<bool>),
     SetIncludeSpecialsDone(
         Option<bool>,
@@ -241,6 +250,9 @@ impl Component for ShowDetail {
             season_image_modal: false,
             settings_modal: false,
             remote_editor: false,
+            show_translations_modal: false,
+            season_translations_modal: false,
+            episode_translations: None,
             global_sync_kinds: Vec::new(),
             background,
             router,
@@ -324,7 +336,7 @@ impl Component for ShowDetail {
                 <>
                     if !show.remotes.is_empty() {
                         <div class="desktop-row mobile-column fill start">
-                            <div class="row gap justify-around">
+                            <div class="row justify-around">
                                 {for show.remotes.iter().filter_map(|r| {
                                     let url = r.remote.show_url(r.slug.as_deref())?;
                                     let id = r.remote.source().as_id();
@@ -353,6 +365,11 @@ impl Component for ShowDetail {
                                 <span class="hide-desktop">{"Sync"}</span>
                             </button>
                         }
+
+                        <button class="btn" onclick={link.callback(|_| Msg::OpenShowTranslations)} title="Translations">
+                            <span class="icon language" />
+                            <span class="hide-desktop">{"Translations"}</span>
+                        </button>
 
                         <button class="btn" onclick={link.callback(|_| Msg::OpenSettingsModal)} title="Settings">
                             <span class="icon cog-6-tooth" />
@@ -448,6 +465,32 @@ impl Component for ShowDetail {
                         on_set_sync_kinds={link.callback(|(id, kinds)| Msg::SetRemoteSyncKinds(id, kinds))}
                         global_sync_kinds={self.global_sync_kinds.clone()}
                         on_close={link.callback(|_| Msg::CloseRemoteEditor)}
+                    />
+                }
+
+                if self.show_translations_modal {
+                    <TranslationsModal
+                        target={api::TranslationTarget::Show(show.id)}
+                        onerror={ctx.props().onerror.clone()}
+                        on_close={link.callback(|_| Msg::CloseShowTranslations)}
+                    />
+                }
+
+                if self.season_translations_modal {
+                    if let Some(season) = self.selected() {
+                        <TranslationsModal
+                            target={api::TranslationTarget::Season(season.id)}
+                            onerror={ctx.props().onerror.clone()}
+                            on_close={link.callback(|_| Msg::CloseSeasonTranslations)}
+                        />
+                    }
+                }
+
+                if let Some(episode_id) = self.episode_translations {
+                    <TranslationsModal
+                        target={api::TranslationTarget::Episode(episode_id)}
+                        onerror={ctx.props().onerror.clone()}
+                        on_close={link.callback(|_| Msg::CloseEpisodeTranslations)}
                     />
                 }
             </>
@@ -1262,6 +1305,31 @@ impl ShowDetail {
                 self.settings_modal = false;
                 Ok(true)
             }
+            Msg::OpenShowTranslations => {
+                self.show_translations_modal = true;
+                self.actions_expanded = false;
+                Ok(true)
+            }
+            Msg::CloseShowTranslations => {
+                self.show_translations_modal = false;
+                Ok(true)
+            }
+            Msg::OpenSeasonTranslations => {
+                self.season_translations_modal = true;
+                Ok(true)
+            }
+            Msg::CloseSeasonTranslations => {
+                self.season_translations_modal = false;
+                Ok(true)
+            }
+            Msg::OpenEpisodeTranslations(episode_id) => {
+                self.episode_translations = Some(episode_id);
+                Ok(true)
+            }
+            Msg::CloseEpisodeTranslations => {
+                self.episode_translations = None;
+                Ok(true)
+            }
             Msg::SetIncludeSpecials(include_specials) => {
                 let id = ctx.props().show_id;
 
@@ -1793,13 +1861,18 @@ impl ShowDetail {
                     }
 
                     <div class="row-fill">
-                        if self.view_orphaned || (!self.orphaned.is_empty() || watched_count < total) {
-                            <div class="row end">
-                                <div class="input-group">
+                        <div class="row end">
+                            <div class="input-group">
+                                <button class="btn" onclick={link.callback(|_| Msg::OpenSeasonTranslations)} title="Season Translations">
+                                    <span class="icon language" />
+                                    <span class="hide-mobile">{"Translations"}</span>
+                                </button>
+
+                                if self.view_orphaned || (!self.orphaned.is_empty() || watched_count < total) {
                                     {header}
-                                </div>
+                                }
                             </div>
-                        }
+                        </div>
                     </div>
                 </div>
             }
@@ -1892,6 +1965,13 @@ impl ShowDetail {
                     <button class="btn" onclick={on_toggle} title={if history_expanded { "Hide watch history" } else { "Show watch history" }}>
                         <span class={classes!("icon", if history_expanded { "ellipsis-horizontal" } else { "clock" })} />
                         <span class="hide-desktop">{if history_expanded { "History" } else { "Show history" }}</span>
+                    </button>
+                }
+
+                if !history_expanded {
+                    <button class="btn" onclick={link.callback(move |_| Msg::OpenEpisodeTranslations(episode_id))} title="Translations">
+                        <span class="icon language" />
+                        <span class="hide-desktop">{"Translations"}</span>
                     </button>
                 }
             </>

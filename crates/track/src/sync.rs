@@ -898,6 +898,10 @@ async fn persist_show_draft(
     let seasons = db.seasons(show_id).await?;
     broadcast.broadcast_event(api::AppEventKind::SeasonsChanged { show_id, seasons });
 
+    broadcast.broadcast_event(api::AppEventKind::TranslationsChanged {
+        target: api::TranslationTarget::Show(show_id),
+    });
+
     Ok(())
 }
 
@@ -1032,6 +1036,10 @@ pub(crate) async fn sync_movie(
         .context("Expected movie to exist after update")?;
 
     broadcast.broadcast_event(api::AppEventKind::MovieChanged { movie: updated });
+
+    broadcast.broadcast_event(api::AppEventKind::TranslationsChanged {
+        target: api::TranslationTarget::Movie(movie_id),
+    });
 
     db.set_movie_synced_at(movie_id, api::Timestamp::now())
         .await?;

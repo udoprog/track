@@ -17,6 +17,7 @@ mod search;
 mod settings;
 mod setup_channel;
 mod show_detail;
+mod translations;
 mod ui;
 
 use self::app::App;
@@ -32,6 +33,7 @@ use self::search::Search;
 use self::settings::Settings;
 use self::setup_channel::SetupChannel;
 use self::show_detail::ShowDetail;
+use self::translations::TranslationsModal;
 
 use tracing::Level;
 use tracing_wasm::WASMLayerConfigBuilder;

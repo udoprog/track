@@ -151,26 +151,30 @@ impl Component for Search {
             <>
                 <h1>{"Search Remotes"}</h1>
 
-                <div class="input-group">
-                    <input
-                        class="input-text fill"
-                        type="text"
-                        placeholder={SEARCH}
-                        autofocus=true
-                        value={self.query.clone()}
-                        oninput={on_input}
-                        onkeydown={on_keydown}
-                    />
+                <div class="input-controls">
+                    <div class="input-group">
+                        <input
+                            class="input-text fill"
+                            type="text"
+                            placeholder={SEARCH}
+                            autofocus=true
+                            value={self.query.clone()}
+                            oninput={on_input}
+                            onkeydown={on_keydown}
+                        />
 
-                    <MediaKindToggle
-                        selection={self.selection}
-                        on_change={link.callback(Msg::SelectionChanged)}
-                    />
+                        <button class="btn" onclick={on_submit}>
+                            <span class="icon magnifying-glass" />
+                            <span class="hide-mobile">{"Search Remotes"}</span>
+                        </button>
+                    </div>
 
-                    <button class="btn" onclick={on_submit}>
-                        <span class="icon magnifying-glass" />
-                        <span class="hide-mobile">{"Search Remotes"}</span>
-                    </button>
+                    <div class="input-group">
+                        <MediaKindToggle
+                            selection={self.selection}
+                            on_change={link.callback(Msg::SelectionChanged)}
+                        />
+                    </div>
                 </div>
 
                 { self.view_results(ctx) }

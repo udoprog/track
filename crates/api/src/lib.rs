@@ -2772,6 +2772,38 @@ pub struct GetShowRequest {
     pub id: ShowId,
 }
 
+/// The entity whose translations are being requested. A single endpoint serves
+/// all four entity kinds via this type-safe target.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub enum TranslationTarget {
+    Show(ShowId),
+    Season(SeasonId),
+    Episode(EpisodeId),
+    Movie(MovieId),
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct GetTranslationsRequest {
+    pub target: TranslationTarget,
+}
+
+/// A single translated string for an entity.
+#[derive(Debug, Clone, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct Translation {
+    pub language: Language,
+    pub kind: StringKind,
+    pub text: String,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct GetTranslationsResponse {
+    pub translations: Vec<Translation>,
+}
+
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct ListSeasonsRequest {
@@ -3321,6 +3353,11 @@ pub enum AppEventKind {
     MovieDeleted {
         movie_id: MovieId,
     },
+    /// The translated strings under a show or movie were rewritten (during sync),
+    /// so an open translations view for that entity can refresh itself.
+    TranslationsChanged {
+        target: TranslationTarget,
+    },
     WatchedChanged {
         event: WatchedEvent,
     },
@@ -3364,6 +3401,12 @@ api::define! {
     impl Endpoint for GetShow {
         impl Request for GetShowRequest;
         type Response<'de> = Show;
+    }
+
+    pub type GetTranslations;
+    impl Endpoint for GetTranslations {
+        impl Request for GetTranslationsRequest;
+        type Response<'de> = GetTranslationsResponse;
     }
 
     pub type ListSeasons;

@@ -653,6 +653,16 @@ struct InnerRead {
     #[sql = "JOIN episodes e ON e.id = er.episode_id"]
     #[sql = "WHERE e.show_id = ?"]
     list_episode_releases_for_show: TypedStatement<(ShowId,), EpisodeReleaseRow>,
+
+    // translated strings (per entity)
+    #[sql = "SELECT language, kind, text FROM show_strings WHERE show_id = ? ORDER BY kind, language"]
+    list_show_strings: TypedStatement<(ShowId,), (api::Language, api::StringKind, String)>,
+    #[sql = "SELECT language, kind, text FROM movie_strings WHERE movie_id = ? ORDER BY kind, language"]
+    list_movie_strings: TypedStatement<(MovieId,), (api::Language, api::StringKind, String)>,
+    #[sql = "SELECT language, kind, text FROM episode_strings WHERE episode_id = ? ORDER BY kind, language"]
+    list_episode_strings: TypedStatement<(EpisodeId,), (api::Language, api::StringKind, String)>,
+    #[sql = "SELECT language, kind, text FROM season_strings WHERE season_id = ? ORDER BY kind, language"]
+    list_season_strings: TypedStatement<(SeasonId,), (api::Language, api::StringKind, String)>,
 }
 
 #[derive(Statements)]
@@ -2704,6 +2714,85 @@ impl Database {
                     .execute((season_id, language, kind, text))?;
             }
             Ok(())
+        })
+        .await?
+    }
+
+    /// Read the translated strings stored for a show.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn show_translations(&self, id: ShowId) -> Result<Vec<api::Translation>> {
+        let mut s = self.inner.clone().shared().await?;
+        spawn_blocking(move || {
+            let mut out = Vec::new();
+            let mut stmt = s.list_show_strings.bind((id,))?;
+            while let Some((language, kind, text)) = stmt.next()? {
+                out.push(api::Translation {
+                    language,
+                    kind,
+                    text,
+                });
+            }
+            Ok(out)
+        })
+        .await?
+    }
+
+    /// Read the translated strings stored for a movie.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn movie_translations(&self, id: MovieId) -> Result<Vec<api::Translation>> {
+        let mut s = self.inner.clone().shared().await?;
+        spawn_blocking(move || {
+            let mut out = Vec::new();
+            let mut stmt = s.list_movie_strings.bind((id,))?;
+            while let Some((language, kind, text)) = stmt.next()? {
+                out.push(api::Translation {
+                    language,
+                    kind,
+                    text,
+                });
+            }
+            Ok(out)
+        })
+        .await?
+    }
+
+    /// Read the translated strings stored for an episode.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn episode_translations(
+        &self,
+        id: EpisodeId,
+    ) -> Result<Vec<api::Translation>> {
+        let mut s = self.inner.clone().shared().await?;
+        spawn_blocking(move || {
+            let mut out = Vec::new();
+            let mut stmt = s.list_episode_strings.bind((id,))?;
+            while let Some((language, kind, text)) = stmt.next()? {
+                out.push(api::Translation {
+                    language,
+                    kind,
+                    text,
+                });
+            }
+            Ok(out)
+        })
+        .await?
+    }
+
+    /// Read the translated strings stored for a season.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn season_translations(&self, id: SeasonId) -> Result<Vec<api::Translation>> {
+        let mut s = self.inner.clone().shared().await?;
+        spawn_blocking(move || {
+            let mut out = Vec::new();
+            let mut stmt = s.list_season_strings.bind((id,))?;
+            while let Some((language, kind, text)) = stmt.next()? {
+                out.push(api::Translation {
+                    language,
+                    kind,
+                    text,
+                });
+            }
+            Ok(out)
         })
         .await?
     }

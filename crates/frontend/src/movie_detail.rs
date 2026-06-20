@@ -10,7 +10,7 @@ use crate::ui::{
     ConfirmDanger, Loading, MarkPendingPicker, MediaSettingsModal, RemoteEditor, RemoteSourceKind,
     Tracked,
 };
-use crate::{Image, ImageGallery, ImageItem, Modal, SetupChannel};
+use crate::{Image, ImageGallery, ImageItem, Modal, SetupChannel, TranslationsModal};
 
 pub(super) struct MovieDetail {
     channel: ws::Channel,
@@ -31,6 +31,7 @@ pub(super) struct MovieDetail {
     image_modal: bool,
     settings_modal: bool,
     remote_editor: bool,
+    translations_modal: bool,
     background: Background,
     router: Router,
     tz: TimeZone,
@@ -78,6 +79,8 @@ pub(super) enum Msg {
     CloseImageModal,
     OpenSettingsModal,
     CloseSettingsModal,
+    OpenTranslations,
+    CloseTranslations,
     OpenRemoteEditor,
     CloseRemoteEditor,
     AddRemote(Option<String>, api::Remote),
@@ -176,6 +179,7 @@ impl Component for MovieDetail {
             image_modal: false,
             settings_modal: false,
             remote_editor: false,
+            translations_modal: false,
             background,
             router,
             tz,
@@ -732,6 +736,15 @@ impl MovieDetail {
                 self.settings_modal = false;
                 Ok(true)
             }
+            Msg::OpenTranslations => {
+                self.translations_modal = true;
+                self.actions_expanded = false;
+                Ok(true)
+            }
+            Msg::CloseTranslations => {
+                self.translations_modal = false;
+                Ok(true)
+            }
             Msg::OpenRemoteEditor => {
                 self.remote_editor = true;
                 self.settings_modal = false;
@@ -1042,7 +1055,7 @@ impl MovieDetail {
             <div class={classes!("desktop-row-fill", "mobile-column", "actions", (!self.actions_expanded).then_some("hide-mobile"))}>
                 <div class="desktop-row mobile-column fill start">
                     if !movie.remotes.is_empty() {
-                        <div class="row gap justify-around">
+                        <div class="row justify-around">
                             {for movie.remotes.iter().filter_map(|r| {
                                 let url = r.remote.movie_url()?;
                                 let id = r.remote.source().as_id();
@@ -1080,6 +1093,11 @@ impl MovieDetail {
                             <span class="hide-desktop">{"Sync"}</span>
                         </button>
                     }
+
+                    <button class="btn" onclick={link.callback(|_| Msg::OpenTranslations)} title="Translations">
+                        <span class="icon language" />
+                        <span class="hide-desktop">{"Translations"}</span>
+                    </button>
 
                     <button class="btn" onclick={link.callback(|_| Msg::OpenSettingsModal)} title="Settings">
                         <span class="icon cog-6-tooth" />
@@ -1158,6 +1176,14 @@ impl MovieDetail {
 
             if self.image_modal {
                 { self.view_image_modal(ctx) }
+            }
+
+            if self.translations_modal {
+                <TranslationsModal
+                    target={api::TranslationTarget::Movie(movie.id)}
+                    onerror={ctx.props().onerror.clone()}
+                    on_close={link.callback(|_| Msg::CloseTranslations)}
+                />
             }
 
             if self.settings_modal {

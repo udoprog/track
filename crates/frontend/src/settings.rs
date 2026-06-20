@@ -141,105 +141,99 @@ impl Component for Settings {
                 <div class="column">
                     <h4>{"Appearance"}</h4>
 
-                    <div class="form">
-                        <div class="field">
-                            <label>{"Theme"}</label>
-                            <select class="input-select" onchange={on_theme} value={theme_val}>
-                                <option value="dark" selected={self.config.theme == api::ThemeType::Dark}>{"Dark"}</option>
-                                <option value="light" selected={self.config.theme == api::ThemeType::Light}>{"Light"}</option>
-                            </select>
-                        </div>
+                    <div class="field">
+                        <label>{"Theme"}</label>
+                        <select class="input-select" onchange={on_theme} value={theme_val}>
+                            <option value="dark" selected={self.config.theme == api::ThemeType::Dark}>{"Dark"}</option>
+                            <option value="light" selected={self.config.theme == api::ThemeType::Light}>{"Light"}</option>
+                        </select>
                     </div>
                 </div>
 
                 <div class="column">
                     <h4>{"API Keys"}</h4>
 
-                    <div class="form">
-                        <div class="field">
-                            <label for="tvdb-api-key">{"TheTVDB API Key"}</label>
+                    <div class="field">
+                        <label for="tvdb-api-key">{"TheTVDB API Key"}</label>
 
-                            <SecretInput
-                                id="tvdb-api-key"
-                                placeholder="Enter TVDB API key"
-                                value={self.config.tvdb_api_key.clone()}
-                                on_change={link.callback(Msg::TvdbKeyChanged)}
-                            />
-                        </div>
-                        <div class="field">
-                            <label for="tvdb-pin">{"TheTVDB Subscriber PIN (optional)"}</label>
+                        <SecretInput
+                            id="tvdb-api-key"
+                            placeholder="Enter TVDB API key"
+                            value={self.config.tvdb_api_key.clone()}
+                            on_change={link.callback(Msg::TvdbKeyChanged)}
+                        />
+                    </div>
 
-                            <SecretInput
-                                id="tvdb-pin"
-                                placeholder="Enter TVDB subscriber PIN"
-                                value={self.config.tvdb_pin.clone().unwrap_or_default()}
-                                on_change={link.callback(Msg::TvdbPinChanged)}
-                            />
-                        </div>
-                        <div class="field">
-                            <label for="tmdb-api-key">{"TheMovieDB API Key"}</label>
+                    <div class="field">
+                        <label for="tvdb-pin">{"TheTVDB Subscriber PIN (optional)"}</label>
 
-                            <SecretInput
-                                id="tmdb-api-key"
-                                placeholder="Enter TMDB API key"
-                                value={self.config.tmdb_api_key.clone()}
-                                on_change={link.callback(Msg::TmdbKeyChanged)}
-                            />
-                        </div>
+                        <SecretInput
+                            id="tvdb-pin"
+                            placeholder="Enter TVDB subscriber PIN"
+                            value={self.config.tvdb_pin.clone().unwrap_or_default()}
+                            on_change={link.callback(Msg::TvdbPinChanged)}
+                        />
+                    </div>
+
+                    <div class="field">
+                        <label for="tmdb-api-key">{"TheMovieDB API Key"}</label>
+
+                        <SecretInput
+                            id="tmdb-api-key"
+                            placeholder="Enter TMDB API key"
+                            value={self.config.tmdb_api_key.clone()}
+                            on_change={link.callback(Msg::TmdbKeyChanged)}
+                        />
                     </div>
                 </div>
 
                 <div class="column">
                     <h4>{"Dashboard"}</h4>
 
-                    <div class="form">
-                        <div class="field fill">
-                            <label>{"Pending size"}</label>
+                    <div class="field fill">
+                        <label>{"Pending size"}</label>
 
-                            <input
-                                type="number"
-                                class="input-number"
-                                min="1"
-                                max="100"
-                                value={self.config.dashboard_page.to_string()}
-                                onchange={on_dashboard_page}
-                            />
-                        </div>
+                        <input
+                            type="number"
+                            class="input-number"
+                            min="1"
+                            max="100"
+                            value={self.config.dashboard_page.to_string()}
+                            onchange={on_dashboard_page}
+                        />
                     </div>
                 </div>
 
                 <div class="column">
                     <h4>{"Display"}</h4>
 
-                    <div class="form">
-                        <div class={classes!("field", (!tz_is_valid(&self.config.timezone)).then_some("error"))}>
-                            <label>{"Timezone (IANA name)"}</label>
+                    <div class={classes!("field", (!tz_is_valid(&self.config.timezone)).then_some("error"))}>
+                        <label>{"Timezone (IANA name)"}</label>
 
-                            <input type="text" class="input-text" placeholder="Leave empty to use browser timezone" value={self.config.timezone.clone()} onchange={on_timezone} list="tz-datalist" autocomplete="off" />
+                        <input type="text" class="input-text" placeholder="Leave empty to use browser timezone" value={self.config.timezone.clone()} onchange={on_timezone} list="tz-datalist" autocomplete="off" />
 
-                            <datalist id="tz-datalist">
-                                { for jiff_tzdb::available().map(|name| html! {
-                                    <option value={name} />
-                                }) }
-                            </datalist>
+                        <datalist id="tz-datalist">
+                            { for jiff_tzdb::available().map(|name| html! {
+                                <option value={name} />
+                            }) }
+                        </datalist>
 
-                            if !tz_is_valid(&self.config.timezone) {
-                                <span>
-                                    <span class="item-inline"><span class="icon exclamation-triangle" /></span>
-                                    {"Unknown timezone"}
-                                </span>
-                            }
-                        </div>
+                        if !tz_is_valid(&self.config.timezone) {
+                            <span>
+                                <span class="item-inline"><span class="icon exclamation-triangle" /></span>
+                                {"Unknown timezone"}
+                            </span>
+                        }
+                    </div>
 
-                        <div class="field">
-                            <label>{"Default language"}</label>
+                    <div class="field">
+                        <label>{"Default language"}</label>
 
-                            <LanguagePicker
-                                current={self.config.language}
-                                placeholder="Default"
-                                on_change={link.callback(Msg::LanguageChanged)}
-                            />
-                        </div>
+                        <LanguagePicker
+                            current={self.config.language}
+                            placeholder="Default"
+                            on_change={link.callback(Msg::LanguageChanged)}
+                        />
                     </div>
                 </div>
 

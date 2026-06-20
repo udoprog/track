@@ -111,6 +111,20 @@ impl WsHandler {
 
                 outgoing.write(show);
             }
+            api::Request::GetTranslations => {
+                let req = incoming
+                    .read::<api::GetTranslationsRequest>()
+                    .context("Expected a request payload")?;
+
+                let translations = match req.target {
+                    api::TranslationTarget::Show(id) => self.db.show_translations(id).await?,
+                    api::TranslationTarget::Season(id) => self.db.season_translations(id).await?,
+                    api::TranslationTarget::Episode(id) => self.db.episode_translations(id).await?,
+                    api::TranslationTarget::Movie(id) => self.db.movie_translations(id).await?,
+                };
+
+                outgoing.write(api::GetTranslationsResponse { translations });
+            }
             api::Request::ListSeasons => {
                 let req = incoming
                     .read::<api::ListSeasonsRequest>()
