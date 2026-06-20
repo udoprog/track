@@ -1109,62 +1109,34 @@ pub(super) struct LanguagePickerProps {
 pub(super) enum Msg {
     Open,
     Close,
-    Filter(String),
-    Page(usize),
     Pick(api::Language),
-    SetTopLanguages(TopLanguages),
 }
 
+/// A button showing the current language that opens a [`LanguageModal`] to
+/// change it. Used where a value is displayed and edited in place.
 pub(super) struct LanguagePicker {
     open: bool,
-    filter: String,
-    page: usize,
-    top_languages: Vec<api::Language>,
-    _top_languages_handle: ContextHandle<TopLanguages>,
 }
 
 impl Component for LanguagePicker {
     type Message = Msg;
     type Properties = LanguagePickerProps;
 
-    fn create(ctx: &Context<Self>) -> Self {
-        let (top_languages, _top_languages_handle) = ctx
-            .link()
-            .context::<TopLanguages>(ctx.link().callback(Msg::SetTopLanguages))
-            .expect("Expected TopLanguages in context");
-
-        Self {
-            open: false,
-            filter: String::new(),
-            page: 0,
-            top_languages: top_languages.0,
-            _top_languages_handle,
-        }
+    fn create(_ctx: &Context<Self>) -> Self {
+        Self { open: false }
     }
 
     fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
         match msg {
             Msg::Open => {
                 self.open = true;
-                self.filter.clear();
-                self.page = 0;
             }
             Msg::Close => {
                 self.open = false;
             }
-            Msg::Filter(s) => {
-                self.filter = s;
-                self.page = 0;
-            }
-            Msg::Page(p) => {
-                self.page = p;
-            }
             Msg::Pick(value) => {
                 self.open = false;
                 ctx.props().on_change.emit(value);
-            }
-            Msg::SetTopLanguages(top_languages) => {
-                self.top_languages = top_languages.0;
             }
         }
 
@@ -1209,6 +1181,107 @@ impl Component for LanguagePicker {
             return trigger;
         }
 
+        html! {
+            <>
+                {trigger}
+
+                <LanguageModal
+                    current={current}
+                    placeholder={props.placeholder}
+                    title="Select Language"
+                    show_top={props.show_top}
+                    on_pick={link.callback(Msg::Pick)}
+                    on_close={link.callback(|_| Msg::Close)}
+                />
+            </>
+        }
+    }
+}
+
+#[derive(Properties, PartialEq)]
+pub(super) struct LanguageModalProps {
+    /// The currently-selected language, highlighted in the list. Pass
+    /// [`api::Language::DEFAULT`] together with `allow_default = false` for a
+    /// "fresh pick" with nothing pre-selected.
+    pub(super) current: api::Language,
+    pub(super) on_pick: Callback<api::Language>,
+    pub(super) on_close: Callback<()>,
+    /// Label for the "Default" row.
+    pub(super) placeholder: &'static str,
+    pub(super) title: &'static str,
+    /// Whether to show the "top languages" quick-pick section.
+    #[prop_or(true)]
+    pub(super) show_top: bool,
+    /// Whether to offer the "Default" (original language) row.
+    #[prop_or(true)]
+    pub(super) allow_default: bool,
+}
+
+pub(super) enum LanguageModalMsg {
+    Filter(String),
+    Page(usize),
+    Pick(api::Language),
+    Close,
+    SetTopLanguages(TopLanguages),
+}
+
+/// The language-selection modal: a filterable, paginated list of languages with
+/// optional "Default" and top-languages quick-pick rows. Pure selection UI with
+/// no trigger of its own, so callers control when it opens.
+pub(super) struct LanguageModal {
+    filter: String,
+    page: usize,
+    top_languages: Vec<api::Language>,
+    _top_languages_handle: ContextHandle<TopLanguages>,
+}
+
+impl Component for LanguageModal {
+    type Message = LanguageModalMsg;
+    type Properties = LanguageModalProps;
+
+    fn create(ctx: &Context<Self>) -> Self {
+        let (top_languages, _top_languages_handle) = ctx
+            .link()
+            .context::<TopLanguages>(ctx.link().callback(LanguageModalMsg::SetTopLanguages))
+            .expect("Expected TopLanguages in context");
+
+        Self {
+            filter: String::new(),
+            page: 0,
+            top_languages: top_languages.0,
+            _top_languages_handle,
+        }
+    }
+
+    fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
+        match msg {
+            LanguageModalMsg::Filter(s) => {
+                self.filter = s;
+                self.page = 0;
+            }
+            LanguageModalMsg::Page(p) => {
+                self.page = p;
+            }
+            LanguageModalMsg::Pick(value) => {
+                ctx.props().on_pick.emit(value);
+            }
+            LanguageModalMsg::Close => {
+                ctx.props().on_close.emit(());
+            }
+            LanguageModalMsg::SetTopLanguages(top_languages) => {
+                self.top_languages = top_languages.0;
+            }
+        }
+
+        true
+    }
+
+    fn view(&self, ctx: &Context<Self>) -> Html {
+        let link = ctx.link();
+        let props = ctx.props();
+
+        let current = props.current;
+
         let needle = self.filter.to_lowercase();
         let filtered: Vec<&'static iso639::Entry> = iso639::iter()
             .filter(|entry| {
@@ -1222,24 +1295,22 @@ impl Component for LanguagePicker {
 
         let on_filter = link.callback(|e: InputEvent| {
             let input: web_sys::HtmlInputElement = e.target_unchecked_into();
-            Msg::Filter(input.value())
+            LanguageModalMsg::Filter(input.value())
         });
 
         html! {
-            <>
-                {trigger}
+            <Modal title={props.title} on_close={link.callback(|_| LanguageModalMsg::Close)}>
+                <div class="row">
+                    <input autofocus={true} type="text" class="input-text fill" placeholder="Filter" value={self.filter.clone()} oninput={on_filter} />
+                </div>
 
-                <Modal title="Select Language" on_close={link.callback(|_| Msg::Close)}>
-                    <div class="row">
-                        <input autofocus={true} type="text" class="input-text fill" placeholder="Filter" value={self.filter.clone()} oninput={on_filter} />
-                    </div>
-
-                    <div class="table">
-                        // Quick picks: the most-used custom languages, shown right
-                        // below "Default". Hidden while filtering to avoid duplicates,
-                        // and entirely when `show_top` is disabled.
-                        if self.filter.is_empty() {
-                            <div class="table-entry row clickable" onclick={link.callback(|_| Msg::Pick(api::Language::DEFAULT))}>
+                <div class="table">
+                    // Quick picks: the most-used custom languages, shown right
+                    // below "Default". Hidden while filtering to avoid duplicates,
+                    // and entirely when `show_top` is disabled.
+                    if self.filter.is_empty() {
+                        if props.allow_default {
+                            <div class="table-entry row clickable" onclick={link.callback(|_| LanguageModalMsg::Pick(api::Language::DEFAULT))}>
                                 <span class="fill">{props.placeholder}</span>
 
                                 if current.is_default() {
@@ -1252,83 +1323,83 @@ impl Component for LanguagePicker {
                                     <span class="icon icon-4x3 language" />
                                 </span>
                             </div>
-
-                            if props.show_top {
-                                { for self.top_languages.iter().filter_map(|code| {
-                                    let code = *code;
-                                    let entry = code.to_iso639_3().and_then(iso639::by_id)?;
-                                    let selected = current == code;
-
-                                    Some(html! {
-                                        <div key={format!("top-{code}")} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| Msg::Pick(code))}>
-                                            <span class="fill">{entry.ref_name}</span>
-
-                                            if selected {
-                                                <span class="item-inline">
-                                                    <span class="icon check" />
-                                                </span>
-                                            }
-
-                                            if let Some(country) = entry.part1.and_then(iso639::country_by_part1) {
-                                                <span class={classes!("item-inline", "flag", country)} />
-                                            } else {
-                                                <span class="item-inline">
-                                                    <span class="text-muted">{entry.id}</span>
-                                                </span>
-                                            }
-                                        </div>
-                                    })
-                                }) }
-                            }
                         }
 
-                        if !filtered.is_empty() {
-                            <div class="table-separator" />
-                        }
+                        if props.show_top {
+                            { for self.top_languages.iter().filter_map(|code| {
+                                let code = *code;
+                                let entry = code.to_iso639_3().and_then(iso639::by_id)?;
+                                let selected = current == code;
 
-                        {
-                            for filtered.iter()
-                                .skip(page.saturating_mul(LANGUAGE_PAGE_SIZE))
-                                .take(LANGUAGE_PAGE_SIZE)
-                                .map(|entry| {
-                                    let code = api::Language::from_iso639(entry.id)
-                                        .unwrap_or(api::Language::DEFAULT);
-                                    let selected = current == code;
+                                Some(html! {
+                                    <div key={format!("top-{code}")} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| LanguageModalMsg::Pick(code))}>
+                                        <span class="fill">{entry.ref_name}</span>
 
-                                    html! {
-                                        <div key={entry.id} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| Msg::Pick(code))}>
-                                            <span class="fill">{entry.ref_name}</span>
+                                        if selected {
+                                            <span class="item-inline">
+                                                <span class="icon check" />
+                                            </span>
+                                        }
 
-                                            if selected {
-                                                <span class="item-inline">
-                                                    <span class="icon check" />
-                                                </span>
-                                            }
-
-                                            if let Some(country) = entry.part1.and_then(iso639::country_by_part1) {
-                                                <span class={classes!("item-inline", "flag", country)} />
-                                            } else {
-                                                <span class="item-inline">
-                                                    <span class="text-muted">{entry.id}</span>
-                                                </span>
-                                            }
-                                        </div>
-                                    }
+                                        if let Some(country) = entry.part1.and_then(iso639::country_by_part1) {
+                                            <span class={classes!("item-inline", "flag", country)} />
+                                        } else {
+                                            <span class="item-inline">
+                                                <span class="text-muted">{entry.id}</span>
+                                            </span>
+                                        }
+                                    </div>
                                 })
+                            }) }
                         }
-                    </div>
+                    }
 
-                    <div class="row center">
-                        <div class="input-group">
-                            <PaginationButtons
-                                page={page}
-                                total_pages={total_pages}
-                                on_page={link.callback(Msg::Page)}
-                            />
-                        </div>
+                    if !filtered.is_empty() {
+                        <div class="table-separator" />
+                    }
+
+                    {
+                        for filtered.iter()
+                            .skip(page.saturating_mul(LANGUAGE_PAGE_SIZE))
+                            .take(LANGUAGE_PAGE_SIZE)
+                            .map(|entry| {
+                                let code = api::Language::from_iso639(entry.id)
+                                    .unwrap_or(api::Language::DEFAULT);
+                                let selected = current == code;
+
+                                html! {
+                                    <div key={entry.id} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| LanguageModalMsg::Pick(code))}>
+                                        <span class="fill">{entry.ref_name}</span>
+
+                                        if selected {
+                                            <span class="item-inline">
+                                                <span class="icon check" />
+                                            </span>
+                                        }
+
+                                        if let Some(country) = entry.part1.and_then(iso639::country_by_part1) {
+                                            <span class={classes!("item-inline", "flag", country)} />
+                                        } else {
+                                            <span class="item-inline">
+                                                <span class="text-muted">{entry.id}</span>
+                                            </span>
+                                        }
+                                    </div>
+                                }
+                            })
+                    }
+                </div>
+
+                <div class="row center">
+                    <div class="input-group">
+                        <PaginationButtons
+                            page={page}
+                            total_pages={total_pages}
+                            on_page={link.callback(LanguageModalMsg::Page)}
+                        />
                     </div>
-                </Modal>
-            </>
+                </div>
+            </Modal>
         }
     }
 }
@@ -1594,76 +1665,118 @@ pub(super) struct SyncLanguagesEditorProps {
     pub(super) on_change: Callback<Vec<api::Language>>,
 }
 
+pub(super) enum SyncLanguagesMsg {
+    Open,
+    Close,
+    Add(api::Language),
+}
+
 /// Editor for the list of languages the sync path populates. Renders each
-/// selected language with a remove button, plus a [`LanguagePicker`] (without the
-/// top-languages section) to add another. `Default` stands for each media's own
-/// original language.
-#[function_component]
-pub(super) fn SyncLanguagesEditor(props: &SyncLanguagesEditorProps) -> Html {
-    let on_add = {
-        let current = props.languages.clone();
-        let on_change = props.on_change.clone();
-        Callback::from(move |code: api::Language| {
-            if current.contains(&code) {
-                return;
+/// selected language with a remove button, plus an "Add language" button that
+/// opens a [`LanguageModal`] to pick a fresh language. `Default` stands for each
+/// media's own original language and can't be added here.
+pub(super) struct SyncLanguagesEditor {
+    open: bool,
+}
+
+impl Component for SyncLanguagesEditor {
+    type Message = SyncLanguagesMsg;
+    type Properties = SyncLanguagesEditorProps;
+
+    fn create(_ctx: &Context<Self>) -> Self {
+        Self { open: false }
+    }
+
+    fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
+        match msg {
+            SyncLanguagesMsg::Open => {
+                self.open = true;
             }
-            let mut next = current.clone();
-            next.push(code);
-            on_change.emit(next);
-        })
-    };
+            SyncLanguagesMsg::Close => {
+                self.open = false;
+            }
+            SyncLanguagesMsg::Add(code) => {
+                self.open = false;
 
-    html! {
-        <div class="table">
-            {
-                for props.languages.iter().copied().enumerate().map(|(index, code)| {
-                    let on_remove = {
-                        let current = props.languages.clone();
-                        let on_change = props.on_change.clone();
-                        Callback::from(move |_: MouseEvent| {
-                            let mut next = current.clone();
-                            next.remove(index);
-                            on_change.emit(next);
-                        })
-                    };
+                let current = &ctx.props().languages;
 
-                    let (label, country) = if code.is_default() {
-                        ("Default (original language)".to_owned(), None)
-                    } else {
-                        match code.to_iso639_3().and_then(iso639::by_id) {
-                            Some(entry) => (
-                                entry.ref_name.to_owned(),
-                                entry.part1.and_then(iso639::country_by_part1),
-                            ),
-                            None => (code.to_string(), None),
-                        }
-                    };
+                if !current.contains(&code) {
+                    let mut next = current.clone();
+                    next.push(code);
+                    ctx.props().on_change.emit(next);
+                }
+            }
+        }
 
-                    html! {
-                        <div key={code.to_string()} class="table-entry row">
-                            <span class="fill">{label}</span>
+        true
+    }
 
-                            if let Some(country) = country {
-                                <span class={classes!("item-inline", "flag", country)} />
+    fn view(&self, ctx: &Context<Self>) -> Html {
+        let link = ctx.link();
+        let props = ctx.props();
+
+        html! {
+            <div class="table">
+                {
+                    for props.languages.iter().copied().enumerate().map(|(index, code)| {
+                        let on_remove = {
+                            let current = props.languages.clone();
+                            let on_change = props.on_change.clone();
+                            Callback::from(move |_: MouseEvent| {
+                                let mut next = current.clone();
+                                next.remove(index);
+                                on_change.emit(next);
+                            })
+                        };
+
+                        let (label, country) = if code.is_default() {
+                            ("Default (original language)".to_owned(), None)
+                        } else {
+                            match code.to_iso639_3().and_then(iso639::by_id) {
+                                Some(entry) => (
+                                    entry.ref_name.to_owned(),
+                                    entry.part1.and_then(iso639::country_by_part1),
+                                ),
+                                None => (code.to_string(), None),
                             }
+                        };
 
-                            <button class="btn-danger" onclick={on_remove} title="Remove language">
-                                <span class="icon trash" />
-                            </button>
-                        </div>
-                    }
-                })
-            }
+                        html! {
+                            <div key={code.to_string()} class="table-entry row">
+                                <span class="fill">{label}</span>
 
-            <div class="table-entry row">
-                <LanguagePicker
-                    current={api::Language::DEFAULT}
-                    placeholder="Add language"
-                    show_top={false}
-                    on_change={on_add}
-                />
+                                if let Some(country) = country {
+                                    <span class={classes!("item-inline", "flag", country)} />
+                                }
+
+                                <button class="btn-danger" onclick={on_remove} title="Remove language">
+                                    <span class="icon trash" />
+                                </button>
+                            </div>
+                        }
+                    })
+                }
+
+                <div class="table-entry row">
+                    <button class="btn" onclick={link.callback(|_| SyncLanguagesMsg::Open)} title="Add language">
+                        <span class="icon plus" />
+                        <span>{"Add language"}</span>
+                    </button>
+                </div>
+
+                if self.open {
+                    <LanguageModal
+                        current={api::Language::DEFAULT}
+                        placeholder="Add language"
+                        title="Add Language"
+                        show_top={false}
+                        allow_default={false}
+                        on_pick={link.callback(SyncLanguagesMsg::Add)}
+                        on_close={link.callback(|_| SyncLanguagesMsg::Close)}
+                    />
+                }
             </div>
-        </div>
+        }
     }
 }
 
