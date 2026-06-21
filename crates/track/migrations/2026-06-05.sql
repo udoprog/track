@@ -7,6 +7,7 @@ CREATE TABLE
         tracked INTEGER NOT NULL DEFAULT 1,
         sync_source INTEGER,
         language INTEGER NOT NULL DEFAULT 0,
+        default_language INTEGER NOT NULL DEFAULT 0,
         last_synced_at INTEGER,
         include_specials INTEGER,
         auto_sync INTEGER NOT NULL DEFAULT 1,
@@ -51,6 +52,7 @@ CREATE TABLE
         tracked INTEGER NOT NULL DEFAULT 1,
         sync_source INTEGER,
         language INTEGER NOT NULL DEFAULT 0,
+        default_language INTEGER NOT NULL DEFAULT 0,
         last_synced_at INTEGER,
         release_filters TEXT,
         auto_sync INTEGER NOT NULL DEFAULT 1,
@@ -65,7 +67,7 @@ CREATE TABLE
     movie_releases (
         id INTEGER PRIMARY KEY,
         movie_id INTEGER NOT NULL REFERENCES movies (id) ON DELETE CASCADE,
-        country TEXT NOT NULL,
+        country INTEGER NOT NULL DEFAULT 0,
         release_type INTEGER NOT NULL,
         timestamp INTEGER NOT NULL,
         UNIQUE (movie_id, country, release_type)
@@ -242,7 +244,7 @@ CREATE TABLE
         id INTEGER PRIMARY KEY,
         episode_id INTEGER NOT NULL REFERENCES episodes (id) ON DELETE CASCADE,
         source INTEGER NOT NULL,
-        country TEXT NOT NULL DEFAULT '',
+        country INTEGER NOT NULL DEFAULT 0,
         network TEXT NOT NULL DEFAULT '',
         timestamp INTEGER NOT NULL,
         UNIQUE (episode_id, source, country, network)
@@ -254,4 +256,44 @@ CREATE TABLE
     state (
         id INTEGER PRIMARY KEY CHECK (id = 0),
         top_languages TEXT NOT NULL DEFAULT '[]'
+    );
+
+CREATE TABLE
+    show_strings (
+        id INTEGER PRIMARY KEY,
+        show_id INTEGER NOT NULL REFERENCES shows (id) ON DELETE CASCADE,
+        language INTEGER NOT NULL,
+        kind INTEGER NOT NULL,
+        text TEXT NOT NULL,
+        UNIQUE (show_id, language, kind)
+    );
+
+CREATE TABLE
+    movie_strings (
+        id INTEGER PRIMARY KEY,
+        movie_id INTEGER NOT NULL REFERENCES movies (id) ON DELETE CASCADE,
+        language INTEGER NOT NULL,
+        kind INTEGER NOT NULL,
+        text TEXT NOT NULL,
+        UNIQUE (movie_id, language, kind)
+    );
+
+CREATE TABLE
+    episode_strings (
+        id INTEGER PRIMARY KEY,
+        episode_id INTEGER NOT NULL REFERENCES episodes (id) ON DELETE CASCADE,
+        language INTEGER NOT NULL,
+        kind INTEGER NOT NULL,
+        text TEXT NOT NULL,
+        UNIQUE (episode_id, language, kind)
+    );
+
+CREATE TABLE
+    season_strings (
+        id INTEGER PRIMARY KEY,
+        season_id INTEGER NOT NULL REFERENCES seasons (id) ON DELETE CASCADE,
+        language INTEGER NOT NULL,
+        kind INTEGER NOT NULL,
+        text TEXT NOT NULL,
+        UNIQUE (season_id, language, kind)
     );

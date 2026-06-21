@@ -79,12 +79,12 @@ static COUNTRIES: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
 });
 
 pub fn by_part1(part1: &str) -> Option<&'static Entry> {
-    (*BY_PART1).get(part1).map(|&i| &ENTRIES[i])
+    BY_PART1.get(part1).map(|&i| &ENTRIES[i])
 }
 
 /// Look up an entry by its 3-letter ISO 639-3 code (`Entry::id`).
 pub fn by_id(id: &str) -> Option<&'static Entry> {
-    (*BY_ID).get(id).map(|&i| &ENTRIES[i])
+    BY_ID.get(id).map(|&i| &ENTRIES[i])
 }
 
 pub fn iter() -> impl Iterator<Item = &'static Entry> {
@@ -94,7 +94,7 @@ pub fn iter() -> impl Iterator<Item = &'static Entry> {
 /// Return the ISO 3166-1 alpha-2 country code corresponding to the given ISO
 /// 639-1 language code, if any.
 pub fn country_by_part1(part1: &str) -> Option<&'static str> {
-    (*LANGUAGE_PART1_TO_COUNTRY).get(part1).copied()
+    LANGUAGE_PART1_TO_COUNTRY.get(part1).copied()
 }
 
 pub fn is_id_country(code: &str) -> bool {
