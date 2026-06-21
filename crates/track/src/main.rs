@@ -1,5 +1,5 @@
 use core::time::Duration;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Instant;
 
@@ -23,6 +23,9 @@ struct Cli {
     /// Add logging directives (used by the backup subcommands).
     #[arg(long)]
     log: Vec<String>,
+
+    #[command(flatten)]
+    args: track::Args,
 }
 
 pub fn main() -> Result<ExitCode> {
@@ -31,15 +34,20 @@ pub fn main() -> Result<ExitCode> {
     let runtime = Builder::new_multi_thread().enable_all().build()?;
 
     let Some(command) = cli.command else {
-        return run_server(runtime);
+        return run_server(runtime, cli.args, &cli.db, &cli.log);
     };
 
     runtime.block_on(track::backup(&cli.db, &cli.log, command))?;
     Ok(ExitCode::SUCCESS)
 }
 
-fn run_server(runtime: tokio::runtime::Runtime) -> Result<ExitCode> {
-    let result = runtime.block_on(track::server());
+fn run_server(
+    runtime: tokio::runtime::Runtime,
+    args: track::Args,
+    db: &Path,
+    log: &[String],
+) -> Result<ExitCode> {
+    let result = runtime.block_on(track::server(args, db, log));
 
     let start = Instant::now();
 

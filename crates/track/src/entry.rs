@@ -1,7 +1,7 @@
 use core::pin::pin;
 
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
 
@@ -23,14 +23,10 @@ use crate::web::{self, AppState};
 
 #[derive(Parser)]
 #[command(version, about = "Track web server")]
-struct Args {
+pub struct Args {
     /// Number of concurrent read connections to the database.
     #[arg(long, default_value_t = 16)]
     read_concurrency: usize,
-
-    /// Path to the SQLite database file.
-    #[arg(long, default_value = "track.db")]
-    db: PathBuf,
 
     /// Directory for the image proxy disk cache.
     #[arg(long, default_value = "image-cache")]
@@ -39,27 +35,21 @@ struct Args {
     /// Address to listen on.
     #[arg(long, default_value = "127.0.0.1:3000")]
     bind: SocketAddr,
-
-    /// Add logging directives.
-    #[arg(long)]
-    log: Vec<String>,
 }
 
-pub async fn server() -> Result<ExitCode> {
-    let args = Args::parse();
-
+pub async fn server(args: Args, db: &Path, log: &[String]) -> Result<ExitCode> {
     let mut filter = tracing_subscriber::EnvFilter::builder()
         .with_default_directive(Level::INFO.into())
         .from_env_lossy();
 
-    for directive in &args.log {
+    for directive in log {
         filter = filter.add_directive(directive.parse()?);
     }
 
     tracing_subscriber::fmt().with_env_filter(filter).init();
 
-    let db = Database::open(&args.db, OpenMode::Normal, args.read_concurrency)
-        .with_context(|| anyhow!("Opening database at {}", args.db.display()))?;
+    let db = Database::open(db, OpenMode::Normal, args.read_concurrency)
+        .with_context(|| anyhow!("Opening database at {}", db.display()))?;
 
     let http = reqwest::Client::builder()
         .user_agent("ontv-musli-web/0.1")
