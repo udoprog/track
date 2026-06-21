@@ -487,20 +487,17 @@ impl MovieDetail {
                 self._set_language_req = self
                     .channel
                     .request()
-                    .body(api::SetMovieLanguageRequest {
-                        id,
-                        language: language.clone(),
-                    })
+                    .body(api::SetMovieLanguageRequest { id, language })
                     .on_packet(
                         ctx.link()
-                            .callback(move |r| Msg::SetLanguageDone(language.clone(), r)),
+                            .callback(move |r| Msg::SetLanguageDone(language, r)),
                     )
                     .send();
 
                 Ok(false)
             }
             Msg::SetLanguageDone(language, result) => {
-                result.context(Message::SettingLanguage(language.clone()))?;
+                result.context(Message::SettingLanguage(language))?;
 
                 if let Some(ref mut movie) = self.movie {
                     movie.language = language;
@@ -1165,7 +1162,7 @@ impl MovieDetail {
             if self.settings_modal {
                 <MediaSettingsModal
                     title="Settings"
-                    language={movie.language.clone()}
+                    language={movie.language}
                     has_images={!movie.images.is_empty()}
                     has_remotes={!movie.remotes.is_empty()}
                     last_synced={movie.last_synced_at.map(|ts| AttrValue::from(ts.display(self.tz.clone())))}
@@ -1273,13 +1270,19 @@ impl MovieDetail {
                                                     <div class="row">
                                                         {indicator(considered(r))}
 
-                                                        if iso639::is_id_country(&r.country) {
-                                                            <span class="item-inline" title={r.country.clone()}>
-                                                                <span class={classes!("flag", &r.country)}></span>
-                                                            </span>
+                                                        if let Some(c) = r.country.to_iso3166_1().and_then(iso3166::by_part1) {
+                                                            if c.has_flag {
+                                                                <span class="item-inline" title={c.name}>
+                                                                    <span class={classes!("flag", c.alpha2)}></span>
+                                                                </span>
+                                                            } else {
+                                                                <span class="text-muted">
+                                                                    <span class={c.name}></span>
+                                                                </span>
+                                                            }
                                                         } else {
                                                             <span class="text-muted">
-                                                                {r.country.clone()}
+                                                                {r.country}
                                                             </span>
                                                         }
                                                     </div>

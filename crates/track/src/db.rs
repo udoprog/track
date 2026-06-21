@@ -11,7 +11,7 @@ use anyhow::{Context as _, Result, anyhow};
 use std::collections::{HashMap, HashSet};
 
 use api::{
-    Config, Date, EpisodeId, Image, ImageId, ImageKind, ImageSource, MarkTime, MovieId,
+    Config, Country, Date, EpisodeId, Image, ImageId, ImageKind, ImageSource, MarkTime, MovieId,
     MovieReleaseId, PendingId, ReleaseType, Remote, RemoteId, RemoteSource, RemoteValue, SeasonId,
     SeasonNumber, ShowId, ThemeType, Timestamp, WatchedId, WatchedKind,
 };
@@ -174,7 +174,7 @@ struct MovieRow {
 
 #[derive(Row)]
 struct MovieReleaseRow {
-    country: String,
+    country: Country,
     release_type: ReleaseType,
     timestamp: Timestamp,
 }
@@ -184,7 +184,7 @@ struct MovieReleaseRow {
 struct EpisodeReleaseRow {
     episode_id: EpisodeId,
     source: RemoteSource,
-    country: String,
+    country: Country,
     network: String,
     timestamp: Timestamp,
 }
@@ -986,12 +986,15 @@ struct InnerWrite {
     set_state_top_languages: TypedStatement<(String,), ()>,
 
     // movie releases
+    #[sql = "DELETE FROM movie_releases"]
+    #[sql = "WHERE movie_id = ? AND country = ? AND release_type = ?"]
+    delete_movie_release: TypedStatement<(MovieId, Country, ReleaseType), ()>,
     #[sql = "INSERT INTO movie_releases (id, movie_id, country, release_type, timestamp)"]
     #[sql = "VALUES (?, ?, ?, ?, ?)"]
     #[sql = "ON CONFLICT(movie_id, country, release_type)"]
     #[sql = "    DO UPDATE SET timestamp = excluded.timestamp"]
     upsert_movie_release:
-        TypedStatement<(MovieReleaseId, MovieId, String, ReleaseType, Timestamp), ()>,
+        TypedStatement<(MovieReleaseId, MovieId, Country, ReleaseType, Timestamp), ()>,
 
     // last_synced_at stamping
     #[sql = "UPDATE shows SET last_synced_at = ? WHERE id = ?"]
@@ -1840,16 +1843,14 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn upsert_episode_release(
         &self,
         episode_id: EpisodeId,
         source: RemoteSource,
-        country: &str,
+        country: Country,
         network: &str,
         timestamp: Timestamp,
     ) -> Result<()> {
-        let country = country.to_owned();
         let network = network.to_owned();
         let mut s = self.inner.clone().exclusive().await?;
 
@@ -3568,14 +3569,31 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn delete_movie_release(
+        &self,
+        movie_id: MovieId,
+        country: Country,
+        release_type: ReleaseType,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.delete_movie_release
+                .execute((movie_id, country, release_type))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn upsert_movie_release(
         &self,
         movie_id: MovieId,
-        country: &str,
+        country: Country,
         release_type: ReleaseType,
         timestamp: &Timestamp,
     ) -> Result<()> {
-        let country = country.to_owned();
         let timestamp = *timestamp;
         let mut s = self.inner.clone().exclusive().await?;
 
@@ -3583,7 +3601,7 @@ impl Database {
             s.upsert_movie_release.execute((
                 MovieReleaseId::random(),
                 movie_id,
-                country.as_str(),
+                country,
                 release_type,
                 timestamp,
             ))?;
@@ -3852,7 +3870,7 @@ impl Database {
 
             // Movie-only days may be appended out of order; sort so the frontend can rely
             // on the last day being the furthest date when extending the calendar grid.
-            days_map.sort_by(|(a, ..), (b, ..)| a.cmp(b));
+            days_map.sort_by_key(|(a, ..)| *a);
 
             let out = days_map
                 .into_iter()

@@ -485,7 +485,7 @@ impl Client {
                 };
 
                 out.push(MovieReleaseInfo {
-                    country: block.iso_3166_1.clone(),
+                    country: api::Country::from_iso_3166_1(&block.iso_3166_1).unwrap_or_default(),
                     release_type,
                     release_date,
                 });
@@ -666,7 +666,7 @@ pub(crate) struct SearchMovieResult {
 }
 
 pub(crate) struct MovieReleaseInfo {
-    pub country: String,
+    pub country: api::Country,
     pub release_type: ReleaseType,
     pub release_date: Timestamp,
 }

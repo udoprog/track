@@ -2,7 +2,6 @@ use gloo::timers::callback::Timeout;
 use web_sys::{Event, InputEvent, MouseEvent};
 use yew::prelude::*;
 
-use iso3166::Country;
 use musli_web::web03::prelude::*;
 
 use crate::error::RcError;
@@ -1084,7 +1083,7 @@ impl Component for LanguagePicker {
         } else {
             current
                 .to_iso639_3()
-                .and_then(|id| iso639::by_id(&id))
+                .and_then(iso639::by_id)
                 .map(|entry| (entry.ref_name, entry.part1))
         };
 
@@ -1339,8 +1338,8 @@ const COUNTRY_PAGE_SIZE: usize = 8;
 #[derive(Properties, PartialEq)]
 pub(super) struct CountryPickerProps {
     /// Selected country alpha-2 codes. Empty means "all countries".
-    pub(super) current: Vec<String>,
-    pub(super) on_change: Callback<Vec<String>>,
+    pub(super) current: Vec<api::Country>,
+    pub(super) on_change: Callback<Vec<api::Country>>,
 }
 
 pub(super) enum CountryMsg {
@@ -1348,7 +1347,7 @@ pub(super) enum CountryMsg {
     Close,
     Filter(String),
     Page(usize),
-    Toggle(String),
+    Toggle(api::Country),
     All,
 }
 
@@ -1392,7 +1391,7 @@ impl Component for CountryPicker {
             CountryMsg::Toggle(code) => {
                 let mut next = ctx.props().current.clone();
 
-                if let Some(pos) = next.iter().position(|c| c.eq_ignore_ascii_case(&code)) {
+                if let Some(pos) = next.iter().position(|c| *c == code) {
                     next.remove(pos);
                 } else {
                     next.push(code);
@@ -1422,7 +1421,7 @@ impl Component for CountryPicker {
                     <span>{format!("{} selected", current.len())}</span>
                     {
                         for current.iter().filter_map(|code| {
-                            iso3166::flag_by_alpha2(code).map(|flag| html! {
+                            code.to_iso3166_1().and_then(iso3166::flag_by_part1).map(|flag| html! {
                                 <span class={classes!("item-inline", "flag", flag)} />
                             })
                         })
@@ -1437,12 +1436,13 @@ impl Component for CountryPicker {
 
         let needle = self.filter.to_lowercase();
 
-        let filtered: Vec<&'static Country> = iso3166::iter()
+        let filtered: Vec<(&'static iso3166::Country, api::Country)> = iso3166::iter()
             .filter(|country| {
                 needle.is_empty()
                     || country.name.to_lowercase().contains(&needle)
                     || country.alpha2.contains(&needle)
             })
+            .flat_map(|country| Some((country, api::Country::from_iso_3166_1(country.alpha2)?)))
             .collect();
 
         let total_pages = filtered.len().div_ceil(COUNTRY_PAGE_SIZE).max(1);
@@ -1479,15 +1479,15 @@ impl Component for CountryPicker {
                             for filtered.iter()
                                 .skip(page.saturating_mul(COUNTRY_PAGE_SIZE))
                                 .take(COUNTRY_PAGE_SIZE)
-                                .map(|country| {
-                                    let code = country.alpha2;
-                                    let selected = current.iter().any(|c| c.eq_ignore_ascii_case(code));
+                                .map(|(country, code)| {
+                                    let selected = current.contains(code);
+                                    let code = *code;
 
                                     html! {
-                                        <div key={code} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| CountryMsg::Toggle(code.to_string()))}>
+                                        <div key={code} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| CountryMsg::Toggle(code))}>
                                             <span class="fill">{country.name}</span>
 
-                                            if let Some(flag) = iso3166::flag_by_alpha2(code) {
+                                            if let Some(flag) = code.to_iso3166_1().and_then(iso3166::flag_by_part1) {
                                                 <span class={classes!("item-inline", "flag", flag)} />
                                             }
 
@@ -1560,7 +1560,7 @@ pub(super) fn ReleaseFiltersEditor(props: &ReleaseFiltersEditorProps) -> Html {
                     let on_countries = {
                         let filters = props.filters.clone();
                         let cb = props.on_change.clone();
-                        Callback::from(move |countries: Vec<String>| {
+                        Callback::from(move |countries: Vec<api::Country>| {
                             let mut next = filters.clone();
                             if let Some(f) = next.iter_mut().find(|f| f.release_type == rt) {
                                 f.countries = countries;
@@ -1754,11 +1754,14 @@ pub(super) fn AirDateFiltersEditor(props: &AirDateFiltersEditorProps) -> Html {
                     let on_countries = {
                         let filters = props.filters.clone();
                         let cb = props.on_change.clone();
-                        Callback::from(move |countries: Vec<String>| {
+
+                        Callback::from(move |countries: Vec<api::Country>| {
                             let mut next = filters.clone();
+
                             if let Some(f) = next.iter_mut().find(|f| f.source == source) {
                                 f.countries = countries;
                             }
+
                             cb.emit(next);
                         })
                     };

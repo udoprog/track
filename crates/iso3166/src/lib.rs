@@ -8,8 +8,8 @@
 //! `classes!("flag", code)` CSS pattern (lowercase alpha-2 code), the same one the language picker
 //! uses for its country flags.
 
-use std::cell::LazyCell;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Country {
@@ -29,24 +29,18 @@ mod generated_countries {
 
 pub use generated_countries::ENTRIES;
 
-fn with_alpha2<T, O>(f: T) -> O
-where
-    T: FnOnce(&HashMap<&'static str, usize>) -> O,
-{
-    let by_alpha2 = LazyCell::new(|| {
-        ENTRIES
-            .iter()
-            .enumerate()
-            .map(|(index, entry)| (entry.alpha2, index))
-            .collect::<HashMap<_, _>>()
-    });
-
-    f(&by_alpha2)
-}
+static BY_PART1: LazyLock<HashMap<&'static str, usize>> = LazyLock::new(|| {
+    ENTRIES
+        .iter()
+        .enumerate()
+        .map(|(index, entry)| (entry.alpha2, index))
+        .collect::<HashMap<_, _>>()
+});
 
 /// Look up a country by its alpha-2 code (case-insensitive).
-pub fn by_alpha2(alpha2: &str) -> Option<&'static Country> {
-    with_alpha2(|map| map.get(alpha2).map(|&i| &ENTRIES[i]))
+pub fn by_part1(alpha2: &str) -> Option<&'static Country> {
+    let &i = BY_PART1.get(alpha2)?;
+    ENTRIES.get(i)
 }
 
 /// Iterate over all known countries, ordered by alpha-2 code.
@@ -55,7 +49,7 @@ pub fn iter() -> impl Iterator<Item = &'static Country> {
 }
 
 /// The flag code to render for a country, if a flag asset is available.
-pub fn flag_by_alpha2(alpha2: &str) -> Option<&'static str> {
-    let entry = by_alpha2(alpha2)?;
+pub fn flag_by_part1(alpha2: &str) -> Option<&'static str> {
+    let entry = by_part1(alpha2)?;
     entry.has_flag.then_some(entry.alpha2)
 }

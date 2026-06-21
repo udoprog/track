@@ -15,6 +15,12 @@ use yew::html::IntoPropValue;
 #[cfg(feature = "yew")]
 use yew::virtual_dom::VNode;
 
+mod language;
+pub use self::language::{Language, ParseLanguageErr};
+
+mod country;
+pub use self::country::{Country, ParseCountryErr};
+
 macro_rules! define_id {
     ($name:ident) => {
         #[derive(
@@ -124,236 +130,6 @@ define_id!(TaskId);
 define_id!(ImageId);
 define_id!(PendingId);
 define_id!(RemoteId);
-
-/// A language identified by its 3-letter ISO 639-3 code, stored as four bytes:
-/// the three ASCII letters followed by a `0` pad.
-///
-/// The all-zero value is [`LanguageCode::DEFAULT`], a reference-time sentinel
-/// meaning "use the media's own default (original) language". It is never a real
-/// language and must never be persisted as data in the `strings` table.
-///
-/// The in-memory representation is the code's bytes directly; the only place
-/// bytes are turned into an integer is the SQLite conversion below, which pins
-/// the byte order so the stored value is identical regardless of host endianness.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Language([u8; 4]);
-
-/// Error produced when a string cannot be parsed as a [`LanguageCode`].
-#[derive(Debug)]
-pub struct ParseLanguageErr;
-
-impl fmt::Display for ParseLanguageErr {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("invalid language code")
-    }
-}
-
-impl core::error::Error for ParseLanguageErr {}
-
-impl Language {
-    /// Sentinel meaning "use the media's own default (original) language".
-    pub const DEFAULT: Language = Language([0; 4]);
-
-    /// English (`eng`).
-    pub const ENG: Language = Language(*b"eng\0");
-
-    /// Unwrap the current language or fall back to other if the current
-    /// language is `DEFAULT`.
-    pub fn or(self, other: Self) -> Self {
-        if self.is_default() { other } else { self }
-    }
-
-    /// The ascii string corresponding to this language code.
-    pub fn as_str(&self) -> &str {
-        if self.is_default() {
-            return "default";
-        }
-
-        self.as_raw_code()
-    }
-
-    fn as_raw_code(&self) -> &str {
-        let end = self.0.iter().position(|&b| b == 0).unwrap_or(self.0.len());
-
-        // SAFETY: The language code is valid through construction.
-        unsafe { str::from_utf8_unchecked(&self.0[..end]) }
-    }
-
-    /// Build from a 2- or 3-letter ISO 639 code (case-insensitive). A 2-letter
-    /// code is resolved to its 3-letter form via the `iso639` data. An empty
-    /// string or `"default"` maps to [`LanguageCode::DEFAULT`]. Returns `None`
-    /// for anything else.
-    pub fn from_iso639(code: &str) -> Option<Self> {
-        fn to_lower<'a>(buf: &'a mut [u8; 4], input: &str) -> Option<&'a str> {
-            let bytes = input.as_bytes();
-
-            if bytes.len() > buf.len() {
-                return None;
-            }
-
-            for (b, o) in bytes.iter().zip(buf.iter_mut()) {
-                if !b.is_ascii_alphabetic() {
-                    return None;
-                }
-
-                *o = b.to_ascii_lowercase();
-            }
-
-            Some(unsafe { str::from_utf8_unchecked(&buf[..bytes.len()]) })
-        }
-
-        let code = code.trim();
-
-        if code.is_empty() || code.eq_ignore_ascii_case("default") {
-            return Some(Self::DEFAULT);
-        }
-
-        let mut bytes = [0u8; 4];
-        let lower = to_lower(&mut bytes, code)?;
-
-        let bytes = match lower.len() {
-            2 => {
-                let id = iso639::by_part1(lower)?.id;
-
-                let &[a, b, c] = id.as_bytes() else {
-                    return None;
-                };
-
-                [a, b, c, 0]
-            }
-            3 => bytes,
-            _ => return None,
-        };
-
-        Some(Self(bytes))
-    }
-
-    /// Whether this is the [`LanguageCode::DEFAULT`] sentinel.
-    #[inline]
-    pub const fn is_default(self) -> bool {
-        matches!(self.0, [0, 0, 0, 0])
-    }
-
-    /// The 3-letter ISO 639-3 code, or `None` for [`LanguageCode::DEFAULT`].
-    pub fn to_iso639_3(&self) -> Option<&str> {
-        if self.is_default() {
-            return None;
-        }
-
-        Some(self.as_raw_code())
-    }
-
-    /// The 2-letter ISO 639-1 code, if one exists (`None` for `DEFAULT` or codes
-    /// without a 2-letter form). Used for remotes that key on ISO 639-1.
-    pub fn to_iso639_1(&self) -> Option<&str> {
-        let id = self.to_iso639_3()?;
-        iso639::by_id(&id)?.part1
-    }
-}
-
-impl fmt::Display for Language {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-impl fmt::Debug for Language {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "LanguageCode({self})")
-    }
-}
-
-impl FromStr for Language {
-    type Err = ParseLanguageErr;
-
-    #[inline]
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::from_iso639(s).ok_or(ParseLanguageErr)
-    }
-}
-
-impl serde::Serialize for Language {
-    #[inline]
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        self.as_str().serialize(serializer)
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for Language {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        struct Visitor;
-
-        impl serde::de::Visitor<'_> for Visitor {
-            type Value = Language;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a 2- or 3-letter ISO 639 language code or 'default'")
-            }
-
-            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                v.parse().map_err(serde::de::Error::custom)
-            }
-        }
-
-        deserializer.deserialize_str(Visitor)
-    }
-}
-
-impl<M> musli_core::Encode<M> for Language {
-    type Encode = Self;
-
-    fn encode<E>(&self, encoder: E) -> Result<(), E::Error>
-    where
-        E: musli_core::Encoder<Mode = M>,
-    {
-        encoder.collect_string(self)
-    }
-
-    fn as_encode(&self) -> &Self::Encode {
-        self
-    }
-}
-
-impl<'de, M, A> musli_core::Decode<'de, M, A> for Language
-where
-    A: musli_core::Allocator,
-{
-    fn decode<D>(decoder: D) -> Result<Self, D::Error>
-    where
-        D: musli_core::Decoder<'de, Mode = M, Allocator = A>,
-    {
-        let cx = decoder.cx();
-        decoder.decode_unsized(|s: &str| s.parse::<Language>().map_err(cx.map()))
-    }
-}
-
-#[cfg(feature = "sqll")]
-impl ::sqll::FromColumn<'_> for Language {
-    type Type = ::sqll::ty::Integer;
-
-    #[inline]
-    fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Integer) -> ::sqll::Result<Self> {
-        let value = i64::from_column(stmt, index)?;
-        Ok(Language((value as u32).to_be_bytes()))
-    }
-}
-
-#[cfg(feature = "sqll")]
-impl ::sqll::BindValue for Language {
-    #[inline]
-    fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
-        i64::from(u32::from_be_bytes(self.0)).bind_value(stmt, index)
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TimeZone(JiffTimeZone);
@@ -948,7 +724,8 @@ impl SyncKindSet {
         Self(0)
     }
 
-    pub fn from_kinds<'a>(kinds: impl IntoIterator<Item = SyncKind>) -> Self {
+    #[inline]
+    pub fn from_kinds(kinds: impl IntoIterator<Item = SyncKind>) -> Self {
         let mut set = Self::empty();
 
         for k in kinds {
@@ -1038,14 +815,16 @@ impl Iterator for SyncKindSetIter {
 }
 
 impl FromIterator<SyncKind> for SyncKindSet {
+    #[inline]
     fn from_iter<T: IntoIterator<Item = SyncKind>>(iter: T) -> Self {
-        Self::from_kinds(iter.into_iter())
+        Self::from_kinds(iter)
     }
 }
 
 impl<M> musli_core::Encode<M> for SyncKindSet {
     type Encode = Self;
 
+    #[inline]
     fn encode<E>(&self, encoder: E) -> Result<(), E::Error>
     where
         E: musli_core::Encoder<Mode = M>,
@@ -1053,6 +832,7 @@ impl<M> musli_core::Encode<M> for SyncKindSet {
         self.0.encode(encoder)
     }
 
+    #[inline]
     fn as_encode(&self) -> &Self::Encode {
         self
     }
@@ -1995,7 +1775,7 @@ impl ::sqll::BindValue for ReleaseType {
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct MovieRelease {
-    pub country: String,
+    pub country: Country,
     pub release_type: ReleaseType,
     pub timestamp: Timestamp,
 }
@@ -2008,7 +1788,7 @@ pub struct ReleaseFilter {
     pub release_type: ReleaseType,
     /// Countries (ISO 3166-1 alpha-2) of interest for this release type. Empty means all countries.
     #[serde(default)]
-    pub countries: Vec<String>,
+    pub countries: Vec<Country>,
 }
 
 impl ReleaseFilter {
@@ -2026,11 +1806,7 @@ impl ReleaseFilter {
     /// Whether the given release matches this filter.
     pub fn matches(&self, release: &MovieRelease) -> bool {
         self.release_type == release.release_type
-            && (self.countries.is_empty()
-                || self
-                    .countries
-                    .iter()
-                    .any(|c| c.eq_ignore_ascii_case(&release.country)))
+            && (self.countries.is_empty() || self.countries.contains(&release.country))
     }
 }
 
@@ -2118,7 +1894,7 @@ where
 #[musli(crate = musli_core)]
 pub struct EpisodeRelease {
     pub source: RemoteSource,
-    pub country: String,
+    pub country: Country,
     pub network: String,
     pub timestamp: Timestamp,
 }
@@ -2131,7 +1907,7 @@ pub struct EpisodeRelease {
 pub struct AirDateFilter {
     pub source: RemoteSource,
     #[serde(default)]
-    pub countries: Vec<String>,
+    pub countries: Vec<Country>,
     #[serde(default)]
     pub networks: Vec<String>,
 }
@@ -2140,11 +1916,7 @@ impl AirDateFilter {
     /// Whether `release` is allowed by this filter (source, country and network).
     pub fn matches(&self, release: &EpisodeRelease) -> bool {
         self.source == release.source
-            && (self.countries.is_empty()
-                || self
-                    .countries
-                    .iter()
-                    .any(|c| c.eq_ignore_ascii_case(&release.country)))
+            && (self.countries.is_empty() || self.countries.contains(&release.country))
             && (self.networks.is_empty()
                 || self
                     .networks
@@ -3796,10 +3568,10 @@ api::define! {
 mod tests {
     use super::*;
 
-    fn rel(source: RemoteSource, country: &str, network: &str, ts: i64) -> EpisodeRelease {
+    fn rel(source: RemoteSource, country: Country, network: &str, ts: i64) -> EpisodeRelease {
         EpisodeRelease {
             source,
-            country: country.to_owned(),
+            country,
             network: network.to_owned(),
             timestamp: Timestamp::from_jiff(jiff::Timestamp::from_second(ts).unwrap()),
         }
@@ -4017,8 +3789,8 @@ mod tests {
     #[test]
     fn air_date_priority_prefers_higher_ranked_source() {
         let releases = [
-            rel(RemoteSource::Tmdb, "", "", 200),
-            rel(RemoteSource::Tvmaze, "", "", 300),
+            rel(RemoteSource::Tmdb, Country::DEFAULT, "", 200),
+            rel(RemoteSource::Tvmaze, Country::DEFAULT, "", 300),
         ];
         let priority = default_air_date_priority();
 
@@ -4035,13 +3807,13 @@ mod tests {
     #[test]
     fn air_date_filter_restricts_country() {
         let releases = [
-            rel(RemoteSource::Tvmaze, "US", "", 300),
-            rel(RemoteSource::Tvmaze, "GB", "", 100),
+            rel(RemoteSource::Tvmaze, Country::US, "", 300),
+            rel(RemoteSource::Tvmaze, Country::GB, "", 100),
         ];
         let priority = default_air_date_priority();
         let filters = [AirDateFilter {
             source: RemoteSource::Tvmaze,
-            countries: vec!["gb".to_owned()],
+            countries: vec![Country::GB],
             networks: Vec::new(),
         }];
 
@@ -4054,7 +3826,7 @@ mod tests {
     fn air_date_ignores_ineligible_source() {
         // A source absent from the priority list (e.g. its AirDate kind is
         // excluded) does not contribute, even as the only release.
-        let releases = [rel(RemoteSource::Unknown, "", "", 50)];
+        let releases = [rel(RemoteSource::Unknown, Country::DEFAULT, "", 50)];
         assert!(effective_aired(&releases, &default_air_date_priority(), &[]).is_none());
     }
 
@@ -4062,16 +3834,16 @@ mod tests {
     fn air_date_none_when_no_eligible_source() {
         // Excluding air dates from every remote leaves no eligible source, so even
         // a stored release yields no effective date.
-        let releases = [rel(RemoteSource::Tvmaze, "", "", 50)];
+        let releases = [rel(RemoteSource::Tvmaze, Country::DEFAULT, "", 50)];
         assert!(effective_aired(&releases, &[], &[]).is_none());
     }
 
     #[test]
     fn air_date_earliest_within_winning_source() {
         let releases = [
-            rel(RemoteSource::Tvmaze, "US", "", 300),
-            rel(RemoteSource::Tvmaze, "JP", "", 150),
-            rel(RemoteSource::Tmdb, "", "", 10),
+            rel(RemoteSource::Tvmaze, Country::US, "", 300),
+            rel(RemoteSource::Tvmaze, Country::JP, "", 150),
+            rel(RemoteSource::Tmdb, Country::DEFAULT, "", 10),
         ];
         let aired = effective_aired(&releases, &default_air_date_priority(), &[]).unwrap();
         // TVmaze wins by priority; earliest of its dates is used.

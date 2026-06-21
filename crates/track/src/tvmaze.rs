@@ -1,5 +1,5 @@
 use anyhow::Result;
-use api::{SeasonNumber, Timestamp};
+use api::{Country, SeasonNumber, Timestamp};
 use serde::Deserialize;
 
 const BASE: &str = "https://api.tvmaze.com";
@@ -92,7 +92,10 @@ impl Client {
         Ok(match net {
             Some(n) => ShowNetwork {
                 network: n.name.unwrap_or_default(),
-                country: n.country.and_then(|c| c.code).unwrap_or_default(),
+                country: n
+                    .country
+                    .and_then(|c| api::Country::from_iso_3166_1(c.code.as_deref()?))
+                    .unwrap_or_default(),
             },
             None => ShowNetwork::default(),
         })
@@ -146,9 +149,9 @@ pub(crate) struct EpisodeInfo {
     pub aired_at: Timestamp,
 }
 
-/// The network/country a show airs on, applied to its TVmaze air dates.
+/// The network / country a show airs on, applied to its TVmaze air dates.
 #[derive(Default)]
 pub(crate) struct ShowNetwork {
     pub network: String,
-    pub country: String,
+    pub country: Country,
 }

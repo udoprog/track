@@ -272,7 +272,7 @@ struct DraftRelease {
     season: SeasonNumber,
     number: u32,
     source: RemoteSource,
-    country: String,
+    country: api::Country,
     network: String,
     timestamp: api::Timestamp,
 }
@@ -464,7 +464,7 @@ async fn tmdb_layer(
                     season: ep.season,
                     number: ep.number,
                     source: RemoteSource::Tmdb,
-                    country: String::new(),
+                    country: api::Country::DEFAULT,
                     network: String::new(),
                     timestamp: aired,
                 });
@@ -567,7 +567,7 @@ async fn tvdb_layer(
                 season: ep.season,
                 number: ep.number,
                 source: RemoteSource::Tvdb,
-                country: String::new(),
+                country: api::Country::DEFAULT,
                 network: String::new(),
                 timestamp: aired,
             });
@@ -602,7 +602,7 @@ async fn tvmaze_layer(
             season: ep.season,
             number: ep.number,
             source: RemoteSource::Tvmaze,
-            country: network.country.clone(),
+            country: network.country,
             network: network.network.clone(),
             timestamp: ep.aired_at,
         });
@@ -885,7 +885,7 @@ async fn persist_show_draft(
             continue;
         };
 
-        db.upsert_episode_release(episode_id, r.source, &r.country, &r.network, r.timestamp)
+        db.upsert_episode_release(episode_id, r.source, r.country, &r.network, r.timestamp)
             .await?;
     }
 
@@ -1009,14 +1009,25 @@ pub(crate) async fn sync_movie(
                 Ok(releases) => {
                     info!(count = releases.len(), "Fetched TMDB movie releases");
 
+                    let mut movie_releases = db.movie_releases(movie_id).await?;
+
                     for r in releases {
+                        movie_releases.retain(|mr| {
+                            !(mr.country == r.country && mr.release_type == r.release_type)
+                        });
+
                         db.upsert_movie_release(
                             movie_id,
-                            &r.country,
+                            r.country,
                             r.release_type,
                             &r.release_date,
                         )
                         .await?;
+                    }
+
+                    for r in movie_releases {
+                        db.delete_movie_release(movie_id, r.country, r.release_type)
+                            .await?;
                     }
                 }
                 Err(e) => warn!(movie_id = %movie_id, "Movie release dates skipped: {e:#}"),

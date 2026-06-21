@@ -1,3 +1,5 @@
+use core::cmp::Reverse;
+
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
@@ -357,7 +359,7 @@ impl Dashboard {
 
         if pending.timestamp <= api::Timestamp::now() {
             self.pending.push(pending);
-            self.pending.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+            self.pending.sort_by_key(|p| Reverse(p.timestamp));
         }
 
         self.clamp_page(ctx);
@@ -516,7 +518,7 @@ impl Dashboard {
                 break 'actions html! {
                     <ConfirmDanger
                         icon="forward"
-                        prompt={format!("Skip episode")}
+                        prompt="Skip episode"
                         label={code.to_string()}
                         on_confirm={ctx.link().callback(move |_| Msg::SkipEpisode(show, episode))}
                         on_cancel={ctx.link().callback(|_| Msg::CancelSkipEpisode)}

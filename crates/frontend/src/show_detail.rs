@@ -432,7 +432,7 @@ impl Component for ShowDetail {
                 if self.settings_modal {
                     <MediaSettingsModal
                         title="Settings"
-                        language={show.language.clone()}
+                        language={show.language}
                         include_specials={show.include_specials}
                         has_images={!show.images.is_empty()}
                         has_remotes={!show.remotes.is_empty()}
@@ -1691,10 +1691,10 @@ impl ShowDetail {
         };
 
         let style = if s.total_count > 0 {
-            let frac = (s.watched_count.min(s.total_count) as f64 * 100.0) / s.total_count as f64;
-            format!("width: {frac:.0}%")
+            let f = (s.watched_count.min(s.total_count) as f64 * 100.0) / s.total_count as f64;
+            format!("width: {f:.0}%")
         } else {
-            format!("width: 0%")
+            "width: 0%".to_string()
         };
 
         html! {

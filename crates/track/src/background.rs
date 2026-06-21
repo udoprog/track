@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::Context as _;
 use musli_web::api::ChannelId;
 use tokio::sync::Notify;
 use tracing::info;
@@ -35,16 +36,30 @@ pub(crate) async fn refresh_top_languages(
 
 pub(crate) async fn discover_pending_movies(db: &Database) -> anyhow::Result<()> {
     let now = api::Timestamp::now();
-    let default = db.load_config().await?.release_filters;
+    let default = db
+        .load_config()
+        .await
+        .context("Loading config for pending discovery")?
+        .release_filters;
 
-    for (id, raw) in db.movie_pending_candidates().await? {
+    let candidates = db
+        .movie_pending_candidates()
+        .await
+        .context("Listing movie pending candidates")?;
+
+    for (id, raw) in candidates {
         let filters = raw.as_deref().and_then(api::decode_release_filters);
-        let releases = db.movie_releases(id).await?;
+        let releases = db
+            .movie_releases(id)
+            .await
+            .with_context(|| format!("Loading releases for movie {id}"))?;
 
         if let Some(ts) = api::earliest_release(&releases, filters.as_deref().unwrap_or(&default))
             && ts <= now
         {
-            db.add_pending_movie(id, ts).await?;
+            db.add_pending_movie(id, ts)
+                .await
+                .with_context(|| format!("Adding pending entry for movie {id}"))?;
         }
     }
 
@@ -97,14 +112,16 @@ pub(crate) async fn run(
     config_changed: Arc<Notify>,
     shutdown: Shutdown,
 ) -> anyhow::Result<()> {
-    discover_pending_movies(&db).await?;
+    discover_pending_movies(&db)
+        .await
+        .context("Discovering pending movies at startup")?;
 
     queue
         .push(api::TaskKind::RefreshTopLanguages, false, &broadcast)
         .await;
 
     let mut interval = tokio::time::interval(POLL);
-    let mut config = db.load_config().await?;
+    let mut config = db.load_config().await.context("Loading initial config")?;
 
     if !config.auto_sync_enabled {
         info!("Background sync disabled, skipping");
@@ -114,7 +131,7 @@ pub(crate) async fn run(
         tokio::select! {
             _ = interval.tick(), if config.auto_sync_enabled => {}
             _ = config_changed.notified() => {
-                config = db.load_config().await?;
+                config = db.load_config().await.context("Reloading config after change")?;
 
                 if !config.auto_sync_enabled {
                     info!("Background sync disabled, skipping");
@@ -126,7 +143,9 @@ pub(crate) async fn run(
         }
 
         tracing::info!("Starting background sync poll");
-        discover_pending_movies(&db).await?;
+        discover_pending_movies(&db)
+            .await
+            .context("Discovering pending movies")?;
 
         queue
             .push(api::TaskKind::RefreshTopLanguages, false, &broadcast)
@@ -134,8 +153,14 @@ pub(crate) async fn run(
 
         let interval_hours = config.auto_sync_interval_hours.max(1);
 
-        let stale_show = db.shows_needing_sync(interval_hours).await?;
-        let stale_movies = db.movies_needing_sync(interval_hours).await?;
+        let stale_show = db
+            .shows_needing_sync(interval_hours)
+            .await
+            .context("Listing shows needing sync")?;
+        let stale_movies = db
+            .movies_needing_sync(interval_hours)
+            .await
+            .context("Listing movies needing sync")?;
 
         info!(
             show = stale_show.len(),
