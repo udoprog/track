@@ -507,10 +507,10 @@ p {
         justify-content: center;
     }
 
-    height: $input-height;
+    min-height: $input-height;
 
     @include until-mobile {
-        height: $input-height-touch;
+        min-height: $input-height-touch;
     }
 }
 
