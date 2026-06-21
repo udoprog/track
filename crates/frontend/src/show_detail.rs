@@ -1823,7 +1823,7 @@ impl ShowDetail {
                     }
 
                     if total > 0 {
-                        <h2 class="center">{format!("{watched_count} / {total} watched")}</h2>
+                        <h2>{format!("{watched_count} / {total} watched")}</h2>
                     }
 
                     if let Some(ref overview) = season.overview {

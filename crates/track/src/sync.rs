@@ -1020,13 +1020,9 @@ pub(crate) async fn sync_movie(
                 Ok(releases) => {
                     info!(count = releases.len(), "Fetched TMDB movie releases");
 
-                    let mut movie_releases = db.movie_releases(movie_id).await?;
+                    let mut kept = HashSet::new();
 
                     for r in releases {
-                        movie_releases.retain(|mr| {
-                            !(mr.country == r.country && mr.release_type == r.release_type)
-                        });
-
                         db.upsert_movie_release(
                             movie_id,
                             r.country,
@@ -1034,12 +1030,11 @@ pub(crate) async fn sync_movie(
                             &r.release_date,
                         )
                         .await?;
+
+                        kept.insert((r.country, r.release_type));
                     }
 
-                    for r in movie_releases {
-                        db.delete_movie_release(movie_id, r.country, r.release_type)
-                            .await?;
-                    }
+                    db.prune_movie_releases(movie_id, &kept).await?;
                 }
                 Err(e) => warn!(movie_id = %movie_id, "Movie release dates skipped: {e:#}"),
             }

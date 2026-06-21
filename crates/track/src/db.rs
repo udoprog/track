@@ -3616,24 +3616,6 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn delete_movie_release(
-        &self,
-        movie_id: MovieId,
-        country: Country,
-        release_type: ReleaseType,
-    ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.delete_movie_release
-                .execute((movie_id, country, release_type))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn upsert_movie_release(
         &self,
         movie_id: MovieId,
@@ -3647,6 +3629,46 @@ impl Database {
         let result = spawn_blocking(move || {
             s.upsert_movie_release
                 .execute((movie_id, country, release_type, timestamp))?;
+
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    /// Drop stored releases that a fresh sync no longer reports. `kept` is the set
+    /// of `(country, release_type)` pairs just upserted for the movie. Mirrors
+    /// [`Self::prune_episode_releases`]; a movie has a single sync source, so the
+    /// caller only prunes after a successful fetch and no per-source scoping is
+    /// needed.
+    #[tracing::instrument(skip(self, kept), ret(level = "trace"))]
+    pub(crate) async fn prune_movie_releases(
+        &self,
+        movie_id: MovieId,
+        kept: &HashSet<(Country, ReleaseType)>,
+    ) -> Result<()> {
+        let kept = kept.clone();
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            let mut to_delete = Vec::new();
+
+            {
+                let mut stmt = s.list_movie_releases.bind((movie_id,))?;
+
+                while let Some(r) = stmt.next()? {
+                    let key = (r.country, r.release_type);
+
+                    if !kept.contains(&key) {
+                        to_delete.push(key);
+                    }
+                }
+            }
+
+            for (country, release_type) in to_delete {
+                s.delete_movie_release
+                    .execute((movie_id, country, release_type))?;
+            }
 
             Ok(())
         });
