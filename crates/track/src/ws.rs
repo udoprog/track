@@ -342,10 +342,15 @@ impl WsHandler {
                     .mark_watched(api::WatchedId::random(), req.kind, req.mark_time, now)
                     .await?;
 
-                if let api::WatchedKind::Episode { show, episode } = req.kind {
-                    self.pending
-                        .on_episode_watched_from(show, episode, now)
-                        .await?;
+                match req.kind {
+                    api::WatchedKind::Episode { show, episode } => {
+                        self.pending
+                            .on_episode_watched_from(show, episode, now)
+                            .await?;
+                    }
+                    api::WatchedKind::Movie { movie } => {
+                        self.db.remove_pending_movie(movie).await?;
+                    }
                 }
 
                 self.broadcast.emit(

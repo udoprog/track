@@ -875,6 +875,9 @@ struct InnerWrite {
     #[sql = "    DO UPDATE SET timestamp = excluded.timestamp"]
     upsert_episode_release:
         TypedStatement<(EpisodeId, RemoteSource, String, String, Timestamp), ()>,
+    #[sql = "DELETE FROM episode_releases"]
+    #[sql = "WHERE episode_id = ? AND source = ? AND country = ? AND network = ?"]
+    delete_episode_release: TypedStatement<(EpisodeId, RemoteSource, Country, String), ()>,
 
     // movies
     #[sql = "INSERT INTO movies (id, title, release_date, overview, tracked)"]
@@ -1857,6 +1860,51 @@ impl Database {
         let result = spawn_blocking(move || {
             s.upsert_episode_release
                 .execute((episode_id, source, country, network, timestamp))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    /// Drop stored releases that a fresh sync no longer reports. Only sources that
+    /// contributed this run (`sources`) are pruned, so a source that failed to
+    /// fetch keeps its existing releases rather than having them wiped. `kept` is
+    /// the set of `(episode_id, source, country, network)` tuples just upserted.
+    #[tracing::instrument(skip(self, kept, sources), ret(level = "trace"))]
+    pub(crate) async fn prune_episode_releases(
+        &self,
+        show_id: ShowId,
+        kept: &HashSet<(EpisodeId, RemoteSource, Country, String)>,
+        sources: &HashSet<RemoteSource>,
+    ) -> Result<()> {
+        let kept = kept.clone();
+        let sources = sources.clone();
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            let mut to_delete = Vec::new();
+
+            {
+                let mut stmt = s.list_episode_releases_for_show.bind((show_id,))?;
+
+                while let Some(r) = stmt.next()? {
+                    if !sources.contains(&r.source) {
+                        continue;
+                    }
+
+                    let key = (r.episode_id, r.source, r.country, r.network);
+
+                    if !kept.contains(&key) {
+                        to_delete.push(key);
+                    }
+                }
+            }
+
+            for (episode_id, source, country, network) in to_delete {
+                s.delete_episode_release
+                    .execute((episode_id, source, country, network))?;
+            }
+
             Ok(())
         });
 

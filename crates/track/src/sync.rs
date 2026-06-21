@@ -880,6 +880,11 @@ async fn persist_show_draft(
     db.prune_seasons(show_id, &synced_seasons).await?;
 
     // Air-date releases, attributed per source; skip episodes we didn't persist.
+    // Track what we wrote so stale releases (and only for sources that synced this
+    // run) can be pruned afterwards.
+    let mut kept_releases = HashSet::new();
+    let mut release_sources = HashSet::new();
+
     for r in &draft.releases {
         let Some(&episode_id) = episode_ids.get(&(r.season, r.number)) else {
             continue;
@@ -887,7 +892,13 @@ async fn persist_show_draft(
 
         db.upsert_episode_release(episode_id, r.source, r.country, &r.network, r.timestamp)
             .await?;
+
+        kept_releases.insert((episode_id, r.source, r.country, r.network.clone()));
+        release_sources.insert(r.source);
     }
+
+    db.prune_episode_releases(show_id, &kept_releases, &release_sources)
+        .await?;
 
     let updated = db
         .show_by_id(show_id)
