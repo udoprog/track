@@ -6,10 +6,11 @@ use yew::prelude::*;
 
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
+use crate::mark_time_menu::MarkTimeMenu;
 use crate::router::{
     MediaQuery, MediaSelection, Route, Router, ShowDetailQuery, SortField, TrackedFilter,
 };
-use crate::ui::{MarkPendingPicker, MediaKindToggle, PaginationButtons};
+use crate::ui::{MediaKindToggle, PaginationButtons};
 use crate::{Image, SetupChannel};
 
 const PAGE_SIZE: usize = 20;
@@ -42,8 +43,6 @@ pub(super) struct MediaList {
     list_req: ws::Request,
     _mark_req: ws::Request,
     _track_req: ws::Request,
-    /// Movie id currently awaiting watch confirmation (movies only).
-    confirming_watch: Option<u64>,
     /// Backdrop URL last requested as the page background, to avoid re-emitting.
     applied_backdrop: Option<String>,
     /// The image element preloading the next backdrop, kept alive until it loads.
@@ -55,8 +54,6 @@ pub(super) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     Loaded(Result<ws::Packet<api::ListMedia>, ws::Error>),
-    AskMarkWatched(u64),
-    CancelMarkWatch,
     MarkWatched(u64, api::MarkTime),
     MarkWatchedDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
     SetTracked(api::MediaKind, u64, bool),
@@ -128,7 +125,6 @@ impl Component for MediaList {
             list_req: ws::Request::default(),
             _mark_req: ws::Request::default(),
             _track_req: ws::Request::default(),
-            confirming_watch: None,
             applied_backdrop: None,
             _preload_img: None,
             _preload_load: None,
@@ -360,16 +356,7 @@ impl MediaList {
                     .items;
                 Ok(true)
             }
-            Msg::AskMarkWatched(id) => {
-                self.confirming_watch = Some(id);
-                Ok(true)
-            }
-            Msg::CancelMarkWatch => {
-                self.confirming_watch = None;
-                Ok(true)
-            }
             Msg::MarkWatched(id, mark_time) => {
-                self.confirming_watch = None;
                 self._mark_req = self
                     .channel
                     .request()
@@ -615,14 +602,6 @@ impl MediaList {
                     <Image class="poster poster-side clickable hide-mobile" onclick={&onclick} src={m.poster.clone()} />
 
                     <div class="column fill">
-                        if is_movie && self.confirming_watch == Some(id) {
-                            <MarkPendingPicker
-                                aired_label="Released"
-                                prompt="Watched when?"
-                                on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(id, mark_time))}
-                                on_cancel={ctx.link().callback(|_| Msg::CancelMarkWatch)}
-                            />
-                        } else {
                             <div class="row-fill fill align-top">
                                 <div class="column fill">
                                     <div class="row clickable" onclick={&onclick}>
@@ -700,9 +679,16 @@ impl MediaList {
                                 <div class="row end">
                                     <div class="row">
                                         if is_movie {
-                                            <button class="btn-success" title="Mark watched" onclick={ctx.link().callback(move |_| Msg::AskMarkWatched(id))}>
+                                            <MarkTimeMenu
+                                                onerror={ctx.props().onerror.clone()}
+                                                trigger_class="btn-success"
+                                                title="Mark watched"
+                                                prompt="Watched when?"
+                                                aired_label="Released"
+                                                default_at={m.date}
+                                                on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(id, mark_time))}>
                                                 <span class="icon check" />
-                                            </button>
+                                            </MarkTimeMenu>
                                         }
                                     </div>
 
@@ -715,7 +701,6 @@ impl MediaList {
                                     }
                                 </div>
                             </div>
-                        }
 
                         if let Some(ref overview) = m.overview {
                             <div class="overview">

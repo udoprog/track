@@ -438,6 +438,13 @@ impl Timestamp {
     pub fn time_of_day(&self, tz: TimeZone) -> String {
         self.0.to_zoned(tz.0).strftime("%H:%M").to_string()
     }
+
+    /// The local `(hour, minute)` of this timestamp in the given timezone.
+    #[inline]
+    pub fn hour_minute(&self, tz: TimeZone) -> (u8, u8) {
+        let zoned = self.0.to_zoned(tz.0);
+        (zoned.hour() as u8, zoned.minute() as u8)
+    }
 }
 
 impl FromStr for Timestamp {
@@ -615,9 +622,19 @@ impl Date {
     }
 
     pub fn to_timestamp_at_midnight_zoned(self, tz: TimeZone) -> Result<Timestamp, DateError> {
+        self.to_timestamp_at_zoned(0, 0, tz)
+    }
+
+    /// Compose this date with a local `hour`/`minute` in `tz` into a [`Timestamp`].
+    pub fn to_timestamp_at_zoned(
+        self,
+        hour: u8,
+        minute: u8,
+        tz: TimeZone,
+    ) -> Result<Timestamp, DateError> {
         let zoned = self
             .0
-            .at(0, 0, 0, 0)
+            .at(hour as i8, minute as i8, 0, 0)
             .to_zoned(tz.into_jiff())
             .map_err(InnerDateError::ToUtc)?;
 
@@ -681,6 +698,29 @@ impl Date {
     pub fn checked_add_days(self, days: u32) -> Option<Self> {
         let days = i32::try_from(days).ok()?;
         Some(Self(self.0.checked_add(jiff::Span::new().days(days)).ok()?))
+    }
+
+    /// Move by whole months, clamping the day into the target month (e.g. Jan 31
+    /// + 1 month → Feb 28). Used to navigate a calendar grid.
+    pub fn checked_add_months(self, months: i32) -> Option<Self> {
+        Some(Self(
+            self.0.checked_add(jiff::Span::new().months(months)).ok()?,
+        ))
+    }
+
+    /// The first day of this date's month.
+    pub fn first_of_month(self) -> Self {
+        Self(self.0.first_of_month())
+    }
+
+    /// The number of days in this date's month.
+    pub fn days_in_month(self) -> u8 {
+        self.0.days_in_month() as u8
+    }
+
+    /// The weekday as a Monday-zero index (Monday = 0 … Sunday = 6).
+    pub fn weekday_index(self) -> u8 {
+        self.0.weekday().to_monday_zero_offset() as u8
     }
 }
 
@@ -2904,6 +2944,8 @@ pub struct RemoveMovieRequest {
 pub enum MarkTime {
     Now,
     WhenAired,
+    /// An explicit instant chosen by the user.
+    At(Timestamp),
 }
 
 #[derive(Debug, Encode, Decode)]

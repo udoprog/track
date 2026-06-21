@@ -7,6 +7,7 @@ mod dashboard;
 mod error;
 mod image;
 mod image_gallery;
+mod mark_time_menu;
 mod media;
 mod modal;
 mod movie_detail;

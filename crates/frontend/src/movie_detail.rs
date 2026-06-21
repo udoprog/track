@@ -5,10 +5,10 @@ use yew::prelude::*;
 
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
+use crate::mark_time_menu::MarkTimeMenu;
 use crate::router::{MediaQuery, Route, Router};
 use crate::ui::{
-    ConfirmDanger, Loading, MarkPendingPicker, MediaSettingsModal, RemoteEditor, RemoteSourceKind,
-    Tracked,
+    ConfirmDanger, Loading, MediaSettingsModal, RemoteEditor, RemoteSourceKind, Tracked,
 };
 use crate::{Image, ImageGallery, ImageItem, Modal, SetupChannel, TranslationsModal};
 
@@ -18,8 +18,6 @@ pub(super) struct MovieDetail {
     graphics: BTreeMap<api::ImageKind, Vec<ImageItem>>,
     watched: Vec<api::Watched>,
     confirm_remove: bool,
-    confirm_mark_watch: bool,
-    confirm_pending: bool,
     confirm_remove_watch: Option<api::WatchedId>,
     syncing: bool,
     actions_expanded: bool,
@@ -63,8 +61,6 @@ pub(super) enum Msg {
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     MovieLoaded(Result<ws::Packet<api::GetMovie>, ws::Error>),
     WatchedLoaded(Result<ws::Packet<api::ListWatched>, ws::Error>),
-    AskMarkWatched,
-    CancelMarkWatch,
     MarkWatched(api::MarkTime),
     MarkWatchedDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
     RemoveWatched(api::WatchedId, api::WatchedKind),
@@ -114,8 +110,6 @@ pub(super) enum Msg {
     SetAutoSyncDone(bool, Result<ws::Packet<api::SetMovieAutoSync>, ws::Error>),
     SetTracked(bool),
     SetTrackedDone(bool, Result<ws::Packet<api::UntrackMovie>, ws::Error>),
-    AskWatchNext,
-    CancelWatchNext,
     OnWatchNext(api::MarkTime),
     AddPendingDone(Result<ws::Packet<api::AddPending>, ws::Error>),
     OnRemoveNext,
@@ -166,8 +160,6 @@ impl Component for MovieDetail {
             graphics: BTreeMap::new(),
             watched: Vec::new(),
             confirm_remove: false,
-            confirm_mark_watch: false,
-            confirm_pending: false,
             confirm_remove_watch: None,
             syncing: false,
             actions_expanded: false,
@@ -240,7 +232,6 @@ impl Component for MovieDetail {
             self.movie = None;
             self.watched.clear();
             self.confirm_remove = false;
-            self.confirm_mark_watch = false;
             self.confirm_remove_watch = None;
 
             if self.channel.id() != ws::ChannelId::NONE {
@@ -340,17 +331,7 @@ impl MovieDetail {
                     .watched;
                 Ok(true)
             }
-            Msg::AskMarkWatched => {
-                self.confirm_mark_watch = true;
-                self.confirm_remove_watch = None;
-                Ok(true)
-            }
-            Msg::CancelMarkWatch => {
-                self.confirm_mark_watch = false;
-                Ok(true)
-            }
             Msg::MarkWatched(mark_time) => {
-                self.confirm_mark_watch = false;
                 let movie = ctx.props().movie_id;
                 self._mark_req = self
                     .channel
@@ -386,7 +367,6 @@ impl MovieDetail {
                 Ok(false)
             }
             Msg::ConfirmRemoveWatch(watched_id) => {
-                self.confirm_mark_watch = false;
                 self.confirm_remove_watch = Some(watched_id);
                 Ok(true)
             }
@@ -618,17 +598,7 @@ impl MovieDetail {
 
                 Ok(true)
             }
-            Msg::AskWatchNext => {
-                self.confirm_pending = true;
-                self.confirm_mark_watch = false;
-                Ok(true)
-            }
-            Msg::CancelWatchNext => {
-                self.confirm_pending = false;
-                Ok(true)
-            }
             Msg::OnWatchNext(mark_time) => {
-                self.confirm_pending = false;
                 let movie = ctx.props().movie_id;
                 self._pending_req = self
                     .channel
@@ -956,61 +926,57 @@ impl MovieDetail {
             ) && r.timestamp <= now
         });
 
+        // Earliest release, used to pre-fill the "Released" quick option.
+        let release_at = movie.releases.iter().map(|r| r.timestamp).min();
+
         let toggle_pending = move |mobile: bool| {
             let on_remove_next = link.callback(move |_| Msg::OnRemoveNext);
-
-            let on_watch_next = if released_in_past {
-                link.callback(move |_| Msg::AskWatchNext)
-            } else {
-                link.callback(move |_| Msg::OnWatchNext(api::MarkTime::WhenAired))
-            };
+            let hide = move || classes!(mobile.then_some("hide-mobile"), "hide-desktop");
 
             html! {
                 if movie.pending {
                     <button class="btn-primary" onclick={on_remove_next} title="Next movie">
                         <span class="icon bookmark" />
-                        <span class={classes!(mobile.then_some("hide-mobile"), "hide-desktop")}>{"Next movie"}</span>
+                        <span class={hide()}>{"Next movie"}</span>
                     </button>
-                } else {
-                    <button class="btn" onclick={on_watch_next} title="Not next movie">
+                } else if released_in_past {
+                    <MarkTimeMenu
+                        onerror={ctx.props().onerror.clone()}
+                        trigger_class="btn"
+                        title="Not next movie"
+                        prompt="When do you want the movie to be pending?"
+                        aired_label="Released"
+                        default_at={release_at}
+                        on_confirm={link.callback(Msg::OnWatchNext)}>
                         <span class="icon bookmark-slash" />
-                        <span class={classes!(mobile.then_some("hide-mobile"), "hide-desktop")}>{"Not next movie"}</span>
+                        <span class={hide()}>{"Not next movie"}</span>
+                    </MarkTimeMenu>
+                } else {
+                    <button class="btn" onclick={link.callback(move |_| Msg::OnWatchNext(api::MarkTime::WhenAired))} title="Not next movie">
+                        <span class="icon bookmark-slash" />
+                        <span class={hide()}>{"Not next movie"}</span>
                     </button>
                 }
             }
         };
 
-        let on_ask_mark = link.callback(|_| Msg::AskMarkWatched);
-
-        let actions = 'actions: {
-            if self.confirm_mark_watch {
-                break 'actions html! {
-                    <div class="row actions">
-                        <MarkPendingPicker
-                            aired_label="Released"
-                            prompt="When did you watch the movie?"
-                            icon_class="item-inline-lg"
-                            on_confirm={link.callback(Msg::MarkWatched)}
-                            on_cancel={link.callback(|_| Msg::CancelMarkWatch)}
-                        />
-                    </div>
-                };
+        let mark_watched = move |always_label: bool| {
+            html! {
+                <MarkTimeMenu
+                    onerror={ctx.props().onerror.clone()}
+                    trigger_class="btn-success"
+                    title="Mark watched"
+                    prompt="When did you watch the movie?"
+                    aired_label="Released"
+                    default_at={release_at}
+                    on_confirm={link.callback(Msg::MarkWatched)}>
+                    <span class="icon check" />
+                    <span class={classes!((!always_label).then_some("hide-desktop"))}>{"Mark watched"}</span>
+                </MarkTimeMenu>
             }
+        };
 
-            if self.confirm_pending {
-                break 'actions html! {
-                    <div class="row actions">
-                        <MarkPendingPicker
-                            icon_class="item-inline-lg"
-                            prompt="When do you want the movie to be pending?"
-                            aired_label="Released"
-                            on_confirm={link.callback(Msg::OnWatchNext)}
-                            on_cancel={link.callback(|_| Msg::CancelWatchNext)}
-                        />
-                    </div>
-                };
-            }
-
+        let actions = {
             html! {
                 <div class="actions row-fill">
                     <div class="column fill">
@@ -1043,10 +1009,7 @@ impl MovieDetail {
 
                             <div class="hide-mobile row end">
                                 <div class="input-group">
-                                    <button class="btn-success" onclick={&on_ask_mark} title="Mark watched">
-                                        <span class="icon check" />
-                                        <span class="hide-desktop">{"Mark watched"}</span>
-                                    </button>
+                                    {mark_watched(false)}
 
                                     {toggle_pending(false)}
                                 </div>
@@ -1054,10 +1017,7 @@ impl MovieDetail {
                         </div>
 
                         <div class={classes!("hide-desktop", "column", (!self.detailed_expand).then_some("hide-mobile"))}>
-                            <button class="btn-success" onclick={&on_ask_mark} title="Mark watched">
-                                <span class="icon check" />
-                                <span>{"Mark watched"}</span>
-                            </button>
+                            {mark_watched(true)}
 
                             {toggle_pending(false)}
                         </div>

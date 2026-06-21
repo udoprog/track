@@ -1,3 +1,4 @@
+@use 'sass:color';
 
 $monospace-font: 'SF Mono', Consolas, 'SF Mono Regular', monospace;
 $sans-serif-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -63,6 +64,7 @@ $bold-weight: 500;
 @import 'flags';
 @import 'calendar';
 @import 'toolbar';
+@import 'mark_time_menu';
 
 *,
 *::before,
@@ -350,8 +352,8 @@ p {
     }
 }
 
-@mixin btn-base($color, $color-selected, $input-height, $input-height-touch) {
-    background: $color;
+@mixin btn-base($color, $input-height, $input-height-touch) {
+    background-color: $color;
     box-sizing: border-box;
     display: inline-flex;
     gap: 0.25rem;
@@ -384,28 +386,28 @@ p {
     }
 
     &.selected {
-        background: $color-selected;
+        background-color: color.change($color, $lightness: 50%);;
     }
 }
 
 .btn {
-    @include btn-base($color-secondary, $color-primary, $input-height, $input-height-touch);
+    @include btn-base($color-secondary, $input-height, $input-height-touch);
 }
 
 .btn-lg {
-    @include btn-base($color-secondary, $color-primary, $input-height-lg, $input-height-touch-lg);
+    @include btn-base($color-secondary, $input-height-lg, $input-height-touch-lg);
 }
 
 .btn-primary {
-    @include btn-base($color-primary, $color-primary, $input-height, $input-height-touch);
+    @include btn-base($color-primary, $input-height, $input-height-touch);
 }
 
 .btn-success {
-    @include btn-base($color-success, $color-primary, $input-height, $input-height-touch);
+    @include btn-base($color-success, $input-height, $input-height-touch);
 }
 
 .btn-danger {
-    @include btn-base($color-danger, $color-primary, $input-height, $input-height-touch);
+    @include btn-base($color-danger, $input-height, $input-height-touch);
 }
 
 .hide-mobile {
@@ -700,6 +702,12 @@ image {
 .fill {
     flex: 1;
     min-width: 0;
+}
+
+.center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 @include from-desktop {

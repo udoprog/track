@@ -8,11 +8,12 @@ use api::{HasAired, TimeZone};
 
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
+use crate::mark_time_menu::MarkTimeMenu;
 use crate::outline::{OutlineControl, OutlineEntry, OutlineHandle};
 use crate::router::{MediaQuery, Route, Router, ShowDetailQuery};
 use crate::ui::{
-    ConfirmDanger, EpisodePicker, Loading, MDASH, MarkPendingPicker, MediaSettingsModal,
-    RemoteEditor, RemoteSourceKind, Tracked,
+    ConfirmDanger, EpisodePicker, Loading, MDASH, MediaSettingsModal, RemoteEditor,
+    RemoteSourceKind, Tracked,
 };
 use crate::{Image, ImageGallery, ImageItem, Modal, SetupChannel, TranslationsModal};
 
@@ -33,10 +34,6 @@ pub(super) struct ShowDetail {
     actions_expanded: bool,
     episode_actions_expanded: HashSet<api::EpisodeId>,
     confirm_remove_watch: Option<api::WatchedId>,
-    confirming_mark_watch: Option<api::EpisodeId>,
-    confirming_pending: Option<api::EpisodeId>,
-    confirming_pending_header: Option<(api::Code, api::EpisodeId)>,
-    select_mark_remaining: bool,
     watched_by_episode: HashMap<api::EpisodeId, Vec<api::WatchedEpisode>>,
     history_expanded: HashSet<api::EpisodeId>,
     orphaned: Vec<api::OrphanedWatched>,
@@ -101,12 +98,8 @@ pub(super) enum Msg {
     SelectSeason(api::SeasonNumber),
     ToggleExpandSeasons,
     EpisodesLoaded(Result<ws::Packet<api::ListEpisodes>, ws::Error>),
-    AskMarkWatched(api::EpisodeId),
     MarkWatched(api::ShowId, api::EpisodeId, api::MarkTime),
     MarkWatchedDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
-    CancelMarkWatch(api::EpisodeId),
-    MarkRemainingWatch,
-    CancelMarkRemainingWatch,
     RemoveWatched(api::WatchedId, api::WatchedKind),
     RemoveWatchedDone(Result<ws::Packet<api::RemoveWatched>, ws::Error>),
     ConfirmRemoveWatch(api::WatchedId),
@@ -123,9 +116,6 @@ pub(super) enum Msg {
     SyncDone(Result<ws::Packet<api::SyncShow>, ws::Error>),
     ToggleHistory(api::EpisodeId),
     WatchedLoaded(Result<ws::Packet<api::ListEpisodesWatched>, ws::Error>),
-    AskWatchNext(api::EpisodeId),
-    AskWatchNextHeader(api::Code, api::EpisodeId),
-    CancelWatchNext(api::EpisodeId),
     OnWatchNext(api::EpisodeId, api::MarkTime),
     AddPendingDone(Result<ws::Packet<api::AddPending>, ws::Error>),
     OnRemoveNext(api::EpisodeId),
@@ -249,10 +239,6 @@ impl Component for ShowDetail {
             actions_expanded: false,
             episode_actions_expanded: HashSet::new(),
             confirm_remove_watch: None,
-            confirming_mark_watch: None,
-            confirming_pending: None,
-            confirming_pending_header: None,
-            select_mark_remaining: false,
             watched_by_episode: HashMap::new(),
             history_expanded: HashSet::new(),
             orphaned: Vec::new(),
@@ -772,27 +758,8 @@ impl ShowDetail {
 
                 Ok(true)
             }
-            Msg::AskMarkWatched(episode_id) => {
-                self.confirming_mark_watch = Some(episode_id);
-                self.confirm_remove_watch = None;
-                Ok(true)
-            }
-            Msg::CancelMarkWatch(episode_id) => {
-                self.episode_actions_expanded.remove(&episode_id);
-                self.confirming_mark_watch = None;
-                Ok(true)
-            }
-            Msg::MarkRemainingWatch => {
-                self.select_mark_remaining = true;
-                Ok(true)
-            }
-            Msg::CancelMarkRemainingWatch => {
-                self.select_mark_remaining = false;
-                Ok(true)
-            }
             Msg::MarkWatched(show, episode, mark_time) => {
                 self.episode_actions_expanded.remove(&episode);
-                self.confirming_mark_watch = None;
                 self._mark_req = self
                     .channel
                     .request()
@@ -862,8 +829,6 @@ impl ShowDetail {
                 Ok(true)
             }
             Msg::WatchRemaining(season, mark_time) => {
-                self.select_mark_remaining = false;
-
                 let show_id = ctx.props().show_id;
 
                 self._watch_remaining_reqs = self
@@ -985,26 +950,8 @@ impl ShowDetail {
 
                 Ok(true)
             }
-            Msg::AskWatchNext(episode_id) => {
-                self.confirming_pending = Some(episode_id);
-                self.confirming_mark_watch = None;
-                Ok(true)
-            }
-            Msg::AskWatchNextHeader(label, episode_id) => {
-                self.confirming_pending_header = Some((label, episode_id));
-                self.confirming_mark_watch = None;
-                Ok(true)
-            }
-            Msg::CancelWatchNext(episode_id) => {
-                self.episode_actions_expanded.remove(&episode_id);
-                self.confirming_pending = None;
-                self.confirming_pending_header = None;
-                Ok(true)
-            }
             Msg::OnWatchNext(episode_id, mark_time) => {
                 self.episode_actions_expanded.remove(&episode_id);
-                self.confirming_pending = None;
-                self.confirming_pending_header = None;
 
                 let show_id = ctx.props().show_id;
 
@@ -1798,25 +1745,8 @@ impl ShowDetail {
 
         let total = self.episodes.len();
 
-        let header = 'header: {
-            if let Some((ref label, episode_id)) = self.confirming_pending_header {
-                break 'header html! {
-                    <MarkPendingPicker
-                        prompt={format!("Pending {label} since when?")}
-                        on_confirm={link.callback(move |mark_time| Msg::OnWatchNext(episode_id, mark_time))}
-                        on_cancel={link.callback(move |_| Msg::CancelWatchNext(episode_id))}
-                    />
-                };
-            }
-
-            let next_unwatched = self.next_unwatched.as_ref().map(|&(label, episode_id)| {
-                let callback = link.callback({
-                    let label = label.clone();
-                    move |_| Msg::AskWatchNextHeader(label, episode_id)
-                });
-
-                (label, callback)
-            });
+        let header = {
+            let next_unwatched = self.next_unwatched;
 
             let pending_episode = self.pending_episode.as_ref().map(|&(label, episode_id)| {
                 let callback = link.callback(move |_| Msg::OnRemoveNext(episode_id));
@@ -1845,37 +1775,39 @@ impl ShowDetail {
                             <span class="icon bookmark" />
                             <span>{label}</span>
                         </button>
-                    } else if let Some((label, onclick)) = next_unwatched {
-                        <button class="btn" title="Make next episode" {onclick}>
+                    } else if let Some((label, episode_id)) = next_unwatched {
+                        <MarkTimeMenu
+                            onerror={ctx.props().onerror.clone()}
+                            trigger_class="btn"
+                            title="Make next episode"
+                            prompt={format!("Pending {label} since when?")}
+                            show_aired=true
+                            on_confirm={link.callback(move |mark_time| Msg::OnWatchNext(episode_id, mark_time))}>
                             <span class="icon bookmark-slash" />
                             <span>{label}</span>
-                        </button>
+                        </MarkTimeMenu>
                     }
 
                     if !self.view_orphaned && watched_count < total {
-                        <button class="btn-success" onclick={link.callback(move |_| Msg::MarkRemainingWatch)} title="Mark remaining episodes as watched">
+                        <MarkTimeMenu
+                            onerror={ctx.props().onerror.clone()}
+                            trigger_class="btn-success"
+                            title="Mark remaining episodes as watched"
+                            prompt="Watched when?"
+                            show_aired=true
+                            on_confirm={link.callback({
+                                let season = season.season;
+                                move |mark_time| Msg::WatchRemaining(season, mark_time)
+                            })}>
                             <span class="icon check" />
                             <span class="hide-mobile">{"Remaining"}</span>
-                        </button>
+                        </MarkTimeMenu>
                     }
                 </>
             }
         };
 
-        let actions = 'actions: {
-            if self.select_mark_remaining {
-                let season = season.season;
-
-                break 'actions html! {
-                    <MarkPendingPicker
-                        prompt="Watched when?"
-                        icon_class="item-inline-lg"
-                        on_confirm={link.callback(move |mark_time| Msg::WatchRemaining(season, mark_time))}
-                        on_cancel={link.callback(|_| Msg::CancelMarkRemainingWatch)}
-                    />
-                };
-            }
-
+        let actions = {
             html! {
                 <div class="column fill">
                     if self.view_orphaned {
@@ -1959,9 +1891,6 @@ impl ShowDetail {
             .unwrap_or_default();
 
         let history_expanded = self.history_expanded.contains(&episode_id);
-        let confirming_mark = self.confirming_mark_watch == Some(episode_id);
-        let confirming_pending = self.confirming_pending == Some(episode_id);
-        let on_ask_mark = link.callback(move |_| Msg::AskMarkWatched(episode_id));
         let on_toggle_history =
             (!watched.is_empty()).then(|| link.callback(move |_| Msg::ToggleHistory(episode_id)));
 
@@ -1975,23 +1904,31 @@ impl ShowDetail {
 
         let toggle_pending = move |mobile: bool| {
             let on_remove_next = link.callback(move |_| Msg::OnRemoveNext(episode_id));
-
-            let on_watch_next = if aired_in_past {
-                link.callback(move |_| Msg::AskWatchNext(episode_id))
-            } else {
-                link.callback(move |_| Msg::OnWatchNext(episode_id, api::MarkTime::WhenAired))
-            };
+            let hide = move || classes!(mobile.then_some("hide-mobile"), "hide-desktop");
 
             html! {
                 if episode.pending {
                     <button class="btn-primary" onclick={on_remove_next} title="Next episode">
                         <span class="icon bookmark" />
-                        <span class={classes!(mobile.then_some("hide-mobile"), "hide-desktop")}>{"Next episode"}</span>
+                        <span class={hide()}>{"Next episode"}</span>
                     </button>
-                } else {
-                    <button class="btn" onclick={on_watch_next} title="Not next episode">
+                } else if aired_in_past {
+                    // Already aired: let the user pick when the pending slot is dated.
+                    <MarkTimeMenu
+                        onerror={ctx.props().onerror.clone()}
+                        trigger_class="btn"
+                        title="Not next episode"
+                        prompt={format!("When do you want {} to be pending?", episode.code())}
+                        default_at={episode.aired}
+                        on_confirm={link.callback(move |mark_time| Msg::OnWatchNext(episode_id, mark_time))}>
                         <span class="icon bookmark-slash" />
-                        <span class={classes!(mobile.then_some("hide-mobile"), "hide-desktop")}>{"Not next episode"}</span>
+                        <span class={hide()}>{"Not next episode"}</span>
+                    </MarkTimeMenu>
+                } else {
+                    // Not yet aired: date the pending slot at the air date directly.
+                    <button class="btn" onclick={link.callback(move |_| Msg::OnWatchNext(episode_id, api::MarkTime::WhenAired))} title="Not next episode">
+                        <span class="icon bookmark-slash" />
+                        <span class={hide()}>{"Not next episode"}</span>
                     </button>
                 }
             }
@@ -2000,10 +1937,16 @@ impl ShowDetail {
         let main_actions = html! {
             <>
                 if !history_expanded {
-                    <button class="btn-success" onclick={on_ask_mark.clone()} title="Mark watched">
+                    <MarkTimeMenu
+                        onerror={ctx.props().onerror.clone()}
+                        trigger_class="btn-success"
+                        title="Mark watched"
+                        prompt={format!("When did you watch {}?", episode.code())}
+                        default_at={episode.aired}
+                        on_confirm={link.callback(move |mark_time| Msg::MarkWatched(show_id, episode_id, mark_time))}>
                         <span class="icon check" />
                         <span class="hide-desktop">{"Mark watched"}</span>
-                    </button>
+                    </MarkTimeMenu>
                 }
 
                 {toggle_pending(false)}
@@ -2024,29 +1967,7 @@ impl ShowDetail {
             </>
         };
 
-        let actions = 'actions: {
-            if confirming_mark {
-                break 'actions html! {
-                    <MarkPendingPicker
-                        prompt={format!("When did you watch {}?", episode.code())}
-                        icon_class="item-inline-lg"
-                        on_confirm={link.callback(move |mark_time| Msg::MarkWatched(show_id, episode_id, mark_time))}
-                        on_cancel={link.callback(move |_| Msg::CancelMarkWatch(episode_id))}
-                    />
-                };
-            }
-
-            if confirming_pending {
-                break 'actions html! {
-                    <MarkPendingPicker
-                        prompt={format!("When do you want {} to be pending?", episode.code())}
-                        icon_class="item-inline-lg"
-                        on_confirm={link.callback(move |mark_time| Msg::OnWatchNext(episode_id, mark_time))}
-                        on_cancel={link.callback(move |_| Msg::CancelWatchNext(episode_id))}
-                    />
-                };
-            }
-
+        let actions = {
             html! {
                 <div class="column">
                     <div class="row-fill">
@@ -2075,9 +1996,15 @@ impl ShowDetail {
                         <div class="row end">
                             <div class="hide-desktop">
                                 <div class="input-group">
-                                    <button class="btn-success" onclick={on_ask_mark.clone()} title="Mark watched">
+                                    <MarkTimeMenu
+                                        onerror={ctx.props().onerror.clone()}
+                                        trigger_class="btn-success"
+                                        title="Mark watched"
+                                        prompt={format!("When did you watch {}?", episode.code())}
+                                        default_at={episode.aired}
+                                        on_confirm={link.callback(move |mark_time| Msg::MarkWatched(show_id, episode_id, mark_time))}>
                                         <span class="icon check" />
-                                    </button>
+                                    </MarkTimeMenu>
 
                                     {toggle_pending(true)}
 

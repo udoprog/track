@@ -1,0 +1,141 @@
+
+// Anchored date/time picker (MarkTimeMenu) used by the mark-watched / mark-pending
+// flows. Baseline structure only — clock-number and hand placement come from inline
+// transforms computed in Rust.
+.mark-time-catcher {
+    position: fixed;
+    inset: 0;
+    z-index: 400;
+}
+
+.mark-time-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: $font-lg;
+    font-weight: $bold-weight;
+}
+
+.mark-time-menu {
+    position: fixed;
+    z-index: 1;
+    // Coordinates are measured and set by the component (see `rendered`) into
+    // these variables; hidden until then to avoid a first-frame flash.
+    left: var(--mt-left);
+    top: var(--mt-top);
+    visibility: hidden;
+    display: flex;
+    flex-direction: column;
+    width: fit-content;
+    max-height: calc(100vh - #{$gap-xs * 2});
+    overflow-y: auto;
+    background: $bg-panel;
+    border: 1px solid $border-input;
+    border-radius: $radius;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+
+    gap: $gap;
+    padding: $gap;
+
+    @include until-mobile {
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+    }
+}
+
+.mark-time-body {
+    display: flex;
+    flex-direction: row;
+    gap: $gap;
+
+    @include until-mobile {
+        flex-direction: column;
+        align-items: center;
+    }
+}
+
+.mark-time-clock {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: $gap-sm;
+}
+
+.mark-time-dial {
+    position: relative;
+    width: min(280px, calc(100vw - #{$gap-xs * 2}));
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: $bg-surface;
+    // Let pointer drag rotate the hand without the page scrolling on touch.
+    touch-action: none;
+    user-select: none;
+}
+
+.mark-time-hand {
+    position: absolute;
+    left: 50%;
+    bottom: 50%;
+    width: 4px;
+    margin-left: -1px;
+    background: $color-primary;
+    transform-origin: bottom center;
+    pointer-events: none;
+}
+
+.mark-time-number {
+    font-size: $font-sm;
+    font-weight: $bold-weight;
+    font-family: $monospace-font;
+    height: $input-height;
+    aspect-ratio: 1;
+    position: absolute;
+    transform: translate(-50%, -50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    cursor: pointer;
+
+    &.selected {
+        background: $color-primary;
+        color: #fff;
+    }
+
+    @include until-mobile {
+        font-size: $font-lg;
+        height: $input-height-touch;
+    }
+}
+
+.mark-time-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    text-align: center;
+}
+
+.mark-time-weekday {
+    font-size: $font-sm;
+}
+
+.mark-time-day {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: $radius-sm;
+    cursor: pointer;
+    width: $input-height;
+    height: $input-height;
+
+    &.selected {
+        background: $color-primary;
+        color: #fff;
+    }
+
+    @include until-mobile {
+        font-size: $font-lg;
+        width: $input-height-touch;
+        height: $input-height-touch;
+    }
+}

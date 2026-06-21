@@ -1043,6 +1043,7 @@ impl InnerRead {
     ) -> Result<Timestamp> {
         match mark_time {
             MarkTime::Now => Ok(now),
+            MarkTime::At(ts) => Ok(ts),
             MarkTime::WhenAired => {
                 let Some(aired) = self
                     .episode_aired_by_id
@@ -3105,6 +3106,7 @@ impl Database {
                 WatchedKind::Movie { movie } => {
                     let timestamp = match mark_time {
                         MarkTime::Now => now,
+                        MarkTime::At(ts) => ts,
                         MarkTime::WhenAired => s
                             .movie_released_by_id
                             .bind((movie,))?

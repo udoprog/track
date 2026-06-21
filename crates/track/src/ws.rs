@@ -1253,6 +1253,7 @@ impl WsHandler {
                     api::PendingKind::Episode { show, episode } => {
                         let ts = match req.mark_time {
                             api::MarkTime::Now => api::Timestamp::now(),
+                            api::MarkTime::At(ts) => ts,
                             api::MarkTime::WhenAired => {
                                 let Some(aired) = self.db.episode_aired_by_id(episode).await?
                                 else {
@@ -1268,6 +1269,7 @@ impl WsHandler {
                     api::PendingKind::Movie { movie } => {
                         let ts = match req.mark_time {
                             api::MarkTime::Now => api::Timestamp::now(),
+                            api::MarkTime::At(ts) => ts,
                             api::MarkTime::WhenAired => {
                                 let Some(released) = self.db.earliest_movie_release(movie).await?
                                 else {
