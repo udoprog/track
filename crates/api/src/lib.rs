@@ -124,7 +124,6 @@ define_id!(ShowId);
 define_id!(SeasonId);
 define_id!(EpisodeId);
 define_id!(MovieId);
-define_id!(MovieReleaseId);
 define_id!(WatchedId);
 define_id!(TaskId);
 define_id!(ImageId);

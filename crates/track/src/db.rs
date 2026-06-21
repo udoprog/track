@@ -12,8 +12,8 @@ use std::collections::{HashMap, HashSet};
 
 use api::{
     Config, Country, Date, EpisodeId, Image, ImageId, ImageKind, ImageSource, MarkTime, MovieId,
-    MovieReleaseId, PendingId, ReleaseType, Remote, RemoteId, RemoteSource, RemoteValue, SeasonId,
-    SeasonNumber, ShowId, ThemeType, Timestamp, WatchedId, WatchedKind,
+    PendingId, ReleaseType, Remote, RemoteId, RemoteSource, RemoteValue, SeasonId, SeasonNumber,
+    ShowId, ThemeType, Timestamp, WatchedId, WatchedKind,
 };
 use rust_embed::RustEmbed;
 use sqll::{OpenOptions, Pool, PoolBuilder, Row, Statements, TypedStatement};
@@ -992,12 +992,11 @@ struct InnerWrite {
     #[sql = "DELETE FROM movie_releases"]
     #[sql = "WHERE movie_id = ? AND country = ? AND release_type = ?"]
     delete_movie_release: TypedStatement<(MovieId, Country, ReleaseType), ()>,
-    #[sql = "INSERT INTO movie_releases (id, movie_id, country, release_type, timestamp)"]
-    #[sql = "VALUES (?, ?, ?, ?, ?)"]
+    #[sql = "INSERT INTO movie_releases (movie_id, country, release_type, timestamp)"]
+    #[sql = "VALUES (?, ?, ?, ?)"]
     #[sql = "ON CONFLICT(movie_id, country, release_type)"]
     #[sql = "    DO UPDATE SET timestamp = excluded.timestamp"]
-    upsert_movie_release:
-        TypedStatement<(MovieReleaseId, MovieId, Country, ReleaseType, Timestamp), ()>,
+    upsert_movie_release: TypedStatement<(MovieId, Country, ReleaseType, Timestamp), ()>,
 
     // last_synced_at stamping
     #[sql = "UPDATE shows SET last_synced_at = ? WHERE id = ?"]
@@ -3646,13 +3645,8 @@ impl Database {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            s.upsert_movie_release.execute((
-                MovieReleaseId::random(),
-                movie_id,
-                country,
-                release_type,
-                timestamp,
-            ))?;
+            s.upsert_movie_release
+                .execute((movie_id, country, release_type, timestamp))?;
 
             Ok(())
         });
@@ -4370,6 +4364,16 @@ fn watched_from_row(r: WatchedRow) -> Result<api::Watched> {
 fn do_migrations(c: &sqll::Connection) -> Result<()> {
     c.execute(MIGRATIONS_INIT)?;
 
+    // Whether the base schema already existed before this run, anchored on the
+    // `shows` table. Captured before the apply loop because the baseline runs
+    // earlier in the same sorted pass and would otherwise make `shows` appear
+    // mid-run. Drives oneshot handling below.
+    let base_exists = {
+        let mut q =
+            c.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'shows'")?;
+        q.next::<i64>()?.is_some()
+    };
+
     let mut select = c.prepare("SELECT applied_at FROM migrations WHERE id = ?")?;
     let mut insert = c.prepare("INSERT INTO migrations (id, applied_at) VALUES (?, ?)")?;
 
@@ -4388,21 +4392,32 @@ fn do_migrations(c: &sqll::Connection) -> Result<()> {
                 return Ok(());
             }
 
-            let asset =
-                Migrations::get(id).with_context(|| anyhow!("Migration file not found: {id}"))?;
+            // Oneshots are a temporary dev aid: they evolve an *existing* database
+            // to match changes made directly to the baseline. On a fresh database
+            // the baseline is already in its evolved form, so a oneshot is recorded
+            // as applied without executing — which also stops it from running on a
+            // later restart once `shows` exists.
+            let oneshot = id.contains("-oneshot-");
 
-            let sql = str::from_utf8(asset.data.as_ref())
-                .with_context(|| anyhow!("Migration {id} is not valid UTF-8"))?;
+            if oneshot && !base_exists {
+                tracing::debug!(id, "Skipping oneshot on fresh database");
+            } else {
+                let asset = Migrations::get(id)
+                    .with_context(|| anyhow!("Migration file not found: {id}"))?;
 
-            c.execute(sql)
-                .with_context(|| anyhow!("Executing migration {id}"))?;
+                let sql = str::from_utf8(asset.data.as_ref())
+                    .with_context(|| anyhow!("Migration {id} is not valid UTF-8"))?;
+
+                c.execute(sql)
+                    .with_context(|| anyhow!("Executing migration {id}"))?;
+                tracing::info!(id, "Migration applied");
+            }
 
             let now = Timestamp::now().to_string();
             insert.reset()?;
             insert
                 .execute((id, now.as_str()))
                 .with_context(|| anyhow!("Updating migrations table {id}"))?;
-            tracing::info!(id, "Migration applied");
             Ok(())
         })();
 
@@ -4461,6 +4476,101 @@ mod migration_tests {
             .unwrap();
 
         do_migrations(&c).expect("migrations should apply");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn oneshot_applies_on_existing_db() {
+        let dir = std::env::temp_dir().join(format!("ontv-mig-existing-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("existing.db");
+        let _ = std::fs::remove_file(&path);
+
+        let c = OpenOptions::new()
+            .extended_result_codes()
+            .read_write()
+            .create()
+            .no_mutex()
+            .open(path.as_os_str())
+            .unwrap();
+
+        c.execute(MIGRATIONS_INIT).unwrap();
+
+        // Simulate an existing database: the base schema is present (anchored by
+        // `shows`) and the release tables still carry their old surrogate `id`
+        // with rows in them.
+        c.execute(
+            "CREATE TABLE shows (id INTEGER PRIMARY KEY);
+             CREATE TABLE episode_releases (
+                id INTEGER PRIMARY KEY,
+                episode_id INTEGER NOT NULL,
+                source INTEGER NOT NULL,
+                country INTEGER NOT NULL DEFAULT 0,
+                network TEXT NOT NULL DEFAULT '',
+                timestamp INTEGER NOT NULL,
+                UNIQUE (episode_id, source, country, network)
+             );
+             CREATE TABLE movie_releases (
+                id INTEGER PRIMARY KEY,
+                movie_id INTEGER NOT NULL,
+                country INTEGER NOT NULL DEFAULT 0,
+                release_type INTEGER NOT NULL,
+                timestamp INTEGER NOT NULL,
+                UNIQUE (movie_id, country, release_type)
+             );
+             INSERT INTO episode_releases (id, episode_id, source, country, network, timestamp)
+                VALUES (1, 10, 1, 0, 'NBC', 1234);
+             INSERT INTO movie_releases (id, movie_id, country, release_type, timestamp)
+                VALUES (1, 20, 0, 2, 5678);",
+        )
+        .unwrap();
+
+        // Mark every non-oneshot migration (the baseline included) as already
+        // applied so the run only exercises the oneshot against our hand-made
+        // old-shape schema.
+        {
+            let mut insert = c
+                .prepare("INSERT INTO migrations (id, applied_at) VALUES (?, ?)")
+                .unwrap();
+
+            for file in Migrations::iter() {
+                let id = file.as_ref();
+
+                if !id.contains("-oneshot-") {
+                    insert.reset().unwrap();
+                    insert.execute((id, "test")).unwrap();
+                }
+            }
+        }
+
+        do_migrations(&c).expect("oneshot should apply");
+
+        // The pre-existing row survived the table rebuild.
+        let mut network = c
+            .prepare("SELECT network FROM episode_releases WHERE episode_id = 10")
+            .unwrap();
+        assert_eq!(network.next::<String>().unwrap().as_deref(), Some("NBC"));
+
+        // The surrogate `id` column is gone.
+        let mut cols = c
+            .prepare("SELECT name FROM pragma_table_info('episode_releases')")
+            .unwrap();
+        let mut names = Vec::new();
+        while let Some(name) = cols.next::<String>().unwrap() {
+            names.push(name);
+        }
+        assert!(
+            !names.iter().any(|n| n == "id"),
+            "id column should be dropped: {names:?}"
+        );
+
+        // The oneshot is recorded so it never re-runs.
+        let mut applied = c.prepare("SELECT 1 FROM migrations WHERE id = ?").unwrap();
+        applied
+            .bind("2026-06-21-oneshot-drop-release-ids.sql")
+            .unwrap();
+        assert!(applied.next::<i64>().unwrap().is_some());
+
         let _ = std::fs::remove_file(&path);
     }
 }

@@ -65,12 +65,11 @@ WHERE
 
 CREATE TABLE
     movie_releases (
-        id INTEGER PRIMARY KEY,
         movie_id INTEGER NOT NULL REFERENCES movies (id) ON DELETE CASCADE,
         country INTEGER NOT NULL DEFAULT 0,
         release_type INTEGER NOT NULL,
         timestamp INTEGER NOT NULL,
-        UNIQUE (movie_id, country, release_type)
+        PRIMARY KEY (movie_id, country, release_type)
     );
 
 CREATE INDEX idx_movie_releases_movie ON movie_releases (movie_id, release_type, timestamp);
@@ -241,16 +240,13 @@ CREATE TABLE
 
 CREATE TABLE
     episode_releases (
-        id INTEGER PRIMARY KEY,
         episode_id INTEGER NOT NULL REFERENCES episodes (id) ON DELETE CASCADE,
         source INTEGER NOT NULL,
         country INTEGER NOT NULL DEFAULT 0,
         network TEXT NOT NULL DEFAULT '',
         timestamp INTEGER NOT NULL,
-        UNIQUE (episode_id, source, country, network)
+        PRIMARY KEY (episode_id, source, country, network)
     );
-
-CREATE INDEX idx_episode_releases_episode ON episode_releases (episode_id);
 
 CREATE TABLE
     state (
