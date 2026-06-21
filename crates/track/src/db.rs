@@ -19,6 +19,11 @@ use rust_embed::RustEmbed;
 use sqll::{OpenOptions, Pool, PoolBuilder, Row, Statements, TypedStatement};
 use tokio::task::spawn_blocking;
 
+#[cfg(test)]
+mod tests;
+
+pub(crate) mod config;
+
 const MIGRATIONS_INIT: &str = r#"
 CREATE TABLE IF NOT EXISTS migrations (
     id         TEXT PRIMARY KEY,
@@ -1074,8 +1079,8 @@ impl InnerRead {
 }
 
 impl InnerWrite {
-    fn set_config(&mut self, key: &str, value: &str) -> Result<()> {
-        self.set_config.execute((key, value))?;
+    fn set_config(&mut self, key: &str, value: impl AsRef<str>) -> Result<()> {
+        self.set_config.execute((key, value.as_ref()))?;
         Ok(())
     }
 
@@ -1967,7 +1972,7 @@ impl Database {
         let result = spawn_blocking(move || {
             let text = air_date_filters
                 .as_deref()
-                .map(api::encode_air_date_filters);
+                .map(config::encode_air_date_filters);
             s.update_show_air_date_filters.execute((text, id))?;
             Ok(())
         });
@@ -2719,7 +2724,9 @@ impl Database {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            let text = release_filters.as_deref().map(api::encode_release_filters);
+            let text = release_filters
+                .as_deref()
+                .map(config::encode_release_filters);
             s.set_movie_release_filters.execute((text, id))?;
             Ok(())
         });
@@ -3808,7 +3815,9 @@ impl Database {
     /// Tracked movies that are not yet pending or watched, paired with their per-movie release
     /// filter override (raw JSON, `None` = use global default).
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn movie_pending_candidates(&self) -> Result<Vec<(MovieId, Option<String>)>> {
+    pub(crate) async fn movie_pending_candidates(
+        &self,
+    ) -> Result<Vec<(MovieId, Option<Vec<api::ReleaseFilter>>)>> {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
@@ -3817,7 +3826,12 @@ impl Database {
             let mut stmt = s.movie_pending_candidates.query()?;
 
             while let Some(r) = stmt.next()? {
-                out.push((r.id, r.release_filters));
+                let release_filters = r
+                    .release_filters
+                    .as_deref()
+                    .and_then(config::decode_release_filters);
+
+                out.push((r.id, release_filters));
             }
 
             Ok(out)
@@ -4277,25 +4291,25 @@ impl Database {
             let release_filters = s
                 .get_config("release_filters")?
                 .as_deref()
-                .and_then(api::decode_release_filters)
+                .and_then(config::decode_release_filters)
                 .unwrap_or_else(api::ReleaseFilter::default_filters);
 
             let air_date_filters = s
                 .get_config("air_date_filters")?
                 .as_deref()
-                .and_then(api::decode_air_date_filters)
+                .and_then(config::decode_air_date_filters)
                 .unwrap_or_default();
 
             let sync_kinds = s
                 .get_config("sync_kinds")?
                 .as_deref()
-                .and_then(api::decode_sync_kinds)
+                .and_then(config::decode_sync_kinds)
                 .unwrap_or_default();
 
             let sync_languages = s
                 .get_config("sync_languages")?
                 .as_deref()
-                .and_then(api::decode_sync_languages)
+                .and_then(config::decode_sync_languages)
                 .unwrap_or_else(|| vec![api::Language::DEFAULT, api::Language::ENG]);
 
             Ok(Config {
@@ -4328,7 +4342,7 @@ impl Database {
         let result = spawn_blocking(move || {
             s.set_config("theme", config.theme.to_string().as_str())?;
 
-            s.set_config("tvdb_api_key", &config.tvdb_api_key)?;
+            s.set_config("tvdb_api_key", config.tvdb_api_key)?;
 
             if let Some(ref pin) = config.tvdb_pin {
                 s.set_config("tvdb_pin", pin)?;
@@ -4336,9 +4350,9 @@ impl Database {
                 s.delete_config("tvdb_pin")?;
             }
 
-            s.set_config("tmdb_api_key", &config.tmdb_api_key)?;
+            s.set_config("tmdb_api_key", config.tmdb_api_key)?;
 
-            s.set_config("dashboard_page", &config.dashboard_page.to_string())?;
+            s.set_config("dashboard_page", config.dashboard_page.to_string())?;
 
             s.set_config(
                 "auto_sync_enabled",
@@ -4351,7 +4365,7 @@ impl Database {
 
             s.set_config(
                 "auto_sync_interval_hours",
-                &config.auto_sync_interval_hours.to_string(),
+                config.auto_sync_interval_hours.to_string(),
             )?;
 
             s.set_config("timezone", &config.timezone)?;
@@ -4366,16 +4380,16 @@ impl Database {
             )?;
             s.set_config(
                 "release_filters",
-                &api::encode_release_filters(&config.release_filters),
+                config::encode_release_filters(&config.release_filters),
             )?;
             s.set_config(
                 "air_date_filters",
-                &api::encode_air_date_filters(&config.air_date_filters),
+                config::encode_air_date_filters(&config.air_date_filters),
             )?;
-            s.set_config("sync_kinds", &api::encode_sync_kinds(&config.sync_kinds))?;
+            s.set_config("sync_kinds", &config::encode_sync_kinds(&config.sync_kinds))?;
             s.set_config(
                 "sync_languages",
-                &api::encode_sync_languages(&config.sync_languages),
+                config::encode_sync_languages(&config.sync_languages),
             )?;
             Ok(())
         });
@@ -4488,7 +4502,7 @@ fn show_from_row(row: ShowRow) -> api::Show {
         air_date_filters: row
             .air_date_filters
             .as_deref()
-            .and_then(api::decode_air_date_filters),
+            .and_then(config::decode_air_date_filters),
     }
 }
 
@@ -4616,7 +4630,7 @@ fn movie_from_row(row: MovieRow) -> api::Movie {
         release_filters: row
             .release_filters
             .as_deref()
-            .and_then(api::decode_release_filters),
+            .and_then(config::decode_release_filters),
     }
 }
 
@@ -4744,123 +4758,4 @@ fn ensure_mode(c: &mut sqll::Connection, mode: OpenMode) -> Result<(), sqll::Err
     }
 
     Ok(())
-}
-
-#[cfg(test)]
-mod migration_tests {
-    use super::*;
-
-    #[test]
-    fn migrations_apply_on_fresh_db() {
-        let dir = std::env::temp_dir().join(format!("ontv-mig-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("test.db");
-        let _ = std::fs::remove_file(&path);
-
-        let c = OpenOptions::new()
-            .extended_result_codes()
-            .read_write()
-            .create()
-            .no_mutex()
-            .open(path.as_os_str())
-            .unwrap();
-
-        do_migrations(&c).expect("migrations should apply");
-        let _ = std::fs::remove_file(&path);
-    }
-
-    #[test]
-    fn oneshot_applies_on_existing_db() {
-        let dir = std::env::temp_dir().join(format!("ontv-mig-existing-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("existing.db");
-        let _ = std::fs::remove_file(&path);
-
-        let c = OpenOptions::new()
-            .extended_result_codes()
-            .read_write()
-            .create()
-            .no_mutex()
-            .open(path.as_os_str())
-            .unwrap();
-
-        c.execute(MIGRATIONS_INIT).unwrap();
-
-        // Simulate an existing database: the base schema is present (anchored by
-        // `shows`) and the release tables still carry their old surrogate `id`
-        // with rows in them.
-        c.execute(
-            "CREATE TABLE shows (id INTEGER PRIMARY KEY);
-             CREATE TABLE episode_releases (
-                id INTEGER PRIMARY KEY,
-                episode_id INTEGER NOT NULL,
-                source INTEGER NOT NULL,
-                country INTEGER NOT NULL DEFAULT 0,
-                network TEXT NOT NULL DEFAULT '',
-                timestamp INTEGER NOT NULL,
-                UNIQUE (episode_id, source, country, network)
-             );
-             CREATE TABLE movie_releases (
-                id INTEGER PRIMARY KEY,
-                movie_id INTEGER NOT NULL,
-                country INTEGER NOT NULL DEFAULT 0,
-                release_type INTEGER NOT NULL,
-                timestamp INTEGER NOT NULL,
-                UNIQUE (movie_id, country, release_type)
-             );
-             INSERT INTO episode_releases (id, episode_id, source, country, network, timestamp)
-                VALUES (1, 10, 1, 0, 'NBC', 1234);
-             INSERT INTO movie_releases (id, movie_id, country, release_type, timestamp)
-                VALUES (1, 20, 0, 2, 5678);",
-        )
-        .unwrap();
-
-        // Mark every non-oneshot migration (the baseline included) as already
-        // applied so the run only exercises the oneshot against our hand-made
-        // old-shape schema.
-        {
-            let mut insert = c
-                .prepare("INSERT INTO migrations (id, applied_at) VALUES (?, ?)")
-                .unwrap();
-
-            for file in Migrations::iter() {
-                let id = file.as_ref();
-
-                if !id.contains("-oneshot-") {
-                    insert.reset().unwrap();
-                    insert.execute((id, "test")).unwrap();
-                }
-            }
-        }
-
-        do_migrations(&c).expect("oneshot should apply");
-
-        // The pre-existing row survived the table rebuild.
-        let mut network = c
-            .prepare("SELECT network FROM episode_releases WHERE episode_id = 10")
-            .unwrap();
-        assert_eq!(network.next::<String>().unwrap().as_deref(), Some("NBC"));
-
-        // The surrogate `id` column is gone.
-        let mut cols = c
-            .prepare("SELECT name FROM pragma_table_info('episode_releases')")
-            .unwrap();
-        let mut names = Vec::new();
-        while let Some(name) = cols.next::<String>().unwrap() {
-            names.push(name);
-        }
-        assert!(
-            !names.iter().any(|n| n == "id"),
-            "id column should be dropped: {names:?}"
-        );
-
-        // The oneshot is recorded so it never re-runs.
-        let mut applied = c.prepare("SELECT 1 FROM migrations WHERE id = ?").unwrap();
-        applied
-            .bind("2026-06-21-oneshot-drop-release-ids.sql")
-            .unwrap();
-        assert!(applied.next::<i64>().unwrap().is_some());
-
-        let _ = std::fs::remove_file(&path);
-    }
 }

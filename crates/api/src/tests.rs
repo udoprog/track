@@ -1,0 +1,301 @@
+use super::*;
+
+fn rel(source: RemoteSource, country: Country, network: &str, ts: i64) -> EpisodeRelease {
+    EpisodeRelease {
+        source,
+        country,
+        network: network.to_owned(),
+        timestamp: Timestamp::from_jiff(jiff::Timestamp::from_second(ts).unwrap()),
+    }
+}
+
+fn entry(source: RemoteSource, sync_kinds: Option<SyncKindSet>) -> RemoteEntry {
+    RemoteEntry {
+        id: RemoteId::new(1),
+        slug: None,
+        remote: Remote::new(source, RemoteValue::Int(1)),
+        enabled: true,
+        priority: 0,
+        sync_kinds,
+    }
+}
+
+#[test]
+fn sync_kind_set_serde() {
+    let set = SyncKindSet::from_kinds([SyncKind::Base, SyncKind::AirDate]);
+
+    // Serializes as a sequence of snake_case strings.
+    let json = serde_json::to_string(&set).unwrap();
+    assert_eq!(json, r#"["base","air_date"]"#);
+    assert_eq!(serde_json::from_str::<SyncKindSet>(&json).unwrap(), set);
+
+    // Deserialization also accepts the legacy integer bitmask.
+    let legacy: SyncKindSet = serde_json::from_str("3").unwrap();
+    assert_eq!(legacy, set);
+    assert_eq!(
+        serde_json::from_str::<SyncKindSet>("0").unwrap(),
+        SyncKindSet::empty()
+    );
+}
+
+#[test]
+fn language_code_round_trip() {
+    // Default sentinel.
+    assert!(Language::DEFAULT.is_default());
+    assert_eq!(Language::DEFAULT.to_string(), "default");
+    assert_eq!(Language::DEFAULT.to_iso639_3(), None);
+    assert_eq!(Language::from_iso639("default"), Some(Language::DEFAULT));
+    assert_eq!(Language::from_iso639(""), Some(Language::DEFAULT));
+
+    // 3-letter packs to its own bytes.
+    let eng = Language::from_iso639("eng").unwrap();
+    assert_eq!(eng, Language::ENG);
+    assert_eq!(eng.to_string(), "eng");
+    assert_eq!(eng.to_iso639_3().as_deref(), Some("eng"));
+    assert_eq!(eng.to_iso639_1().as_deref(), Some("en"));
+
+    // 2-letter resolves to 3-letter.
+    assert_eq!(Language::from_iso639("en"), Some(Language::ENG));
+    assert_eq!(Language::from_iso639("SV"), Language::from_iso639("swe"));
+
+    // Case-insensitive and Display/FromStr round-trip.
+    let swe = Language::from_iso639("Swe").unwrap();
+    assert_eq!(swe.to_string().parse::<Language>().unwrap(), swe);
+
+    // serde round-trips through the string form.
+    let json = serde_json::to_string(&swe).unwrap();
+    assert_eq!(json, "\"swe\"");
+    assert_eq!(serde_json::from_str::<Language>(&json).unwrap(), swe);
+    assert_eq!(
+        serde_json::to_string(&Language::DEFAULT).unwrap(),
+        "\"default\""
+    );
+
+    // Garbage is rejected.
+    assert_eq!(Language::from_iso639("123"), None);
+    assert_eq!(Language::from_iso639("toolong"), None);
+}
+
+#[test]
+fn expand_sync_languages_resolves_and_dedupes() {
+    use std::collections::BTreeSet;
+
+    let eng = Language::ENG;
+    let fra = Language::from_iso639("fra").unwrap();
+    let default = Language::DEFAULT;
+
+    // [DEFAULT, ENG] with a non-English original yields both languages.
+    let set = expand_sync_languages(&[default, eng], fra);
+    assert_eq!(set, BTreeSet::from([fra, eng]));
+
+    // When the original is English, DEFAULT collapses onto ENG.
+    let set = expand_sync_languages(&[default, eng], eng);
+    assert_eq!(set, BTreeSet::from([eng]));
+
+    // A concrete duplicate is deduped.
+    let set = expand_sync_languages(&[eng, eng], fra);
+    assert_eq!(set, BTreeSet::from([eng]));
+
+    // An unresolved DEFAULT (unknown original) is dropped.
+    let set = expand_sync_languages(&[default], default);
+    assert!(set.is_empty());
+}
+
+#[test]
+fn sync_kind_set_bits_round_trip() {
+    let set = SyncKindSet::from_kinds([SyncKind::AirDate]);
+    assert!(set.contains(SyncKind::AirDate));
+    assert!(!set.contains(SyncKind::Base));
+    assert_eq!(SyncKindSet::from_bits(set.bits()), set);
+
+    // Unknown bits are masked off.
+    let masked = SyncKindSet::from_bits(0xFFFF_FFFF);
+    assert_eq!(
+        masked,
+        SyncKindSet::from_kinds(SyncKind::ALL.iter().copied())
+    );
+
+    let toggled = SyncKindSet::empty()
+        .with(SyncKind::Base, true)
+        .with(SyncKind::AirDate, true)
+        .with(SyncKind::Base, false);
+
+    assert_eq!(toggled, SyncKindSet::from_kinds([SyncKind::AirDate]));
+    assert_eq!(toggled.iter().collect::<Vec<_>>(), vec![SyncKind::AirDate]);
+}
+
+#[test]
+fn config_sync_kinds_for_clamps_to_capability() {
+    // Absent source falls back to its full capability.
+    let config = Config::default();
+    assert_eq!(
+        config.sync_kinds_for(RemoteSource::Tvmaze),
+        SyncKindSet::from_kinds([SyncKind::AirDate])
+    );
+
+    // A configured entry granting more than the capability is clamped.
+    let config = Config {
+        sync_kinds: vec![SourceSyncKinds {
+            source: RemoteSource::Tvmaze,
+            kinds: SyncKindSet::from_kinds(SyncKind::ALL.iter().copied()),
+        }],
+        ..Config::default()
+    };
+    assert_eq!(
+        config.sync_kinds_for(RemoteSource::Tvmaze),
+        SyncKindSet::from_kinds([SyncKind::AirDate])
+    );
+}
+
+#[test]
+fn effective_remote_sync_kinds_override_beats_global() {
+    let config = Config {
+        sync_kinds: vec![SourceSyncKinds {
+            source: RemoteSource::Tmdb,
+            kinds: SyncKindSet::from_kinds([SyncKind::AirDate]),
+        }],
+        ..Config::default()
+    };
+
+    // No override inherits the global default.
+    let inherited = entry(RemoteSource::Tmdb, None);
+    assert_eq!(
+        effective_remote_sync_kinds(&inherited, &config),
+        SyncKindSet::from_kinds([SyncKind::AirDate])
+    );
+
+    // An override wins, still clamped to capability.
+    let overridden = entry(
+        RemoteSource::Tmdb,
+        Some(SyncKindSet::from_kinds([SyncKind::Base])),
+    );
+    assert_eq!(
+        effective_remote_sync_kinds(&overridden, &config),
+        SyncKindSet::from_kinds([SyncKind::Base])
+    );
+}
+
+#[test]
+fn sync_kinds_capabilities() {
+    use RemoteSource::*;
+
+    // TMDB/TVDB are full base + air-date sources; TVmaze is air-dates only;
+    // IMDb contributes nothing and no graphics.
+    assert_eq!(Tmdb.sync_kinds(), &[SyncKind::Base, SyncKind::AirDate]);
+    assert_eq!(Tvdb.sync_kinds(), &[SyncKind::Base, SyncKind::AirDate]);
+    assert_eq!(Tvmaze.sync_kinds(), &[SyncKind::AirDate]);
+    assert_eq!(Imdb.sync_kinds(), &[]);
+
+    assert!(Tmdb.has_graphics());
+    assert!(Tvdb.has_graphics());
+    assert!(!Tvmaze.has_graphics());
+    assert!(!Imdb.has_graphics());
+
+    // Base is exclusive (first source wins); air dates accumulate.
+    assert!(SyncKind::Base.is_exclusive());
+    assert!(!SyncKind::AirDate.is_exclusive());
+}
+
+#[test]
+fn eligible_sync_kinds_unions_enabled_remotes() {
+    let config = Config::default();
+
+    // A remote restricted to AirDate plus one restricted to Base together make
+    // both kinds eligible.
+    let both = [
+        entry(
+            RemoteSource::Tmdb,
+            Some(SyncKindSet::from_kinds([SyncKind::AirDate])),
+        ),
+        entry(
+            RemoteSource::Tvdb,
+            Some(SyncKindSet::from_kinds([SyncKind::Base])),
+        ),
+    ];
+    assert_eq!(
+        eligible_sync_kinds(&both, &config),
+        SyncKindSet::from_kinds([SyncKind::Base, SyncKind::AirDate])
+    );
+
+    // With Base excluded from every remote, Base is no longer eligible, so its
+    // derived seasons/episodes should be cleared on sync.
+    let air_only = [
+        entry(
+            RemoteSource::Tmdb,
+            Some(SyncKindSet::from_kinds([SyncKind::AirDate])),
+        ),
+        entry(RemoteSource::Tvmaze, None),
+    ];
+    let eligible = eligible_sync_kinds(&air_only, &config);
+    assert!(!eligible.contains(SyncKind::Base));
+    assert!(eligible.contains(SyncKind::AirDate));
+
+    // A disabled remote contributes nothing.
+    let mut disabled = entry(RemoteSource::Tmdb, None);
+    disabled.enabled = false;
+    assert!(eligible_sync_kinds(&[disabled], &config).is_empty());
+}
+
+#[test]
+fn air_date_priority_prefers_higher_ranked_source() {
+    let releases = [
+        rel(RemoteSource::Tmdb, Country::DEFAULT, "", 200),
+        rel(RemoteSource::Tvmaze, Country::DEFAULT, "", 300),
+    ];
+    let priority = default_air_date_priority();
+
+    // TVmaze outranks TMDB even though its date is later.
+    let aired = effective_aired(&releases, &priority, &[]).unwrap();
+    assert_eq!(aired.inner().as_second(), 300);
+
+    // Flip the priority and TMDB wins.
+    let flipped = [RemoteSource::Tmdb, RemoteSource::Tvmaze];
+    let aired = effective_aired(&releases, &flipped, &[]).unwrap();
+    assert_eq!(aired.inner().as_second(), 200);
+}
+
+#[test]
+fn air_date_filter_restricts_country() {
+    let releases = [
+        rel(RemoteSource::Tvmaze, Country::US, "", 300),
+        rel(RemoteSource::Tvmaze, Country::GB, "", 100),
+    ];
+    let priority = default_air_date_priority();
+    let filters = [AirDateFilter {
+        source: RemoteSource::Tvmaze,
+        countries: vec![Country::GB],
+        networks: Vec::new(),
+    }];
+
+    // Only the GB date qualifies for TVmaze.
+    let aired = effective_aired(&releases, &priority, &filters).unwrap();
+    assert_eq!(aired.inner().as_second(), 100);
+}
+
+#[test]
+fn air_date_ignores_ineligible_source() {
+    // A source absent from the priority list (e.g. its AirDate kind is
+    // excluded) does not contribute, even as the only release.
+    let releases = [rel(RemoteSource::Unknown, Country::DEFAULT, "", 50)];
+    assert!(effective_aired(&releases, &default_air_date_priority(), &[]).is_none());
+}
+
+#[test]
+fn air_date_none_when_no_eligible_source() {
+    // Excluding air dates from every remote leaves no eligible source, so even
+    // a stored release yields no effective date.
+    let releases = [rel(RemoteSource::Tvmaze, Country::DEFAULT, "", 50)];
+    assert!(effective_aired(&releases, &[], &[]).is_none());
+}
+
+#[test]
+fn air_date_earliest_within_winning_source() {
+    let releases = [
+        rel(RemoteSource::Tvmaze, Country::US, "", 300),
+        rel(RemoteSource::Tvmaze, Country::JP, "", 150),
+        rel(RemoteSource::Tmdb, Country::DEFAULT, "", 10),
+    ];
+    let aired = effective_aired(&releases, &default_air_date_priority(), &[]).unwrap();
+    // TVmaze wins by priority; earliest of its dates is used.
+    assert_eq!(aired.inner().as_second(), 150);
+}

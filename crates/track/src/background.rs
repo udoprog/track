@@ -47,8 +47,7 @@ pub(crate) async fn discover_pending_movies(db: &Database) -> anyhow::Result<()>
         .await
         .context("Listing movie pending candidates")?;
 
-    for (id, raw) in candidates {
-        let filters = raw.as_deref().and_then(api::decode_release_filters);
+    for (id, filters) in candidates {
         let releases = db
             .movie_releases(id)
             .await

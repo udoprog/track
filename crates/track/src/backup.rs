@@ -89,9 +89,9 @@ enum BackupRow {
         slug: Option<String>,
         enabled: bool,
         priority: i32,
-        /// Raw [`api::SyncKindSet`] bits; absent means "inherit the default".
+        /// The sync kinds this remote contributes; absent means "inherit the default".
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        sync_kinds: Option<u32>,
+        sync_kinds: Option<api::SyncKindSet>,
     },
     /// A remote attached to a movie.
     MovieRemote {
@@ -106,7 +106,7 @@ enum BackupRow {
         enabled: bool,
         priority: i32,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        sync_kinds: Option<u32>,
+        sync_kinds: Option<api::SyncKindSet>,
     },
     /// A single watched episode, keyed by show + season + episode (not episode id,
     /// so it survives a re-sync).
@@ -159,7 +159,7 @@ async fn export(db: &Database, mut out: impl Write) -> Result<()> {
             slug: r.slug,
             enabled: r.enabled,
             priority: r.priority,
-            sync_kinds: r.sync_kinds.map(|k| k.bits()),
+            sync_kinds: r.sync_kinds,
         };
         writeln!(out, "{}", serde_json::to_string(&row)?)?;
     }
@@ -173,7 +173,7 @@ async fn export(db: &Database, mut out: impl Write) -> Result<()> {
             slug: r.slug,
             enabled: r.enabled,
             priority: r.priority,
-            sync_kinds: r.sync_kinds.map(|k| k.bits()),
+            sync_kinds: r.sync_kinds,
         };
         writeln!(out, "{}", serde_json::to_string(&row)?)?;
     }
@@ -244,7 +244,7 @@ async fn import(db: &Database, input: impl BufRead) -> Result<(ImportStats, Impo
                         slug,
                         enabled,
                         priority,
-                        sync_kinds: sync_kinds.map(api::SyncKindSet::from_bits),
+                        sync_kinds,
                     })
                     .await?;
                 remotes.record(inserted);
@@ -268,7 +268,7 @@ async fn import(db: &Database, input: impl BufRead) -> Result<(ImportStats, Impo
                         slug,
                         enabled,
                         priority,
-                        sync_kinds: sync_kinds.map(api::SyncKindSet::from_bits),
+                        sync_kinds,
                     })
                     .await?;
                 remotes.record(inserted);
@@ -476,6 +476,13 @@ mod tests {
         let show_str = api::ShowId::new(1001).to_string();
         assert!(episode_line.contains(&format!("\"show\":\"{show_str}\"")));
         assert!(episode_line.contains("\"timestamp\":\"2023-11-14T22:13:20.123Z\""));
+
+        // sync_kinds is a sequence of strings, not a bitmask.
+        let remote_line = exported
+            .lines()
+            .find(|l| l.contains("show_remote"))
+            .unwrap();
+        assert!(remote_line.contains("\"sync_kinds\":[\"base\",\"air_date\"]"));
     }
 
     #[tokio::test]
