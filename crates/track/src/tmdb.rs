@@ -310,6 +310,27 @@ impl Client {
         let mut seasons = Vec::with_capacity(details.seasons.len());
 
         for s in details.seasons {
+            // Prefer the localized season name/overview, falling back to whatever the
+            // default-language request returned — the same resolution applied to the
+            // show title/overview below. Reuses the already-fetched `localized` response.
+            let localized_season = localized.as_ref().and_then(|l| {
+                l.seasons
+                    .iter()
+                    .find(|ls| ls.season_number == s.season_number)
+            });
+
+            let name = localized_season
+                .and_then(|ls| ls.name.as_deref())
+                .filter(|s| !s.trim().is_empty())
+                .or(s.name.as_deref().filter(|s| !s.trim().is_empty()))
+                .map(str::to_owned);
+
+            let overview = localized_season
+                .and_then(|ls| ls.overview.as_deref())
+                .filter(|s| !s.trim().is_empty())
+                .or(s.overview.as_deref().filter(|s| !s.trim().is_empty()))
+                .map(str::to_owned);
+
             seasons.push(SeasonInfo {
                 number: match s.season_number {
                     Some(n) => SeasonNumber::from_ordinal(n),
@@ -318,8 +339,8 @@ impl Client {
                 air_date: opt_date(s.air_date.as_deref())
                     .map(|d| d.to_timestamp_at_midnight_utc())
                     .transpose()?,
-                name: s.name.filter(|s| !s.trim().is_empty()),
-                overview: s.overview.filter(|s| !s.trim().is_empty()),
+                name,
+                overview,
                 poster: s.poster_path.as_deref().map(ImageKey::tmdb),
             })
         }

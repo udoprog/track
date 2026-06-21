@@ -932,8 +932,9 @@ impl ::sqll::BindValue for RemoteSource {
 }
 
 /// The value part of a remote identifier either an integer or a string.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize)]
 #[musli(crate = musli_core)]
+#[serde(untagged)]
 pub enum RemoteValue {
     Int(u32),
     Str(String),

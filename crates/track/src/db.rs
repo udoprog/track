@@ -354,6 +354,40 @@ struct AllMovieRemoteRow {
     sync_kinds: Option<api::SyncKindSet>,
 }
 
+/// A remote flattened for backup export: its stable identifier, the owning
+/// show/movie id, and its full structure.
+#[derive(Debug)]
+pub(crate) struct ExportRemote<Owner> {
+    pub id: RemoteId,
+    pub owner: Owner,
+    pub source: RemoteSource,
+    pub value: RemoteValue,
+    pub slug: Option<String>,
+    pub enabled: bool,
+    pub priority: i32,
+    pub sync_kinds: Option<api::SyncKindSet>,
+}
+
+/// A watched-episode row for backup export (`list_all_watched_episodes`). The
+/// `show_id` is nullable in the table; orphaned rows are skipped on export.
+#[derive(Row)]
+struct AllWatchedEpisodeRow {
+    id: WatchedId,
+    timestamp: Timestamp,
+    show_id: Option<ShowId>,
+    season: SeasonNumber,
+    episode: u32,
+}
+
+/// A watched-movie row for backup export (`list_all_watched_movies`). The
+/// `movie_id` is nullable in the table; orphaned rows are skipped on export.
+#[derive(Row)]
+struct AllWatchedMovieRow {
+    id: WatchedId,
+    timestamp: Timestamp,
+    movie_id: Option<MovieId>,
+}
+
 /// A title translation for a show (`list_all_show_titles`) or movie
 /// (`list_all_movie_titles`), grouped onto its owner in Rust.
 #[derive(Row)]
@@ -623,7 +657,19 @@ struct InnerRead {
     #[sql = "ORDER BY m.release_date, m.title"]
     list_schedule_movies: TypedStatement<(Timestamp, Timestamp), ScheduleMovieRow>,
 
-    // all watched (for import dedup) see list_all_watched_episodes / list_all_watched_movies
+    // all watched + existence checks (backup export/import)
+    #[sql = "SELECT id, timestamp, show_id, season, episode FROM watched_episodes ORDER BY show_id, season, episode, id"]
+    list_all_watched_episodes: TypedStatement<(), AllWatchedEpisodeRow>,
+    #[sql = "SELECT id, timestamp, movie_id FROM watched_movies ORDER BY movie_id, id"]
+    list_all_watched_movies: TypedStatement<(), AllWatchedMovieRow>,
+    #[sql = "SELECT 1 FROM watched_episodes WHERE id = ? LIMIT 1"]
+    watched_episode_exists: TypedStatement<(WatchedId,), (i64,)>,
+    #[sql = "SELECT 1 FROM watched_movies WHERE id = ? LIMIT 1"]
+    watched_movie_exists: TypedStatement<(WatchedId,), (i64,)>,
+    #[sql = "SELECT 1 FROM show_remotes WHERE id = ? LIMIT 1"]
+    show_remote_exists: TypedStatement<(RemoteId,), (i64,)>,
+    #[sql = "SELECT 1 FROM movie_remotes WHERE id = ? LIMIT 1"]
+    movie_remote_exists: TypedStatement<(RemoteId,), (i64,)>,
 
     // config
     #[sql = "SELECT value FROM config WHERE key = ?"]
@@ -3210,6 +3256,228 @@ impl Database {
         let result = spawn_blocking(move || {
             s.insert_watched_movie.execute((id, timestamp, movie_id))?;
             Ok(())
+        });
+
+        result.await?
+    }
+
+    // --- backup export (read-only) ---
+
+    /// Every show remote, flattened for backup export: its stable identifier, the
+    /// owning show, and its structure.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn export_show_remotes(&self) -> Result<Vec<ExportRemote<ShowId>>> {
+        let mut s = self.inner.clone().shared().await?;
+
+        let result = spawn_blocking(move || {
+            let mut out = Vec::new();
+            let mut stmt = s.list_all_show_remotes.query()?;
+
+            while let Some(r) = stmt.next()? {
+                out.push(ExportRemote {
+                    id: r.id,
+                    owner: r.show_id,
+                    source: r.source,
+                    value: r.value,
+                    slug: r.slug,
+                    enabled: r.enabled,
+                    priority: r.priority,
+                    sync_kinds: r.sync_kinds,
+                });
+            }
+
+            Ok(out)
+        });
+
+        result.await?
+    }
+
+    /// Every movie remote, flattened for backup export.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn export_movie_remotes(&self) -> Result<Vec<ExportRemote<MovieId>>> {
+        let mut s = self.inner.clone().shared().await?;
+
+        let result = spawn_blocking(move || {
+            let mut out = Vec::new();
+            let mut stmt = s.list_all_movie_remotes.query()?;
+
+            while let Some(r) = stmt.next()? {
+                out.push(ExportRemote {
+                    id: r.id,
+                    owner: r.movie_id,
+                    source: r.source,
+                    value: r.value,
+                    slug: r.slug,
+                    enabled: r.enabled,
+                    priority: r.priority,
+                    sync_kinds: r.sync_kinds,
+                });
+            }
+
+            Ok(out)
+        });
+
+        result.await?
+    }
+
+    /// Every watched episode for backup export. Orphaned rows (NULL `show_id`)
+    /// can't be attributed to a show and are skipped.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn export_watched_episodes(
+        &self,
+    ) -> Result<Vec<(WatchedId, Timestamp, ShowId, SeasonNumber, u32)>> {
+        let mut s = self.inner.clone().shared().await?;
+
+        let result = spawn_blocking(move || {
+            let mut out = Vec::new();
+            let mut stmt = s.list_all_watched_episodes.query()?;
+
+            while let Some(r) = stmt.next()? {
+                let Some(show_id) = r.show_id else {
+                    continue;
+                };
+
+                out.push((r.id, r.timestamp, show_id, r.season, r.episode));
+            }
+
+            Ok(out)
+        });
+
+        result.await?
+    }
+
+    /// Every watched movie for backup export. Orphaned rows (NULL `movie_id`) are
+    /// skipped.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn export_watched_movies(
+        &self,
+    ) -> Result<Vec<(WatchedId, Timestamp, MovieId)>> {
+        let mut s = self.inner.clone().shared().await?;
+
+        let result = spawn_blocking(move || {
+            let mut out = Vec::new();
+            let mut stmt = s.list_all_watched_movies.query()?;
+
+            while let Some(r) = stmt.next()? {
+                let Some(movie_id) = r.movie_id else {
+                    continue;
+                };
+
+                out.push((r.id, r.timestamp, movie_id));
+            }
+
+            Ok(out)
+        });
+
+        result.await?
+    }
+
+    // --- backup import (idempotent; bool = inserted vs. ignored duplicate) ---
+
+    /// Insert a show remote under its original identifier, preserving its
+    /// structure. Idempotent: an existing identifier is left untouched.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn import_show_remote(&self, remote: ExportRemote<ShowId>) -> Result<bool> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            let exists = s.show_remote_exists.bind((remote.id,))?.first()?.is_some();
+
+            if exists {
+                return Ok(false);
+            }
+
+            s.insert_show_remote.execute((
+                remote.id,
+                remote.slug,
+                remote.owner,
+                remote.source,
+                remote.value,
+                remote.enabled,
+                remote.priority,
+                remote.sync_kinds,
+            ))?;
+
+            Ok(true)
+        });
+
+        result.await?
+    }
+
+    /// Insert a movie remote under its original identifier, preserving its
+    /// structure. Idempotent.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn import_movie_remote(&self, remote: ExportRemote<MovieId>) -> Result<bool> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            let exists = s.movie_remote_exists.bind((remote.id,))?.first()?.is_some();
+
+            if exists {
+                return Ok(false);
+            }
+
+            s.insert_movie_remote.execute((
+                remote.id,
+                remote.slug,
+                remote.owner,
+                remote.source,
+                remote.value,
+                remote.enabled,
+                remote.priority,
+                remote.sync_kinds,
+            ))?;
+
+            Ok(true)
+        });
+
+        result.await?
+    }
+
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn import_watched_episode(
+        &self,
+        id: WatchedId,
+        timestamp: Timestamp,
+        show_id: ShowId,
+        season: SeasonNumber,
+        episode: u32,
+    ) -> Result<bool> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            let exists = s.watched_episode_exists.bind((id,))?.first()?.is_some();
+
+            if exists {
+                return Ok(false);
+            }
+
+            s.insert_watched_episode
+                .execute((id, timestamp, show_id, season, episode))?;
+            Ok(true)
+        });
+
+        result.await?
+    }
+
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn import_watched_movie(
+        &self,
+        id: WatchedId,
+        timestamp: Timestamp,
+        movie_id: MovieId,
+    ) -> Result<bool> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            let exists = s.watched_movie_exists.bind((id,))?.first()?.is_some();
+
+            if exists {
+                return Ok(false);
+            }
+
+            s.insert_watched_movie.execute((id, timestamp, movie_id))?;
+            Ok(true)
         });
 
         result.await?

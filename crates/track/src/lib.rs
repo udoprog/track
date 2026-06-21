@@ -1,5 +1,6 @@
 mod app_broadcast;
 mod background;
+mod backup;
 mod cache;
 mod db;
 mod entry;
@@ -18,5 +19,6 @@ mod tvmaze;
 mod web;
 mod ws;
 
+pub use self::backup::{BackupCommand, backup};
 pub use self::entry::server;
 pub use self::import::import;
