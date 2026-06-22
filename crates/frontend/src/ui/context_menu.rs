@@ -12,8 +12,6 @@ use crate::error::{CustomContext, Error, Message};
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
-    /// If the menu is open or not.
-    pub(crate) open: bool,
     /// The trigger element to position against. The host wires this `NodeRef`
     /// to the exact element it wants the popover anchored to — measured
     /// directly, so positioning never depends on event targets (unreliable
@@ -113,12 +111,6 @@ impl Component for ContextMenu {
     }
 
     fn rendered(&mut self, ctx: &Context<Self>, _first_render: bool) {
-        if !ctx.props().open {
-            // Closed: forget the last size so the next open always re-places.
-            self.placed = None;
-            return;
-        };
-
         let Some(menu) = ctx.props().anchor.cast::<HtmlElement>() else {
             return;
         };
@@ -144,11 +136,6 @@ impl Component for ContextMenu {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let props = ctx.props();
-
-        if !props.open {
-            return html!();
-        }
-
         let on_close = props.on_close.clone();
 
         html! {

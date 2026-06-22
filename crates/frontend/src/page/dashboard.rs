@@ -499,26 +499,13 @@ impl Dashboard {
             None
         };
 
-        let this_code = if let api::PendingInfo::Episode { season, number, .. } = pending.info {
+        let skip_code = if let api::PendingInfo::Episode { season, number, .. } = pending.info {
             Some(api::Code::new(season, number))
         } else {
             None
         };
 
         let confirming = self.confirming_skip.is_some() && (self.confirming_skip == skip_ids);
-
-        let skip = match (skip_ids, this_code) {
-            (Some((show, episode)), Some(code)) => html! {
-                <ConfirmDanger
-                    icon="forward"
-                    prompt="Skip episode"
-                    label={code.to_string()}
-                    on_confirm={ctx.link().callback(move |_| Msg::SkipEpisode(show, episode))}
-                    on_cancel={ctx.link().callback(|_| Msg::CancelSkipEpisode)}
-                />
-            },
-            _ => html!(),
-        };
 
         let title = match &pending.info {
             api::PendingInfo::Movie { title, .. } => {
@@ -583,9 +570,17 @@ impl Dashboard {
                         <span class="icon forward" />
                     </button>
 
-                    <ContextMenu key="skip-menu" open={confirming} anchor={anchor.clone()} on_close={ctx.link().callback(|_| Msg::CancelSkipEpisode)} onerror={ctx.props().onerror.clone()}>
-                        {skip}
-                    </ContextMenu>
+                    if confirming && let Some(code) = skip_code {
+                        <ContextMenu anchor={anchor.clone()} on_close={ctx.link().callback(|_| Msg::CancelSkipEpisode)} onerror={ctx.props().onerror.clone()}>
+                            <ConfirmDanger
+                                icon="forward"
+                                prompt="Skip episode"
+                                label={code}
+                                on_confirm={ctx.link().callback(move |_| Msg::SkipEpisode(show, episode))}
+                                on_cancel={ctx.link().callback(|_| Msg::CancelSkipEpisode)}
+                            />
+                        </ContextMenu>
+                    }
                 }
             </div>
         };

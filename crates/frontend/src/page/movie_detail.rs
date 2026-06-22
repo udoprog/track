@@ -8,16 +8,22 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaQuery, Route, Router};
 use crate::ui::{
-    ConfirmDanger, Image, ImageGallery, ImageItem, Loading, MarkTimeMenu, MediaSettingsModal,
-    Modal, RemoteEditor, RemoteSourceKind, Tracked, TranslationsModal,
+    ConfirmDanger, ContextMenu, Image, ImageGallery, ImageItem, Loading, MarkTimeMenu,
+    MediaSettingsModal, Modal, RemoteEditor, RemoteSourceKind, Tracked, TranslationsModal,
 };
+
+struct WatchedState {
+    remove_watch_anchor: NodeRef,
+    watched: api::Watched,
+}
 
 pub(crate) struct MovieDetail {
     channel: ws::Channel,
     movie: Option<api::Movie>,
     graphics: BTreeMap<api::ImageKind, Vec<ImageItem>>,
-    watched: Vec<api::Watched>,
+    watched: Vec<WatchedState>,
     confirm_remove: bool,
+    remove_anchor: NodeRef,
     confirm_remove_watch: Option<api::WatchedId>,
     syncing: bool,
     actions_expanded: bool,
@@ -160,6 +166,7 @@ impl Component for MovieDetail {
             graphics: BTreeMap::new(),
             watched: Vec::new(),
             confirm_remove: false,
+            remove_anchor: NodeRef::default(),
             confirm_remove_watch: None,
             syncing: false,
             actions_expanded: false,
@@ -324,11 +331,21 @@ impl MovieDetail {
                 Ok(true)
             }
             Msg::WatchedLoaded(result) => {
-                self.watched = result
+                let watched = result
                     .context(Message::LoadingWatched)?
                     .decode()
                     .context(Message::LoadingWatched)?
                     .watched;
+
+                self.watched.clear();
+
+                for w in watched {
+                    self.watched.push(WatchedState {
+                        remove_watch_anchor: NodeRef::default(),
+                        watched: w,
+                    });
+                }
+
                 Ok(true)
             }
             Msg::MarkWatched(mark_time) => {
@@ -988,8 +1005,8 @@ impl MovieDetail {
                                 <span class="text-muted">
                                     {match &self.watched[..] {
                                         [] => "Never watched".to_string(),
-                                        [w] => format!("Watched once at {}", w.timestamp.display(self.tz.clone())),
-                                        [first, ..] => format!("Watched {} times, first at {}", self.watched.len(), first.timestamp.display(self.tz.clone())),
+                                        [w] => format!("Watched once at {}", w.watched.timestamp.display(self.tz.clone())),
+                                        [w, ..] => format!("Watched {} times, first at {}", self.watched.len(), w.watched.timestamp.display(self.tz.clone())),
                                     }}
                                 </span>
                             </div>
@@ -1046,18 +1063,20 @@ impl MovieDetail {
                 <div class="desktop-row mobile-column end desktop-input-group">
                     <Tracked tracked={movie.tracked} ontoggle={link.callback(Msg::SetTracked)} />
 
+                    <button ref={self.remove_anchor.clone()} class="btn-danger" onclick={link.callback(|_| Msg::ConfirmRemove)} title="Remove movie">
+                        <span class="icon trash" />
+                        <span class="hide-desktop">{"Remove"}</span>
+                    </button>
+
                     if self.confirm_remove {
-                        <ConfirmDanger
-                            prompt="Remove movie"
-                            label={movie.title.clone()}
-                            on_confirm={link.callback(|_| Msg::RemoveMovie)}
-                            on_cancel={link.callback(|_| Msg::CancelRemove)}
-                        />
-                    } else {
-                        <button class="btn-danger" onclick={link.callback(|_| Msg::ConfirmRemove)} title="Remove movie">
-                            <span class="icon trash" />
-                            <span class="hide-desktop">{"Remove"}</span>
-                        </button>
+                        <ContextMenu anchor={self.remove_anchor.clone()} on_close={link.callback(|_| Msg::CancelRemove)} onerror={ctx.props().onerror.clone()}>
+                            <ConfirmDanger
+                                prompt="Remove movie"
+                                label={movie.title.clone()}
+                                on_confirm={link.callback(|_| Msg::RemoveMovie)}
+                                on_cancel={link.callback(|_| Msg::CancelRemove)}
+                            />
+                        </ContextMenu>
                     }
 
                     if !movie.remotes.is_empty() {
@@ -1105,30 +1124,30 @@ impl MovieDetail {
 
                             <div class="column">
                                 { for self.watched.iter().map(|w| {
-                                    let wid = w.id;
+                                    let wid = w.watched.id;
                                     let kind = api::WatchedKind::Movie { movie: movie_id };
 
-                                    if self.confirm_remove_watch == Some(wid) {
-                                        html! {
-                                            <ConfirmDanger
-                                                prompt="Remove watch at"
-                                                label={w.timestamp.display(self.tz.clone())}
-                                                on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, kind))}
-                                                on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
-                                            />
-                                        }
-                                    } else {
-                                        html! {
-                                            <div class="row-split">
-                                                <div class="row fill">
-                                                    <span>{w.timestamp.display(self.tz.clone())}</span>
-                                                </div>
-
-                                                <button class="btn-danger end" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
-                                                    <span class="icon trash" />
-                                                </button>
+                                    html! {
+                                        <div class="row-split">
+                                            <div class="row fill">
+                                                <span>{w.watched.timestamp.display(self.tz.clone())}</span>
                                             </div>
-                                        }
+
+                                            <button class="btn-danger end" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
+                                                <span class="icon trash" />
+                                            </button>
+
+                                            if self.confirm_remove_watch == Some(wid) {
+                                                <ContextMenu anchor={w.remove_watch_anchor.clone()} on_close={link.callback(|_| Msg::CancelRemoveWatch)} onerror={ctx.props().onerror.clone()}>
+                                                    <ConfirmDanger
+                                                        prompt="Remove watch at"
+                                                        label={w.watched.timestamp.display(self.tz.clone())}
+                                                        on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, kind))}
+                                                        on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
+                                                    />
+                                                </ContextMenu>
+                                            }
+                                        </div>
                                     }
                                 }) }
                             </div>

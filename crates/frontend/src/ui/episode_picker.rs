@@ -132,6 +132,7 @@ impl Component for EpisodePicker {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let link = ctx.link();
+        let props = ctx.props();
 
         let on_season_change = link.callback(|e: Event| {
             let select: web_sys::HtmlSelectElement = e.target_unchecked_into();
@@ -148,18 +149,18 @@ impl Component for EpisodePicker {
         let can_confirm = self.selected_season.is_some() && self.selected_episode.is_some();
 
         html! {
-            <div class="row-split fill">
-                <div class="row">
-                    if let Some(ref label) = ctx.props().label {
-                        <span class="fill">{&ctx.props().prompt}{" "}{label}{"?"}</span>
-                    } else {
-                        <span class="fill">{&ctx.props().prompt}{"?"}</span>
+            <div class="column">
+                <div class="row text-gap">
+                    <span>{&props.prompt}</span>
+
+                    if let Some(ref label) = props.label {
+                        <span>{label}{"?"}</span>
                     }
                 </div>
 
-                <div class="row end">
+                <div class="row align-end">
                     <select class="input-select" onchange={on_season_change}>
-                        { for ctx.props().seasons.iter().map(|s| {
+                        { for props.seasons.iter().map(|s| {
                             let value = s.season.ordinal().to_string();
                             let selected = self.selected_season == Some(s.season);
                             html! { <option {value} {selected}>{s.season.long().to_string()}</option> }
@@ -180,6 +181,7 @@ impl Component for EpisodePicker {
                             title="Cancel">
                             <span class="icon x-mark" />
                         </button>
+
                         <button class="btn-success" onclick={link.callback(|_| Msg::Confirm)}
                             title="Confirm" disabled={!can_confirm}>
                             <span class="icon check" />

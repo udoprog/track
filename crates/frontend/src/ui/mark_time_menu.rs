@@ -443,9 +443,11 @@ impl Component for MarkTimeMenu {
                     { for props.children.iter() }
                 </button>
 
-                <ContextMenu open={self.context_open} anchor={self.anchor.clone()} on_close={link.callback(|_| Msg::Close)} onerror={props.onerror.clone()}>
-                    {context_content}
-                </ContextMenu>
+                if self.context_open {
+                    <ContextMenu anchor={self.anchor.clone()} on_close={link.callback(|_| Msg::Close)} onerror={props.onerror.clone()}>
+                        {context_content}
+                    </ContextMenu>
+                }
             </>
         }
     }

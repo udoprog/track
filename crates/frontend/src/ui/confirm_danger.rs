@@ -26,7 +26,7 @@ pub(crate) fn ConfirmDanger(props: &Props) -> Html {
 
     html! {
         <div class="row-split fill">
-            <div class="row">
+            <div class="row text-gap">
                 if let Some(ref icon) = props.icon {
                     <span class="item-inline">
                         <span class={classes!("icon", icon)} />
