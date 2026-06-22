@@ -1,6 +1,9 @@
 use web_sys::{Event, InputEvent};
 use yew::prelude::*;
 
+use crate::error::Error;
+use crate::ui::ContextMenu;
+
 use super::{ConfirmDanger, MDASH, Modal};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,6 +65,7 @@ pub(crate) struct Props {
     pub(crate) on_set_sync_kinds: Callback<(api::RemoteId, Option<api::SyncKindSet>)>,
     pub(crate) global_sync_kinds: Vec<api::SourceSyncKinds>,
     pub(crate) on_close: Callback<()>,
+    pub(crate) onerror: Callback<Error>,
 }
 
 pub(crate) enum Msg {
@@ -73,13 +77,25 @@ pub(crate) enum Msg {
     Submit,
     Edit(api::RemoteEntry),
     CancelEdit,
-    AskRemove(api::RemoteEntry),
+    AskRemove(api::RemoteId),
     CancelRemove,
     ConfirmRemove(api::RemoteId),
     SetEnabled(api::RemoteId, bool),
     SetSyncKinds(api::RemoteId, Option<api::SyncKindSet>),
     Move(usize, isize),
     Close,
+}
+
+struct RemoteState {
+    context_anchor: NodeRef,
+    remote: api::RemoteEntry,
+}
+
+impl PartialEq<api::RemoteEntry> for RemoteState {
+    #[inline]
+    fn eq(&self, other: &api::RemoteEntry) -> bool {
+        self.remote == *other
+    }
 }
 
 pub(crate) struct RemoteEditor {
@@ -93,12 +109,13 @@ pub(crate) struct RemoteEditor {
     /// When set, the form edits the remote with this id instead of adding.
     editing: Option<api::RemoteId>,
     /// When set, awaiting confirmation to remove this identifier.
-    confirming_remove: Option<api::RemoteEntry>,
+    confirming_remove: Option<api::RemoteId>,
     /// When set, display this error message related to the identifier form.
     error: Option<String>,
     /// The source `<select>`; its displayed selection is a DOM property that
     /// must be set imperatively when `source` changes programmatically.
     source_ref: NodeRef,
+    remotes: Vec<RemoteState>,
 }
 
 impl RemoteEditor {
@@ -110,14 +127,31 @@ impl RemoteEditor {
         self.editing = None;
         self.error = None;
     }
+
+    fn populate_remotes(&mut self, ctx: &Context<Self>) {
+        for (r, o) in ctx.props().remotes.iter().zip(self.remotes.iter_mut()) {
+            o.remote = r.clone();
+        }
+
+        for remote in ctx.props().remotes.iter().skip(self.remotes.len()) {
+            self.remotes.push(RemoteState {
+                context_anchor: NodeRef::default(),
+                remote: remote.clone(),
+            });
+        }
+
+        if self.remotes.len() > ctx.props().remotes.len() {
+            self.remotes.truncate(ctx.props().remotes.len());
+        }
+    }
 }
 
 impl Component for RemoteEditor {
     type Message = Msg;
     type Properties = Props;
 
-    fn create(_ctx: &Context<Self>) -> Self {
-        Self {
+    fn create(ctx: &Context<Self>) -> Self {
+        let mut this = Self {
             source: api::RemoteSource::Tmdb,
             value: String::new(),
             slug: String::new(),
@@ -126,7 +160,19 @@ impl Component for RemoteEditor {
             confirming_remove: None,
             error: None,
             source_ref: NodeRef::default(),
+            remotes: Vec::new(),
+        };
+
+        this.populate_remotes(ctx);
+        this
+    }
+
+    fn changed(&mut self, ctx: &Context<Self>, _old: &Self::Properties) -> bool {
+        if self.remotes != ctx.props().remotes {
+            self.populate_remotes(ctx);
         }
+
+        true
     }
 
     fn rendered(&mut self, _ctx: &Context<Self>, _first_render: bool) {
@@ -201,8 +247,8 @@ impl Component for RemoteEditor {
                 self.reset_form();
                 true
             }
-            Msg::AskRemove(entry) => {
-                self.confirming_remove = Some(entry);
+            Msg::AskRemove(id) => {
+                self.confirming_remove = Some(id);
                 true
             }
             Msg::CancelRemove => {
@@ -286,35 +332,21 @@ impl Component for RemoteEditor {
                 if props.remotes.is_empty() {
                     <div class="text-muted">{"No remotes"}</div>
                 } else {
-                    { for props.remotes.iter().enumerate().map(|(index, r)| {
-                        let key = r.remote.to_string();
+                    { for self.remotes.iter().enumerate().map(|(index, r)| {
+                        let key = r.remote.remote.to_string();
                         let count = props.remotes.len();
 
-                        if self.confirming_remove.as_ref() == Some(r) {
-                            let remote_id = r.id;
-
-                            return html! {
-                                <ConfirmDanger
-                                    key={key}
-                                    prompt="Remove"
-                                    label={r.remote.to_string()}
-                                    on_confirm={link.callback(move |_| Msg::ConfirmRemove(remote_id))}
-                                    on_cancel={link.callback(|_| Msg::CancelRemove)}
-                                />
-                            };
-                        }
-
-                        let editing_this = self.editing == Some(r.id);
-                        let edit_entry = r.clone();
-                        let remove_entry = r.clone();
-                        let enable_id = r.id;
-                        let enabled = r.enabled;
+                        let editing_this = self.editing == Some(r.remote.id);
+                        let edit_entry = r.remote.clone();
+                        let id = r.remote.id;
+                        let enabled = r.remote.enabled;
 
                         // Per-remote sync-kind selection: show the effective set
                         // (this remote's override, else the global default for its
                         // source), clamped to what the source can provide.
-                        let source = *r.remote.source();
+                        let source = *r.remote.remote.source();
                         let capability = source.default_sync_kinds();
+
                         let global_default = props
                             .global_sync_kinds
                             .iter()
@@ -323,9 +355,8 @@ impl Component for RemoteEditor {
                             .unwrap_or(capability)
                             .intersect(capability);
 
-                        let effective = r.sync_kinds.unwrap_or(global_default).intersect(capability);
-                        let overriding = r.sync_kinds.is_some();
-                        let sync_id = r.id;
+                        let effective = r.remote.sync_kinds.unwrap_or(global_default).intersect(capability);
+                        let overriding = r.remote.sync_kinds.is_some();
 
                         let kind_toggles = (!capability.is_empty()).then(|| html! {
                             <div class="input-group" title="Kinds synced from this source">
@@ -335,7 +366,7 @@ impl Component for RemoteEditor {
                                     html! {
                                         <span
                                             class={classes!("input-checkbox", on.then_some("checked"))}
-                                            onclick={link.callback(move |_| Msg::SetSyncKinds(sync_id, Some(next)))}
+                                            onclick={link.callback(move |_| Msg::SetSyncKinds(id, Some(next)))}
                                             title={kind.as_label()}
                                         >
                                             <span class="mark" />
@@ -345,7 +376,7 @@ impl Component for RemoteEditor {
                                 }) }
 
                                 if overriding {
-                                    <button class="btn" onclick={link.callback(move |_| Msg::SetSyncKinds(sync_id, None))} title="Reset to global default">
+                                    <button class="btn" onclick={link.callback(move |_| Msg::SetSyncKinds(id, None))} title="Reset to global default">
                                         <span class="icon arrow-uturn-left" />
                                     </button>
                                 }
@@ -353,19 +384,19 @@ impl Component for RemoteEditor {
                         });
 
                         let url = match props.kind {
-                            RemoteSourceKind::Show => r.remote.show_url(r.slug.as_deref()),
-                            RemoteSourceKind::Movie => r.remote.movie_url(),
+                            RemoteSourceKind::Show => r.remote.remote.show_url(r.remote.slug.as_deref()),
+                            RemoteSourceKind::Movie => r.remote.remote.movie_url(),
                         };
 
                         let identifier = html! {
                             <>
                                 <span class="item-inline-lg">
-                                    <span class={classes!("logo", r.remote.source().as_id())} />
+                                    <span class={classes!("logo", r.remote.remote.source().as_id())} />
                                 </span>
 
-                                <span>{r.remote.value().to_string()}</span>
+                                <span>{r.remote.remote.value().to_string()}</span>
 
-                                if let Some(slug) = r.slug.as_deref() {
+                                if let Some(slug) = r.remote.slug.as_deref() {
                                     <span>{format!("/{slug}")}</span>
                                 }
 
@@ -386,7 +417,17 @@ impl Component for RemoteEditor {
                                     }
 
                                     <div class="row end">
-                                        <div class="input-group">
+                                        <div ref={r.context_anchor.clone()} class="input-group">
+                                            <button class="btn" onclick={link.callback(move |_| Msg::Edit(edit_entry.clone()))} title="Edit identifier">
+                                                <span class="icon pencil-square" />
+                                                <span class="hide-desktop">{"Edit"}</span>
+                                            </button>
+
+                                            <button class="btn-danger" onclick={link.callback(move |_| Msg::AskRemove(id))} title="Remove identifier">
+                                                <span class="icon trash" />
+                                                <span class="hide-desktop">{"Remove"}</span>
+                                            </button>
+
                                             <button class="btn" disabled={index == 0} onclick={link.callback(move |_| Msg::Move(index, -1))} title="Higher priority">
                                                 <span class="icon chevron-up" />
                                             </button>
@@ -394,15 +435,21 @@ impl Component for RemoteEditor {
                                             <button class="btn" disabled={index + 1 == count} onclick={link.callback(move |_| Msg::Move(index, 1))} title="Lower priority">
                                                 <span class="icon chevron-down" />
                                             </button>
-
-                                            <button class="btn" onclick={link.callback(move |_| Msg::Edit(edit_entry.clone()))} title="Edit identifier">
-                                                <span class="icon pencil-square" />
-                                            </button>
-
-                                            <button class="btn-danger" onclick={link.callback(move |_| Msg::AskRemove(remove_entry.clone()))} title="Remove identifier">
-                                                <span class="icon trash" />
-                                            </button>
                                         </div>
+
+                                        if self.confirming_remove == Some(id) {
+                                            <ContextMenu
+                                                prompt="Remove"
+                                                label={r.remote.remote.to_string()}
+                                                anchor={r.context_anchor.clone()}
+                                                on_close={link.callback(|_| Msg::CancelRemove)}
+                                                onerror={props.onerror.clone()}>
+                                                <ConfirmDanger
+                                                    on_confirm={link.callback(move |_| Msg::ConfirmRemove(id))}
+                                                    on_cancel={link.callback(|_| Msg::CancelRemove)}
+                                                />
+                                            </ContextMenu>
+                                        }
                                     </div>
                                 </div>
 
@@ -412,8 +459,9 @@ impl Component for RemoteEditor {
                                     </div>
 
                                     <div class="row end">
-                                        <span class={classes!("input-checkbox", enabled.then_some("checked"))} onclick={link.callback(move |_| Msg::SetEnabled(enable_id, !enabled))} title="Use this source for air dates and sync">
+                                        <span class={classes!("input-checkbox", enabled.then_some("checked"))} onclick={link.callback(move |_| Msg::SetEnabled(id, !enabled))} title="Use this source for air dates and sync">
                                             <span class="mark" />
+                                            <span class="hide-desktop">{"Enabled"}</span>
                                         </span>
                                     </div>
                                 </div>

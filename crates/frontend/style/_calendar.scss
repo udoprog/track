@@ -86,7 +86,7 @@
 
 .calendar-day-number {
     @include row-base;
-    gap: 0.5em;
+    gap: $text-gap;
     font-size: $font-lg;
     color: $text-muted;
 }
@@ -120,7 +120,7 @@
 
 .calendar-item-title {
     @include row-base;
-    gap: 0.5em;
+    gap: $text-gap;
     padding: $gap-sm;
 
     @include g.on-mobile {
@@ -152,7 +152,7 @@
     flex-direction: row;
     justify-content: space-between;
     align-items: center;
-    gap: 0.5em;
+    gap: $text-gap;
     padding: 0 $gap-sm;
 
     color: $text-muted;
@@ -177,5 +177,5 @@
 .day-of-week {
     display: flex;
     align-items: center;
-    gap: 0.5em;
+    gap: $text-gap;
 }

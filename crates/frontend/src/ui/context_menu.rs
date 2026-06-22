@@ -12,6 +12,12 @@ use crate::error::{CustomContext, Error, Message};
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
+    #[prop_or_default]
+    pub(crate) icon: Option<AttrValue>,
+    #[prop_or_default]
+    pub(crate) prompt: Option<AttrValue>,
+    #[prop_or_default]
+    pub(crate) label: Option<AttrValue>,
     /// The trigger element to position against. The host wires this `NodeRef`
     /// to the exact element it wants the popover anchored to — measured
     /// directly, so positioning never depends on event targets (unreliable
@@ -145,6 +151,22 @@ impl Component for ContextMenu {
         html! {
             <div class="context-catcher" onclick={Callback::from(move |_| on_close.emit(()))}>
                 <div class="context-menu" ref={self.menu.clone()} onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
+                    if let Some(prompt) = &props.prompt {
+                        <div class="context-menu-header">
+                            if let Some(ref icon) = props.icon {
+                                <span class="item-inline">
+                                    <span class={classes!("icon", icon)} />
+                                </span>
+                            }
+
+                            <span>{prompt}</span>
+
+                            if let Some(ref label) = props.label {
+                                <span>{label}{"?"}</span>
+                            }
+                        </div>
+                    }
+
                     { for props.children.iter() }
                 </div>
             </div>

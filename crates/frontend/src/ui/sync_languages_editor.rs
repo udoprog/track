@@ -85,6 +85,7 @@ impl Component for SyncLanguagesEditor {
 
                                 <button class="btn-danger" onclick={on_remove} title="Remove language">
                                     <span class="icon trash" />
+                                    <span class="hide-desktop">{"Remove"}</span>
                                 </button>
                             </div>
                         }
@@ -94,7 +95,7 @@ impl Component for SyncLanguagesEditor {
                 <div class="table-entry row">
                     <button class="btn" onclick={link.callback(|_| Msg::Open)} title="Add language">
                         <span class="icon plus" />
-                        <span>{"Add language"}</span>
+                        <span class="hide-desktop">{"Add language"}</span>
                     </button>
                 </div>
 

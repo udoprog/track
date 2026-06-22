@@ -373,24 +373,38 @@ impl Outline {
     /// change on scroll, on resize, and as content reflows.
     fn update_mark(&self, ctx: &Context<Self>) -> Result<(), Error> {
         let (Some(page), Some(mark)) = (
-            ctx.props().page.cast::<Element>(),
-            self.mark.cast::<Element>(),
+            ctx.props().page.cast::<HtmlElement>(),
+            self.mark.cast::<HtmlElement>(),
         ) else {
             return Ok(());
         };
 
+        let style = mark.style();
+
         let scroll_height = page.scroll_height();
 
         if scroll_height <= 0 {
-            return Ok(());
+            style
+                .remove_property("--outline-top")
+                .context(Message::SetOutlineStyle)?;
+            style
+                .remove_property("--outline-height")
+                .context(Message::SetOutlineStyle)?;
+        } else {
+            let scroll_height = scroll_height as f64;
+            let top = ((page.scroll_top() as f64 / scroll_height) * 100.0).clamp(0.0, 100.0);
+            let height = ((page.client_height() as f64 / scroll_height) * 100.0).clamp(0.0, 100.0);
+
+            let value = format!("{top:.3}%");
+            style
+                .set_property("--outline-top", &value)
+                .context(Message::SetOutlineStyle)?;
+
+            let value = format!("{height:.3}%");
+            style
+                .set_property("--outline-height", &value)
+                .context(Message::SetOutlineStyle)?;
         }
-
-        let scroll_height = scroll_height as f64;
-        let top = page.scroll_top() as f64 / scroll_height * 100.0;
-        let height = page.client_height() as f64 / scroll_height * 100.0;
-
-        mark.set_attribute("style", &format!("top: {top}%; height: {height}%;"))
-            .context(Message::SetOutlineStyle)?;
 
         Ok(())
     }

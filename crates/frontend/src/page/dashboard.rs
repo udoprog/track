@@ -571,11 +571,14 @@ impl Dashboard {
                     </button>
 
                     if confirming && let Some(code) = skip_code {
-                        <ContextMenu anchor={anchor.clone()} on_close={ctx.link().callback(|_| Msg::CancelSkipEpisode)} onerror={ctx.props().onerror.clone()}>
+                        <ContextMenu
+                            icon="forward"
+                            prompt="Skip episode"
+                            label={code}
+                            anchor={anchor.clone()}
+                            on_close={ctx.link().callback(|_| Msg::CancelSkipEpisode)}
+                            onerror={ctx.props().onerror.clone()}>
                             <ConfirmDanger
-                                icon="forward"
-                                prompt="Skip episode"
-                                label={code}
                                 on_confirm={ctx.link().callback(move |_| Msg::SkipEpisode(show, episode))}
                                 on_cancel={ctx.link().callback(|_| Msg::CancelSkipEpisode)}
                             />

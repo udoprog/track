@@ -418,10 +418,6 @@ impl Component for MarkTimeMenu {
         let context_content = if self.context_open {
             html! {
                 <>
-                    <div class="mark-time-header">
-                        <span>{&props.prompt}</span>
-                    </div>
-
                     {self.view_interaction(ctx)}
 
                     if self.preset == Preset::Custom {
@@ -444,7 +440,7 @@ impl Component for MarkTimeMenu {
                 </button>
 
                 if self.context_open {
-                    <ContextMenu anchor={self.anchor.clone()} on_close={link.callback(|_| Msg::Close)} onerror={props.onerror.clone()}>
+                    <ContextMenu prompt={props.prompt.clone()} anchor={self.anchor.clone()} on_close={link.callback(|_| Msg::Close)} onerror={props.onerror.clone()}>
                         {context_content}
                     </ContextMenu>
                 }

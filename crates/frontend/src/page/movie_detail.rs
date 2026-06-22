@@ -1025,10 +1025,13 @@ impl MovieDetail {
                     </button>
 
                     if self.confirm_remove {
-                        <ContextMenu anchor={self.remove_anchor.clone()} on_close={link.callback(|_| Msg::CancelRemove)} onerror={ctx.props().onerror.clone()}>
+                        <ContextMenu
+                            prompt="Remove movie"
+                            label={movie.title.clone()}
+                            anchor={self.remove_anchor.clone()}
+                            on_close={link.callback(|_| Msg::CancelRemove)}
+                            onerror={ctx.props().onerror.clone()}>
                             <ConfirmDanger
-                                prompt="Remove movie"
-                                label={movie.title.clone()}
                                 on_confirm={link.callback(|_| Msg::RemoveMovie)}
                                 on_cancel={link.callback(|_| Msg::CancelRemove)}
                             />
@@ -1076,7 +1079,7 @@ impl MovieDetail {
 
                     if !self.watched.is_empty() {
                         <div class="column">
-                            <h3>{"Watch history"}</h3>
+                            <h3>{"Watch History"}</h3>
 
                             <div class="column">
                                 { for self.watched.iter().map(|w| {
@@ -1089,15 +1092,19 @@ impl MovieDetail {
                                                 <span>{w.watched.timestamp.display(self.tz.clone())}</span>
                                             </div>
 
-                                            <button class="btn-danger end" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
+                                            <button ref={w.remove_watch_anchor.clone()} class="btn-danger end" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
                                                 <span class="icon trash" />
+                                                <span class="hide-desktop">{"Remove"}</span>
                                             </button>
 
                                             if self.confirm_remove_watch == Some(wid) {
-                                                <ContextMenu anchor={w.remove_watch_anchor.clone()} on_close={link.callback(|_| Msg::CancelRemoveWatch)} onerror={ctx.props().onerror.clone()}>
+                                                <ContextMenu
+                                                    prompt="Remove watch at"
+                                                    label={w.watched.timestamp.display(self.tz.clone())}
+                                                    anchor={w.remove_watch_anchor.clone()}
+                                                    on_close={link.callback(|_| Msg::CancelRemoveWatch)}
+                                                    onerror={ctx.props().onerror.clone()}>
                                                     <ConfirmDanger
-                                                        prompt="Remove watch at"
-                                                        label={w.watched.timestamp.display(self.tz.clone())}
                                                         on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, kind))}
                                                         on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
                                                     />
@@ -1168,6 +1175,7 @@ impl MovieDetail {
                     on_set_sync_kinds={link.callback(|(id, kinds)| Msg::SetRemoteSyncKinds(id, kinds))}
                     global_sync_kinds={self.global_sync_kinds.clone()}
                     on_close={link.callback(|_| Msg::CloseRemoteEditor)}
+                    onerror={ctx.props().onerror.clone()}
                 />
             }
             </>

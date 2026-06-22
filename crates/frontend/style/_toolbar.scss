@@ -16,7 +16,7 @@
     flex-direction: row;
     flex: 1;
     align-items: center;
-    gap: 0.5em;
+    gap: $text-gap;
     cursor: pointer;
 
     height: $input-height * 1.5;

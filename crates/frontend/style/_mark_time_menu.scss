@@ -1,19 +1,5 @@
 @use 'grid' as g;
 
-// Date/time picker body (MarkTimeMenu) shown inside a `ContextMenu` popover. The
-// popover chrome and positioning live in `_context_menu.scss`; these classes are
-// the clock/calendar layout only — clock-number and hand placement come from
-// inline transforms computed in Rust.
-.mark-time-header {
-    display: flex;
-    align-items: center;
-    justify-content: start;
-    font-size: $font-lg;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    overflow: hidden;
-}
-
 .mark-time-body {
     display: flex;
     flex-direction: row;

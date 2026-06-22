@@ -381,8 +381,13 @@ impl Component for ShowDetail {
                         </button>
 
                         if self.confirm_remove {
-                            <ContextMenu anchor={self.remove_anchor.clone()} on_close={ctx.link().callback(|_| Msg::CancelRemove)} onerror={ctx.props().onerror.clone()}>
-                                <ConfirmDanger prompt="Remove show" label={show.title.clone()} on_confirm={link.callback(|_| Msg::RemoveShow)} on_cancel={link.callback(|_| Msg::CancelRemove)} />
+                            <ContextMenu
+                                prompt="Remove show"
+                                label={show.title.clone()}
+                                anchor={self.remove_anchor.clone()}
+                                on_close={ctx.link().callback(|_| Msg::CancelRemove)}
+                                onerror={ctx.props().onerror.clone()}>
+                                <ConfirmDanger on_confirm={link.callback(|_| Msg::RemoveShow)} on_cancel={link.callback(|_| Msg::CancelRemove)} />
                             </ContextMenu>
                         }
 
@@ -468,6 +473,7 @@ impl Component for ShowDetail {
                         on_set_sync_kinds={link.callback(|(id, kinds)| Msg::SetRemoteSyncKinds(id, kinds))}
                         global_sync_kinds={self.global_sync_kinds.clone()}
                         on_close={link.callback(|_| Msg::CloseRemoteEditor)}
+                        onerror={ctx.props().onerror.clone()}
                     />
                 }
 
@@ -1983,15 +1989,13 @@ impl ShowDetail {
                             </button>
 
                             if let Some(on_toggle) = on_toggle_history {
-                                <button class="btn" onclick={on_toggle} title={if history_expanded { "Hide watch history" } else { "Show watch history" }}>
-                                    <span class={classes!("icon", if history_expanded { "ellipsis-horizontal" } else { "clock" })} />
-                                    <span class="hide-desktop">{if history_expanded { "History" } else { "Show history" }}</span>
+                                <button class="btn" onclick={on_toggle} title="Watch History">
+                                    <span class="icon clock" />
+                                    <span class="hide-desktop">{"Watch History"}</span>
                                 </button>
                             }
                         </div>
                     </div>
-
-                    <Image class="screenshot" src={episode.screenshot.clone()} />
 
                     <div class="row text-gap" title="Air date">
                         <span class="item-inline-lg">
@@ -2029,14 +2033,18 @@ impl ShowDetail {
                 </div>
 
                 <div class="desktop-row mobile-column align-top">
-                    if !history_expanded {
-                        <div class="column desktop-fill">
-                            if let Some(ref overview) = episode.overview {
-                                <p class="overview">{overview}</p>
-                            }
-                        </div>
-                    } else {
-                        <div class="column fill">
+                    <Image class="screenshot" src={episode.screenshot.clone()} />
+
+                    <div class="column desktop-fill">
+                        if let Some(ref overview) = episode.overview {
+                            <p class="overview">{overview}</p>
+                        }
+                    </div>
+                </div>
+
+                if history_expanded {
+                    <Modal title={format!("Watch history for {}", episode.code())} on_close={link.callback(move |_| Msg::ToggleHistory(episode_id))}>
+                        <div key="history" class="column fill">
                             <h3>{"Watch history"}</h3>
 
                             { for watched.iter().map(|w| {
@@ -2057,10 +2065,13 @@ impl ShowDetail {
                                                 </button>
 
                                                 if self.fixing_watched == Some(wid) {
-                                                    <ContextMenu anchor={w.context_anchor.clone()} on_close={link.callback(|_| Msg::CancelFixWatched)} onerror={ctx.props().onerror.clone()}>
+                                                    <ContextMenu
+                                                        prompt="Where do you want to move watch at"
+                                                        label={w.watched.timestamp.display(self.tz.clone())}
+                                                        anchor={w.context_anchor.clone()}
+                                                        on_close={link.callback(|_| Msg::CancelFixWatched)}
+                                                        onerror={ctx.props().onerror.clone()}>
                                                         <EpisodePicker
-                                                            prompt="Where do you want to move watch at"
-                                                            label={w.watched.timestamp.display(self.tz.clone())}
                                                             show_id={show_id}
                                                             seasons={self.seasons.clone()}
                                                             selected_season={episode.season}
@@ -2073,13 +2084,17 @@ impl ShowDetail {
 
                                                 <button class="btn-danger" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
                                                     <span class="icon trash" />
+                                                    <span class="hide-desktop">{"Remove"}</span>
                                                 </button>
 
                                                 if self.confirm_remove_watch == Some(wid) {
-                                                    <ContextMenu anchor={w.context_anchor.clone()} on_close={link.callback(|_| Msg::CancelRemoveWatch)} onerror={ctx.props().onerror.clone()}>
+                                                    <ContextMenu
+                                                        prompt="Remove watch at"
+                                                        label={w.watched.timestamp.display(self.tz.clone())}
+                                                        anchor={w.context_anchor.clone()}
+                                                        on_close={link.callback(|_| Msg::CancelRemoveWatch)}
+                                                        onerror={ctx.props().onerror.clone()}>
                                                         <ConfirmDanger
-                                                            prompt="Remove watch at"
-                                                            label={w.watched.timestamp.display(self.tz.clone())}
                                                             on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, kind))}
                                                             on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
                                                         />
@@ -2091,8 +2106,8 @@ impl ShowDetail {
                                 }
                             }) }
                         </div>
-                    }
-                </div>
+                    </Modal>
+                }
             </div>
         }
     }
@@ -2143,10 +2158,13 @@ impl ShowDetail {
                                     </button>
 
                                     if self.fixing_watched == Some(wid) {
-                                        <ContextMenu anchor={w.context_anchor.clone()} on_close={ctx.link().callback(|_| Msg::CancelFixWatched)} onerror={ctx.props().onerror.clone()}>
+                                        <ContextMenu
+                                            prompt="Where do you want to move watch at"
+                                            label={w.watched.timestamp.display(self.tz.clone())}
+                                            anchor={w.context_anchor.clone()}
+                                            on_close={ctx.link().callback(|_| Msg::CancelFixWatched)}
+                                            onerror={ctx.props().onerror.clone()}>
                                             <EpisodePicker
-                                                prompt="Where do you want to move watch at"
-                                                label={w.watched.timestamp.display(self.tz.clone())}
                                                 {show_id}
                                                 seasons={self.seasons.clone()}
                                                 selected_season={self.selected().map(|s| s.season)}
@@ -2159,13 +2177,17 @@ impl ShowDetail {
 
                                     <button class="btn-danger" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
                                         <span class="icon trash" />
+                                        <span class="hide-desktop">{"Remove"}</span>
                                     </button>
 
                                     if self.confirm_remove_watch == Some(wid) {
-                                        <ContextMenu anchor={w.context_anchor.clone()} on_close={ctx.link().callback(|_| Msg::CancelRemoveWatch)} onerror={ctx.props().onerror.clone()}>
+                                        <ContextMenu
+                                            prompt="Remove watch at"
+                                            label={w.watched.timestamp.display(self.tz.clone())}
+                                            anchor={w.context_anchor.clone()}
+                                            on_close={ctx.link().callback(|_| Msg::CancelRemoveWatch)}
+                                            onerror={ctx.props().onerror.clone()}>
                                             <ConfirmDanger
-                                                prompt="Remove watch at"
-                                                label={w.watched.timestamp.display(self.tz.clone())}
                                                 on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, kind))}
                                                 on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
                                             />

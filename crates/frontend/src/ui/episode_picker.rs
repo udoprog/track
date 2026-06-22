@@ -28,8 +28,6 @@ pub(crate) enum Msg {
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
-    pub(crate) prompt: AttrValue,
-    pub(crate) label: Option<AttrValue>,
     pub(crate) show_id: api::ShowId,
     pub(crate) seasons: Vec<api::Season>,
     #[prop_or_default]
@@ -150,14 +148,6 @@ impl Component for EpisodePicker {
 
         html! {
             <div class="column">
-                <div class="row text-gap">
-                    <span>{&props.prompt}</span>
-
-                    if let Some(ref label) = props.label {
-                        <span>{label}{"?"}</span>
-                    }
-                </div>
-
                 <div class="row align-end">
                     <select class="input-select" onchange={on_season_change}>
                         { for props.seasons.iter().map(|s| {
