@@ -4369,7 +4369,7 @@ impl Database {
             )?;
 
             s.set_config("timezone", &config.timezone)?;
-            s.set_config("language", &config.language.to_string())?;
+            s.set_config("language", config.language.to_string())?;
             s.set_config(
                 "include_specials",
                 if config.include_specials {
@@ -4386,7 +4386,7 @@ impl Database {
                 "air_date_filters",
                 config::encode_air_date_filters(&config.air_date_filters),
             )?;
-            s.set_config("sync_kinds", &config::encode_sync_kinds(&config.sync_kinds))?;
+            s.set_config("sync_kinds", config::encode_sync_kinds(&config.sync_kinds))?;
             s.set_config(
                 "sync_languages",
                 config::encode_sync_languages(&config.sync_languages),

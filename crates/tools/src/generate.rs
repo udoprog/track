@@ -4,11 +4,21 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::{Context, Result, anyhow, bail};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 const URL: &str = "https://iso639-3.sil.org/sites/iso639-3/files/downloads/iso-639-3.tab";
 
 const COUNTRIES_URL: &str = "https://raw.githubusercontent.com/lukes/ISO-3166-Countries-with-Regional-Codes/refs/heads/master/all/all.csv";
+
+#[derive(Serialize)]
+pub(super) struct Mapping {
+    #[serde(rename = "iso-639-3")]
+    id: String,
+    #[serde(default, rename = "iso-639-1")]
+    part1: Option<String>,
+    #[serde(default, rename = "iso-3166-1")]
+    flag: Option<String>,
+}
 
 #[derive(Debug)]
 struct LanguageRow {
@@ -111,9 +121,10 @@ struct RawCountryRow {
 /// Generate the single `iso639` source module: the `ENTRIES` table. Each entry's `flag` is
 /// the ISO 3166-1 flag code from the `to_3166_1` mapping, kept only when a matching flag SVG
 /// exists in `flags_dir` (mirroring `has_flag` in the `iso3166` crate).
-pub fn iso639_module(tab: &str, to_3166_1: &str, flags_dir: &Path) -> Result<String> {
+pub fn iso639_module(tab: &str, to_3166: &str, flags_dir: &Path) -> Result<(String, Vec<Mapping>)> {
     let entries = parse_rows(tab)?;
-    let flags = flag_map(to_3166_1, flags_dir)?;
+
+    let (flags1, flags3) = flag_map(to_3166, flags_dir)?;
 
     let mut out = String::new();
     write_header(
@@ -123,33 +134,37 @@ pub fn iso639_module(tab: &str, to_3166_1: &str, flags_dir: &Path) -> Result<Str
     writeln!(out, "use super::{{Language, Type, Scope}};")?;
     writeln!(out)?;
 
-    write_entries(&mut out, &entries, &flags)?;
+    let mapping = write_entries(&mut out, &entries, &flags1, &flags3)?;
+
     iso639_maps(&mut out, &entries)?;
-    Ok(out)
+    Ok((out, mapping))
 }
 
-/// Build the ISO 639-1 → ISO 3166-1 flag-code map, keeping only entries whose target country
+/// Build the ISO 639-1 -> ISO 3166-1 flag-code map, keeping only entries whose target country
 /// has a flag asset in `flags_dir`.
-fn flag_map(input: &str, flags_dir: &Path) -> Result<BTreeMap<String, String>> {
-    let mut map = BTreeMap::new();
+fn flag_map(
+    csv: &str,
+    flags_dir: &Path,
+) -> Result<(BTreeMap<String, String>, BTreeMap<String, String>)> {
+    #[derive(Debug, Deserialize)]
+    struct Row {
+        #[serde(rename = "iso-639-3")]
+        iso_639_3: String,
+        #[serde(rename = "iso-639-1", default)]
+        iso_639_1: Option<String>,
+        #[serde(rename = "iso-3166-1")]
+        iso_3166_1: String,
+    }
 
-    for (index, raw_line) in input.lines().enumerate() {
-        let line_no = index + 1;
-        let line = raw_line.trim();
+    let mut map1 = BTreeMap::new();
+    let mut map3 = BTreeMap::new();
 
-        if line.is_empty() || line.starts_with('#') || line.starts_with("//") {
-            continue;
-        }
+    let mut reader = csv::Reader::from_reader(csv.as_bytes());
 
-        let mut parts = line.split_whitespace();
+    for (index, row) in reader.deserialize::<Row>().enumerate() {
+        let row = row.with_context(|| anyhow!("Reading entry #{index}"))?;
 
-        let part1 = parts
-            .next()
-            .with_context(|| anyhow!("Expected an ISO 639-1 code at line {line_no}"))?;
-
-        let iso3166_1 = parts
-            .next()
-            .with_context(|| anyhow!("Expected an ISO 3166-1 code at line {line_no}"))?;
+        let iso3166_1 = row.iso_3166_1.trim();
 
         if !flags_dir
             .join(format!("{}.svg", iso3166_1.to_ascii_lowercase()))
@@ -158,37 +173,54 @@ fn flag_map(input: &str, flags_dir: &Path) -> Result<BTreeMap<String, String>> {
             continue;
         }
 
-        if parts.next().is_some() {
-            bail!("Too many fields in ISO 3166-1 mapping at line {line_no}");
+        if let Some(part1) = &row.iso_639_1 {
+            map1.insert(part1.to_ascii_lowercase(), iso3166_1.to_ascii_uppercase());
         }
 
-        if part1.len() != 2 {
-            bail!("Invalid ISO 639-1 code at line {line_no}: {part1}");
-        }
-
-        if iso3166_1.len() != 2 {
-            bail!("Invalid ISO 3166-1 code at line {line_no}: {iso3166_1}");
-        }
-
-        map.insert(part1.to_ascii_lowercase(), iso3166_1.to_ascii_uppercase());
+        map3.insert(
+            row.iso_639_3.to_ascii_lowercase(),
+            iso3166_1.to_ascii_uppercase(),
+        );
     }
 
-    Ok(map)
+    Ok((map1, map3))
 }
 
 fn write_entries(
     out: &mut String,
     entries: &[LanguageRow],
-    flags: &BTreeMap<String, String>,
-) -> Result<()> {
+    flags1: &BTreeMap<String, String>,
+    flags3: &BTreeMap<String, String>,
+) -> Result<Vec<Mapping>> {
+    let mut mapping = Vec::new();
+
     writeln!(out, "pub const ENTRIES: &[Language] = &[")?;
 
     for row in entries {
-        let flag = row
+        let flag1 = row
             .part1
             .as_deref()
-            .and_then(|part1| flags.get(part1))
+            .and_then(|id| flags1.get(id))
             .map(String::as_str);
+        let flag3 = flags3.get(&row.id).map(String::as_str);
+
+        let m = if let Some(flag) = flag1.or(flag3)
+            && !flag.eq_ignore_ascii_case("UN")
+        {
+            Mapping {
+                id: row.id.clone(),
+                part1: row.part1.clone(),
+                flag: Some(flag.to_owned()),
+            }
+        } else {
+            Mapping {
+                id: row.id.clone(),
+                part1: row.part1.clone(),
+                flag: None,
+            }
+        };
+
+        mapping.push(m);
 
         writeln!(out, "    Language {{")?;
         writeln!(out, "        id: {:?},", row.id)?;
@@ -202,7 +234,7 @@ fn write_entries(
         write_optional(out, row.part1.as_deref())?;
         writeln!(out, ",")?;
         write!(out, "        flag: ")?;
-        write_optional(out, flag)?;
+        write_optional(out, flag3)?;
         writeln!(out, ",")?;
         writeln!(out, "        scope: Scope::{},", row.scope.rust_variant())?;
         writeln!(out, "        ty: Type::{},", row.ty.rust_variant())?;
@@ -216,7 +248,7 @@ fn write_entries(
     }
 
     writeln!(out, "];\n")?;
-    Ok(())
+    Ok(mapping)
 }
 
 fn iso639_maps(out: &mut String, rows: &[LanguageRow]) -> Result<()> {
@@ -255,7 +287,7 @@ pub fn iso3166_module(csv: &str, flags_dir: &Path) -> Result<String> {
         bail!("Dataset is empty");
     }
 
-    let mut reader = csv::Reader::from_reader(csv.trim_start_matches('\u{feff}').as_bytes());
+    let mut reader = csv::Reader::from_reader(csv.as_bytes());
 
     // Keyed by alpha-2 so output is sorted and de-duplicated, like the language maps.
     let mut entries: BTreeMap<String, (String, bool)> = BTreeMap::new();

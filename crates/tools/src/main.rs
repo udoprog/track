@@ -1,4 +1,4 @@
-use std::fs;
+use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -12,7 +12,7 @@ const HEROICONS_DIR: &str = "3rdparty/heroicons/optimized/24/solid";
 
 // Bundled ISO datasets (committed inputs).
 const ISO639_TAB: &str = "crates/iso639/data/iso-639-3.tab";
-const ISO639_TO_3166_1: &str = "crates/iso639/data/to-3166-1.txt";
+const ISO639_TO_3166: &str = "crates/iso639/data/to-3166.csv";
 const ISO3166_CSV: &str = "crates/iso3166/data/all.csv";
 
 // Generated, committed source files (formerly produced by each crate's build.rs).
@@ -30,6 +30,8 @@ const ICONS_SCSS: &str = "crates/frontend/style/_icons_generated.scss";
 struct Cli {
     #[command(subcommand)]
     command: Option<Command>,
+    #[arg(long)]
+    mapping_path: Option<PathBuf>,
 }
 
 #[derive(Subcommand)]
@@ -50,16 +52,17 @@ enum Command {
 
 fn main() -> Result<()> {
     let root = workspace_root();
+    let cli = Cli::parse();
 
-    match Cli::parse().command {
+    match &cli.command {
         None => {
             // Default: bring every generated artifact up to date.
-            generate_iso639(&root)?;
+            generate_iso639(&root, cli.mapping_path.as_deref())?;
             generate_iso3166(&root)?;
             generate_scss(&root)?;
         }
         Some(Command::Scss) => generate_scss(&root)?,
-        Some(Command::Iso639) => generate_iso639(&root)?,
+        Some(Command::Iso639) => generate_iso639(&root, cli.mapping_path.as_deref())?,
         Some(Command::Iso3166) => generate_iso3166(&root)?,
         Some(Command::DownloadLanguages) => download_languages(&root)?,
         Some(Command::DownloadCountries) => download_countries(&root)?,
@@ -115,16 +118,24 @@ fn generate_scss(root: &Path) -> Result<()> {
     Ok(())
 }
 
-fn generate_iso639(root: &Path) -> Result<()> {
+fn generate_iso639(root: &Path, mapping_path: Option<&Path>) -> Result<()> {
     let flags_dir = ensure_submodule(root, FLAG_ICONS_DIR)?;
 
     let tab = read_input(root, ISO639_TAB)?;
-    let to_3166_1 = read_input(root, ISO639_TO_3166_1)?;
+    let to_3166 = read_input(root, ISO639_TO_3166)?;
 
-    write_file(
-        &root.join(ISO639_GENERATED),
-        &generate::iso639_module(&tab, &to_3166_1, &flags_dir)?,
-    )?;
+    let (iso639_generated, mapping) = generate::iso639_module(&tab, &to_3166, &flags_dir)?;
+
+    write_file(&root.join(ISO639_GENERATED), &iso639_generated)?;
+
+    if let Some(path) = mapping_path {
+        let mut o = csv::Writer::from_writer(File::create(path)?);
+
+        for m in mapping {
+            o.serialize(m)?;
+        }
+    }
+
     Ok(())
 }
 
