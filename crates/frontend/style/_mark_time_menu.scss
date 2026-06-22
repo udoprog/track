@@ -34,7 +34,7 @@
 
 .mark-time-dial {
     position: relative;
-    width: min(280px, calc(100vw - #{$gap-xs * 2}));
+    width: min(240px, calc(100vw - #{$gap-xs * 2}));
     aspect-ratio: 1;
     border-radius: 50%;
     background: $bg-surface;

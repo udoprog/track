@@ -928,74 +928,17 @@ impl MovieDetail {
         let movie_id = ctx.props().movie_id;
         let link = ctx.link();
 
-        // If the movie has already had a digital or physical release, let the
-        // user pick whether the pending slot is dated now or at that release;
-        // otherwise just set it.
-        let now = api::Timestamp::now();
-
-        let released_in_past = movie.releases.iter().any(|r| {
-            matches!(
-                r.release_type,
-                api::ReleaseType::Digital | api::ReleaseType::Physical
-            ) && r.timestamp <= now
-        });
-
         // Earliest release, used to pre-fill the "Released" quick option.
         let release_at = movie.releases.iter().map(|r| r.timestamp).min();
 
-        let toggle_pending = move |mobile: bool| {
-            let on_remove_next = link.callback(move |_| Msg::OnRemoveNext);
-            let hide = move || classes!(mobile.then_some("hide-mobile"), "hide-desktop");
-
-            html! {
-                if movie.pending {
-                    <button class="btn-primary" onclick={on_remove_next} title="Next movie">
-                        <span class="icon bookmark" />
-                        <span class={hide()}>{"Next movie"}</span>
-                    </button>
-                } else if released_in_past {
-                    <MarkTimeMenu
-                        onerror={ctx.props().onerror.clone()}
-                        trigger_class="btn"
-                        title="Not next movie"
-                        prompt="When do you want the movie to be pending?"
-                        aired_label="Released"
-                        default_at={release_at}
-                        on_confirm={link.callback(Msg::OnWatchNext)}>
-                        <span class="icon bookmark-slash" />
-                        <span class={hide()}>{"Not next movie"}</span>
-                    </MarkTimeMenu>
-                } else {
-                    <button class="btn" onclick={link.callback(move |_| Msg::OnWatchNext(api::MarkTime::WhenAired))} title="Not next movie">
-                        <span class="icon bookmark-slash" />
-                        <span class={hide()}>{"Not next movie"}</span>
-                    </button>
-                }
-            }
-        };
-
-        let mark_watched = move |always_label: bool| {
-            html! {
-                <MarkTimeMenu
-                    onerror={ctx.props().onerror.clone()}
-                    trigger_class="btn-success"
-                    title="Mark watched"
-                    prompt="When did you watch the movie?"
-                    aired_label="Released"
-                    default_at={release_at}
-                    on_confirm={link.callback(Msg::MarkWatched)}>
-                    <span class="icon check" />
-                    <span class={classes!((!always_label).then_some("hide-desktop"))}>{"Mark watched"}</span>
-                </MarkTimeMenu>
-            }
-        };
+        let on_remove_next = link.callback(move |_| Msg::OnRemoveNext);
 
         let actions = {
             html! {
                 <div class="actions row-split">
                     <div class="column fill">
-                        <div class="row-split">
-                            <div class="row lg text-gap">
+                        <div class="toolbar">
+                            <div class="toolbar-brand row text-gap">
                                 if !self.watched.is_empty() {
                                     <span class="item-inline-lg" title="Watched"><span class="icon primary check-circle" /></span>
                                 } else {
@@ -1011,29 +954,44 @@ impl MovieDetail {
                                 </span>
                             </div>
 
-                            <div class="hide-desktop row end">
-                                <div class="input-group">
-                                    {toggle_pending(true)}
+                            <div class="toolbar-toggle">
+                                <button class="btn" onclick={link.callback(move |_| Msg::ToggleDetailedActionsExpanded)}>
+                                    <span class="item-inline"><span class={classes!("icon", if self.detailed_expand { "ellipsis-horizontal" } else { "bars-3" })} /></span>
+                                </button>
+                            </div>
 
-                                    <button class="btn" onclick={link.callback(move |_| Msg::ToggleDetailedActionsExpanded)}>
-                                        <span class="item-inline"><span class={classes!("icon", if self.detailed_expand { "ellipsis-horizontal" } else { "bars-3" })} /></span>
+                            <div class={classes!("toolbar-dropdown", "desktop-input-group", (!self.detailed_expand).then_some("hide-mobile"))}>
+                                <MarkTimeMenu
+                                    onerror={ctx.props().onerror.clone()}
+                                    trigger_class="btn-success"
+                                    title="Mark watched"
+                                    prompt="When did you watch the movie?"
+                                    aired_label="Released"
+                                    default_at={release_at}
+                                    on_confirm={link.callback(Msg::MarkWatched)}>
+                                    <span class="icon check" />
+                                    <span class="hide-desktop">{"Mark watched"}</span>
+                                </MarkTimeMenu>
+
+                                if movie.pending {
+                                    <button class="btn-primary" onclick={on_remove_next} title="Next movie">
+                                        <span class="icon bookmark" />
+                                        <span class="hide-desktop">{"Next movie"}</span>
                                     </button>
-                                </div>
+                                } else {
+                                    <MarkTimeMenu
+                                        onerror={ctx.props().onerror.clone()}
+                                        trigger_class="btn"
+                                        title="Not next movie"
+                                        prompt="When do you want the movie to be pending?"
+                                        aired_label="Released"
+                                        default_at={release_at}
+                                        on_confirm={link.callback(Msg::OnWatchNext)}>
+                                        <span class="icon bookmark-slash" />
+                                        <span class="hide-desktop">{"Not next movie"}</span>
+                                    </MarkTimeMenu>
+                                }
                             </div>
-
-                            <div class="hide-mobile row end">
-                                <div class="input-group">
-                                    {mark_watched(false)}
-
-                                    {toggle_pending(false)}
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class={classes!("hide-desktop", "column", (!self.detailed_expand).then_some("hide-mobile"))}>
-                            {mark_watched(true)}
-
-                            {toggle_pending(false)}
                         </div>
                     </div>
                 </div>

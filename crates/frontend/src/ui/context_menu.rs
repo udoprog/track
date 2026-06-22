@@ -111,7 +111,11 @@ impl Component for ContextMenu {
     }
 
     fn rendered(&mut self, ctx: &Context<Self>, _first_render: bool) {
-        let Some(menu) = ctx.props().anchor.cast::<HtmlElement>() else {
+        let Some(menu) = self.menu.cast::<HtmlElement>() else {
+            return;
+        };
+
+        let Some(anchor) = ctx.props().anchor.cast::<HtmlElement>() else {
             return;
         };
 
@@ -129,7 +133,7 @@ impl Component for ContextMenu {
 
         self.placed = Some(size);
 
-        if let Err(e) = self.place(&menu) {
+        if let Err(e) = self.place(&anchor) {
             ctx.props().onerror.emit(e);
         }
     }

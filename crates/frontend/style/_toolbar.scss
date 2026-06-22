@@ -3,13 +3,14 @@
 .toolbar {
     display: flex;
     gap: $gap;
-    padding: $gap;
 
     @include g.on-mobile {
         display: grid;
         grid-template-columns: 1fr auto;
+    }
+
+    &.toolbar-padding {
         padding: $gap;
-        gap: $padding;
     }
 }
 

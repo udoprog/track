@@ -315,7 +315,7 @@ fn Toolbar() -> Html {
     };
 
     html! {
-        <div class="toolbar">
+        <div class="toolbar toolbar-padding">
             <div class="toolbar-brand">
                 <span class="site-title clickable" onclick={on_nav(Route::Dashboard(DashboardQuery::default()))}>{"Track"}</span>
             </div>

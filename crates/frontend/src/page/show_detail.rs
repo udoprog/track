@@ -1920,133 +1920,14 @@ impl ShowDetail {
 
         let actions_expanded = self.episode_actions_expanded.contains(&episode_id);
 
-        let toggle_pending = move |mobile: bool| {
-            let on_remove_next = link.callback(move |_| Msg::OnRemoveNext(episode_id));
-            let hide = move || classes!(mobile.then_some("hide-mobile"), "hide-desktop");
+        let on_remove_next = link.callback(move |_| Msg::OnRemoveNext(episode_id));
+        let on_next_episode =
+            link.callback(move |mark_time| Msg::OnWatchNext(episode_id, mark_time));
 
-            html! {
-                if episode.pending {
-                    <button class="btn-primary" onclick={on_remove_next} title="Next episode">
-                        <span class="icon bookmark" />
-                        <span class={hide()}>{"Next episode"}</span>
-                    </button>
-                } else if aired_in_past {
-                    // Already aired: let the user pick when the pending slot is dated.
-                    <MarkTimeMenu
-                        onerror={ctx.props().onerror.clone()}
-                        trigger_class="btn"
-                        title="Not next episode"
-                        prompt={format!("When do you want {} to be pending?", episode.code())}
-                        default_at={episode.aired}
-                        on_confirm={link.callback(move |mark_time| Msg::OnWatchNext(episode_id, mark_time))}>
-                        <span class="icon bookmark-slash" />
-                        <span class={hide()}>{"Not next episode"}</span>
-                    </MarkTimeMenu>
-                } else {
-                    // Not yet aired: date the pending slot at the air date directly.
-                    <button class="btn" onclick={link.callback(move |_| Msg::OnWatchNext(episode_id, api::MarkTime::WhenAired))} title="Not next episode">
-                        <span class="icon bookmark-slash" />
-                        <span class={hide()}>{"Not next episode"}</span>
-                    </button>
-                }
-            }
-        };
-
-        let main_actions = html! {
-            <>
-                if !history_expanded {
-                    <MarkTimeMenu
-                        onerror={ctx.props().onerror.clone()}
-                        trigger_class="btn-success"
-                        title="Mark watched"
-                        prompt={format!("When did you watch {}?", episode.code())}
-                        default_at={episode.aired}
-                        on_confirm={link.callback(move |mark_time| Msg::MarkWatched(show_id, episode_id, mark_time))}>
-                        <span class="icon check" />
-                        <span class="hide-desktop">{"Mark watched"}</span>
-                    </MarkTimeMenu>
-                }
-
-                {toggle_pending(false)}
-
-                if let Some(on_toggle) = on_toggle_history {
-                    <button class="btn" onclick={on_toggle} title={if history_expanded { "Hide watch history" } else { "Show watch history" }}>
-                        <span class={classes!("icon", if history_expanded { "ellipsis-horizontal" } else { "clock" })} />
-                        <span class="hide-desktop">{if history_expanded { "History" } else { "Show history" }}</span>
-                    </button>
-                }
-
-                if !history_expanded {
-                    <button class="btn" onclick={link.callback(move |_| Msg::OpenEpisodeTranslations(episode_id))} title="Translations">
-                        <span class="icon language" />
-                        <span class="hide-desktop">{"Translations"}</span>
-                    </button>
-                }
-            </>
-        };
-
-        let actions = {
-            html! {
-                <div class="column">
-                    <div class="row-split">
-                        <div class="row text-gap">
-                            if episode.pending {
-                                <span class="item-inline-lg" title="Next episode"><span class="icon primary exclamation-circle" /></span>
-                            } else if !watched.is_empty() {
-                                <span class="item-inline-lg" title="Watched"><span class="icon primary check-circle" /></span>
-                            } else {
-                                <span class="item-inline-lg" title="Never watched"><span class="icon secondary x-circle" /></span>
-                            }
-
-                            if episode.pending {
-                                <span class="text-muted">{"Next episode"}</span>
-                            } else {
-                                <span class="text-muted">
-                                    {match watched {
-                                        [] => "Never watched".to_string(),
-                                        [w] => format!("Watched at {}", w.watched.timestamp.display(self.tz.clone())),
-                                        [first, ..] => format!("Watched {} times, first at {}", watched.len(), first.watched.timestamp.display(self.tz.clone())),
-                                    }}
-                                </span>
-                            }
-                        </div>
-
-                        <div class="row end">
-                            <div class="hide-desktop">
-                                <div class="input-group">
-                                    <MarkTimeMenu
-                                        onerror={ctx.props().onerror.clone()}
-                                        trigger_class="btn-success"
-                                        title="Mark watched"
-                                        prompt={format!("When did you watch {}?", episode.code())}
-                                        default_at={episode.aired}
-                                        on_confirm={link.callback(move |mark_time| Msg::MarkWatched(show_id, episode_id, mark_time))}>
-                                        <span class="icon check" />
-                                    </MarkTimeMenu>
-
-                                    {toggle_pending(true)}
-
-                                    <button class="btn" onclick={link.callback(move |_| Msg::ToggleEpisodeActionsExpanded(episode_id))}>
-                                        <span class={classes!("icon", if actions_expanded { "ellipsis-horizontal" } else { "bars-2" })} />
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div class="hide-mobile">
-                                <div class="input-group">
-                                    {main_actions.clone()}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    if !history_expanded {
-                        <div class={classes!("column", "hide-desktop", (!actions_expanded).then_some("hide-mobile"))}>
-                            {main_actions.clone()}
-                        </div>
-                    }
-                </div>
-            }
+        let on_mark_confirm = if aired_in_past {
+            link.callback(move |mark_time| Msg::OnWatchNext(episode_id, mark_time))
+        } else {
+            link.callback(move |mark_time| Msg::MarkWatched(show_id, episode_id, mark_time))
         };
 
         html! {
@@ -2073,7 +1954,80 @@ impl ShowDetail {
                     </div>
                 }
 
-                {actions}
+                <div class="column">
+                    <div class="toolbar">
+                        <div class="toolbar-brand">
+                            if episode.pending {
+                                <span class="item-inline-lg" title="Next episode"><span class="icon primary exclamation-circle" /></span>
+                            } else if !watched.is_empty() {
+                                <span class="item-inline-lg" title="Watched"><span class="icon primary check-circle" /></span>
+                            } else {
+                                <span class="item-inline-lg" title="Never watched"><span class="icon secondary x-circle" /></span>
+                            }
+
+                            if episode.pending {
+                                <span class="text-muted">{"Next episode"}</span>
+                            } else {
+                                <span class="text-muted">
+                                    {match watched {
+                                        [] => "Never watched".to_string(),
+                                        [w] => format!("Watched at {}", w.watched.timestamp.display(self.tz.clone())),
+                                        [first, ..] => format!("Watched {} times, first at {}", watched.len(), first.watched.timestamp.display(self.tz.clone())),
+                                    }}
+                                </span>
+                            }
+                        </div>
+
+                        <div class="toolbar-toggle">
+                            <button class="btn" onclick={link.callback(move |_| Msg::ToggleEpisodeActionsExpanded(episode_id))}>
+                                <span class={classes!("icon", if actions_expanded { "ellipsis-horizontal" } else { "bars-2" })} />
+                            </button>
+                        </div>
+
+                        <div class={classes!("toolbar-dropdown", "desktop-input-group", (!actions_expanded).then_some("hide-mobile"))}>
+                            <MarkTimeMenu
+                                onerror={ctx.props().onerror.clone()}
+                                trigger_class="btn-success"
+                                title="Mark watched"
+                                prompt={format!("When did you watch {}?", episode.code())}
+                                default_at={episode.aired}
+                                on_confirm={on_mark_confirm}>
+                                <span class="icon check" />
+                                <span class="hide-desktop">{"Mark watched"}</span>
+                            </MarkTimeMenu>
+
+                            if episode.pending {
+                                <button class="btn-primary" onclick={on_remove_next} title="Clear next episode">
+                                    <span class="icon bookmark" />
+                                    <span class="hide-desktop">{"Clear next episode"}</span>
+                                </button>
+                            } else {
+                                <MarkTimeMenu
+                                    onerror={ctx.props().onerror.clone()}
+                                    trigger_class="btn"
+                                    title="Mark next"
+                                    prompt={format!("When do you want to watch {}?", episode.code())}
+                                    default_at={episode.aired}
+                                    on_confirm={on_next_episode}>
+                                    <span class="icon bookmark-slash" />
+                                    <span class="hide-desktop">{"Set as next episode"}</span>
+                                </MarkTimeMenu>
+                            }
+
+                            <button class="btn" onclick={link.callback(move |_| Msg::OpenEpisodeTranslations(episode_id))} title="Translations">
+                                <span class="icon language" />
+                                <span class="hide-desktop">{"Translations"}</span>
+                            </button>
+
+                            if let Some(on_toggle) = on_toggle_history {
+                                <button class="btn" onclick={on_toggle} title={if history_expanded { "Hide watch history" } else { "Show watch history" }}>
+                                    <span class={classes!("icon", if history_expanded { "ellipsis-horizontal" } else { "clock" })} />
+                                    <span class="hide-desktop">{if history_expanded { "History" } else { "Show history" }}</span>
+                                </button>
+                            }
+                        </div>
+                    </div>
+                </div>
 
                 <div class="desktop-row mobile-column align-top">
                     <Image class="screenshot" src={episode.screenshot.clone()} />
