@@ -1,0 +1,38 @@
+@use 'grid' as g;
+
+// Reusable anchored popover shell (ContextMenu). The catcher captures outside
+// clicks; the menu box is positioned by the component into the `--cm-*`
+// variables and hidden until then to avoid a first-frame flash.
+.context-catcher {
+    position: fixed;
+    inset: 0;
+    z-index: 400;
+}
+
+.context-menu {
+    position: fixed;
+    z-index: 1;
+    // Coordinates are measured and set by the component (see `place`) into
+    // these variables; hidden until then to avoid a first-frame flash.
+    left: var(--cm-left);
+    top: var(--cm-top);
+    visibility: hidden;
+    display: flex;
+    flex-direction: column;
+    width: fit-content;
+    max-height: calc(100vh - #{$gap-xs * 2});
+    overflow-y: auto;
+    background: $bg-panel;
+    border: 1px solid $border-input;
+    border-radius: $radius;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+
+    gap: $gap;
+    padding: $gap;
+
+    @include g.on-mobile {
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+    }
+}

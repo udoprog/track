@@ -5,6 +5,7 @@
 
 mod air_date_filters_editor;
 mod confirm_danger;
+mod context_menu;
 mod country_picker;
 mod episode_picker;
 mod error_box;
@@ -29,6 +30,7 @@ mod translations_modal;
 
 pub(crate) use self::air_date_filters_editor::AirDateFiltersEditor;
 pub(crate) use self::confirm_danger::ConfirmDanger;
+pub(crate) use self::context_menu::ContextMenu;
 pub(crate) use self::country_picker::CountryPicker;
 pub(crate) use self::episode_picker::EpisodePicker;
 pub(crate) use self::error_box::ErrorBox;

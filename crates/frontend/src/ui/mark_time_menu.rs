@@ -2,12 +2,13 @@
 //! mark-pending flows: quick "Now"/"Aired" presets plus a round analog clock
 //! and a month calendar for choosing an exact instant.
 
-use web_sys::{Element, HtmlElement, MouseEvent, PointerEvent};
+use web_sys::{Element, PointerEvent};
 use yew::prelude::*;
 
 use api::TimeZone;
 
-use crate::error::{CustomContext, Error, Message};
+use crate::error::Error;
+use crate::ui::ContextMenu;
 
 /// Which ring of the clock is being edited.
 #[derive(Clone, Copy, PartialEq)]
@@ -178,7 +179,8 @@ pub(crate) enum Msg {
 /// month calendar for an exact instant. Shared by the "mark watched" and "mark
 /// pending" flows.
 pub(crate) struct MarkTimeMenu {
-    open: bool,
+    /// Open/position state for the popover. `false` is closed; `true` is open.
+    context_open: bool,
     tz: TimeZone,
     _tz_handle: ContextHandle<TimeZone>,
     /// First day of the month shown in the calendar.
@@ -193,13 +195,8 @@ pub(crate) struct MarkTimeMenu {
     preset: Preset,
     dragging: bool,
     dial: NodeRef,
-    /// The trigger button, used as the positioning anchor.
+    /// The trigger button, anchored to by the popover.
     anchor: NodeRef,
-    /// The popover element, measured after render to clamp it on-screen.
-    menu: NodeRef,
-    /// Set on open; positions the popover on the next render, then cleared so we
-    /// don't re-measure on every interaction (e.g. each clock-drag frame).
-    place_pending: bool,
 }
 
 impl MarkTimeMenu {
@@ -210,74 +207,6 @@ impl MarkTimeMenu {
         let (h, m) = ts.hour_minute(self.tz.clone());
         self.hour = h;
         self.minute = m;
-    }
-
-    /// Position the popover just below the trigger, clamped to the viewport so it
-    /// stays on-screen without flipping to the far side. We measure the *actual*
-    /// rendered menu rather than guessing its size, so the wide side-by-side
-    /// layout is placed correctly. Mobile presents it full-page via CSS, which
-    /// ignores these variables. The coordinates are written into CSS custom
-    /// properties, and the menu is revealed only once positioned to avoid a
-    /// first-frame flash in the top-left corner.
-    fn place(&self) -> Result<(), Error> {
-        let menu = self
-            .menu
-            .cast::<HtmlElement>()
-            .context(Message::PositioningMenu)?;
-
-        let anchor = self
-            .anchor
-            .cast::<Element>()
-            .context(Message::PositioningMenu)?;
-
-        let style = menu.style();
-
-        style
-            .set_property("visibility", "visible")
-            .context(Message::PositioningMenu)?;
-
-        let win = web_sys::window().context(Message::MissingWindow)?;
-
-        let vw = win
-            .inner_width()
-            .ok()
-            .and_then(|v| v.as_f64())
-            .context(Message::ReadingViewport)?;
-
-        let vh = win
-            .inner_height()
-            .ok()
-            .and_then(|v| v.as_f64())
-            .context(Message::ReadingViewport)?;
-
-        let trig = anchor.get_bounding_client_rect();
-        let m = menu.get_bounding_client_rect();
-
-        const GAP: f64 = 4.0;
-        const MARGIN: f64 = 8.0;
-
-        // Line up with the trigger's left edge, then slide left only as much as
-        // needed to keep the whole menu on-screen.
-        let left = trig.left().min(vw - m.width() - MARGIN).max(MARGIN);
-
-        // Prefer below the trigger; flip above if it would overflow the bottom.
-        let top = if trig.bottom() + m.height() + GAP + MARGIN <= vh {
-            trig.bottom() + GAP
-        } else if trig.top() - m.height() - GAP >= MARGIN {
-            trig.top() - m.height() - GAP
-        } else {
-            (vh - m.height() - MARGIN).max(MARGIN)
-        };
-
-        style
-            .set_property("--mt-left", &format!("{left}px"))
-            .context(Message::PositioningMenu)?;
-
-        style
-            .set_property("--mt-top", &format!("{top}px"))
-            .context(Message::PositioningMenu)?;
-
-        Ok(())
     }
 
     /// The hand's `(angle, radius)` for the current mode and value.
@@ -348,7 +277,7 @@ impl Component for MarkTimeMenu {
             .expect("Expected a configured time zone");
 
         let mut this = Self {
-            open: false,
+            context_open: false,
             tz,
             _tz_handle,
             view: api::Date::today(),
@@ -360,8 +289,6 @@ impl Component for MarkTimeMenu {
             dragging: false,
             dial: NodeRef::default(),
             anchor: NodeRef::default(),
-            menu: NodeRef::default(),
-            place_pending: false,
         };
 
         this.load_from(api::Timestamp::now());
@@ -378,12 +305,11 @@ impl Component for MarkTimeMenu {
                 self.load_from(api::Timestamp::now());
                 self.preset = Preset::Now;
                 self.mode = ClockMode::Hours;
-                self.open = true;
-                self.place_pending = true;
+                self.context_open = true;
                 true
             }
             Msg::Close => {
-                self.open = false;
+                self.context_open = false;
                 true
             }
             Msg::Confirm => {
@@ -400,7 +326,7 @@ impl Component for MarkTimeMenu {
                     },
                 };
 
-                self.open = false;
+                self.context_open = false;
                 ctx.props().on_confirm.emit(mark);
                 true
             }
@@ -418,7 +344,6 @@ impl Component for MarkTimeMenu {
                 }
 
                 self.preset = preset;
-                self.place_pending = true;
                 true
             }
             Msg::PrevMonth => {
@@ -486,58 +411,41 @@ impl Component for MarkTimeMenu {
         }
     }
 
-    fn rendered(&mut self, ctx: &Context<Self>, _first_render: bool) {
-        if !self.open || !self.place_pending {
-            return;
-        }
-
-        // Only position once per open, so we don't re-measure (forcing layout)
-        // on every interaction such as a clock-drag frame.
-        self.place_pending = false;
-
-        if let Err(e) = self.place() {
-            ctx.props().onerror.emit(e);
-        }
-    }
-
     fn view(&self, ctx: &Context<Self>) -> Html {
         let link = ctx.link();
         let props = ctx.props();
 
-        let trigger = html! {
-            <button
-                ref={self.anchor.clone()}
-                class={props.trigger_class.clone()}
-                title={props.title.clone()}
-                onclick={link.callback(|_| Msg::Open)}>
-                { for props.children.iter() }
-            </button>
-        };
+        let context_content = if self.context_open {
+            html! {
+                <>
+                    <div class="mark-time-header">
+                        <span>{&props.prompt}</span>
+                    </div>
 
-        if !self.open {
-            return trigger;
-        }
+                    {self.view_interaction(ctx)}
+
+                    if self.preset == Preset::Custom {
+                        <div class="mark-time-body">
+                            {self.view_clock(ctx)}
+
+                            {self.view_calendar(ctx)}
+                        </div>
+                    }
+                </>
+            }
+        } else {
+            html!()
+        };
 
         html! {
             <>
-                {trigger}
-                <div class="mark-time-catcher" onclick={link.callback(|_| Msg::Close)}>
-                    <div class="mark-time-menu" ref={self.menu.clone()} onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
-                        <div class="mark-time-header">
-                            <span>{&props.prompt}</span>
-                        </div>
+                <button ref={self.anchor.clone()} class={props.trigger_class.clone()} title={props.title.clone()} onclick={link.callback(|_| Msg::Open)}>
+                    { for props.children.iter() }
+                </button>
 
-                        {self.view_interaction(ctx)}
-
-                        if self.preset == Preset::Custom {
-                            <div class="mark-time-body">
-                                {self.view_clock(ctx)}
-
-                                {self.view_calendar(ctx)}
-                            </div>
-                        }
-                    </div>
-                </div>
+                <ContextMenu open={self.context_open} anchor={self.anchor.clone()} on_close={link.callback(|_| Msg::Close)} onerror={props.onerror.clone()}>
+                    {context_content}
+                </ContextMenu>
             </>
         }
     }

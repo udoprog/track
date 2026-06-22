@@ -1,14 +1,9 @@
 @use 'grid' as g;
 
-// Anchored date/time picker (MarkTimeMenu) used by the mark-watched / mark-pending
-// flows. Baseline structure only — clock-number and hand placement come from inline
-// transforms computed in Rust.
-.mark-time-catcher {
-    position: fixed;
-    inset: 0;
-    z-index: 400;
-}
-
+// Date/time picker body (MarkTimeMenu) shown inside a `ContextMenu` popover. The
+// popover chrome and positioning live in `_context_menu.scss`; these classes are
+// the clock/calendar layout only — clock-number and hand placement come from
+// inline transforms computed in Rust.
 .mark-time-header {
     display: flex;
     align-items: center;
@@ -17,34 +12,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     overflow: hidden;
-}
-
-.mark-time-menu {
-    position: fixed;
-    z-index: 1;
-    // Coordinates are measured and set by the component (see `rendered`) into
-    // these variables; hidden until then to avoid a first-frame flash.
-    left: var(--mt-left);
-    top: var(--mt-top);
-    visibility: hidden;
-    display: flex;
-    flex-direction: column;
-    width: fit-content;
-    max-height: calc(100vh - #{$gap-xs * 2});
-    overflow-y: auto;
-    background: $bg-panel;
-    border: 1px solid $border-input;
-    border-radius: $radius;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
-
-    gap: $gap;
-    padding: $gap;
-
-    @include g.on-mobile {
-        left: 50%;
-        top: 50%;
-        transform: translate(-50%, -50%);
-    }
 }
 
 .mark-time-body {

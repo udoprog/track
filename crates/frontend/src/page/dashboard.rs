@@ -9,13 +9,18 @@ use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{DashboardQuery, Route, Router, ShowDetailQuery};
-use crate::ui::{ConfirmDanger, Image, MarkTimeMenu, PaginationButtons};
+use crate::ui::{ConfirmDanger, ContextMenu, Image, MarkTimeMenu, PaginationButtons};
 
 use super::Calendar;
 
+struct PendingState {
+    pending: api::Pending,
+    anchor: NodeRef,
+}
+
 pub(crate) struct Dashboard {
     channel: ws::Channel,
-    pending: Vec<api::Pending>,
+    pending: Vec<PendingState>,
     pending_loaded: bool,
     config: api::Config,
     tz: TimeZone,
@@ -195,11 +200,20 @@ impl Dashboard {
                 }
             }
             Msg::PendingLoaded(result) => {
-                self.pending = result
+                self.pending.clear();
+
+                let pending = result
                     .context(Message::LoadingPending)?
                     .decode()
                     .context(Message::LoadingPending)?
                     .pending;
+
+                for pending in pending {
+                    self.pending.push(PendingState {
+                        pending,
+                        anchor: NodeRef::default(),
+                    });
+                }
 
                 self.pending_loaded = true;
                 self.clamp_page(ctx);
@@ -356,11 +370,16 @@ impl Dashboard {
     /// pending timestamp (most recent first), matching the server's ordering. An
     /// entry dated in the future falls outside the "next" view and is dropped.
     fn upsert_pending(&mut self, ctx: &Context<Self>, pending: api::Pending) {
-        self.pending.retain(|p| p.kind != pending.kind);
+        self.pending
+            .retain(|state| state.pending.kind != pending.kind);
 
         if pending.timestamp <= api::Timestamp::now() {
-            self.pending.push(pending);
-            self.pending.sort_by_key(|p| Reverse(p.timestamp));
+            self.pending.push(PendingState {
+                pending,
+                anchor: NodeRef::default(),
+            });
+            self.pending
+                .sort_by_key(|state| Reverse(state.pending.timestamp));
         }
 
         self.clamp_page(ctx);
@@ -431,10 +450,12 @@ impl Dashboard {
         }
     }
 
-    fn view_pending_item(&self, ctx: &Context<Self>, p: &api::Pending) -> Html {
-        let pending_kind = p.kind;
+    fn view_pending_item(&self, ctx: &Context<Self>, pending: &PendingState) -> Html {
+        let PendingState { pending, anchor } = pending;
 
-        let route = match (p.kind, &p.info) {
+        let pending_kind = pending.kind;
+
+        let route = match (pending.kind, &pending.info) {
             (
                 api::PendingKind::Episode { show, .. },
                 api::PendingInfo::Episode { season, number, .. },
@@ -451,7 +472,7 @@ impl Dashboard {
             (api::PendingKind::Movie { movie }, _) => Route::MovieDetail(movie),
         };
 
-        let kind = match p.kind {
+        let kind = match pending.kind {
             api::PendingKind::Episode { show, episode } => {
                 api::WatchedKind::Episode { show, episode }
             }
@@ -459,7 +480,7 @@ impl Dashboard {
         };
 
         // "Aired" reads oddly for movies; label that choice "Released" instead.
-        let aired_label = match p.kind {
+        let aired_label = match pending.kind {
             api::PendingKind::Episode { .. } => "Aired",
             api::PendingKind::Movie { .. } => "Released",
         };
@@ -470,23 +491,36 @@ impl Dashboard {
         });
 
         let now = api::Timestamp::now();
-        let aired_in_past = p.aired.is_some_and(|a| a <= now);
+        let aired_in_past = pending.aired.is_some_and(|a| a <= now);
 
-        let skip_ids = if let api::PendingKind::Episode { show, episode } = p.kind {
+        let skip_ids = if let api::PendingKind::Episode { show, episode } = pending.kind {
             Some((show, episode))
         } else {
             None
         };
 
-        let this_code = if let api::PendingInfo::Episode { season, number, .. } = p.info {
+        let this_code = if let api::PendingInfo::Episode { season, number, .. } = pending.info {
             Some(api::Code::new(season, number))
         } else {
             None
         };
 
-        let confirming_skip = self.confirming_skip == skip_ids;
+        let confirming = self.confirming_skip.is_some() && (self.confirming_skip == skip_ids);
 
-        let title = match &p.info {
+        let skip = match (skip_ids, this_code) {
+            (Some((show, episode)), Some(code)) => html! {
+                <ConfirmDanger
+                    icon="forward"
+                    prompt="Skip episode"
+                    label={code.to_string()}
+                    on_confirm={ctx.link().callback(move |_| Msg::SkipEpisode(show, episode))}
+                    on_cancel={ctx.link().callback(|_| Msg::CancelSkipEpisode)}
+                />
+            },
+            _ => html!(),
+        };
+
+        let title = match &pending.info {
             api::PendingInfo::Movie { title, .. } => {
                 html! {
                     <span class="pending-title clickable" onclick={on_navigate.clone()} title={title.clone()}>
@@ -514,68 +548,58 @@ impl Dashboard {
             }
         };
 
-        let actions = 'actions: {
-            if confirming_skip && let (Some((show, episode)), Some(code)) = (skip_ids, this_code) {
-                break 'actions html! {
-                    <ConfirmDanger
-                        icon="forward"
-                        prompt="Skip episode"
-                        label={code.to_string()}
-                        on_confirm={ctx.link().callback(move |_| Msg::SkipEpisode(show, episode))}
-                        on_cancel={ctx.link().callback(|_| Msg::CancelSkipEpisode)}
-                    />
-                };
-            }
-
-            html! {
-                <div class="input-group">
-                    if aired_in_past {
-                        <MarkTimeMenu
-                            onerror={ctx.props().onerror.clone()}
-                            trigger_class="btn-success"
-                            title="Mark watched"
-                            prompt={format!("When did you watch this {}?", p.kind.title())}
-                            {aired_label}
-                            default_at={p.aired}
-                            on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(kind, mark_time))}>
-                            <span class="icon check" />
-                        </MarkTimeMenu>
-                    } else {
-                        <button class="btn-success" onclick={ctx.link().callback(move |_| Msg::MarkWatched(kind, api::MarkTime::Now))} title="Mark watched">
-                            <span class="icon check" />
-                        </button>
-                    }
-
+        let actions = html! {
+            <div class="input-group">
+                if aired_in_past {
                     <MarkTimeMenu
                         onerror={ctx.props().onerror.clone()}
-                        trigger_class="btn-primary"
-                        title="Move pending"
-                        prompt={format!("When do you want to watch this {}?", p.kind.title())}
+                        trigger_class="btn-success"
+                        title="Mark watched"
+                        prompt={format!("When did you watch this {}?", pending.kind.title())}
                         {aired_label}
-                        default_at={p.aired}
-                        on_confirm={ctx.link().callback(move |mark_time| Msg::MarkPending(pending_kind, mark_time))}>
-                        <span class="icon bookmark" />
+                        default_at={pending.aired}
+                        on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(kind, mark_time))}>
+                        <span class="icon check" />
                     </MarkTimeMenu>
+                } else {
+                    <button class="btn-success" onclick={ctx.link().callback(move |_| Msg::MarkWatched(kind, api::MarkTime::Now))} title="Mark watched">
+                        <span class="icon check" />
+                    </button>
+                }
 
-                    if let Some((show, episode)) = skip_ids {
-                        <button class="btn" onclick={ctx.link().callback(move |_| Msg::AskSkipEpisode(show, episode))} title="Skip episode">
-                            <span class="icon forward" />
-                        </button>
-                    }
-                </div>
-            }
+                <MarkTimeMenu
+                    onerror={ctx.props().onerror.clone()}
+                    trigger_class="btn-primary"
+                    title="Move pending"
+                    prompt={format!("When do you want to watch this {}?", pending.kind.title())}
+                    {aired_label}
+                    default_at={pending.aired}
+                    on_confirm={ctx.link().callback(move |mark_time| Msg::MarkPending(pending_kind, mark_time))}>
+                    <span class="icon bookmark" />
+                </MarkTimeMenu>
+
+                if let Some((show, episode)) = skip_ids {
+                    <button key="skip-button" ref={anchor.clone()} class="btn" onclick={ctx.link().callback(move |_| Msg::AskSkipEpisode(show, episode))} title="Skip episode">
+                        <span class="icon forward" />
+                    </button>
+
+                    <ContextMenu key="skip-menu" open={confirming} anchor={anchor.clone()} on_close={ctx.link().callback(|_| Msg::CancelSkipEpisode)} onerror={ctx.props().onerror.clone()}>
+                        {skip}
+                    </ContextMenu>
+                }
+            </div>
         };
 
         html! {
             <div class="pending-item">
-                <Image class="poster clickable hide-mobile" src={p.poster.clone()} onclick={on_navigate.clone()} />
-                <Image class="banner clickable hide-desktop" src={p.banner.clone()} onclick={on_navigate.clone()} />
+                <Image class="poster clickable hide-mobile" src={pending.poster.clone()} onclick={on_navigate.clone()} />
+                <Image class="banner clickable hide-desktop" src={pending.banner.clone()} onclick={on_navigate.clone()} />
 
                 <div class="pending-info">
                     <div class="pending-content">
                         {title}
 
-                        if let Some(s) = p.display_at(self.tz.clone()) {
+                        if let Some(s) = pending.display_at(self.tz.clone()) {
                             <span class="pending-date">{s}</span>
                         }
                     </div>
