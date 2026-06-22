@@ -94,13 +94,11 @@ impl Component for SecretInput {
         });
 
         let revealed = self.revealed;
-        let on_toggle = link.callback(move |_: MouseEvent| {
-            if revealed {
-                Msg::Hide
-            } else {
-                Msg::Reveal
-            }
-        });
+        let on_toggle = link.callback(
+            move |_: MouseEvent| {
+                if revealed { Msg::Hide } else { Msg::Reveal }
+            },
+        );
 
         let (toggle_icon, toggle_title) = if revealed {
             ("eye-slash", "Hide")

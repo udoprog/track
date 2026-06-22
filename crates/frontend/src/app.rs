@@ -7,11 +7,10 @@ use yew::prelude::*;
 
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message, RcError};
-use crate::outline::{Outline, OutlineControl, OutlineEntry};
+use crate::page::{Dashboard, MediaList, MovieDetail, Queue, Search, Settings, ShowDetail};
 use crate::router::{DashboardQuery, MediaQuery, QueueQuery, Route, Router, SearchQuery};
 use crate::setup_channel::SetupChannel;
-use crate::ui::{ErrorBox, Loading, TopLanguages};
-use crate::{Dashboard, MediaList, MovieDetail, Queue, Search, Settings, ShowDetail};
+use crate::ui::{ErrorBox, Loading, Outline, OutlineControl, OutlineEntry, TopLanguages};
 
 pub(super) struct App {
     channel: ws::Channel,
@@ -44,7 +43,8 @@ pub(super) enum Msg {
 #[derive(Properties, PartialEq)]
 pub(super) struct Props {
     pub(super) error: Option<RcError>,
-    pub(super) onerror: Callback<Option<Error>>,
+    pub(super) onerror: Callback<Error>,
+    pub(super) onclearerror: Callback<()>,
     pub(super) route: Route,
     pub(super) on_navigate: Callback<Route>,
     pub(super) on_replace: Callback<Route>,
@@ -90,7 +90,7 @@ impl Component for App {
         match self.try_update(ctx, msg) {
             Ok(render) => render,
             Err(e) => {
-                ctx.props().onerror.emit(Some(e));
+                ctx.props().onerror.emit(e);
                 false
             }
         }
@@ -124,7 +124,7 @@ impl Component for App {
                 <div id="application">
                     if let Some(error) = &ctx.props().error {
                         <div id="error">
-                            <ErrorBox error={error.clone()} onclearerror={ctx.props().onerror.reform(|()| None)} />
+                            <ErrorBox error={error.clone()} onclearerror={ctx.props().onclearerror.clone()} />
                         </div>
                     }
 

@@ -11,9 +11,9 @@ use crate::error::{CustomContext, Error, Message};
 /// episode element (see [`api::Episode::code`]) so the outline can scroll it
 /// into view; `label` is shown on the sampled marker.
 #[derive(Clone, PartialEq)]
-pub(super) struct OutlineEntry {
-    pub(super) code: AttrValue,
-    pub(super) label: AttrValue,
+pub(crate) struct OutlineEntry {
+    pub(crate) code: AttrValue,
+    pub(crate) label: AttrValue,
 }
 
 /// Context value handed to consumers (e.g. the show detail view) so they can
@@ -22,18 +22,18 @@ pub(super) struct OutlineEntry {
 /// Call [`OutlineControl::attach`] to begin showing entries; the returned
 /// [`OutlineHandle`] keeps the outline alive and tears it down when dropped.
 #[derive(Clone, PartialEq)]
-pub(super) struct OutlineControl {
+pub(crate) struct OutlineControl {
     set: Callback<Option<Rc<[OutlineEntry]>>>,
 }
 
 impl OutlineControl {
-    pub(super) fn new(set: Callback<Option<Rc<[OutlineEntry]>>>) -> Self {
+    pub(crate) fn new(set: Callback<Option<Rc<[OutlineEntry]>>>) -> Self {
         Self { set }
     }
 
     /// Show `entries` in the outline. The returned handle clears the outline
     /// when it is dropped.
-    pub(super) fn attach(&self, entries: Rc<[OutlineEntry]>) -> OutlineHandle {
+    pub(crate) fn attach(&self, entries: Rc<[OutlineEntry]>) -> OutlineHandle {
         self.set.emit(Some(entries));
         OutlineHandle {
             set: self.set.clone(),
@@ -43,13 +43,13 @@ impl OutlineControl {
 
 /// RAII handle that owns the current outline contents. Dropping it removes the
 /// outline (e.g. when the owning component is destroyed or navigated away).
-pub(super) struct OutlineHandle {
+pub(crate) struct OutlineHandle {
     set: Callback<Option<Rc<[OutlineEntry]>>>,
 }
 
 impl OutlineHandle {
     /// Replace the displayed entries, e.g. when the selected season changes.
-    pub(super) fn set(&self, entries: Rc<[OutlineEntry]>) {
+    pub(crate) fn set(&self, entries: Rc<[OutlineEntry]>) {
         self.set.emit(Some(entries));
     }
 }
@@ -70,16 +70,16 @@ struct OutlineMark {
 }
 
 #[derive(Properties, PartialEq)]
-pub(super) struct OutlineProps {
+pub(crate) struct Props {
     /// The page scroll container the outline reflects and drives.
-    pub(super) page: NodeRef,
+    pub(crate) page: NodeRef,
     /// Entries to show; `None` hides the outline entirely.
-    pub(super) entries: Option<Rc<[OutlineEntry]>>,
+    pub(crate) entries: Option<Rc<[OutlineEntry]>>,
     /// Surfaces failures to the application, as elsewhere.
-    pub(super) onerror: Callback<Option<Error>>,
+    pub(crate) onerror: Callback<Error>,
 }
 
-pub(super) enum OutlineMsg {
+pub(crate) enum Msg {
     /// The page scrolled; reposition the highlight band.
     Scrolled,
     /// The window resized; re-measure and re-sample.
@@ -93,7 +93,7 @@ pub(super) enum OutlineMsg {
 
 /// The shared outline rail: a minimap of the page's scroll content with a
 /// highlight band for the current viewport and sampled episode markers.
-pub(super) struct Outline {
+pub(crate) struct Outline {
     /// The rail element; used to map pointer drags onto the page scroll.
     outline: NodeRef,
     /// The moving highlight band, positioned imperatively.
@@ -116,11 +116,11 @@ pub(super) struct Outline {
 }
 
 impl Component for Outline {
-    type Message = OutlineMsg;
-    type Properties = OutlineProps;
+    type Message = Msg;
+    type Properties = Props;
 
     fn create(ctx: &Context<Self>) -> Self {
-        let on_resize = ctx.link().callback(|_| OutlineMsg::Resized);
+        let on_resize = ctx.link().callback(|_| Msg::Resized);
         let window = web_sys::window().expect("Expected a window");
         let _resize = EventListener::new(&window, "resize", move |_| on_resize.emit(()));
 
@@ -141,7 +141,7 @@ impl Component for Outline {
         match self.try_update(ctx, msg) {
             Ok(render) => render,
             Err(e) => {
-                ctx.props().onerror.emit(Some(e));
+                ctx.props().onerror.emit(e);
                 false
             }
         }
@@ -155,7 +155,7 @@ impl Component for Outline {
         {
             let link = ctx.link().clone();
             self._scroll = Some(EventListener::new(&page, "scroll", move |_| {
-                link.send_message(OutlineMsg::Scrolled);
+                link.send_message(Msg::Scrolled);
             }));
         }
 
@@ -170,14 +170,14 @@ impl Component for Outline {
 
         if marks != self.marks {
             std::mem::swap(&mut self.marks, &mut marks);
-            ctx.link().send_message(OutlineMsg::Resized);
+            ctx.link().send_message(Msg::Resized);
         } else {
             let mut hidden = std::mem::take(&mut self.hidden_buf);
             self.cull_into(&mut hidden);
 
             if hidden != self.hidden {
                 std::mem::swap(&mut self.hidden, &mut hidden);
-                ctx.link().send_message(OutlineMsg::Resized);
+                ctx.link().send_message(Msg::Resized);
             }
 
             self.hidden_buf = hidden;
@@ -188,7 +188,7 @@ impl Component for Outline {
         // The band's geometry depends on the page's scroll metrics, which shift
         // on resize and as content reflows — refresh it after every render.
         if let Err(e) = self.update_mark(ctx) {
-            ctx.props().onerror.emit(Some(e));
+            ctx.props().onerror.emit(e);
         }
     }
 
@@ -199,10 +199,10 @@ impl Component for Outline {
             <div id="outline"
                 ref={self.outline.clone()}
                 class={classes!(ctx.props().entries.is_some().then_some("visible"))}
-                onpointerdown={link.callback(OutlineMsg::PointerDown)}
-                onpointermove={link.callback(OutlineMsg::PointerMove)}
-                onpointerup={link.callback(OutlineMsg::PointerUp)}
-                onwheel={link.callback(OutlineMsg::Wheel)}>
+                onpointerdown={link.callback(Msg::PointerDown)}
+                onpointermove={link.callback(Msg::PointerMove)}
+                onpointerup={link.callback(Msg::PointerUp)}
+                onwheel={link.callback(Msg::Wheel)}>
                 <div id="outline-mark" ref={self.mark.clone()} />
                 { for self.marks.iter().enumerate().map(|(i, mark)| {
                     let hidden = self.hidden.get(i).copied().unwrap_or(false);
@@ -221,14 +221,14 @@ impl Component for Outline {
 }
 
 impl Outline {
-    fn try_update(&mut self, ctx: &Context<Self>, msg: OutlineMsg) -> Result<bool, Error> {
+    fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
-            OutlineMsg::Scrolled => {
+            Msg::Scrolled => {
                 self.update_mark(ctx)?;
                 Ok(false)
             }
-            OutlineMsg::Resized => Ok(true),
-            OutlineMsg::PointerDown(e) => {
+            Msg::Resized => Ok(true),
+            Msg::PointerDown(e) => {
                 // Only the primary button (left mouse / touch / pen) drags the
                 // rail; ignore right- and middle-clicks.
                 if e.button() != 0 {
@@ -246,14 +246,14 @@ impl Outline {
 
                 Ok(false)
             }
-            OutlineMsg::PointerMove(e) => {
+            Msg::PointerMove(e) => {
                 if self.dragging {
                     self.scroll_to_pointer(ctx, &e);
                 }
 
                 Ok(false)
             }
-            OutlineMsg::PointerUp(e) => {
+            Msg::PointerUp(e) => {
                 if self.dragging {
                     if let Some(outline) = self.outline.cast::<Element>() {
                         outline
@@ -266,7 +266,7 @@ impl Outline {
 
                 Ok(false)
             }
-            OutlineMsg::Wheel(e) => {
+            Msg::Wheel(e) => {
                 if let Some(page) = ctx.props().page.cast::<Element>() {
                     e.prevent_default();
 

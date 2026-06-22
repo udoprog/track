@@ -11,14 +11,14 @@ use crate::error::{CustomContext, Error, Message};
 
 /// Which ring of the clock is being edited.
 #[derive(Clone, Copy, PartialEq)]
-pub(super) enum ClockMode {
+pub(crate) enum ClockMode {
     Hours,
     Minutes,
 }
 
 /// A quick preset that loads an instant into the picker without submitting.
 #[derive(Clone, Copy, PartialEq)]
-pub(super) enum Preset {
+pub(crate) enum Preset {
     Now,
     Aired,
 }
@@ -126,35 +126,35 @@ thread_local! {
 }
 
 #[derive(Properties, PartialEq)]
-pub(super) struct MarkTimeMenuProps {
+pub(crate) struct Props {
     /// Inner content of the trigger button (icons, labels). The component wraps
     /// it in a `<button>` that opens the popover.
-    pub(super) children: Children,
+    pub(crate) children: Children,
     /// Classes for the trigger button (e.g. `"btn-success"`).
     #[prop_or_default]
-    pub(super) trigger_class: Classes,
+    pub(crate) trigger_class: Classes,
     #[prop_or_default]
-    pub(super) title: AttrValue,
+    pub(crate) title: AttrValue,
     /// Heading shown at the top of the popover.
-    pub(super) prompt: AttrValue,
+    pub(crate) prompt: AttrValue,
     /// Label for the "when aired" quick option. Defaults to "Aired"; movies pass
     /// "Released" since "aired" reads oddly for them.
     #[prop_or(AttrValue::Static("Aired"))]
-    pub(super) aired_label: AttrValue,
+    pub(crate) aired_label: AttrValue,
     /// The aired/released instant, used by the "Aired" quick option to pre-fill
     /// the picker. When present the "Aired" option is shown.
     #[prop_or_default]
-    pub(super) default_at: Option<api::Timestamp>,
+    pub(crate) default_at: Option<api::Timestamp>,
     /// Force-show the "Aired" option even without a concrete `default_at` — for
     /// bulk flows where each item resolves its own air date server-side.
     #[prop_or(false)]
-    pub(super) show_aired: bool,
-    pub(super) on_confirm: Callback<api::MarkTime>,
+    pub(crate) show_aired: bool,
+    pub(crate) on_confirm: Callback<api::MarkTime>,
     /// Surfaces a positioning failure to the host page's error handler.
-    pub(super) onerror: Callback<Option<Error>>,
+    pub(crate) onerror: Callback<Error>,
 }
 
-pub(super) enum MarkTimeMsg {
+pub(crate) enum Msg {
     Open,
     Close,
     Confirm,
@@ -173,7 +173,7 @@ pub(super) enum MarkTimeMsg {
 /// [`api::MarkTime`]: quick "Now"/"Aired" presets plus a round analog clock and a
 /// month calendar for an exact instant. Shared by the "mark watched" and "mark
 /// pending" flows.
-pub(super) struct MarkTimeMenu {
+pub(crate) struct MarkTimeMenu {
     open: bool,
     tz: TimeZone,
     _tz_handle: ContextHandle<TimeZone>,
@@ -334,13 +334,13 @@ impl MarkTimeMenu {
 }
 
 impl Component for MarkTimeMenu {
-    type Message = MarkTimeMsg;
-    type Properties = MarkTimeMenuProps;
+    type Message = Msg;
+    type Properties = Props;
 
     fn create(ctx: &Context<Self>) -> Self {
         let (tz, _tz_handle) = ctx
             .link()
-            .context::<TimeZone>(ctx.link().callback(MarkTimeMsg::SetTz))
+            .context::<TimeZone>(ctx.link().callback(Msg::SetTz))
             .expect("Expected a configured time zone");
 
         let mut this = Self {
@@ -366,11 +366,11 @@ impl Component for MarkTimeMenu {
 
     fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
         match msg {
-            MarkTimeMsg::SetTz(tz) => {
+            Msg::SetTz(tz) => {
                 self.tz = tz;
                 false
             }
-            MarkTimeMsg::Open => {
+            Msg::Open => {
                 self.load_from(api::Timestamp::now());
                 self.preset = Some(Preset::Now);
                 self.mode = ClockMode::Hours;
@@ -378,11 +378,11 @@ impl Component for MarkTimeMenu {
                 self.place_pending = true;
                 true
             }
-            MarkTimeMsg::Close => {
+            Msg::Close => {
                 self.open = false;
                 true
             }
-            MarkTimeMsg::Confirm => {
+            Msg::Confirm => {
                 let mark = match self.preset {
                     Some(Preset::Now) => api::MarkTime::Now,
                     Some(Preset::Aired) => api::MarkTime::WhenAired,
@@ -400,7 +400,7 @@ impl Component for MarkTimeMenu {
                 ctx.props().on_confirm.emit(mark);
                 true
             }
-            MarkTimeMsg::SelectPreset(preset) => {
+            Msg::SelectPreset(preset) => {
                 let ts = match preset {
                     Preset::Now => Some(api::Timestamp::now()),
                     Preset::Aired => ctx.props().default_at,
@@ -415,28 +415,28 @@ impl Component for MarkTimeMenu {
                 self.preset = Some(preset);
                 true
             }
-            MarkTimeMsg::PrevMonth => {
+            Msg::PrevMonth => {
                 if let Some(view) = self.view.checked_add_months(-1) {
                     self.view = view.first_of_month();
                 }
                 true
             }
-            MarkTimeMsg::NextMonth => {
+            Msg::NextMonth => {
                 if let Some(view) = self.view.checked_add_months(1) {
                     self.view = view.first_of_month();
                 }
                 true
             }
-            MarkTimeMsg::PickDay(date) => {
+            Msg::PickDay(date) => {
                 self.date = date;
                 self.preset = None;
                 true
             }
-            MarkTimeMsg::SetMode(mode) => {
+            Msg::SetMode(mode) => {
                 self.mode = mode;
                 true
             }
-            MarkTimeMsg::DialDown(e) => {
+            Msg::DialDown(e) => {
                 if e.button() != 0 {
                     return false;
                 }
@@ -450,14 +450,14 @@ impl Component for MarkTimeMenu {
 
                 true
             }
-            MarkTimeMsg::DialMove(e) => {
+            Msg::DialMove(e) => {
                 if self.dragging {
                     self.dial_value(&e);
                     return true;
                 }
                 false
             }
-            MarkTimeMsg::DialUp(e) => {
+            Msg::DialUp(e) => {
                 if !self.dragging {
                     return false;
                 }
@@ -490,7 +490,7 @@ impl Component for MarkTimeMenu {
         self.place_pending = false;
 
         if let Err(e) = self.place() {
-            ctx.props().onerror.emit(Some(e));
+            ctx.props().onerror.emit(e);
         }
     }
 
@@ -503,7 +503,7 @@ impl Component for MarkTimeMenu {
                 ref={self.anchor.clone()}
                 class={props.trigger_class.clone()}
                 title={props.title.clone()}
-                onclick={link.callback(|_| MarkTimeMsg::Open)}>
+                onclick={link.callback(|_| Msg::Open)}>
                 { for props.children.iter() }
             </button>
         };
@@ -515,7 +515,7 @@ impl Component for MarkTimeMenu {
         html! {
             <>
                 {trigger}
-                <div class="mark-time-catcher" onclick={link.callback(|_| MarkTimeMsg::Close)}>
+                <div class="mark-time-catcher" onclick={link.callback(|_| Msg::Close)}>
                     <div class="mark-time-menu" ref={self.menu.clone()} onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
                         <div class="mark-time-header">
                             <span>{&props.prompt}</span>
@@ -559,16 +559,16 @@ impl MarkTimeMenu {
             html! {
                 <div class="mark-time-clock">
                     <div class="row text-gap">
-                        <span class={hour_class} onclick={link.callback(|_| MarkTimeMsg::SetMode(ClockMode::Hours))}>
+                        <span class={hour_class} onclick={link.callback(|_| Msg::SetMode(ClockMode::Hours))}>
                             { labels.two_digit[self.hour as usize].clone() }
                         </span>
                         <span>{":"}</span>
-                        <span class={minute_class} onclick={link.callback(|_| MarkTimeMsg::SetMode(ClockMode::Minutes))}>
+                        <span class={minute_class} onclick={link.callback(|_| Msg::SetMode(ClockMode::Minutes))}>
                             { labels.two_digit[self.minute as usize].clone() }
                         </span>
                     </div>
 
-                    <div class="mark-time-dial" ref={self.dial.clone()} onpointerdown={link.callback(MarkTimeMsg::DialDown)} onpointermove={link.callback(MarkTimeMsg::DialMove)} onpointerup={link.callback(MarkTimeMsg::DialUp)}>
+                    <div class="mark-time-dial" ref={self.dial.clone()} onpointerdown={link.callback(Msg::DialDown)} onpointermove={link.callback(Msg::DialMove)} onpointerup={link.callback(Msg::DialUp)}>
                         <div class="mark-time-hand" style={format!("height: {hand_radius}%; transform: rotate({hand_angle}deg);")} />
                         { for labels.nodes(self.mode).iter().map(|node| {
                             html! {
@@ -596,13 +596,13 @@ impl MarkTimeMenu {
         html! {
             <div class="mark-time-calendar column">
                 <div class="row">
-                    <button class="btn" onclick={link.callback(|_| MarkTimeMsg::PrevMonth)} title="Previous month">
+                    <button class="btn" onclick={link.callback(|_| Msg::PrevMonth)} title="Previous month">
                         <span class="icon chevron-left" />
                     </button>
 
                     <span class="fill center">{format!("{} {year}", self.view.month_name())}</span>
 
-                    <button class="btn end" onclick={link.callback(|_| MarkTimeMsg::NextMonth)} title="Next month">
+                    <button class="btn end" onclick={link.callback(|_| Msg::NextMonth)} title="Next month">
                         <span class="icon chevron-right" />
                     </button>
                 </div>
@@ -617,7 +617,7 @@ impl MarkTimeMenu {
                     { for (1..=days).filter_map(|day| {
                         let date = api::Date::new(year, month as i8, day as i8)?;
                         let selected = date == self.date;
-                        let on_pick = link.callback(move |_| MarkTimeMsg::PickDay(date));
+                        let on_pick = link.callback(move |_| Msg::PickDay(date));
                         let label = LABELS.with(|labels| labels.days[(day - 1) as usize].clone());
                         Some(html! {
                             <span
@@ -648,14 +648,14 @@ impl MarkTimeMenu {
         html! {
             <div class="row-fill">
                 <div class="input-group">
-                    <button class={now_class} onclick={link.callback(|_| MarkTimeMsg::SelectPreset(Preset::Now))}>
+                    <button class={now_class} onclick={link.callback(|_| Msg::SelectPreset(Preset::Now))}>
                         <span class="item-inline">
                             <span class="icon clock" />
                         </span>
                         <span>{"Now"}</span>
                     </button>
                     if props.default_at.is_some() || props.show_aired {
-                        <button class={aired_class} onclick={link.callback(|_| MarkTimeMsg::SelectPreset(Preset::Aired))}>
+                        <button class={aired_class} onclick={link.callback(|_| Msg::SelectPreset(Preset::Aired))}>
                             <span class="item-inline">
                                 <span class="icon calendar" />
                             </span>
@@ -666,10 +666,10 @@ impl MarkTimeMenu {
                 </div>
 
                 <div class="input-group end">
-                    <button class="btn" onclick={link.callback(|_| MarkTimeMsg::Close)} title="Cancel">
+                    <button class="btn" onclick={link.callback(|_| Msg::Close)} title="Cancel">
                         <span class="icon x-mark" />
                     </button>
-                    <button class="btn-success" onclick={link.callback(|_| MarkTimeMsg::Confirm)} title="Confirm">
+                    <button class="btn-success" onclick={link.callback(|_| Msg::Confirm)} title="Confirm">
                         <span class="icon check" />
                     </button>
                 </div>

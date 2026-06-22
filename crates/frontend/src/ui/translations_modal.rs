@@ -1,8 +1,10 @@
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
+use crate::SetupChannel;
 use crate::error::{CustomContext, Error, Message};
-use crate::{Modal, SetupChannel};
+
+use super::Modal;
 
 /// Fields are shown in this order, each as its own section listing every
 /// language's value for that field.
@@ -12,20 +14,20 @@ const FIELDS: [(api::StringKind, &str); 2] = [
 ];
 
 #[derive(Properties, PartialEq)]
-pub(super) struct Props {
+pub(crate) struct Props {
     /// The entity whose translations are displayed.
-    pub(super) target: api::TranslationTarget,
-    pub(super) onerror: Callback<Option<Error>>,
-    pub(super) on_close: Callback<()>,
+    pub(crate) target: api::TranslationTarget,
+    pub(crate) onerror: Callback<Error>,
+    pub(crate) on_close: Callback<()>,
 }
 
-pub(super) enum Msg {
+pub(crate) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     Loaded(Result<ws::Packet<api::GetTranslations>, ws::Error>),
 }
 
-pub(super) struct TranslationsModal {
+pub(crate) struct TranslationsModal {
     channel: ws::Channel,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
@@ -60,7 +62,7 @@ impl Component for TranslationsModal {
         match self.try_update(ctx, msg) {
             Ok(render) => render,
             Err(e) => {
-                ctx.props().onerror.emit(Some(e));
+                ctx.props().onerror.emit(e);
                 false
             }
         }

@@ -10,7 +10,7 @@ use crate::error::{CustomContext, Error, Message};
 use crate::router::{Route, Router, ShowDetailQuery};
 use crate::ui::DOT;
 
-pub(super) struct Calendar {
+pub(crate) struct Calendar {
     channel: ws::Channel,
     schedule: Vec<api::ScheduledDay>,
     tz: TimeZone,
@@ -21,7 +21,7 @@ pub(super) struct Calendar {
     _schedule_req: ws::Request,
 }
 
-pub(super) enum Msg {
+pub(crate) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     ScheduleLoaded(Result<ws::Packet<api::ListSchedule>, ws::Error>),
@@ -30,8 +30,8 @@ pub(super) enum Msg {
 }
 
 #[derive(Properties, PartialEq)]
-pub(super) struct Props {
-    pub(super) onerror: Callback<Option<Error>>,
+pub(crate) struct Props {
+    pub(crate) onerror: Callback<Error>,
 }
 
 impl Component for Calendar {
@@ -73,7 +73,7 @@ impl Component for Calendar {
         match self.try_update(ctx, msg) {
             Ok(render) => render,
             Err(e) => {
-                ctx.props().onerror.emit(Some(e));
+                ctx.props().onerror.emit(e);
                 false
             }
         }

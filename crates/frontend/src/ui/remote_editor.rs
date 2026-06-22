@@ -1,9 +1,7 @@
 use web_sys::{Event, InputEvent};
 use yew::prelude::*;
 
-use crate::Modal;
-
-use super::{ConfirmDanger, MDASH};
+use super::{ConfirmDanger, MDASH, Modal};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RemoteSourceKind {

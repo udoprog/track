@@ -1,31 +1,30 @@
 use yew::prelude::*;
 
-use crate::Image;
-use crate::ui::PaginationButtons;
+use super::{Image, PaginationButtons};
 
 const GALLERY_PAGE_SIZE: usize = 4;
 
 /// A single entry shown in the image gallery.
 #[derive(Clone, PartialEq)]
-pub(super) struct ImageItem {
-    pub(super) selected: bool,
-    pub(super) id: api::ImageId,
-    pub(super) kind: api::ImageKind,
-    pub(super) source: api::ImageSource,
-    pub(super) image: api::Image,
+pub(crate) struct ImageItem {
+    pub(crate) selected: bool,
+    pub(crate) id: api::ImageId,
+    pub(crate) kind: api::ImageKind,
+    pub(crate) source: api::ImageSource,
+    pub(crate) image: api::Image,
 }
 
 #[derive(Properties, PartialEq)]
-pub(super) struct ImageGalleryProps {
-    pub(super) items: Vec<ImageItem>,
-    pub(super) kind: api::ImageKind,
-    pub(super) on_select: Callback<api::ImageId>,
+pub(crate) struct Props {
+    pub(crate) items: Vec<ImageItem>,
+    pub(crate) kind: api::ImageKind,
+    pub(crate) on_select: Callback<api::ImageId>,
     #[prop_or_default]
-    pub(super) on_clear: Callback<()>,
+    pub(crate) on_clear: Callback<()>,
 }
 
 #[function_component]
-pub(super) fn ImageGallery(props: &ImageGalleryProps) -> Html {
+pub(crate) fn ImageGallery(props: &Props) -> Html {
     let page = use_state(|| 0usize);
 
     let total_pages = props.items.len().div_ceil(GALLERY_PAGE_SIZE);

@@ -1,15 +1,15 @@
 use yew::prelude::*;
 
 #[derive(Properties, PartialEq)]
-pub(super) struct Props {
+pub(crate) struct Props {
     #[prop_or_default]
-    pub(super) title: Option<Html>,
-    pub(super) children: Children,
-    pub(super) on_close: Callback<()>,
+    pub(crate) title: Option<Html>,
+    pub(crate) children: Children,
+    pub(crate) on_close: Callback<()>,
 }
 
 #[function_component]
-pub(super) fn Modal(props: &Props) -> Html {
+pub(crate) fn Modal(props: &Props) -> Html {
     let on_close = props.on_close.reform(|_| ());
 
     html! {

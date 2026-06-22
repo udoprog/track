@@ -5,14 +5,15 @@ use yew::prelude::*;
 
 use api::{HasAired, TimeZone};
 
+use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::mark_time_menu::MarkTimeMenu;
 use crate::router::{DashboardQuery, Route, Router, ShowDetailQuery};
-use crate::ui::{ConfirmDanger, PaginationButtons};
-use crate::{Calendar, Image, SetupChannel};
+use crate::ui::{ConfirmDanger, Image, MarkTimeMenu, PaginationButtons};
 
-pub(super) struct Dashboard {
+use super::Calendar;
+
+pub(crate) struct Dashboard {
     channel: ws::Channel,
     pending: Vec<api::Pending>,
     pending_loaded: bool,
@@ -32,7 +33,7 @@ pub(super) struct Dashboard {
     confirming_skip: Option<(api::ShowId, api::EpisodeId)>,
 }
 
-pub(super) enum Msg {
+pub(crate) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     PendingLoaded(Result<ws::Packet<api::ListPending>, ws::Error>),
@@ -53,9 +54,9 @@ pub(super) enum Msg {
 }
 
 #[derive(Properties, PartialEq)]
-pub(super) struct Props {
-    pub(super) onerror: Callback<Option<Error>>,
-    pub(super) page: usize,
+pub(crate) struct Props {
+    pub(crate) onerror: Callback<Error>,
+    pub(crate) page: usize,
 }
 
 impl Component for Dashboard {
@@ -111,7 +112,7 @@ impl Component for Dashboard {
         match self.try_update(ctx, msg) {
             Ok(render) => render,
             Err(e) => {
-                ctx.props().onerror.emit(Some(e));
+                ctx.props().onerror.emit(e);
                 false
             }
         }

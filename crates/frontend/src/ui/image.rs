@@ -9,34 +9,34 @@ enum State {
     Empty,
 }
 
-pub(super) struct Image {
+pub(crate) struct Image {
     state: State,
     _img: Option<HtmlImageElement>,
     _load: Option<EventListener>,
     _error: Option<EventListener>,
 }
 
-pub(super) enum Msg {
+pub(crate) enum Msg {
     Loaded(String),
     Error,
 }
 
 #[derive(Properties, PartialEq)]
-pub(super) struct Props {
+pub(crate) struct Props {
     #[prop_or_default]
-    pub(super) placeholder: bool,
+    pub(crate) placeholder: bool,
     #[prop_or_default]
-    pub(super) src: Option<api::Image>,
+    pub(crate) src: Option<api::Image>,
     #[prop_or_default]
-    pub(super) title: Option<String>,
+    pub(crate) title: Option<String>,
     #[prop_or_default]
-    pub(super) class: Classes,
+    pub(crate) class: Classes,
     #[prop_or_default]
-    pub(super) style: Option<String>,
+    pub(crate) style: Option<String>,
     #[prop_or_default]
-    pub(super) alt: AttrValue,
+    pub(crate) alt: AttrValue,
     #[prop_or_default]
-    pub(super) onclick: Callback<MouseEvent>,
+    pub(crate) onclick: Callback<MouseEvent>,
 }
 
 impl Component for Image {

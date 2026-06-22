@@ -4,14 +4,13 @@ use musli_web::web03::prelude::*;
 use web_sys::HtmlImageElement;
 use yew::prelude::*;
 
+use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::mark_time_menu::MarkTimeMenu;
 use crate::router::{
     MediaQuery, MediaSelection, Route, Router, ShowDetailQuery, SortField, TrackedFilter,
 };
-use crate::ui::{MediaKindToggle, PaginationButtons};
-use crate::{Image, SetupChannel};
+use crate::ui::{Image, MarkTimeMenu, MediaKindToggle, PaginationButtons};
 
 const PAGE_SIZE: usize = 20;
 
@@ -25,7 +24,7 @@ fn detail_route(kind: api::MediaKind, id: u64) -> Route {
     }
 }
 
-pub(super) struct MediaList {
+pub(crate) struct MediaList {
     channel: ws::Channel,
     items: Vec<api::MediaItem>,
     filter: String,
@@ -50,7 +49,7 @@ pub(super) struct MediaList {
     _preload_load: Option<EventListener>,
 }
 
-pub(super) enum Msg {
+pub(crate) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     Loaded(Result<ws::Packet<api::ListMedia>, ws::Error>),
@@ -69,14 +68,14 @@ pub(super) enum Msg {
 }
 
 #[derive(Properties, PartialEq)]
-pub(super) struct Props {
-    pub(super) onerror: Callback<Option<Error>>,
-    pub(super) page: usize,
-    pub(super) filter: String,
-    pub(super) sort: SortField,
-    pub(super) desc: bool,
-    pub(super) tracked: TrackedFilter,
-    pub(super) selection: MediaSelection,
+pub(crate) struct Props {
+    pub(crate) onerror: Callback<Error>,
+    pub(crate) page: usize,
+    pub(crate) filter: String,
+    pub(crate) sort: SortField,
+    pub(crate) desc: bool,
+    pub(crate) tracked: TrackedFilter,
+    pub(crate) selection: MediaSelection,
 }
 
 impl Component for MediaList {
@@ -135,7 +134,7 @@ impl Component for MediaList {
         match self.try_update(ctx, msg) {
             Ok(render) => render,
             Err(e) => {
-                ctx.props().onerror.emit(Some(e));
+                ctx.props().onerror.emit(e);
                 false
             }
         }

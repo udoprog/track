@@ -1,26 +1,55 @@
 //! Shared UI building blocks: small reusable widgets, pickers, and editors used
-//! across the frontend's pages. Each component lives in a focused submodule and
-//! is re-exported here so callers can refer to it as `crate::ui::<Name>`.
+//! across the frontend's pages. Each component lives in its own module, named
+//! after the component it exports, and is re-exported here so callers can refer
+//! to it as `crate::ui::<Name>`.
 
-mod common;
-mod country;
+mod air_date_filters_editor;
+mod confirm_danger;
+mod country_picker;
 mod episode_picker;
-mod filters;
-mod language;
-mod media_settings;
-mod remote;
-mod secret;
+mod error_box;
+mod image;
+mod image_gallery;
+mod language_modal;
+mod language_picker;
+mod loading;
+mod mark_time_menu;
+mod media_kind_toggle;
+mod media_settings_modal;
+mod modal;
+mod outline;
+mod pagination_buttons;
+mod release_filters_editor;
+mod remote_editor;
+mod secret_input;
+mod sync_kinds_editor;
+mod sync_languages_editor;
+mod tracked;
+mod translations_modal;
 
-pub(crate) use self::common::{
-    ConfirmDanger, ErrorBox, Loading, MediaKindToggle, PaginationButtons, Tracked,
-};
-pub(crate) use self::country::CountryPicker;
+pub(crate) use self::air_date_filters_editor::AirDateFiltersEditor;
+pub(crate) use self::confirm_danger::ConfirmDanger;
+pub(crate) use self::country_picker::CountryPicker;
 pub(crate) use self::episode_picker::EpisodePicker;
-pub(crate) use self::filters::{AirDateFiltersEditor, ReleaseFiltersEditor, SyncKindsEditor};
-pub(crate) use self::language::{LanguagePicker, SyncLanguagesEditor, TopLanguages};
-pub(crate) use self::media_settings::MediaSettingsModal;
-pub(crate) use self::remote::{RemoteEditor, RemoteSourceKind};
-pub(crate) use self::secret::SecretInput;
+pub(crate) use self::error_box::ErrorBox;
+pub(crate) use self::image::Image;
+pub(crate) use self::image_gallery::{ImageGallery, ImageItem};
+pub(crate) use self::language_modal::{LanguageModal, TopLanguages};
+pub(crate) use self::language_picker::LanguagePicker;
+pub(crate) use self::loading::Loading;
+pub(crate) use self::mark_time_menu::MarkTimeMenu;
+pub(crate) use self::media_kind_toggle::MediaKindToggle;
+pub(crate) use self::media_settings_modal::MediaSettingsModal;
+pub(crate) use self::modal::Modal;
+pub(crate) use self::outline::{Outline, OutlineControl, OutlineEntry, OutlineHandle};
+pub(crate) use self::pagination_buttons::PaginationButtons;
+pub(crate) use self::release_filters_editor::ReleaseFiltersEditor;
+pub(crate) use self::remote_editor::{RemoteEditor, RemoteSourceKind};
+pub(crate) use self::secret_input::SecretInput;
+pub(crate) use self::sync_kinds_editor::SyncKindsEditor;
+pub(crate) use self::sync_languages_editor::SyncLanguagesEditor;
+pub(crate) use self::tracked::Tracked;
+pub(crate) use self::translations_modal::TranslationsModal;
 
 pub(crate) const MDASH: &str = "—";
 pub(crate) const LOADING: &str = "Loading…";

@@ -3,16 +3,16 @@ use musli_web::web03::prelude::*;
 use std::collections::{BTreeMap, HashSet};
 use yew::prelude::*;
 
+use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::mark_time_menu::MarkTimeMenu;
 use crate::router::{MediaQuery, Route, Router};
 use crate::ui::{
-    ConfirmDanger, Loading, MediaSettingsModal, RemoteEditor, RemoteSourceKind, Tracked,
+    ConfirmDanger, Image, ImageGallery, ImageItem, Loading, MarkTimeMenu, MediaSettingsModal,
+    Modal, RemoteEditor, RemoteSourceKind, Tracked, TranslationsModal,
 };
-use crate::{Image, ImageGallery, ImageItem, Modal, SetupChannel, TranslationsModal};
 
-pub(super) struct MovieDetail {
+pub(crate) struct MovieDetail {
     channel: ws::Channel,
     movie: Option<api::Movie>,
     graphics: BTreeMap<api::ImageKind, Vec<ImageItem>>,
@@ -56,7 +56,7 @@ pub(super) struct MovieDetail {
     _remote_req: ws::Request,
 }
 
-pub(super) enum Msg {
+pub(crate) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     MovieLoaded(Result<ws::Packet<api::GetMovie>, ws::Error>),
@@ -121,9 +121,9 @@ pub(super) enum Msg {
 }
 
 #[derive(Properties, PartialEq)]
-pub(super) struct Props {
-    pub(super) onerror: Callback<Option<Error>>,
-    pub(super) movie_id: api::MovieId,
+pub(crate) struct Props {
+    pub(crate) onerror: Callback<Error>,
+    pub(crate) movie_id: api::MovieId,
 }
 
 impl Component for MovieDetail {
@@ -203,7 +203,7 @@ impl Component for MovieDetail {
         match self.try_update(ctx, msg) {
             Ok(render) => render,
             Err(e) => {
-                ctx.props().onerror.emit(Some(e));
+                ctx.props().onerror.emit(e);
                 false
             }
         }

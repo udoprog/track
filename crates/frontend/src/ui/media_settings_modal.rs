@@ -1,9 +1,7 @@
 use web_sys::{Event, MouseEvent};
 use yew::prelude::*;
 
-use crate::Modal;
-
-use super::{AirDateFiltersEditor, LanguagePicker, ReleaseFiltersEditor};
+use super::{AirDateFiltersEditor, LanguagePicker, Modal, ReleaseFiltersEditor};
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {

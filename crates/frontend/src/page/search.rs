@@ -2,13 +2,13 @@ use musli_web::web03::prelude::*;
 use wasm_bindgen::JsCast as _;
 use yew::prelude::*;
 
+use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaSelection, Route, Router, SearchQuery, ShowDetailQuery};
-use crate::ui::{MediaKindToggle, SEARCH};
-use crate::{Image, SetupChannel};
+use crate::ui::{Image, MediaKindToggle, SEARCH};
 
-pub(super) struct Search {
+pub(crate) struct Search {
     channel: ws::Channel,
     background: Background,
     router: Router,
@@ -28,7 +28,7 @@ pub(super) struct Search {
     _track_req: ws::Request,
 }
 
-pub(super) enum Msg {
+pub(crate) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     QueryInput(String),
@@ -44,10 +44,10 @@ pub(super) enum Msg {
 }
 
 #[derive(Properties, PartialEq)]
-pub(super) struct Props {
-    pub(super) onerror: Callback<Option<Error>>,
-    pub(super) selection: MediaSelection,
-    pub(super) filter: String,
+pub(crate) struct Props {
+    pub(crate) onerror: Callback<Error>,
+    pub(crate) selection: MediaSelection,
+    pub(crate) filter: String,
 }
 
 impl Component for Search {
@@ -95,7 +95,7 @@ impl Component for Search {
         match self.try_update(ctx, msg) {
             Ok(render) => render,
             Err(e) => {
-                ctx.props().onerror.emit(Some(e));
+                ctx.props().onerror.emit(e);
                 false
             }
         }

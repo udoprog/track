@@ -1,5 +1,6 @@
 use core::fmt;
 use core::num::NonZero;
+use std::collections::BTreeSet;
 
 use musli_core::{Decode, Encode};
 use musli_web::api::{self, ChannelId};
@@ -1189,7 +1190,7 @@ pub fn default_air_date_priority() -> Vec<RemoteSource> {
 pub fn expand_sync_languages(
     sync_languages: &[Language],
     original: Language,
-) -> std::collections::BTreeSet<Language> {
+) -> BTreeSet<Language> {
     sync_languages
         .iter()
         .map(|l| l.or(original))

@@ -10,7 +10,7 @@ use crate::ui::{MDASH, PaginationButtons};
 
 const PAGE_SIZE: usize = 20;
 
-pub(super) struct Queue {
+pub(crate) struct Queue {
     channel: ws::Channel,
     background: Background,
     router: Router,
@@ -25,7 +25,7 @@ pub(super) struct Queue {
     _remove_req: ws::Request,
     _bump_req: ws::Request,
 }
-pub(super) enum Msg {
+pub(crate) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     TasksLoaded(Result<ws::Packet<api::ListTasks>, ws::Error>),
@@ -42,12 +42,12 @@ pub(super) enum Msg {
 }
 
 #[derive(Properties, PartialEq)]
-pub(super) struct Props {
-    pub(super) onerror: Callback<Option<Error>>,
+pub(crate) struct Props {
+    pub(crate) onerror: Callback<Error>,
     /// Which list is focused, persisted in the route query. `None` is the overview.
-    pub(super) focus: Option<QueueFocus>,
+    pub(crate) focus: Option<QueueFocus>,
     /// Current page of the focused pending list, persisted in the route query.
-    pub(super) page: usize,
+    pub(crate) page: usize,
 }
 
 impl Component for Queue {
@@ -97,7 +97,7 @@ impl Component for Queue {
         match self.try_update(ctx, msg) {
             Ok(render) => render,
             Err(e) => {
-                ctx.props().onerror.emit(Some(e));
+                ctx.props().onerror.emit(e);
                 false
             }
         }

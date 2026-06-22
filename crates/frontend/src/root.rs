@@ -19,7 +19,8 @@ pub(super) enum Msg {
     PopState,
     SetBackground(String),
     SetTitle(Option<String>),
-    Error(Option<Error>),
+    Error(Error),
+    ClearError,
 }
 
 impl Component for Root {
@@ -72,7 +73,11 @@ impl Component for Root {
                 false
             }
             Msg::Error(e) => {
-                self.error = e.map(RcError::from);
+                self.error = Some(RcError::from(e));
+                true
+            }
+            Msg::ClearError => {
+                self.error = None;
                 true
             }
         }
@@ -83,6 +88,7 @@ impl Component for Root {
 
         let route = self.router.route.clone();
         let onerror = link.callback(Msg::Error);
+        let onclearerror = link.callback(|()| Msg::ClearError);
         let on_navigate = link.callback(Msg::Navigate);
         let on_replace = link.callback(Msg::Replace);
         let on_background = link.callback(Msg::SetBackground);
@@ -99,7 +105,8 @@ impl Component for Root {
                         />
                     }
                 </div>
-                <App error={self.error.clone()} {route} {onerror} {on_navigate} {on_replace} {on_background} {on_title} />
+
+                <App error={self.error.clone()} {route} {onerror} {onclearerror} {on_navigate} {on_replace} {on_background} {on_title} />
             </>
         }
     }

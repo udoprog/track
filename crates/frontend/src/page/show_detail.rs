@@ -6,18 +6,17 @@ use yew::prelude::*;
 
 use api::{HasAired, TimeZone};
 
+use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::mark_time_menu::MarkTimeMenu;
-use crate::outline::{OutlineControl, OutlineEntry, OutlineHandle};
 use crate::router::{MediaQuery, Route, Router, ShowDetailQuery};
 use crate::ui::{
-    ConfirmDanger, EpisodePicker, Loading, MDASH, MediaSettingsModal, RemoteEditor,
-    RemoteSourceKind, Tracked,
+    ConfirmDanger, EpisodePicker, Image, ImageGallery, ImageItem, Loading, MDASH, MarkTimeMenu,
+    MediaSettingsModal, Modal, OutlineControl, OutlineEntry, OutlineHandle, RemoteEditor,
+    RemoteSourceKind, Tracked, TranslationsModal,
 };
-use crate::{Image, ImageGallery, ImageItem, Modal, SetupChannel, TranslationsModal};
 
-pub(super) struct ShowDetail {
+pub(crate) struct ShowDetail {
     channel: ws::Channel,
     show: Option<api::Show>,
     graphics: BTreeMap<api::ImageKind, Vec<ImageItem>>,
@@ -90,7 +89,7 @@ pub(super) struct ShowDetail {
     _remote_req: ws::Request,
 }
 
-pub(super) enum Msg {
+pub(crate) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     ShowLoaded(Result<ws::Packet<api::GetShow>, ws::Error>),
@@ -180,11 +179,11 @@ pub(super) enum Msg {
 }
 
 #[derive(Properties, PartialEq)]
-pub(super) struct Props {
-    pub(super) onerror: Callback<Option<Error>>,
-    pub(super) show_id: api::ShowId,
+pub(crate) struct Props {
+    pub(crate) onerror: Callback<Error>,
+    pub(crate) show_id: api::ShowId,
     #[prop_or_default]
-    pub(super) initial_season: Option<api::SeasonNumber>,
+    pub(crate) initial_season: Option<api::SeasonNumber>,
 }
 
 impl Component for ShowDetail {
@@ -294,7 +293,7 @@ impl Component for ShowDetail {
         match self.try_update(ctx, msg) {
             Ok(render) => render,
             Err(e) => {
-                ctx.props().onerror.emit(Some(e));
+                ctx.props().onerror.emit(e);
                 false
             }
         }

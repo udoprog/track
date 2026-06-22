@@ -1,9 +1,7 @@
 use web_sys::InputEvent;
 use yew::prelude::*;
 
-use crate::Modal;
-
-use super::PaginationButtons;
+use super::{Modal, PaginationButtons};
 
 const COUNTRY_PAGE_SIZE: usize = 8;
 
