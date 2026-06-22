@@ -168,6 +168,8 @@ p {
         align-self: start;
         position: relative;
         background-color: rgba($color-primary, 0.8);
+        border-radius: $radius;
+        border: 1px solid color.change($color-primary, $lightness: 50%);
     }
 }
 
@@ -388,7 +390,7 @@ p {
     }
 
     &.selected {
-        background-color: color.change($color, $lightness: 50%);;
+        background-color: color.change($color, $lightness: 50%);
     }
 }
 
@@ -504,11 +506,11 @@ p {
     padding: 0;
     font-size: $font-size;
     font-weight: $bold-weight;
-
+    
     &.center {
         justify-content: center;
     }
-
+    
     min-height: $input-height;
 
     @include g.on-mobile {
@@ -795,14 +797,14 @@ image {
 
 .overview {
     font-size: $font-base;
-    line-height: 1.4;
+    line-height: 1.5em;
     text-align: justify;
 }
 
 .episode-code {
     display: inline-flex;
     flex-direction: row;
-    align-items: flex-start;
+    align-items: center;
     gap: 0.5em;
     font-family: $monospace-font;
     font-size: $font-lg;

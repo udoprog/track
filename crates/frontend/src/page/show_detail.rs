@@ -1928,7 +1928,7 @@ impl ShowDetail {
                 <div class="column">
                     <div class="toolbar">
                         <div class="column">
-                            <div class="row align-top">
+                            <div class="row-split align-top">
                                 <a class="episode-code" href={format!("#{}", episode.code())}>
                                     <span>{episode.code()}</span>
 
@@ -1937,7 +1937,7 @@ impl ShowDetail {
                                     </span>
                                 </a>
 
-                                <h4 class="fill">{ episode.name.as_deref().unwrap_or(MDASH) }</h4>
+                                <h4 class="start">{ episode.name.as_deref().unwrap_or(MDASH) }</h4>
                             </div>
                         </div>
 

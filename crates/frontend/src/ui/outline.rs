@@ -1,3 +1,5 @@
+use core::mem;
+
 use std::rc::Rc;
 
 use gloo::events::EventListener;
@@ -107,7 +109,7 @@ pub(crate) struct Outline {
     /// Reusable scratch buffers for the per-render measure/cull passes, kept so
     /// the work amortizes to zero allocations once warmed up.
     marks_buf: Vec<OutlineMark>,
-    hidden_buf: Vec<bool>,
+    scratch_buf: Vec<bool>,
     /// Whether a pointer drag on the rail is in progress.
     dragging: bool,
     _resize: EventListener,
@@ -130,7 +132,7 @@ impl Component for Outline {
             marks: Vec::new(),
             hidden: Vec::new(),
             marks_buf: Vec::new(),
-            hidden_buf: Vec::new(),
+            scratch_buf: Vec::new(),
             dragging: false,
             _resize,
             _scroll: None,
@@ -165,22 +167,24 @@ impl Component for Outline {
         // re-renders when something actually changed, so this converges. The
         // measure/cull results are built into reused buffers and swapped in on
         // change, so steady-state passes allocate nothing.
-        let mut marks = std::mem::take(&mut self.marks_buf);
+        let mut marks = mem::take(&mut self.marks_buf);
+
         Self::measure_into(ctx, &mut marks);
 
         if marks != self.marks {
-            std::mem::swap(&mut self.marks, &mut marks);
+            mem::swap(&mut self.marks, &mut marks);
             ctx.link().send_message(Msg::Resized);
         } else {
-            let mut hidden = std::mem::take(&mut self.hidden_buf);
+            let mut hidden = mem::take(&mut self.scratch_buf);
+
             self.cull_into(&mut hidden);
 
             if hidden != self.hidden {
-                std::mem::swap(&mut self.hidden, &mut hidden);
+                mem::swap(&mut self.hidden, &mut hidden);
                 ctx.link().send_message(Msg::Resized);
             }
 
-            self.hidden_buf = hidden;
+            self.scratch_buf = hidden;
         }
 
         self.marks_buf = marks;
@@ -375,12 +379,13 @@ impl Outline {
             return Ok(());
         };
 
-        let scroll_height = page.scroll_height() as f64;
+        let scroll_height = page.scroll_height();
 
-        if scroll_height <= 0.0 {
+        if scroll_height <= 0 {
             return Ok(());
         }
 
+        let scroll_height = scroll_height as f64;
         let top = page.scroll_top() as f64 / scroll_height * 100.0;
         let height = page.client_height() as f64 / scroll_height * 100.0;
 
