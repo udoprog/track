@@ -2288,6 +2288,16 @@ pub enum PendingKind {
     Movie { movie: MovieId },
 }
 
+impl PendingKind {
+    #[inline]
+    pub fn title(&self) -> &'static str {
+        match self {
+            PendingKind::Episode { .. } => "episode",
+            PendingKind::Movie { .. } => "movie",
+        }
+    }
+}
+
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct AddPendingRequest {

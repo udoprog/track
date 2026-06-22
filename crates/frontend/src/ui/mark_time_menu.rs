@@ -19,8 +19,12 @@ pub(crate) enum ClockMode {
 /// A quick preset that loads an instant into the picker without submitting.
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum Preset {
+    /// The current time.
     Now,
+    /// The aired/released instant.
     Aired,
+    /// A custom time.
+    Custom,
 }
 
 /// Map a clock angle (degrees clockwise from 12 o'clock) and a radius (as a
@@ -186,7 +190,7 @@ pub(crate) struct MarkTimeMenu {
     mode: ClockMode,
     /// The active quick preset, if the working value still matches one. Cleared
     /// by any manual edit. Drives which `MarkTime` variant is emitted on confirm.
-    preset: Option<Preset>,
+    preset: Preset,
     dragging: bool,
     dial: NodeRef,
     /// The trigger button, used as the positioning anchor.
@@ -320,7 +324,7 @@ impl MarkTimeMenu {
             ClockMode::Minutes => {
                 let m = ((ang / 6.0).round() as i64).rem_euclid(60) as u8;
                 self.minute = m;
-                self.preset = None;
+                self.preset = Preset::Custom;
             }
         }
 
@@ -329,7 +333,7 @@ impl MarkTimeMenu {
 
     fn set_hour(&mut self, hour: u8) {
         self.hour = hour;
-        self.preset = None;
+        self.preset = Preset::Custom;
     }
 }
 
@@ -352,7 +356,7 @@ impl Component for MarkTimeMenu {
             hour: 0,
             minute: 0,
             mode: ClockMode::Hours,
-            preset: Some(Preset::Now),
+            preset: Preset::Now,
             dragging: false,
             dial: NodeRef::default(),
             anchor: NodeRef::default(),
@@ -372,7 +376,7 @@ impl Component for MarkTimeMenu {
             }
             Msg::Open => {
                 self.load_from(api::Timestamp::now());
-                self.preset = Some(Preset::Now);
+                self.preset = Preset::Now;
                 self.mode = ClockMode::Hours;
                 self.open = true;
                 self.place_pending = true;
@@ -384,9 +388,9 @@ impl Component for MarkTimeMenu {
             }
             Msg::Confirm => {
                 let mark = match self.preset {
-                    Some(Preset::Now) => api::MarkTime::Now,
-                    Some(Preset::Aired) => api::MarkTime::WhenAired,
-                    None => match self.date.to_timestamp_at_zoned(
+                    Preset::Now => api::MarkTime::Now,
+                    Preset::Aired => api::MarkTime::WhenAired,
+                    Preset::Custom => match self.date.to_timestamp_at_zoned(
                         self.hour,
                         self.minute,
                         self.tz.clone(),
@@ -404,6 +408,7 @@ impl Component for MarkTimeMenu {
                 let ts = match preset {
                     Preset::Now => Some(api::Timestamp::now()),
                     Preset::Aired => ctx.props().default_at,
+                    Preset::Custom => None,
                 };
 
                 // Pre-fill the clock/calendar when we have a concrete instant; a
@@ -412,7 +417,8 @@ impl Component for MarkTimeMenu {
                     self.load_from(ts);
                 }
 
-                self.preset = Some(preset);
+                self.preset = preset;
+                self.place_pending = true;
                 true
             }
             Msg::PrevMonth => {
@@ -429,7 +435,7 @@ impl Component for MarkTimeMenu {
             }
             Msg::PickDay(date) => {
                 self.date = date;
-                self.preset = None;
+                self.preset = Preset::Custom;
                 true
             }
             Msg::SetMode(mode) => {
@@ -521,13 +527,15 @@ impl Component for MarkTimeMenu {
                             <span>{&props.prompt}</span>
                         </div>
 
-                        <div class="mark-time-body">
-                            {self.view_clock(ctx)}
+                        {self.view_interaction(ctx)}
 
-                            {self.view_calendar(ctx)}
-                        </div>
+                        if self.preset == Preset::Custom {
+                            <div class="mark-time-body">
+                                {self.view_clock(ctx)}
 
-                        {self.view_footer(ctx)}
+                                {self.view_calendar(ctx)}
+                            </div>
+                        }
                     </div>
                 </div>
             </>
@@ -632,21 +640,24 @@ impl MarkTimeMenu {
         }
     }
 
-    fn view_footer(&self, ctx: &Context<Self>) -> Html {
+    fn view_interaction(&self, ctx: &Context<Self>) -> Html {
         let link = ctx.link();
         let props = ctx.props();
 
         let now_class = classes!(
-            "btn",
-            (self.preset == Some(Preset::Now)).then_some("selected")
-        );
-        let aired_class = classes!(
-            "btn",
-            (self.preset == Some(Preset::Aired)).then_some("selected")
+            "btn-primary",
+            (self.preset == Preset::Now).then_some("selected")
         );
 
+        let aired_class = classes!(
+            "btn-primary",
+            (self.preset == Preset::Aired).then_some("selected")
+        );
+
+        let custom_class = classes!("btn", (self.preset == Preset::Custom).then_some("selected"));
+
         html! {
-            <div class="row-fill">
+            <div class="row-split">
                 <div class="input-group">
                     <button class={now_class} onclick={link.callback(|_| Msg::SelectPreset(Preset::Now))}>
                         <span class="item-inline">
@@ -654,6 +665,7 @@ impl MarkTimeMenu {
                         </span>
                         <span>{"Now"}</span>
                     </button>
+
                     if props.default_at.is_some() || props.show_aired {
                         <button class={aired_class} onclick={link.callback(|_| Msg::SelectPreset(Preset::Aired))}>
                             <span class="item-inline">
@@ -663,12 +675,21 @@ impl MarkTimeMenu {
                             <span>{&props.aired_label}</span>
                         </button>
                     }
+
+                    <button class={custom_class} onclick={link.callback(|_| Msg::SelectPreset(Preset::Custom))}>
+                        <span class="item-inline">
+                            <span class="icon pencil-square" />
+                        </span>
+
+                        <span>{"Custom"}</span>
+                    </button>
                 </div>
 
                 <div class="input-group end">
                     <button class="btn" onclick={link.callback(|_| Msg::Close)} title="Cancel">
                         <span class="icon x-mark" />
                     </button>
+
                     <button class="btn-success" onclick={link.callback(|_| Msg::Confirm)} title="Confirm">
                         <span class="icon check" />
                     </button>

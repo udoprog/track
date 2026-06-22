@@ -386,7 +386,7 @@ impl Dashboard {
             <div class="column">
                 <h1 class="center">{"What's next?"}</h1>
 
-                <div class="row-fill">
+                <div class="row-split">
                     <div class="row end">
                         <div class="input-group hide-mobile">
                             <button class="btn" title="Show fewer" onclick={link.callback(|_| Msg::AdjustPageSize(-1))}>
@@ -412,7 +412,7 @@ impl Dashboard {
                     </div>
                 }
 
-                <div class="row-fill hide-desktop">
+                <div class="row-split hide-desktop">
                     <div class="input-group">
                         <button class="btn" title="Show fewer" onclick={link.callback(|_| Msg::AdjustPageSize(-1))}>
                             <span class="icon minus" />
@@ -534,7 +534,7 @@ impl Dashboard {
                             onerror={ctx.props().onerror.clone()}
                             trigger_class="btn-success"
                             title="Mark watched"
-                            prompt="Watched when?"
+                            prompt={format!("When did you watch this {}?", p.kind.title())}
                             {aired_label}
                             default_at={p.aired}
                             on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(kind, mark_time))}>
@@ -550,7 +550,7 @@ impl Dashboard {
                         onerror={ctx.props().onerror.clone()}
                         trigger_class="btn-primary"
                         title="Move pending"
-                        prompt="When do you want to mark pending for?"
+                        prompt={format!("When do you want to watch this {}?", p.kind.title())}
                         {aired_label}
                         default_at={p.aired}
                         on_confirm={ctx.link().callback(move |mark_time| Msg::MarkPending(pending_kind, mark_time))}>

@@ -4280,7 +4280,7 @@ impl Database {
             let language = s
                 .get_config("language")?
                 .as_deref()
-                .and_then(api::Language::from_iso639)
+                .and_then(api::Language::from_iso)
                 .unwrap_or(api::Language::DEFAULT);
 
             let include_specials = s

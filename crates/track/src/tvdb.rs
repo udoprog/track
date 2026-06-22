@@ -246,9 +246,7 @@ impl Client {
         Ok((out, total))
     }
 
-    pub(crate) async fn fetch_show(&self, id: u32, language: Option<&str>) -> Result<SeriesInfo> {
-        let language = language.and_then(tvdb_language);
-
+    pub(crate) async fn fetch_show(&self, id: u32, language: api::Language) -> Result<SeriesInfo> {
         #[derive(Deserialize)]
         struct Resp {
             data: Extended,
@@ -266,7 +264,7 @@ impl Client {
             #[serde(default)]
             image: Option<String>,
             #[serde(default)]
-            original_language: Option<String>,
+            original_language: api::Language,
             #[serde(default)]
             remote_ids: Vec<RemoteIdRow>,
             #[serde(default)]
@@ -310,26 +308,33 @@ impl Client {
 
         let slug = v.slug;
         let original_language = v.original_language;
-        let mut title = v.name;
-        let mut overview = v.overview;
+
+        let mut title = v
+            .name
+            .as_deref()
+            .filter(|s| !s.trim().is_empty())
+            .map(str::to_owned);
+
+        let mut overview = v
+            .overview
+            .as_deref()
+            .filter(|s| !s.trim().is_empty())
+            .map(str::to_owned);
 
         // When no user preference is configured, fall back to the show's own
         // original language for the translation fetch. "eng" is the default and
         // needs no separate fetch.
-        let original_language_tvdb = original_language
-            .as_deref()
-            .filter(|&l| l != "eng")
-            .and_then(tvdb_language);
+        let original_language_tvdb = original_language.filter(|l| l != api::Language::ENG);
 
-        let effective_language: Option<&str> =
-            language.as_deref().or(original_language_tvdb.as_deref());
+        let effective_language = language.or(original_language_tvdb);
 
-        if let Some(eff_lang) = effective_language
-            && let Some(tr) = self.fetch_show_translation(id, eff_lang).await?
+        if !effective_language.is_default()
+            && let Some(tr) = self.fetch_show_translation(id, effective_language).await?
         {
             if tr.name.as_deref().is_some_and(|s| !s.trim().is_empty()) {
                 title = tr.name;
             }
+
             if tr.overview.as_deref().is_some_and(|s| !s.trim().is_empty()) {
                 overview = tr.overview;
             }
@@ -406,7 +411,11 @@ impl Client {
         })
     }
 
-    async fn fetch_show_translation(&self, id: u32, language: &str) -> Result<Option<Translation>> {
+    async fn fetch_show_translation(
+        &self,
+        id: u32,
+        language: api::Language,
+    ) -> Result<Option<Translation>> {
         #[derive(Deserialize)]
         struct Resp {
             data: Translation,
@@ -430,7 +439,7 @@ impl Client {
     pub(crate) async fn fetch_episodes(
         &self,
         show_id: u32,
-        language: Option<&str>,
+        language: api::Language,
     ) -> Result<Vec<EpisodeInfo>> {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -471,10 +480,11 @@ impl Client {
         }
 
         // Default (aired-order) season type, optionally translated to `language`.
-        let language = language.and_then(tvdb_language);
-        let path = match &language {
-            Some(language) => format!("series/{show_id}/episodes/default/{language}"),
-            None => format!("series/{show_id}/episodes/default"),
+
+        let path = if language.is_default() {
+            format!("series/{show_id}/episodes/default")
+        } else {
+            format!("series/{show_id}/episodes/default/{language}")
         };
 
         let mut output = Vec::new();
@@ -539,7 +549,7 @@ pub(crate) struct SeriesRemote {
 pub(crate) struct SeriesInfo {
     pub title: Option<String>,
     pub overview: Option<String>,
-    pub original_language: Option<String>,
+    pub original_language: api::Language,
     pub poster: Vec<Image>,
     pub selected_poster: Option<ImageKey>,
     pub banner: Vec<Image>,
@@ -568,20 +578,6 @@ pub(crate) struct SearchSeriesResult {
     pub poster: Option<(ImageSource, String)>,
     pub banner: Option<(ImageSource, String)>,
     pub fanart: Option<(ImageSource, String)>,
-}
-
-/// Map a language code to the 3-letter (ISO 639-3) form the v4 API expects. The
-/// app stores ISO 639-1 (2-letter) codes; pass any already-3-letter code through.
-/// Returns `None` for unknown codes so the caller falls back to the default
-/// language rather than requesting a non-existent translation.
-fn tvdb_language(code: &str) -> Option<String> {
-    let code = code.trim().to_ascii_lowercase();
-
-    if code.len() == 3 {
-        return Some(code);
-    }
-
-    iso639::by_part1(&code).map(|e| e.id.to_owned())
 }
 
 fn opt_date(s: Option<&str>) -> Option<Date> {

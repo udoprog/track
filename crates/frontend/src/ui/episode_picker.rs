@@ -148,7 +148,7 @@ impl Component for EpisodePicker {
         let can_confirm = self.selected_season.is_some() && self.selected_episode.is_some();
 
         html! {
-            <div class="row-fill fill">
+            <div class="row-split fill">
                 <div class="row">
                     if let Some(ref label) = ctx.props().label {
                         <span class="fill">{&ctx.props().prompt}{" "}{label}{"?"}</span>

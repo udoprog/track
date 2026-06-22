@@ -89,13 +89,12 @@ impl Component for CountryPicker {
                     <span>{"All countries"}</span>
                 } else {
                     <span>{format!("{} selected", current.len())}</span>
-                    {
-                        for current.iter().filter_map(|code| {
-                            code.to_iso3166_1().and_then(iso3166::flag_by_part1).map(|flag| html! {
-                                <span class={classes!("item-inline", "flag", flag)} />
-                            })
+
+                    {for current.iter().filter_map(|code| {
+                        code.to_iso().filter(|c| c.has_flag).map(|c| html! {
+                            <span class={classes!("item-inline", "flag", c.alpha2)} />
                         })
-                    }
+                    })}
                 }
             </button>
         };
@@ -112,7 +111,7 @@ impl Component for CountryPicker {
                     || country.name.to_lowercase().contains(&needle)
                     || country.alpha2.contains(&needle)
             })
-            .flat_map(|country| Some((country, api::Country::from_iso_3166_1(country.alpha2)?)))
+            .flat_map(|country| Some((country, api::Country::from_iso(country.alpha2)?)))
             .collect();
 
         let total_pages = filtered.len().div_ceil(COUNTRY_PAGE_SIZE).max(1);
@@ -157,8 +156,8 @@ impl Component for CountryPicker {
                                         <div key={code} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| Msg::Toggle(code))}>
                                             <span class="fill">{country.name}</span>
 
-                                            if let Some(flag) = code.to_iso3166_1().and_then(iso3166::flag_by_part1) {
-                                                <span class={classes!("item-inline", "flag", flag)} />
+                                            if let Some(c) = code.to_iso().filter(|c| c.has_flag) {
+                                                <span class={classes!("item-inline", "flag", c.alpha2)} />
                                             }
 
                                             <span class="item-inline" title={code}>

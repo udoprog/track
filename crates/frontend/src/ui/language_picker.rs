@@ -55,23 +55,15 @@ impl Component for LanguagePicker {
         let props = ctx.props();
 
         let current = props.current;
-
-        let value = if current.is_default() {
-            None
-        } else {
-            current
-                .to_iso639_3()
-                .and_then(iso639::by_id)
-                .map(|entry| (entry.ref_name, entry.part1))
-        };
+        let value = current.to_iso().map(|e| (e.name, e.flag));
 
         let trigger = match value {
-            Some((label, part1)) => html! {
+            Some((label, flag)) => html! {
                 <button class="btn" onclick={link.callback(|_| Msg::Open)} title="Select language">
                     <span class="icon language" />
                     <span>{label}</span>
 
-                    if let Some(code) = part1.and_then(iso639::country_by_part1) {
+                    if let Some(code) = flag {
                         <span class={classes!("flag", code)}></span>
                     }
                 </button>

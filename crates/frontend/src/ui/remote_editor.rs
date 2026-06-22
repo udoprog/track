@@ -374,7 +374,7 @@ impl Component for RemoteEditor {
 
                         html! {
                             <div class="column">
-                                <div key={key} class={classes!("row-fill", editing_this.then_some("active"))}>
+                                <div key={key} class={classes!("row-split", editing_this.then_some("active"))}>
                                     if let Some(url) = url {
                                         <a class="row clickable" href={url} target="_blank" rel="noopener noreferrer" title="Visit remote">
                                             {identifier}
@@ -406,7 +406,7 @@ impl Component for RemoteEditor {
                                     </div>
                                 </div>
 
-                                <div class="row-fill">
+                                <div class="row-split">
                                     <div class="row">
                                         { for kind_toggles }
                                     </div>

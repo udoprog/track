@@ -874,7 +874,7 @@ impl MovieDetail {
 
         html! {
             <div class="column">
-                <div class="row-fill">
+                <div class="row-split">
                     <div class="column desktop-center fill">
                         <h1>{movie.title.as_deref().unwrap_or("Untitled Movie")}</h1>
                     </div>
@@ -975,9 +975,9 @@ impl MovieDetail {
 
         let actions = {
             html! {
-                <div class="actions row-fill">
+                <div class="actions row-split">
                     <div class="column fill">
-                        <div class="row-fill">
+                        <div class="row-split">
                             <div class="row lg text-gap">
                                 if !self.watched.is_empty() {
                                     <span class="item-inline-lg" title="Watched"><span class="icon primary check-circle" /></span>
@@ -1025,7 +1025,7 @@ impl MovieDetail {
 
         html! {
             <>
-            <div class={classes!("desktop-row-fill", "mobile-column", "actions", (!self.actions_expanded).then_some("hide-mobile"))}>
+            <div class={classes!("desktop-row-split", "mobile-column", "actions", (!self.actions_expanded).then_some("hide-mobile"))}>
                 <div class="desktop-row mobile-column fill start">
                     if !movie.remotes.is_empty() {
                         <div class="row justify-around">
@@ -1119,7 +1119,7 @@ impl MovieDetail {
                                         }
                                     } else {
                                         html! {
-                                            <div class="row-fill">
+                                            <div class="row-split">
                                                 <div class="row fill">
                                                     <span>{w.timestamp.display(self.tz.clone())}</span>
                                                 </div>
@@ -1252,7 +1252,7 @@ impl MovieDetail {
                                 </span>
 
                                 <div class="column fill">
-                                    <div class="row-fill">
+                                    <div class="row-split">
                                         <div class="row">
                                             {indicator(type_considered)}
                                             <span>{ty.as_str()}</span>
@@ -1266,11 +1266,11 @@ impl MovieDetail {
                                     if expanded {
                                         <div class="column">
                                             { for releases.iter().map(|r| html! {
-                                                <div class="row-fill">
+                                                <div class="row-split">
                                                     <div class="row">
                                                         {indicator(considered(r))}
 
-                                                        if let Some(c) = r.country.to_iso3166_1().and_then(iso3166::by_part1) {
+                                                        if let Some(c) = r.country.to_iso() {
                                                             if c.has_flag {
                                                                 <span class="item-inline" title={c.name}>
                                                                     <span class={classes!("flag", c.alpha2)}></span>

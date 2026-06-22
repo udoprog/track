@@ -12,9 +12,11 @@
 .mark-time-header {
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: start;
     font-size: $font-lg;
-    font-weight: $bold-weight;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow: hidden;
 }
 
 .mark-time-menu {

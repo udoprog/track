@@ -48,13 +48,13 @@ impl Client {
     }
 
     #[tracing::instrument(skip(self, url))]
-    async fn get_json<T>(&self, url: impl AsRef<str>, language: Option<&str>) -> Result<T>
+    async fn get_json<T>(&self, url: impl AsRef<str>, language: api::Language) -> Result<T>
     where
         T: DeserializeOwned,
     {
         let mut req = self.request(Method::GET, url.as_ref())?;
 
-        if let Some(language) = language {
+        if let Some(language) = language.to_part1() {
             req = req.query(&[("language", language)]);
         }
 
@@ -62,13 +62,13 @@ impl Client {
     }
 
     #[tracing::instrument(skip(self, url))]
-    async fn get_images<T>(&self, url: impl AsRef<str>, language: Option<&str>) -> Result<T>
+    async fn get_images<T>(&self, url: impl AsRef<str>, language: api::Language) -> Result<T>
     where
         T: DeserializeOwned,
     {
         let mut req = self.request(Method::GET, url.as_ref())?;
 
-        if let Some(language) = language {
+        if let Some(language) = language.to_part1() {
             req = req.query(&[("language", language)]);
         } else {
             req = req.query(&[("language", "en-US")]);
@@ -229,7 +229,7 @@ impl Client {
         Ok((out, resp.total_results))
     }
 
-    pub(crate) async fn fetch_show(&self, id: u32, language: Option<&str>) -> Result<ShowInfo> {
+    pub(crate) async fn fetch_show(&self, id: u32, language: api::Language) -> Result<ShowInfo> {
         #[derive(Deserialize)]
         struct SeasonDetails {
             #[serde(default)]
@@ -267,7 +267,7 @@ impl Client {
             #[serde(default)]
             first_air_date: Option<String>,
             #[serde(default)]
-            original_language: Option<String>,
+            original_language: api::Language,
             #[serde(default)]
             seasons: Vec<SeasonDetails>,
             #[serde(default)]
@@ -279,8 +279,9 @@ impl Client {
             .await?;
 
         // When no language is configured, fall back to the show's own original language.
-        let effective_language: Option<&str> =
-            language.or_else(|| details.original_language.as_deref().filter(|&l| l != "en"));
+        let effective_language = language.or(details
+            .original_language
+            .filter(|l| l != api::Language::ENG));
 
         // Re-fetch for a localized title and overview when the effective language
         // differs from what was used for the initial request (i.e., no language was
@@ -410,7 +411,7 @@ impl Client {
         &self,
         show_id: u32,
         season: api::SeasonNumber,
-        language: Option<&str>,
+        language: api::Language,
     ) -> Result<Vec<EpisodeInfo>> {
         #[derive(Debug, Deserialize)]
         struct EpisodeResponse {
@@ -492,7 +493,7 @@ impl Client {
         }
 
         let d: Resp = self
-            .get_json(format!("movie/{id}/release_dates"), None)
+            .get_json(format!("movie/{id}/release_dates"), api::Language::DEFAULT)
             .await?;
 
         let mut out = Vec::new();
@@ -506,7 +507,7 @@ impl Client {
                 };
 
                 out.push(MovieReleaseInfo {
-                    country: api::Country::from_iso_3166_1(&block.iso_3166_1).unwrap_or_default(),
+                    country: api::Country::from_iso(&block.iso_3166_1).unwrap_or_default(),
                     release_type,
                     release_date,
                 });
@@ -516,7 +517,7 @@ impl Client {
         Ok(out)
     }
 
-    pub(crate) async fn fetch_movie(&self, id: u32, language: Option<&str>) -> Result<MovieInfo> {
+    pub(crate) async fn fetch_movie(&self, id: u32, language: api::Language) -> Result<MovieInfo> {
         #[derive(Debug, Deserialize, Default)]
         struct ExternalIds {
             #[serde(default)]
@@ -538,7 +539,7 @@ impl Client {
             #[serde(default)]
             release_date: Option<String>,
             #[serde(default)]
-            original_language: Option<String>,
+            original_language: api::Language,
             #[serde(default)]
             external_ids: ExternalIds,
         }
@@ -550,8 +551,9 @@ impl Client {
             )
             .await?;
 
-        let effective_language: Option<&str> =
-            language.or_else(|| details.original_language.as_deref().filter(|&l| l != "en"));
+        let effective_language = language.or(details
+            .original_language
+            .filter(|l| l != api::Language::ENG));
 
         let localized: Option<Details> = if effective_language != language {
             self.get_json(
@@ -629,7 +631,7 @@ pub(crate) struct ShowRemote {
 pub(crate) struct ShowInfo {
     pub title: Option<String>,
     pub overview: Option<String>,
-    pub original_language: Option<String>,
+    pub original_language: api::Language,
     pub first_air_date: Option<Timestamp>,
     pub posters: Vec<Image>,
     pub backdrops: Vec<Image>,
@@ -659,7 +661,7 @@ pub(crate) struct EpisodeInfo {
 pub(crate) struct MovieInfo {
     pub title: Option<String>,
     pub overview: Option<String>,
-    pub original_language: Option<String>,
+    pub original_language: api::Language,
     pub release_date: Option<Timestamp>,
     pub posters: Vec<Image>,
     pub backdrops: Vec<Image>,

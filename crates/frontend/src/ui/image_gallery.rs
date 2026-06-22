@@ -43,7 +43,7 @@ pub(crate) fn ImageGallery(props: &Props) -> Html {
 
     html! {
         <>
-            <div class="row-fill">
+            <div class="row-split">
                 <h2>{props.kind.title()}</h2>
 
                 <div class="row end">

@@ -385,7 +385,7 @@ impl Search {
                 <Image class="banner hide-desktop" src={r.banner.clone()} placeholder=true />
 
                 <div class="column top fill">
-                    <div class="row-fill">
+                    <div class="row-split">
                         <a class="item-inline-lg" href={r.remote.show_url(r.slug.as_deref())} target="_blank" rel="noopener noreferrer" title={format!("Open on {}", r.remote.source())}>
                             <span class={classes!("logo", r.remote.source().as_id())} />
                         </a>
@@ -446,7 +446,7 @@ impl Search {
                 <Image class="banner hide-desktop" src={r.banner.clone()} placeholder=true />
 
                 <div class="column fill">
-                    <div class="row-fill">
+                    <div class="row-split">
                         <a class="item-inline-lg" href={r.remote.movie_url()} target="_blank" rel="noopener noreferrer" title={format!("Open on {}", r.remote.source())}>
                             <span class={classes!("logo", r.remote.source().as_id())} />
                         </a>

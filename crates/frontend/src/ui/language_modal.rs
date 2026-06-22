@@ -96,10 +96,10 @@ impl Component for LanguageModal {
         let current = props.current;
 
         let needle = self.filter.to_lowercase();
-        let filtered: Vec<&'static iso639::Entry> = iso639::iter()
+        let filtered: Vec<&'static iso639::Language> = iso639::iter()
             .filter(|entry| {
                 entry.part1.is_some()
-                    && (needle.is_empty() || entry.ref_name.to_lowercase().contains(&needle))
+                    && (needle.is_empty() || entry.name.to_lowercase().contains(&needle))
             })
             .collect();
 
@@ -139,14 +139,14 @@ impl Component for LanguageModal {
                         }
 
                         if props.show_top {
-                            { for self.top_languages.iter().filter_map(|code| {
-                                let code = *code;
-                                let entry = code.to_iso639_3().and_then(iso639::by_id)?;
-                                let selected = current == code;
+                            { for self.top_languages.iter().filter_map(|l| {
+                                let l = *l;
+                                let entry = l.to_iso()?;
+                                let selected = current == l;
 
                                 Some(html! {
-                                    <div key={format!("top-{code}")} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| Msg::Pick(code))}>
-                                        <span class="fill">{entry.ref_name}</span>
+                                    <div key={format!("top-{l}")} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| Msg::Pick(l))}>
+                                        <span class="fill">{entry.name}</span>
 
                                         if selected {
                                             <span class="item-inline">
@@ -154,7 +154,7 @@ impl Component for LanguageModal {
                                             </span>
                                         }
 
-                                        if let Some(country) = entry.part1.and_then(iso639::country_by_part1) {
+                                        if let Some(country) = entry.flag {
                                             <span class={classes!("item-inline", "flag", country)} />
                                         } else {
                                             <span class="item-inline">
@@ -176,13 +176,13 @@ impl Component for LanguageModal {
                             .skip(page.saturating_mul(LANGUAGE_PAGE_SIZE))
                             .take(LANGUAGE_PAGE_SIZE)
                             .map(|entry| {
-                                let code = api::Language::from_iso639(entry.id)
+                                let code = api::Language::from_iso(entry.id)
                                     .unwrap_or(api::Language::DEFAULT);
                                 let selected = current == code;
 
                                 html! {
                                     <div key={entry.id} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| Msg::Pick(code))}>
-                                        <span class="fill">{entry.ref_name}</span>
+                                        <span class="fill">{entry.name}</span>
 
                                         if selected {
                                             <span class="item-inline">
@@ -190,7 +190,7 @@ impl Component for LanguageModal {
                                             </span>
                                         }
 
-                                        if let Some(country) = entry.part1.and_then(iso639::country_by_part1) {
+                                        if let Some(country) = entry.flag {
                                             <span class={classes!("item-inline", "flag", country)} />
                                         } else {
                                             <span class="item-inline">

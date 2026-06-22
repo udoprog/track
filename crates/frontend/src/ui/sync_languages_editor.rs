@@ -62,7 +62,7 @@ impl Component for SyncLanguagesEditor {
         html! {
             <div class="table">
                 {
-                    for props.languages.iter().copied().enumerate().map(|(index, code)| {
+                    for props.languages.iter().copied().enumerate().map(|(index, l)| {
                         let on_remove = {
                             let current = props.languages.clone();
                             let on_change = props.on_change.clone();
@@ -73,20 +73,13 @@ impl Component for SyncLanguagesEditor {
                             })
                         };
 
-                        let (label, country) = if code.is_default() {
-                            ("Default (original language)".to_owned(), None)
-                        } else {
-                            match code.to_iso639_3().and_then(iso639::by_id) {
-                                Some(entry) => (
-                                    entry.ref_name.to_owned(),
-                                    entry.part1.and_then(iso639::country_by_part1),
-                                ),
-                                None => (code.to_string(), None),
-                            }
+                        let (label, country) = match l.to_iso() {
+                            Some(e) => (e.name, e.flag),
+                            None => ("Default (original language)", None),
                         };
 
                         html! {
-                            <div key={code.to_string()} class="table-entry row">
+                            <div key={l.to_string()} class="table-entry row">
                                 <span class="fill">{label}</span>
 
                                 if let Some(country) = country {

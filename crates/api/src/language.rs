@@ -42,12 +42,21 @@ impl Language {
 
     /// Unwrap the current language or fall back to other if the current
     /// language is `DEFAULT`.
+    #[inline]
     pub fn or(self, other: Self) -> Self {
         if self.is_default() { other } else { self }
     }
 
+    /// Filter the current language, returning `DEFAULT` if the predicate
+    /// returns false.
+    #[inline]
+    pub fn filter(self, f: impl FnOnce(Self) -> bool) -> Self {
+        if f(self) { self } else { Self::DEFAULT }
+    }
+
     /// The ascii string corresponding to this language code.
-    pub fn as_str(&self) -> &str {
+    #[inline]
+    fn as_repr(&self) -> &str {
         if self.is_default() {
             return "default";
         }
@@ -66,25 +75,7 @@ impl Language {
     /// code is resolved to its 3-letter form via the `iso639` data. An empty
     /// string or `"default"` maps to [`Language::DEFAULT`]. Returns `None`
     /// for anything else.
-    pub fn from_iso639(code: &str) -> Option<Self> {
-        fn to_lower<'a>(buf: &'a mut [u8; 4], input: &str) -> Option<&'a str> {
-            let bytes = input.as_bytes();
-
-            if bytes.len() > buf.len() {
-                return None;
-            }
-
-            for (b, o) in bytes.iter().zip(buf.iter_mut()) {
-                if !b.is_ascii_alphabetic() {
-                    return None;
-                }
-
-                *o = b.to_ascii_lowercase();
-            }
-
-            Some(unsafe { str::from_utf8_unchecked(&buf[..bytes.len()]) })
-        }
-
+    pub fn from_iso(code: &str) -> Option<Self> {
         let code = code.trim();
 
         if code.is_empty() || code.eq_ignore_ascii_case("default") {
@@ -117,34 +108,41 @@ impl Language {
         matches!(self.0, [0, 0, 0, 0])
     }
 
-    /// The 3-letter ISO 639-3 code, or `None` for [`Language::DEFAULT`].
-    pub fn to_iso639_3(&self) -> Option<&str> {
+    /// The static [`Language`] structure associated with this code, or `None`
+    /// for [`Language::DEFAULT`].
+    ///
+    /// [`Language`]: iso639::Language
+    pub fn to_iso(&self) -> Option<&'static iso639::Language> {
         if self.is_default() {
             return None;
         }
 
-        Some(self.as_raw_code())
+        iso639::by_id(self.as_raw_code())
     }
 
-    /// The 2-letter ISO 639-1 code, if one exists (`None` for `DEFAULT` or codes
-    /// without a 2-letter form). Used for remotes that key on ISO 639-1.
-    pub fn to_iso639_1(&self) -> Option<&str> {
-        let id = self.to_iso639_3()?;
-        iso639::by_id(id)?.part1
+    /// The 3-letter ISO 639-3 code, if one exists or `None` for `DEFAULT`.
+    pub fn to_id(&self) -> Option<&'static str> {
+        self.to_iso().map(|e| e.id)
+    }
+
+    /// The 2-letter ISO 639-1 code, if one exists (`None` for `DEFAULT` or
+    /// codes without a 2-letter form). Used for remotes that key on ISO 639-1.
+    pub fn to_part1(&self) -> Option<&'static str> {
+        self.to_iso()?.part1
     }
 }
 
 impl fmt::Display for Language {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
+        f.write_str(self.as_repr())
     }
 }
 
 impl fmt::Debug for Language {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Language({self})")
+        f.write_str(self.as_repr())
     }
 }
 
@@ -153,7 +151,7 @@ impl FromStr for Language {
 
     #[inline]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::from_iso639(s).ok_or(ParseLanguageErr)
+        Self::from_iso(s).ok_or(ParseLanguageErr)
     }
 }
 
@@ -163,7 +161,7 @@ impl serde::Serialize for Language {
     where
         S: serde::Serializer,
     {
-        self.as_str().serialize(serializer)
+        self.as_repr().serialize(serializer)
     }
 }
 
@@ -252,4 +250,22 @@ impl IntoPropValue<VNode> for Language {
     fn into_prop_value(self) -> VNode {
         self.to_string().into()
     }
+}
+
+fn to_lower<'a>(buf: &'a mut [u8; 4], input: &str) -> Option<&'a str> {
+    let bytes = input.as_bytes();
+
+    if bytes.len() > buf.len() {
+        return None;
+    }
+
+    for (b, o) in bytes.iter().zip(buf.iter_mut()) {
+        if !b.is_ascii_alphabetic() {
+            return None;
+        }
+
+        *o = b.to_ascii_lowercase();
+    }
+
+    Some(unsafe { str::from_utf8_unchecked(&buf[..bytes.len()]) })
 }

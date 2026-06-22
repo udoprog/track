@@ -380,7 +380,7 @@ impl Component for ShowDetail {
 
         html! {
             <>
-                <div class="row-fill align-top">
+                <div class="row-split align-top">
                     <div class="column desktop-center fill">
                         <h1>{show.title.as_deref().unwrap_or("Untitled Show")}</h1>
 
@@ -396,7 +396,7 @@ impl Component for ShowDetail {
                     </div>
                 </div>
 
-                <div class={classes!("desktop-row-fill", "mobile-column", "actions", (!self.actions_expanded).then_some("hide-mobile"))}>
+                <div class={classes!("desktop-row-split", "mobile-column", "actions", (!self.actions_expanded).then_some("hide-mobile"))}>
                     {actions}
                 </div>
 
@@ -1698,7 +1698,7 @@ impl ShowDetail {
 
         html! {
             <div class={classes!("table-entry", "column", clickable.then_some("clickable"), active.then_some("active"), (!active && !self.expanded_seasons).then_some("hide-mobile"))} {onclick}>
-                <div class="row-fill fill">
+                <div class="row-split fill">
                     <span>
                         if let Some(ref name) = s.name {
                             {name}
@@ -1829,7 +1829,7 @@ impl ShowDetail {
                         <p class="overview">{overview}</p>
                     }
 
-                    <div class="row-fill">
+                    <div class="row-split">
                         <div class="row">
                             <div class="input-group">
                                 <button class="btn" onclick={link.callback(|_| Msg::OpenSeasonTranslations)} title="Season Translations">
@@ -1969,7 +1969,7 @@ impl ShowDetail {
         let actions = {
             html! {
                 <div class="column">
-                    <div class="row-fill">
+                    <div class="row-split">
                         <div class="row text-gap">
                             if episode.pending {
                                 <span class="item-inline-lg" title="Next episode"><span class="icon primary exclamation-circle" /></span>
@@ -2097,7 +2097,7 @@ impl ShowDetail {
                                     }
                                 } else {
                                     html! {
-                                        <div class="row-fill">
+                                        <div class="row-split">
                                             <div class="row">
                                                 <span>{w.timestamp.display(self.tz.clone())}</span>
                                             </div>
@@ -2185,7 +2185,7 @@ impl ShowDetail {
                             }
                         } else {
                             html! {
-                                <div class="row-fill">
+                                <div class="row-split">
                                     <div class="row">
                                         <span class="text-muted">{w.code()}</span>
                                         <span>{w.timestamp.display(self.tz.clone())}</span>

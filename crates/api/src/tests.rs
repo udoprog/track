@@ -43,23 +43,23 @@ fn language_code_round_trip() {
     // Default sentinel.
     assert!(Language::DEFAULT.is_default());
     assert_eq!(Language::DEFAULT.to_string(), "default");
-    assert_eq!(Language::DEFAULT.to_iso639_3(), None);
-    assert_eq!(Language::from_iso639("default"), Some(Language::DEFAULT));
-    assert_eq!(Language::from_iso639(""), Some(Language::DEFAULT));
+    assert_eq!(Language::DEFAULT.to_id(), None);
+    assert_eq!(Language::from_iso("default"), Some(Language::DEFAULT));
+    assert_eq!(Language::from_iso(""), Some(Language::DEFAULT));
 
     // 3-letter packs to its own bytes.
-    let eng = Language::from_iso639("eng").unwrap();
+    let eng = Language::from_iso("eng").unwrap();
     assert_eq!(eng, Language::ENG);
     assert_eq!(eng.to_string(), "eng");
-    assert_eq!(eng.to_iso639_3().as_deref(), Some("eng"));
-    assert_eq!(eng.to_iso639_1().as_deref(), Some("en"));
+    assert_eq!(eng.to_id(), Some("eng"));
+    assert_eq!(eng.to_part1(), Some("en"));
 
     // 2-letter resolves to 3-letter.
-    assert_eq!(Language::from_iso639("en"), Some(Language::ENG));
-    assert_eq!(Language::from_iso639("SV"), Language::from_iso639("swe"));
+    assert_eq!(Language::from_iso("en"), Some(Language::ENG));
+    assert_eq!(Language::from_iso("SV"), Language::from_iso("swe"));
 
     // Case-insensitive and Display/FromStr round-trip.
-    let swe = Language::from_iso639("Swe").unwrap();
+    let swe = Language::from_iso("Swe").unwrap();
     assert_eq!(swe.to_string().parse::<Language>().unwrap(), swe);
 
     // serde round-trips through the string form.
@@ -72,8 +72,8 @@ fn language_code_round_trip() {
     );
 
     // Garbage is rejected.
-    assert_eq!(Language::from_iso639("123"), None);
-    assert_eq!(Language::from_iso639("toolong"), None);
+    assert_eq!(Language::from_iso("123"), None);
+    assert_eq!(Language::from_iso("toolong"), None);
 }
 
 #[test]
@@ -81,7 +81,7 @@ fn expand_sync_languages_resolves_and_dedupes() {
     use std::collections::BTreeSet;
 
     let eng = Language::ENG;
-    let fra = Language::from_iso639("fra").unwrap();
+    let fra = Language::from_iso("fra").unwrap();
     let default = Language::DEFAULT;
 
     // [DEFAULT, ENG] with a non-English original yields both languages.

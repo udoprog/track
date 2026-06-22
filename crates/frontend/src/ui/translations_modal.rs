@@ -183,15 +183,10 @@ fn covers(event: api::TranslationTarget, mine: api::TranslationTarget) -> bool {
 /// the `LanguagePicker` treatment — flag wrapped in `item-inline` so it sizes,
 /// falling back to the 3-letter code when no flag exists) followed by the text.
 fn view_row(translation: &api::Translation) -> Html {
-    let entry = translation.language.to_iso639_3().and_then(iso639::by_id);
+    let entry = translation.language.to_iso();
+    let label = entry.map(|e| e.name).unwrap_or("Default");
 
-    let label = entry.map_or_else(
-        || translation.language.as_str().to_owned(),
-        |e| e.ref_name.to_owned(),
-    );
-    let country = entry
-        .and_then(|e| e.part1)
-        .and_then(iso639::country_by_part1);
+    let country = entry.and_then(|e| e.flag);
     let id = entry.map(|e| e.id);
 
     html! {

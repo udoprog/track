@@ -40,14 +40,14 @@ impl Country {
     /// Sentinel meaning "use the media's own default (original) Country".
     pub const DEFAULT: Country = Country([0; 4]);
 
-    /// United States (`us`).
-    pub const US: Country = Country(*b"us\0\0");
+    /// United States (`US`).
+    pub const US: Country = Country(*b"US\0\0");
 
-    /// Great Britain (`gb`).
-    pub const GB: Country = Country(*b"gb\0\0");
+    /// Great Britain (`GB`).
+    pub const GB: Country = Country(*b"GB\0\0");
 
-    /// Japan (`jp`).
-    pub const JP: Country = Country(*b"jp\0\0");
+    /// Japan (`JP`).
+    pub const JP: Country = Country(*b"JP\0\0");
 
     /// Unwrap the current Country or fall back to other if the current Country
     /// is `DEFAULT`.
@@ -75,25 +75,7 @@ impl Country {
     }
 
     /// Build from a 2-letter 3166-1 alpha-2 code (case-insensitive).
-    pub fn from_iso_3166_1(code: &str) -> Option<Self> {
-        fn to_lower<'a>(buf: &'a mut [u8; 4], input: &str) -> Option<&'a str> {
-            let bytes = input.as_bytes();
-
-            if bytes.len() > buf.len() {
-                return None;
-            }
-
-            for (b, o) in bytes.iter().zip(buf.iter_mut()) {
-                if !b.is_ascii_alphabetic() {
-                    return None;
-                }
-
-                *o = b.to_ascii_lowercase();
-            }
-
-            Some(unsafe { str::from_utf8_unchecked(&buf[..bytes.len()]) })
-        }
-
+    pub fn from_iso(code: &str) -> Option<Self> {
         let code = code.trim();
 
         if code.is_empty() || code.eq_ignore_ascii_case("default") {
@@ -101,11 +83,11 @@ impl Country {
         }
 
         let mut bytes = [0u8; 4];
-        let lower = to_lower(&mut bytes, code)?;
+        let upper = to_upper(&mut bytes, code)?;
 
-        let bytes = match lower.len() {
+        let bytes = match upper.len() {
             2 => {
-                let id = iso3166::by_part1(lower)?.alpha2;
+                let id = iso3166::by_alpha2(upper)?.alpha2;
 
                 let &[a, b] = id.as_bytes() else {
                     return None;
@@ -125,15 +107,15 @@ impl Country {
         matches!(self.0, [0, 0, 0, 0])
     }
 
-    /// The 2-letter ISO 3166-1 alpha-2 code, or `None` for
+    /// Get a reference to a static ISO 3166 country, or `None` for
     /// [`Country::DEFAULT`].
     #[inline]
-    pub fn to_iso3166_1(&self) -> Option<&str> {
+    pub fn to_iso(&self) -> Option<&'static iso3166::Country> {
         if self.is_default() {
             return None;
         }
 
-        Some(self.as_raw_code())
+        iso3166::by_alpha2(self.as_raw_code())
     }
 }
 
@@ -156,7 +138,7 @@ impl FromStr for Country {
 
     #[inline]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::from_iso_3166_1(s).ok_or(ParseCountryErr)
+        Self::from_iso(s).ok_or(ParseCountryErr)
     }
 }
 
@@ -263,14 +245,14 @@ impl IntoPropValue<VNode> for Country {
 impl IntoPropValue<Option<IString>> for Country {
     #[inline]
     fn into_prop_value(self) -> Option<IString> {
-        self.to_iso3166_1().map(Into::into)
+        self.to_iso().map(|c| IString::Static(c.name))
     }
 }
 
 impl PartialEq<&'static iso3166::Country> for Country {
     #[inline]
     fn eq(&self, other: &&'static iso3166::Country) -> bool {
-        self.to_iso3166_1() == Some(other.alpha2)
+        self.as_raw_code() == other.alpha2
     }
 }
 
@@ -280,4 +262,22 @@ impl From<Country> for Key {
     fn from(country: Country) -> Self {
         country.as_str().into()
     }
+}
+
+fn to_upper<'a>(buf: &'a mut [u8; 4], input: &str) -> Option<&'a str> {
+    let bytes = input.as_bytes();
+
+    if bytes.len() > buf.len() {
+        return None;
+    }
+
+    for (b, o) in bytes.iter().zip(buf.iter_mut()) {
+        if !b.is_ascii_alphabetic() {
+            return None;
+        }
+
+        *o = b.to_ascii_uppercase();
+    }
+
+    Some(unsafe { str::from_utf8_unchecked(&buf[..bytes.len()]) })
 }

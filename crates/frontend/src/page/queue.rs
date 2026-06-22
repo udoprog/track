@@ -118,7 +118,7 @@ impl Component for Queue {
 
         html! {
             <>
-                <div class="row-fill">
+                <div class="row-split">
                     <h1>{"Queue"}</h1>
 
                     <button class="btn end" onclick={link.callback(|_| Msg::SyncAll)}

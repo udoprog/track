@@ -94,7 +94,7 @@ impl Client {
                 network: n.name.unwrap_or_default(),
                 country: n
                     .country
-                    .and_then(|c| api::Country::from_iso_3166_1(c.code.as_deref()?))
+                    .and_then(|c| api::Country::from_iso(c.code.as_deref()?))
                     .unwrap_or_default(),
             },
             None => ShowNetwork::default(),

@@ -14,12 +14,7 @@ ignore = [
 [[hooks]]
 stage = "pre_build"
 command = "cargo"
-command_arguments = ["run", "-p", "tools", "--bin", "update", "generate-flags"]
-
-[[hooks]]
-stage = "pre_build"
-command = "cargo"
-command_arguments = ["run", "-p", "tools", "--bin", "update", "generate-icons"]
+command_arguments = ["run", "-p", "tools", "--", "scss"]
 
 [[proxy]]
 rewrite = "/ws"

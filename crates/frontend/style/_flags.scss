@@ -13,9 +13,9 @@
         height: 80%;
     }
 
-    @each $name in flags.$names {
+    @each $name, $svg in flags.$names {
         &.#{$name} {
-            background-image: url('/static/flags/#{$name}.svg');
+            background-image: url('/static/flags/#{$svg}.svg');
         }
     }
 }

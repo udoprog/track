@@ -219,7 +219,7 @@ impl Component for MediaList {
 
         html! {
             <>
-                <div class="row-fill">
+                <div class="row-split">
                     <h1>{"Media"}</h1>
                     <h4 class="text-muted end">{total}</h4>
                 </div>
@@ -601,7 +601,7 @@ impl MediaList {
                     <Image class="poster poster-side clickable hide-mobile" onclick={&onclick} src={m.poster.clone()} />
 
                     <div class="column fill">
-                            <div class="row-fill fill align-top">
+                            <div class="row-split fill align-top">
                                 <div class="column fill">
                                     <div class="row clickable" onclick={&onclick}>
                                         <div class="item-inline" title={kind_title}>

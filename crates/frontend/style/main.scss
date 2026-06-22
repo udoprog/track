@@ -272,7 +272,7 @@ p {
     }
 }
 
-@mixin row-fill-base {
+@mixin row-split-base {
     @include row-base;
 
     flex-wrap: wrap;
@@ -294,13 +294,13 @@ p {
     }
 }
 
-.row-fill {
-    @include row-fill-base;
+.row-split {
+    @include row-split-base;
 }
 
 @include g.on-desktop {
-    .desktop-row-fill {
-        @include row-fill-base;
+    .desktop-row-split {
+        @include row-split-base;
     }
 }
 
@@ -962,7 +962,7 @@ image {
             align-items: center;
         }
 
-        .row-fill {
+        .row-split {
             flex-direction: row;
         }
 

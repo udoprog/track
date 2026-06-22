@@ -212,7 +212,7 @@ impl RemoteClients {
     pub(crate) async fn fetch_tmdb_show(
         &self,
         id: u32,
-        language: Option<&str>,
+        language: api::Language,
     ) -> Result<tmdb::ShowInfo> {
         self.tmdb()
             .context("Expected a configured TMDB client")?
@@ -224,7 +224,7 @@ impl RemoteClients {
         &self,
         show_id: u32,
         season: api::SeasonNumber,
-        language: Option<&str>,
+        language: api::Language,
     ) -> Result<Vec<tmdb::EpisodeInfo>> {
         self.tmdb()
             .context("Expected a configured TMDB client")?
@@ -235,7 +235,7 @@ impl RemoteClients {
     pub(crate) async fn fetch_tmdb_movie(
         &self,
         id: u32,
-        language: Option<&str>,
+        language: api::Language,
     ) -> Result<tmdb::MovieInfo> {
         self.tmdb()
             .context("Expected a configured TMDB client")?
@@ -256,7 +256,7 @@ impl RemoteClients {
     pub(crate) async fn fetch_tvdb_show(
         &self,
         id: u32,
-        language: Option<&str>,
+        language: api::Language,
     ) -> Result<tvdb::SeriesInfo> {
         self.tvdb()
             .context("Expected a configured TVDB client")?
@@ -267,7 +267,7 @@ impl RemoteClients {
     pub(crate) async fn fetch_tvdb_episodes(
         &self,
         show_id: u32,
-        language: Option<&str>,
+        language: api::Language,
     ) -> Result<Vec<tvdb::EpisodeInfo>> {
         self.tvdb()
             .context("Expected a configured TVDB client")?
