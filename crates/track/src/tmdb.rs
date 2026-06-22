@@ -11,6 +11,19 @@ use crate::remote::best_image;
 const BASE: &str = "https://api.themoviedb.org/3/";
 const IMAGE_BASE: &str = "https://image.tmdb.org/t/p/original/";
 
+/// The TMDB `language` query value for a locale: its ISO 639-1 form, plus the
+/// country region when present (`en`, `en-US`). Returns `None` when the language
+/// has no 2-letter form, since TMDB only understands ISO 639-1 language codes.
+fn tmdb_language(locale: api::Locale) -> Option<String> {
+    let part1 = locale.language().to_part1()?;
+
+    if locale.country().is_default() {
+        Some(part1.to_owned())
+    } else {
+        Some(format!("{part1}-{}", locale.country()))
+    }
+}
+
 struct Inner {
     base: reqwest::Url,
     image_base: reqwest::Url,
@@ -48,13 +61,13 @@ impl Client {
     }
 
     #[tracing::instrument(skip(self, url))]
-    async fn get_json<T>(&self, url: impl AsRef<str>, language: api::Language) -> Result<T>
+    async fn get_json<T>(&self, url: impl AsRef<str>, language: api::Locale) -> Result<T>
     where
         T: DeserializeOwned,
     {
         let mut req = self.request(Method::GET, url.as_ref())?;
 
-        if let Some(language) = language.to_part1() {
+        if let Some(language) = tmdb_language(language) {
             req = req.query(&[("language", language)]);
         }
 
@@ -62,17 +75,14 @@ impl Client {
     }
 
     #[tracing::instrument(skip(self, url))]
-    async fn get_images<T>(&self, url: impl AsRef<str>, language: api::Language) -> Result<T>
+    async fn get_images<T>(&self, url: impl AsRef<str>, language: api::Locale) -> Result<T>
     where
         T: DeserializeOwned,
     {
         let mut req = self.request(Method::GET, url.as_ref())?;
 
-        if let Some(language) = language.to_part1() {
-            req = req.query(&[("language", language)]);
-        } else {
-            req = req.query(&[("language", "en-US")]);
-        }
+        let language = tmdb_language(language).unwrap_or_else(|| "en-US".to_owned());
+        req = req.query(&[("language", language)]);
 
         Self::send_json(req).await
     }
@@ -229,7 +239,7 @@ impl Client {
         Ok((out, resp.total_results))
     }
 
-    pub(crate) async fn fetch_show(&self, id: u32, language: api::Language) -> Result<ShowInfo> {
+    pub(crate) async fn fetch_show(&self, id: u32, language: api::Locale) -> Result<ShowInfo> {
         #[derive(Deserialize)]
         struct SeasonDetails {
             #[serde(default)]
@@ -279,9 +289,12 @@ impl Client {
             .await?;
 
         // When no language is configured, fall back to the show's own original language.
-        let effective_language = language.or(details
-            .original_language
-            .filter(|l| l != api::Language::ENG));
+        let effective_language = language.or(api::Locale::new(
+            details
+                .original_language
+                .filter(|l| l != api::Language::ENG),
+            api::Country::DEFAULT,
+        ));
 
         // Re-fetch for a localized title and overview when the effective language
         // differs from what was used for the initial request (i.e., no language was
@@ -411,7 +424,7 @@ impl Client {
         &self,
         show_id: u32,
         season: api::SeasonNumber,
-        language: api::Language,
+        language: api::Locale,
     ) -> Result<Vec<EpisodeInfo>> {
         #[derive(Debug, Deserialize)]
         struct EpisodeResponse {
@@ -493,7 +506,7 @@ impl Client {
         }
 
         let d: Resp = self
-            .get_json(format!("movie/{id}/release_dates"), api::Language::DEFAULT)
+            .get_json(format!("movie/{id}/release_dates"), api::Locale::DEFAULT)
             .await?;
 
         let mut out = Vec::new();
@@ -517,7 +530,7 @@ impl Client {
         Ok(out)
     }
 
-    pub(crate) async fn fetch_movie(&self, id: u32, language: api::Language) -> Result<MovieInfo> {
+    pub(crate) async fn fetch_movie(&self, id: u32, language: api::Locale) -> Result<MovieInfo> {
         #[derive(Debug, Deserialize, Default)]
         struct ExternalIds {
             #[serde(default)]
@@ -551,9 +564,12 @@ impl Client {
             )
             .await?;
 
-        let effective_language = language.or(details
-            .original_language
-            .filter(|l| l != api::Language::ENG));
+        let effective_language = language.or(api::Locale::new(
+            details
+                .original_language
+                .filter(|l| l != api::Language::ENG),
+            api::Country::DEFAULT,
+        ));
 
         let localized: Option<Details> = if effective_language != language {
             self.get_json(

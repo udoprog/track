@@ -246,7 +246,11 @@ impl Client {
         Ok((out, total))
     }
 
-    pub(crate) async fn fetch_show(&self, id: u32, language: api::Language) -> Result<SeriesInfo> {
+    pub(crate) async fn fetch_show(&self, id: u32, language: api::Locale) -> Result<SeriesInfo> {
+        // TVDB keys on 3-letter ISO 639 language codes and ignores country, so
+        // reduce the locale to its language component.
+        let language = language.language();
+
         #[derive(Deserialize)]
         struct Resp {
             data: Extended,
@@ -439,8 +443,11 @@ impl Client {
     pub(crate) async fn fetch_episodes(
         &self,
         show_id: u32,
-        language: api::Language,
+        language: api::Locale,
     ) -> Result<Vec<EpisodeInfo>> {
+        // TVDB keys on 3-letter ISO 639 language codes and ignores country.
+        let language = language.language();
+
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct Row {

@@ -287,7 +287,7 @@ struct ShowDraft {
     first_air_date: Option<api::Timestamp>,
     overview: Option<String>,
     /// The show's own original language, discovered from the Base layer.
-    default_language: api::Language,
+    default_language: api::Locale,
     /// The source/id of the Base provider, used to re-fetch per-language strings.
     base_remote: Option<(RemoteSource, u32)>,
     seasons: BTreeMap<SeasonNumber, SeasonDraft>,
@@ -303,13 +303,13 @@ struct ShowDraft {
     episode_strings: BTreeMap<(SeasonNumber, u32), StringRows>,
 }
 
-/// A batch of `(language, kind, text)` rows destined for a `*_strings` table.
-type StringRows = Vec<(api::Language, api::StringKind, String)>;
+/// A batch of `(locale, kind, text)` rows destined for a `*_strings` table.
+type StringRows = Vec<(api::Locale, api::StringKind, String)>;
 
 /// Append a translated string, skipping missing or blank text.
 fn push_string(
     rows: &mut StringRows,
-    language: api::Language,
+    language: api::Locale,
     kind: api::StringKind,
     text: Option<String>,
 ) {
@@ -333,7 +333,7 @@ impl ShowDraft {
 
     fn add_show_string(
         &mut self,
-        language: api::Language,
+        language: api::Locale,
         kind: api::StringKind,
         text: Option<String>,
     ) {
@@ -343,7 +343,7 @@ impl ShowDraft {
     fn add_season_string(
         &mut self,
         season: SeasonNumber,
-        language: api::Language,
+        language: api::Locale,
         kind: api::StringKind,
         text: Option<String>,
     ) {
@@ -359,7 +359,7 @@ impl ShowDraft {
         &mut self,
         season: SeasonNumber,
         number: u32,
-        language: api::Language,
+        language: api::Locale,
         kind: api::StringKind,
         text: Option<String>,
     ) {
@@ -386,7 +386,7 @@ async fn tmdb_layer(
     draft: &mut ShowDraft,
     show: &api::Show,
     tmdb_id: u32,
-    base_language: api::Language,
+    base_language: api::Locale,
     do_base: bool,
     do_air_date: bool,
     remote: &RemoteClients,
@@ -416,13 +416,16 @@ async fn tmdb_layer(
 
     // When no language is configured, use the show's own original language for
     // episode fetches so episode titles and overviews are also localized.
-    let language = base_language.or(info.original_language.filter(|l| l != api::Language::ENG));
+    let language = base_language.or(api::Locale::new(
+        info.original_language.filter(|l| l != api::Language::ENG),
+        api::Country::DEFAULT,
+    ));
 
     if do_base {
         draft.title = info.title.clone();
         draft.overview = info.overview.clone();
         draft.first_air_date = info.first_air_date.or(show.first_air_date);
-        draft.default_language = info.original_language;
+        draft.default_language = api::Locale::new(info.original_language, api::Country::DEFAULT);
         draft.base_remote = Some((RemoteSource::Tmdb, tmdb_id));
     }
 
@@ -473,7 +476,7 @@ async fn tmdb_layer(
 async fn tvdb_layer(
     draft: &mut ShowDraft,
     tvdb_id: u32,
-    base_language: api::Language,
+    base_language: api::Locale,
     do_base: bool,
     do_air_date: bool,
     remote: &RemoteClients,
@@ -509,13 +512,16 @@ async fn tvdb_layer(
         draft.title = info.title.clone();
         draft.overview = info.overview.clone();
         // TVDB has no first-air-date field; persist falls back to the existing value.
-        draft.default_language = info.original_language;
+        draft.default_language = api::Locale::new(info.original_language, api::Country::DEFAULT);
         draft.base_remote = Some((RemoteSource::Tvdb, tvdb_id));
     }
 
     // When no language is configured, use the show's own original language for
     // episode fetches. TVDB uses 3-letter language codes; "eng" is the default.
-    let language = base_language.or(info.original_language.filter(|l| l != api::Language::ENG));
+    let language = base_language.or(api::Locale::new(
+        info.original_language.filter(|l| l != api::Language::ENG),
+        api::Country::DEFAULT,
+    ));
 
     info!(tvdb_id, ?language, "Fetching TVDB episodes");
 
@@ -617,11 +623,22 @@ async fn collect_show_strings(
         return Ok(());
     };
 
-    let targets = api::expand_sync_languages(&config.sync_languages, draft.default_language);
+    let mut targets = api::expand_sync_languages(&config.sync_languages, draft.default_language);
+
+    // TVDB has no country dimension, so its strings are language-only. Collapse
+    // each target to its language (country = DEFAULT) before fetching; the
+    // `BTreeSet` then dedupes locales that differ only by country.
+    if source == RemoteSource::Tvdb {
+        targets = targets
+            .into_iter()
+            .map(|l| api::Locale::new(l.language(), api::Country::DEFAULT))
+            .collect();
+    }
 
     for language in targets {
-        // Remotes key on ISO 639-1; skip any language without a 2-letter form.
-        if language.to_part1().is_none() {
+        // Remotes key on ISO 639-1; skip any locale whose language has no
+        // 2-letter form.
+        if language.language().to_part1().is_none() {
             continue;
         };
 
@@ -638,7 +655,7 @@ async fn collect_show_strings(
 async fn collect_tmdb_strings(
     draft: &mut ShowDraft,
     tmdb_id: u32,
-    language: api::Language,
+    language: api::Locale,
     remote: &RemoteClients,
 ) -> Result<()> {
     let info = remote.fetch_tmdb_show(tmdb_id, language).await?;
@@ -694,7 +711,7 @@ async fn collect_tmdb_strings(
 async fn collect_tvdb_strings(
     draft: &mut ShowDraft,
     tvdb_id: u32,
-    language: api::Language,
+    language: api::Locale,
     remote: &RemoteClients,
 ) -> Result<()> {
     let info = remote.fetch_tvdb_show(tvdb_id, language).await?;
@@ -944,20 +961,15 @@ pub(crate) async fn sync_movie(
             )
             .await?;
 
+            let original_locale = api::Locale::new(info.original_language, api::Country::DEFAULT);
+
             if !info.original_language.is_default() {
-                db.set_movie_default_language(movie_id, info.original_language)
+                db.set_movie_default_language(movie_id, original_locale)
                     .await?;
             }
 
-            if let Err(e) = collect_movie_strings(
-                movie_id,
-                tmdb_id,
-                info.original_language,
-                &config,
-                db,
-                remote,
-            )
-            .await
+            if let Err(e) =
+                collect_movie_strings(movie_id, tmdb_id, original_locale, &config, db, remote).await
             {
                 warn!(movie_id = %movie_id, "String collection failed: {e:#}");
             }
@@ -1061,7 +1073,7 @@ pub(crate) async fn sync_movie(
 async fn collect_movie_strings(
     movie_id: api::MovieId,
     tmdb_id: u32,
-    original: api::Language,
+    original: api::Locale,
     config: &api::Config,
     db: &Database,
     remote: &RemoteClients,
@@ -1071,7 +1083,7 @@ async fn collect_movie_strings(
     let mut rows: StringRows = Vec::new();
 
     for language in targets {
-        if language.to_part1().is_none() {
+        if language.language().to_part1().is_none() {
             continue;
         }
 

@@ -23,6 +23,9 @@ pub use self::language::{Language, ParseLanguageErr};
 mod country;
 pub use self::country::{Country, ParseCountryErr};
 
+mod locale;
+pub use self::locale::{Locale, ParseLocaleErr};
+
 mod sync_kind;
 pub use self::sync_kind::{SyncKind, SyncKindSet};
 
@@ -1183,18 +1186,15 @@ pub fn default_air_date_priority() -> Vec<RemoteSource> {
 }
 
 /// Resolve the configured [`Config::sync_languages`] against an entity's own
-/// `original` language into the concrete set of languages a sync should populate
-/// strings for: each [`Language::DEFAULT`] entry becomes `original`, concrete
-/// entries stay as-is, anything still unresolved (`DEFAULT`) is dropped, and the
-/// `BTreeSet` deduplicates.
-pub fn expand_sync_languages(
-    sync_languages: &[Language],
-    original: Language,
-) -> BTreeSet<Language> {
+/// `original` locale into the concrete set of locales a sync should populate
+/// strings for: each language-default entry takes `original`'s language,
+/// concrete entries stay as-is, anything whose language is still unresolved is
+/// dropped, and the `BTreeSet` deduplicates.
+pub fn expand_sync_languages(sync_languages: &[Locale], original: Locale) -> BTreeSet<Locale> {
     sync_languages
         .iter()
         .map(|l| l.or(original))
-        .filter(|l| !l.is_default())
+        .filter(|l| !l.language().is_default())
         .collect()
 }
 
@@ -1222,7 +1222,7 @@ pub struct Show {
     pub banner: Option<Image>,
     pub backdrop: Option<Image>,
     pub last_synced_at: Option<Timestamp>,
-    pub language: Language,
+    pub language: Locale,
     pub include_specials: Option<bool>,
     pub air_date_filters: Option<Vec<AirDateFilter>>,
 }
@@ -1394,7 +1394,7 @@ pub struct Movie {
     pub backdrop: Option<Image>,
     pub last_synced_at: Option<Timestamp>,
     pub releases: Vec<MovieRelease>,
-    pub language: Language,
+    pub language: Locale,
     pub release_filters: Option<Vec<ReleaseFilter>>,
 }
 
@@ -1598,9 +1598,9 @@ pub struct Config {
     pub auto_sync_enabled: bool,
     pub auto_sync_interval_hours: u32,
     pub timezone: String,
-    /// The default display language. [`LanguageCode::DEFAULT`] means "use each
+    /// The default display locale. [`Locale::DEFAULT`] means "use each
     /// show's/movie's own original language".
-    pub language: Language,
+    pub language: Locale,
     pub include_specials: bool,
     /// Default release types/countries that determine a movie's release date.
     pub release_filters: Vec<ReleaseFilter>,
@@ -1610,9 +1610,9 @@ pub struct Config {
     /// sync. A source absent here uses its full capability. Per-remote overrides
     /// take precedence. See [`Config::sync_kinds_for`].
     pub sync_kinds: Vec<SourceSyncKinds>,
-    /// Which languages the sync path populates translations for.
-    /// [`LanguageCode::DEFAULT`] stands for each media's own original language.
-    pub sync_languages: Vec<Language>,
+    /// Which locales the sync path populates translations for.
+    /// [`Locale::DEFAULT`] stands for each media's own original language.
+    pub sync_languages: Vec<Locale>,
 }
 
 impl Default for Config {
@@ -1626,12 +1626,15 @@ impl Default for Config {
             auto_sync_enabled: false,
             auto_sync_interval_hours: 24,
             timezone: String::new(),
-            language: Language::DEFAULT,
+            language: Locale::DEFAULT,
             include_specials: false,
             release_filters: ReleaseFilter::default_filters(),
             air_date_filters: Vec::new(),
             sync_kinds: Vec::new(),
-            sync_languages: vec![Language::DEFAULT, Language::ENG],
+            sync_languages: vec![
+                Locale::DEFAULT,
+                Locale::new(Language::ENG, Country::DEFAULT),
+            ],
         }
     }
 }
@@ -1807,7 +1810,7 @@ pub struct GetTranslationsRequest {
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct Translation {
-    pub language: Language,
+    pub language: Locale,
     pub kind: StringKind,
     pub text: String,
 }
@@ -2133,7 +2136,7 @@ pub struct SetMovieRemoteSyncKindsRequest {
 #[musli(crate = musli_core)]
 pub struct SetShowLanguageRequest {
     pub id: ShowId,
-    pub language: Language,
+    pub language: Locale,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -2168,7 +2171,7 @@ pub struct SetShowAirDateFiltersRequest {
 #[musli(crate = musli_core)]
 pub struct SetMovieLanguageRequest {
     pub id: MovieId,
-    pub language: Language,
+    pub language: Locale,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -2271,8 +2274,8 @@ pub struct GetTopLanguagesRequest;
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct GetTopLanguagesResponse {
-    /// Most-used custom language codes (ISO 639-1), ordered most-used first.
-    pub top_languages: Vec<Language>,
+    /// Most-used custom locales, ordered most-used first.
+    pub top_languages: Vec<Locale>,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -2397,7 +2400,7 @@ pub enum AppEventKind {
         config: Config,
     },
     TopLanguagesChanged {
-        top_languages: Vec<Language>,
+        top_languages: Vec<Locale>,
     },
     TaskAdded {
         task: Task,

@@ -12,6 +12,7 @@ yew = ["dep:yew", "dep:implicit-clone"]
 [dependencies]
 iso639 = { version = "0.0.0", path = "../iso639" }
 iso3166 = { version = "0.0.0", path = "../iso3166" }
+locales = { version = "0.0.0", path = "../locales" }
 
 base64 = "0.22.1"
 jiff = "0.2.28"

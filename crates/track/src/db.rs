@@ -44,7 +44,7 @@ struct ShowRow {
     tracked: bool,
     auto_sync: bool,
     last_synced_at: Option<Timestamp>,
-    language: api::Language,
+    language: api::Locale,
     include_specials: Option<bool>,
     air_date_filters: Option<String>,
 }
@@ -54,7 +54,7 @@ struct ShowRow {
 /// tally the most-used per-show/per-movie language overrides.
 #[derive(Row)]
 struct LanguageRow {
-    language: api::Language,
+    language: api::Locale,
 }
 
 #[derive(Row)]
@@ -173,7 +173,7 @@ struct MovieRow {
     tracked: bool,
     auto_sync: bool,
     last_synced_at: Option<Timestamp>,
-    language: api::Language,
+    language: api::Locale,
     release_filters: Option<String>,
 }
 
@@ -725,13 +725,13 @@ struct InnerRead {
 
     // translated strings (per entity)
     #[sql = "SELECT language, kind, text FROM show_strings WHERE show_id = ? ORDER BY kind, language"]
-    list_show_strings: TypedStatement<(ShowId,), (api::Language, api::StringKind, String)>,
+    list_show_strings: TypedStatement<(ShowId,), (api::Locale, api::StringKind, String)>,
     #[sql = "SELECT language, kind, text FROM movie_strings WHERE movie_id = ? ORDER BY kind, language"]
-    list_movie_strings: TypedStatement<(MovieId,), (api::Language, api::StringKind, String)>,
+    list_movie_strings: TypedStatement<(MovieId,), (api::Locale, api::StringKind, String)>,
     #[sql = "SELECT language, kind, text FROM episode_strings WHERE episode_id = ? ORDER BY kind, language"]
-    list_episode_strings: TypedStatement<(EpisodeId,), (api::Language, api::StringKind, String)>,
+    list_episode_strings: TypedStatement<(EpisodeId,), (api::Locale, api::StringKind, String)>,
     #[sql = "SELECT language, kind, text FROM season_strings WHERE season_id = ? ORDER BY kind, language"]
-    list_season_strings: TypedStatement<(SeasonId,), (api::Language, api::StringKind, String)>,
+    list_season_strings: TypedStatement<(SeasonId,), (api::Locale, api::StringKind, String)>,
 }
 
 #[derive(Statements)]
@@ -757,7 +757,7 @@ struct InnerWrite {
         (),
     >,
     #[sql = "UPDATE shows SET language = ? WHERE id = ?"]
-    update_show_language: TypedStatement<(api::Language, ShowId), ()>,
+    update_show_language: TypedStatement<(api::Locale, ShowId), ()>,
     #[sql = "UPDATE shows SET include_specials = ? WHERE id = ?"]
     update_show_include_specials: TypedStatement<(Option<bool>, ShowId), ()>,
     #[sql = "UPDATE shows SET air_date_filters = ? WHERE id = ?"]
@@ -971,32 +971,32 @@ struct InnerWrite {
     #[sql = "UPDATE movie_remotes SET sync_kinds = ? WHERE id = ?"]
     set_movie_remote_sync_kinds: TypedStatement<(Option<api::SyncKindSet>, RemoteId), ()>,
     #[sql = "UPDATE movies SET language = ? WHERE id = ?"]
-    set_movie_language: TypedStatement<(Option<api::Language>, MovieId), ()>,
+    set_movie_language: TypedStatement<(Option<api::Locale>, MovieId), ()>,
     #[sql = "UPDATE movies SET release_filters = ? WHERE id = ?"]
     set_movie_release_filters: TypedStatement<(Option<String>, MovieId), ()>,
 
     // per-language translated strings (populated alongside the direct columns
     // during sync; the owner's set is cleared and re-inserted each time)
     #[sql = "UPDATE shows SET default_language = ? WHERE id = ?"]
-    set_show_default_language: TypedStatement<(api::Language, ShowId), ()>,
+    set_show_default_language: TypedStatement<(api::Locale, ShowId), ()>,
     #[sql = "UPDATE movies SET default_language = ? WHERE id = ?"]
-    set_movie_default_language: TypedStatement<(api::Language, MovieId), ()>,
+    set_movie_default_language: TypedStatement<(api::Locale, MovieId), ()>,
     #[sql = "DELETE FROM show_strings WHERE show_id = ?"]
     clear_show_strings: TypedStatement<(ShowId,), ()>,
     #[sql = "INSERT INTO show_strings (show_id, language, kind, text) VALUES (?, ?, ?, ?)"]
-    insert_show_string: TypedStatement<(ShowId, api::Language, api::StringKind, String), ()>,
+    insert_show_string: TypedStatement<(ShowId, api::Locale, api::StringKind, String), ()>,
     #[sql = "DELETE FROM movie_strings WHERE movie_id = ?"]
     clear_movie_strings: TypedStatement<(MovieId,), ()>,
     #[sql = "INSERT INTO movie_strings (movie_id, language, kind, text) VALUES (?, ?, ?, ?)"]
-    insert_movie_string: TypedStatement<(MovieId, api::Language, api::StringKind, String), ()>,
+    insert_movie_string: TypedStatement<(MovieId, api::Locale, api::StringKind, String), ()>,
     #[sql = "DELETE FROM episode_strings WHERE episode_id = ?"]
     clear_episode_strings: TypedStatement<(EpisodeId,), ()>,
     #[sql = "INSERT INTO episode_strings (episode_id, language, kind, text) VALUES (?, ?, ?, ?)"]
-    insert_episode_string: TypedStatement<(EpisodeId, api::Language, api::StringKind, String), ()>,
+    insert_episode_string: TypedStatement<(EpisodeId, api::Locale, api::StringKind, String), ()>,
     #[sql = "DELETE FROM season_strings WHERE season_id = ?"]
     clear_season_strings: TypedStatement<(SeasonId,), ()>,
     #[sql = "INSERT INTO season_strings (season_id, language, kind, text) VALUES (?, ?, ?, ?)"]
-    insert_season_string: TypedStatement<(SeasonId, api::Language, api::StringKind, String), ()>,
+    insert_season_string: TypedStatement<(SeasonId, api::Locale, api::StringKind, String), ()>,
 
     // watched
     #[sql = "INSERT OR IGNORE INTO watched_episodes (id, timestamp, show_id, season, episode)"]
@@ -1522,11 +1522,7 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn set_show_language(
-        &self,
-        id: ShowId,
-        language: api::Language,
-    ) -> Result<()> {
+    pub(crate) async fn set_show_language(&self, id: ShowId, language: api::Locale) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
@@ -2702,7 +2698,7 @@ impl Database {
     pub(crate) async fn set_movie_language(
         &self,
         id: MovieId,
-        language: api::Language,
+        language: api::Locale,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
@@ -2768,7 +2764,7 @@ impl Database {
     pub(crate) async fn set_show_default_language(
         &self,
         show_id: ShowId,
-        language: api::Language,
+        language: api::Locale,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
         spawn_blocking(move || {
@@ -2782,7 +2778,7 @@ impl Database {
     pub(crate) async fn set_movie_default_language(
         &self,
         movie_id: MovieId,
-        language: api::Language,
+        language: api::Locale,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
         spawn_blocking(move || {
@@ -2798,7 +2794,7 @@ impl Database {
     pub(crate) async fn replace_show_strings(
         &self,
         show_id: ShowId,
-        strings: Vec<(api::Language, api::StringKind, String)>,
+        strings: Vec<(api::Locale, api::StringKind, String)>,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
         spawn_blocking(move || {
@@ -2816,7 +2812,7 @@ impl Database {
     pub(crate) async fn replace_movie_strings(
         &self,
         movie_id: MovieId,
-        strings: Vec<(api::Language, api::StringKind, String)>,
+        strings: Vec<(api::Locale, api::StringKind, String)>,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
         spawn_blocking(move || {
@@ -2834,7 +2830,7 @@ impl Database {
     pub(crate) async fn replace_episode_strings(
         &self,
         episode_id: EpisodeId,
-        strings: Vec<(api::Language, api::StringKind, String)>,
+        strings: Vec<(api::Locale, api::StringKind, String)>,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
         spawn_blocking(move || {
@@ -2852,7 +2848,7 @@ impl Database {
     pub(crate) async fn replace_season_strings(
         &self,
         season_id: SeasonId,
-        strings: Vec<(api::Language, api::StringKind, String)>,
+        strings: Vec<(api::Locale, api::StringKind, String)>,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
         spawn_blocking(move || {
@@ -4280,8 +4276,8 @@ impl Database {
             let language = s
                 .get_config("language")?
                 .as_deref()
-                .and_then(api::Language::from_iso)
-                .unwrap_or(api::Language::DEFAULT);
+                .and_then(api::Locale::from_iso)
+                .unwrap_or(api::Locale::DEFAULT);
 
             let include_specials = s
                 .get_config("include_specials")?
@@ -4310,7 +4306,12 @@ impl Database {
                 .get_config("sync_languages")?
                 .as_deref()
                 .and_then(config::decode_sync_languages)
-                .unwrap_or_else(|| vec![api::Language::DEFAULT, api::Language::ENG]);
+                .unwrap_or_else(|| {
+                    vec![
+                        api::Locale::DEFAULT,
+                        api::Locale::new(api::Language::ENG, api::Country::DEFAULT),
+                    ]
+                });
 
             Ok(Config {
                 theme,
@@ -4400,7 +4401,7 @@ impl Database {
     /// The most-used per-show/per-movie custom language overrides, ordered
     /// most-used first, as recomputed by the periodic task.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn get_state_top_languages(&self) -> Result<Vec<api::Language>> {
+    pub(crate) async fn get_state_top_languages(&self) -> Result<Vec<api::Locale>> {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
@@ -4408,7 +4409,7 @@ impl Database {
 
             Ok(raw
                 .as_deref()
-                .and_then(|v| serde_json::from_str::<Vec<api::Language>>(v).ok())
+                .and_then(|v| serde_json::from_str::<Vec<api::Locale>>(v).ok())
                 .unwrap_or_default())
         });
 
@@ -4416,10 +4417,7 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn set_state_top_languages(
-        &self,
-        languages: Vec<api::Language>,
-    ) -> Result<()> {
+    pub(crate) async fn set_state_top_languages(&self, languages: Vec<api::Locale>) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
@@ -4435,13 +4433,13 @@ impl Database {
     /// JSON blob's language when present, else the legacy column) and return the
     /// `n` most-used codes, ordered most-used first (ties broken by code).
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn compute_top_languages(&self, n: usize) -> Result<Vec<api::Language>> {
+    pub(crate) async fn compute_top_languages(&self, n: usize) -> Result<Vec<api::Locale>> {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
-            let mut counts: HashMap<api::Language, usize> = HashMap::new();
+            let mut counts: HashMap<api::Locale, usize> = HashMap::new();
 
-            let mut tally = |language: api::Language| {
+            let mut tally = |language: api::Locale| {
                 if !language.is_default() {
                     *counts.entry(language).or_default() += 1;
                 }
@@ -4463,7 +4461,7 @@ impl Database {
 
             stmt.reset()?;
 
-            let mut ranked: Vec<(api::Language, usize)> = counts.into_iter().collect();
+            let mut ranked: Vec<(api::Locale, usize)> = counts.into_iter().collect();
             // Most-used first; break ties by code for a stable result.
             ranked.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
 

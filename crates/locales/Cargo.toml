@@ -1,0 +1,7 @@
+[package]
+name = "locales"
+edition = "2024"
+publish = false
+
+[dependencies]
+phf = { version = "0.14.0", default-features = false }

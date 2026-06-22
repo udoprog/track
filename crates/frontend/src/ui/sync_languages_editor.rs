@@ -1,23 +1,23 @@
 use web_sys::MouseEvent;
 use yew::prelude::*;
 
-use super::LanguageModal;
+use super::{LanguageModal, locale_label};
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
-    pub(crate) languages: Vec<api::Language>,
-    pub(crate) on_change: Callback<Vec<api::Language>>,
+    pub(crate) languages: Vec<api::Locale>,
+    pub(crate) on_change: Callback<Vec<api::Locale>>,
 }
 
 pub(crate) enum Msg {
     Open,
     Close,
-    Add(api::Language),
+    Add(api::Locale),
 }
 
-/// Editor for the list of languages the sync path populates. Renders each
-/// selected language with a remove button, plus an "Add language" button that
-/// opens a [`LanguageModal`] to pick a fresh language. `Default` stands for each
+/// Editor for the list of locales the sync path populates. Renders each
+/// selected locale with a remove button, plus an "Add language" button that
+/// opens a [`LanguageModal`] to pick a fresh locale. `Default` stands for each
 /// media's own original language and can't be added here.
 pub(crate) struct SyncLanguagesEditor {
     open: bool,
@@ -73,17 +73,14 @@ impl Component for SyncLanguagesEditor {
                             })
                         };
 
-                        let (label, country) = match l.to_iso() {
-                            Some(e) => (e.name, e.flag),
-                            None => ("Default (original language)", None),
-                        };
+                        let (label, flag) = locale_label(l, "Default Language");
 
                         html! {
                             <div key={l.to_string()} class="table-entry row">
                                 <span class="fill">{label}</span>
 
-                                if let Some(country) = country {
-                                    <span class={classes!("item-inline", "flag", country)} />
+                                if let Some(flag) = flag {
+                                    <span class={classes!("item-inline", "flag", flag)} />
                                 }
 
                                 <button class="btn-danger" onclick={on_remove} title="Remove language">
@@ -103,7 +100,7 @@ impl Component for SyncLanguagesEditor {
 
                 if self.open {
                     <LanguageModal
-                        current={api::Language::DEFAULT}
+                        current={api::Locale::DEFAULT}
                         placeholder="Add language"
                         title="Add Language"
                         show_top={false}

@@ -19,7 +19,7 @@ use yew::virtual_dom::VNode;
 /// bytes are turned into an integer is the SQLite conversion below, which pins
 /// the byte order so the stored value is identical regardless of host endianness.
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Language([u8; 4]);
+pub struct Language(pub(crate) [u8; 4]);
 
 /// Error produced when a string cannot be parsed as a [`Language`].
 #[derive(Debug)]

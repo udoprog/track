@@ -10,6 +10,7 @@ crate-type = ["cdylib", "rlib"]
 api = { path = "../api", features = ["js", "yew"] }
 iso639 = { path = "../iso639" }
 iso3166 = { path = "../iso3166" }
+locales = { path = "../locales" }
 
 derive_more = { version = "2.1.1", features = ["display"] }
 gloo = "0.12.0"

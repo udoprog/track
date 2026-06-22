@@ -80,11 +80,11 @@ fn language_code_round_trip() {
 fn expand_sync_languages_resolves_and_dedupes() {
     use std::collections::BTreeSet;
 
-    let eng = Language::ENG;
-    let fra = Language::from_iso("fra").unwrap();
-    let default = Language::DEFAULT;
+    let eng = Locale::new(Language::ENG, Country::DEFAULT);
+    let fra = Locale::from_iso("fra").unwrap();
+    let default = Locale::DEFAULT;
 
-    // [DEFAULT, ENG] with a non-English original yields both languages.
+    // [DEFAULT, ENG] with a non-English original yields both locales.
     let set = expand_sync_languages(&[default, eng], fra);
     assert_eq!(set, BTreeSet::from([fra, eng]));
 
@@ -298,4 +298,108 @@ fn air_date_earliest_within_winning_source() {
     let aired = effective_aired(&releases, &default_air_date_priority(), &[]).unwrap();
     // TVmaze wins by priority; earliest of its dates is used.
     assert_eq!(aired.inner().as_second(), 150);
+}
+
+#[test]
+fn locale_round_trip() {
+    // The all-default sentinel.
+    assert!(Locale::DEFAULT.is_default());
+    assert_eq!(Locale::DEFAULT.to_string(), "default");
+    assert_eq!(Locale::to_u64(Locale::DEFAULT), 0);
+
+    // `from_iso` never parses the sentinel (nor empty).
+    assert_eq!(Locale::from_iso("default"), None);
+    assert_eq!(Locale::from_iso(""), None);
+    assert_eq!("default".parse::<Locale>().ok(), None);
+
+    // Language-only: prefers the part1 form on Display.
+    let en = Locale::new(Language::ENG, Country::DEFAULT);
+    assert_eq!(en.to_string(), "en");
+    assert_eq!(Locale::from_iso("en"), Some(en));
+    assert_eq!(Locale::from_iso("eng"), Some(en));
+    assert!(!en.is_default());
+    assert_eq!(en.language(), Language::ENG);
+    assert_eq!(en.country(), Country::DEFAULT);
+
+    // Language + country: `en-US` preferred over `eng-US`.
+    let en_us = Locale::new(Language::ENG, Country::US);
+    assert_eq!(en_us.to_string(), "en-US");
+    assert_eq!(Locale::from_iso("en-US"), Some(en_us));
+    assert_eq!(Locale::from_iso("eng-us"), Some(en_us));
+    assert_eq!(en_us.country(), Country::US);
+
+    // A country segment must name a real country.
+    assert_eq!(Locale::from_iso("en-ZZ"), None);
+    assert_eq!(Locale::from_iso("en-default"), None);
+
+    // u64 round-trips both components.
+    for l in [
+        Locale::DEFAULT,
+        en,
+        en_us,
+        Locale::new(Language::ENG, Country::JP),
+    ] {
+        assert_eq!(Locale::from_u64(l.to_u64()), l);
+    }
+}
+
+#[test]
+fn locale_flag() {
+    // No country: falls back to the language's own default flag (eng -> US).
+    assert_eq!(
+        Locale::new(Language::ENG, Country::DEFAULT).flag(),
+        Some("US")
+    );
+
+    // Country set: uses that country's flag, regardless of the language flag.
+    assert_eq!(Locale::new(Language::ENG, Country::JP).flag(), Some("JP"));
+    assert_eq!(Locale::new(Language::ENG, Country::GB).flag(), Some("GB"));
+
+    // The all-default sentinel has no flag.
+    assert_eq!(Locale::DEFAULT.flag(), None);
+}
+
+#[test]
+fn locale_backwards_compatible_with_language_integer() {
+    // A bare Language is stored in the low 32 bits; the high 32 bits (country)
+    // are zero. Such an integer must decode to that language with no country.
+    let lang = Language::ENG;
+    let language_int = u32::from_be_bytes(lang_bytes(lang)) as u64;
+
+    let locale = Locale::from_u64(language_int);
+    assert_eq!(locale.language(), lang);
+    assert_eq!(locale.country(), Country::DEFAULT);
+    // And the locale's own integer equals the legacy language integer.
+    assert_eq!(locale.to_u64(), language_int);
+}
+
+#[test]
+fn locale_serde_and_default_string() {
+    // Round-trips through JSON, including the "default" sentinel string.
+    for (locale, repr) in [
+        (Locale::DEFAULT, "\"default\""),
+        (Locale::new(Language::ENG, Country::DEFAULT), "\"en\""),
+        (Locale::new(Language::ENG, Country::US), "\"en-US\""),
+    ] {
+        assert_eq!(serde_json::to_string(&locale).unwrap(), repr);
+        assert_eq!(serde_json::from_str::<Locale>(repr).unwrap(), locale);
+    }
+
+    // Legacy bare-language payloads still decode (as language-only locales).
+    assert_eq!(
+        serde_json::from_str::<Locale>("\"eng\"").unwrap(),
+        Locale::new(Language::ENG, Country::DEFAULT)
+    );
+}
+
+/// Helper exposing a Language's packed bytes for the backwards-compat test.
+fn lang_bytes(language: Language) -> [u8; 4] {
+    // Reconstructed from the public id; ENG packs as b"eng\0".
+    let mut bytes = [0u8; 4];
+    if let Some(id) = language.to_id() {
+        for (b, o) in id.as_bytes().iter().zip(bytes.iter_mut()) {
+            *o = *b;
+        }
+    }
+    bytes
 }

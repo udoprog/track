@@ -34,7 +34,7 @@ pub(crate) use self::episode_picker::EpisodePicker;
 pub(crate) use self::error_box::ErrorBox;
 pub(crate) use self::image::Image;
 pub(crate) use self::image_gallery::{ImageGallery, ImageItem};
-pub(crate) use self::language_modal::{LanguageModal, TopLanguages};
+pub(crate) use self::language_modal::{LanguageModal, TopLanguages, locale_label};
 pub(crate) use self::language_picker::LanguagePicker;
 pub(crate) use self::loading::Loading;
 pub(crate) use self::mark_time_menu::MarkTimeMenu;

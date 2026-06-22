@@ -1,4 +1,4 @@
-use api::{AirDateFilter, Language, ReleaseFilter, SourceSyncKinds};
+use api::{AirDateFilter, Locale, ReleaseFilter, SourceSyncKinds};
 
 /// Serialize air-date filters for storage in a text column.
 pub(super) fn encode_air_date_filters(filters: &[AirDateFilter]) -> String {
@@ -20,14 +20,14 @@ pub(super) fn decode_sync_kinds(s: &str) -> Option<Vec<SourceSyncKinds>> {
     serde_json::from_str(s).ok()
 }
 
-/// Serialize the languages the sync path populates, for storage in a text column.
-/// Each entry is its string form (`"default"` / `"eng"`).
-pub(super) fn encode_sync_languages(languages: &[Language]) -> String {
+/// Serialize the locales the sync path populates, for storage in a text column.
+/// Each entry is its string form (`"default"` / `"eng"` / `"en-US"`).
+pub(super) fn encode_sync_languages(languages: &[Locale]) -> String {
     serde_json::to_string(languages).unwrap_or_else(|_| "[]".to_string())
 }
 
-/// Parse sync languages written by [`encode_sync_languages`].
-pub(super) fn decode_sync_languages(s: &str) -> Option<Vec<Language>> {
+/// Parse sync locales written by [`encode_sync_languages`].
+pub(super) fn decode_sync_languages(s: &str) -> Option<Vec<Locale>> {
     serde_json::from_str(s).ok()
 }
 

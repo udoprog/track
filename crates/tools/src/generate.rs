@@ -10,6 +10,8 @@ const URL: &str = "https://iso639-3.sil.org/sites/iso639-3/files/downloads/iso-6
 
 const COUNTRIES_URL: &str = "https://raw.githubusercontent.com/lukes/ISO-3166-Countries-with-Regional-Codes/refs/heads/master/all/all.csv";
 
+const LOCALES_URL: &str = "https://cdn.simplelocalize.io/public/v1/locales";
+
 #[derive(Serialize)]
 pub(super) struct Mapping {
     #[serde(rename = "iso-639-3")]
@@ -396,6 +398,129 @@ pub fn svg_names_scss(svg_dir: &Path, with_uppercase: bool) -> Result<String> {
 
     writeln!(out, ");")?;
     Ok(out)
+}
+
+#[derive(Debug, Deserialize)]
+struct RawLocale {
+    language: RawLocaleLanguage,
+    country: RawLocaleCountry,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawLocaleLanguage {
+    iso_639_3: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawLocaleCountry {
+    code: Option<String>,
+}
+
+/// The set of valid ISO 639-3 ids (3-letter, lowercase) from the language dataset.
+pub fn language_ids(tab: &str) -> Result<BTreeSet<String>> {
+    Ok(parse_rows(tab)?
+        .into_iter()
+        .map(|r| r.id.to_ascii_lowercase())
+        .collect())
+}
+
+/// The set of valid ISO 3166-1 alpha-2 codes (uppercase) from the country dataset.
+pub fn country_codes(csv: &str) -> Result<BTreeSet<String>> {
+    if csv.trim().is_empty() {
+        bail!("Dataset is empty");
+    }
+
+    let mut reader = csv::Reader::from_reader(csv.as_bytes());
+    let mut out = BTreeSet::new();
+
+    for (index, row) in reader.deserialize::<RawCountryRow>().enumerate() {
+        let row = row.with_context(|| anyhow!("Parsing country row #{index}"))?;
+        let alpha2 = row.alpha2.trim();
+
+        if alpha2.len() == 2 {
+            out.insert(alpha2.to_ascii_uppercase());
+        }
+    }
+
+    Ok(out)
+}
+
+/// Generate the `locales` source module (`ENTRIES` + `BY_KEY`) from the SimpleLocalize
+/// payload, keeping only combinations whose language resolves in `valid_languages` and
+/// whose country resolves in `valid_countries`.
+pub fn locales_module(
+    json: &str,
+    valid_languages: &BTreeSet<String>,
+    valid_countries: &BTreeSet<String>,
+) -> Result<String> {
+    let raw: Vec<RawLocale> =
+        serde_json::from_str(json).context("Parsing SimpleLocalize locales JSON")?;
+
+    // BTreeSet keeps the output sorted and de-duplicated.
+    let mut entries: BTreeSet<(String, String)> = BTreeSet::new();
+
+    for entry in raw {
+        let Some(language) = entry.language.iso_639_3 else {
+            continue;
+        };
+        let Some(country) = entry.country.code else {
+            continue;
+        };
+
+        let language = language.trim().to_ascii_lowercase();
+        let country = country.trim().to_ascii_uppercase();
+
+        if !valid_languages.contains(&language) || !valid_countries.contains(&country) {
+            continue;
+        }
+
+        entries.insert((language, country));
+    }
+
+    if entries.is_empty() {
+        bail!("No valid locale combinations found");
+    }
+
+    let mut out = String::new();
+    write_header(&mut out, LOCALES_URL)?;
+    writeln!(out, "use super::Locale;")?;
+    writeln!(out)?;
+    writeln!(out, "pub const ENTRIES: &[Locale] = &[")?;
+
+    for (language, country) in &entries {
+        writeln!(
+            out,
+            "    Locale {{ language: {language:?}, country: {country:?} }},"
+        )?;
+    }
+
+    writeln!(out, "];\n")?;
+
+    let mut by_key = phf_codegen::Map::new();
+    let keys: Vec<String> = entries
+        .iter()
+        .map(|(language, country)| format!("{language}-{country}"))
+        .collect();
+
+    for (i, k) in keys.iter().enumerate() {
+        by_key.entry(k.as_str(), i.to_string());
+    }
+
+    writeln!(
+        out,
+        "pub static BY_KEY: phf::Map<&'static str, usize> = {};",
+        by_key.build()
+    )?;
+
+    Ok(out)
+}
+
+pub fn download_locales() -> Result<String> {
+    reqwest::blocking::get(LOCALES_URL)
+        .and_then(|response| response.error_for_status())
+        .context("Downloading SimpleLocalize locales dataset")?
+        .text()
+        .context("Reading SimpleLocalize locales response body")
 }
 
 pub fn download_table() -> Result<String> {

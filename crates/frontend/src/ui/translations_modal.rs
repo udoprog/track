@@ -183,20 +183,16 @@ fn covers(event: api::TranslationTarget, mine: api::TranslationTarget) -> bool {
 /// the `LanguagePicker` treatment — flag wrapped in `item-inline` so it sizes,
 /// falling back to the 3-letter code when no flag exists) followed by the text.
 fn view_row(translation: &api::Translation) -> Html {
-    let entry = translation.language.to_iso();
-    let label = entry.map(|e| e.name).unwrap_or("Default");
-
-    let country = entry.and_then(|e| e.flag);
-    let id = entry.map(|e| e.id);
+    let (label, flag) = super::locale_label(translation.language, "Default Language");
 
     html! {
         <div class="column">
             <div class="row text-gap">
-                if let Some(country) = country {
-                    <span class={classes!("item-inline", "flag", country)} />
-                } else if let Some(id) = id {
+                if let Some(flag) = flag {
+                    <span class={classes!("item-inline", "flag", flag)} title={translation.language} />
+                } else {
                     <span class="item-inline">
-                        <span class="text-muted">{id}</span>
+                        <span class="text-muted">{translation.language}</span>
                     </span>
                 }
 

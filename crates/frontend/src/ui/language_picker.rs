@@ -1,14 +1,14 @@
 use yew::prelude::*;
 
-use super::LanguageModal;
+use super::{LanguageModal, locale_label};
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
-    pub(crate) current: api::Language,
-    pub(crate) on_change: Callback<api::Language>,
+    pub(crate) current: api::Locale,
+    pub(crate) on_change: Callback<api::Locale>,
     pub(crate) placeholder: &'static str,
-    /// Whether to show the "top languages" quick-pick section. Disable for
-    /// list-style usages (e.g. configuring which languages to sync).
+    /// Whether to show the "top locales" quick-pick section. Disable for
+    /// list-style usages (e.g. configuring which locales to sync).
     #[prop_or(true)]
     pub(crate) show_top: bool,
 }
@@ -16,7 +16,7 @@ pub(crate) struct Props {
 pub(crate) enum Msg {
     Open,
     Close,
-    Pick(api::Language),
+    Pick(api::Locale),
 }
 
 /// A button showing the current language that opens a [`LanguageModal`] to
@@ -55,10 +55,18 @@ impl Component for LanguagePicker {
         let props = ctx.props();
 
         let current = props.current;
-        let value = current.to_iso().map(|e| (e.name, e.flag));
 
-        let trigger = match value {
-            Some((label, flag)) => html! {
+        let trigger = if current.is_default() {
+            html! {
+                <button class="btn" onclick={link.callback(|_| Msg::Open)} title="Select language">
+                    <span class="icon language" />
+                    <span>{props.placeholder}</span>
+                </button>
+            }
+        } else {
+            let (label, flag) = locale_label(current, "Default Language");
+
+            html! {
                 <button class="btn" onclick={link.callback(|_| Msg::Open)} title="Select language">
                     <span class="icon language" />
                     <span>{label}</span>
@@ -67,13 +75,7 @@ impl Component for LanguagePicker {
                         <span class={classes!("flag", code)}></span>
                     }
                 </button>
-            },
-            None => html! {
-                <button class="btn" onclick={link.callback(|_| Msg::Open)} title="Select language">
-                    <span class="icon language" />
-                    <span>{props.placeholder}</span>
-                </button>
-            },
+            }
         };
 
         if !self.open {

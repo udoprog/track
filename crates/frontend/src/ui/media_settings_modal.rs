@@ -6,9 +6,9 @@ use super::{AirDateFiltersEditor, LanguagePicker, Modal, ReleaseFiltersEditor};
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
     pub(crate) title: AttrValue,
-    pub(crate) language: api::Language,
+    pub(crate) language: api::Locale,
     pub(crate) has_images: bool,
-    pub(crate) on_language_change: Callback<api::Language>,
+    pub(crate) on_language_change: Callback<api::Locale>,
     pub(crate) on_edit_graphics: Callback<()>,
     pub(crate) on_edit_remotes: Callback<()>,
     pub(crate) on_close: Callback<()>,
