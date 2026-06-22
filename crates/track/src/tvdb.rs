@@ -247,10 +247,6 @@ impl Client {
     }
 
     pub(crate) async fn fetch_show(&self, id: u32, language: api::Locale) -> Result<SeriesInfo> {
-        // TVDB keys on 3-letter ISO 639 language codes and ignores country, so
-        // reduce the locale to its language component.
-        let language = language.language();
-
         #[derive(Deserialize)]
         struct Resp {
             data: Extended,
@@ -268,7 +264,7 @@ impl Client {
             #[serde(default)]
             image: Option<String>,
             #[serde(default)]
-            original_language: api::Language,
+            original_language: api::Locale,
             #[serde(default)]
             remote_ids: Vec<RemoteIdRow>,
             #[serde(default)]
@@ -328,12 +324,13 @@ impl Client {
         // When no user preference is configured, fall back to the show's own
         // original language for the translation fetch. "eng" is the default and
         // needs no separate fetch.
-        let original_language_tvdb = original_language.filter(|l| l != api::Language::ENG);
+        let original_language_tvdb =
+            original_language.filter(|l| l.language() != api::Language::ENG);
 
-        let effective_language = language.or(original_language_tvdb);
+        let language = language.or(original_language_tvdb);
 
-        if !effective_language.is_default()
-            && let Some(tr) = self.fetch_show_translation(id, effective_language).await?
+        if !language.is_default()
+            && let Some(tr) = self.fetch_show_translation(id, language).await?
         {
             if tr.name.as_deref().is_some_and(|s| !s.trim().is_empty()) {
                 title = tr.name;
@@ -418,7 +415,7 @@ impl Client {
     async fn fetch_show_translation(
         &self,
         id: u32,
-        language: api::Language,
+        language: api::Locale,
     ) -> Result<Option<Translation>> {
         #[derive(Deserialize)]
         struct Resp {
@@ -556,7 +553,7 @@ pub(crate) struct SeriesRemote {
 pub(crate) struct SeriesInfo {
     pub title: Option<String>,
     pub overview: Option<String>,
-    pub original_language: api::Language,
+    pub original_language: api::Locale,
     pub poster: Vec<Image>,
     pub selected_poster: Option<ImageKey>,
     pub banner: Vec<Image>,

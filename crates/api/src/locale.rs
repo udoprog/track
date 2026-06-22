@@ -49,6 +49,12 @@ impl Locale {
         country: Country::DEFAULT,
     };
 
+    /// The common English (United States) locale.
+    pub const EN_US: Locale = Locale {
+        language: Language::ENG,
+        country: Country::US,
+    };
+
     /// Construct a locale from its language and country components.
     #[inline]
     pub const fn new(language: Language, country: Country) -> Self {
@@ -70,7 +76,7 @@ impl Locale {
     /// Whether both components are [`Language::DEFAULT`] / [`Country::DEFAULT`].
     #[inline]
     pub const fn is_default(&self) -> bool {
-        self.language.is_default() && self.country.is_default()
+        self.language.is_default()
     }
 
     /// The flag CSS class to render for this locale. When a country is set, its
@@ -98,6 +104,14 @@ impl Locale {
         } else {
             self
         }
+    }
+
+    /// Unwrap the current locale or fall back to `other` when the language
+    /// component is [`Language::DEFAULT`] (the "use original" sentinel) or the
+    /// country component is [`Country::DEFAULT`] (the "use original" sentinel).
+    #[inline]
+    pub fn filter(self, f: impl FnOnce(Self) -> bool) -> Self {
+        if f(self) { self } else { Self::DEFAULT }
     }
 
     /// The 64-bit integer representation: country in the high 32 bits, language
@@ -129,8 +143,8 @@ impl Locale {
     pub fn from_iso(code: &str) -> Option<Self> {
         let code = code.trim();
 
-        if code.is_empty() {
-            return None;
+        if code.is_empty() || code.eq_ignore_ascii_case("default") {
+            return Some(Self::DEFAULT);
         }
 
         let (lang, country) = match code.split_once('-') {
@@ -230,12 +244,6 @@ impl<'de> serde::Deserialize<'de> for Locale {
             where
                 E: serde::de::Error,
             {
-                // The all-default sentinel round-trips as "default" — the only
-                // place that string is accepted.
-                if v.trim().eq_ignore_ascii_case("default") {
-                    return Ok(Locale::DEFAULT);
-                }
-
                 v.parse().map_err(serde::de::Error::custom)
             }
         }

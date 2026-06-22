@@ -416,16 +416,13 @@ async fn tmdb_layer(
 
     // When no language is configured, use the show's own original language for
     // episode fetches so episode titles and overviews are also localized.
-    let language = base_language.or(api::Locale::new(
-        info.original_language.filter(|l| l != api::Language::ENG),
-        api::Country::DEFAULT,
-    ));
+    let language = base_language.or(info.original_language.filter(|l| l != api::Locale::EN_US));
 
     if do_base {
         draft.title = info.title.clone();
         draft.overview = info.overview.clone();
         draft.first_air_date = info.first_air_date.or(show.first_air_date);
-        draft.default_language = api::Locale::new(info.original_language, api::Country::DEFAULT);
+        draft.default_language = info.original_language;
         draft.base_remote = Some((RemoteSource::Tmdb, tmdb_id));
     }
 
@@ -512,16 +509,13 @@ async fn tvdb_layer(
         draft.title = info.title.clone();
         draft.overview = info.overview.clone();
         // TVDB has no first-air-date field; persist falls back to the existing value.
-        draft.default_language = api::Locale::new(info.original_language, api::Country::DEFAULT);
+        draft.default_language = info.original_language;
         draft.base_remote = Some((RemoteSource::Tvdb, tvdb_id));
     }
 
     // When no language is configured, use the show's own original language for
     // episode fetches. TVDB uses 3-letter language codes; "eng" is the default.
-    let language = base_language.or(api::Locale::new(
-        info.original_language.filter(|l| l != api::Language::ENG),
-        api::Country::DEFAULT,
-    ));
+    let language = base_language.or(info.original_language.filter(|l| l != api::Locale::EN_US));
 
     info!(tvdb_id, ?language, "Fetching TVDB episodes");
 
@@ -636,15 +630,19 @@ async fn collect_show_strings(
     }
 
     for language in targets {
-        // Remotes key on ISO 639-1; skip any locale whose language has no
-        // 2-letter form.
-        if language.language().to_part1().is_none() {
-            continue;
-        };
+        tracing::info!(?language, ?source, "Collecting strings for language");
 
         match source {
             RemoteSource::Tmdb => collect_tmdb_strings(draft, id, language, remote).await?,
-            RemoteSource::Tvdb => collect_tvdb_strings(draft, id, language, remote).await?,
+            RemoteSource::Tvdb => {
+                // Remotes key on ISO 639-1; skip any locale whose language has no
+                // 2-letter form.
+                if language.language().to_part1().is_none() {
+                    continue;
+                };
+
+                collect_tvdb_strings(draft, id, language, remote).await?
+            }
             _ => {}
         }
     }
@@ -663,29 +661,25 @@ async fn collect_tmdb_strings(
     draft.add_show_string(language, api::StringKind::Title, info.title.clone());
     draft.add_show_string(language, api::StringKind::Overview, info.overview.clone());
 
-    let seasons: Vec<SeasonNumber> = info
-        .seasons
-        .iter()
-        .map(|season| {
-            draft.add_season_string(
-                season.number,
-                language,
-                api::StringKind::Title,
-                season.name.clone(),
-            );
-            draft.add_season_string(
-                season.number,
-                language,
-                api::StringKind::Overview,
-                season.overview.clone(),
-            );
-            season.number
-        })
-        .collect();
+    for season in &info.seasons {
+        draft.add_season_string(
+            season.number,
+            language,
+            api::StringKind::Title,
+            season.name.clone(),
+        );
 
-    for season in seasons {
+        draft.add_season_string(
+            season.number,
+            language,
+            api::StringKind::Overview,
+            season.overview.clone(),
+        );
+    }
+
+    for season in info.seasons {
         for ep in remote
-            .fetch_tmdb_season_episodes(tmdb_id, season, language)
+            .fetch_tmdb_season_episodes(tmdb_id, season.number, language)
             .await?
         {
             draft.add_episode_string(
@@ -728,6 +722,7 @@ async fn collect_tvdb_strings(
             api::StringKind::Title,
             ep.name,
         );
+
         draft.add_episode_string(
             ep.season,
             ep.number,
@@ -961,7 +956,7 @@ pub(crate) async fn sync_movie(
             )
             .await?;
 
-            let original_locale = api::Locale::new(info.original_language, api::Country::DEFAULT);
+            let original_locale = info.original_language;
 
             if !info.original_language.is_default() {
                 db.set_movie_default_language(movie_id, original_locale)

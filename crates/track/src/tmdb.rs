@@ -11,19 +11,6 @@ use crate::remote::best_image;
 const BASE: &str = "https://api.themoviedb.org/3/";
 const IMAGE_BASE: &str = "https://image.tmdb.org/t/p/original/";
 
-/// The TMDB `language` query value for a locale: its ISO 639-1 form, plus the
-/// country region when present (`en`, `en-US`). Returns `None` when the language
-/// has no 2-letter form, since TMDB only understands ISO 639-1 language codes.
-fn tmdb_language(locale: api::Locale) -> Option<String> {
-    let part1 = locale.language().to_part1()?;
-
-    if locale.country().is_default() {
-        Some(part1.to_owned())
-    } else {
-        Some(format!("{part1}-{}", locale.country()))
-    }
-}
-
 struct Inner {
     base: reqwest::Url,
     image_base: reqwest::Url,
@@ -67,7 +54,7 @@ impl Client {
     {
         let mut req = self.request(Method::GET, url.as_ref())?;
 
-        if let Some(language) = tmdb_language(language) {
+        if !language.is_default() {
             req = req.query(&[("language", language)]);
         }
 
@@ -80,10 +67,7 @@ impl Client {
         T: DeserializeOwned,
     {
         let mut req = self.request(Method::GET, url.as_ref())?;
-
-        let language = tmdb_language(language).unwrap_or_else(|| "en-US".to_owned());
-        req = req.query(&[("language", language)]);
-
+        req = req.query(&[("language", language.or(api::Locale::EN_US))]);
         Self::send_json(req).await
     }
 
@@ -277,7 +261,7 @@ impl Client {
             #[serde(default)]
             first_air_date: Option<String>,
             #[serde(default)]
-            original_language: api::Language,
+            original_language: api::Locale,
             #[serde(default)]
             seasons: Vec<SeasonDetails>,
             #[serde(default)]
@@ -289,12 +273,9 @@ impl Client {
             .await?;
 
         // When no language is configured, fall back to the show's own original language.
-        let effective_language = language.or(api::Locale::new(
-            details
-                .original_language
-                .filter(|l| l != api::Language::ENG),
-            api::Country::DEFAULT,
-        ));
+        let effective_language = language.or(details
+            .original_language
+            .filter(|l| l != api::Locale::EN_US));
 
         // Re-fetch for a localized title and overview when the effective language
         // differs from what was used for the initial request (i.e., no language was
@@ -552,7 +533,7 @@ impl Client {
             #[serde(default)]
             release_date: Option<String>,
             #[serde(default)]
-            original_language: api::Language,
+            original_language: api::Locale,
             #[serde(default)]
             external_ids: ExternalIds,
         }
@@ -564,12 +545,9 @@ impl Client {
             )
             .await?;
 
-        let effective_language = language.or(api::Locale::new(
-            details
-                .original_language
-                .filter(|l| l != api::Language::ENG),
-            api::Country::DEFAULT,
-        ));
+        let effective_language = language.or(details
+            .original_language
+            .filter(|l| l != api::Locale::EN_US));
 
         let localized: Option<Details> = if effective_language != language {
             self.get_json(
@@ -647,7 +625,7 @@ pub(crate) struct ShowRemote {
 pub(crate) struct ShowInfo {
     pub title: Option<String>,
     pub overview: Option<String>,
-    pub original_language: api::Language,
+    pub original_language: api::Locale,
     pub first_air_date: Option<Timestamp>,
     pub posters: Vec<Image>,
     pub backdrops: Vec<Image>,
@@ -677,7 +655,7 @@ pub(crate) struct EpisodeInfo {
 pub(crate) struct MovieInfo {
     pub title: Option<String>,
     pub overview: Option<String>,
-    pub original_language: api::Language,
+    pub original_language: api::Locale,
     pub release_date: Option<Timestamp>,
     pub posters: Vec<Image>,
     pub backdrops: Vec<Image>,
