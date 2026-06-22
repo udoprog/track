@@ -1,25 +1,25 @@
-$bp-md: 768px;
+$mobile-limit: 768px;
 
-@mixin until-mobile {
-    @media (max-width: #{$bp-md - 1px}) {
+@mixin on-mobile {
+    @media (max-width: #{$mobile-limit - 1px}) {
         @content;
     }
 }
 
-@mixin from-desktop {
-    @media (min-width: $bp-md) {
+@mixin on-desktop {
+    @media (min-width: $mobile-limit) {
         @content;
     }
 }
 
 .hide-mobile {
-    @include until-mobile {
+    @include on-mobile {
         display: none !important;
     }
 }
 
 .show-mobile {
-    @include from-desktop {
+    @include on-desktop {
         display: none !important;
     }
 }

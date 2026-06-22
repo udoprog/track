@@ -1,11 +1,11 @@
-@import "grid";
+@use "grid" as g;
 
 .toolbar {
     display: flex;
     gap: $gap;
     padding: $gap;
 
-    @include until-mobile {
+    @include g.on-mobile {
         display: grid;
         grid-template-columns: 1fr auto;
         padding: $gap;
@@ -23,7 +23,7 @@
 
     height: $input-height * 1.5;
 
-    @include until-mobile {
+    @include g.on-mobile {
         height: $input-height-touch;
     }
 }
@@ -33,7 +33,7 @@
     flex-direction: row;
     gap: $gap;
 
-    @include until-mobile {
+    @include g.on-mobile {
         flex-direction: column;
         grid-column: 1 / -1;
     }
@@ -47,7 +47,7 @@
 
     height: $input-height-touch;
 
-    @include from-desktop {
+    @include g.on-desktop {
         display: none;
     }
 }
@@ -61,7 +61,7 @@
 
     height: $input-height * 1.5;
 
-    @include until-mobile {
+    @include g.on-mobile {
         height: $input-height-touch;
     }
 
@@ -82,7 +82,7 @@
     >.icon {
         height: $input-height;
 
-        @include until-mobile {
+        @include g.on-mobile {
             height: $input-height-touch;
         }
     }

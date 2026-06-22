@@ -58,7 +58,8 @@ $item-inline-padding: 4px;
 $sidebar-width: 240px;
 $bold-weight: 500;
 
-@import 'grid';
+@use 'grid' as g;
+
 @import 'icons';
 @import 'logos';
 @import 'flags';
@@ -220,7 +221,7 @@ p {
         align-items: center;
     }
 
-    @include from-desktop {
+    @include g.on-desktop {
         &.desktop-center {
             align-items: center;
         }
@@ -243,13 +244,13 @@ p {
     }
 }
 
-@include from-desktop {
+@include g.on-desktop {
     .desktop-row {
         @include row-base;
     }
 }
 
-@include until-mobile {
+@include g.on-mobile {
     .mobile-row {
         @include row-base;
     }
@@ -259,13 +260,13 @@ p {
     @include column-base;
 }
 
-@include until-mobile {
+@include g.on-mobile {
     .mobile-column {
         @include column-base;
     }
 }
 
-@include from-desktop {
+@include g.on-desktop {
     .desktop-column {
         @include column-base;
     }
@@ -297,7 +298,7 @@ p {
     @include row-fill-base;
 }
 
-@include from-desktop {
+@include g.on-desktop {
     .desktop-row-fill {
         @include row-fill-base;
     }
@@ -309,7 +310,7 @@ p {
     height: $input-height;
     padding: $item-inline-padding 0;
 
-    @include until-mobile {
+    @include g.on-mobile {
         height: $input-height-touch;
     }
 }
@@ -322,7 +323,7 @@ p {
     display: inline-flex;
     height: $input-height-xs;
 
-    @include until-mobile {
+    @include g.on-mobile {
         height: $input-height-touch-xs;
     }
 }
@@ -337,7 +338,7 @@ p {
     height: $input-height-xl;
     font-size: $font-xl;
 
-    @include until-mobile {
+    @include g.on-mobile {
         height: $input-height-touch-xl;
     }
 }
@@ -347,7 +348,7 @@ p {
     align-items: center;
     height: $input-height-lg;
 
-    @include until-mobile {
+    @include g.on-mobile {
         height: $input-height-touch-lg;
     }
 }
@@ -370,7 +371,7 @@ p {
     height: $input-height;
     padding: $padding-md;
 
-    @include until-mobile {
+    @include g.on-mobile {
         min-width: $input-height-touch;
         height: $input-height-touch;
         padding: $padding-lg;
@@ -411,13 +412,13 @@ p {
 }
 
 .hide-mobile {
-    @include until-mobile {
+    @include g.on-mobile {
         display: none;
     }
 }
 
 .hide-desktop {
-    @include from-desktop {
+    @include g.on-desktop {
         display: none;
     }
 }
@@ -469,7 +470,7 @@ p {
     white-space: wrap;
     min-height: $input-height;
 
-    @include from-desktop {
+    @include g.on-desktop {
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -509,7 +510,7 @@ p {
 
     min-height: $input-height;
 
-    @include until-mobile {
+    @include g.on-mobile {
         min-height: $input-height-touch;
     }
 }
@@ -548,7 +549,7 @@ h6 {
     grid-template-columns: repeat(var(--pending-columns, 4), 1fr);
     gap: $gap;
 
-    @include until-mobile {
+    @include g.on-mobile {
         grid-template-columns: 1fr;
     }
 }
@@ -633,7 +634,7 @@ image {
     color: $text-primary;
     white-space: wrap;
 
-    @include from-desktop {
+    @include g.on-desktop {
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -682,7 +683,7 @@ image {
     font-weight: $bold-weight;
     min-width: 180px;
 
-    @include until-mobile {
+    @include g.on-mobile {
         min-width: 0;
     }
 }
@@ -710,7 +711,7 @@ image {
     justify-content: center;
 }
 
-@include from-desktop {
+@include g.on-desktop {
     .desktop-fill {
         flex: 1;
         min-width: 0;
@@ -738,7 +739,7 @@ image {
     grid-template-columns: $sidebar-width 1fr;
     gap: $gap;
 
-    @include until-mobile {
+    @include g.on-mobile {
         display: flex;
         flex-direction: column;
     }
@@ -750,7 +751,7 @@ image {
     gap: $gap;
     overflow-y: auto;
 
-    @include from-desktop {
+    @include g.on-desktop {
         width: $sidebar-width;
         height: 100%;
     }
@@ -783,7 +784,7 @@ image {
             border-bottom: 1px solid $border-subtle;
         }
 
-        @include from-desktop {
+        @include g.on-desktop {
             .screenshot {
                 height: 180px;
             }
@@ -807,7 +808,7 @@ image {
     text-decoration: none;
     min-height: $input-height;
 
-    @include until-mobile {
+    @include g.on-mobile {
         min-height: $input-height-touch;
     }
 }
@@ -895,13 +896,13 @@ image {
     @include input-group-base;
 }
 
-@include from-desktop {
+@include g.on-desktop {
     .desktop-input-group {
         @include input-group-base;
     }
 }
 
-@include until-mobile {
+@include g.on-mobile {
     .mobile-input-group {
         @include input-group-base;
     }
@@ -925,7 +926,7 @@ image {
         justify-content: flex-end;
     }
 
-    @include until-mobile {
+    @include g.on-mobile {
         grid-template-columns: 1fr;
 
         >:last-child {
@@ -992,7 +993,7 @@ image {
         border-color: $color-primary;
     }
 
-    @include until-mobile {
+    @include g.on-mobile {
         height: $input-height-touch;
     }
 
@@ -1042,7 +1043,7 @@ image {
     height: $input-height;
     padding: $padding-md;
 
-    @include until-mobile {
+    @include g.on-mobile {
         min-width: $input-height-touch;
         height: $input-height-touch;
         padding: $padding-lg;
@@ -1053,7 +1054,7 @@ image {
     >.icon {
         height: $input-height * 0.8;
 
-        @include until-mobile {
+        @include g.on-mobile {
             height: $input-height-touch * 0.8;
         }
     }
@@ -1062,7 +1063,7 @@ image {
         width: $input-height * 0.8;
         height: $input-height * 0.8;
 
-        @include until-mobile {
+        @include g.on-mobile {
             width: $input-height-touch * 0.8;
             height: $input-height-touch * 0.8;
         }
@@ -1100,7 +1101,7 @@ image {
         grid-template-columns: 1fr;
     }
 
-    @include until-mobile {
+    @include g.on-mobile {
         grid-template-columns: 1fr;
 
         &.poster {
@@ -1151,7 +1152,7 @@ image {
     width: min(600px, calc(100vw - #{$gap-sm * 2}));
     z-index: 401;
 
-    @include until-mobile {
+    @include g.on-mobile {
         width: 100%;
         border-radius: 0;
 

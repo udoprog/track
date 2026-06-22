@@ -1,6 +1,26 @@
 [build]
 target = "crates/frontend/index.html"
 
+# The generated Sass lists are written by the pre_build hooks below; ignore them so
+# rewriting them doesn't retrigger the watcher into a rebuild loop.
+[watch]
+ignore = [
+    "crates/frontend/style/_flags_generated.scss",
+    "crates/frontend/style/_icons_generated.scss",
+]
+
+# Regenerate the flag/icon Sass name lists from the bundled SVGs before compiling
+# styles, so they stay in sync with the 3rdparty submodules without hand-maintenance.
+[[hooks]]
+stage = "pre_build"
+command = "cargo"
+command_arguments = ["run", "-p", "tools", "--bin", "update", "generate-flags"]
+
+[[hooks]]
+stage = "pre_build"
+command = "cargo"
+command_arguments = ["run", "-p", "tools", "--bin", "update", "generate-icons"]
+
 [[proxy]]
 rewrite = "/ws"
 backend = "ws://127.0.0.1:3000/ws"

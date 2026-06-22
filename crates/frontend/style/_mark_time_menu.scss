@@ -1,3 +1,4 @@
+@use 'grid' as g;
 
 // Anchored date/time picker (MarkTimeMenu) used by the mark-watched / mark-pending
 // flows. Baseline structure only — clock-number and hand placement come from inline
@@ -37,7 +38,7 @@
     gap: $gap;
     padding: $gap;
 
-    @include until-mobile {
+    @include g.on-mobile {
         left: 50%;
         top: 50%;
         transform: translate(-50%, -50%);
@@ -49,7 +50,7 @@
     flex-direction: row;
     gap: $gap;
 
-    @include until-mobile {
+    @include g.on-mobile {
         flex-direction: column;
         align-items: center;
     }
@@ -103,7 +104,7 @@
         color: #fff;
     }
 
-    @include until-mobile {
+    @include g.on-mobile {
         font-size: $font-lg;
         height: $input-height-touch;
     }
@@ -133,7 +134,7 @@
         color: #fff;
     }
 
-    @include until-mobile {
+    @include g.on-mobile {
         font-size: $font-lg;
         width: $input-height-touch;
         height: $input-height-touch;
