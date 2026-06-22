@@ -558,7 +558,7 @@ impl Dashboard {
                     onerror={ctx.props().onerror.clone()}
                     trigger_class="btn-primary"
                     title="Move pending"
-                    prompt={format!("When do you want to watch this {}?", pending.kind.title())}
+                    prompt={format!("When do you want to queue this {}?", pending.kind.title())}
                     {aired_label}
                     default_at={pending.aired}
                     on_confirm={ctx.link().callback(move |mark_time| Msg::MarkPending(pending_kind, mark_time))}>

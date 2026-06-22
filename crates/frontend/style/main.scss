@@ -802,8 +802,8 @@ image {
 .episode-code {
     display: inline-flex;
     flex-direction: row;
-    align-items: center;
-    gap: 0.25em;
+    align-items: flex-start;
+    gap: 0.5em;
     font-family: $monospace-font;
     font-size: $font-lg;
     text-decoration: none;

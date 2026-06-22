@@ -43,6 +43,7 @@ pub(crate) struct ShowDetail {
     syncing: bool,
     actions_expanded: bool,
     episode_actions_expanded: HashSet<api::EpisodeId>,
+    season_actions_expanded: HashSet<api::SeasonNumber>,
     confirm_remove_watch: Option<api::WatchedId>,
     watched_by_episode: HashMap<api::EpisodeId, Vec<WatchedState>>,
     history_expanded: HashSet<api::EpisodeId>,
@@ -186,6 +187,7 @@ pub(crate) enum Msg {
     OrphanedLoaded(Result<ws::Packet<api::ListOrphanedWatched>, ws::Error>),
     ToggleActionsExpanded,
     ToggleEpisodeActionsExpanded(api::EpisodeId),
+    ToggleSeasonActionsExpanded(api::SeasonNumber),
     ToggleOrphaned,
 }
 
@@ -249,6 +251,7 @@ impl Component for ShowDetail {
             syncing: false,
             actions_expanded: false,
             episode_actions_expanded: HashSet::new(),
+            season_actions_expanded: HashSet::new(),
             confirm_remove_watch: None,
             watched_by_episode: HashMap::new(),
             history_expanded: HashSet::new(),
@@ -353,21 +356,19 @@ impl Component for ShowDetail {
                     </div>
                 </div>
 
-                <div class={classes!("desktop-row-split", "mobile-column", "actions", (!self.actions_expanded).then_some("hide-mobile"))}>
+                <div class={classes!("desktop-row-split", "mobile-column", (!self.actions_expanded).then_some("hide-mobile"))}>
                     if !show.remotes.is_empty() {
-                        <div class="desktop-row mobile-column fill start">
-                            <div class="row justify-around">
-                                {for show.remotes.iter().filter_map(|r| {
-                                    let url = r.remote.show_url(r.slug.as_deref())?;
-                                    let id = r.remote.source().as_id();
+                        <div class="row justify-around">
+                            {for show.remotes.iter().filter_map(|r| {
+                                let url = r.remote.show_url(r.slug.as_deref())?;
+                                let id = r.remote.source().as_id();
 
-                                    Some(html! {
-                                        <a class="item-inline-source" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {id}")}>
-                                            <span class={classes!("logo", id)} />
-                                        </a>
-                                    })
-                                })}
-                            </div>
+                                Some(html! {
+                                    <a class="item-inline-source" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {id}")}>
+                                        <span class={classes!("logo", id)} />
+                                    </a>
+                                })
+                            })}
                         </div>
                     }
 
@@ -1512,6 +1513,13 @@ impl ShowDetail {
 
                 Ok(true)
             }
+            Msg::ToggleSeasonActionsExpanded(season) => {
+                if !self.season_actions_expanded.insert(season) {
+                    self.season_actions_expanded.remove(&season);
+                }
+
+                Ok(true)
+            }
             Msg::ToggleOrphaned => {
                 self.view_orphaned = !self.view_orphaned;
                 Ok(true)
@@ -1749,6 +1757,8 @@ impl ShowDetail {
     fn view_episodes(&self, ctx: &Context<Self>, season: &api::Season) -> Html {
         let link = ctx.link();
 
+        let season_number = season.season;
+
         let watched_count = self
             .episodes
             .iter()
@@ -1763,122 +1773,105 @@ impl ShowDetail {
 
         let total = self.episodes.len();
 
-        let header = {
-            let next_unwatched = self.next_unwatched;
+        let next_unwatched = self.next_unwatched;
 
-            let pending_episode = self.pending_episode.as_ref().map(|&(label, episode_id)| {
-                let callback = link.callback(move |_| Msg::OnRemoveNext(episode_id));
-                (label, callback)
-            });
+        let pending_episode = self.pending_episode.as_ref().map(|&(label, episode_id)| {
+            let callback = link.callback(move |_| Msg::OnRemoveNext(episode_id));
+            (label, callback)
+        });
 
-            html! {
-                <>
-                    if !self.orphaned.is_empty() {
-                        <button class="btn-danger" onclick={link.callback(|_| Msg::ToggleOrphaned)} title="View orphaned watched episodes">
-                            <span class={classes!("icon", if self.view_orphaned { "ellipsis-horizontal" } else { "exclamation-triangle" })} />
+        let season_expanded = self.season_actions_expanded.contains(&season_number);
 
-                            if !self.view_orphaned {
-                                <span class="hide-mobile">{"Show orphaned watches"}</span>
-                            }
-                        </button>
-                    }
-
-                    if let Some((label, on_remove_next)) = pending_episode {
-                        <a class="btn-primary" href={format!("#{label}")} title="Jump to pending episode">
-                            <span class="icon bookmark" />
-                            <span class="icon chevron-down" />
-                        </a>
-
-                        <button class="btn-danger" onclick={on_remove_next} title="Remove pending">
-                            <span class="icon bookmark" />
-                            <span>{label}</span>
-                        </button>
-                    } else if let Some((label, episode_id)) = next_unwatched {
-                        <MarkTimeMenu
-                            onerror={ctx.props().onerror.clone()}
-                            trigger_class="btn"
-                            title="Make next episode"
-                            prompt={format!("Pending {label} since when?")}
-                            show_aired=true
-                            on_confirm={link.callback(move |mark_time| Msg::OnWatchNext(episode_id, mark_time))}>
-                            <span class="icon bookmark-slash" />
-                            <span>{label}</span>
-                        </MarkTimeMenu>
-                    }
-
-                    if !self.view_orphaned && watched_count < total {
-                        <MarkTimeMenu
-                            onerror={ctx.props().onerror.clone()}
-                            trigger_class="btn-success"
-                            title="Mark remaining episodes as watched"
-                            prompt="Watched when?"
-                            show_aired=true
-                            on_confirm={link.callback({
-                                let season = season.season;
-                                move |mark_time| Msg::WatchRemaining(season, mark_time)
-                            })}>
-                            <span class="icon check" />
-                            <span class="hide-mobile">{"Remaining"}</span>
-                        </MarkTimeMenu>
-                    }
-                </>
-            }
-        };
-
-        let actions = {
-            html! {
-                <div class="column fill">
-                    if self.view_orphaned {
-                        <h2>{format!("{} orphaned episodes", self.orphaned.len())}</h2>
-                    } else {
-                        <h2 class="hide-mobile">
-                            if let Some(ref name) = season.name {
-                                {name}
+        html! {
+            <div class="detail-content">
+                <div class="column">
+                    <div class="toolbar">
+                        <div class="column">
+                            if self.view_orphaned {
+                                <h2>{format!("{} orphaned episodes", self.orphaned.len())}</h2>
                             } else {
-                                {season.season.long().to_string()}
+                                <h2>
+                                    if let Some(ref name) = season.name {
+                                        {name}
+                                    } else {
+                                        {season.season.long().to_string()}
+                                    }
+                                </h2>
                             }
-                        </h2>
-                    }
+                        </div>
 
-                    if total > 0 {
-                        <h2>{format!("{watched_count} / {total} watched")}</h2>
-                    }
+                        <div class="toolbar-toggle">
+                            <button class="btn" onclick={link.callback(move |_| Msg::ToggleSeasonActionsExpanded(season_number))}>
+                                <span class={classes!("icon", if season_expanded { "ellipsis-horizontal" } else { "bars-2" })} />
+                            </button>
+                        </div>
+
+                        <div class={classes!("toolbar-dropdown", "desktop-input-group", (!season_expanded).then_some("hide-mobile"))}>
+                            <button class="btn" onclick={link.callback(|_| Msg::OpenSeasonTranslations)} title="Season Translations">
+                                <span class="icon language" />
+                                <span class="hide-desktop">{"Translations"}</span>
+                            </button>
+
+                            <button class="btn" onclick={link.callback(|_| Msg::OpenSeasonImageModal)} title="Season Graphics">
+                                <span class="icon photo" />
+                                <span class="hide-desktop">{"Graphics"}</span>
+                            </button>
+
+                            if !self.orphaned.is_empty() {
+                                <button class="btn-danger" onclick={link.callback(|_| Msg::ToggleOrphaned)} title="View orphaned watched episodes">
+                                    <span class={classes!("icon", if self.view_orphaned { "ellipsis-horizontal" } else { "exclamation-triangle" })} />
+                                    <span class="hide-desktop">{"Show orphaned watches"}</span>
+                                </button>
+                            }
+
+                            if let Some((label, on_remove_next)) = pending_episode {
+                                <a class="btn-primary" href={format!("#{label}")} title="Jump to pending episode">
+                                    <span class="icon bookmark" />
+                                    <span class="icon chevron-down" />
+                                </a>
+
+                                <button class="btn-danger" onclick={on_remove_next} title="Remove pending">
+                                    <span class="icon bookmark" />
+                                    <span class="hide-desktop">{label}</span>
+                                </button>
+                            } else if let Some((label, episode_id)) = next_unwatched {
+                                <MarkTimeMenu
+                                    onerror={ctx.props().onerror.clone()}
+                                    trigger_class="btn"
+                                    title="Make next episode"
+                                    prompt={format!("Pending {label} since when?")}
+                                    show_aired=true
+                                    on_confirm={link.callback(move |mark_time| Msg::OnWatchNext(episode_id, mark_time))}>
+                                    <span class="icon bookmark-slash" />
+                                    <span class="hide-desktop">{label}</span>
+                                </MarkTimeMenu>
+                            }
+
+                            if !self.view_orphaned && watched_count < total {
+                                <MarkTimeMenu
+                                    onerror={ctx.props().onerror.clone()}
+                                    trigger_class="btn-success"
+                                    title="Mark remaining episodes as watched"
+                                    prompt="Watched when?"
+                                    show_aired=true
+                                    on_confirm={link.callback({
+                                        let season = season.season;
+                                        move |mark_time| Msg::WatchRemaining(season, mark_time)
+                                    })}>
+                                    <span class="icon check" />
+                                    <span class="hide-desktop">{"Remaining"}</span>
+                                </MarkTimeMenu>
+                            }
+                        </div>
+                    </div>
 
                     if let Some(ref overview) = season.overview {
                         <p class="overview">{overview}</p>
                     }
 
-                    <div class="row-split">
-                        <div class="row">
-                            <div class="input-group">
-                                <button class="btn" onclick={link.callback(|_| Msg::OpenSeasonTranslations)} title="Season Translations">
-                                    <span class="icon language" />
-                                    <span class="hide-mobile">{"Translations"}</span>
-                                </button>
-
-                                <button class="btn" onclick={link.callback(|_| Msg::OpenSeasonImageModal)} title="Season Graphics">
-                                    <span class="icon photo" />
-                                    <span class="hide-mobile">{"Graphics"}</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        if self.view_orphaned || (!self.orphaned.is_empty() || watched_count < total) {
-                            <div class="row end">
-                                <div class="input-group">
-                                    {header}
-                                </div>
-                            </div>
-                        }
-                    </div>
-                </div>
-            }
-        };
-
-        html! {
-            <div class="detail-content">
-                <div class="row actions">
-                    {actions}
+                    if total > 0 {
+                        <h4>{format!("{watched_count} / {total} watched")}</h4>
+                    }
                 </div>
 
                 if self.episodes.is_empty() && self.selected.is_some() {
@@ -1932,50 +1925,20 @@ impl ShowDetail {
 
         html! {
             <div class={classes!("episode", (!watched.is_empty()).then_some("watched"))} id={episode.code()}>
-                <div class="row">
-                    <a class="episode-code" href={format!("#{}", episode.code())}>
-                        <span>{episode.code()}</span>
-
-                        <span class="item-inline-xs">
-                            <span class="icon link" />
-                        </span>
-                    </a>
-
-                    <h3 class="end">{ episode.name.as_deref().unwrap_or(MDASH) }</h3>
-                </div>
-
-                if let Some(aired) = episode.display_at(self.tz.clone()) {
-                    <div class="row text-gap" title="Air date">
-                        <span class="item-inline-lg">
-                            <span class="icon clock" />
-                        </span>
-
-                        <span class="text-muted">{aired}</span>
-                    </div>
-                }
-
                 <div class="column">
                     <div class="toolbar">
-                        <div class="toolbar-brand">
-                            if episode.pending {
-                                <span class="item-inline-lg" title="Next episode"><span class="icon primary exclamation-circle" /></span>
-                            } else if !watched.is_empty() {
-                                <span class="item-inline-lg" title="Watched"><span class="icon primary check-circle" /></span>
-                            } else {
-                                <span class="item-inline-lg" title="Never watched"><span class="icon secondary x-circle" /></span>
-                            }
+                        <div class="column">
+                            <div class="row align-top">
+                                <a class="episode-code" href={format!("#{}", episode.code())}>
+                                    <span>{episode.code()}</span>
 
-                            if episode.pending {
-                                <span class="text-muted">{"Next episode"}</span>
-                            } else {
-                                <span class="text-muted">
-                                    {match watched {
-                                        [] => "Never watched".to_string(),
-                                        [w] => format!("Watched at {}", w.watched.timestamp.display(self.tz.clone())),
-                                        [first, ..] => format!("Watched {} times, first at {}", watched.len(), first.watched.timestamp.display(self.tz.clone())),
-                                    }}
-                                </span>
-                            }
+                                    <span class="item-inline-xs">
+                                        <span class="icon link" />
+                                    </span>
+                                </a>
+
+                                <h4 class="fill">{ episode.name.as_deref().unwrap_or(MDASH) }</h4>
+                            </div>
                         </div>
 
                         <div class="toolbar-toggle">
@@ -2006,7 +1969,7 @@ impl ShowDetail {
                                     onerror={ctx.props().onerror.clone()}
                                     trigger_class="btn"
                                     title="Mark next"
-                                    prompt={format!("When do you want to watch {}?", episode.code())}
+                                    prompt={format!("When do you want to queue {}?", episode.code())}
                                     default_at={episode.aired}
                                     on_confirm={on_next_episode}>
                                     <span class="icon bookmark-slash" />
@@ -2027,11 +1990,45 @@ impl ShowDetail {
                             }
                         </div>
                     </div>
+
+                    <Image class="screenshot" src={episode.screenshot.clone()} />
+
+                    <div class="row text-gap" title="Air date">
+                        <span class="item-inline-lg">
+                            <span class={classes!("icon", if episode.aired().is_some() { "clock" } else { "exclamation-circle" })} />
+                        </span>
+
+                        if let Some(aired) = episode.display_at(self.tz.clone()) {
+                            <span class="text-muted">{aired}</span>
+                        } else {
+                            <span class="text-muted">{"No air date"}</span>
+                        }
+                    </div>
+
+                    <div class="row text-gap" title="Watch status">
+                        if episode.pending {
+                            <span class="item-inline-lg" title="Next episode"><span class="icon primary exclamation-circle" /></span>
+                        } else if !watched.is_empty() {
+                            <span class="item-inline-lg" title="Watched"><span class="icon primary check-circle" /></span>
+                        } else {
+                            <span class="item-inline-lg" title="Never watched"><span class="icon secondary x-circle" /></span>
+                        }
+
+                        if episode.pending {
+                            <span class="text-muted">{"Next episode"}</span>
+                        } else {
+                            <span class="text-muted">
+                                {match watched {
+                                    [] => "Never watched".to_string(),
+                                    [w] => format!("Watched at {}", w.watched.timestamp.display(self.tz.clone())),
+                                    [first, ..] => format!("Watched {} times, first at {}", watched.len(), first.watched.timestamp.display(self.tz.clone())),
+                                }}
+                            </span>
+                        }
+                    </div>
                 </div>
 
                 <div class="desktop-row mobile-column align-top">
-                    <Image class="screenshot" src={episode.screenshot.clone()} />
-
                     if !history_expanded {
                         <div class="column desktop-fill">
                             if let Some(ref overview) = episode.overview {

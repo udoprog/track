@@ -1,13 +1,9 @@
 @use "grid" as g;
 
 .toolbar {
-    display: flex;
+    display: grid;
+    grid-template-columns: 1fr auto;
     gap: $gap;
-
-    @include g.on-mobile {
-        display: grid;
-        grid-template-columns: 1fr auto;
-    }
 
     &.toolbar-padding {
         padding: $gap;
@@ -17,9 +13,10 @@
 .toolbar-brand {
     font-size: $font-lg;
     display: flex;
+    flex-direction: row;
     flex: 1;
     align-items: center;
-    gap: $gap-xs;
+    gap: 0.5em;
     cursor: pointer;
 
     height: $input-height * 1.5;

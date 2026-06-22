@@ -935,10 +935,10 @@ impl MovieDetail {
 
         let actions = {
             html! {
-                <div class="actions row-split">
+                <div class="row-split">
                     <div class="column fill">
                         <div class="toolbar">
-                            <div class="toolbar-brand row text-gap">
+                            <div class="row text-gap">
                                 if !self.watched.is_empty() {
                                     <span class="item-inline-lg" title="Watched"><span class="icon primary check-circle" /></span>
                                 } else {
@@ -1000,23 +1000,21 @@ impl MovieDetail {
 
         html! {
             <>
-            <div class={classes!("desktop-row-split", "mobile-column", "actions", (!self.actions_expanded).then_some("hide-mobile"))}>
-                <div class="desktop-row mobile-column fill start">
-                    if !movie.remotes.is_empty() {
-                        <div class="row justify-around">
-                            {for movie.remotes.iter().filter_map(|r| {
-                                let url = r.remote.movie_url()?;
-                                let id = r.remote.source().as_id();
+            <div class={classes!("desktop-row-split", "mobile-column", (!self.actions_expanded).then_some("hide-mobile"))}>
+                if !movie.remotes.is_empty() {
+                    <div class="row justify-around">
+                        {for movie.remotes.iter().filter_map(|r| {
+                            let url = r.remote.movie_url()?;
+                            let id = r.remote.source().as_id();
 
-                                Some(html! {
-                                    <a class="item-inline-source" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {id}")}>
-                                        <span class={classes!("logo", id)} />
-                                    </a>
-                                })
-                            })}
-                        </div>
-                    }
-                </div>
+                            Some(html! {
+                                <a class="item-inline-source" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {id}")}>
+                                    <span class={classes!("logo", id)} />
+                                </a>
+                            })
+                        })}
+                    </div>
+                }
 
                 <div class="desktop-row mobile-column end desktop-input-group">
                     <Tracked tracked={movie.tracked} ontoggle={link.callback(Msg::SetTracked)} />
