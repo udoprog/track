@@ -4693,11 +4693,11 @@ fn do_migrations(c: &sqll::Connection) -> Result<()> {
                 return Ok(());
             }
 
-            // Oneshots are a temporary dev aid: they evolve an *existing* database
-            // to match changes made directly to the baseline. On a fresh database
-            // the baseline is already in its evolved form, so a oneshot is recorded
-            // as applied without executing — which also stops it from running on a
-            // later restart once `shows` exists.
+            // Oneshots are a temporary dev aid: they evolve an *existing*
+            // database to match changes made directly to the baseline. On a
+            // fresh database the baseline is already in its evolved form, so a
+            // oneshot is recorded as applied without executing which also stops
+            // it from running on a later restart once `shows` exists.
             let oneshot = id.contains("-oneshot-");
 
             if oneshot && !base_exists {

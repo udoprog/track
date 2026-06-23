@@ -1,11 +1,13 @@
-//! Backup of the irreplaceable data in the service: the user's remotes and their
-//! watched history. Everything else (titles, episodes, images, release dates) is
-//! reproducible by re-syncing from the remotes, so it is deliberately not exported.
+//! Backup of the irreplaceable data in the service: the user's remotes and
+//! their watched history. Everything else (titles, episodes, images, release
+//! dates) is reproducible by re-syncing from the remotes, so it is deliberately
+//! not exported.
 //!
-//! The format is newline-delimited JSON: one [`BackupRow`] per line, tagged by a
-//! `type` field. Lines whose first non-whitespace character is `#` are comments and
-//! blank lines are ignored, so a backup file can be annotated by hand. Import is
-//! idempotent — entries that already exist are explicitly counted and skipped.
+//! The format is newline-delimited JSON: one [`BackupRow`] per line, tagged by
+//! a `type` field. Lines whose first non-whitespace character is `#` are
+//! comments and blank lines are ignored, so a backup file can be annotated by
+//! hand. Import is idempotent entries that already exist are explicitly counted
+//! and skipped.
 //!
 //! Identifiers are exported as their canonical string form and timestamps as UTC
 //! ISO-8601 strings. The id columns in the database are intentionally not foreign

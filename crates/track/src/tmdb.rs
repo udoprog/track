@@ -305,9 +305,10 @@ impl Client {
         let mut seasons = Vec::with_capacity(details.seasons.len());
 
         for s in details.seasons {
-            // Prefer the localized season name/overview, falling back to whatever the
-            // default-language request returned — the same resolution applied to the
-            // show title/overview below. Reuses the already-fetched `localized` response.
+            // Prefer the localized season name/overview, falling back to
+            // whatever the default-language request returned the same
+            // resolution applied to the show title/overview below. Reuses the
+            // already-fetched `localized` response.
             let localized_season = localized.as_ref().and_then(|l| {
                 l.seasons
                     .iter()

@@ -339,7 +339,7 @@ impl Dashboard {
     }
 
     fn clamp_page(&self, ctx: &Context<Self>) {
-        // Don't correct the page until the pending list has actually loaded —
+        // Don't correct the page until the pending list has actually loaded,
         // otherwise an early config response would clamp against an empty list
         // and clobber a deep-linked `?page=N` before its data arrives.
         if !self.pending_loaded {
@@ -455,21 +455,46 @@ impl Dashboard {
 
         let pending_kind = pending.kind;
 
-        let route = match (pending.kind, &pending.info) {
+        let on_navigate;
+        let on_navigate_episode;
+
+        match (pending.kind, &pending.info) {
             (
                 api::PendingKind::Episode { show, .. },
                 api::PendingInfo::Episode { season, number, .. },
-            ) => Route::ShowDetail(
-                show,
-                ShowDetailQuery {
-                    season: Some(*season),
-                    episode: Some(api::Code::new(*season, *number)),
-                },
-            ),
-            (api::PendingKind::Episode { show, .. }, _) => {
-                Route::ShowDetail(show, ShowDetailQuery::default())
+            ) => {
+                on_navigate = ctx.link().callback({
+                    move |_| Msg::Navigate(Route::ShowDetail(show, ShowDetailQuery::default()))
+                });
+
+                on_navigate_episode = ctx.link().callback({
+                    let season = *season;
+                    let code = api::Code::new(season, *number);
+                    move |_| {
+                        Msg::Navigate(Route::ShowDetail(
+                            show,
+                            ShowDetailQuery {
+                                season: Some(season),
+                                episode: Some(code),
+                            },
+                        ))
+                    }
+                });
             }
-            (api::PendingKind::Movie { movie }, _) => Route::MovieDetail(movie),
+            (api::PendingKind::Episode { show, .. }, _) => {
+                on_navigate = ctx.link().callback({
+                    move |_| Msg::Navigate(Route::ShowDetail(show, ShowDetailQuery::default()))
+                });
+
+                on_navigate_episode = on_navigate.clone();
+            }
+            (api::PendingKind::Movie { movie }, _) => {
+                on_navigate = ctx
+                    .link()
+                    .callback(move |_| Msg::Navigate(Route::MovieDetail(movie)));
+
+                on_navigate_episode = on_navigate.clone();
+            }
         };
 
         let kind = match pending.kind {
@@ -484,11 +509,6 @@ impl Dashboard {
             api::PendingKind::Episode { .. } => "Aired",
             api::PendingKind::Movie { .. } => "Released",
         };
-
-        let on_navigate = ctx.link().callback({
-            let route = route.clone();
-            move |_| Msg::Navigate(route.clone())
-        });
 
         let now = api::Timestamp::now();
         let aired_in_past = pending.aired.is_some_and(|a| a <= now);
@@ -527,7 +547,8 @@ impl Dashboard {
                         <span class="pending-title clickable" onclick={on_navigate.clone()} title={show.clone()}>
                             {show.as_deref().unwrap_or("Untitled Show")}
                         </span>
-                        <span class="pending-label clickable" onclick={on_navigate.clone()}>
+
+                        <span class="pending-label clickable" onclick={on_navigate_episode.clone()}>
                             {format!("{}E{number:02} ─ {}", season.short(), episode.as_deref().unwrap_or("Untitled Episode"))}
                         </span>
                     </>
@@ -541,6 +562,7 @@ impl Dashboard {
                     <MarkTimeMenu
                         onerror={ctx.props().onerror.clone()}
                         trigger_class="btn-success"
+                        icon="check"
                         title="Mark watched"
                         prompt={format!("When did you watch this {}?", pending.kind.title())}
                         {aired_label}
@@ -558,6 +580,7 @@ impl Dashboard {
                     onerror={ctx.props().onerror.clone()}
                     trigger_class="btn-primary"
                     title="Move pending"
+                    icon="bookmark"
                     prompt={format!("When do you want to queue this {}?", pending.kind.title())}
                     {aired_label}
                     default_at={pending.aired}

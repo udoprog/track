@@ -30,7 +30,7 @@ pub(crate) enum Preset {
 
 /// Map a clock angle (degrees clockwise from 12 o'clock) and a radius (as a
 /// percentage of the dial) to an `(x%, y%)` position inside the dial. Used both
-/// to lay out the numbers and to draw the hand — all geometry lives here in Rust
+/// to lay out the numbers and to draw the hand all geometry lives here in Rust
 /// so the stylesheet stays free of per-number rules.
 fn polar(angle_deg: f64, radius_pct: f64) -> (f64, f64) {
     let r = angle_deg.to_radians();
@@ -41,8 +41,8 @@ const OUTER_RADIUS: f64 = 40.0;
 const INNER_RADIUS: f64 = 25.0;
 
 /// A precomputed clock-face number: its value plus the (cheaply cloneable,
-/// shared) label and absolute-position style. Built once so renders — including
-/// every clock-drag frame — don't reallocate them.
+/// shared) label and absolute-position style. Built once so renders including
+/// every clock-drag frame don't reallocate them.
 struct ClockNode {
     value: u8,
     label: AttrValue,
@@ -66,7 +66,7 @@ impl ClockNode {
 struct Labels {
     hours: Vec<ClockNode>,
     minutes: Vec<ClockNode>,
-    /// Zero-padded `"00"..="59"`, indexed by value — covers the hour (0-23) and
+    /// Zero-padded `"00"..="59"`, indexed by value covers the hour (0-23) and
     /// minute (0-59) shown in the header.
     two_digit: Box<[AttrValue]>,
     /// `"1"..="31"`, indexed by day-of-month minus one.
@@ -139,6 +139,8 @@ pub(crate) struct Props {
     #[prop_or_default]
     pub(crate) trigger_class: Classes,
     #[prop_or_default]
+    pub(crate) icon: Option<AttrValue>,
+    #[prop_or_default]
     pub(crate) title: AttrValue,
     /// Heading shown at the top of the popover.
     pub(crate) prompt: AttrValue,
@@ -150,7 +152,7 @@ pub(crate) struct Props {
     /// the picker. When present the "Aired" option is shown.
     #[prop_or_default]
     pub(crate) default_at: Option<api::Timestamp>,
-    /// Force-show the "Aired" option even without a concrete `default_at` — for
+    /// Force-show the "Aired" option even without a concrete `default_at` for
     /// bulk flows where each item resolves its own air date server-side.
     #[prop_or(false)]
     pub(crate) show_aired: bool,
@@ -440,7 +442,7 @@ impl Component for MarkTimeMenu {
                 </button>
 
                 if self.context_open {
-                    <ContextMenu prompt={props.prompt.clone()} anchor={self.anchor.clone()} on_close={link.callback(|_| Msg::Close)} onerror={props.onerror.clone()}>
+                    <ContextMenu icon={props.icon.clone()} prompt={props.prompt.clone()} anchor={self.anchor.clone()} on_close={link.callback(|_| Msg::Close)} onerror={props.onerror.clone()}>
                         {context_content}
                     </ContextMenu>
                 }

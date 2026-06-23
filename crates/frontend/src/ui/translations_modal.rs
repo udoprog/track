@@ -180,7 +180,7 @@ fn covers(event: api::TranslationTarget, mine: api::TranslationTarget) -> bool {
 }
 
 /// Render a single translation as a row: language name with its flag (mirroring
-/// the `LanguagePicker` treatment — flag wrapped in `item-inline` so it sizes,
+/// the `LanguagePicker` treatment, flag wrapped in `item-inline` so it sizes,
 /// falling back to the 3-letter code when no flag exists) followed by the text.
 fn view_row(translation: &api::Translation) -> Html {
     let (label, flag) = super::locale_label(translation.language, "Default Language");

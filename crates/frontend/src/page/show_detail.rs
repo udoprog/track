@@ -1968,6 +1968,7 @@ impl ShowDetail {
                             <MarkTimeMenu
                                 onerror={ctx.props().onerror.clone()}
                                 trigger_class="btn-success"
+                                icon="check"
                                 title="Mark watched"
                                 prompt={format!("When did you watch {}?", episode.code())}
                                 default_at={episode.aired}
@@ -1985,6 +1986,7 @@ impl ShowDetail {
                                 <MarkTimeMenu
                                     onerror={ctx.props().onerror.clone()}
                                     trigger_class="btn"
+                                    icon="bookmark"
                                     title="Mark next"
                                     prompt={format!("When do you want to queue {}?", episode.code())}
                                     default_at={episode.aired}

@@ -7,9 +7,6 @@
     cursor: pointer;
     width: 64px;
 
-    // Grid that stacks every marker into a single full-height cell: the markers
-    // overlap (like absolute positioning) but stay in flow, so the widest one
-    // drives the column — and therefore the outline's — width.
     &.visible {
         display: grid;
         grid-template-rows: 1fr;

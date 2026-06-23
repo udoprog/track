@@ -19,7 +19,7 @@ pub(crate) struct Props {
     #[prop_or_default]
     pub(crate) label: Option<AttrValue>,
     /// The trigger element to position against. The host wires this `NodeRef`
-    /// to the exact element it wants the popover anchored to — measured
+    /// to the exact element it wants the popover anchored to - measured
     /// directly, so positioning never depends on event targets (unreliable
     /// under Yew's delegated dispatch) or DOM selectors.
     pub(crate) anchor: NodeRef,
@@ -128,7 +128,7 @@ impl Component for ContextMenu {
         let rect = menu.get_bounding_client_rect();
         let size = (rect.width(), rect.height());
 
-        // Re-place only when the body's size changes — on open, or when its
+        // Re-place only when the body's size changes - on open, or when its
         // content grows/shrinks. Position is what `place` itself writes, so
         // comparing size (not position) avoids a re-place feedback loop while
         // still catching every reshape. Steady re-renders such as clock-drag

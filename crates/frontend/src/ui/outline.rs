@@ -192,7 +192,7 @@ impl Component for Outline {
         self.marks_buf = marks;
 
         // The band's geometry depends on the page's scroll metrics, which shift
-        // on resize and as content reflows — refresh it after every render.
+        // on resize and as content reflows refresh it after every render.
         if let Err(e) = self.update_mark(ctx) {
             ctx.props().onerror.emit(e);
         }

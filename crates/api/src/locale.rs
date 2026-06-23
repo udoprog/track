@@ -18,7 +18,7 @@ use crate::{Country, Language};
 /// and the country in the **high 32 bits**. This is deliberately backwards
 /// compatible with the old bare-[`Language`] integer encoding: a value whose
 /// high bits are zero decodes to that language with [`Country::DEFAULT`], so no
-/// data migration is needed. The string form is likewise compatible — an old
+/// data migration is needed. The string form is likewise compatible - an old
 /// `"eng"` parses as a language-only locale.
 ///
 /// [`Locale::DEFAULT`] (both components default) is the reference-time sentinel

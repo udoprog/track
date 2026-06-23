@@ -974,6 +974,7 @@ impl MovieDetail {
                                 <MarkTimeMenu
                                     onerror={ctx.props().onerror.clone()}
                                     trigger_class="btn-success"
+                                    icon="check"
                                     title="Mark watched"
                                     prompt="When did you watch the movie?"
                                     aired_label="Released"
