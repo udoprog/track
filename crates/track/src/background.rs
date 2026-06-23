@@ -86,10 +86,8 @@ pub(crate) async fn update_movie_pending(
     let default = db.load_config().await?.release_filters;
     let release = movie.pending_release(&default);
 
-    if let Some(ts) = release
-        && movie.release_date != Some(ts)
-    {
-        db.set_movie_release_date(movie_id, Some(ts)).await?;
+    if movie.release_date != release {
+        db.set_movie_release_date(movie_id, release).await?;
     }
 
     if db.has_movie_watches(movie_id).await? {

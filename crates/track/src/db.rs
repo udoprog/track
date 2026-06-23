@@ -153,7 +153,7 @@ struct EpisodeRow {
     name: Option<String>,
     overview: Option<String>,
     aired: Option<Timestamp>,
-    pending: bool,
+    pending: Option<Timestamp>,
     watched_count: u32,
 }
 
@@ -493,10 +493,10 @@ struct InnerRead {
     episode_natural_key: TypedStatement<(EpisodeId,), EpisodeNaturalKeyRow>,
     #[sql = "SELECT id, season, episode FROM episodes WHERE show_id = ?"]
     list_episode_ids_for_show: TypedStatement<(ShowId,), EpisodeIdRow>,
-    #[sql = "SELECT e.id, e.show_id, e.season, e.episode, e.absolute_number, e.name, e.overview, e.aired,"]
-    #[sql = "    EXISTS(SELECT 1 FROM pending p WHERE p.episode_id = e.id) AS pending,"]
+    #[sql = "SELECT e.id, e.show_id, e.season, e.episode, e.absolute_number, e.name, e.overview, e.aired, p.timestamp AS pending,"]
     #[sql = "    (SELECT COUNT(*) FROM watched_episodes we WHERE we.show_id = e.show_id AND we.season = e.season AND we.episode = e.episode) AS watched_count"]
     #[sql = "FROM episodes e"]
+    #[sql = "LEFT JOIN pending p ON p.episode_id = e.id"]
     #[sql = "WHERE e.show_id = ? AND e.season = ?"]
     #[sql = "ORDER BY e.episode"]
     list_episodes: TypedStatement<(ShowId, SeasonNumber), EpisodeRow>,
@@ -572,8 +572,8 @@ struct InnerRead {
     select_unwatched_by_show_season: TypedStatement<(ShowId, SeasonNumber), UnwatchedEpisodeRow>,
 
     // pending table management
-    #[sql = "SELECT 1 FROM pending WHERE movie_id = ? LIMIT 1"]
-    has_pending_movie: TypedStatement<(MovieId,), (i64,)>,
+    #[sql = "SELECT timestamp FROM pending WHERE movie_id = ? LIMIT 1"]
+    select_pending_movie: TypedStatement<(MovieId,), Timestamp>,
     #[sql = "SELECT 1 FROM pending WHERE show_id = ? LIMIT 1"]
     has_pending_episode_for_show: TypedStatement<(ShowId,), (i64,)>,
     #[sql = "SELECT e.aired, p.timestamp"]
@@ -939,9 +939,9 @@ struct InnerWrite {
     #[sql = "UPDATE movies SET auto_sync = ? WHERE id = ?"]
     set_movie_auto_sync: TypedStatement<(bool, MovieId), ()>,
     #[sql = "UPDATE movies"]
-    #[sql = "SET title = ?, release_date = ?, overview = ?"]
+    #[sql = "SET title = ?, overview = ?"]
     #[sql = "WHERE id = ?"]
-    update_movie: TypedStatement<(Option<String>, Option<Timestamp>, Option<String>, MovieId), ()>,
+    update_movie: TypedStatement<(Option<String>, Option<String>, MovieId), ()>,
     #[sql = "UPDATE movies SET release_date = ? WHERE id = ?"]
     set_movie_release_date: TypedStatement<(Option<Timestamp>, MovieId), ()>,
     #[sql = "DELETE FROM movies WHERE id = ?"]
@@ -2423,8 +2423,7 @@ impl Database {
 
             stmt.reset()?;
 
-            movie.pending = s.has_pending_movie.bind((movie_id,))?.first()?.is_some();
-
+            movie.pending = s.select_pending_movie.bind((movie_id,))?.first()?;
             movie.poster = s.image_for_movie(movie_id, ImageKind::Poster)?;
             movie.banner = s.image_for_movie(movie_id, ImageKind::Banner)?;
 
@@ -2573,7 +2572,6 @@ impl Database {
         &self,
         id: MovieId,
         title: Option<&str>,
-        release_date: Option<Timestamp>,
         overview: Option<&str>,
     ) -> Result<()> {
         let title = title.map(str::to_owned);
@@ -2581,12 +2579,8 @@ impl Database {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            s.update_movie.execute((
-                title.as_deref(),
-                release_date.as_ref(),
-                overview.as_deref(),
-                id,
-            ))?;
+            s.update_movie
+                .execute((title.as_deref(), overview.as_deref(), id))?;
             Ok(())
         });
 
@@ -4616,7 +4610,7 @@ fn movie_from_row(row: MovieRow) -> api::Movie {
         remotes: Vec::new(),
         tracked: row.tracked,
         auto_sync: row.auto_sync,
-        pending: false,
+        pending: None,
         images: Vec::new(),
         poster: None,
         banner: None,

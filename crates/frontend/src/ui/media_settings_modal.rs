@@ -149,7 +149,7 @@ pub(crate) fn MediaSettingsModal(props: &Props) -> Html {
     });
 
     html! {
-        <Modal title={props.title.clone()} on_close={props.on_close.reform(|_| ())}>
+        <Modal icon="cog-6-tooth" title={props.title.clone()} on_close={props.on_close.reform(|_| ())}>
             <div class="form">
                 <div class="field">
                     <label>{"Language"}</label>

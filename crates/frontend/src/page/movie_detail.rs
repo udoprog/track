@@ -28,6 +28,8 @@ pub(crate) struct MovieDetail {
     syncing: bool,
     actions_expanded: bool,
     detailed_expand: bool,
+    open_watched: bool,
+    open_releases: bool,
     releases_expanded: HashSet<api::ReleaseType>,
     movie_releases: Vec<(api::ReleaseType, Vec<api::MovieRelease>)>,
     default_release_filters: Vec<api::ReleaseFilter>,
@@ -124,6 +126,8 @@ pub(crate) enum Msg {
     ToggleActionsExpanded,
     ToggleDetailedActionsExpanded,
     ToggleReleaseType(api::ReleaseType),
+    ToggleOpenWatched,
+    ToggleOpenReleases,
 }
 
 #[derive(Properties, PartialEq)]
@@ -171,6 +175,8 @@ impl Component for MovieDetail {
             syncing: false,
             actions_expanded: false,
             detailed_expand: false,
+            open_watched: false,
+            open_releases: false,
             releases_expanded: HashSet::new(),
             movie_releases: Vec::new(),
             default_release_filters: api::ReleaseFilter::default_filters(),
@@ -626,10 +632,13 @@ impl MovieDetail {
                 Ok(true)
             }
             Msg::AddPendingDone(result) => {
-                result.context(Message::AddingPending)?;
+                let packet = result
+                    .context(Message::AddingPending)?
+                    .decode()
+                    .context(Message::AddingPending)?;
 
                 if let Some(ref mut movie) = self.movie {
-                    movie.pending = true;
+                    movie.pending = packet.pending.map(|p| p.timestamp);
                 }
 
                 Ok(true)
@@ -647,10 +656,13 @@ impl MovieDetail {
                 Ok(false)
             }
             Msg::RemovePendingDone(result) => {
-                result.context(Message::RemovingPending)?;
+                _ = result
+                    .context(Message::RemovingPending)?
+                    .decode()
+                    .context(Message::RemovingPending)?;
 
                 if let Some(ref mut movie) = self.movie {
-                    movie.pending = false;
+                    movie.pending = None;
                 }
 
                 Ok(true)
@@ -813,6 +825,15 @@ impl MovieDetail {
                 if !self.releases_expanded.remove(&ty) {
                     self.releases_expanded.insert(ty);
                 }
+
+                Ok(true)
+            }
+            Msg::ToggleOpenWatched => {
+                self.open_watched = !self.open_watched;
+                Ok(true)
+            }
+            Msg::ToggleOpenReleases => {
+                self.open_releases = !self.open_releases;
                 Ok(true)
             }
         }
@@ -891,129 +912,16 @@ impl MovieDetail {
 
         html! {
             <div class="column">
-                <div class="row-split">
-                    <div class="column desktop-center fill">
-                        <h1>{movie.title.as_deref().unwrap_or("Untitled Movie")}</h1>
-                    </div>
+                <div class="mobile-row desktop-column desktop-center">
+                    <h1>{movie.title.as_deref().unwrap_or("Untitled Movie")}</h1>
 
-                    <div class="hide-desktop row end">
-                        <button class="btn" onclick={link.callback(|_| Msg::ToggleActionsExpanded)}>
-                            <span class={classes!("icon", if self.actions_expanded { "ellipsis-horizontal" } else { "bars-3" })} />
-                        </button>
-                    </div>
+                    if let Some(ts) = movie.release_date {
+                        <span class="text-muted">{ts.date(self.time.clone()).year()}</span>
+                    }
                 </div>
 
-                <div class="column desktop-center fill">
-                    <div class="row text-gap desktop-center" title="Release date">
-                        if let Some(date) = movie.release_date {
-                            <span class="item-inline-lg">
-                                <span class="icon clock" />
-                            </span>
-
-                            <span class="text-muted">{date.human_date(self.time.clone())}</span>
-                        } else {
-                            <span class="item-inline">
-                                <span class="icon exclamation-circle" />
-                            </span>
-
-                            <span class="text-muted">{"No release date"}</span>
-                        }
-                    </div>
-                </div>
-            </div>
-        }
-    }
-
-    fn view_body(&self, ctx: &Context<Self>, movie: &api::Movie) -> Html {
-        let movie_id = ctx.props().movie_id;
-        let link = ctx.link();
-
-        // Earliest release, used to pre-fill the "Released" quick option.
-        let release_at = movie.releases.iter().map(|r| r.timestamp).min();
-
-        let on_remove_next = link.callback(move |_| Msg::OnRemoveNext);
-
-        let actions = {
-            html! {
-                <div class="row-split">
-                    <div class="column fill">
-                        <div class="toolbar">
-                            <div class="row text-gap">
-                                if !self.watched.is_empty() {
-                                    <span class="item-inline-lg" title="Watched"><span class="icon primary check-circle" /></span>
-                                } else {
-                                    <span class="item-inline-lg" title="Never watched"><span class="icon secondary x-circle" /></span>
-                                }
-
-                                <span class="date-time">
-                                    {match &self.watched[..] {
-                                        [] => html!(<span class="special">{"Never watched"}</span>),
-                                        [w] => html! {
-                                            <>
-                                                <span>{"Watched once"}</span>
-                                                {w.watched.timestamp.human_date_time(self.time.clone()).lower().view()}
-                                            </>
-                                        },
-                                        [w, ..] => html! {
-                                            <>
-                                                {format!("Watched {} times, first", self.watched.len())}
-                                                {w.watched.timestamp.human_date_time(self.time.clone()).view()}
-                                            </>
-                                        }
-                                    }}
-                                </span>
-                            </div>
-
-                            <div class="toolbar-toggle">
-                                <button class="btn" onclick={link.callback(move |_| Msg::ToggleDetailedActionsExpanded)}>
-                                    <span class="item-inline"><span class={classes!("icon", if self.detailed_expand { "ellipsis-horizontal" } else { "bars-3" })} /></span>
-                                </button>
-                            </div>
-
-                            <div class={classes!("toolbar-dropdown", "desktop-input-group", (!self.detailed_expand).then_some("hide-mobile"))}>
-                                <MarkTimeMenu
-                                    onerror={ctx.props().onerror.clone()}
-                                    trigger_class="btn-success"
-                                    icon="check"
-                                    title="Mark watched"
-                                    prompt="When did you watch the movie?"
-                                    aired_label="Released"
-                                    default_at={release_at}
-                                    on_confirm={link.callback(Msg::MarkWatched)}>
-                                    <span class="icon check" />
-                                    <span class="hide-desktop">{"Mark watched"}</span>
-                                </MarkTimeMenu>
-
-                                if movie.pending {
-                                    <button class="btn-primary" onclick={on_remove_next} title="Next movie">
-                                        <span class="icon bookmark" />
-                                        <span class="hide-desktop">{"Next movie"}</span>
-                                    </button>
-                                } else {
-                                    <MarkTimeMenu
-                                        onerror={ctx.props().onerror.clone()}
-                                        trigger_class="btn"
-                                        title="Not next movie"
-                                        prompt="When do you want the movie to be pending?"
-                                        aired_label="Released"
-                                        default_at={release_at}
-                                        on_confirm={link.callback(Msg::OnWatchNext)}>
-                                        <span class="icon bookmark-slash" />
-                                        <span class="hide-desktop">{"Not next movie"}</span>
-                                    </MarkTimeMenu>
-                                }
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            }
-        };
-
-        html! {
-            <>
-            <div class={classes!("desktop-row-split", "mobile-column", (!self.actions_expanded).then_some("hide-mobile"))}>
-                if !movie.remotes.is_empty() {
-                    <div class="row justify-around">
+                <div class="toolbar">
+                    <div class="row mobile-justify-around">
                         {for movie.remotes.iter().filter_map(|r| {
                             let url = r.remote.movie_url()?;
                             let id = r.remote.source().as_id();
@@ -1025,49 +933,88 @@ impl MovieDetail {
                             })
                         })}
                     </div>
-                }
 
-                <div class="desktop-row mobile-column end desktop-input-group">
-                    <Tracked tracked={movie.tracked} ontoggle={link.callback(Msg::SetTracked)} />
-
-                    <button ref={self.remove_anchor.clone()} class="btn-danger" onclick={link.callback(|_| Msg::ConfirmRemove)} title="Remove movie">
-                        <span class="icon trash" />
-                        <span class="hide-desktop">{"Remove"}</span>
-                    </button>
-
-                    if self.confirm_remove {
-                        <ContextMenu
-                            prompt="Remove movie"
-                            label={movie.title.clone()}
-                            anchor={self.remove_anchor.clone()}
-                            on_close={link.callback(|_| Msg::CancelRemove)}
-                            onerror={ctx.props().onerror.clone()}>
-                            <ConfirmDanger
-                                on_confirm={link.callback(|_| Msg::RemoveMovie)}
-                                on_cancel={link.callback(|_| Msg::CancelRemove)}
-                            />
-                        </ContextMenu>
-                    }
-
-                    if !movie.remotes.is_empty() {
-                        <button class="btn" onclick={link.callback(|_| Msg::SyncMovie)} title="Sync now">
-                            <span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} />
-                            <span class="hide-desktop">{"Sync"}</span>
+                    <div class="toolbar-toggle">
+                        <button class="btn" onclick={link.callback(|_| Msg::ToggleActionsExpanded)}>
+                            <span class={classes!("icon", if self.actions_expanded { "ellipsis-horizontal" } else { "bars-3" })} />
                         </button>
+                    </div>
+
+                    <div class={classes!("toolbar-dropdown", (!self.actions_expanded).then_some("hide-mobile"))}>
+                        <div class="desktop-row mobile-column desktop-input-group">
+                            <Tracked tracked={movie.tracked} ontoggle={link.callback(Msg::SetTracked)} />
+
+                            <button ref={self.remove_anchor.clone()} class="btn-danger" onclick={link.callback(|_| Msg::ConfirmRemove)} title="Remove movie">
+                                <span class="icon trash" />
+                                <span class="hide-desktop">{"Remove"}</span>
+                            </button>
+
+                            if self.confirm_remove {
+                                <ContextMenu
+                                    prompt="Remove movie"
+                                    label={movie.title.clone()}
+                                    anchor={self.remove_anchor.clone()}
+                                    on_close={link.callback(|_| Msg::CancelRemove)}
+                                    onerror={ctx.props().onerror.clone()}>
+                                    <ConfirmDanger
+                                        on_confirm={link.callback(|_| Msg::RemoveMovie)}
+                                        on_cancel={link.callback(|_| Msg::CancelRemove)}
+                                    />
+                                </ContextMenu>
+                            }
+
+                            if !movie.remotes.is_empty() {
+                                <button class="btn" onclick={link.callback(|_| Msg::SyncMovie)} title="Sync now">
+                                    <span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} />
+                                    <span class="hide-desktop">{"Sync"}</span>
+                                </button>
+                            }
+
+                            <button class="btn" onclick={link.callback(|_| Msg::OpenTranslations)} title="Translations">
+                                <span class="icon language" />
+                                <span class="hide-desktop">{"Translations"}</span>
+                            </button>
+
+                            <button class="btn" onclick={link.callback(|_| Msg::OpenSettingsModal)} title="Settings">
+                                <span class="icon cog-6-tooth" />
+                                <span class="hide-desktop">{"Settings"}</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row text-gap" title="Release date">
+                    if let Some(ts) = movie.release_date {
+                        <span class="item-inline-lg">
+                            <span class="icon clock" />
+                        </span>
+
+                        <span class="date-time">
+                            <span>{if self.time.now() < ts { "Releases" } else { "Released" }}</span>
+                            {ts.human_date_time(self.time.clone()).lower().view()}
+                        </span>
+                    } else {
+                        <span class="item-inline">
+                            <span class="icon exclamation-circle" />
+                        </span>
+
+                        <span class="text-muted">{"No release date"}</span>
                     }
-
-                    <button class="btn" onclick={link.callback(|_| Msg::OpenTranslations)} title="Translations">
-                        <span class="icon language" />
-                        <span class="hide-desktop">{"Translations"}</span>
-                    </button>
-
-                    <button class="btn" onclick={link.callback(|_| Msg::OpenSettingsModal)} title="Settings">
-                        <span class="icon cog-6-tooth" />
-                        <span class="hide-desktop">{"Settings"}</span>
-                    </button>
                 </div>
             </div>
+        }
+    }
 
+    fn view_body(&self, ctx: &Context<Self>, movie: &api::Movie) -> Html {
+        let link = ctx.link();
+
+        // Earliest release, used to pre-fill the "Released" quick option.
+        let release_at = movie.releases.iter().map(|r| r.timestamp).min();
+
+        let on_remove_next = link.callback(move |_| Msg::OnRemoveNext);
+
+        html! {
+            <>
             if let Some(ref overview) = movie.overview {
                 <p class="overview">{overview}</p>
             }
@@ -1086,59 +1033,108 @@ impl MovieDetail {
                 </div>
 
                 <div class="detail-content">
-                    {actions}
-
-                    if !self.watched.is_empty() {
-                        <div class="column">
-                            <h3>{"Watch History"}</h3>
-
-                            <div class="column">
-                                { for self.watched.iter().map(|w| {
-                                    let wid = w.watched.id;
-                                    let kind = api::WatchedKind::Movie { movie: movie_id };
-
-                                    html! {
-                                        <div class="row-split">
-                                            <div class="row fill date-time">
-                                                {w.watched.timestamp.human_date_time(self.time.clone()).view()}
-                                            </div>
-
-                                            <button ref={w.remove_watch_anchor.clone()} class="btn-danger end" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
-                                                <span class="icon trash" />
-                                                <span class="hide-desktop">{"Remove"}</span>
-                                            </button>
-
-                                            if self.confirm_remove_watch == Some(wid) {
-                                                <ContextMenu
-                                                    prompt="Remove watch at"
-                                                    label={w.watched.timestamp.human_date_time(self.time.clone())}
-                                                    anchor={w.remove_watch_anchor.clone()}
-                                                    on_close={link.callback(|_| Msg::CancelRemoveWatch)}
-                                                    onerror={ctx.props().onerror.clone()}>
-                                                    <ConfirmDanger
-                                                        on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, kind))}
-                                                        on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
-                                                    />
-                                                </ContextMenu>
-                                            }
-                                        </div>
+                    <div class="row-split">
+                        <div class="column fill">
+                            <div class="toolbar">
+                                <div class="row text-gap">
+                                    if movie.pending.is_some() {
+                                        <span class="item-inline-lg" title="Next movie"><span class="icon primary exclamation-circle" /></span>
+                                    } else if !self.watched.is_empty() {
+                                        <span class="item-inline-lg" title="Watched"><span class="icon primary check-circle" /></span>
+                                    } else {
+                                        <span class="item-inline-lg" title="Never watched"><span class="icon secondary x-circle" /></span>
                                     }
-                                }) }
+
+                                    if let Some(ts) = movie.pending {
+                                        <span class="date-time">
+                                            <span>{"Movie scheduled for"}</span>
+                                            {ts.human_date_time(self.time.clone()).lower().view()}
+                                        </span>
+                                    } else {
+                                        <span class="date-time">
+                                            {match &self.watched[..] {
+                                                [] => html!(<span class="special">{"Never watched"}</span>),
+                                                [w] => html! {
+                                                    <>
+                                                        <span>{"Watched once"}</span>
+                                                        {w.watched.timestamp.human_date_time(self.time.clone()).lower().view()}
+                                                    </>
+                                                },
+                                                [w, ..] => html! {
+                                                    <>
+                                                        {format!("Watched {} times, first", self.watched.len())}
+                                                        {w.watched.timestamp.human_date_time(self.time.clone()).view()}
+                                                    </>
+                                                }
+                                            }}
+                                        </span>
+                                    }
+                                </div>
+
+                                <div class="toolbar-toggle">
+                                    <button class="btn" onclick={link.callback(move |_| Msg::ToggleDetailedActionsExpanded)}>
+                                        <span class="item-inline"><span class={classes!("icon", if self.detailed_expand { "ellipsis-horizontal" } else { "bars-3" })} /></span>
+                                    </button>
+                                </div>
+
+                                <div class={classes!("toolbar-dropdown", "desktop-input-group", (!self.detailed_expand).then_some("hide-mobile"))}>
+                                    <MarkTimeMenu
+                                        onerror={ctx.props().onerror.clone()}
+                                        trigger_class="btn-success"
+                                        icon="check"
+                                        title="Mark watched"
+                                        prompt="When did you watch the movie?"
+                                        aired_label="Released"
+                                        default_at={release_at}
+                                        on_confirm={link.callback(Msg::MarkWatched)}>
+                                        <span class="icon check" />
+                                        <span class="hide-desktop">{"Mark watched"}</span>
+                                    </MarkTimeMenu>
+
+                                    if movie.pending.is_some() {
+                                        <button class="btn-primary" onclick={on_remove_next} title="Next movie">
+                                            <span class="icon bookmark" />
+                                            <span class="hide-desktop">{"Next movie"}</span>
+                                        </button>
+                                    } else {
+                                        <MarkTimeMenu
+                                            onerror={ctx.props().onerror.clone()}
+                                            trigger_class="btn"
+                                            title="Not next movie"
+                                            prompt="When do you want the movie to be pending?"
+                                            aired_label="Released"
+                                            default_at={release_at}
+                                            on_confirm={link.callback(Msg::OnWatchNext)}>
+                                            <span class="icon bookmark-slash" />
+                                            <span class="hide-desktop">{"Not next movie"}</span>
+                                        </MarkTimeMenu>
+                                    }
+
+                                    <button class="btn" onclick={link.callback(|_| Msg::ToggleOpenWatched)} title="Watch history">
+                                        <span class="icon clock" />
+                                        <span class="hide-desktop">{"Watch history"}</span>
+                                    </button>
+
+                                    <button class="btn" onclick={link.callback(|_| Msg::ToggleOpenReleases)} title="Releases">
+                                        <span class="icon calendar" />
+                                        <span class="hide-desktop">{"Releases"}</span>
+                                    </button>
+                                </div>
                             </div>
                         </div>
+                    </div>
+
+                    if self.open_watched {
+                        <Modal icon="clock" title="Watch history" on_close={link.callback(|_| Msg::ToggleOpenWatched)}>
+                            {self.view_watched(ctx, movie.id)}
+                        </Modal>
                     }
 
-                    if let Some(date) = movie.release_date {
-                        <div class="column">
-                            <h3>{"Release date"}</h3>
-
-                            <span class="date-time">
-                                {date.human_date_time(self.time.clone()).view()}
-                            </span>
-                        </div>
+                    if self.open_releases {
+                        <Modal icon="calendar" title="Releases" on_close={link.callback(|_| Msg::ToggleOpenReleases)}>
+                            {self.view_releases(ctx)}
+                        </Modal>
                     }
-
-                    {self.view_releases(ctx)}
                 </div>
             </div>
 
@@ -1195,6 +1191,46 @@ impl MovieDetail {
         }
     }
 
+    fn view_watched(&self, ctx: &Context<Self>, movie_id: api::MovieId) -> Html {
+        let link = ctx.link();
+
+        html! {
+            <div class="column">
+                { for self.watched.iter().map(|w| {
+                    let wid = w.watched.id;
+                    let kind = api::WatchedKind::Movie { movie: movie_id };
+
+                    html! {
+                        <div class="row-split">
+                            <div class="row fill date-time">
+                                {w.watched.timestamp.human_date_time(self.time.clone()).view()}
+                            </div>
+
+                            <button ref={w.remove_watch_anchor.clone()} class="btn-danger end" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
+                                <span class="icon trash" />
+                                <span class="hide-desktop">{"Remove"}</span>
+                            </button>
+
+                            if self.confirm_remove_watch == Some(wid) {
+                                <ContextMenu
+                                    prompt="Remove watch at"
+                                    label={w.watched.timestamp.human_date_time(self.time.clone())}
+                                    anchor={w.remove_watch_anchor.clone()}
+                                    on_close={link.callback(|_| Msg::CancelRemoveWatch)}
+                                    onerror={ctx.props().onerror.clone()}>
+                                    <ConfirmDanger
+                                        on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, kind))}
+                                        on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
+                                    />
+                                </ContextMenu>
+                            }
+                        </div>
+                    }
+                }) }
+            </div>
+        }
+    }
+
     fn view_releases(&self, ctx: &Context<Self>) -> Html {
         let link = ctx.link();
 
@@ -1232,67 +1268,63 @@ impl MovieDetail {
 
         html! {
             <div class="column">
-                <h3>{"Releases"}</h3>
+                { for self.movie_releases.iter().map(|(ty, releases)| {
+                    let ty = *ty;
+                    let earliest = releases.iter().min_by_key(|r| r.timestamp).unwrap();
+                    let expanded = self.releases_expanded.contains(&ty);
+                    let type_considered = releases.iter().any(&considered);
 
-                <div class="column">
-                    { for self.movie_releases.iter().map(|(ty, releases)| {
-                        let ty = *ty;
-                        let earliest = releases.iter().min_by_key(|r| r.timestamp).unwrap();
-                        let expanded = self.releases_expanded.contains(&ty);
-                        let type_considered = releases.iter().any(&considered);
+                    html! {
+                        <div class="row clickable align-top" onclick={link.callback(move |_| Msg::ToggleReleaseType(ty))}>
+                            <span class="item-inline">
+                                <span class={classes!("icon", if expanded { "ellipsis-horizontal" } else { "chevron-right" })} />
+                            </span>
 
-                        html! {
-                            <div class="row clickable align-top" onclick={link.callback(move |_| Msg::ToggleReleaseType(ty))}>
-                                <span class="item-inline">
-                                    <span class={classes!("icon", if expanded { "ellipsis-horizontal" } else { "chevron-right" })} />
-                                </span>
-
-                                <div class="column fill">
-                                    <div class="row-split">
-                                        <div class="row">
-                                            {indicator(type_considered)}
-                                            <span>{ty.as_str()}</span>
-                                        </div>
-
-                                        <div class="row end">
-                                            <span class="text-muted">{earliest.timestamp.human_date_time(self.time.clone())}</span>
-                                        </div>
+                            <div class="column fill">
+                                <div class="row-split">
+                                    <div class="row">
+                                        {indicator(type_considered)}
+                                        <span>{ty.as_str()}</span>
                                     </div>
 
-                                    if expanded {
-                                        <div class="column">
-                                            { for releases.iter().map(|r| html! {
-                                                <div class="row-split">
-                                                    <div class="row">
-                                                        {indicator(considered(r))}
+                                    <div class="row end">
+                                        <span class="text-muted">{earliest.timestamp.human_date_time(self.time.clone())}</span>
+                                    </div>
+                                </div>
 
-                                                        if let Some(c) = r.country.to_iso() {
-                                                            if c.has_flag {
-                                                                <span class="item-inline" title={c.name}>
-                                                                    <span class={classes!("flag", c.alpha2)}></span>
-                                                                </span>
-                                                            } else {
-                                                                <span class="text-muted">
-                                                                    <span class={c.name}></span>
-                                                                </span>
-                                                            }
+                                if expanded {
+                                    <div class="column">
+                                        { for releases.iter().map(|r| html! {
+                                            <div class="row-split">
+                                                <div class="row">
+                                                    {indicator(considered(r))}
+
+                                                    if let Some(c) = r.country.to_iso() {
+                                                        if c.has_flag {
+                                                            <span class="item-inline" title={c.name}>
+                                                                <span class={classes!("flag", c.alpha2)}></span>
+                                                            </span>
                                                         } else {
                                                             <span class="text-muted">
-                                                                {r.country}
+                                                                <span class={c.name}></span>
                                                             </span>
                                                         }
-                                                    </div>
-
-                                                    <span class="text-muted">{r.timestamp.human_date_time(self.time.clone())}</span>
+                                                    } else {
+                                                        <span class="text-muted">
+                                                            {r.country}
+                                                        </span>
+                                                    }
                                                 </div>
-                                            }) }
-                                        </div>
-                                    }
-                                </div>
+
+                                                <span class="text-muted">{r.timestamp.human_date_time(self.time.clone())}</span>
+                                            </div>
+                                        }) }
+                                    </div>
+                                }
                             </div>
-                        }
-                    }) }
-                </div>
+                        </div>
+                    }
+                }) }
             </div>
         }
     }
@@ -1301,7 +1333,7 @@ impl MovieDetail {
         let link = ctx.link();
 
         html! {
-            <Modal title="Graphics" on_close={link.callback(|_| Msg::CloseImageModal)}>
+            <Modal icon="photo" title="Graphics" on_close={link.callback(|_| Msg::CloseImageModal)}>
                 {for self.graphics.iter().map(|(&kind, items)| {
                     html! {
                         <ImageGallery

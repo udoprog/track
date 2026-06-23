@@ -4,7 +4,7 @@ use yew::prelude::*;
 use crate::error::Error;
 use crate::ui::ContextMenu;
 
-use super::{ConfirmDanger, MDASH, Modal};
+use super::{ConfirmDanger, Modal};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RemoteSourceKind {
@@ -320,15 +320,8 @@ impl Component for RemoteEditor {
 
         let editing = self.editing.is_some();
 
-        let title = html! {
-            <>
-                <span class="icon identification" />
-                <span>{format!("Remotes {MDASH} {}", props.title)}</span>
-            </>
-        };
-
         html! {
-            <Modal {title} on_close={link.callback(|_| Msg::Close)}>
+            <Modal icon="identification" title="Remotes" on_close={link.callback(|_| Msg::Close)}>
                 if props.remotes.is_empty() {
                     <div class="text-muted">{"No remotes"}</div>
                 } else {

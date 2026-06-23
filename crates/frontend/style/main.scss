@@ -203,6 +203,18 @@ p {
     &.justify-around {
         justify-content: space-around;
     }
+
+    @include g.on-mobile {
+        &.mobile-justify-around {
+            justify-content: space-around;
+        }
+    }
+
+    @include g.on-desktop {
+        &.desktop-justify-around {
+            justify-content: space-around;
+        }
+    }
 }
 
 @include g.on-desktop {

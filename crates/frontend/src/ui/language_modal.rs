@@ -205,7 +205,7 @@ impl Component for LanguageModal {
         });
 
         html! {
-            <Modal title={props.title} on_close={link.callback(|_| Msg::Close)}>
+            <Modal icon="language" title={props.title} on_close={link.callback(|_| Msg::Close)}>
                 <div class="row">
                     <input autofocus={true} type="text" class="input-text fill" placeholder="Filter" value={self.filter.clone()} oninput={on_filter} />
                 </div>

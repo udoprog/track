@@ -948,13 +948,8 @@ pub(crate) async fn sync_movie(
 
             let info = remote.fetch_tmdb_movie(tmdb_id, language).await?;
 
-            db.update_movie(
-                movie_id,
-                info.title.as_deref(),
-                info.release_date.or(movie.release_date),
-                info.overview.as_deref(),
-            )
-            .await?;
+            db.update_movie(movie_id, info.title.as_deref(), info.overview.as_deref())
+                .await?;
 
             let original_locale = info.original_language;
 

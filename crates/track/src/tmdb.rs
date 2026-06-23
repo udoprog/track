@@ -532,8 +532,6 @@ impl Client {
             #[serde(default)]
             backdrop_path: Option<String>,
             #[serde(default)]
-            release_date: Option<String>,
-            #[serde(default)]
             original_language: api::Locale,
             #[serde(default)]
             external_ids: ExternalIds,
@@ -568,7 +566,6 @@ impl Client {
 
         let poster_path = details.poster_path;
         let backdrop_path = details.backdrop_path;
-        let release_date = details.release_date;
         let original_language = details.original_language;
 
         let mut remotes = vec![Remote::tmdb(id)];
@@ -605,9 +602,6 @@ impl Client {
             title,
             overview,
             original_language,
-            release_date: opt_date(release_date.as_deref())
-                .map(|d| d.to_timestamp_at_midnight_utc())
-                .transpose()?,
             posters,
             backdrops,
             selected_poster,
@@ -657,7 +651,6 @@ pub(crate) struct MovieInfo {
     pub title: Option<String>,
     pub overview: Option<String>,
     pub original_language: api::Locale,
-    pub release_date: Option<Timestamp>,
     pub posters: Vec<Image>,
     pub backdrops: Vec<Image>,
     pub selected_poster: Option<ImageKey>,

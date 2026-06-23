@@ -340,39 +340,35 @@ impl Component for ShowDetail {
 
         html! {
             <>
-                <div class="row-split align-top">
-                    <div class="column desktop-center fill">
-                        <h1>{show.title.as_deref().unwrap_or("Untitled Show")}</h1>
+                <div class="mobile-row desktop-column desktop-center">
+                    <h1>{show.title.as_deref().unwrap_or("Untitled Show")}</h1>
 
-                        if let Some(date) = show.first_air_date {
-                            <span class="text-muted">{date.date(self.time.clone()).year()}</span>
-                        }
+                    if let Some(date) = show.first_air_date {
+                        <span class="text-muted">{date.date(self.time.clone()).year()}</span>
+                    }
+                </div>
+
+                <div class="toolbar">
+                    <div class="row mobile-justify-around">
+                        {for show.remotes.iter().filter_map(|r| {
+                            let url = r.remote.show_url(r.slug.as_deref())?;
+                            let id = r.remote.source().as_id();
+
+                            Some(html! {
+                                <a class="item-inline-source" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {id}")}>
+                                    <span class={classes!("logo", id)} />
+                                </a>
+                            })
+                        })}
                     </div>
 
-                    <div class="hide-desktop row end">
+                    <div class="toolbar-toggle">
                         <button class="btn" onclick={link.callback(|_| Msg::ToggleActionsExpanded)}>
                             <span class={classes!("icon", if self.actions_expanded { "ellipsis-horizontal" } else { "bars-2" })} />
                         </button>
                     </div>
-                </div>
 
-                <div class={classes!("desktop-row-split", "mobile-column", (!self.actions_expanded).then_some("hide-mobile"))}>
-                    if !show.remotes.is_empty() {
-                        <div class="row justify-around">
-                            {for show.remotes.iter().filter_map(|r| {
-                                let url = r.remote.show_url(r.slug.as_deref())?;
-                                let id = r.remote.source().as_id();
-
-                                Some(html! {
-                                    <a class="item-inline-source" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {id}")}>
-                                        <span class={classes!("logo", id)} />
-                                    </a>
-                                })
-                            })}
-                        </div>
-                    }
-
-                    <div class="desktop-row mobile-column desktop-input-group end">
+                    <div class={classes!("toolbar-dropdown", "desktop-input-group", (!self.actions_expanded).then_some("hide-mobile"))}>
                         <Tracked tracked={show.tracked} ontoggle={link.callback(Msg::SetTracked)} />
 
                         <button ref={self.remove_anchor.clone()} class="btn-danger" onclick={link.callback(|_| Msg::ConfirmRemove)} title="Remove show">
@@ -742,7 +738,7 @@ impl ShowDetail {
                 self.pending_episode = self
                     .episodes
                     .iter()
-                    .find(|e| e.pending)
+                    .find(|e| e.pending.is_some())
                     .map(|e| (e.code(), e.id));
 
                 self.next_unwatched = self
@@ -1614,7 +1610,7 @@ impl ShowDetail {
                 OutlineEntry {
                     code: code.clone(),
                     label: code,
-                    pending: e.pending,
+                    pending: e.pending.is_some(),
                 }
             })
             .collect();
@@ -1676,7 +1672,7 @@ impl ShowDetail {
         let link = ctx.link();
 
         html! {
-            <Modal title="Graphics" on_close={link.callback(|_| Msg::CloseImageModal)}>
+            <Modal icon="photo" title="Graphics" on_close={link.callback(|_| Msg::CloseImageModal)}>
                 {for self.graphics.iter().map(|(&kind, items)| {
                     html! {
                         <ImageGallery
@@ -1695,7 +1691,7 @@ impl ShowDetail {
         let link = ctx.link();
 
         html! {
-            <Modal title="Season Graphics" on_close={link.callback(|_| Msg::CloseSeasonImageModal)}>
+            <Modal icon="photo" title="Season Graphics" on_close={link.callback(|_| Msg::CloseSeasonImageModal)}>
                 {for self.season_graphics.iter().map(|(&kind, items)| {
                     html! {
                         <ImageGallery
@@ -1977,7 +1973,7 @@ impl ShowDetail {
                                 <span class="hide-desktop">{"Mark watched"}</span>
                             </MarkTimeMenu>
 
-                            if episode.pending {
+                            if episode.pending.is_some() {
                                 <button class="btn-primary" onclick={on_remove_next} title="Clear next episode">
                                     <span class="icon bookmark" />
                                     <span class="hide-desktop">{"Clear next episode"}</span>
@@ -2002,9 +1998,9 @@ impl ShowDetail {
                             </button>
 
                             if let Some(on_toggle) = on_toggle_history {
-                                <button class="btn" onclick={on_toggle} title="Watch History">
+                                <button class="btn" onclick={on_toggle} title="Watch history">
                                     <span class="icon clock" />
-                                    <span class="hide-desktop">{"Watch History"}</span>
+                                    <span class="hide-desktop">{"Watch history"}</span>
                                 </button>
                             }
                         </div>
@@ -2026,7 +2022,7 @@ impl ShowDetail {
                     </div>
 
                     <div class="row text-gap" title="Watch status">
-                        if episode.pending {
+                        if episode.pending.is_some() {
                             <span class="item-inline-lg" title="Next episode"><span class="icon primary exclamation-circle" /></span>
                         } else if !watched.is_empty() {
                             <span class="item-inline-lg" title="Watched"><span class="icon primary check-circle" /></span>
@@ -2034,9 +2030,10 @@ impl ShowDetail {
                             <span class="item-inline-lg" title="Never watched"><span class="icon secondary x-circle" /></span>
                         }
 
-                        if episode.pending {
+                        if let Some(ts) = episode.pending {
                             <span class="date-time">
-                                <span class="special">{"Next episode"}</span>
+                                <span>{"Episode scheduled for"}</span>
+                                {ts.human_date_time(self.time.clone()).lower().view()}
                             </span>
                         } else {
                             <span class="date-time">
@@ -2071,7 +2068,7 @@ impl ShowDetail {
                 </div>
 
                 if history_expanded {
-                    <Modal title={format!("Watch history for {}", episode.code())} on_close={link.callback(move |_| Msg::ToggleHistory(episode_id))}>
+                    <Modal icon="clock" title={format!("Watch history for {}", episode.code())} on_close={link.callback(move |_| Msg::ToggleHistory(episode_id))}>
                         <div key="history" class="column fill">
                             <h3>{"Watch history"}</h3>
 

@@ -1315,7 +1315,7 @@ pub struct Episode {
     pub name: Option<String>,
     pub overview: Option<String>,
     pub aired: Option<Timestamp>,
-    pub pending: bool,
+    pub pending: Option<Timestamp>,
     pub watched_count: u32,
     pub screenshot: Option<Image>,
 }
@@ -1390,7 +1390,7 @@ pub struct Movie {
     pub tracked: bool,
     /// Whether the background loop automatically refreshes this movie.
     pub auto_sync: bool,
-    pub pending: bool,
+    pub pending: Option<Timestamp>,
     pub images: Vec<MediaImage>,
     pub poster: Option<Image>,
     pub banner: Option<Image>,

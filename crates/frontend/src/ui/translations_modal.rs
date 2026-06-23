@@ -72,7 +72,7 @@ impl Component for TranslationsModal {
         let on_close = ctx.props().on_close.clone();
 
         html! {
-            <Modal title="Translations" on_close={on_close}>
+            <Modal icon="language" title="Translations" on_close={on_close}>
                 { self.view_content() }
             </Modal>
         }
