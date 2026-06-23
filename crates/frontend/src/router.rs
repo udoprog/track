@@ -357,7 +357,9 @@ impl ShowDetailQuery {
     fn to_query_string(&self) -> String {
         let mut s = form_urlencoded::Serializer::new(String::new());
 
-        if let Some(season) = self.season {
+        if let Some(season) = self.season
+            && season != api::SeasonNumber::FIRST
+        {
             let ordinal = season.ordinal().to_string();
             s.append_pair("season", &ordinal);
         }

@@ -603,8 +603,11 @@ pub enum SeasonNumber {
 }
 
 impl SeasonNumber {
+    /// The first regular season, i.e. `SeasonNumber::Number(1)`.
+    pub const FIRST: Self = Self::from_ordinal(1);
+
     #[inline]
-    pub fn from_ordinal(n: u32) -> Self {
+    pub const fn from_ordinal(n: u32) -> Self {
         if let Some(n) = NonZero::new(n) {
             Self::Number(n)
         } else {

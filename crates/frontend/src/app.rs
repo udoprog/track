@@ -256,38 +256,36 @@ impl App {
     fn view_page(&self, ctx: &Context<Self>) -> Html {
         let onerror = ctx.props().onerror.clone();
 
-        match &ctx.props().route {
-            Route::Dashboard(query) => {
-                html! { <Dashboard {onerror} page={query.page} /> }
+        match ctx.props().route {
+            Route::Dashboard(ref q) => {
+                html! { <Dashboard {onerror} page={q.page} /> }
             }
-            Route::Queue(query) => html! {
-                <Queue {onerror} focus={query.focus} page={query.page} />
+            Route::Queue(ref q) => html! {
+                <Queue {onerror} focus={q.focus} page={q.page} />
             },
-            Route::Media(query) => html! {
+            Route::Media(ref q) => html! {
                 <MediaList
                     {onerror}
-                    page={query.page}
-                    filter={query.filter.clone()}
-                    sort={query.sort}
-                    desc={query.desc}
-                    tracked={query.tracked}
-                    selection={query.selection}
+                    page={q.page}
+                    filter={q.filter.clone()}
+                    sort={q.sort}
+                    desc={q.desc}
+                    tracked={q.tracked}
+                    selection={q.selection}
                 />
             },
-            Route::ShowDetail(show_id, query) => {
-                let show_id = *show_id;
-                let initial_season = query.season;
+            Route::ShowDetail(show_id, ref q) => {
+                let season = q.season.unwrap_or(api::SeasonNumber::FIRST);
 
                 html! {
-                    <ShowDetail {onerror} {show_id} {initial_season} />
+                    <ShowDetail {onerror} {show_id} {season} />
                 }
             }
             Route::MovieDetail(movie_id) => {
-                let movie_id = *movie_id;
                 html! { <MovieDetail {onerror} {movie_id} /> }
             }
-            Route::Search(query) => html! {
-                <Search {onerror} selection={query.selection} filter={query.filter.clone()} />
+            Route::Search(ref q) => html! {
+                <Search {onerror} selection={q.selection} filter={q.filter.clone()} />
             },
             Route::Settings => html! { <Settings {onerror} /> },
         }

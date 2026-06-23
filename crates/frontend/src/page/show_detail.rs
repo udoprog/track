@@ -196,7 +196,7 @@ pub(crate) struct Props {
     pub(crate) onerror: Callback<Error>,
     pub(crate) show_id: api::ShowId,
     #[prop_or_default]
-    pub(crate) initial_season: Option<api::SeasonNumber>,
+    pub(crate) season: api::SeasonNumber,
 }
 
 impl Component for ShowDetail {
@@ -332,6 +332,8 @@ impl Component for ShowDetail {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
+        let props = ctx.props();
+
         let Some(ref show) = self.show else {
             return html!(<Loading />);
         };
@@ -382,7 +384,7 @@ impl Component for ShowDetail {
                                 label={show.title.clone()}
                                 anchor={self.remove_anchor.clone()}
                                 on_close={ctx.link().callback(|_| Msg::CancelRemove)}
-                                onerror={ctx.props().onerror.clone()}>
+                                onerror={props.onerror.clone()}>
                                 <ConfirmDanger on_confirm={link.callback(|_| Msg::RemoveShow)} on_cancel={link.callback(|_| Msg::CancelRemove)} />
                             </ContextMenu>
                         }
@@ -469,14 +471,14 @@ impl Component for ShowDetail {
                         on_set_sync_kinds={link.callback(|(id, kinds)| Msg::SetRemoteSyncKinds(id, kinds))}
                         global_sync_kinds={self.global_sync_kinds.clone()}
                         on_close={link.callback(|_| Msg::CloseRemoteEditor)}
-                        onerror={ctx.props().onerror.clone()}
+                        onerror={props.onerror.clone()}
                     />
                 }
 
                 if self.show_translations_modal {
                     <TranslationsModal
                         target={api::TranslationTarget::Show(show.id)}
-                        onerror={ctx.props().onerror.clone()}
+                        onerror={props.onerror.clone()}
                         on_close={link.callback(|_| Msg::CloseShowTranslations)}
                     />
                 }
@@ -485,7 +487,7 @@ impl Component for ShowDetail {
                     if let Some(season) = self.selected() {
                         <TranslationsModal
                             target={api::TranslationTarget::Season(season.id)}
-                            onerror={ctx.props().onerror.clone()}
+                            onerror={props.onerror.clone()}
                             on_close={link.callback(|_| Msg::CloseSeasonTranslations)}
                         />
                     }
@@ -494,7 +496,7 @@ impl Component for ShowDetail {
                 if let Some(episode_id) = self.episode_translations {
                     <TranslationsModal
                         target={api::TranslationTarget::Episode(episode_id)}
-                        onerror={ctx.props().onerror.clone()}
+                        onerror={props.onerror.clone()}
                         on_close={link.callback(|_| Msg::CloseEpisodeTranslations)}
                     />
                 }
@@ -502,8 +504,10 @@ impl Component for ShowDetail {
         }
     }
 
-    fn changed(&mut self, ctx: &Context<Self>, old_props: &Props) -> bool {
-        if ctx.props().show_id != old_props.show_id {
+    fn changed(&mut self, ctx: &Context<Self>, old: &Props) -> bool {
+        let props = ctx.props();
+
+        if props.show_id != old.show_id {
             self.show = None;
             self.seasons.clear();
             self.selected = None;
@@ -521,16 +525,18 @@ impl Component for ShowDetail {
                 self.load_seasons(ctx);
                 self.load_history(ctx);
             }
-        } else if ctx.props().initial_season != old_props.initial_season
-            && let Some(season) = ctx.props().initial_season
-            && self.selected().map(|s| s.season) != Some(season)
-        {
+
+            return true;
+        }
+
+        if self.selected().map(|s| s.season) != Some(props.season) {
             self.selected = self
                 .seasons
                 .iter()
                 .enumerate()
-                .find(|(_, s)| s.season == season)
+                .find(|(_, s)| s.season == props.season)
                 .map(|(i, _)| i);
+
             self.episodes.clear();
             self.pending_episode = None;
             self.next_unwatched = None;
@@ -538,17 +544,22 @@ impl Component for ShowDetail {
             self.watched_by_episode.clear();
 
             if self.channel.id() != ws::ChannelId::NONE {
-                self.load_episodes(ctx, season);
+                self.load_episodes(ctx);
                 self.load_orphaned(ctx);
                 self.load_history(ctx);
             }
+
+            return true;
         }
-        true
+
+        false
     }
 }
 
 impl ShowDetail {
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
+        let props = ctx.props();
+
         match msg {
             Msg::Channel(result) => {
                 self.channel = result?;
@@ -575,7 +586,7 @@ impl ShowDetail {
                     return Ok(false);
                 }
                 match &event.kind {
-                    api::AppEventKind::ShowChanged { show } if show.id == ctx.props().show_id => {
+                    api::AppEventKind::ShowChanged { show } if show.id == props.show_id => {
                         self.background
                             .background(show.backdrop.as_ref().map(|i| i.proxy_url()));
                         self.show = Some(show.clone());
@@ -583,7 +594,7 @@ impl ShowDetail {
                         Ok(true)
                     }
                     api::AppEventKind::SeasonsChanged { show_id, .. }
-                        if *show_id == ctx.props().show_id =>
+                        if *show_id == props.show_id =>
                     {
                         if self.channel.id() != ws::ChannelId::NONE {
                             self.load_seasons(ctx);
@@ -592,10 +603,10 @@ impl ShowDetail {
                         Ok(false)
                     }
                     api::AppEventKind::EpisodesChanged { show_id, season }
-                        if *show_id == ctx.props().show_id =>
+                        if *show_id == props.show_id =>
                     {
-                        if self.selected().map(|s| s.season) == Some(*season) {
-                            self.load_episodes(ctx, *season);
+                        if props.season == *season {
+                            self.load_episodes(ctx);
                         }
 
                         self.load_orphaned(ctx);
@@ -603,16 +614,13 @@ impl ShowDetail {
                     }
                     api::AppEventKind::PendingChanged
                     | api::AppEventKind::PendingEntryChanged { .. } => {
-                        if let Some(season) = self.selected() {
-                            self.load_episodes(ctx, season.season);
-                        }
-
+                        self.load_episodes(ctx);
                         self.load_orphaned(ctx);
                         Ok(false)
                     }
                     api::AppEventKind::TaskAdded { task }
                     | api::AppEventKind::TaskStarted { task } => {
-                        if matches!(&task.kind, api::TaskKind::SyncShow { show_id, .. } if *show_id == ctx.props().show_id)
+                        if matches!(&task.kind, api::TaskKind::SyncShow { show_id, .. } if *show_id == props.show_id)
                         {
                             self.syncing = true;
                             return Ok(true);
@@ -620,14 +628,10 @@ impl ShowDetail {
                         Ok(false)
                     }
                     api::AppEventKind::TaskCompleted { task } => {
-                        if matches!(&task.kind, api::TaskKind::SyncShow { show_id, .. } if *show_id == ctx.props().show_id)
+                        if matches!(&task.kind, api::TaskKind::SyncShow { show_id, .. } if *show_id == props.show_id)
                         {
                             self.syncing = false;
-
-                            if let Some(season) = self.selected() {
-                                self.load_episodes(ctx, season.season);
-                            }
-
+                            self.load_episodes(ctx);
                             self.load_show(ctx);
                             self.load_seasons(ctx);
                             self.load_orphaned(ctx);
@@ -637,18 +641,15 @@ impl ShowDetail {
                     }
                     api::AppEventKind::WatchedChanged { event: kind } => {
                         let relevant = match kind {
-                            api::WatchedEvent::Episode { show, .. } => *show == ctx.props().show_id,
+                            api::WatchedEvent::Episode { show, .. } => *show == props.show_id,
                             api::WatchedEvent::RemainingSeason { show, .. } => {
-                                *show == ctx.props().show_id
+                                *show == props.show_id
                             }
                             api::WatchedEvent::Movie { .. } => false,
                         };
 
                         if relevant {
-                            if let Some(season) = self.selected() {
-                                self.load_episodes(ctx, season.season);
-                            }
-
+                            self.load_episodes(ctx);
                             self.load_orphaned(ctx);
                             self.load_history(ctx);
                         }
@@ -679,10 +680,11 @@ impl ShowDetail {
                     .seasons;
 
                 if self.selected.is_none() {
-                    let initial = ctx
-                        .props()
-                        .initial_season
-                        .and_then(|n| self.seasons.iter().enumerate().find(|(_, s)| s.season == n))
+                    let initial = self
+                        .seasons
+                        .iter()
+                        .enumerate()
+                        .find(|(_, s)| s.season == props.season)
                         .map(|(i, _)| i);
 
                     self.selected = initial.or_else(|| {
@@ -693,10 +695,7 @@ impl ShowDetail {
                             .map(|(i, _)| i)
                     });
 
-                    if let Some(season) = self.selected() {
-                        self.load_episodes(ctx, season.season);
-                    }
-
+                    self.load_episodes(ctx);
                     self.load_history(ctx);
                     self.load_orphaned(ctx);
                 }
@@ -705,7 +704,7 @@ impl ShowDetail {
             }
             Msg::SelectSeason(season) => {
                 if self.selected().map(|s| s.season) != Some(season) {
-                    let id = ctx.props().show_id;
+                    let id = props.show_id;
 
                     self.router.push(Route::ShowDetail(
                         id,
@@ -781,13 +780,13 @@ impl ShowDetail {
                 Ok(true)
             }
             Msg::MarkWatchedDone(result) => {
-                result.context(Message::MarkingWatched)?;
-
-                if let Some(season) = self.selected() {
-                    self.load_episodes(ctx, season.season);
-                }
+                result
+                    .context(Message::MarkingWatched)?
+                    .decode()
+                    .context(Message::MarkingWatched)?;
 
                 // Refresh season counts so the progress bars reflect the mark.
+                self.load_episodes(ctx);
                 self.load_seasons(ctx);
                 self.load_history(ctx);
                 self.load_orphaned(ctx);
@@ -819,11 +818,8 @@ impl ShowDetail {
                 result.context(Message::RemovingWatched)?;
                 self.confirm_remove_watch = None;
 
-                if let Some(season) = self.selected() {
-                    self.load_episodes(ctx, season.season);
-                }
-
                 // Refresh season counts so the progress bars reflect the change.
+                self.load_episodes(ctx);
                 self.load_seasons(ctx);
                 self.load_history(ctx);
                 self.load_orphaned(ctx);
@@ -838,7 +834,7 @@ impl ShowDetail {
                 Ok(true)
             }
             Msg::WatchRemaining(season, mark_time) => {
-                let show_id = ctx.props().show_id;
+                let show_id = props.show_id;
 
                 self._watch_remaining_reqs = self
                     .channel
@@ -855,11 +851,8 @@ impl ShowDetail {
             Msg::WatchRemainingDone(result) => {
                 result.context(Message::MarkingWatched)?;
 
-                if let Some(season) = self.selected() {
-                    self.load_episodes(ctx, season.season);
-                }
-
                 // Refresh season counts so the progress bars reflect the marks.
+                self.load_episodes(ctx);
                 self.load_seasons(ctx);
                 self.load_history(ctx);
                 self.load_orphaned(ctx);
@@ -868,7 +861,7 @@ impl ShowDetail {
             Msg::SetTracked(tracked) => {
                 self.actions_expanded = false;
 
-                let id = ctx.props().show_id;
+                let id = props.show_id;
 
                 self._untrack_req = self
                     .channel
@@ -898,7 +891,7 @@ impl ShowDetail {
                 Ok(true)
             }
             Msg::RemoveShow => {
-                let id = ctx.props().show_id;
+                let id = props.show_id;
                 self._remove_req = self
                     .channel
                     .request()
@@ -913,7 +906,7 @@ impl ShowDetail {
                 Ok(false)
             }
             Msg::SyncShow => {
-                let id = ctx.props().show_id;
+                let id = props.show_id;
 
                 self._sync_req = self
                     .channel
@@ -965,7 +958,7 @@ impl ShowDetail {
             Msg::OnWatchNext(episode_id, mark_time) => {
                 self.episode_actions_expanded.remove(&episode_id);
 
-                let show_id = ctx.props().show_id;
+                let show_id = props.show_id;
 
                 self._set_next_req = self
                     .channel
@@ -983,18 +976,17 @@ impl ShowDetail {
                 Ok(true)
             }
             Msg::AddPendingDone(result) => {
-                result.context(Message::AddingPending)?;
-
-                if let Some(season) = self.selected() {
-                    self.load_episodes(ctx, season.season);
-                }
-
+                result
+                    .context(Message::AddingPending)?
+                    .decode()
+                    .context(Message::AddingPending)?;
+                self.load_episodes(ctx);
                 self.load_orphaned(ctx);
                 Ok(false)
             }
             Msg::OnRemoveNext(episode_id) => {
                 self.episode_actions_expanded.remove(&episode_id);
-                let show_id = ctx.props().show_id;
+                let show_id = props.show_id;
 
                 self._set_next_req = self
                     .channel
@@ -1011,12 +1003,11 @@ impl ShowDetail {
                 Ok(false)
             }
             Msg::RemovePendingDone(result) => {
-                result.context(Message::RemovingPending)?;
-
-                if let Some(season) = self.selected() {
-                    self.load_episodes(ctx, season.season);
-                }
-
+                result
+                    .context(Message::RemovingPending)?
+                    .decode()
+                    .context(Message::RemovingPending)?;
+                self.load_episodes(ctx);
                 Ok(false)
             }
             Msg::SelectImage(kind, id) => {
@@ -1046,7 +1037,7 @@ impl ShowDetail {
                     .channel
                     .request()
                     .body(api::ClearSelectedImageRequest {
-                        owner: api::ImageOwner::Show(ctx.props().show_id),
+                        owner: api::ImageOwner::Show(props.show_id),
                         kind,
                     })
                     .on_packet(ctx.link().callback(Msg::ClearSelectedImageDone))
@@ -1073,7 +1064,7 @@ impl ShowDetail {
                     entry.enabled = enabled;
                 }
 
-                let id = ctx.props().show_id;
+                let id = props.show_id;
 
                 self._set_remote_enabled_req = self
                     .channel
@@ -1099,7 +1090,7 @@ impl ShowDetail {
                     entry.sync_kinds = sync_kinds;
                 }
 
-                let id = ctx.props().show_id;
+                let id = props.show_id;
 
                 self._set_remote_sync_kinds_req = self
                     .channel
@@ -1133,7 +1124,7 @@ impl ShowDetail {
                         .sort_by_key(|e| remote_ids.iter().position(|id| *id == e.id));
                 }
 
-                let id = ctx.props().show_id;
+                let id = props.show_id;
 
                 self._reorder_remotes_req = self
                     .channel
@@ -1149,7 +1140,7 @@ impl ShowDetail {
                 Ok(true)
             }
             Msg::SetLanguage(language) => {
-                let id = ctx.props().show_id;
+                let id = props.show_id;
 
                 self._set_language_req = self
                     .channel
@@ -1305,7 +1296,7 @@ impl ShowDetail {
                 Ok(true)
             }
             Msg::SetIncludeSpecials(include_specials) => {
-                let id = ctx.props().show_id;
+                let id = props.show_id;
 
                 self._set_include_specials_req = self
                     .channel
@@ -1330,7 +1321,7 @@ impl ShowDetail {
                 Ok(true)
             }
             Msg::SetAutoSync(auto_sync) => {
-                let id = ctx.props().show_id;
+                let id = props.show_id;
 
                 self._set_auto_sync_req = self
                     .channel
@@ -1356,7 +1347,7 @@ impl ShowDetail {
                     show.air_date_filters = air_date_filters.clone();
                 }
 
-                let id = ctx.props().show_id;
+                let id = props.show_id;
 
                 self._set_air_date_filters_req = self
                     .channel
@@ -1385,7 +1376,7 @@ impl ShowDetail {
                 Ok(true)
             }
             Msg::AddRemote(slug, remote) => {
-                let id = ctx.props().show_id;
+                let id = props.show_id;
 
                 self._remote_req = self
                     .channel
@@ -1401,7 +1392,7 @@ impl ShowDetail {
                 Ok(false)
             }
             Msg::EditRemote(remote_id, slug, remote) => {
-                let id = ctx.props().show_id;
+                let id = props.show_id;
 
                 self._remote_req = self
                     .channel
@@ -1422,7 +1413,7 @@ impl ShowDetail {
                 Ok(false)
             }
             Msg::RemoveRemote(remote_id) => {
-                let id = ctx.props().show_id;
+                let id = props.show_id;
 
                 self._remote_req = self
                     .channel
@@ -1457,7 +1448,7 @@ impl ShowDetail {
             }
             Msg::MoveWatched(id, season, episode) => {
                 self.fixing_watched = None;
-                let show_id = ctx.props().show_id;
+                let show_id = props.show_id;
                 self._move_req = self
                     .channel
                     .request()
@@ -1472,14 +1463,14 @@ impl ShowDetail {
                 Ok(false)
             }
             Msg::MoveWatchedDone(result) => {
-                result.context(Message::MovingWatched)?;
-
-                if let Some(season) = self.selected() {
-                    self.load_episodes(ctx, season.season);
-                    self.load_history(ctx);
-                }
+                result
+                    .context(Message::MovingWatched)?
+                    .decode()
+                    .context(Message::MovingWatched)?;
 
                 // Refresh season counts so the progress bars reflect the move.
+                self.load_episodes(ctx);
+                self.load_history(ctx);
                 self.load_seasons(ctx);
                 self.load_orphaned(ctx);
                 Ok(false)
@@ -1534,12 +1525,12 @@ impl ShowDetail {
     }
 
     fn load_show(&mut self, ctx: &Context<Self>) {
+        let show_id = ctx.props().show_id;
+
         self._show_req = self
             .channel
             .request()
-            .body(api::GetShowRequest {
-                id: ctx.props().show_id,
-            })
+            .body(api::GetShowRequest { id: show_id })
             .on_packet(ctx.link().callback(Msg::ShowLoaded))
             .send();
     }
@@ -1561,12 +1552,12 @@ impl ShowDetail {
     }
 
     fn load_seasons(&mut self, ctx: &Context<Self>) {
+        let show_id = ctx.props().show_id;
+
         self._seasons_req = self
             .channel
             .request()
-            .body(api::ListSeasonsRequest {
-                show_id: ctx.props().show_id,
-            })
+            .body(api::ListSeasonsRequest { show_id })
             .on_packet(ctx.link().callback(Msg::SeasonsLoaded))
             .send();
     }
@@ -1580,14 +1571,14 @@ impl ShowDetail {
             .send();
     }
 
-    fn load_episodes(&mut self, ctx: &Context<Self>, season: api::SeasonNumber) {
+    fn load_episodes(&mut self, ctx: &Context<Self>) {
+        let show_id = ctx.props().show_id;
+        let season = ctx.props().season;
+
         self._episodes_req = self
             .channel
             .request()
-            .body(api::ListEpisodesRequest {
-                show_id: ctx.props().show_id,
-                season,
-            })
+            .body(api::ListEpisodesRequest { show_id, season })
             .on_packet(ctx.link().callback(Msg::EpisodesLoaded))
             .send();
     }
@@ -1759,6 +1750,7 @@ impl ShowDetail {
 
     fn view_episodes(&self, ctx: &Context<Self>, season: &api::Season) -> Html {
         let link = ctx.link();
+        let props = ctx.props();
 
         let season_number = season.season;
 
@@ -1859,7 +1851,7 @@ impl ShowDetail {
                                 </button>
                             } else if let Some((label, episode_id)) = next_unwatched {
                                 <MarkTimeMenu
-                                    onerror={ctx.props().onerror.clone()}
+                                    onerror={props.onerror.clone()}
                                     trigger_class="btn"
                                     title="Make next episode"
                                     prompt={format!("Pending {label} since when?")}
@@ -1872,7 +1864,7 @@ impl ShowDetail {
 
                             if !self.view_orphaned && watched_count < total {
                                 <MarkTimeMenu
-                                    onerror={ctx.props().onerror.clone()}
+                                    onerror={props.onerror.clone()}
                                     trigger_class="btn-success"
                                     title="Mark remaining episodes as watched"
                                     prompt="When did you watch the remaining episodes?"
@@ -1914,8 +1906,9 @@ impl ShowDetail {
 
     fn view_episode(&self, ctx: &Context<Self>, episode: &api::Episode) -> Html {
         let link = ctx.link();
+        let props = ctx.props();
 
-        let show_id = ctx.props().show_id;
+        let show_id = props.show_id;
         let episode_id = episode.id;
 
         let watched = self
@@ -1972,7 +1965,7 @@ impl ShowDetail {
 
                         <div class={classes!("toolbar-dropdown", "desktop-input-group", (!actions_expanded).then_some("hide-mobile"))}>
                             <MarkTimeMenu
-                                onerror={ctx.props().onerror.clone()}
+                                onerror={props.onerror.clone()}
                                 trigger_class="btn-success"
                                 icon="check"
                                 title="Mark watched"
@@ -1990,7 +1983,7 @@ impl ShowDetail {
                                 </button>
                             } else {
                                 <MarkTimeMenu
-                                    onerror={ctx.props().onerror.clone()}
+                                    onerror={props.onerror.clone()}
                                     trigger_class="btn"
                                     icon="bookmark"
                                     title="Mark next"
@@ -2105,7 +2098,7 @@ impl ShowDetail {
                                                         label={w.watched.timestamp.human_date_time(self.time.clone())}
                                                         anchor={w.context_anchor.clone()}
                                                         on_close={link.callback(|_| Msg::CancelFixWatched)}
-                                                        onerror={ctx.props().onerror.clone()}>
+                                                        onerror={props.onerror.clone()}>
                                                         <EpisodePicker
                                                             show_id={show_id}
                                                             seasons={self.seasons.clone()}
@@ -2128,7 +2121,7 @@ impl ShowDetail {
                                                         label={w.watched.timestamp.human_date_time(self.time.clone())}
                                                         anchor={w.context_anchor.clone()}
                                                         on_close={link.callback(|_| Msg::CancelRemoveWatch)}
-                                                        onerror={ctx.props().onerror.clone()}>
+                                                        onerror={props.onerror.clone()}>
                                                         <ConfirmDanger
                                                             on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, kind))}
                                                             on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
@@ -2148,12 +2141,14 @@ impl ShowDetail {
     }
 
     fn view_orphaned(&self, ctx: &Context<Self>) -> Html {
+        let props = ctx.props();
+
         if self.orphaned.is_empty() {
             return html! {};
         }
 
         let link = ctx.link();
-        let show_id = ctx.props().show_id;
+        let show_id = props.show_id;
 
         // The first unwatched episode in the current season is the default
         // selected value.
@@ -2198,7 +2193,7 @@ impl ShowDetail {
                                             label={w.watched.timestamp.human_date_time(self.time.clone())}
                                             anchor={w.context_anchor.clone()}
                                             on_close={ctx.link().callback(|_| Msg::CancelFixWatched)}
-                                            onerror={ctx.props().onerror.clone()}>
+                                            onerror={props.onerror.clone()}>
                                             <EpisodePicker
                                                 {show_id}
                                                 seasons={self.seasons.clone()}
@@ -2221,7 +2216,7 @@ impl ShowDetail {
                                             label={w.watched.timestamp.human_date_time(self.time.clone())}
                                             anchor={w.context_anchor.clone()}
                                             on_close={ctx.link().callback(|_| Msg::CancelRemoveWatch)}
-                                            onerror={ctx.props().onerror.clone()}>
+                                            onerror={props.onerror.clone()}>
                                             <ConfirmDanger
                                                 on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, kind))}
                                                 on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
