@@ -984,24 +984,20 @@ impl MovieDetail {
                     </div>
                 </div>
 
-                <div class="indicator" title="Release date">
-                    if let Some(ts) = movie.release_date {
-                        <span class="item-inline-lg">
-                            <span class="icon clock" />
-                        </span>
+                <indicator title="Release date">
+                    <span class="item-inline">
+                        <span class={classes!("icon", if movie.release_date.is_some() { "clock" } else { "exclamation-circle" })} />
+                    </span>
 
-                        <span class="date-time">
+                    <content>
+                        if let Some(ts) = movie.release_date {
                             <span>{if self.time.now() < ts { "Releases" } else { "Released" }}</span>
                             {ts.human_date_time(self.time.clone()).lower().view()}
-                        </span>
-                    } else {
-                        <span class="item-inline">
-                            <span class="icon exclamation-circle" />
-                        </span>
-
-                        <span class="text-muted">{"No release date"}</span>
-                    }
-                </div>
+                        } else {
+                            <span class="text-muted">{"No release date"}</span>
+                        }
+                    </content>
+                </indicator>
             </div>
         }
     }
@@ -1044,7 +1040,7 @@ impl MovieDetail {
                     <div class="row-split">
                         <div class="column fill">
                             <div class="toolbar">
-                                <div class="indicator" title="Release date">
+                                <indicator title="Release date">
                                     if movie.pending.is_some() {
                                         <span class="item-inline" title="Next movie">
                                             <span class="icon primary exclamation-circle" />
@@ -1059,15 +1055,13 @@ impl MovieDetail {
                                         </span>
                                     }
 
-                                    if let Some(ts) = movie.pending {
-                                        <span class="date-time">
+                                    <content>
+                                        if let Some(ts) = movie.pending {
                                             <span>{"Movie scheduled for"}</span>
                                             {ts.human_date_time(self.time.clone()).lower().view()}
-                                        </span>
-                                    } else {
-                                        <span class="date-time">
+                                        } else {
                                             {match &self.watched[..] {
-                                                [] => html!(<span class="special">{"Never watched"}</span>),
+                                                [] => html!(<span>{"Never watched"}</span>),
                                                 [w] => html! {
                                                     <>
                                                         <span>{"Watched once"}</span>
@@ -1081,9 +1075,9 @@ impl MovieDetail {
                                                     </>
                                                 }
                                             }}
-                                        </span>
-                                    }
-                                </div>
+                                        }
+                                    </content>
+                                </indicator>
 
                                 <div class="toolbar-toggle">
                                     <button class="btn" onclick={link.callback(move |_| Msg::ToggleDetailedActionsExpanded)}>

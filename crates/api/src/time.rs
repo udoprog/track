@@ -1,9 +1,6 @@
 use core::fmt;
 use core::str::FromStr;
 
-#[cfg(feature = "yew")]
-use std::rc::Rc;
-
 use jiff::Timestamp as JiffTimestamp;
 use jiff::civil::Date as JiffDate;
 use jiff::tz::TimeZone as JiffTimeZone;
@@ -16,7 +13,7 @@ use yew::AttrValue;
 #[cfg(feature = "yew")]
 use yew::html::IntoPropValue;
 #[cfg(feature = "yew")]
-use yew::virtual_dom::{VList, VNode};
+use yew::virtual_dom::VNode;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TimeInfo {
@@ -268,6 +265,23 @@ impl HumanDate {
             same_year: self.same_year,
         }
     }
+
+    pub fn view(&self) -> VNode {
+        match self.kind {
+            HumanDateKind::Special(special) if self.lower => {
+                yew::html!(<date class="special">{special.lower()}</date>)
+            }
+            HumanDateKind::Special(special) => {
+                yew::html!(<date class="special">{special.upper()}</date>)
+            }
+            HumanDateKind::Date(date) if self.same_year => {
+                yew::html!(<date>{format_date(date.0).to_string()}</date>)
+            }
+            HumanDateKind::Date(date) => {
+                yew::html!(<date>{format_date_year(date.0).to_string()}</date>)
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -364,20 +378,7 @@ impl fmt::Display for HumanDate {
 impl IntoPropValue<VNode> for HumanDate {
     #[inline]
     fn into_prop_value(self) -> VNode {
-        match self.kind {
-            HumanDateKind::Special(special) if self.lower => {
-                yew::html!(<span class="special">{special.lower()}</span>)
-            }
-            HumanDateKind::Special(special) => {
-                yew::html!(<span class="special">{special.upper()}</span>)
-            }
-            HumanDateKind::Date(date) if self.same_year => {
-                yew::html!(<span class="date">{format_date(date.0).to_string()}</span>)
-            }
-            HumanDateKind::Date(date) => {
-                yew::html!(<span class="date">{format_date_year(date.0).to_string()}</span>)
-            }
-        }
+        self.view()
     }
 }
 
@@ -406,12 +407,13 @@ impl HumanDateTime {
     #[inline]
     #[cfg(feature = "yew")]
     pub fn view(&self) -> VNode {
-        let mut list = Vec::with_capacity(3);
-        list.push(self.date.into_prop_value());
-        list.push(yew::html!(<span>{"at"}</span>));
-        list.push(self.time_of_day.clone().into_prop_value());
-        let list = VList::with_children(list, None);
-        VNode::VList(Rc::new(list))
+        yew::html! {
+            <datetime>
+                {self.date.view()}
+                <span>{"at"}</span>
+                {self.time_of_day.view()}
+            </datetime>
+        }
     }
 }
 
@@ -452,6 +454,13 @@ pub struct TimeOfDay {
     zoned: jiff::Zoned,
 }
 
+impl TimeOfDay {
+    #[inline]
+    pub fn view(&self) -> VNode {
+        yew::html!(<time>{self.to_string()}</time>)
+    }
+}
+
 impl fmt::Display for TimeOfDay {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -463,7 +472,7 @@ impl fmt::Display for TimeOfDay {
 impl IntoPropValue<VNode> for TimeOfDay {
     #[inline]
     fn into_prop_value(self) -> VNode {
-        yew::html!(<span class="time">{self.to_string()}</span>)
+        self.view()
     }
 }
 

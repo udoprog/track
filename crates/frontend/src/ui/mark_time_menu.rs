@@ -607,7 +607,9 @@ impl MarkTimeMenu {
             Preset::Now => self.time.now().human_date_time(time).view(),
             Preset::Supplied => match props.preset.as_ref().map(|p| &p.kind) {
                 Some(TimePresetKind::At(ts)) => ts.human_date_time(time).view(),
-                Some(TimePresetKind::WhenAired { description }) => description.into(),
+                Some(TimePresetKind::WhenAired { description }) => {
+                    html!(<span>{description}</span>)
+                }
                 None => return html!(),
             },
             Preset::Custom => {
@@ -622,9 +624,7 @@ impl MarkTimeMenu {
             }
         };
 
-        html! {
-            <div class="date-time">{body}</div>
-        }
+        body
     }
 
     fn view_interaction(&self, ctx: &Context<Self>) -> Html {

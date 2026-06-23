@@ -2009,22 +2009,22 @@ impl ShowDetail {
                         </div>
                     </div>
 
-                    <div class="indicator" title="Air date">
+                    <indicator title="Air date">
                         <span class="item-inline">
                             <span class={classes!("icon", if episode.aired().is_some() { "clock" } else { "exclamation-circle" })} />
                         </span>
 
-                        if let Some(aired) = episode.human_aired(self.time.clone()) {
-                            <span class="date-time">
+                        <content>
+                            if let Some(aired) = episode.human_aired(self.time.clone()) {
                                 <span>{if aired.is_past() { "Aired" } else { "Airs" }}</span>
                                 {aired.lower().view()}
-                            </span>
-                        } else {
-                            <span class="text-muted">{"No air date"}</span>
-                        }
-                    </div>
+                            } else {
+                                <span class="text-muted">{"No air date"}</span>
+                            }
+                        </content>
+                    </indicator>
 
-                    <div class="indicator" title="Watch status">
+                    <indicator title="Watch status">
                         if episode.pending.is_some() {
                             <span class="item-inline" title="Next episode">
                                 <span class="icon primary exclamation-circle" />
@@ -2039,13 +2039,11 @@ impl ShowDetail {
                             </span>
                         }
 
-                        if let Some(ts) = episode.pending {
-                            <span class="date-time">
+                        <content>
+                            if let Some(ts) = episode.pending {
                                 <span>{"Episode scheduled for"}</span>
                                 {ts.human_date_time(self.time.clone()).lower().view()}
-                            </span>
-                        } else {
-                            <span class="date-time">
+                            } else {
                                 {match watched {
                                     [] => html!(<span class="special">{"Never watched"}</span>),
                                     [w] => html! {
@@ -2061,9 +2059,9 @@ impl ShowDetail {
                                         </>
                                     }
                                 }}
-                            </span>
-                        }
-                    </div>
+                            }
+                        </content>
+                    </indicator>
                 </div>
 
                 <div class="desktop-row mobile-column align-top">
@@ -2079,17 +2077,13 @@ impl ShowDetail {
                 if history_expanded {
                     <Modal icon="clock" title={format!("Watch history for {}", episode.code())} on_close={link.callback(move |_| Msg::ToggleHistory(episode_id))}>
                         <div key="history" class="column fill">
-                            <h3>{"Watch history"}</h3>
-
                             { for watched.iter().map(|w| {
                                 let wid = w.watched.id;
                                 let kind = api::WatchedKind::Episode { show: show_id, episode: episode_id };
 
                                 html! {
                                     <div class="row-split">
-                                        <div class="row">
-                                            <span>{w.watched.timestamp.human_date_time(self.time.clone())}</span>
-                                        </div>
+                                        {w.watched.timestamp.human_date_time(self.time.clone()).view()}
 
                                         <div class="row end">
                                             <div class="input-group" ref={w.context_anchor.clone()}>

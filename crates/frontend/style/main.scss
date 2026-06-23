@@ -198,13 +198,6 @@ p {
     }
 }
 
-.indicator {
-    display: flex;
-    flex-direction: row;
-    gap: $gap;
-    align-items: center;
-}
-
 .row {
     @include row-base;
 
@@ -1209,7 +1202,22 @@ image {
     }
 }
 
-.date-time {
+indicator {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: $text-gap;
+    align-items: center;
+
+    >content {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: $text-gap;
+    }
+}
+
+datetime {
     display: inline-flex;
     flex-direction: row;
     flex-wrap: wrap;
@@ -1222,13 +1230,17 @@ image {
         &.special {
             color: $color-primary;
         }
-
-        &.date {
-            color: $color-primary;
-        }
-
-        &.time {
-            color: $color-primary;
-        }
     }
+}
+
+time {
+    display: inline;
+    white-space: nowrap;
+    color: $color-primary;
+}
+
+date {
+    display: inline;
+    white-space: nowrap;
+    color: $color-primary;
 }
