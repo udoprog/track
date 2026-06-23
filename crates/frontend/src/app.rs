@@ -74,7 +74,6 @@ impl Component for App {
         let outline_control = OutlineControl::new(ctx.link().callback(Msg::SetOutline));
 
         let link = ctx.link().clone();
-
         let _tick_minute_interval = Interval::new(10_000, move || link.send_message(Msg::TickTime));
 
         Self {
@@ -202,15 +201,8 @@ impl App {
                 Ok(false)
             }
             Msg::TickTime => {
-                let now = Timestamp::now();
-                let date = self.time.now().date(self.time.clone());
-
-                if date != self.time.date() {
-                    self.time = TimeInfo::new(self.time.tz().clone(), now);
-                    return Ok(true);
-                }
-
-                Ok(false)
+                self.time = TimeInfo::new(self.time.tz().clone(), Timestamp::now());
+                Ok(true)
             }
             Msg::TopLanguagesLoaded(result) => {
                 let top_languages = result?.decode()?.top_languages;

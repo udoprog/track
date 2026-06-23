@@ -44,6 +44,11 @@ impl TimeInfo {
     pub fn date(&self) -> Date {
         self.now.date(self.clone())
     }
+
+    #[inline]
+    pub fn hour_minute(&self) -> (u8, u8) {
+        self.now.hour_minute(self.clone())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
