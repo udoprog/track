@@ -21,7 +21,7 @@ use yew::virtual_dom::{Key, VNode};
 /// bytes are turned into an integer is the SQLite conversion below, which pins
 /// the byte order so the stored value is identical regardless of host endianness.
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Country(pub(crate) [u8; 4]);
+pub struct Country([u8; 4]);
 
 /// Error produced when a string cannot be parsed as a [`Country`].
 #[derive(Debug)]
@@ -41,13 +41,61 @@ impl Country {
     pub const DEFAULT: Country = Country([0; 4]);
 
     /// United States (`US`).
-    pub const US: Country = Country(*b"US\0\0");
+    pub const US: Country = Country::new(b"US");
 
     /// Great Britain (`GB`).
-    pub const GB: Country = Country(*b"GB\0\0");
+    pub const GB: Country = Country::new(b"GB");
 
     /// Japan (`JP`).
-    pub const JP: Country = Country(*b"JP\0\0");
+    pub const JP: Country = Country::new(b"JP");
+
+    /// Build a country from its raw representation.
+    ///
+    /// If the input is not a valid ISO 3166-1 alpha-2 code, returns
+    /// [`Country::DEFAULT`].
+    ///
+    /// ```
+    /// use api::Country;
+    ///
+    /// assert_eq!(Country::new(b"US"), Country::US);
+    /// assert_eq!(Country::new(b"us"), Country::US);
+    /// assert_eq!(Country::new(b"ZZ"), Country::DEFAULT);
+    /// ```
+    #[inline]
+    pub const fn new(bytes: &[u8]) -> Self {
+        if bytes.len() > 4 {
+            return Self::DEFAULT;
+        }
+
+        let mut out = [0u8; 4];
+        let mut n = 0;
+
+        while n < bytes.len() {
+            out[n] = bytes[n].to_ascii_uppercase();
+            n += 1;
+        }
+
+        let mut test = out.as_slice();
+
+        while !test.is_empty() {
+            test = match test {
+                [prefix @ .., 0] => prefix,
+                _ => break,
+            };
+        }
+
+        if !iso3166::is_valid_alpha2(test) {
+            return Self::DEFAULT;
+        }
+
+        Self(out)
+    }
+
+    /// Get the raw byte-wise representation.
+    #[inline]
+    pub const fn to_raw(&self) -> [u8; 4] {
+        self.0
+    }
 
     /// Unwrap the current Country or fall back to other if the current Country
     /// is `DEFAULT`.
@@ -86,10 +134,8 @@ impl Country {
         let upper = to_upper(&mut bytes, code)?;
 
         let bytes = match upper.len() {
-            2 => {
-                let id = iso3166::by_alpha2(upper)?.alpha2;
-
-                let &[a, b] = id.as_bytes() else {
+            2 if iso3166::is_valid_alpha2(upper.as_bytes()) => {
+                let &[a, b] = upper.as_bytes() else {
                     return None;
                 };
 

@@ -446,15 +446,30 @@ pub async fn import() -> Result<()> {
                     .map(|d| naive_to_date(*d).to_timestamp_at_midnight_utc())
                     .transpose()?;
 
-                db.upsert_season(
-                    show_id,
-                    season.number.into(),
-                    air_date,
-                    season.name.as_deref().filter(|s| !s.trim().is_empty()),
-                    season.overview.as_deref().filter(|s| !s.trim().is_empty()),
-                )
-                .await
-                .with_context(|| anyhow!("Inserting season for show {}", s.id))?;
+                let season_id = db
+                    .upsert_season(show_id, season.number.into(), air_date)
+                    .await
+                    .with_context(|| anyhow!("Inserting season for show {}", s.id))?;
+
+                let mut rows = Vec::new();
+                if let Some(name) = season.name.as_deref().filter(|s| !s.trim().is_empty()) {
+                    rows.push((
+                        api::Locale::DEFAULT,
+                        api::StringKind::Title,
+                        name.to_owned(),
+                    ));
+                }
+                if let Some(overview) = season.overview.as_deref().filter(|s| !s.trim().is_empty())
+                {
+                    rows.push((
+                        api::Locale::DEFAULT,
+                        api::StringKind::Overview,
+                        overview.to_owned(),
+                    ));
+                }
+                if !rows.is_empty() {
+                    db.replace_season_strings(season_id, rows).await?;
+                }
             }
         }
 
@@ -470,18 +485,37 @@ pub async fn import() -> Result<()> {
                     .map(|d| naive_to_date(*d).to_timestamp_at_midnight_utc())
                     .transpose()?;
 
+                let episode_id = api::EpisodeId::new(uuid_to_u64(ep.id));
+
                 db.upsert_episode(
-                    api::EpisodeId::new(uuid_to_u64(ep.id)),
+                    episode_id,
                     show_id,
                     ep.season.into(),
                     ep.number,
                     ep.absolute_number,
-                    ep.name.as_deref().filter(|s| !s.trim().is_empty()),
-                    ep.overview.as_deref().filter(|s| !s.trim().is_empty()),
                     aired,
                 )
                 .await
                 .with_context(|| anyhow!("Inserting episode {} for show {}", ep.number, s.id))?;
+
+                let mut rows = Vec::new();
+                if let Some(name) = ep.name.as_deref().filter(|s| !s.trim().is_empty()) {
+                    rows.push((
+                        api::Locale::DEFAULT,
+                        api::StringKind::Title,
+                        name.to_owned(),
+                    ));
+                }
+                if let Some(overview) = ep.overview.as_deref().filter(|s| !s.trim().is_empty()) {
+                    rows.push((
+                        api::Locale::DEFAULT,
+                        api::StringKind::Overview,
+                        overview.to_owned(),
+                    ));
+                }
+                if !rows.is_empty() {
+                    db.replace_episode_strings(episode_id, rows).await?;
+                }
             }
         }
 

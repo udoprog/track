@@ -38,13 +38,12 @@ struct Migrations;
 #[derive(Row)]
 struct ShowRow {
     id: ShowId,
-    title: Option<String>,
     first_air: Option<Timestamp>,
-    overview: Option<String>,
     tracked: bool,
     auto_sync: bool,
     last_synced_at: Option<Timestamp>,
     language: api::Locale,
+    default_language: api::Locale,
     include_specials: Option<bool>,
     air_date_filters: Option<String>,
 }
@@ -135,8 +134,6 @@ struct SeasonRow {
     show_id: ShowId,
     season: SeasonNumber,
     air_date: Option<Timestamp>,
-    name: Option<String>,
-    overview: Option<String>,
     poster_source: Option<ImageSource>,
     poster_path: Option<String>,
     watched_count: u32,
@@ -150,8 +147,6 @@ struct EpisodeRow {
     season: SeasonNumber,
     number: u32,
     absolute_number: Option<u32>,
-    name: Option<String>,
-    overview: Option<String>,
     aired: Option<Timestamp>,
     pending: Option<Timestamp>,
     watched_count: u32,
@@ -167,13 +162,12 @@ struct EpisodeIdRow {
 #[derive(Row)]
 struct MovieRow {
     id: MovieId,
-    title: Option<String>,
     release_date: Option<Timestamp>,
-    overview: Option<String>,
     tracked: bool,
     auto_sync: bool,
     last_synced_at: Option<Timestamp>,
     language: api::Locale,
+    default_language: api::Locale,
     release_filters: Option<String>,
 }
 
@@ -198,10 +192,10 @@ struct EpisodeReleaseRow {
 struct MediaItemRow {
     // SQLite stores ids as signed integers; reinterpret to u64 (matches `define_id`).
     id: i64,
-    title: Option<String>,
     date: Option<Timestamp>,
-    overview: Option<String>,
     tracked: bool,
+    language: api::Locale,
+    default_language: api::Locale,
 }
 
 #[derive(Row)]
@@ -268,16 +262,15 @@ struct PendingBaseRow {
 #[derive(Row)]
 struct PendingEpisodeDetailRow {
     show_id: api::ShowId,
-    show_title: Option<String>,
+    language: api::Locale,
+    default_language: api::Locale,
     season: SeasonNumber,
     number: u32,
-    episode_name: Option<String>,
     aired: Option<Timestamp>,
 }
 
 #[derive(Row)]
 struct PendingMovieDetailRow {
-    title: Option<String>,
     release_date: Option<Timestamp>,
 }
 
@@ -308,7 +301,6 @@ struct MoviePendingCandidateRow {
 #[derive(Row)]
 struct ScheduleRow {
     show_id: ShowId,
-    show_title: String,
     season: SeasonNumber,
     number: u32,
     aired: Option<Timestamp>,
@@ -317,7 +309,6 @@ struct ScheduleRow {
 #[derive(Row)]
 struct ScheduleMovieRow {
     movie_id: MovieId,
-    title: String,
     released: Option<Timestamp>,
 }
 
@@ -393,31 +384,209 @@ struct AllWatchedMovieRow {
     movie_id: Option<MovieId>,
 }
 
-/// A title translation for a show (`list_all_show_titles`) or movie
-/// (`list_all_movie_titles`), grouped onto its owner in Rust.
+/// A single localized string grouped onto its owning entity in Rust, used by the
+/// bulk `list_all_*_strings` / `list_show_*_strings` queries to build each
+/// entity's [`api::Translations`].
 #[derive(Row)]
-struct AllShowTitleRow {
+struct AllShowStringRow {
     show_id: ShowId,
+    language: api::Locale,
+    kind: api::StringKind,
     text: String,
 }
 
 #[derive(Row)]
-struct AllMovieTitleRow {
+struct AllMovieStringRow {
     movie_id: MovieId,
+    language: api::Locale,
+    kind: api::StringKind,
     text: String,
+}
+
+#[derive(Row)]
+struct AllSeasonStringRow {
+    season_id: SeasonId,
+    language: api::Locale,
+    kind: api::StringKind,
+    text: String,
+}
+
+#[derive(Row)]
+struct AllEpisodeStringRow {
+    episode_id: EpisodeId,
+    language: api::Locale,
+    kind: api::StringKind,
+    text: String,
+}
+
+/// The two locales needed to resolve an entity's strings: the owning show/movie's
+/// configured display `language` and its `default_language` (original).
+#[derive(Row)]
+struct EntityLocaleRow {
+    language: api::Locale,
+    default_language: api::Locale,
+}
+
+#[derive(Statements)]
+#[sql(read_only)]
+struct InnerTranslations {
+    #[sql = "SELECT language, default_language FROM shows WHERE id = ?"]
+    show_locales: TypedStatement<(ShowId,), EntityLocaleRow>,
+    #[sql = "SELECT language, default_language FROM movies WHERE id = ?"]
+    movie_locales: TypedStatement<(MovieId,), EntityLocaleRow>,
+    #[sql = "SELECT language, kind, text FROM episode_strings WHERE episode_id = ? ORDER BY kind, language"]
+    list_episode_strings: TypedStatement<(EpisodeId,), (api::Locale, api::StringKind, String)>,
+    #[sql = "SELECT language, kind, text FROM show_strings WHERE show_id = ? ORDER BY kind, language"]
+    list_show_strings: TypedStatement<(ShowId,), (api::Locale, api::StringKind, String)>,
+    #[sql = "SELECT language, kind, text FROM movie_strings WHERE movie_id = ? ORDER BY kind, language"]
+    list_movie_strings: TypedStatement<(MovieId,), (api::Locale, api::StringKind, String)>,
+}
+
+impl InnerTranslations {
+    /// Load the full [`api::Translations`] for one show, inserting each row
+    /// straight off the advancing statement.
+    fn show(&mut self, id: ShowId, config: api::Locale) -> Result<api::Translations> {
+        let (language, default) = self
+            .show_locales
+            .bind((id,))?
+            .first()?
+            .map(|r| (r.language, r.default_language))
+            .unwrap_or_default();
+
+        let mut translations = api::Translations::new(language.or(config).or(default));
+
+        let mut stmt = self.list_show_strings.bind((id,))?;
+
+        while let Some((locale, kind, text)) = stmt.next()? {
+            translations.insert(kind, locale, &text);
+        }
+
+        stmt.reset()?;
+        Ok(translations)
+    }
+
+    /// Load the full [`api::Translations`] for one movie.
+    fn movie(&mut self, id: MovieId, config: api::Locale) -> Result<api::Translations> {
+        let (language, default) = self
+            .movie_locales
+            .bind((id,))?
+            .first()?
+            .map(|r| (r.language, r.default_language))
+            .unwrap_or_default();
+
+        let mut translations = api::Translations::new(language.or(config).or(default));
+
+        let mut stmt = self.list_movie_strings.bind((id,))?;
+
+        while let Some((locale, kind, text)) = stmt.next()? {
+            translations.insert(kind, locale, &text);
+        }
+
+        stmt.reset()?;
+        Ok(translations)
+    }
+
+    /// Load the full [`api::Translations`] for one episode, resolved against its
+    /// owning show's locales (passed in to avoid re-querying per episode).
+    fn episode(
+        &mut self,
+        id: EpisodeId,
+        language: api::Locale,
+        default: api::Locale,
+        config: api::Locale,
+    ) -> Result<api::Translations> {
+        let mut translations = api::Translations::new(language.or(config).or(default));
+        let mut stmt = self.list_episode_strings.bind((id,))?;
+
+        while let Some((locale, kind, text)) = stmt.next()? {
+            translations.insert(kind, locale, &text);
+        }
+
+        stmt.reset()?;
+        Ok(translations)
+    }
+}
+
+#[derive(Statements)]
+#[sql(read_only)]
+struct InnerImage {
+    #[sql = "SELECT i.source, i.path"]
+    #[sql = "FROM show_images si JOIN images i ON i.id = si.image_id"]
+    #[sql = "WHERE si.show_id = ? AND si.kind = ?"]
+    image_for_show: TypedStatement<(ShowId, ImageKind), PendingImageRow>,
+    #[sql = "SELECT i.source, i.path"]
+    #[sql = "FROM movie_images mi JOIN images i ON i.id = mi.image_id"]
+    #[sql = "WHERE mi.movie_id = ? AND mi.kind = ?"]
+    image_for_movie: TypedStatement<(MovieId, ImageKind), PendingImageRow>,
+}
+
+impl InnerImage {
+    fn image_for_show(&mut self, show_id: ShowId, kind: ImageKind) -> Result<Option<api::Image>> {
+        let poster_row = self.image_for_show.bind((show_id, kind))?.first()?;
+        Ok(poster_row.map(|p| api::Image::new(p.source, &p.path)))
+    }
+
+    fn image_for_movie(
+        &mut self,
+        movie_id: MovieId,
+        kind: ImageKind,
+    ) -> Result<Option<api::Image>> {
+        let poster_row = self.image_for_movie.bind((movie_id, kind))?.first()?;
+        Ok(poster_row.map(|p| api::Image::new(p.source, &p.path)))
+    }
+}
+
+#[derive(Statements)]
+#[sql(read_only)]
+struct InnerEpisodes {
+    #[sql = "SELECT aired FROM episodes WHERE id = ?"]
+    episode_aired_by_id: TypedStatement<(EpisodeId,), Option<Timestamp>>,
+}
+
+impl InnerEpisodes {
+    fn episode_mark_time(
+        &mut self,
+        episode: EpisodeId,
+        mark_time: MarkTime,
+        now: Timestamp,
+    ) -> Result<Timestamp> {
+        match mark_time {
+            MarkTime::Now => Ok(now),
+            MarkTime::At(ts) => Ok(ts),
+            MarkTime::WhenAired => {
+                let Some(aired) = self
+                    .episode_aired_by_id
+                    .bind((episode,))?
+                    .first()?
+                    .flatten()
+                else {
+                    anyhow::bail!("Episode has no air date");
+                };
+
+                Ok(aired)
+            }
+        }
+    }
 }
 
 #[derive(Statements)]
 #[sql(read_only)]
 struct InnerRead {
+    #[sql(statements)]
+    image: InnerImage,
+    #[sql(statements)]
+    translations: InnerTranslations,
+    #[sql(statements)]
+    episodes: InnerEpisodes,
+
     // shows
-    #[sql = "SELECT shows.id, title, first_air, overview, tracked, auto_sync, last_synced_at, language, include_specials, air_date_filters"]
-    #[sql = "FROM shows ORDER BY title"]
+    #[sql = "SELECT shows.id, first_air, tracked, auto_sync, last_synced_at, language, default_language, include_specials, air_date_filters"]
+    #[sql = "FROM shows ORDER BY shows.id"]
     list_shows: TypedStatement<(), ShowRow>,
-    #[sql = "SELECT shows.id, title, first_air, overview, tracked, auto_sync, last_synced_at, language, include_specials, air_date_filters"]
+    #[sql = "SELECT shows.id, first_air, tracked, auto_sync, last_synced_at, language, default_language, include_specials, air_date_filters"]
     #[sql = "FROM shows WHERE shows.id = ?"]
     show_by_id: TypedStatement<(ShowId,), ShowRow>,
-    #[sql = "SELECT s.id, s.title, s.first_air, s.overview, s.tracked, s.auto_sync, s.last_synced_at, s.language, s.include_specials, s.air_date_filters"]
+    #[sql = "SELECT s.id, s.first_air, s.tracked, s.auto_sync, s.last_synced_at, s.language, s.default_language, s.include_specials, s.air_date_filters"]
     #[sql = "FROM shows s"]
     #[sql = "JOIN show_remotes r ON r.show_id = s.id"]
     #[sql = "WHERE r.source = ? AND r.value = ?"]
@@ -428,8 +597,8 @@ struct InnerRead {
     list_show_remotes: TypedStatement<(ShowId,), RemoteRow>,
     #[sql = "SELECT show_id, id, slug, source, value, enabled, priority, sync_kinds FROM show_remotes ORDER BY show_id, priority, id"]
     list_all_show_remotes: TypedStatement<(), AllShowRemoteRow>,
-    #[sql = "SELECT show_id, text FROM show_strings WHERE kind = ? ORDER BY show_id"]
-    list_all_show_titles: TypedStatement<(api::StringKind,), AllShowTitleRow>,
+    #[sql = "SELECT show_id, language, kind, text FROM show_strings ORDER BY show_id"]
+    list_all_show_strings: TypedStatement<(), AllShowStringRow>,
     #[sql = "SELECT show_id FROM show_remotes WHERE source = ? AND value = ? LIMIT 1"]
     show_id_by_remote: TypedStatement<(RemoteSource, RemoteValue), ShowId>,
 
@@ -476,7 +645,7 @@ struct InnerRead {
     list_all_movie_image_selections: TypedStatement<(), AllMovieImageSelectionRow>,
 
     // seasons
-    #[sql = "SELECT s.id, s.show_id, s.season, s.air_date, s.name, s.overview,"]
+    #[sql = "SELECT s.id, s.show_id, s.season, s.air_date,"]
     #[sql = "    i.source AS poster_source, i.path AS poster_path,"]
     #[sql = "    (SELECT COUNT(DISTINCT we.episode) FROM watched_episodes we WHERE we.show_id = s.show_id AND we.season = s.season) AS watched_count,"]
     #[sql = "    (SELECT COUNT(*) FROM episodes e WHERE e.show_id = s.show_id AND e.season = s.season) AS total_count"]
@@ -485,6 +654,10 @@ struct InnerRead {
     #[sql = "LEFT JOIN images i ON i.id = si.image_id"]
     #[sql = "WHERE s.show_id = ? ORDER BY s.season"]
     list_seasons: TypedStatement<(ShowId,), SeasonRow>,
+    #[sql = "SELECT ss.season_id, ss.language, ss.kind, ss.text FROM season_strings ss"]
+    #[sql = "JOIN seasons s ON s.id = ss.season_id"]
+    #[sql = "WHERE s.show_id = ? ORDER BY ss.season_id"]
+    list_show_season_strings: TypedStatement<(ShowId,), AllSeasonStringRow>,
     #[sql = "SELECT episode FROM episodes WHERE show_id = ? AND season = ?"]
     episode_numbers_for_season: TypedStatement<(ShowId, SeasonNumber), u32>,
 
@@ -493,26 +666,28 @@ struct InnerRead {
     episode_natural_key: TypedStatement<(EpisodeId,), EpisodeNaturalKeyRow>,
     #[sql = "SELECT id, season, episode FROM episodes WHERE show_id = ?"]
     list_episode_ids_for_show: TypedStatement<(ShowId,), EpisodeIdRow>,
-    #[sql = "SELECT e.id, e.show_id, e.season, e.episode, e.absolute_number, e.name, e.overview, e.aired, p.timestamp AS pending,"]
+    #[sql = "SELECT e.id, e.show_id, e.season, e.episode, e.absolute_number, e.aired, p.timestamp AS pending,"]
     #[sql = "    (SELECT COUNT(*) FROM watched_episodes we WHERE we.show_id = e.show_id AND we.season = e.season AND we.episode = e.episode) AS watched_count"]
     #[sql = "FROM episodes e"]
     #[sql = "LEFT JOIN pending p ON p.episode_id = e.id"]
     #[sql = "WHERE e.show_id = ? AND e.season = ?"]
     #[sql = "ORDER BY e.episode"]
     list_episodes: TypedStatement<(ShowId, SeasonNumber), EpisodeRow>,
+    #[sql = "SELECT es.episode_id, es.language, es.kind, es.text FROM episode_strings es"]
+    #[sql = "JOIN episodes e ON e.id = es.episode_id"]
+    #[sql = "WHERE e.show_id = ? AND e.season = ? ORDER BY es.episode_id"]
+    list_season_episode_strings: TypedStatement<(ShowId, SeasonNumber), AllEpisodeStringRow>,
     #[sql = "SELECT we.id, we.timestamp, we.season, we.episode, e.id AS episode_id"]
     #[sql = "FROM watched_episodes we"]
     #[sql = "JOIN episodes e ON e.show_id = we.show_id AND e.season = we.season AND e.episode = we.episode"]
     #[sql = "WHERE we.show_id = ?"]
     #[sql = "ORDER BY we.timestamp DESC"]
     list_episodes_watched: TypedStatement<(ShowId,), WatchedEpisodeRow>,
-    #[sql = "SELECT aired FROM episodes WHERE id = ?"]
-    episode_aired_by_id: TypedStatement<(EpisodeId,), Option<Timestamp>>,
 
     // slim list views
-    #[sql = "SELECT id, title, release_date AS date, overview, tracked FROM movies ORDER BY title"]
+    #[sql = "SELECT id, release_date AS date, tracked, language, default_language FROM movies ORDER BY id"]
     list_movie_items: TypedStatement<(), MediaItemRow>,
-    #[sql = "SELECT id, title, first_air AS date, overview, tracked FROM shows ORDER BY title"]
+    #[sql = "SELECT id, first_air AS date, tracked, language, default_language FROM shows ORDER BY id"]
     list_show_items: TypedStatement<(), MediaItemRow>,
     #[sql = "SELECT movie_id, MAX(timestamp) AS last_watched FROM watched_movies"]
     #[sql = "WHERE movie_id IS NOT NULL GROUP BY movie_id"]
@@ -521,13 +696,13 @@ struct InnerRead {
     last_watched_shows: TypedStatement<(), LastWatchedShowRow>,
 
     // movies
-    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.auto_sync, m.last_synced_at, m.language, m.release_filters"]
-    #[sql = "FROM movies m ORDER BY m.title"]
+    #[sql = "SELECT m.id, m.release_date, m.tracked, m.auto_sync, m.last_synced_at, m.language, m.default_language, m.release_filters"]
+    #[sql = "FROM movies m ORDER BY m.id"]
     list_movies: TypedStatement<(), MovieRow>,
-    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.auto_sync, m.last_synced_at, m.language, m.release_filters"]
+    #[sql = "SELECT m.id, m.release_date, m.tracked, m.auto_sync, m.last_synced_at, m.language, m.default_language, m.release_filters"]
     #[sql = "FROM movies m WHERE m.id = ?"]
     movie_by_id: TypedStatement<(MovieId,), MovieRow>,
-    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.auto_sync, m.last_synced_at, m.language, m.release_filters"]
+    #[sql = "SELECT m.id, m.release_date, m.tracked, m.auto_sync, m.last_synced_at, m.language, m.default_language, m.release_filters"]
     #[sql = "FROM movies m"]
     #[sql = "JOIN movie_remotes r ON r.movie_id = m.id"]
     #[sql = "WHERE r.source = ? AND r.value = ?"]
@@ -536,8 +711,8 @@ struct InnerRead {
     list_movie_remotes: TypedStatement<(MovieId,), RemoteRow>,
     #[sql = "SELECT movie_id, id, slug, source, value, enabled, priority, sync_kinds FROM movie_remotes ORDER BY movie_id, priority, id"]
     list_all_movie_remotes: TypedStatement<(), AllMovieRemoteRow>,
-    #[sql = "SELECT movie_id, text FROM movie_strings WHERE kind = ? ORDER BY movie_id"]
-    list_all_movie_titles: TypedStatement<(api::StringKind,), AllMovieTitleRow>,
+    #[sql = "SELECT movie_id, language, kind, text FROM movie_strings ORDER BY movie_id"]
+    list_all_movie_strings: TypedStatement<(), AllMovieStringRow>,
     #[sql = "SELECT movie_id FROM movie_remotes WHERE source = ? AND value = ? LIMIT 1"]
     movie_id_by_remote: TypedStatement<(RemoteSource, RemoteValue), Option<MovieId>>,
     #[sql = "SELECT release_date FROM movies WHERE id = ?"]
@@ -620,21 +795,13 @@ struct InnerRead {
     pending_timestamp_for_episode: TypedStatement<(EpisodeId,), (Timestamp,)>,
     #[sql = "SELECT timestamp FROM pending WHERE movie_id = ?"]
     pending_timestamp_for_movie: TypedStatement<(MovieId,), (Timestamp,)>,
-    #[sql = "SELECT e.show_id, s.title AS show_title, e.season, e.episode, e.name AS episode_name, e.aired"]
+    #[sql = "SELECT e.show_id, s.language, s.default_language, e.season, e.episode, e.aired"]
     #[sql = "FROM episodes e"]
     #[sql = "JOIN shows s ON s.id = e.show_id"]
     #[sql = "WHERE e.id = ? AND s.tracked = 1"]
     pending_episode_detail: TypedStatement<(EpisodeId,), PendingEpisodeDetailRow>,
-    #[sql = "SELECT title, release_date FROM movies WHERE id = ? AND tracked = 1"]
+    #[sql = "SELECT release_date FROM movies WHERE id = ? AND tracked = 1"]
     pending_movie_detail: TypedStatement<(MovieId,), PendingMovieDetailRow>,
-    #[sql = "SELECT i.source, i.path"]
-    #[sql = "FROM show_images si JOIN images i ON i.id = si.image_id"]
-    #[sql = "WHERE si.show_id = ? AND si.kind = ?"]
-    image_for_show: TypedStatement<(ShowId, ImageKind), PendingImageRow>,
-    #[sql = "SELECT i.source, i.path"]
-    #[sql = "FROM movie_images mi JOIN images i ON i.id = mi.image_id"]
-    #[sql = "WHERE mi.movie_id = ? AND mi.kind = ?"]
-    image_for_movie: TypedStatement<(MovieId, ImageKind), PendingImageRow>,
     #[sql = "SELECT id FROM seasons WHERE show_id = ? AND season = ?"]
     season_id_for: TypedStatement<(ShowId, SeasonNumber), SeasonId>,
     #[sql = "SELECT e.id, e.aired FROM episodes e"]
@@ -646,20 +813,20 @@ struct InnerRead {
     next_episode_after: TypedStatement<(ShowId, EpisodeId), (EpisodeId, Option<Timestamp>)>,
 
     // schedule: episodes airing in the next N days
-    #[sql = "SELECT e.show_id, s.title AS show_title, e.season, e.episode, e.aired"]
+    #[sql = "SELECT e.show_id, e.season, e.episode, e.aired"]
     #[sql = "FROM episodes e"]
     #[sql = "JOIN shows s ON s.id = e.show_id"]
     #[sql = "WHERE s.tracked = 1"]
     #[sql = "    AND e.aired > ?"]
     #[sql = "    AND e.aired <= ?"]
-    #[sql = "ORDER BY e.aired, s.title, e.season, e.episode"]
+    #[sql = "ORDER BY e.aired, e.show_id, e.season, e.episode"]
     list_schedule: TypedStatement<(Timestamp, Timestamp), ScheduleRow>,
-    #[sql = "SELECT m.id, m.title, m.release_date"]
+    #[sql = "SELECT m.id, m.release_date"]
     #[sql = "FROM movies m"]
     #[sql = "WHERE m.tracked = 1"]
     #[sql = "    AND m.release_date > ?"]
     #[sql = "    AND m.release_date <= ?"]
-    #[sql = "ORDER BY m.release_date, m.title"]
+    #[sql = "ORDER BY m.release_date, m.id"]
     list_schedule_movies: TypedStatement<(Timestamp, Timestamp), ScheduleMovieRow>,
 
     // all watched + existence checks (backup export/import)
@@ -691,13 +858,13 @@ struct InnerRead {
     list_movie_languages: TypedStatement<(), LanguageRow>,
 
     // stale-item queries
-    #[sql = "SELECT shows.id, title, first_air, overview, tracked, auto_sync, last_synced_at, language, include_specials, air_date_filters"]
+    #[sql = "SELECT shows.id, first_air, tracked, auto_sync, last_synced_at, language, default_language, include_specials, air_date_filters"]
     #[sql = "FROM shows"]
     #[sql = "WHERE auto_sync = 1"]
     #[sql = "    AND (last_synced_at IS NULL OR last_synced_at < ?)"]
     #[sql = "ORDER BY last_synced_at IS NOT NULL, last_synced_at"]
     shows_needing_sync: TypedStatement<(Timestamp,), ShowRow>,
-    #[sql = "SELECT m.id, m.title, m.release_date, m.overview, m.tracked, m.auto_sync, m.last_synced_at, m.language, m.release_filters"]
+    #[sql = "SELECT m.id, m.release_date, m.tracked, m.auto_sync, m.last_synced_at, m.language, m.default_language, m.release_filters"]
     #[sql = "FROM movies m"]
     #[sql = "WHERE m.auto_sync = 1"]
     #[sql = "    AND (m.last_synced_at IS NULL OR m.last_synced_at < ?)"]
@@ -724,12 +891,6 @@ struct InnerRead {
     list_episode_releases_for_show: TypedStatement<(ShowId,), EpisodeReleaseRow>,
 
     // translated strings (per entity)
-    #[sql = "SELECT language, kind, text FROM show_strings WHERE show_id = ? ORDER BY kind, language"]
-    list_show_strings: TypedStatement<(ShowId,), (api::Locale, api::StringKind, String)>,
-    #[sql = "SELECT language, kind, text FROM movie_strings WHERE movie_id = ? ORDER BY kind, language"]
-    list_movie_strings: TypedStatement<(MovieId,), (api::Locale, api::StringKind, String)>,
-    #[sql = "SELECT language, kind, text FROM episode_strings WHERE episode_id = ? ORDER BY kind, language"]
-    list_episode_strings: TypedStatement<(EpisodeId,), (api::Locale, api::StringKind, String)>,
     #[sql = "SELECT language, kind, text FROM season_strings WHERE season_id = ? ORDER BY kind, language"]
     list_season_strings: TypedStatement<(SeasonId,), (api::Locale, api::StringKind, String)>,
 }
@@ -740,22 +901,13 @@ struct InnerWrite {
     read: InnerRead,
 
     // shows
-    #[sql = "INSERT INTO shows (id, title, first_air, overview, tracked)"]
-    #[sql = "VALUES (?, ?, ?, ?, ?)"]
-    insert_show: TypedStatement<(ShowId, String, Option<Timestamp>, String, bool), ()>,
+    #[sql = "INSERT INTO shows (id, first_air, tracked)"]
+    #[sql = "VALUES (?, ?, ?)"]
+    insert_show: TypedStatement<(ShowId, Option<Timestamp>, bool), ()>,
     #[sql = "UPDATE shows"]
-    #[sql = "SET title = ?, first_air = ?, overview = ?, tracked = ?"]
+    #[sql = "SET first_air = ?, tracked = ?"]
     #[sql = "WHERE id = ?"]
-    update_show: TypedStatement<
-        (
-            Option<String>,
-            Option<Timestamp>,
-            Option<String>,
-            bool,
-            ShowId,
-        ),
-        (),
-    >,
+    update_show: TypedStatement<(Option<Timestamp>, bool, ShowId), ()>,
     #[sql = "UPDATE shows SET language = ? WHERE id = ?"]
     update_show_language: TypedStatement<(api::Locale, ShowId), ()>,
     #[sql = "UPDATE shows SET include_specials = ? WHERE id = ?"]
@@ -871,23 +1023,11 @@ struct InnerWrite {
     set_season_image_selection: TypedStatement<(SeasonId, ImageKind, ImageId), ()>,
 
     // seasons
-    #[sql = "INSERT INTO seasons (id, show_id, season, air_date, name, overview)"]
-    #[sql = "VALUES (?, ?, ?, ?, ?, ?)"]
+    #[sql = "INSERT INTO seasons (id, show_id, season, air_date)"]
+    #[sql = "VALUES (?, ?, ?, ?)"]
     #[sql = "ON CONFLICT(show_id, season) DO UPDATE SET"]
-    #[sql = "    air_date  = excluded.air_date,"]
-    #[sql = "    name      = excluded.name,"]
-    #[sql = "    overview  = excluded.overview"]
-    upsert_season: TypedStatement<
-        (
-            SeasonId,
-            ShowId,
-            SeasonNumber,
-            Option<Timestamp>,
-            Option<String>,
-            Option<String>,
-        ),
-        (),
-    >,
+    #[sql = "    air_date  = excluded.air_date"]
+    upsert_season: TypedStatement<(SeasonId, ShowId, SeasonNumber, Option<Timestamp>), ()>,
     #[sql = "DELETE FROM seasons WHERE show_id = ?1 AND season = ?2"]
     delete_season: TypedStatement<(ShowId, SeasonNumber), ()>,
     #[sql = "DELETE FROM episodes WHERE show_id = ?1 AND season = ?2"]
@@ -896,12 +1036,10 @@ struct InnerWrite {
     delete_episode_by_place: TypedStatement<(ShowId, SeasonNumber, u32), ()>,
 
     // episodes
-    #[sql = "INSERT INTO episodes (id, show_id, season, episode, absolute_number, name, overview, aired)"]
-    #[sql = "VALUES (?, ?, ?, ?, ?, ?, ?, ?)"]
+    #[sql = "INSERT INTO episodes (id, show_id, season, episode, absolute_number, aired)"]
+    #[sql = "VALUES (?, ?, ?, ?, ?, ?)"]
     #[sql = "ON CONFLICT(show_id, season, episode) DO UPDATE SET"]
     #[sql = "    absolute_number = excluded.absolute_number,"]
-    #[sql = "    name            = excluded.name,"]
-    #[sql = "    overview        = excluded.overview,"]
     #[sql = "    aired           = excluded.aired"]
     upsert_episode: TypedStatement<
         (
@@ -910,8 +1048,6 @@ struct InnerWrite {
             SeasonNumber,
             u32,
             Option<u32>,
-            Option<String>,
-            Option<String>,
             Option<Timestamp>,
         ),
         (),
@@ -931,17 +1067,13 @@ struct InnerWrite {
     delete_episode_release: TypedStatement<(EpisodeId, RemoteSource, Country, String), ()>,
 
     // movies
-    #[sql = "INSERT INTO movies (id, title, release_date, overview, tracked)"]
-    #[sql = "VALUES (?, ?, ?, ?, ?)"]
-    insert_movie: TypedStatement<(MovieId, String, Option<Timestamp>, String, bool), ()>,
+    #[sql = "INSERT INTO movies (id, release_date, tracked)"]
+    #[sql = "VALUES (?, ?, ?)"]
+    insert_movie: TypedStatement<(MovieId, Option<Timestamp>, bool), ()>,
     #[sql = "UPDATE movies SET tracked = ? WHERE id = ?"]
     set_movie_tracked: TypedStatement<(bool, MovieId), ()>,
     #[sql = "UPDATE movies SET auto_sync = ? WHERE id = ?"]
     set_movie_auto_sync: TypedStatement<(bool, MovieId), ()>,
-    #[sql = "UPDATE movies"]
-    #[sql = "SET title = ?, overview = ?"]
-    #[sql = "WHERE id = ?"]
-    update_movie: TypedStatement<(Option<String>, Option<String>, MovieId), ()>,
     #[sql = "UPDATE movies SET release_date = ? WHERE id = ?"]
     set_movie_release_date: TypedStatement<(Option<Timestamp>, MovieId), ()>,
     #[sql = "DELETE FROM movies WHERE id = ?"]
@@ -983,19 +1115,22 @@ struct InnerWrite {
     set_movie_default_language: TypedStatement<(api::Locale, MovieId), ()>,
     #[sql = "DELETE FROM show_strings WHERE show_id = ?"]
     clear_show_strings: TypedStatement<(ShowId,), ()>,
-    #[sql = "INSERT INTO show_strings (show_id, language, kind, text) VALUES (?, ?, ?, ?)"]
+    // `OR IGNORE`: the displayed (base) locale and the configured sync languages
+    // can overlap, producing duplicate (entity, language, kind) rows in one batch;
+    // the first write wins (the text is identical for the same source + locale).
+    #[sql = "INSERT OR IGNORE INTO show_strings (show_id, language, kind, text) VALUES (?, ?, ?, ?)"]
     insert_show_string: TypedStatement<(ShowId, api::Locale, api::StringKind, String), ()>,
     #[sql = "DELETE FROM movie_strings WHERE movie_id = ?"]
     clear_movie_strings: TypedStatement<(MovieId,), ()>,
-    #[sql = "INSERT INTO movie_strings (movie_id, language, kind, text) VALUES (?, ?, ?, ?)"]
+    #[sql = "INSERT OR IGNORE INTO movie_strings (movie_id, language, kind, text) VALUES (?, ?, ?, ?)"]
     insert_movie_string: TypedStatement<(MovieId, api::Locale, api::StringKind, String), ()>,
     #[sql = "DELETE FROM episode_strings WHERE episode_id = ?"]
     clear_episode_strings: TypedStatement<(EpisodeId,), ()>,
-    #[sql = "INSERT INTO episode_strings (episode_id, language, kind, text) VALUES (?, ?, ?, ?)"]
+    #[sql = "INSERT OR IGNORE INTO episode_strings (episode_id, language, kind, text) VALUES (?, ?, ?, ?)"]
     insert_episode_string: TypedStatement<(EpisodeId, api::Locale, api::StringKind, String), ()>,
     #[sql = "DELETE FROM season_strings WHERE season_id = ?"]
     clear_season_strings: TypedStatement<(SeasonId,), ()>,
-    #[sql = "INSERT INTO season_strings (season_id, language, kind, text) VALUES (?, ?, ?, ?)"]
+    #[sql = "INSERT OR IGNORE INTO season_strings (season_id, language, kind, text) VALUES (?, ?, ?, ?)"]
     insert_season_string: TypedStatement<(SeasonId, api::Locale, api::StringKind, String), ()>,
 
     // watched
@@ -1091,42 +1226,13 @@ impl InnerWrite {
 }
 
 impl InnerRead {
-    fn episode_mark_time(
-        &mut self,
-        episode: EpisodeId,
-        mark_time: MarkTime,
-        now: Timestamp,
-    ) -> Result<Timestamp> {
-        match mark_time {
-            MarkTime::Now => Ok(now),
-            MarkTime::At(ts) => Ok(ts),
-            MarkTime::WhenAired => {
-                let Some(aired) = self
-                    .episode_aired_by_id
-                    .bind((episode,))?
-                    .first()?
-                    .flatten()
-                else {
-                    anyhow::bail!("Episode has no air date");
-                };
-
-                Ok(aired)
-            }
-        }
-    }
-
-    fn image_for_show(&mut self, show_id: ShowId, kind: ImageKind) -> Result<Option<api::Image>> {
-        let poster_row = self.image_for_show.bind((show_id, kind))?.first()?;
-        Ok(poster_row.map(|p| api::Image::new(p.source, &p.path)))
-    }
-
-    fn image_for_movie(
-        &mut self,
-        movie_id: MovieId,
-        kind: ImageKind,
-    ) -> Result<Option<api::Image>> {
-        let poster_row = self.image_for_movie.bind((movie_id, kind))?.first()?;
-        Ok(poster_row.map(|p| api::Image::new(p.source, &p.path)))
+    /// The configured global display locale ([`Locale::DEFAULT`] when unset).
+    fn config_language(&mut self) -> Result<api::Locale> {
+        Ok(self
+            .get_config("language")?
+            .as_deref()
+            .and_then(api::Locale::from_iso)
+            .unwrap_or(api::Locale::DEFAULT))
     }
 }
 
@@ -1200,8 +1306,26 @@ impl Database {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            s.insert_show
-                .execute((id, &title[..], first_air.as_ref(), &overview[..], true))?;
+            s.insert_show.execute((id, first_air.as_ref(), true))?;
+
+            // Store the placeholder title/overview under the default locale so the
+            // show has something to show before its first sync; sync replaces these.
+            if !title.trim().is_empty() {
+                s.insert_show_string.execute((
+                    id,
+                    api::Locale::DEFAULT,
+                    api::StringKind::Title,
+                    &title[..],
+                ))?;
+            }
+            if !overview.trim().is_empty() {
+                s.insert_show_string.execute((
+                    id,
+                    api::Locale::DEFAULT,
+                    api::StringKind::Overview,
+                    &overview[..],
+                ))?;
+            }
             Ok(())
         });
 
@@ -1293,26 +1417,41 @@ impl Database {
             let mut out: Vec<api::Show> = Vec::new();
             let mut id_to_idx: HashMap<ShowId, usize> = HashMap::new();
 
+            let config = s.config_language()?;
+
             let mut stmt = s.list_shows.query()?;
 
-            while let Some(row) = stmt.next()? {
-                let idx = out.len();
-                id_to_idx.insert(row.id, idx);
+            while let Some(r) = stmt.next()? {
+                id_to_idx.insert(r.id, out.len());
+                let strings = api::Translations::new(r.language.or(config).or(r.default_language));
+                out.push(show_from_row(r, strings));
+            }
 
-                out.push(show_from_row(row));
+            stmt.reset()?;
+
+            let mut stmt = s.list_all_show_strings.query()?;
+
+            while let Some(r) = stmt.next()? {
+                if let Some(&i) = id_to_idx.get(&r.show_id)
+                    && let Some(o) = out.get_mut(i)
+                {
+                    o.strings.insert(r.kind, r.language, &r.text);
+                }
             }
 
             stmt.reset()?;
 
             for show in &mut out {
-                show.poster = s.image_for_show(show.id, ImageKind::Poster)?;
-                show.banner = s.image_for_show(show.id, ImageKind::Banner)?;
+                show.poster = s.image.image_for_show(show.id, ImageKind::Poster)?;
+                show.banner = s.image.image_for_show(show.id, ImageKind::Banner)?;
             }
 
             let mut stmt = s.list_all_show_remotes.query()?;
 
             while let Some(r) = stmt.next()? {
-                if let Some(o) = id_to_idx.get(&r.show_id).and_then(|&i| out.get_mut(i)) {
+                if let Some(&i) = id_to_idx.get(&r.show_id)
+                    && let Some(o) = out.get_mut(i)
+                {
                     o.remotes.push(api::RemoteEntry {
                         id: r.id,
                         slug: r.slug,
@@ -1329,7 +1468,9 @@ impl Database {
             let mut stmt = s.list_all_show_images.query()?;
 
             while let Some(r) = stmt.next()? {
-                if let Some(o) = id_to_idx.get(&r.show_id).and_then(|&i| out.get_mut(i)) {
+                if let Some(&i) = id_to_idx.get(&r.show_id)
+                    && let Some(o) = out.get_mut(i)
+                {
                     o.images.push(show_image_from_row(r));
                 }
             }
@@ -1338,16 +1479,18 @@ impl Database {
 
             let mut stmt = s.list_all_show_image_selections.query()?;
 
-            while let Some(row) = stmt.next()? {
-                if let Some(o) = id_to_idx.get(&row.show_id).and_then(|&i| out.get_mut(i)) {
+            while let Some(r) = stmt.next()? {
+                if let Some(&i) = id_to_idx.get(&r.show_id)
+                    && let Some(o) = out.get_mut(i)
+                {
                     apply_image_selection(
                         o,
                         ImageSelectionRow {
-                            kind: row.kind,
-                            source: row.source,
-                            path: row.path,
-                            width: row.width,
-                            height: row.height,
+                            kind: r.kind,
+                            source: r.source,
+                            path: r.path,
+                            width: r.width,
+                            height: r.height,
                         },
                     );
                 }
@@ -1368,7 +1511,9 @@ impl Database {
                 return Ok(None);
             };
 
-            let mut show = show_from_row(r);
+            let cfg = s.config_language()?;
+            let strings = s.translations.show(id, cfg)?;
+            let mut show = show_from_row(r, strings);
 
             let mut stmt = s.list_show_remotes.bind((id,))?;
 
@@ -1387,22 +1532,22 @@ impl Database {
 
             let mut stmt = s.list_show_images.bind((id,))?;
 
-            while let Some(row) = stmt.next()? {
-                show.images.push(image_from_row(row));
+            while let Some(r) = stmt.next()? {
+                show.images.push(image_from_row(r));
             }
 
             stmt.reset()?;
 
             let mut stmt = s.list_show_image_selections.bind((id,))?;
 
-            while let Some(sel) = stmt.next()? {
-                apply_image_selection(&mut show, sel);
+            while let Some(r) = stmt.next()? {
+                apply_image_selection(&mut show, r);
             }
 
             stmt.reset()?;
 
-            show.poster = s.image_for_show(show.id, ImageKind::Poster)?;
-            show.banner = s.image_for_show(show.id, ImageKind::Banner)?;
+            show.poster = s.image.image_for_show(show.id, ImageKind::Poster)?;
+            show.banner = s.image.image_for_show(show.id, ImageKind::Banner)?;
             Ok(Some(show))
         });
 
@@ -1413,24 +1558,13 @@ impl Database {
     pub(crate) async fn update_show(
         &self,
         id: ShowId,
-        title: Option<&str>,
         first_air: Option<Timestamp>,
-        overview: Option<&str>,
         tracked: bool,
     ) -> Result<()> {
-        let title = title.map(str::to_owned);
-        let overview = overview.map(str::to_owned);
-
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            s.update_show.execute((
-                title.as_deref(),
-                first_air.as_ref(),
-                overview.as_deref(),
-                tracked,
-                id,
-            ))?;
+            s.update_show.execute((first_air.as_ref(), tracked, id))?;
             Ok(())
         });
 
@@ -1556,22 +1690,12 @@ impl Database {
         show_id: ShowId,
         number: SeasonNumber,
         air_date: Option<Timestamp>,
-        name: Option<&str>,
-        overview: Option<&str>,
     ) -> Result<SeasonId> {
-        let name = name.map(str::to_owned);
-        let overview = overview.map(str::to_owned);
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            s.upsert_season.execute((
-                SeasonId::random(),
-                show_id,
-                number,
-                air_date.as_ref(),
-                name.as_deref(),
-                overview.as_deref(),
-            ))?;
+            s.upsert_season
+                .execute((SeasonId::random(), show_id, number, air_date.as_ref()))?;
             let id = s
                 .season_id_for
                 .bind((show_id, number))?
@@ -1594,7 +1718,7 @@ impl Database {
         let image = image.clone();
         let mut s = self.inner.clone().exclusive().await?;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.insert_season_image.execute((
                 id,
                 season_id,
@@ -1605,9 +1729,11 @@ impl Database {
                 image.height(),
                 0u32,
             ))?;
+
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -1619,23 +1745,25 @@ impl Database {
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.set_season_image_selection
                 .execute((season_id, kind, image_id))?;
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn clear_season_images(&self, season_id: SeasonId) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             s.delete_season_images.execute((season_id,))?;
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -1645,11 +1773,39 @@ impl Database {
         let result = spawn_blocking(move || {
             let mut out = Vec::new();
 
+            let config = s.config_language()?;
+
+            let (language, default) = s
+                .translations
+                .show_locales
+                .bind((show_id,))?
+                .first()?
+                .map(|r| (r.language, r.default_language))
+                .unwrap_or_default();
+
+            let mut id_to_idx: HashMap<SeasonId, usize> = HashMap::new();
+
             let mut stmt = s.list_seasons.bind((show_id,))?;
 
             while let Some(r) = stmt.next()? {
-                out.push(season_from_row(r));
+                id_to_idx.insert(r.id, out.len());
+                let strings = api::Translations::new(language.or(config).or(default));
+                out.push(season_from_row(r, strings));
             }
+
+            stmt.reset()?;
+
+            let mut stmt = s.list_show_season_strings.bind((show_id,))?;
+
+            while let Some(r) = stmt.next()? {
+                if let Some(&i) = id_to_idx.get(&r.season_id)
+                    && let Some(o) = out.get_mut(i)
+                {
+                    o.strings.insert(r.kind, r.language, &r.text);
+                }
+            }
+
+            stmt.reset()?;
 
             Ok(out)
         });
@@ -1700,15 +1856,15 @@ impl Database {
         let result = spawn_blocking(move || {
             let mut to_delete = Vec::new();
 
-            {
-                let mut stmt = s.episode_numbers_for_season.bind((show_id, season))?;
+            let mut stmt = s.episode_numbers_for_season.bind((show_id, season))?;
 
-                while let Some(number) = stmt.next()? {
-                    if !kept.contains(&number) {
-                        to_delete.push(number);
-                    }
+            while let Some(number) = stmt.next()? {
+                if !kept.contains(&number) {
+                    to_delete.push(number);
                 }
             }
+
+            stmt.reset()?;
 
             for number in to_delete {
                 s.delete_episode_by_place
@@ -1729,12 +1885,8 @@ impl Database {
         season: SeasonNumber,
         number: u32,
         absolute_number: Option<u32>,
-        name: Option<&str>,
-        overview: Option<&str>,
         aired: Option<Timestamp>,
     ) -> Result<()> {
-        let name = name.map(str::to_owned);
-        let overview = overview.map(str::to_owned);
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
@@ -1744,8 +1896,6 @@ impl Database {
                 season,
                 number,
                 absolute_number,
-                name.as_deref(),
-                overview.as_deref(),
                 aired.as_ref(),
             ))?;
 
@@ -1773,6 +1923,7 @@ impl Database {
                 out.insert((r.season, r.number), r.id);
             }
 
+            stmt.reset()?;
             Ok(out)
         });
 
@@ -1791,11 +1942,34 @@ impl Database {
             let mut out = Vec::new();
             let mut idx_by_id = HashMap::new();
 
+            let config = s.config_language()?;
+
+            let (language, default) = s
+                .translations
+                .show_locales
+                .bind((show_id,))?
+                .first()?
+                .map(|r| (r.language, r.default_language))
+                .unwrap_or_default();
+
             let mut stmt = s.list_episodes.bind((show_id, season))?;
 
             while let Some(r) = stmt.next()? {
                 idx_by_id.insert(r.id, out.len());
-                out.push(episode_from_row(r));
+                let strings = api::Translations::new(language.or(config).or(default));
+                out.push(episode_from_row(r, strings));
+            }
+
+            stmt.reset()?;
+
+            let mut stmt = s.list_season_episode_strings.bind((show_id, season))?;
+
+            while let Some(r) = stmt.next()? {
+                if let Some(&i) = idx_by_id.get(&r.episode_id)
+                    && let Some(o) = out.get_mut(i)
+                {
+                    o.strings.insert(r.kind, r.language, &r.text);
+                }
             }
 
             stmt.reset()?;
@@ -1830,18 +2004,16 @@ impl Database {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            let mut unwatched = Vec::new();
+            let s = &mut *s;
+            let read = &mut s.read;
 
-            let mut stmt = s.select_unwatched_by_show_season.bind((show_id, season))?;
+            let mut stmt = read
+                .select_unwatched_by_show_season
+                .bind((show_id, season))?;
 
             while let Some(r) = stmt.next()? {
-                unwatched.push(r);
-            }
+                let timestamp = read.episodes.episode_mark_time(r.id, mark_time, now)?;
 
-            stmt.reset()?;
-
-            for r in unwatched {
-                let timestamp = s.episode_mark_time(r.id, mark_time, now)?;
                 s.insert_watched_episode.execute((
                     WatchedId::random(),
                     timestamp,
@@ -1851,6 +2023,7 @@ impl Database {
                 ))?;
             }
 
+            stmt.reset()?;
             Ok(())
         });
 
@@ -1884,7 +2057,7 @@ impl Database {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
-            let stmt = s.episode_aired_by_id.bind((id,))?;
+            let stmt = s.episodes.episode_aired_by_id.bind((id,))?;
             Ok(stmt.first()?.flatten())
         });
 
@@ -1930,21 +2103,21 @@ impl Database {
         let result = spawn_blocking(move || {
             let mut to_delete = Vec::new();
 
-            {
-                let mut stmt = s.list_episode_releases_for_show.bind((show_id,))?;
+            let mut stmt = s.list_episode_releases_for_show.bind((show_id,))?;
 
-                while let Some(r) = stmt.next()? {
-                    if !sources.contains(&r.source) {
-                        continue;
-                    }
+            while let Some(r) = stmt.next()? {
+                if !sources.contains(&r.source) {
+                    continue;
+                }
 
-                    let key = (r.episode_id, r.source, r.country, r.network);
+                let key = (r.episode_id, r.source, r.country, r.network);
 
-                    if !kept.contains(&key) {
-                        to_delete.push(key);
-                    }
+                if !kept.contains(&key) {
+                    to_delete.push(key);
                 }
             }
+
+            stmt.reset()?;
 
             for (episode_id, source, country, network) in to_delete {
                 s.delete_episode_release
@@ -2009,21 +2182,21 @@ impl Database {
 
             let mut by_episode: HashMap<EpisodeId, Vec<api::EpisodeRelease>> = HashMap::new();
 
-            {
-                let mut stmt = s.list_episode_releases_for_show.bind((show_id,))?;
+            let mut stmt = s.list_episode_releases_for_show.bind((show_id,))?;
 
-                while let Some(r) = stmt.next()? {
-                    by_episode
-                        .entry(r.episode_id)
-                        .or_default()
-                        .push(api::EpisodeRelease {
-                            source: r.source,
-                            country: r.country,
-                            network: r.network,
-                            timestamp: r.timestamp,
-                        });
-                }
+            while let Some(r) = stmt.next()? {
+                by_episode
+                    .entry(r.episode_id)
+                    .or_default()
+                    .push(api::EpisodeRelease {
+                        source: r.source,
+                        country: r.country,
+                        network: r.network,
+                        timestamp: r.timestamp,
+                    });
             }
+
+            stmt.reset()?;
 
             // Each episode with stored releases is set to its effective date, or
             // cleared when none of its releases qualify under the current priority
@@ -2053,8 +2226,26 @@ impl Database {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            s.insert_movie
-                .execute((id, &title[..], release_date, &overview[..], tracked))?;
+            s.insert_movie.execute((id, release_date, tracked))?;
+
+            // Store the placeholder title/overview under the default locale so the
+            // movie has something to show before its first sync; sync replaces these.
+            if !title.trim().is_empty() {
+                s.insert_movie_string.execute((
+                    id,
+                    api::Locale::DEFAULT,
+                    api::StringKind::Title,
+                    &title[..],
+                ))?;
+            }
+            if !overview.trim().is_empty() {
+                s.insert_movie_string.execute((
+                    id,
+                    api::Locale::DEFAULT,
+                    api::StringKind::Overview,
+                    &overview[..],
+                ))?;
+            }
             Ok(())
         });
 
@@ -2150,6 +2341,8 @@ impl Database {
         let result = spawn_blocking(move || {
             let mut out: Vec<api::MediaItem> = Vec::new();
 
+            let config = s.config_language()?;
+
             // Movies. Keyed separately from shows so the raw ids can't collide.
             {
                 let base = out.len();
@@ -2157,65 +2350,65 @@ impl Database {
 
                 let mut stmt = s.list_movie_items.query()?;
 
-                while let Some(row) = stmt.next()? {
-                    let item = media_item_from_row(row, api::MediaKind::Movies);
+                while let Some(r) = stmt.next()? {
+                    let strings =
+                        api::Translations::new(r.language.or(r.default_language).or(config));
+                    let item = media_item_from_row(r, api::MediaKind::Movies, strings);
                     id_to_idx.insert(item.id, out.len());
                     out.push(item);
                 }
 
                 stmt.reset()?;
 
-                for item in &mut out[base..] {
-                    let id = MovieId::new(item.id);
-                    item.poster = s.image_for_movie(id, ImageKind::Poster)?;
-                    item.banner = s.image_for_movie(id, ImageKind::Banner)?;
-                    item.backdrop = s.image_for_movie(id, ImageKind::Backdrop)?;
-                }
-
-                {
-                    let mut stmt = s.last_watched_movies.query()?;
-
-                    while let Some(row) = stmt.next()? {
-                        if let Some(o) = id_to_idx
-                            .get(&row.movie_id.get())
-                            .and_then(|&i| out.get_mut(i))
-                        {
-                            o.last_watched_at = Some(row.last_watched);
-                        }
-                    }
-                }
-
-                {
-                    let mut stmt = s.list_all_movie_remotes.query()?;
-
-                    while let Some(r) = stmt.next()? {
-                        if let Some(o) = id_to_idx
-                            .get(&r.movie_id.get())
-                            .and_then(|&i| out.get_mut(i))
-                        {
-                            o.remotes.push(api::RemoteEntry {
-                                id: r.id,
-                                slug: r.slug,
-                                remote: Remote::new(r.source, r.value),
-                                enabled: r.enabled,
-                                priority: r.priority,
-                                sync_kinds: r.sync_kinds,
-                            });
-                        }
-                    }
-                }
-
-                let mut stmt = s.list_all_movie_titles.bind((api::StringKind::Title,))?;
+                let mut stmt = s.list_all_movie_strings.query()?;
 
                 while let Some(r) = stmt.next()? {
-                    if let Some(o) = id_to_idx
-                        .get(&r.movie_id.get())
-                        .and_then(|&i| out.get_mut(i))
-                        && o.title.as_deref() != Some(r.text.as_str())
+                    if let Some(&i) = id_to_idx.get(&r.movie_id.get())
+                        && let Some(o) = out.get_mut(i)
                     {
-                        o.alt_titles.push(r.text);
+                        o.strings.insert(r.kind, r.language, &r.text);
                     }
                 }
+
+                stmt.reset()?;
+
+                for item in &mut out[base..] {
+                    let id = MovieId::new(item.id);
+                    item.poster = s.image.image_for_movie(id, ImageKind::Poster)?;
+                    item.banner = s.image.image_for_movie(id, ImageKind::Banner)?;
+                    item.backdrop = s.image.image_for_movie(id, ImageKind::Backdrop)?;
+                }
+
+                let mut stmt = s.last_watched_movies.query()?;
+
+                while let Some(r) = stmt.next()? {
+                    if let Some(&i) = id_to_idx.get(&r.movie_id.get())
+                        && let Some(o) = out.get_mut(i)
+                    {
+                        o.last_watched_at = Some(r.last_watched);
+                    }
+                }
+
+                stmt.reset()?;
+
+                let mut stmt = s.list_all_movie_remotes.query()?;
+
+                while let Some(r) = stmt.next()? {
+                    if let Some(&i) = id_to_idx.get(&r.movie_id.get())
+                        && let Some(o) = out.get_mut(i)
+                    {
+                        o.remotes.push(api::RemoteEntry {
+                            id: r.id,
+                            slug: r.slug,
+                            remote: Remote::new(r.source, r.value),
+                            enabled: r.enabled,
+                            priority: r.priority,
+                            sync_kinds: r.sync_kinds,
+                        });
+                    }
+                }
+
+                stmt.reset()?;
             }
 
             // Shows.
@@ -2225,65 +2418,65 @@ impl Database {
 
                 let mut stmt = s.list_show_items.query()?;
 
-                while let Some(row) = stmt.next()? {
-                    let item = media_item_from_row(row, api::MediaKind::Shows);
+                while let Some(r) = stmt.next()? {
+                    let strings =
+                        api::Translations::new(r.language.or(r.default_language).or(config));
+                    let item = media_item_from_row(r, api::MediaKind::Shows, strings);
                     id_to_idx.insert(item.id, out.len());
                     out.push(item);
                 }
 
                 stmt.reset()?;
 
-                for item in &mut out[base..] {
-                    let id = ShowId::new(item.id);
-                    item.poster = s.image_for_show(id, ImageKind::Poster)?;
-                    item.banner = s.image_for_show(id, ImageKind::Banner)?;
-                    item.backdrop = s.image_for_show(id, ImageKind::Backdrop)?;
-                }
-
-                {
-                    let mut stmt = s.last_watched_shows.query()?;
-
-                    while let Some(row) = stmt.next()? {
-                        if let Some(o) = id_to_idx
-                            .get(&row.show_id.get())
-                            .and_then(|&i| out.get_mut(i))
-                        {
-                            o.last_watched_at = Some(row.last_watched);
-                        }
-                    }
-                }
-
-                {
-                    let mut stmt = s.list_all_show_remotes.query()?;
-
-                    while let Some(r) = stmt.next()? {
-                        if let Some(o) = id_to_idx
-                            .get(&r.show_id.get())
-                            .and_then(|&i| out.get_mut(i))
-                        {
-                            o.remotes.push(api::RemoteEntry {
-                                id: r.id,
-                                slug: r.slug,
-                                remote: Remote::new(r.source, r.value),
-                                enabled: r.enabled,
-                                priority: r.priority,
-                                sync_kinds: r.sync_kinds,
-                            });
-                        }
-                    }
-                }
-
-                let mut stmt = s.list_all_show_titles.bind((api::StringKind::Title,))?;
+                let mut stmt = s.list_all_show_strings.query()?;
 
                 while let Some(r) = stmt.next()? {
-                    if let Some(o) = id_to_idx
-                        .get(&r.show_id.get())
-                        .and_then(|&i| out.get_mut(i))
-                        && o.title.as_deref() != Some(r.text.as_str())
+                    if let Some(&i) = id_to_idx.get(&r.show_id.get())
+                        && let Some(o) = out.get_mut(i)
                     {
-                        o.alt_titles.push(r.text);
+                        o.strings.insert(r.kind, r.language, &r.text);
                     }
                 }
+
+                stmt.reset()?;
+
+                for item in &mut out[base..] {
+                    let id = ShowId::new(item.id);
+                    item.poster = s.image.image_for_show(id, ImageKind::Poster)?;
+                    item.banner = s.image.image_for_show(id, ImageKind::Banner)?;
+                    item.backdrop = s.image.image_for_show(id, ImageKind::Backdrop)?;
+                }
+
+                let mut stmt = s.last_watched_shows.query()?;
+
+                while let Some(r) = stmt.next()? {
+                    if let Some(&i) = id_to_idx.get(&r.show_id.get())
+                        && let Some(o) = out.get_mut(i)
+                    {
+                        o.last_watched_at = Some(r.last_watched);
+                    }
+                }
+
+                stmt.reset()?;
+
+                let mut stmt = s.list_all_show_remotes.query()?;
+
+                while let Some(r) = stmt.next()? {
+                    if let Some(&i) = id_to_idx.get(&r.show_id.get())
+                        && let Some(o) = out.get_mut(i)
+                    {
+                        o.remotes.push(api::RemoteEntry {
+                            id: r.id,
+                            slug: r.slug,
+                            remote: Remote::new(r.source, r.value),
+                            enabled: r.enabled,
+                            priority: r.priority,
+                            sync_kinds: r.sync_kinds,
+                        });
+                    }
+                }
+
+                stmt.reset()?;
             }
 
             Ok(out)
@@ -2300,20 +2493,33 @@ impl Database {
             let mut out: Vec<api::Movie> = Vec::new();
             let mut id_to_idx: HashMap<MovieId, usize> = HashMap::new();
 
+            let cfg = s.config_language()?;
+
             let mut stmt = s.list_movies.query()?;
 
-            while let Some(row) = stmt.next()? {
-                let index = out.len();
-                id_to_idx.insert(row.id, index);
+            while let Some(r) = stmt.next()? {
+                id_to_idx.insert(r.id, out.len());
+                let strings = api::Translations::new(r.language.or(r.default_language).or(cfg));
+                out.push(movie_from_row(r, strings));
+            }
 
-                out.push(movie_from_row(row));
+            stmt.reset()?;
+
+            let mut stmt = s.list_all_movie_strings.query()?;
+
+            while let Some(r) = stmt.next()? {
+                if let Some(&i) = id_to_idx.get(&r.movie_id)
+                    && let Some(o) = out.get_mut(i)
+                {
+                    o.strings.insert(r.kind, r.language, &r.text);
+                }
             }
 
             stmt.reset()?;
 
             for movie in &mut out {
-                movie.banner = s.image_for_movie(movie.id, ImageKind::Banner)?;
-                movie.poster = s.image_for_movie(movie.id, ImageKind::Poster)?;
+                movie.banner = s.image.image_for_movie(movie.id, ImageKind::Banner)?;
+                movie.poster = s.image.image_for_movie(movie.id, ImageKind::Poster)?;
             }
 
             let mut stmt = s.list_all_movie_remotes.query()?;
@@ -2338,7 +2544,9 @@ impl Database {
             let mut stmt = s.list_all_movie_images.query()?;
 
             while let Some(r) = stmt.next()? {
-                if let Some(o) = id_to_idx.get(&r.movie_id).and_then(|&i| out.get_mut(i)) {
+                if let Some(&i) = id_to_idx.get(&r.movie_id)
+                    && let Some(o) = out.get_mut(i)
+                {
                     o.images.push(movie_image_from_row(r));
                 }
             }
@@ -2347,16 +2555,18 @@ impl Database {
 
             let mut stmt = s.list_all_movie_image_selections.query()?;
 
-            while let Some(row) = stmt.next()? {
-                if let Some(o) = id_to_idx.get(&row.movie_id).and_then(|&i| out.get_mut(i)) {
+            while let Some(r) = stmt.next()? {
+                if let Some(&i) = id_to_idx.get(&r.movie_id)
+                    && let Some(o) = out.get_mut(i)
+                {
                     apply_movie_image_selection(
                         o,
                         ImageSelectionRow {
-                            kind: row.kind,
-                            source: row.source,
-                            path: row.path,
-                            width: row.width,
-                            height: row.height,
+                            kind: r.kind,
+                            source: r.source,
+                            path: r.path,
+                            width: r.width,
+                            height: r.height,
                         },
                     );
                 }
@@ -2378,7 +2588,9 @@ impl Database {
             };
 
             let movie_id = r.id;
-            let mut movie = movie_from_row(r);
+            let cfg = s.config_language()?;
+            let strings = s.translations.movie(movie_id, cfg)?;
+            let mut movie = movie_from_row(r, strings);
 
             let mut stmt = s.list_movie_remotes.bind((movie_id,))?;
 
@@ -2424,8 +2636,8 @@ impl Database {
             stmt.reset()?;
 
             movie.pending = s.select_pending_movie.bind((movie_id,))?.first()?;
-            movie.poster = s.image_for_movie(movie_id, ImageKind::Poster)?;
-            movie.banner = s.image_for_movie(movie_id, ImageKind::Banner)?;
+            movie.poster = s.image.image_for_movie(movie_id, ImageKind::Poster)?;
+            movie.banner = s.image.image_for_movie(movie_id, ImageKind::Banner)?;
 
             Ok(Some(movie))
         });
@@ -2469,7 +2681,9 @@ impl Database {
             };
 
             let show_id = row.id;
-            let mut show = show_from_row(row);
+            let cfg = s.config_language()?;
+            let strings = s.translations.show(show_id, cfg)?;
+            let mut show = show_from_row(row, strings);
 
             let mut stmt = s.list_show_remotes.bind((show_id,))?;
 
@@ -2502,8 +2716,8 @@ impl Database {
 
             stmt.reset()?;
 
-            show.poster = s.image_for_show(show_id, ImageKind::Poster)?;
-            show.banner = s.image_for_show(show_id, ImageKind::Banner)?;
+            show.poster = s.image.image_for_show(show_id, ImageKind::Poster)?;
+            show.banner = s.image.image_for_show(show_id, ImageKind::Banner)?;
             Ok(Some(show))
         });
 
@@ -2525,7 +2739,9 @@ impl Database {
             };
 
             let movie_id = row.id;
-            let mut movie = movie_from_row(row);
+            let cfg = s.config_language()?;
+            let strings = s.translations.movie(movie_id, cfg)?;
+            let mut movie = movie_from_row(row, strings);
 
             let mut stmt = s.list_movie_remotes.bind((movie_id,))?;
 
@@ -2558,30 +2774,10 @@ impl Database {
 
             stmt.reset()?;
 
-            movie.poster = s.image_for_movie(movie_id, ImageKind::Poster)?;
-            movie.banner = s.image_for_movie(movie_id, ImageKind::Banner)?;
+            movie.poster = s.image.image_for_movie(movie_id, ImageKind::Poster)?;
+            movie.banner = s.image.image_for_movie(movie_id, ImageKind::Banner)?;
 
             Ok(Some(movie))
-        });
-
-        result.await?
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn update_movie(
-        &self,
-        id: MovieId,
-        title: Option<&str>,
-        overview: Option<&str>,
-    ) -> Result<()> {
-        let title = title.map(str::to_owned);
-        let overview = overview.map(str::to_owned);
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.update_movie
-                .execute((title.as_deref(), overview.as_deref(), id))?;
-            Ok(())
         });
 
         result.await?
@@ -2727,31 +2923,37 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn clear_show_images(&self, show_id: ShowId) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
-        spawn_blocking(move || {
+
+        let result = spawn_blocking(move || {
             s.delete_show_images.execute((show_id,))?;
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn clear_movie_images(&self, movie_id: MovieId) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
-        spawn_blocking(move || {
+
+        let result = spawn_blocking(move || {
             s.delete_movie_images.execute((movie_id,))?;
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn clear_episode_images(&self, show_id: ShowId) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
-        spawn_blocking(move || {
+
+        let result = spawn_blocking(move || {
             s.delete_episode_images_for_show.execute((show_id,))?;
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -2761,11 +2963,13 @@ impl Database {
         language: api::Locale,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
-        spawn_blocking(move || {
+
+        let result = spawn_blocking(move || {
             s.set_show_default_language.execute((language, show_id))?;
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -2775,11 +2979,13 @@ impl Database {
         language: api::Locale,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
-        spawn_blocking(move || {
+
+        let result = spawn_blocking(move || {
             s.set_movie_default_language.execute((language, movie_id))?;
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     /// Replace the owner's translated strings with `strings` (clear then insert),
@@ -2791,15 +2997,17 @@ impl Database {
         strings: Vec<(api::Locale, api::StringKind, String)>,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
-        spawn_blocking(move || {
+
+        let result = spawn_blocking(move || {
             s.clear_show_strings.execute((show_id,))?;
             for (language, kind, text) in strings {
                 s.insert_show_string
                     .execute((show_id, language, kind, text))?;
             }
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     #[tracing::instrument(skip(self, strings), ret(level = "trace"))]
@@ -2809,15 +3017,17 @@ impl Database {
         strings: Vec<(api::Locale, api::StringKind, String)>,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
-        spawn_blocking(move || {
+
+        let result = spawn_blocking(move || {
             s.clear_movie_strings.execute((movie_id,))?;
             for (language, kind, text) in strings {
                 s.insert_movie_string
                     .execute((movie_id, language, kind, text))?;
             }
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     #[tracing::instrument(skip(self, strings), ret(level = "trace"))]
@@ -2827,15 +3037,17 @@ impl Database {
         strings: Vec<(api::Locale, api::StringKind, String)>,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
-        spawn_blocking(move || {
+
+        let result = spawn_blocking(move || {
             s.clear_episode_strings.execute((episode_id,))?;
             for (language, kind, text) in strings {
                 s.insert_episode_string
                     .execute((episode_id, language, kind, text))?;
             }
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     #[tracing::instrument(skip(self, strings), ret(level = "trace"))]
@@ -2845,24 +3057,30 @@ impl Database {
         strings: Vec<(api::Locale, api::StringKind, String)>,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
-        spawn_blocking(move || {
+
+        let result = spawn_blocking(move || {
             s.clear_season_strings.execute((season_id,))?;
+
             for (language, kind, text) in strings {
                 s.insert_season_string
                     .execute((season_id, language, kind, text))?;
             }
+
             Ok(())
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     /// Read the translated strings stored for a show.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn show_translations(&self, id: ShowId) -> Result<Vec<api::Translation>> {
         let mut s = self.inner.clone().shared().await?;
-        spawn_blocking(move || {
+
+        let result = spawn_blocking(move || {
             let mut out = Vec::new();
-            let mut stmt = s.list_show_strings.bind((id,))?;
+            let mut stmt = s.translations.list_show_strings.bind((id,))?;
+
             while let Some((language, kind, text)) = stmt.next()? {
                 out.push(api::Translation {
                     language,
@@ -2870,18 +3088,23 @@ impl Database {
                     text,
                 });
             }
+
+            stmt.reset()?;
             Ok(out)
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     /// Read the translated strings stored for a movie.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn movie_translations(&self, id: MovieId) -> Result<Vec<api::Translation>> {
         let mut s = self.inner.clone().shared().await?;
-        spawn_blocking(move || {
+
+        let result = spawn_blocking(move || {
             let mut out = Vec::new();
-            let mut stmt = s.list_movie_strings.bind((id,))?;
+            let mut stmt = s.translations.list_movie_strings.bind((id,))?;
+
             while let Some((language, kind, text)) = stmt.next()? {
                 out.push(api::Translation {
                     language,
@@ -2889,9 +3112,12 @@ impl Database {
                     text,
                 });
             }
+
+            stmt.reset()?;
             Ok(out)
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     /// Read the translated strings stored for an episode.
@@ -2901,9 +3127,11 @@ impl Database {
         id: EpisodeId,
     ) -> Result<Vec<api::Translation>> {
         let mut s = self.inner.clone().shared().await?;
-        spawn_blocking(move || {
+
+        let result = spawn_blocking(move || {
             let mut out = Vec::new();
-            let mut stmt = s.list_episode_strings.bind((id,))?;
+            let mut stmt = s.translations.list_episode_strings.bind((id,))?;
+
             while let Some((language, kind, text)) = stmt.next()? {
                 out.push(api::Translation {
                     language,
@@ -2911,18 +3139,23 @@ impl Database {
                     text,
                 });
             }
+
+            stmt.reset()?;
             Ok(out)
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     /// Read the translated strings stored for a season.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn season_translations(&self, id: SeasonId) -> Result<Vec<api::Translation>> {
         let mut s = self.inner.clone().shared().await?;
-        spawn_blocking(move || {
+
+        let result = spawn_blocking(move || {
             let mut out = Vec::new();
             let mut stmt = s.list_season_strings.bind((id,))?;
+
             while let Some((language, kind, text)) = stmt.next()? {
                 out.push(api::Translation {
                     language,
@@ -2930,9 +3163,12 @@ impl Database {
                     text,
                 });
             }
+
+            stmt.reset()?;
             Ok(out)
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -3147,15 +3383,19 @@ impl Database {
     ) -> Result<Vec<api::MediaImage>> {
         let mut s = self.inner.clone().shared().await?;
 
-        spawn_blocking(move || {
+        let result = spawn_blocking(move || {
             let mut out = Vec::new();
             let mut stmt = s.list_season_images.bind((season_id,))?;
+
             while let Some(r) = stmt.next()? {
                 out.push(image_from_row(r));
             }
+
+            stmt.reset()?;
             Ok(out)
-        })
-        .await?
+        });
+
+        result.await?
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -3177,7 +3417,7 @@ impl Database {
         let result = spawn_blocking(move || {
             let (watched_id, timestamp) = match kind {
                 WatchedKind::Episode { episode, .. } => {
-                    let timestamp = s.episode_mark_time(episode, mark_time, now)?;
+                    let timestamp = s.episodes.episode_mark_time(episode, mark_time, now)?;
 
                     let key = s
                         .episode_natural_key
@@ -3283,6 +3523,7 @@ impl Database {
                 });
             }
 
+            stmt.reset()?;
             Ok(out)
         });
 
@@ -3311,6 +3552,7 @@ impl Database {
                 });
             }
 
+            stmt.reset()?;
             Ok(out)
         });
 
@@ -3337,6 +3579,7 @@ impl Database {
                 out.push((r.id, r.timestamp, show_id, r.season, r.episode));
             }
 
+            stmt.reset()?;
             Ok(out)
         });
 
@@ -3363,6 +3606,7 @@ impl Database {
                 out.push((r.id, r.timestamp, movie_id));
             }
 
+            stmt.reset()?;
             Ok(out)
         });
 
@@ -3519,6 +3763,7 @@ impl Database {
                 });
             }
 
+            stmt.reset()?;
             Ok(out)
         });
 
@@ -3554,6 +3799,7 @@ impl Database {
                 out.push(watched_from_row(r)?);
             }
 
+            stmt.reset()?;
             Ok(out)
         });
 
@@ -3692,8 +3938,10 @@ impl Database {
                 // If the pending episode has a future air date that changed, update the timestamp.
                 let maybe_update = {
                     let row = s.pending_episode_aired_for_show.bind((show_id,))?.first()?;
+
                     row.and_then(|r| {
                         let aired = r.aired?;
+
                         if aired > now && aired != r.timestamp {
                             Some(aired)
                         } else {
@@ -3701,10 +3949,12 @@ impl Database {
                         }
                     })
                 };
+
                 if let Some(aired) = maybe_update {
                     s.update_pending_episode_timestamp
                         .execute((aired, show_id))?;
                 }
+
                 return Ok(());
             }
 
@@ -3824,6 +4074,7 @@ impl Database {
                 out.push((r.id, release_filters));
             }
 
+            stmt.reset()?;
             Ok(out)
         });
 
@@ -3859,6 +4110,7 @@ impl Database {
                 });
             }
 
+            stmt.reset()?;
             Ok(out)
         });
 
@@ -3925,17 +4177,17 @@ impl Database {
         let result = spawn_blocking(move || {
             let mut to_delete = Vec::new();
 
-            {
-                let mut stmt = s.list_movie_releases.bind((movie_id,))?;
+            let mut stmt = s.list_movie_releases.bind((movie_id,))?;
 
-                while let Some(r) = stmt.next()? {
-                    let key = (r.country, r.release_type);
+            while let Some(r) = stmt.next()? {
+                let key = (r.country, r.release_type);
 
-                    if !kept.contains(&key) {
-                        to_delete.push(key);
-                    }
+                if !kept.contains(&key) {
+                    to_delete.push(key);
                 }
             }
+
+            stmt.reset()?;
 
             for (country, release_type) in to_delete {
                 s.delete_movie_release
@@ -3954,14 +4206,19 @@ impl Database {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
-            let mut out = Vec::new();
+            let s = &mut *s;
 
+            let cfg = s.config_language()?;
+
+            let mut out = Vec::new();
             let mut stmt = s.shows_needing_sync.bind((cutoff,))?;
 
-            while let Some(row) = stmt.next()? {
-                out.push(show_from_row(row));
+            while let Some(r) = stmt.next()? {
+                let strings = s.translations.show(r.id, cfg)?;
+                out.push(show_from_row(r, strings));
             }
 
+            stmt.reset()?;
             Ok(out)
         });
 
@@ -3974,14 +4231,20 @@ impl Database {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
+            let s = &mut *s;
+
+            let cfg = s.config_language()?;
+
             let mut out = Vec::new();
 
             let mut stmt = s.movies_needing_sync.bind((cutoff,))?;
 
             while let Some(r) = stmt.next()? {
-                out.push(movie_from_row(r));
+                let strings = s.translations.movie(r.id, cfg)?;
+                out.push(movie_from_row(r, strings));
             }
 
+            stmt.reset()?;
             Ok(out)
         });
 
@@ -3996,18 +4259,13 @@ impl Database {
         let result = spawn_blocking(move || {
             let mut out = Vec::new();
 
-            // Collect the base rows first so the iterating statement is released
-            // before the per-row detail lookups below reuse the connection.
-            let mut rows = Vec::new();
+            let s = &mut *s;
+
+            let cfg = s.config_language()?;
+
             let mut stmt = s.list_pending_before.bind((now,))?;
 
-            while let Some(r) = stmt.next()? {
-                rows.push(r);
-            }
-
-            stmt.reset()?;
-
-            'outer: for r in rows {
+            'outer: while let Some(r) = stmt.next()? {
                 let pending = 'pending: {
                     if let Some(episode_id) = r.episode_id {
                         let detail = s.pending_episode_detail.bind((episode_id,))?.first()?;
@@ -4016,8 +4274,20 @@ impl Database {
                             continue 'outer;
                         };
 
-                        let poster = s.image_for_show(d.show_id, ImageKind::Poster)?;
-                        let banner = s.image_for_show(d.show_id, ImageKind::Banner)?;
+                        let poster = s.image.image_for_show(d.show_id, ImageKind::Poster)?;
+                        let banner = s.image.image_for_show(d.show_id, ImageKind::Banner)?;
+
+                        let show_title = s
+                            .translations
+                            .show(d.show_id, cfg)?
+                            .title()
+                            .map(str::to_owned);
+
+                        let episode_name = s
+                            .translations
+                            .episode(episode_id, d.language, d.default_language, cfg)?
+                            .title()
+                            .map(str::to_owned);
 
                         break 'pending api::Pending {
                             kind: api::PendingKind::Episode {
@@ -4025,8 +4295,8 @@ impl Database {
                                 episode: episode_id,
                             },
                             info: api::PendingInfo::Episode {
-                                show: d.show_title,
-                                episode: d.episode_name,
+                                show: show_title,
+                                episode: episode_name,
                                 season: d.season,
                                 number: d.number,
                             },
@@ -4044,12 +4314,18 @@ impl Database {
                             continue 'outer;
                         };
 
-                        let poster = s.image_for_movie(movie_id, ImageKind::Poster)?;
-                        let banner = s.image_for_movie(movie_id, ImageKind::Banner)?;
+                        let poster = s.image.image_for_movie(movie_id, ImageKind::Poster)?;
+                        let banner = s.image.image_for_movie(movie_id, ImageKind::Banner)?;
+
+                        let title = s
+                            .translations
+                            .movie(movie_id, cfg)?
+                            .title()
+                            .map(str::to_owned);
 
                         break 'pending api::Pending {
                             kind: api::PendingKind::Movie { movie: movie_id },
-                            info: api::PendingInfo::Movie { title: d.title },
+                            info: api::PendingInfo::Movie { title },
                             aired: d.release_date,
                             timestamp: r.timestamp,
                             poster,
@@ -4063,6 +4339,7 @@ impl Database {
                 out.push(pending);
             }
 
+            stmt.reset()?;
             Ok(out)
         });
 
@@ -4091,14 +4368,26 @@ impl Database {
                     return Ok(None);
                 };
 
-                let poster = s.image_for_show(d.show_id, ImageKind::Poster)?;
-                let banner = s.image_for_show(d.show_id, ImageKind::Banner)?;
+                let cfg = s.config_language()?;
+                let poster = s.image.image_for_show(d.show_id, ImageKind::Poster)?;
+                let banner = s.image.image_for_show(d.show_id, ImageKind::Banner)?;
+
+                let show_title = s
+                    .translations
+                    .show(d.show_id, cfg)?
+                    .title()
+                    .map(str::to_owned);
+                let episode_name = s
+                    .translations
+                    .episode(episode, d.language, d.default_language, cfg)?
+                    .title()
+                    .map(str::to_owned);
 
                 Ok(Some(api::Pending {
                     kind: api::PendingKind::Episode { show, episode },
                     info: api::PendingInfo::Episode {
-                        show: d.show_title,
-                        episode: d.episode_name,
+                        show: show_title,
+                        episode: episode_name,
                         season: d.season,
                         number: d.number,
                     },
@@ -4118,12 +4407,15 @@ impl Database {
                     return Ok(None);
                 };
 
-                let poster = s.image_for_movie(movie, ImageKind::Poster)?;
-                let banner = s.image_for_movie(movie, ImageKind::Banner)?;
+                let cfg = s.config_language()?;
+                let poster = s.image.image_for_movie(movie, ImageKind::Poster)?;
+                let banner = s.image.image_for_movie(movie, ImageKind::Banner)?;
+
+                let title = s.translations.movie(movie, cfg)?.title().map(str::to_owned);
 
                 Ok(Some(api::Pending {
                     kind: api::PendingKind::Movie { movie },
-                    info: api::PendingInfo::Movie { title: d.title },
+                    info: api::PendingInfo::Movie { title },
                     aired: d.release_date,
                     timestamp,
                     poster,
@@ -4141,6 +4433,8 @@ impl Database {
         days: u32,
         time: api::TimeInfo,
     ) -> Result<Vec<api::ScheduledDay>> {
+        type DayShows = Vec<(ShowId, String, Vec<api::ScheduleEpisode>)>;
+
         let today = time.now().date(time.clone());
 
         let Some(end) = today.checked_add_days(days) else {
@@ -4152,8 +4446,14 @@ impl Database {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
-            type DayShows = Vec<(ShowId, String, Vec<api::ScheduleEpisode>)>;
             let mut days_map = Vec::<(Date, DayShows, Vec<api::ScheduleMovie>)>::new();
+
+            let s = &mut *s;
+
+            let cfg = s.config_language()?;
+
+            // Resolved show titles, cached so each show is looked up once.
+            let mut show_titles: HashMap<ShowId, String> = HashMap::new();
 
             let mut stmt = s.list_schedule.bind((today, end))?;
 
@@ -4168,16 +4468,30 @@ impl Database {
 
                 let day = day.date(time.clone());
 
+                let show_title = match show_titles.get(&r.show_id) {
+                    Some(title) => title.clone(),
+                    None => {
+                        let title = s
+                            .translations
+                            .show(r.show_id, cfg)?
+                            .title()
+                            .unwrap_or_default()
+                            .to_owned();
+                        show_titles.insert(r.show_id, title.clone());
+                        title
+                    }
+                };
+
                 if let Some(day_entry) = days_map.iter_mut().find(|(d, ..)| d == &day) {
                     if let Some(show_entry) =
                         day_entry.1.iter_mut().find(|(id, ..)| *id == r.show_id)
                     {
                         show_entry.2.push(ep);
                     } else {
-                        day_entry.1.push((r.show_id, r.show_title, vec![ep]));
+                        day_entry.1.push((r.show_id, show_title, vec![ep]));
                     }
                 } else {
-                    days_map.push((day, vec![(r.show_id, r.show_title, vec![ep])], Vec::new()));
+                    days_map.push((day, vec![(r.show_id, show_title, vec![ep])], Vec::new()));
                 }
             }
 
@@ -4188,9 +4502,16 @@ impl Database {
             while let Some(r) = stmt.next()? {
                 let Some(released) = r.released else { continue };
 
+                let title = s
+                    .translations
+                    .movie(r.movie_id, cfg)?
+                    .title()
+                    .unwrap_or_default()
+                    .to_owned();
+
                 let movie = api::ScheduleMovie {
                     movie_id: r.movie_id,
-                    title: r.title,
+                    title,
                     released,
                 };
 
@@ -4202,6 +4523,8 @@ impl Database {
                     days_map.push((day, Vec::new(), vec![movie]));
                 }
             }
+
+            stmt.reset()?;
 
             // Movie-only days may be appended out of order; sort so the frontend can rely
             // on the last day being the furthest date when extending the calendar grid.
@@ -4440,16 +4763,16 @@ impl Database {
 
             let mut stmt = s.list_show_languages.query()?;
 
-            while let Some(row) = stmt.next()? {
-                tally(row.language);
+            while let Some(r) = stmt.next()? {
+                tally(r.language);
             }
 
             stmt.reset()?;
 
             let mut stmt = s.list_movie_languages.query()?;
 
-            while let Some(row) = stmt.next()? {
-                tally(row.language);
+            while let Some(r) = stmt.next()? {
+                tally(r.language);
             }
 
             stmt.reset()?;
@@ -4474,12 +4797,11 @@ fn cutoff_timestamp(interval_hours: u32) -> Timestamp {
     Timestamp::from_jiff(ts)
 }
 
-fn show_from_row(row: ShowRow) -> api::Show {
+fn show_from_row(row: ShowRow, strings: api::Translations) -> api::Show {
     api::Show {
         id: row.id,
-        title: row.title,
+        strings,
         first_air_date: row.first_air,
-        overview: row.overview,
         tracked: row.tracked,
         auto_sync: row.auto_sync,
         remotes: Vec::new(),
@@ -4558,14 +4880,13 @@ fn apply_movie_image_selection(target: &mut api::Movie, sel: ImageSelectionRow) 
     }
 }
 
-fn season_from_row(r: SeasonRow) -> api::Season {
+fn season_from_row(r: SeasonRow, strings: api::Translations) -> api::Season {
     api::Season {
         id: r.id,
         show_id: r.show_id,
         season: r.season,
         air_date: r.air_date,
-        name: r.name,
-        overview: r.overview,
+        strings,
         poster: match (r.poster_source, r.poster_path) {
             (Some(source), Some(path)) => Some(api::Image::new(source, &path)),
             _ => None,
@@ -4575,15 +4896,14 @@ fn season_from_row(r: SeasonRow) -> api::Season {
     }
 }
 
-fn episode_from_row(r: EpisodeRow) -> api::Episode {
+fn episode_from_row(r: EpisodeRow, strings: api::Translations) -> api::Episode {
     api::Episode {
         id: r.id,
         show_id: r.show_id,
         season: r.season,
         episode: r.number,
         absolute_number: r.absolute_number,
-        name: r.name,
-        overview: r.overview,
+        strings,
         aired: r.aired,
         pending: r.pending,
         watched_count: r.watched_count,
@@ -4601,12 +4921,11 @@ fn watched_episode_from_row(r: WatchedEpisodeRow) -> api::WatchedEpisode {
     }
 }
 
-fn movie_from_row(row: MovieRow) -> api::Movie {
+fn movie_from_row(row: MovieRow, strings: api::Translations) -> api::Movie {
     api::Movie {
         id: row.id,
-        title: row.title,
+        strings,
         release_date: row.release_date,
-        overview: row.overview,
         remotes: Vec::new(),
         tracked: row.tracked,
         auto_sync: row.auto_sync,
@@ -4625,14 +4944,16 @@ fn movie_from_row(row: MovieRow) -> api::Movie {
     }
 }
 
-fn media_item_from_row(r: MediaItemRow, kind: api::MediaKind) -> api::MediaItem {
+fn media_item_from_row(
+    r: MediaItemRow,
+    kind: api::MediaKind,
+    strings: api::Translations,
+) -> api::MediaItem {
     api::MediaItem {
         id: r.id.cast_unsigned(),
         kind,
-        title: r.title,
-        alt_titles: Vec::new(),
+        strings,
         date: r.date,
-        overview: r.overview,
         poster: None,
         banner: None,
         backdrop: None,

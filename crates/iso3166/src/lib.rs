@@ -13,6 +13,11 @@ pub struct Country {
 mod generated;
 use generated::ENTRIES;
 
+/// Whether a 2-letter code is a valid ISO 3166-1 alpha-2 code.
+pub const fn is_valid_alpha2(alpha2: &[u8]) -> bool {
+    generated::is_valid_alpha2(alpha2)
+}
+
 /// Look up a country by its uppercase alpha-2 code.
 ///
 /// The lookup is case-sensitive; pass an uppercase code such as `"US"`.

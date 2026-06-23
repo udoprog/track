@@ -343,7 +343,7 @@ impl Component for ShowDetail {
         html! {
             <>
                 <div class="mobile-row desktop-column desktop-center">
-                    <h1>{show.title.as_deref().unwrap_or("Untitled Show")}</h1>
+                    <h1>{show.strings.title().unwrap_or("Untitled Show")}</h1>
 
                     if let Some(date) = show.first_air_date {
                         <span class="text-muted">{date.date(self.time.clone()).year()}</span>
@@ -398,7 +398,7 @@ impl Component for ShowDetail {
                         if self.confirm_remove {
                             <ContextMenu
                                 prompt="Remove show"
-                                label={show.title.clone()}
+                                label={show.strings.title().map(str::to_owned)}
                                 anchor={self.remove_anchor.clone()}
                                 on_close={ctx.link().callback(|_| Msg::CancelRemove)}
                                 onerror={props.onerror.clone()}>
@@ -408,7 +408,7 @@ impl Component for ShowDetail {
                     </div>
                 </div>
 
-                if let Some(ref overview) = show.overview {
+                if let Some(overview) = show.strings.overview() {
                     <p class="overview">{overview}</p>
                 }
 
@@ -460,7 +460,7 @@ impl Component for ShowDetail {
 
                 if self.remote_editor {
                     <RemoteEditor
-                        title={show.title.as_deref().unwrap_or("Untitled Show").to_owned()}
+                        title={show.strings.title().unwrap_or("Untitled Show").to_owned()}
                         kind={RemoteSourceKind::Show}
                         remotes={show.remotes.clone()}
                         on_add={link.callback(|(slug, remote)| Msg::AddRemote(slug, remote))}
@@ -667,7 +667,8 @@ impl ShowDetail {
 
                 self.background
                     .background(show.backdrop.as_ref().map(|i| i.proxy_url()));
-                self.background.title(show.title.clone());
+                self.background
+                    .title(show.strings.title().map(str::to_owned));
                 self.show = Some(show);
                 self.update_graphics();
                 Ok(true)
@@ -1721,7 +1722,7 @@ impl ShowDetail {
             <div class={classes!("column", clickable.then_some("clickable"), active.then_some("active"), (!active && !self.expanded_seasons).then_some("hide-mobile"))} {onclick}>
                 <div class="row-split fill">
                     <span>
-                        if let Some(ref name) = s.name {
+                        if let Some(name) = s.strings.title() {
                             {name}
                         } else {
                             {s.season.long().to_string()}
@@ -1798,7 +1799,7 @@ impl ShowDetail {
                                 <h2>{format!("{} orphaned episodes", self.orphaned.len())}</h2>
                             } else {
                                 <h2>
-                                    if let Some(ref name) = season.name {
+                                    if let Some(name) = season.strings.title() {
                                         {name}
                                     } else {
                                         {season.season.long().to_string()}
@@ -1880,7 +1881,7 @@ impl ShowDetail {
                         </div>
                     </div>
 
-                    if let Some(ref overview) = season.overview {
+                    if let Some(overview) = season.strings.overview() {
                         <p class="overview">{overview}</p>
                     }
 
@@ -1953,7 +1954,7 @@ impl ShowDetail {
                                     </span>
                                 </a>
 
-                                <h4 class="start">{ episode.name.as_deref().unwrap_or(MDASH) }</h4>
+                                <h4 class="start">{ episode.strings.title().unwrap_or(MDASH) }</h4>
                             </div>
                         </div>
 
@@ -2068,7 +2069,7 @@ impl ShowDetail {
                     <Image class="screenshot" src={episode.screenshot.clone()} />
 
                     <div class="column desktop-fill">
-                        if let Some(ref overview) = episode.overview {
+                        if let Some(overview) = episode.strings.overview() {
                             <p class="overview">{overview}</p>
                         }
                     </div>

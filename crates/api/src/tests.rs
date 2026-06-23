@@ -308,9 +308,11 @@ fn locale_round_trip() {
     assert_eq!(Locale::to_u64(Locale::DEFAULT), 0);
 
     // `from_iso` never parses the sentinel (nor empty).
-    assert_eq!(Locale::from_iso("default"), None);
-    assert_eq!(Locale::from_iso(""), None);
-    assert_eq!("default".parse::<Locale>().ok(), None);
+    assert_eq!(Locale::from_iso("default"), Some(Locale::DEFAULT));
+    assert_eq!(Locale::from_iso(""), Some(Locale::DEFAULT));
+    assert_eq!(Locale::from_iso("invalid"), None);
+    assert_eq!(Locale::from_iso("inv"), None);
+    assert_eq!("default".parse::<Locale>().ok(), Some(Locale::DEFAULT));
 
     // Language-only: prefers the part1 form on Display.
     let en = Locale::new(Language::ENG, Country::DEFAULT);
@@ -389,6 +391,139 @@ fn locale_serde_and_default_string() {
     assert_eq!(
         serde_json::from_str::<Locale>("\"eng\"").unwrap(),
         Locale::new(Language::ENG, Country::DEFAULT)
+    );
+}
+
+fn pt_br() -> Locale {
+    Locale::from_iso("pt-BR").unwrap()
+}
+
+fn en() -> Locale {
+    Locale::new(Language::ENG, Country::DEFAULT)
+}
+
+/// Build a [`Translations`] incrementally from `(kind, locale, text)` rows.
+fn build(locale: Locale, default: Locale, entries: &[(StringKind, Locale, &str)]) -> Translations {
+    let mut t = Translations::new(locale, default);
+    for (kind, loc, text) in entries {
+        t.insert(*kind, *loc, text);
+    }
+    t
+}
+
+#[test]
+fn translations_exact_and_fallbacks() {
+    // Configured locale en-US, default (original) language pt-BR.
+    let t = build(
+        Locale::EN_US,
+        pt_br(),
+        &[
+            (StringKind::Title, en(), "English"),
+            (StringKind::Title, pt_br(), "Portugues"),
+            (StringKind::Overview, pt_br(), "Resumo"),
+        ],
+    );
+
+    // en-US has no exact entry, but relaxes to language-only `en`.
+    assert_eq!(t.title(), Some("English"));
+    // Overview only exists in the default language; resolves via the default.
+    assert_eq!(t.overview(), Some("Resumo"));
+}
+
+#[test]
+fn translations_default_locale_fallback() {
+    // Configured locale is a language with no stored string; falls back to the
+    // default/original language.
+    let t = build(
+        Locale::from_iso("de").unwrap(),
+        pt_br(),
+        &[(StringKind::Title, pt_br(), "Portugues")],
+    );
+
+    assert_eq!(t.title(), Some("Portugues"));
+}
+
+#[test]
+fn translations_get_with_explicit_fallback() {
+    let t = build(
+        Locale::DEFAULT,
+        Locale::from_iso("ja").unwrap(),
+        &[
+            (StringKind::Title, en(), "English"),
+            (
+                StringKind::Title,
+                Locale::from_iso("ja").unwrap(),
+                "Nihongo",
+            ),
+        ],
+    );
+
+    // Prefer French (missing) -> explicit English fallback.
+    assert_eq!(
+        t.get_with(StringKind::Title, Locale::from_iso("fr").unwrap(), en()),
+        Some("English"),
+    );
+    // No locale/fallback -> resolves to the default (original) language.
+    assert_eq!(
+        t.get_with(StringKind::Title, Locale::DEFAULT, Locale::DEFAULT),
+        Some("Nihongo"),
+    );
+}
+
+#[test]
+fn translations_empty_is_none() {
+    let t = Translations::new(Locale::EN_US, Locale::DEFAULT);
+    assert_eq!(t.title(), None);
+    assert!(t.is_empty());
+}
+
+#[test]
+fn translations_texts_lists_all_locales() {
+    let t = build(
+        Locale::EN_US,
+        pt_br(),
+        &[
+            (StringKind::Title, en(), "English"),
+            (StringKind::Title, pt_br(), "Portugues"),
+            (StringKind::Overview, pt_br(), "Resumo"),
+        ],
+    );
+
+    let mut titles: Vec<&str> = t.texts(StringKind::Title).collect();
+    titles.sort_unstable();
+    assert_eq!(titles, ["English", "Portugues"]);
+}
+
+#[test]
+fn translations_dedup_replaces() {
+    let mut t = Translations::new(Locale::EN_US, pt_br());
+
+    // Inserting the same (kind, locale) twice replaces rather than appends.
+    t.insert(StringKind::Title, Locale::EN_US, "First");
+    t.insert(StringKind::Title, Locale::EN_US, "Second");
+
+    assert_eq!(t.title(), Some("Second"));
+    assert_eq!(t.texts(StringKind::Title).count(), 1);
+
+    // A different country for the same language is a distinct entry, not a dup.
+    t.insert(
+        StringKind::Title,
+        Locale::from_iso("en-GB").unwrap(),
+        "British",
+    );
+    assert_eq!(t.texts(StringKind::Title).count(), 2);
+    // Exact lookups still distinguish the two countries.
+    assert_eq!(
+        t.get_with(StringKind::Title, Locale::EN_US, Locale::DEFAULT),
+        Some("Second"),
+    );
+    assert_eq!(
+        t.get_with(
+            StringKind::Title,
+            Locale::from_iso("en-GB").unwrap(),
+            Locale::DEFAULT
+        ),
+        Some("British"),
     );
 }
 

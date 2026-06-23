@@ -25,12 +25,75 @@ fn oneshot_applies_on_existing_db() {
 
     c.execute(MIGRATIONS_INIT).unwrap();
 
-    // Simulate an existing database: the base schema is present (anchored
-    // by `shows`) and the release tables still carry their old surrogate
-    // `id` with rows in them.
+    // Simulate an existing database: the base schema is present (anchored by
+    // `shows`) in its *old* shape - shows/movies/seasons/episodes still carry the
+    // base title/name/overview columns, the `*_strings` tables exist, and the
+    // release tables still carry their old surrogate `id` with rows in them.
     c.execute(
         "
-        CREATE TABLE shows (id INTEGER PRIMARY KEY);
+        CREATE TABLE shows (
+            id INTEGER PRIMARY KEY,
+            title TEXT,
+            overview TEXT,
+            language INTEGER NOT NULL DEFAULT 0,
+            default_language INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE movies (
+            id INTEGER PRIMARY KEY,
+            title TEXT,
+            overview TEXT,
+            language INTEGER NOT NULL DEFAULT 0,
+            default_language INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE seasons (
+            id INTEGER PRIMARY KEY,
+            show_id INTEGER NOT NULL,
+            name TEXT,
+            overview TEXT
+        );
+        CREATE TABLE episodes (
+            id INTEGER PRIMARY KEY,
+            show_id INTEGER NOT NULL,
+            name TEXT,
+            overview TEXT
+        );
+        CREATE TABLE show_strings (
+            id INTEGER PRIMARY KEY,
+            show_id INTEGER NOT NULL,
+            language INTEGER NOT NULL,
+            kind INTEGER NOT NULL,
+            text TEXT NOT NULL,
+            UNIQUE (show_id, language, kind)
+        );
+        CREATE TABLE movie_strings (
+            id INTEGER PRIMARY KEY,
+            movie_id INTEGER NOT NULL,
+            language INTEGER NOT NULL,
+            kind INTEGER NOT NULL,
+            text TEXT NOT NULL,
+            UNIQUE (movie_id, language, kind)
+        );
+        CREATE TABLE season_strings (
+            id INTEGER PRIMARY KEY,
+            season_id INTEGER NOT NULL,
+            language INTEGER NOT NULL,
+            kind INTEGER NOT NULL,
+            text TEXT NOT NULL,
+            UNIQUE (season_id, language, kind)
+        );
+        CREATE TABLE episode_strings (
+            id INTEGER PRIMARY KEY,
+            episode_id INTEGER NOT NULL,
+            language INTEGER NOT NULL,
+            kind INTEGER NOT NULL,
+            text TEXT NOT NULL,
+            UNIQUE (episode_id, language, kind)
+        );
+
+        INSERT INTO shows (id, title, overview) VALUES (100, 'Old Show', 'Old overview');
+        INSERT INTO seasons (id, show_id, name) VALUES (200, 100, 'Old Season');
+        INSERT INTO episodes (id, show_id, name) VALUES (300, 100, 'Old Episode');
+
         CREATE TABLE episode_releases (
             id INTEGER PRIMARY KEY,
             episode_id INTEGER NOT NULL,
@@ -106,4 +169,17 @@ fn oneshot_applies_on_existing_db() {
         .unwrap();
 
     assert!(applied.next::<i64>().unwrap().is_some());
+
+    // The drop-base-strings oneshot dropped the base title/overview columns.
+    let mut show_cols = c
+        .prepare("SELECT name FROM pragma_table_info('shows')")
+        .unwrap();
+    let mut show_names = Vec::new();
+    while let Some(name) = show_cols.next::<String>().unwrap() {
+        show_names.push(name);
+    }
+    assert!(
+        !show_names.iter().any(|n| n == "title" || n == "overview"),
+        "base columns should be dropped: {show_names:?}"
+    );
 }

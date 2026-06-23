@@ -175,7 +175,7 @@ impl WsHandler {
                     "ws track show pending changed",
                 );
 
-                self.enqueue_show_sync(show.id, show.title.clone(), true)
+                self.enqueue_show_sync(show.id, show.strings.title().map(str::to_owned), true)
                     .await;
 
                 outgoing.write(show);
@@ -276,7 +276,7 @@ impl WsHandler {
                     "ws track movie pending changed",
                 );
 
-                self.enqueue_movie_sync(movie.id, movie.title.clone(), true)
+                self.enqueue_movie_sync(movie.id, movie.strings.title().map(str::to_owned), true)
                     .await;
 
                 outgoing.write(movie);
@@ -577,7 +577,8 @@ impl WsHandler {
                     .await?
                     .context("Expected show to exist")?;
 
-                self.enqueue_show_sync(show.id, show.title, true).await;
+                self.enqueue_show_sync(show.id, show.strings.title().map(str::to_owned), true)
+                    .await;
 
                 outgoing.write(api::Empty);
             }
@@ -592,7 +593,8 @@ impl WsHandler {
                     .await?
                     .context("Expected movie to exist")?;
 
-                self.enqueue_movie_sync(movie.id, movie.title, true).await;
+                self.enqueue_movie_sync(movie.id, movie.strings.title().map(str::to_owned), true)
+                    .await;
 
                 outgoing.write(api::Empty);
             }
@@ -617,7 +619,8 @@ impl WsHandler {
                     "ws set show remote enabled changed",
                 );
 
-                self.enqueue_show_sync(show.id, show.title, true).await;
+                self.enqueue_show_sync(show.id, show.strings.title().map(str::to_owned), true)
+                    .await;
 
                 outgoing.write(api::Empty);
             }
@@ -640,7 +643,8 @@ impl WsHandler {
                     "ws reorder show remotes changed",
                 );
 
-                self.enqueue_show_sync(show.id, show.title, true).await;
+                self.enqueue_show_sync(show.id, show.strings.title().map(str::to_owned), true)
+                    .await;
 
                 outgoing.write(api::Empty);
             }
@@ -667,7 +671,8 @@ impl WsHandler {
                     "ws set movie remote enabled changed",
                 );
 
-                self.enqueue_movie_sync(movie.id, movie.title, true).await;
+                self.enqueue_movie_sync(movie.id, movie.strings.title().map(str::to_owned), true)
+                    .await;
 
                 outgoing.write(api::Empty);
             }
@@ -692,7 +697,8 @@ impl WsHandler {
                     "ws reorder movie remotes changed",
                 );
 
-                self.enqueue_movie_sync(movie.id, movie.title, true).await;
+                self.enqueue_movie_sync(movie.id, movie.strings.title().map(str::to_owned), true)
+                    .await;
 
                 outgoing.write(api::Empty);
             }
@@ -717,7 +723,8 @@ impl WsHandler {
                     "ws set show remote sync kinds changed",
                 );
 
-                self.enqueue_show_sync(show.id, show.title, true).await;
+                self.enqueue_show_sync(show.id, show.strings.title().map(str::to_owned), true)
+                    .await;
 
                 outgoing.write(api::Empty);
             }
@@ -744,7 +751,8 @@ impl WsHandler {
                     "ws set movie remote sync kinds changed",
                 );
 
-                self.enqueue_movie_sync(movie.id, movie.title, true).await;
+                self.enqueue_movie_sync(movie.id, movie.strings.title().map(str::to_owned), true)
+                    .await;
 
                 outgoing.write(api::Empty);
             }
@@ -973,7 +981,8 @@ impl WsHandler {
                     "ws set show language changed",
                 );
 
-                self.enqueue_show_sync(show.id, show.title, true).await;
+                self.enqueue_show_sync(show.id, show.strings.title().map(str::to_owned), true)
+                    .await;
 
                 outgoing.write(api::Empty);
             }
@@ -1105,7 +1114,8 @@ impl WsHandler {
                     "ws set movie language changed",
                 );
 
-                self.enqueue_movie_sync(movie.id, movie.title, true).await;
+                self.enqueue_movie_sync(movie.id, movie.strings.title().map(str::to_owned), true)
+                    .await;
 
                 outgoing.write(api::Empty);
             }
@@ -1148,13 +1158,15 @@ impl WsHandler {
                 let shows = self.db.shows().await?;
 
                 for s in shows {
-                    self.enqueue_show_sync(s.id, s.title, false).await;
+                    self.enqueue_show_sync(s.id, s.strings.title().map(str::to_owned), false)
+                        .await;
                 }
 
                 let movies = self.db.movies().await?;
 
                 for m in movies {
-                    self.enqueue_movie_sync(m.id, m.title, false).await;
+                    self.enqueue_movie_sync(m.id, m.strings.title().map(str::to_owned), false)
+                        .await;
                 }
 
                 outgoing.write(api::Empty);

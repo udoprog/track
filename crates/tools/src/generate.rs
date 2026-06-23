@@ -128,18 +128,27 @@ pub fn iso639_module(tab: &str, to_3166: &str, flags_dir: &Path) -> Result<(Stri
 
     let (flags1, flags3) = flag_map(to_3166, flags_dir)?;
 
-    let mut out = String::new();
-    write_header(
-        &mut out,
-        "crates/iso639/data/{iso-639-3.tab, to-3166-1.txt}",
-    )?;
-    writeln!(out, "use super::{{Language, Type, Scope}};")?;
-    writeln!(out)?;
+    let mut o = String::new();
+    write_header(&mut o, "crates/iso639/data/{iso-639-3.tab, to-3166-1.txt}")?;
+    writeln!(o, "use super::{{Language, Type, Scope}};")?;
+    writeln!(o)?;
 
-    let mapping = write_entries(&mut out, &entries, &flags1, &flags3)?;
+    writeln!(o, "pub(super) const fn is_valid_id(id: &[u8]) -> bool {{")?;
+    writeln!(o, "    match id {{")?;
 
-    iso639_maps(&mut out, &entries)?;
-    Ok((out, mapping))
+    for e in &entries {
+        let id = &e.id;
+        writeln!(o, "        b\"{id}\" => true,")?;
+    }
+
+    writeln!(o, "        _ => false,")?;
+    writeln!(o, "    }}")?;
+    writeln!(o, "}}")?;
+
+    let mapping = write_entries(&mut o, &entries, &flags1, &flags3)?;
+
+    iso639_maps(&mut o, &entries)?;
+    Ok((o, mapping))
 }
 
 /// Build the ISO 639-1 -> ISO 3166-1 flag-code map, keeping only entries whose target country
@@ -204,6 +213,7 @@ fn write_entries(
             .as_deref()
             .and_then(|id| flags1.get(id))
             .map(String::as_str);
+
         let flag3 = flags3.get(&row.id).map(String::as_str);
 
         let m = if let Some(flag) = flag1.or(flag3)
@@ -320,19 +330,35 @@ pub fn iso3166_module(csv: &str, flags_dir: &Path) -> Result<String> {
         bail!("Dataset has no data rows");
     }
 
-    let mut out = String::new();
-    write_header(&mut out, COUNTRIES_URL)?;
-    writeln!(out, "use super::Country;")?;
-    writeln!(out)?;
-    writeln!(out, "pub const ENTRIES: &[Country] = &[")?;
+    let mut o = String::new();
 
-    for (alpha2, (name, has_flag)) in &entries {
-        write!(out, "    Country {{ alpha2: {alpha2:?}, name: ")?;
-        write_string_literal(&mut out, name)?;
-        writeln!(out, ", has_flag: {has_flag} }},")?;
+    write_header(&mut o, COUNTRIES_URL)?;
+
+    writeln!(o, "use super::Country;")?;
+    writeln!(o)?;
+    writeln!(
+        o,
+        "pub(super) const fn is_valid_alpha2(alpha2: &[u8]) -> bool {{"
+    )?;
+    writeln!(o, "    match alpha2 {{")?;
+
+    for alpha2 in entries.keys() {
+        writeln!(o, "        b\"{alpha2}\" => true,")?;
     }
 
-    writeln!(out, "];\n")?;
+    writeln!(o, "        _ => false,")?;
+    writeln!(o, "    }}")?;
+    writeln!(o, "}}")?;
+    writeln!(o)?;
+    writeln!(o, "pub(super) const ENTRIES: &[Country] = &[")?;
+
+    for (alpha2, (name, has_flag)) in &entries {
+        write!(o, "    Country {{ alpha2: {alpha2:?}, name: ")?;
+        write_string_literal(&mut o, name)?;
+        writeln!(o, ", has_flag: {has_flag} }},")?;
+    }
+
+    writeln!(o, "];\n")?;
 
     let mut by_alpha2 = phf_codegen::Map::new();
 
@@ -341,12 +367,12 @@ pub fn iso3166_module(csv: &str, flags_dir: &Path) -> Result<String> {
     }
 
     writeln!(
-        out,
+        o,
         "pub static BY_ALPHA2: phf::Map<&'static str, usize> = {};",
         by_alpha2.build()
     )?;
 
-    Ok(out)
+    Ok(o)
 }
 
 /// Generate a Sass partial exposing a `$names` list built from every `<name>.svg` in

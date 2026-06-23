@@ -1,9 +1,7 @@
 CREATE TABLE
     shows (
         id INTEGER PRIMARY KEY,
-        title TEXT,
         first_air INTEGER,
-        overview TEXT,
         tracked INTEGER NOT NULL DEFAULT 1,
         sync_source INTEGER,
         language INTEGER NOT NULL DEFAULT 0,
@@ -21,8 +19,6 @@ CREATE TABLE
         show_id INTEGER NOT NULL REFERENCES shows (id) ON DELETE CASCADE,
         season INTEGER NOT NULL,
         air_date INTEGER,
-        name TEXT,
-        overview TEXT,
         UNIQUE (show_id, season)
     );
 
@@ -33,8 +29,6 @@ CREATE TABLE
         season INTEGER NOT NULL,
         episode INTEGER NOT NULL,
         absolute_number INTEGER,
-        name TEXT,
-        overview TEXT,
         aired INTEGER,
         UNIQUE (show_id, season, episode)
     );
@@ -46,9 +40,7 @@ WHERE
 CREATE TABLE
     movies (
         id INTEGER PRIMARY KEY,
-        title TEXT,
         release_date INTEGER,
-        overview TEXT,
         tracked INTEGER NOT NULL DEFAULT 1,
         sync_source INTEGER,
         language INTEGER NOT NULL DEFAULT 0,

@@ -171,7 +171,7 @@ pub(crate) async fn run(
                 .push(
                     api::TaskKind::SyncShow {
                         show_id: s.id,
-                        title: s.title,
+                        title: s.strings.title().map(str::to_owned),
                     },
                     false,
                     &broadcast,
@@ -184,7 +184,7 @@ pub(crate) async fn run(
                 .push(
                     api::TaskKind::SyncMovie {
                         movie_id: m.id,
-                        title: m.title,
+                        title: m.strings.title().map(str::to_owned),
                     },
                     false,
                     &broadcast,

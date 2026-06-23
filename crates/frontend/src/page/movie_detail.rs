@@ -855,7 +855,8 @@ impl MovieDetail {
         self.movie_releases = by_type.into_values().collect();
         self.background
             .background(movie.backdrop.as_ref().map(|i| i.proxy_url()));
-        self.background.title(movie.title.clone());
+        self.background
+            .title(movie.strings.title().map(str::to_owned));
         self.movie = Some(movie);
         self.update_graphics();
     }
@@ -914,7 +915,7 @@ impl MovieDetail {
         html! {
             <div class="column">
                 <div class="mobile-row desktop-column desktop-center">
-                    <h1>{movie.title.as_deref().unwrap_or("Untitled Movie")}</h1>
+                    <h1>{movie.strings.title().unwrap_or("Untitled Movie")}</h1>
 
                     if let Some(ts) = movie.release_date {
                         <span class="text-muted">{ts.date(self.time.clone()).year()}</span>
@@ -970,7 +971,7 @@ impl MovieDetail {
                             if self.confirm_remove {
                                 <ContextMenu
                                     prompt="Remove movie"
-                                    label={movie.title.clone()}
+                                    label={movie.strings.title().map(str::to_owned)}
                                     anchor={self.remove_anchor.clone()}
                                     on_close={link.callback(|_| Msg::CancelRemove)}
                                     onerror={ctx.props().onerror.clone()}>
@@ -1019,7 +1020,7 @@ impl MovieDetail {
 
         html! {
             <>
-            if let Some(ref overview) = movie.overview {
+            if let Some(overview) = movie.strings.overview() {
                 <p class="overview">{overview}</p>
             }
 
@@ -1179,7 +1180,7 @@ impl MovieDetail {
 
             if self.remote_editor {
                 <RemoteEditor
-                    title={movie.title.as_deref().unwrap_or("Untitled Movie").to_owned()}
+                    title={movie.strings.title().unwrap_or("Untitled Movie").to_owned()}
                     kind={RemoteSourceKind::Movie}
                     remotes={movie.remotes.clone()}
                     on_add={link.callback(|(slug, remote)| Msg::AddRemote(slug, remote))}

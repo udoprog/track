@@ -27,6 +27,9 @@ pub use self::country::{Country, ParseCountryErr};
 mod locale;
 pub use self::locale::{Locale, ParseLocaleErr};
 
+mod translations;
+pub use self::translations::Translations;
+
 mod sync_kind;
 pub use self::sync_kind::{SyncKind, SyncKindSet};
 
@@ -1217,9 +1220,8 @@ pub struct MediaImage {
 #[musli(crate = musli_core)]
 pub struct Show {
     pub id: ShowId,
-    pub title: Option<String>,
+    pub strings: Translations,
     pub first_air_date: Option<Timestamp>,
-    pub overview: Option<String>,
     pub tracked: bool,
     pub auto_sync: bool,
     pub remotes: Vec<RemoteEntry>,
@@ -1287,8 +1289,7 @@ pub struct Season {
     pub show_id: ShowId,
     pub season: SeasonNumber,
     pub air_date: Option<Timestamp>,
-    pub name: Option<String>,
-    pub overview: Option<String>,
+    pub strings: Translations,
     pub poster: Option<Image>,
     pub watched_count: u32,
     pub total_count: u32,
@@ -1315,8 +1316,7 @@ pub struct Episode {
     pub season: SeasonNumber,
     pub episode: u32,
     pub absolute_number: Option<u32>,
-    pub name: Option<String>,
-    pub overview: Option<String>,
+    pub strings: Translations,
     pub aired: Option<Timestamp>,
     pub pending: Option<Timestamp>,
     pub watched_count: u32,
@@ -1386,9 +1386,8 @@ pub struct WatchedEpisode {
 #[musli(crate = musli_core)]
 pub struct Movie {
     pub id: MovieId,
-    pub title: Option<String>,
+    pub strings: Translations,
     pub release_date: Option<Timestamp>,
-    pub overview: Option<String>,
     pub remotes: Vec<RemoteEntry>,
     pub tracked: bool,
     /// Whether the background loop automatically refreshes this movie.
@@ -1710,13 +1709,11 @@ pub struct MediaItem {
     pub id: u64,
     /// Whether this item is a show or a movie.
     pub kind: MediaKind,
-    pub title: Option<String>,
-    /// Alternate-language titles (kind = Title), excluding the primary `title`.
-    /// Used for cross-translation filtering and to show why a row matched.
-    pub alt_titles: Vec<String>,
+    /// All localized title/overview strings; resolve with [`Translations::get`]
+    /// and filter across locales with [`Translations::texts`].
+    pub strings: Translations,
     /// Release date (movie) or first-air date (show).
     pub date: Option<Timestamp>,
-    pub overview: Option<String>,
     pub poster: Option<Image>,
     pub banner: Option<Image>,
     /// Backdrop image, used to set the page background.

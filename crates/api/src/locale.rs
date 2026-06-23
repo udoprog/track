@@ -50,6 +50,13 @@ impl Locale {
     };
 
     /// The common English (United States) locale.
+    ///
+    /// ```
+    /// use api::{Locale, Language, Country};
+    ///
+    /// assert_eq!(Locale::EN_US, Locale::new(Language::ENG, Country::US));
+    /// assert_eq!(Locale::EN_US.to_string(), "en-US");
+    /// ```
     pub const EN_US: Locale = Locale {
         language: Language::ENG,
         country: Country::US,
@@ -118,8 +125,8 @@ impl Locale {
     /// in the low 32 bits.
     #[inline]
     pub const fn to_u64(self) -> u64 {
-        let language = u32::from_be_bytes(self.language.0) as u64;
-        let country = u32::from_be_bytes(self.country.0) as u64;
+        let language = u32::from_be_bytes(self.language.to_raw()) as u64;
+        let country = u32::from_be_bytes(self.country.to_raw()) as u64;
         (country << 32) | language
     }
 
@@ -128,8 +135,8 @@ impl Locale {
     #[inline]
     pub const fn from_u64(value: u64) -> Self {
         Self {
-            language: Language((value as u32).to_be_bytes()),
-            country: Country(((value >> 32) as u32).to_be_bytes()),
+            language: Language::new(&(value as u32).to_be_bytes()),
+            country: Country::new(&((value >> 32) as u32).to_be_bytes()),
         }
     }
 

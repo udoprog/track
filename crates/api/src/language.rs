@@ -19,7 +19,7 @@ use yew::virtual_dom::VNode;
 /// bytes are turned into an integer is the SQLite conversion below, which pins
 /// the byte order so the stored value is identical regardless of host endianness.
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Language(pub(crate) [u8; 4]);
+pub struct Language([u8; 4]);
 
 /// Error produced when a string cannot be parsed as a [`Language`].
 #[derive(Debug)]
@@ -38,7 +38,55 @@ impl Language {
     pub const DEFAULT: Language = Language([0; 4]);
 
     /// English (`eng`).
-    pub const ENG: Language = Language(*b"eng\0");
+    pub const ENG: Language = Language::new(b"eng");
+
+    /// Build a language from its raw representation.
+    ///
+    /// If the input is not a valid ISO 639-3 code, returns
+    /// [`Language::DEFAULT`].
+    ///
+    /// ```
+    /// use api::Language;
+    ///
+    /// assert_eq!(Language::new(b"eng"), Language::ENG);
+    /// assert_eq!(Language::new(b"ENG"), Language::ENG);
+    /// assert_eq!(Language::new(b"zzz"), Language::DEFAULT);
+    /// ```
+    #[inline]
+    pub const fn new(bytes: &[u8]) -> Self {
+        if bytes.len() > 4 {
+            return Self::DEFAULT;
+        }
+
+        let mut out = [0u8; 4];
+        let mut n = 0;
+
+        while n < bytes.len() {
+            out[n] = bytes[n].to_ascii_lowercase();
+            n += 1;
+        }
+
+        let mut test = out.as_slice();
+
+        while !test.is_empty() {
+            test = match test {
+                [prefix @ .., 0] => prefix,
+                _ => break,
+            };
+        }
+
+        if !iso639::is_valid_id(test) {
+            return Self::DEFAULT;
+        }
+
+        Self(out)
+    }
+
+    /// Get the raw byte-wise representation.
+    #[inline]
+    pub const fn to_raw(&self) -> [u8; 4] {
+        self.0
+    }
 
     /// Unwrap the current language or fall back to other if the current
     /// language is `DEFAULT`.
@@ -73,8 +121,8 @@ impl Language {
 
     /// Build from a 2- or 3-letter ISO 639 code (case-insensitive). A 2-letter
     /// code is resolved to its 3-letter form via the `iso639` data. An empty
-    /// string or `"default"` maps to [`Language::DEFAULT`]. Returns `None`
-    /// for anything else.
+    /// string or `"default"` maps to [`Language::DEFAULT`]. Returns `None` for
+    /// anything else.
     pub fn from_iso(code: &str) -> Option<Self> {
         let code = code.trim();
 
@@ -95,7 +143,7 @@ impl Language {
 
                 [a, b, c, 0]
             }
-            3 => bytes,
+            3 if iso639::is_valid_id(lower.as_bytes()) => bytes,
             _ => return None,
         };
 

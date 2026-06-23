@@ -480,17 +480,14 @@ impl MediaList {
             })
             .filter(|m| {
                 filter.is_empty()
-                    || m.title
-                        .as_deref()
-                        .is_some_and(|t| t.to_lowercase().contains(&filter))
-                    || m.alt_titles
-                        .iter()
+                    || m.strings
+                        .texts(api::StringKind::Title)
                         .any(|t| t.to_lowercase().contains(&filter))
             })
             .collect();
 
         match self.sort {
-            SortField::Title => filtered.sort_by_key(|m| m.title.as_deref().map(str::to_lowercase)),
+            SortField::Title => filtered.sort_by_key(|m| m.strings.title().map(str::to_lowercase)),
             SortField::Release => filtered.sort_by_key(|m| m.date),
             SortField::Watched => filtered.sort_by_key(|m| m.last_watched_at),
         }
@@ -578,18 +575,16 @@ impl MediaList {
 
         // When the filter matched an alternate-language title rather than the
         // primary one, surface that alt title so it's clear why the row matched.
+        let primary_title = m.strings.title();
         let matched_alt = {
             let filter = self.filter.to_lowercase();
-            let primary_matches = m
-                .title
-                .as_deref()
-                .is_some_and(|t| t.to_lowercase().contains(&filter));
+            let primary_matches = primary_title.is_some_and(|t| t.to_lowercase().contains(&filter));
 
             (!filter.is_empty() && !primary_matches)
                 .then(|| {
-                    m.alt_titles
-                        .iter()
-                        .find(|t| t.to_lowercase().contains(&filter))
+                    m.strings
+                        .texts(api::StringKind::Title)
+                        .find(|t| t.to_lowercase().contains(&filter) && Some(*t) != primary_title)
                 })
                 .flatten()
         };
@@ -611,7 +606,7 @@ impl MediaList {
                                     <div class={classes!("icon", kind_icon)} />
                                 </div>
 
-                                <span class="item-title">{m.title.as_deref().unwrap_or("Untitled Media")}</span>
+                                <span class="item-title">{primary_title.unwrap_or("Untitled Media")}</span>
                             </div>
 
                             if let Some(alt) = matched_alt {
@@ -686,7 +681,7 @@ impl MediaList {
                                         onerror={ctx.props().onerror.clone()}
                                         trigger_class="btn-success"
                                         title="Mark watched"
-                                        prompt={match m.title { Some(ref title) => format!("When did you watch {}?", title), None => "When did you watch this movie?".to_string() }}
+                                        prompt={match primary_title { Some(title) => format!("When did you watch {}?", title), None => "When did you watch this movie?".to_string() }}
                                         {preset}
                                         on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(id, mark_time))}>
                                         <span class="icon check" />
@@ -704,7 +699,7 @@ impl MediaList {
                         </div>
                     </div>
 
-                    if let Some(ref overview) = m.overview {
+                    if let Some(overview) = m.strings.overview() {
                         <div class="overview">
                             {overview}
                         </div>

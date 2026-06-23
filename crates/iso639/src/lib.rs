@@ -56,6 +56,11 @@ pub struct Language {
 mod generated;
 use generated::ENTRIES;
 
+/// Test if the given byte slice is a valid ISO 639-3 code (3 ASCII letters).
+pub const fn is_valid_id(id: &[u8]) -> bool {
+    generated::is_valid_id(id)
+}
+
 /// Look up a [`Language`] by its 2-letter ISO 639-1 code [`Language::part1`].
 ///
 /// ```
