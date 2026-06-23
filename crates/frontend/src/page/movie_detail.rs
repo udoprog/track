@@ -922,7 +922,7 @@ impl MovieDetail {
                 </div>
 
                 <div class="toolbar">
-                    <div class="row mobile-justify-around">
+                    <div class="row mobile-justify-around mobile-flex-wrap">
                         {for movie.remotes.iter().filter_map(|r| {
                             let url = r.remote.movie_url()?;
                             let id = r.remote.source().as_id();
@@ -945,6 +945,23 @@ impl MovieDetail {
                         <div class="desktop-row mobile-column desktop-input-group">
                             <Tracked tracked={movie.tracked} ontoggle={link.callback(Msg::SetTracked)} />
 
+                            if !movie.remotes.is_empty() {
+                                <button class="btn" onclick={link.callback(|_| Msg::SyncMovie)} title="Sync now">
+                                    <span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} />
+                                    <span class="hide-desktop">{"Sync"}</span>
+                                </button>
+                            }
+
+                            <button class="btn" onclick={link.callback(|_| Msg::OpenTranslations)} title="Translations">
+                                <span class="icon language" />
+                                <span class="hide-desktop">{"Translations"}</span>
+                            </button>
+
+                            <button class="btn" onclick={link.callback(|_| Msg::OpenSettingsModal)} title="Settings">
+                                <span class="icon cog-6-tooth" />
+                                <span class="hide-desktop">{"Settings"}</span>
+                            </button>
+
                             <button ref={self.remove_anchor.clone()} class="btn-danger" onclick={link.callback(|_| Msg::ConfirmRemove)} title="Remove movie">
                                 <span class="icon trash" />
                                 <span class="hide-desktop">{"Remove"}</span>
@@ -963,28 +980,11 @@ impl MovieDetail {
                                     />
                                 </ContextMenu>
                             }
-
-                            if !movie.remotes.is_empty() {
-                                <button class="btn" onclick={link.callback(|_| Msg::SyncMovie)} title="Sync now">
-                                    <span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} />
-                                    <span class="hide-desktop">{"Sync"}</span>
-                                </button>
-                            }
-
-                            <button class="btn" onclick={link.callback(|_| Msg::OpenTranslations)} title="Translations">
-                                <span class="icon language" />
-                                <span class="hide-desktop">{"Translations"}</span>
-                            </button>
-
-                            <button class="btn" onclick={link.callback(|_| Msg::OpenSettingsModal)} title="Settings">
-                                <span class="icon cog-6-tooth" />
-                                <span class="hide-desktop">{"Settings"}</span>
-                            </button>
                         </div>
                     </div>
                 </div>
 
-                <div class="row text-gap" title="Release date">
+                <div class="indicator" title="Release date">
                     if let Some(ts) = movie.release_date {
                         <span class="item-inline-lg">
                             <span class="icon clock" />
@@ -1044,13 +1044,19 @@ impl MovieDetail {
                     <div class="row-split">
                         <div class="column fill">
                             <div class="toolbar">
-                                <div class="row text-gap">
+                                <div class="indicator" title="Release date">
                                     if movie.pending.is_some() {
-                                        <span class="item-inline-lg" title="Next movie"><span class="icon primary exclamation-circle" /></span>
+                                        <span class="item-inline" title="Next movie">
+                                            <span class="icon primary exclamation-circle" />
+                                        </span>
                                     } else if !self.watched.is_empty() {
-                                        <span class="item-inline-lg" title="Watched"><span class="icon primary check-circle" /></span>
+                                        <span class="item-inline" title="Watched">
+                                            <span class="icon primary check-circle" />
+                                        </span>
                                     } else {
-                                        <span class="item-inline-lg" title="Never watched"><span class="icon secondary x-circle" /></span>
+                                        <span class="item-inline" title="Never watched">
+                                            <span class="icon secondary x-circle" />
+                                        </span>
                                     }
 
                                     if let Some(ts) = movie.pending {

@@ -19,14 +19,15 @@ $text-muted: #aaa;
 $border-subtle: #252525;
 $border-subtle-transparent: rgba(8, 8, 8, $transparency);
 $border-input: #555;
-$color-primary: #2f72b9;
-$color-secondary: #545e66;
-$color-secondary-transparent: rgba($color-secondary, $transparency);
-$color-danger: #a24949;
-$color-danger-bg: #5a1a1a;
-$color-success: #73b173;
-$color-title: #97d9e6;
+$color-primary: #89adeb;
+$color-secondary: #acacac;
+$color-danger: #e5c3ae;
+$color-success: #74ca74;
+$color-title: $color-primary;
 $link-color: rgb(87, 127, 195);
+$text-color: #ccc;
+$text-color-inverted: #777;
+$adjust-bg: -25%;
 
 $font-title: 24px;
 $font-xl: 20px;
@@ -123,7 +124,7 @@ p {
     padding: $gap;
     align-items: start;
 
-    background: $color-danger-bg;
+    background: color.adjust($color-danger, $lightness: $adjust-bg);
     border-style: solid;
     border-width: 0;
     border-color: $color-danger;
@@ -197,6 +198,13 @@ p {
     }
 }
 
+.indicator {
+    display: flex;
+    flex-direction: row;
+    gap: $gap;
+    align-items: center;
+}
+
 .row {
     @include row-base;
 
@@ -204,15 +212,27 @@ p {
         justify-content: space-around;
     }
 
+    &.flex-wrap {
+        flex-wrap: wrap;
+    }
+
     @include g.on-mobile {
         &.mobile-justify-around {
             justify-content: space-around;
+        }
+
+        &.mobile-flex-wrap {
+            flex-wrap: wrap;
         }
     }
 
     @include g.on-desktop {
         &.desktop-justify-around {
             justify-content: space-around;
+        }
+
+        &.desktop-flex-wrap {
+            flex-wrap: wrap;
         }
     }
 }
@@ -279,12 +299,19 @@ p {
 
 @mixin item-inline-base($input-height, $input-height-touch) {
     display: inline-flex;
-    vertical-align: middle;
+    align-items: center;
     height: $input-height;
-    padding: $item-inline-padding 0;
+
+    >.icon {
+        height: $input-height * 0.8;
+    }
 
     @include g.on-mobile {
         height: $input-height-touch;
+
+        >.icon {
+            height: $input-height-touch * 0.8;
+        }
     }
 }
 
@@ -326,28 +353,35 @@ p {
     }
 }
 
-@mixin btn-base($color, $input-height, $input-height-touch) {
-    background-color: $color;
+@mixin btn-base($color, $text-color, $input-height, $input-height-touch) {
+    cursor: pointer;
+
+    --icon-color: #{$text-color};
+    color: $text-color;
+    background-color: color.adjust($color, $lightness: $adjust-bg);
+
     box-sizing: border-box;
     display: inline-flex;
     gap: 0.25rem;
     align-items: center;
     justify-content: start;
-    color: #fff;
     border: none;
     border-radius: $radius-sm;
-    cursor: pointer;
     font-size: $font-sm;
     font-family: $sans-serif-font;
 
-    min-width: $input-height;
     height: $input-height;
-    padding: $padding-md;
+    min-width: $input-height;
+    padding: $padding;
+
+    border-width: 2px;
+    border-style: solid;
+    border-color: transparent;
 
     @include g.on-mobile {
-        min-width: $input-height-touch;
         height: $input-height-touch;
-        padding: $padding-lg;
+        min-width: $input-height-touch;
+        padding: $padding-md;
     }
 
     &.fill {
@@ -360,28 +394,28 @@ p {
     }
 
     &.selected {
-        background-color: color.change($color, $lightness: 50%);
+        border-color: rgba(color.change($color, $lightness: 75%), 0.5);
     }
 }
 
 .btn {
-    @include btn-base($color-secondary, $input-height, $input-height-touch);
+    @include btn-base($color-secondary, $text-color, $input-height, $input-height-touch);
 }
 
 .btn-lg {
-    @include btn-base($color-secondary, $input-height-lg, $input-height-touch-lg);
+    @include btn-base($color-secondary, $text-color, $input-height-lg, $input-height-touch-lg);
 }
 
 .btn-primary {
-    @include btn-base($color-primary, $input-height, $input-height-touch);
+    @include btn-base($color-primary, $text-color, $input-height, $input-height-touch);
 }
 
 .btn-success {
-    @include btn-base($color-success, $input-height, $input-height-touch);
+    @include btn-base($color-success, $text-color, $input-height, $input-height-touch);
 }
 
 .btn-danger {
-    @include btn-base($color-danger, $input-height, $input-height-touch);
+    @include btn-base($color-danger, $text-color, $input-height, $input-height-touch);
 }
 
 .hide-mobile {
@@ -409,7 +443,12 @@ p {
     align-items: stretch;
     gap: $gap-sm;
 
-    > .input-group, .input-number, .input-text, .input-controls, .input-checkbox, .input-select {
+    >.input-group,
+    .input-number,
+    .input-text,
+    .input-controls,
+    .input-checkbox,
+    .input-select {
         align-self: stretch;
     }
 
@@ -476,11 +515,11 @@ p {
     padding: 0;
     font-size: $font-size;
     font-weight: $bold-weight;
-    
+
     &.center {
         justify-content: center;
     }
-    
+
     min-height: $input-height;
 
     @include g.on-mobile {
@@ -814,7 +853,7 @@ image {
     overflow: hidden;
 }
 
-.background > * {
+.background>* {
     position: relative;
     z-index: 1;
 }
@@ -940,7 +979,7 @@ image {
         }
 
         &.clickable:hover {
-            background: $color-secondary-transparent;
+            background: rgba($color-secondary, $transparency);
         }
     }
 }
@@ -1082,19 +1121,19 @@ image {
         }
     }
 
-    &.poster > image {
+    &.poster>image {
         aspect-ratio: 2 / 3;
     }
 
-    &.backdrop > image {
+    &.backdrop>image {
         aspect-ratio: 16 / 9;
     }
 
-    &.screenshot > image {
+    &.screenshot>image {
         aspect-ratio: 16 / 9;
     }
 
-    &.banner > image {
+    &.banner>image {
         aspect-ratio: 21 / 4;
     }
 
@@ -1104,8 +1143,13 @@ image {
 }
 
 @keyframes spin {
-    from { transform: rotate(0deg); }
-    to   { transform: rotate(360deg); }
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .spin {
@@ -1168,9 +1212,23 @@ image {
 .date-time {
     display: inline-flex;
     flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
     gap: $text-gap;
 
-    >.special {
-        color: $color-title;
+    >span {
+        white-space: nowrap;
+
+        &.special {
+            color: $color-primary;
+        }
+
+        &.date {
+            color: $color-primary;
+        }
+
+        &.time {
+            color: $color-primary;
+        }
     }
 }

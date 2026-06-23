@@ -351,7 +351,7 @@ impl Component for ShowDetail {
                 </div>
 
                 <div class="toolbar">
-                    <div class="row mobile-justify-around">
+                    <div class="row mobile-justify-around mobile-flex-wrap">
                         {for show.remotes.iter().filter_map(|r| {
                             let url = r.remote.show_url(r.slug.as_deref())?;
                             let id = r.remote.source().as_id();
@@ -373,22 +373,6 @@ impl Component for ShowDetail {
                     <div class={classes!("toolbar-dropdown", "desktop-input-group", (!self.actions_expanded).then_some("hide-mobile"))}>
                         <Tracked tracked={show.tracked} ontoggle={link.callback(Msg::SetTracked)} />
 
-                        <button ref={self.remove_anchor.clone()} class="btn-danger" onclick={link.callback(|_| Msg::ConfirmRemove)} title="Remove show">
-                            <span class="icon trash" />
-                            <span class="hide-desktop">{"Remove"}</span>
-                        </button>
-
-                        if self.confirm_remove {
-                            <ContextMenu
-                                prompt="Remove show"
-                                label={show.title.clone()}
-                                anchor={self.remove_anchor.clone()}
-                                on_close={ctx.link().callback(|_| Msg::CancelRemove)}
-                                onerror={props.onerror.clone()}>
-                                <ConfirmDanger on_confirm={link.callback(|_| Msg::RemoveShow)} on_cancel={link.callback(|_| Msg::CancelRemove)} />
-                            </ContextMenu>
-                        }
-
                         if !show.remotes.is_empty() {
                             <button class="btn" onclick={link.callback(|_| Msg::SyncShow)} title="Sync now">
                                 <span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} />
@@ -405,6 +389,22 @@ impl Component for ShowDetail {
                             <span class="icon cog-6-tooth" />
                             <span class="hide-desktop">{"Settings"}</span>
                         </button>
+
+                        <button ref={self.remove_anchor.clone()} class="btn-danger" onclick={link.callback(|_| Msg::ConfirmRemove)} title="Remove show">
+                            <span class="icon trash" />
+                            <span class="hide-desktop">{"Remove"}</span>
+                        </button>
+
+                        if self.confirm_remove {
+                            <ContextMenu
+                                prompt="Remove show"
+                                label={show.title.clone()}
+                                anchor={self.remove_anchor.clone()}
+                                on_close={ctx.link().callback(|_| Msg::CancelRemove)}
+                                onerror={props.onerror.clone()}>
+                                <ConfirmDanger on_confirm={link.callback(|_| Msg::RemoveShow)} on_cancel={link.callback(|_| Msg::CancelRemove)} />
+                            </ContextMenu>
+                        }
                     </div>
                 </div>
 
@@ -2009,8 +2009,8 @@ impl ShowDetail {
                         </div>
                     </div>
 
-                    <div class="row text-gap" title="Air date">
-                        <span class="item-inline-lg">
+                    <div class="indicator" title="Air date">
+                        <span class="item-inline">
                             <span class={classes!("icon", if episode.aired().is_some() { "clock" } else { "exclamation-circle" })} />
                         </span>
 
@@ -2024,13 +2024,19 @@ impl ShowDetail {
                         }
                     </div>
 
-                    <div class="row text-gap" title="Watch status">
+                    <div class="indicator" title="Watch status">
                         if episode.pending.is_some() {
-                            <span class="item-inline-lg" title="Next episode"><span class="icon primary exclamation-circle" /></span>
+                            <span class="item-inline" title="Next episode">
+                                <span class="icon primary exclamation-circle" />
+                            </span>
                         } else if !watched.is_empty() {
-                            <span class="item-inline-lg" title="Watched"><span class="icon primary check-circle" /></span>
+                            <span class="item-inline" title="Watched">
+                                <span class="icon primary check-circle" />
+                            </span>
                         } else {
-                            <span class="item-inline-lg" title="Never watched"><span class="icon secondary x-circle" /></span>
+                            <span class="item-inline" title="Never watched">
+                                <span class="icon secondary x-circle" />
+                            </span>
                         }
 
                         if let Some(ts) = episode.pending {

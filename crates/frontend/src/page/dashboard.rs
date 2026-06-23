@@ -605,7 +605,7 @@ impl Dashboard {
                             </MarkTimeMenu>
 
                             if let Some((show, episode)) = skip_ids {
-                                <button key="skip-button" ref={anchor.clone()} class="btn" onclick={ctx.link().callback(move |_| Msg::AskSkipEpisode(show, episode))} title="Skip episode">
+                                <button key="skip-button" ref={anchor.clone()} class="btn-danger" onclick={ctx.link().callback(move |_| Msg::AskSkipEpisode(show, episode))} title="Skip episode">
                                     <span class="icon forward" />
                                 </button>
 

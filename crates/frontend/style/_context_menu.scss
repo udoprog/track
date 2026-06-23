@@ -19,10 +19,6 @@
     gap: $text-gap;
     align-items: center;
 
-    @include g.on-mobile {
-        min-height: $input-height-touch;
-    }
-
     > span {
         min-width: 0;
         overflow-wrap: break-word;

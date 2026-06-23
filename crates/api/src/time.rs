@@ -408,7 +408,7 @@ impl HumanDateTime {
     pub fn view(&self) -> VNode {
         let mut list = Vec::with_capacity(3);
         list.push(self.date.into_prop_value());
-        list.push(yew::html!(<span>{" at "}</span>));
+        list.push(yew::html!(<span>{"at"}</span>));
         list.push(self.time_of_day.clone().into_prop_value());
         let list = VList::with_children(list, None);
         VNode::VList(Rc::new(list))
@@ -463,7 +463,7 @@ impl fmt::Display for TimeOfDay {
 impl IntoPropValue<VNode> for TimeOfDay {
     #[inline]
     fn into_prop_value(self) -> VNode {
-        yew::html!(<span>{self.to_string()}</span>)
+        yew::html!(<span class="time">{self.to_string()}</span>)
     }
 }
 
