@@ -1,4 +1,4 @@
-use api::TimeZone;
+use api::TimeInfo;
 use gloo::events::EventListener;
 use musli_web::web03::prelude::*;
 use web_sys::HtmlImageElement;
@@ -33,10 +33,10 @@ pub(crate) struct MediaList {
     desc: bool,
     tracked: TrackedFilter,
     selection: MediaSelection,
-    tz: TimeZone,
+    time: TimeInfo,
     background: Background,
     router: Router,
-    _tz_handle: ContextHandle<TimeZone>,
+    _time_handle: ContextHandle<TimeInfo>,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
     list_req: ws::Request,
@@ -64,7 +64,7 @@ pub(crate) enum Msg {
     SetSelection(MediaSelection),
     SetPage(usize),
     Navigate(Route),
-    SetTz(TimeZone),
+    SetTime(TimeInfo),
 }
 
 #[derive(Properties, PartialEq)]
@@ -91,9 +91,9 @@ impl Component for MediaList {
         let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
-        let (tz, _tz_handle) = ctx
+        let (time, _time_handle) = ctx
             .link()
-            .context::<TimeZone>(ctx.link().callback(Msg::SetTz))
+            .context::<TimeInfo>(ctx.link().callback(Msg::SetTime))
             .expect("Expected a configured time zone");
 
         let (background, _) = ctx
@@ -115,10 +115,10 @@ impl Component for MediaList {
             desc: ctx.props().desc,
             tracked: ctx.props().tracked,
             selection: ctx.props().selection,
-            tz,
+            time,
+            _time_handle,
             background,
             router,
-            _tz_handle,
             _setup,
             _broadcast,
             list_req: ws::Request::default(),
@@ -458,8 +458,8 @@ impl MediaList {
                 self.router.push(route);
                 Ok(false)
             }
-            Msg::SetTz(tz) => {
-                self.tz = tz;
+            Msg::SetTime(time) => {
+                self.time = time;
                 Ok(true)
             }
         }
@@ -638,13 +638,13 @@ impl MediaList {
                                     }
 
                                     <div class="row">
-                                        if let Some(date) = m.date {
+                                        if let Some(ts) = m.date {
                                             <div class="row">
                                                 <span class="text-muted item-inline" title="Release date">
                                                     <span class="icon calendar" />
                                                 </span>
 
-                                                {date.date(self.tz.clone()).to_string()}
+                                                <span>{ts.human_date(self.time.clone())}</span>
                                             </div>
                                         } else {
                                             <div class="row">
@@ -656,12 +656,13 @@ impl MediaList {
                                             </div>
                                         }
 
-                                        if let Some(watched) = m.last_watched_at {
+                                        if let Some(ts) = m.last_watched_at {
                                             <div class="row">
                                                 <span class="text-muted item-inline" title="Last watched">
                                                     <span class="icon eye" />
                                                 </span>
-                                                {watched.date(self.tz.clone()).to_string()}
+
+                                                <span>{ts.human_date(self.time.clone())}</span>
                                             </div>
                                         } else {
                                             <div class="row">

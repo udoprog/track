@@ -18,6 +18,7 @@ mod tests;
 mod macros;
 
 mod language;
+
 pub use self::language::{Language, ParseLanguageErr};
 
 mod country;
@@ -30,7 +31,9 @@ mod sync_kind;
 pub use self::sync_kind::{SyncKind, SyncKindSet};
 
 mod time;
-pub use self::time::{Date, TimeZone, Timestamp, Weekday};
+pub use self::time::{
+    Date, HumanDate, HumanDateTime, TimeInfo, TimeOfDay, TimeZone, Timestamp, Weekday,
+};
 
 macros::define_id!(ShowId);
 macros::define_id!(SeasonId);
@@ -1519,22 +1522,24 @@ pub struct Pending {
 /// Implemented by types that carry both a civil air date and an optional
 /// precise timestamp. `display_at` picks the most precise value available
 /// and formats it in the given time zone.
-pub trait HasAired {
+pub trait Timed {
     fn aired(&self) -> Option<Timestamp>;
 
-    fn display_at(&self, tz: TimeZone) -> Option<String> {
+    fn human_aired(&self, time: TimeInfo) -> Option<HumanDateTime> {
         let ts = self.aired()?;
-        Some(ts.display(tz))
+        Some(ts.human_date_time(time))
     }
 }
 
-impl HasAired for Episode {
+impl Timed for Episode {
+    #[inline]
     fn aired(&self) -> Option<Timestamp> {
         self.aired
     }
 }
 
-impl HasAired for Pending {
+impl Timed for Pending {
+    #[inline]
     fn aired(&self) -> Option<Timestamp> {
         self.aired
     }
@@ -2019,8 +2024,8 @@ pub struct ListPendingResponse {
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
-pub struct ListScheduleRequest {
-    pub tz: Option<String>,
+pub struct ListScheduleRequest<'a> {
+    pub tz: Option<&'a str>,
     pub days: u32,
 }
 
@@ -2548,7 +2553,7 @@ api::define! {
 
     pub type ListSchedule;
     impl Endpoint for ListSchedule {
-        impl Request for ListScheduleRequest;
+        impl Request for ListScheduleRequest<'_>;
         type Response<'de> = ListScheduleResponse;
     }
 

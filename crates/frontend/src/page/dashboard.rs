@@ -3,7 +3,7 @@ use core::cmp::Reverse;
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
-use api::{HasAired, TimeZone};
+use api::{TimeInfo, Timed};
 
 use crate::SetupChannel;
 use crate::background::Background;
@@ -23,10 +23,10 @@ pub(crate) struct Dashboard {
     pending: Vec<PendingState>,
     pending_loaded: bool,
     config: api::Config,
-    tz: TimeZone,
+    time: TimeInfo,
+    _time_handle: ContextHandle<TimeInfo>,
     background: Background,
     router: Router,
-    _tz_handle: ContextHandle<TimeZone>,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
     _pending_req: ws::Request,
@@ -55,7 +55,7 @@ pub(crate) enum Msg {
     SetConfigDone(Result<ws::Packet<api::SetConfig>, ws::Error>),
     SetPage(usize),
     Navigate(Route),
-    SetTz(TimeZone),
+    SetTime(TimeInfo),
 }
 
 #[derive(Properties, PartialEq)]
@@ -77,9 +77,9 @@ impl Component for Dashboard {
         let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
-        let (tz, _tz_handle) = ctx
+        let (time, _time_handle) = ctx
             .link()
-            .context::<TimeZone>(ctx.link().callback(Msg::SetTz))
+            .context::<TimeInfo>(ctx.link().callback(Msg::SetTime))
             .expect("Expected a configured time zone");
 
         let (background, _) = ctx
@@ -97,10 +97,10 @@ impl Component for Dashboard {
             pending: Vec::new(),
             pending_loaded: false,
             config: api::Config::default(),
-            tz,
+            time,
+            _time_handle,
             background,
             router,
-            _tz_handle,
             _setup,
             _broadcast,
             _pending_req: ws::Request::default(),
@@ -331,8 +331,8 @@ impl Dashboard {
                 self.router.push(route);
                 Ok(false)
             }
-            Msg::SetTz(tz) => {
-                self.tz = tz;
+            Msg::SetTime(time) => {
+                self.time = time;
                 Ok(true)
             }
         }
@@ -597,7 +597,7 @@ impl Dashboard {
                     <div class="pending-content">
                         {title}
 
-                        if let Some(s) = pending.display_at(self.tz.clone()) {
+                        if let Some(s) = pending.human_aired(self.time.clone()) {
                             <span class="pending-date">{s}</span>
                         }
                     </div>

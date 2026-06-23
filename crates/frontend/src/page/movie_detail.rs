@@ -1,4 +1,4 @@
-use api::TimeZone;
+use api::TimeInfo;
 use musli_web::web03::prelude::*;
 use std::collections::{BTreeMap, HashSet};
 use yew::prelude::*;
@@ -38,8 +38,8 @@ pub(crate) struct MovieDetail {
     translations_modal: bool,
     background: Background,
     router: Router,
-    tz: TimeZone,
-    _tz_handle: ContextHandle<TimeZone>,
+    time: TimeInfo,
+    _time_handle: ContextHandle<TimeInfo>,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
     _movie_req: ws::Request,
@@ -120,7 +120,7 @@ pub(crate) enum Msg {
     AddPendingDone(Result<ws::Packet<api::AddPending>, ws::Error>),
     OnRemoveNext,
     RemovePendingDone(Result<ws::Packet<api::RemovePending>, ws::Error>),
-    SetTz(TimeZone),
+    SetTime(TimeInfo),
     ToggleActionsExpanded,
     ToggleDetailedActionsExpanded,
     ToggleReleaseType(api::ReleaseType),
@@ -145,9 +145,9 @@ impl Component for MovieDetail {
         let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
-        let (tz, _tz_handle) = ctx
+        let (time, _time_handle) = ctx
             .link()
-            .context::<TimeZone>(ctx.link().callback(Msg::SetTz))
+            .context::<TimeInfo>(ctx.link().callback(Msg::SetTime))
             .expect("Expected a configured time zone");
 
         let (background, _) = ctx
@@ -181,8 +181,8 @@ impl Component for MovieDetail {
             translations_modal: false,
             background,
             router,
-            tz,
-            _tz_handle,
+            time,
+            _time_handle,
             _setup,
             _broadcast,
             _movie_req: ws::Request::default(),
@@ -797,8 +797,8 @@ impl MovieDetail {
                 self.load_movie(ctx);
                 Ok(false)
             }
-            Msg::SetTz(tz) => {
-                self.tz = tz;
+            Msg::SetTime(time) => {
+                self.time = time;
                 Ok(true)
             }
             Msg::ToggleActionsExpanded => {
@@ -910,7 +910,7 @@ impl MovieDetail {
                                 <span class="icon clock" />
                             </span>
 
-                            <span class="text-muted">{date.date(self.tz.clone())}</span>
+                            <span class="text-muted">{date.human_date(self.time.clone())}</span>
                         } else {
                             <span class="item-inline">
                                 <span class="icon exclamation-circle" />
@@ -945,11 +945,21 @@ impl MovieDetail {
                                     <span class="item-inline-lg" title="Never watched"><span class="icon secondary x-circle" /></span>
                                 }
 
-                                <span class="text-muted">
+                                <span class="date-time">
                                     {match &self.watched[..] {
-                                        [] => "Never watched".to_string(),
-                                        [w] => format!("Watched once at {}", w.watched.timestamp.display(self.tz.clone())),
-                                        [w, ..] => format!("Watched {} times, first at {}", self.watched.len(), w.watched.timestamp.display(self.tz.clone())),
+                                        [] => html!(<span class="special">{"Never watched"}</span>),
+                                        [w] => html! {
+                                            <>
+                                                <span>{"Watched once"}</span>
+                                                {w.watched.timestamp.human_date_time(self.time.clone()).lower().view()}
+                                            </>
+                                        },
+                                        [w, ..] => html! {
+                                            <>
+                                                {format!("Watched {} times, first", self.watched.len())}
+                                                {w.watched.timestamp.human_date_time(self.time.clone()).view()}
+                                            </>
+                                        }
                                     }}
                                 </span>
                             </div>
@@ -1088,8 +1098,8 @@ impl MovieDetail {
 
                                     html! {
                                         <div class="row-split">
-                                            <div class="row fill">
-                                                <span>{w.watched.timestamp.display(self.tz.clone())}</span>
+                                            <div class="row fill date-time">
+                                                {w.watched.timestamp.human_date_time(self.time.clone()).view()}
                                             </div>
 
                                             <button ref={w.remove_watch_anchor.clone()} class="btn-danger end" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
@@ -1100,7 +1110,7 @@ impl MovieDetail {
                                             if self.confirm_remove_watch == Some(wid) {
                                                 <ContextMenu
                                                     prompt="Remove watch at"
-                                                    label={w.watched.timestamp.display(self.tz.clone())}
+                                                    label={w.watched.timestamp.human_date_time(self.time.clone())}
                                                     anchor={w.remove_watch_anchor.clone()}
                                                     on_close={link.callback(|_| Msg::CancelRemoveWatch)}
                                                     onerror={ctx.props().onerror.clone()}>
@@ -1121,7 +1131,9 @@ impl MovieDetail {
                         <div class="column">
                             <h3>{"Release date"}</h3>
 
-                            <span>{date.display(self.tz.clone())}</span>
+                            <span class="date-time">
+                                {date.human_date_time(self.time.clone()).view()}
+                            </span>
                         </div>
                     }
 
@@ -1147,7 +1159,7 @@ impl MovieDetail {
                     language={movie.language}
                     has_images={!movie.images.is_empty()}
                     has_remotes={!movie.remotes.is_empty()}
-                    last_synced={movie.last_synced_at.map(|ts| AttrValue::from(ts.display(self.tz.clone())))}
+                    last_synced={movie.last_synced_at.map(|ts| AttrValue::from(ts.human_date_time(self.time.clone())))}
                     syncing={self.syncing}
                     on_sync={link.callback(|_| Msg::SyncMovie)}
                     auto_sync={movie.auto_sync}
@@ -1242,7 +1254,7 @@ impl MovieDetail {
                                         </div>
 
                                         <div class="row end">
-                                            <span class="text-muted">{earliest.timestamp.display(self.tz.clone())}</span>
+                                            <span class="text-muted">{earliest.timestamp.human_date_time(self.time.clone())}</span>
                                         </div>
                                     </div>
 
@@ -1270,7 +1282,7 @@ impl MovieDetail {
                                                         }
                                                     </div>
 
-                                                    <span class="text-muted">{r.timestamp.display(self.tz.clone())}</span>
+                                                    <span class="text-muted">{r.timestamp.human_date_time(self.time.clone())}</span>
                                                 </div>
                                             }) }
                                         </div>

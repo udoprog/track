@@ -16,6 +16,7 @@ use crate::error::{CustomContext, Error, Message};
 pub(crate) struct OutlineEntry {
     pub(crate) code: AttrValue,
     pub(crate) label: AttrValue,
+    pub(crate) pending: bool,
 }
 
 /// Context value handed to consumers (e.g. the show detail view) so they can
@@ -69,6 +70,7 @@ impl Drop for OutlineHandle {
 struct OutlineMark {
     label: AttrValue,
     top: f64,
+    pending: bool,
 }
 
 #[derive(Properties, PartialEq)]
@@ -212,9 +214,7 @@ impl Component for Outline {
                     let hidden = self.hidden.get(i).copied().unwrap_or(false);
 
                     html! {
-                        <div class={classes!("outline-sample", hidden.then_some("hidden"))}
-                            style={format!("top: {}%;", mark.top)}
-                            title={mark.label.clone()}>
+                        <div class={classes!("outline-sample", hidden.then_some("hidden"), mark.pending.then_some("pending"))} style={format!("top: {}%;", mark.top)} title={mark.label.clone()}>
                             {mark.label.clone()}
                         </div>
                     }
@@ -329,6 +329,7 @@ impl Outline {
             out.push(OutlineMark {
                 label: entry.label.clone(),
                 top,
+                pending: entry.pending,
             });
         }
     }
@@ -425,9 +426,17 @@ impl Outline {
             return;
         }
 
-        let rel = ((e.client_y() as f64 - rect.top()) / rect.height()).clamp(0.0, 1.0);
-        let max = (page.scroll_height() - page.client_height()).max(0) as f64;
-        page.set_scroll_top((rel * max) as i32);
+        // Center the viewport band on the pointer rather than mapping the
+        // pointer onto the compressed `0..max` scroll range: the rail's full
+        // height represents the whole `scroll_height` (matching `update_mark`),
+        // so the pointer must be placed at the band's center. Clamping lets the
+        // extremes still reach the very top/bottom.
+        let relative = ((e.client_y() as f64 - rect.top()) / rect.height()).clamp(0.0, 1.0);
+        let scroll_height = page.scroll_height() as f64;
+        let client_height = page.client_height() as f64;
+        let max = (scroll_height - client_height).max(0.0);
+        let target = relative * scroll_height - client_height / 2.0;
+        page.set_scroll_top(target.clamp(0.0, max) as i32);
     }
 }
 

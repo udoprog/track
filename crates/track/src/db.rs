@@ -4145,16 +4145,15 @@ impl Database {
     pub(crate) async fn schedule(
         &self,
         days: u32,
-        now: Timestamp,
-        tz: api::TimeZone,
+        time: api::TimeInfo,
     ) -> Result<Vec<api::ScheduledDay>> {
-        let today = now.date(tz.clone());
+        let today = time.now().date(time.clone());
 
         let Some(end) = today.checked_add_days(days) else {
             return Ok(vec![]);
         };
 
-        let end = end.to_timestamp_at_midnight_zoned(tz.clone())?;
+        let end = end.to_timestamp_at_midnight_zoned(time.tz().clone())?;
 
         let mut s = self.inner.clone().shared().await?;
 
@@ -4173,7 +4172,7 @@ impl Database {
                     aired: day,
                 };
 
-                let day = day.date(tz.clone());
+                let day = day.date(time.clone());
 
                 if let Some(day_entry) = days_map.iter_mut().find(|(d, ..)| d == &day) {
                     if let Some(show_entry) =
@@ -4201,7 +4200,7 @@ impl Database {
                     released,
                 };
 
-                let day = released.date(tz.clone());
+                let day = released.date(time.clone());
 
                 if let Some(day_entry) = days_map.iter_mut().find(|(d, ..)| d == &day) {
                     day_entry.2.push(movie);

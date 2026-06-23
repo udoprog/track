@@ -479,18 +479,13 @@ impl WsHandler {
             }
             api::Request::ListSchedule => {
                 let req = incoming
-                    .read::<api::ListScheduleRequest>()
+                    .read::<api::ListScheduleRequest<'_>>()
                     .context("Expected a request payload")?;
 
-                let tz = req
-                    .tz
-                    .as_deref()
-                    .and_then(TimeZone::get)
-                    .unwrap_or(TimeZone::UTC);
+                let tz = req.tz.and_then(TimeZone::get).unwrap_or(TimeZone::UTC);
 
-                let now = api::Timestamp::now();
-
-                let days = self.db.schedule(req.days, now, tz).await?;
+                let time = api::TimeInfo::new(tz, api::Timestamp::now());
+                let days = self.db.schedule(req.days, time).await?;
                 outgoing.write(api::ListScheduleResponse { days });
             }
             api::Request::ListWatchNext => {

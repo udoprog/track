@@ -1,15 +1,50 @@
 use core::fmt;
 use core::str::FromStr;
 
+#[cfg(feature = "yew")]
+use std::rc::Rc;
+
 use jiff::Timestamp as JiffTimestamp;
 use jiff::civil::Date as JiffDate;
 use jiff::tz::TimeZone as JiffTimeZone;
 use musli_core::{Allocator, Context as _, Decode, Decoder, Encode, Encoder};
 
 #[cfg(feature = "yew")]
+use implicit_clone::unsync::IString;
+#[cfg(feature = "yew")]
+use yew::AttrValue;
+#[cfg(feature = "yew")]
 use yew::html::IntoPropValue;
 #[cfg(feature = "yew")]
-use yew::virtual_dom::VNode;
+use yew::virtual_dom::{VList, VNode};
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct TimeInfo {
+    tz: TimeZone,
+    now: Timestamp,
+}
+
+impl TimeInfo {
+    #[inline]
+    pub fn new(tz: TimeZone, now: Timestamp) -> Self {
+        Self { tz, now }
+    }
+
+    #[inline]
+    pub fn tz(&self) -> &TimeZone {
+        &self.tz
+    }
+
+    #[inline]
+    pub fn now(&self) -> Timestamp {
+        self.now
+    }
+
+    #[inline]
+    pub fn date(&self) -> Date {
+        self.now.date(self.clone())
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TimeZone(JiffTimeZone);
@@ -18,24 +53,22 @@ impl TimeZone {
     /// The UTC TimeZone.
     pub const UTC: Self = Self(JiffTimeZone::UTC);
 
+    /// The system's local TimeZone.
     #[inline]
-    pub fn from_jiff(tz: JiffTimeZone) -> Self {
-        Self(tz)
+    pub fn system() -> Self {
+        Self(JiffTimeZone::system())
     }
 
-    #[inline]
-    pub fn into_jiff(self) -> JiffTimeZone {
-        self.0
-    }
-
+    /// Get a TimeZone by IANA name (e.g. "America/New_York"). Returns `None` if
+    /// the name is invalid or not supported by the current platform.
     #[inline]
     pub fn get(s: &str) -> Option<Self> {
         Some(Self(JiffTimeZone::get(s).ok()?))
     }
 
     #[inline]
-    pub fn iana_name(&self) -> Option<String> {
-        self.0.iana_name().map(|s| s.to_owned())
+    pub fn iana_name(&self) -> Option<&str> {
+        self.0.iana_name()
     }
 }
 
@@ -77,28 +110,70 @@ impl Timestamp {
     /// The timezone suffix is the IANA abbreviation (e.g. `CEST`, `EST`) when
     /// available, or the numeric offset (e.g. `+05:30`) for fixed-offset zones.
     #[inline]
-    pub fn display(&self, tz: TimeZone) -> String {
+    pub fn date_and_time(&self, time: TimeInfo) -> String {
         self.0
-            .to_zoned(tz.0)
+            .to_zoned(time.tz.0)
             .strftime("%Y-%m-%d %H:%M %Z")
             .to_string()
     }
 
     #[inline]
-    pub fn date(&self, tz: TimeZone) -> Date {
-        Date(self.0.to_zoned(tz.0).date())
+    pub fn human_date(&self, time: TimeInfo) -> HumanDate {
+        let today = time.now().date(time.clone());
+        let date = self.date(time.clone());
+
+        let kind = 'kind: {
+            if date == today {
+                break 'kind HumanDateKind::Special(Special::Today);
+            }
+
+            if date == today.checked_sub_days(1).unwrap_or(date) {
+                break 'kind HumanDateKind::Special(Special::Yesterday);
+            }
+
+            if date == today.checked_add_days(1).unwrap_or(date) {
+                break 'kind HumanDateKind::Special(Special::Tomorrow);
+            }
+
+            HumanDateKind::Date(date)
+        };
+
+        HumanDate {
+            kind,
+            lower: false,
+            same_year: date.year() == today.year(),
+        }
+    }
+
+    #[inline]
+    pub fn human_date_time(&self, time: TimeInfo) -> HumanDateTime {
+        let past = *self < time.now();
+        let date = self.human_date(time.clone());
+        let time_of_day = self.time_of_day(time);
+        HumanDateTime {
+            past,
+            date,
+            time_of_day,
+        }
+    }
+
+    #[inline]
+    pub fn date(&self, time: TimeInfo) -> Date {
+        Date(self.0.to_zoned(time.tz.0).date())
     }
 
     /// Format just the local time of day (`"HH:MM"`, 24-hour) in the given timezone.
     #[inline]
-    pub fn time_of_day(&self, tz: TimeZone) -> String {
-        self.0.to_zoned(tz.0).strftime("%H:%M").to_string()
+    pub fn time_of_day(&self, time: TimeInfo) -> TimeOfDay {
+        TimeOfDay {
+            zoned: self.0.to_zoned(time.tz.0),
+        }
     }
 
     /// The local `(hour, minute)` of this timestamp in the given timezone.
     #[inline]
-    pub fn hour_minute(&self, tz: TimeZone) -> (u8, u8) {
-        let zoned = self.0.to_zoned(tz.0);
+    pub fn hour_minute(&self, time: TimeInfo) -> (u8, u8) {
+        let zoned = self.0.to_zoned(time.tz.0);
         (zoned.hour() as u8, zoned.minute() as u8)
     }
 }
@@ -113,8 +188,8 @@ impl FromStr for Timestamp {
 }
 
 impl fmt::Display for Timestamp {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // jiff::Timestamp displays as RFC 3339 UTC, e.g. "2024-01-15T10:30:00Z"
         self.0.fmt(f)
     }
 }
@@ -122,6 +197,7 @@ impl fmt::Display for Timestamp {
 impl<M> Encode<M> for Timestamp {
     type Encode = Self;
 
+    #[inline]
     fn encode<E>(&self, encoder: E) -> Result<(), E::Error>
     where
         E: Encoder<Mode = M>,
@@ -129,6 +205,7 @@ impl<M> Encode<M> for Timestamp {
         encoder.collect_string(self)
     }
 
+    #[inline]
     fn as_encode(&self) -> &Self::Encode {
         self
     }
@@ -166,6 +243,222 @@ impl ::sqll::BindValue for Timestamp {
     #[inline]
     fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
         self.0.as_millisecond().bind_value(stmt, index)
+    }
+}
+
+/// A human-friendly date relative to "today" in a given timezone, used for display.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HumanDate {
+    kind: HumanDateKind,
+    lower: bool,
+    same_year: bool,
+}
+
+impl HumanDate {
+    #[inline]
+    pub fn lower(self) -> Self {
+        Self {
+            kind: self.kind,
+            lower: true,
+            same_year: self.same_year,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Special {
+    Today,
+    Yesterday,
+    Tomorrow,
+}
+
+impl Special {
+    fn lower(&self) -> &'static str {
+        match self {
+            Special::Today => "today",
+            Special::Yesterday => "yesterday",
+            Special::Tomorrow => "tomorrow",
+        }
+    }
+
+    fn upper(&self) -> &'static str {
+        match self {
+            Special::Today => "Today",
+            Special::Yesterday => "Yesterday",
+            Special::Tomorrow => "Tomorrow",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HumanDateKind {
+    Special(Special),
+    Date(Date),
+}
+
+fn nth(day: i8) -> impl fmt::Display {
+    let suffix = match day {
+        11 | 12 | 13 => "th",
+        _ => match day % 10 {
+            1 => "st",
+            2 => "nd",
+            3 => "rd",
+            _ => "th",
+        },
+    };
+
+    fmt::from_fn(move |f| write!(f, "{day}{suffix}"))
+}
+
+fn month(month: i8) -> &'static str {
+    match month {
+        1 => "January",
+        2 => "February",
+        3 => "March",
+        4 => "April",
+        5 => "May",
+        6 => "June",
+        7 => "July",
+        8 => "August",
+        9 => "September",
+        10 => "October",
+        11 => "November",
+        _ => "December",
+    }
+}
+
+fn format_date(date: jiff::civil::Date) -> impl fmt::Display {
+    fmt::from_fn(move |f| write!(f, "{} of {}", nth(date.day()), month(date.month())))
+}
+
+fn format_date_year(date: jiff::civil::Date) -> impl fmt::Display {
+    fmt::from_fn(move |f| {
+        write!(
+            f,
+            "{} of {}, {}",
+            nth(date.day()),
+            month(date.month()),
+            date.year()
+        )
+    })
+}
+
+impl fmt::Display for HumanDate {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.kind {
+            HumanDateKind::Special(special) if self.lower => special.lower().fmt(f),
+            HumanDateKind::Special(special) => special.upper().fmt(f),
+            HumanDateKind::Date(date) if self.same_year => format_date(date.0).fmt(f),
+            HumanDateKind::Date(date) => format_date_year(date.0).fmt(f),
+        }
+    }
+}
+
+#[cfg(feature = "yew")]
+impl IntoPropValue<VNode> for HumanDate {
+    #[inline]
+    fn into_prop_value(self) -> VNode {
+        match self.kind {
+            HumanDateKind::Special(special) if self.lower => {
+                yew::html!(<span class="special">{special.lower()}</span>)
+            }
+            HumanDateKind::Special(special) => {
+                yew::html!(<span class="special">{special.upper()}</span>)
+            }
+            HumanDateKind::Date(date) if self.same_year => {
+                yew::html!(<span class="date">{format_date(date.0).to_string()}</span>)
+            }
+            HumanDateKind::Date(date) => {
+                yew::html!(<span class="date">{format_date_year(date.0).to_string()}</span>)
+            }
+        }
+    }
+}
+
+/// A human-friendly date and time relative to "today" in a given timezone, used for display.
+pub struct HumanDateTime {
+    date: HumanDate,
+    time_of_day: TimeOfDay,
+    past: bool,
+}
+
+impl HumanDateTime {
+    #[inline]
+    pub fn lower(self) -> Self {
+        Self {
+            date: self.date.lower(),
+            time_of_day: self.time_of_day,
+            past: self.past,
+        }
+    }
+
+    #[inline]
+    pub fn is_past(&self) -> bool {
+        self.past
+    }
+
+    #[inline]
+    #[cfg(feature = "yew")]
+    pub fn view(&self) -> VNode {
+        let mut list = Vec::with_capacity(3);
+        list.push(self.date.into_prop_value());
+        list.push(yew::html!(<span>{" at "}</span>));
+        list.push(self.time_of_day.clone().into_prop_value());
+        let list = VList::with_children(list, None);
+        VNode::VList(Rc::new(list))
+    }
+}
+
+impl fmt::Display for HumanDateTime {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} at {}", self.date, self.time_of_day)
+    }
+}
+
+#[cfg(feature = "yew")]
+impl IntoPropValue<VNode> for HumanDateTime {
+    #[inline]
+    fn into_prop_value(self) -> VNode {
+        self.view()
+    }
+}
+
+#[cfg(feature = "yew")]
+impl IntoPropValue<Option<IString>> for HumanDateTime {
+    #[inline]
+    fn into_prop_value(self) -> Option<IString> {
+        Some(self.to_string().into())
+    }
+}
+
+#[cfg(feature = "yew")]
+impl From<HumanDateTime> for AttrValue {
+    #[inline]
+    fn from(hdt: HumanDateTime) -> Self {
+        hdt.to_string().into()
+    }
+}
+
+/// A local time of day in a given timezone, used for display.
+#[derive(Clone)]
+pub struct TimeOfDay {
+    zoned: jiff::Zoned,
+}
+
+impl fmt::Display for TimeOfDay {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.zoned.strftime("%H:%M").fmt(f)
+    }
+}
+
+#[cfg(feature = "yew")]
+impl IntoPropValue<VNode> for TimeOfDay {
+    #[inline]
+    fn into_prop_value(self) -> VNode {
+        yew::html!(<span>{self.to_string()}</span>)
     }
 }
 
@@ -291,7 +584,7 @@ impl Date {
         let zoned = self
             .0
             .at(hour as i8, minute as i8, 0, 0)
-            .to_zoned(tz.into_jiff())
+            .to_zoned(tz.0)
             .map_err(InnerDateError::ToUtc)?;
 
         Ok(Timestamp(zoned.timestamp()))

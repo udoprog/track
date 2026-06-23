@@ -15,13 +15,21 @@
 // inline transforms computed in Rust.
 .context-menu-header {
     display: flex;
-    align-items: center;
-    justify-content: start;
+    flex-wrap: wrap;
     gap: $text-gap;
-    font-size: $font-lg;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    overflow: hidden;
+
+    @include g.on-mobile {
+        min-height: $input-height-touch;
+    }
+
+    > span {
+        min-width: 0;
+        overflow-wrap: break-word;
+    }
+
+    .focus {
+        font-weight: $bold-weight;
+    }
 }
 
 .context-menu {
@@ -43,4 +51,8 @@
 
     gap: $gap;
     padding: $gap;
+
+    @include g.on-mobile {
+        max-width: calc(100vw - #{$gap-xs * 2});
+    }
 }

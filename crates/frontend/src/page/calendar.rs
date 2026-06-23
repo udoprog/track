@@ -1,7 +1,7 @@
 use core::array;
 use std::collections::HashMap;
 
-use api::TimeZone;
+use api::TimeInfo;
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
@@ -13,9 +13,9 @@ use crate::ui::DOT;
 pub(crate) struct Calendar {
     channel: ws::Channel,
     schedule: Vec<api::ScheduledDay>,
-    tz: TimeZone,
+    time: TimeInfo,
+    _time_handle: ContextHandle<TimeInfo>,
     router: Router,
-    _tz_handle: ContextHandle<TimeZone>,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
     _schedule_req: ws::Request,
@@ -26,7 +26,7 @@ pub(crate) enum Msg {
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     ScheduleLoaded(Result<ws::Packet<api::ListSchedule>, ws::Error>),
     Navigate(Route),
-    SetTz(TimeZone),
+    SetTime(TimeInfo),
 }
 
 #[derive(Properties, PartialEq)]
@@ -47,9 +47,9 @@ impl Component for Calendar {
         let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
-        let (tz, _tz_handle) = ctx
+        let (time, _time_handle) = ctx
             .link()
-            .context::<TimeZone>(ctx.link().callback(Msg::SetTz))
+            .context::<TimeInfo>(ctx.link().callback(Msg::SetTime))
             .expect("Expected a configured time zone");
 
         let (router, _) = ctx
@@ -60,9 +60,9 @@ impl Component for Calendar {
         Self {
             channel: ws::Channel::default(),
             schedule: Vec::new(),
-            tz,
+            time,
+            _time_handle,
             router,
-            _tz_handle,
             _setup,
             _broadcast,
             _schedule_req: ws::Request::default(),
@@ -168,7 +168,7 @@ impl Component for Calendar {
 
                                                                 html! {
                                                                     <div class="calendar-item-code clickable" onclick={onclick} title={format!("Open {} {}", entry.show_title, ep.code())}>
-                                                                        <span>{ep.aired.time_of_day(self.tz.clone())}</span>
+                                                                        <span>{ep.aired.time_of_day(self.time.clone())}</span>
                                                                         <span>{ep.code().to_string()}</span>
                                                                     </div>
                                                                 }
@@ -195,7 +195,7 @@ impl Component for Calendar {
                                                             </div>
 
                                                             <div class="calendar-item-code">
-                                                                {movie.released.time_of_day(self.tz.clone())}
+                                                                {movie.released.time_of_day(self.time.clone())}
                                                             </div>
                                                         </div>
                                                     }
@@ -261,8 +261,8 @@ impl Calendar {
                 self.router.push(route);
                 Ok(false)
             }
-            Msg::SetTz(tz) => {
-                self.tz = tz;
+            Msg::SetTime(time) => {
+                self.time = time;
 
                 if self.channel.id() != ws::ChannelId::NONE {
                     self.load_schedule(ctx);
@@ -278,7 +278,7 @@ impl Calendar {
             .channel
             .request()
             .body(api::ListScheduleRequest {
-                tz: self.tz.iana_name(),
+                tz: self.time.tz().iana_name(),
                 days: 28,
             })
             .on_packet(ctx.link().callback(Msg::ScheduleLoaded))

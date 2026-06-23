@@ -162,7 +162,10 @@ impl Component for ContextMenu {
                             <span>{prompt}</span>
 
                             if let Some(ref label) = props.label {
-                                <span>{label}{"?"}</span>
+                                <span>
+                                    <span class="focus">{label}</span>
+                                    <span>{"?"}</span>
+                                </span>
                             }
                         </div>
                     }

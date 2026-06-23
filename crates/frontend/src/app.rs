@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
-use api::TimeZone;
-use jiff::tz::TimeZone as JiffTimeZone;
+use api::{TimeInfo, TimeZone, Timestamp};
+use gloo::timers::callback::Interval;
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
@@ -10,12 +10,12 @@ use crate::error::{CustomContext, Error, Message, RcError};
 use crate::page::{Dashboard, MediaList, MovieDetail, Queue, Search, Settings, ShowDetail};
 use crate::router::{DashboardQuery, MediaQuery, QueueQuery, Route, Router, SearchQuery};
 use crate::setup_channel::SetupChannel;
-use crate::ui::{ErrorBox, Loading, Outline, OutlineControl, OutlineEntry, TopLanguages};
+use crate::ui::{ErrorBox, Outline, OutlineControl, OutlineEntry, TopLanguages};
 
 pub(super) struct App {
     channel: ws::Channel,
     ws: ws::Service,
-    tz: Option<TimeZone>,
+    time: TimeInfo,
     top_languages: TopLanguages,
     /// Scroll container the outline reflects and drives; passed to [`Outline`].
     page: NodeRef,
@@ -28,11 +28,13 @@ pub(super) struct App {
     _broadcast: ws::Listener,
     _config_req: ws::Request,
     _top_languages_req: ws::Request,
+    _tick_minute_interval: Interval,
 }
 
 pub(super) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
+    TickMinute,
     ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
     TopLanguagesLoaded(Result<ws::Packet<api::GetTopLanguages>, ws::Error>),
     /// A consumer set (or cleared) the outline contents.
@@ -71,10 +73,14 @@ impl Component for App {
 
         let outline_control = OutlineControl::new(ctx.link().callback(Msg::SetOutline));
 
+        let link = ctx.link().clone();
+        let _tick_minute_interval =
+            Interval::new(10_000, move || link.send_message(Msg::TickMinute));
+
         Self {
             channel: ws::Channel::default(),
             ws,
-            tz: None,
+            time: TimeInfo::new(TimeZone::system(), Timestamp::now()),
             top_languages: TopLanguages::default(),
             page: NodeRef::default(),
             outline_entries: None,
@@ -83,6 +89,7 @@ impl Component for App {
             _broadcast,
             _config_req: ws::Request::default(),
             _top_languages_req: ws::Request::default(),
+            _tick_minute_interval,
         }
     }
 
@@ -97,18 +104,11 @@ impl Component for App {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
-        let Some(tz) = &self.tz else {
-            return html! {
-                <div id="page">
-                    <Loading />
-                </div>
-            };
-        };
-
         let router = Router::new(
             ctx.props().on_navigate.clone(),
             ctx.props().on_replace.clone(),
         );
+
         let background = Background::new(
             ctx.props().on_background.clone(),
             ctx.props().on_title.clone(),
@@ -116,7 +116,7 @@ impl Component for App {
 
         html! {
             <ContextProvider<ws::Handle> context={self.ws.handle()}>
-            <ContextProvider<TimeZone> context={tz.clone()}>
+            <ContextProvider<TimeInfo> context={self.time.clone()}>
             <ContextProvider<TopLanguages> context={self.top_languages.clone()}>
             <ContextProvider<Router> context={router}>
             <ContextProvider<Background> context={background}>
@@ -146,7 +146,7 @@ impl Component for App {
             </ContextProvider<Background>>
             </ContextProvider<Router>>
             </ContextProvider<TopLanguages>>
-            </ContextProvider<TimeZone>>
+            </ContextProvider<TimeInfo>>
             </ContextProvider<ws::Handle>>
         }
     }
@@ -181,10 +181,10 @@ impl App {
 
                 match event.kind {
                     api::AppEventKind::ConfigChanged { config } => {
-                        let new_tz = Self::tz_from_config(&config);
+                        let tz = Self::tz_from_config(&config);
 
-                        if Some(&new_tz) != self.tz.as_ref() {
-                            self.tz = Some(new_tz);
+                        if *self.time.tz() != tz {
+                            self.time = TimeInfo::new(tz, self.time.now());
                             return Ok(true);
                         }
                     }
@@ -197,6 +197,17 @@ impl App {
                         }
                     }
                     _ => {}
+                }
+
+                Ok(false)
+            }
+            Msg::TickMinute => {
+                let now = Timestamp::now();
+                let date = self.time.now().date(self.time.clone());
+
+                if date != self.time.date() {
+                    self.time = TimeInfo::new(self.time.tz().clone(), now);
+                    return Ok(true);
                 }
 
                 Ok(false)
@@ -229,8 +240,8 @@ impl App {
 
                 let new_tz = Self::tz_from_config(&config);
 
-                if Some(&new_tz) != self.tz.as_ref() {
-                    self.tz = Some(new_tz);
+                if *self.time.tz() != new_tz {
+                    self.time = TimeInfo::new(new_tz, self.time.now());
                     return Ok(true);
                 }
 
@@ -242,12 +253,12 @@ impl App {
 
     fn tz_from_config(config: &api::Config) -> TimeZone {
         if !config.timezone.is_empty()
-            && let Ok(tz) = JiffTimeZone::get(&config.timezone)
+            && let Some(tz) = TimeZone::get(&config.timezone)
         {
-            return TimeZone::from_jiff(tz);
+            return tz;
         }
 
-        TimeZone::from_jiff(JiffTimeZone::system())
+        TimeZone::system()
     }
 
     fn view_page(&self, ctx: &Context<Self>) -> Html {

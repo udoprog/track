@@ -4,7 +4,7 @@ use std::rc::Rc;
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
-use api::{HasAired, TimeZone};
+use api::{TimeInfo, Timed};
 
 use crate::SetupChannel;
 use crate::background::Background;
@@ -68,8 +68,8 @@ pub(crate) struct ShowDetail {
     /// the element does not exist when the browser first tries to honor the
     /// hash; we retry on each render until it appears, then clear this.
     scroll_target: Option<String>,
-    tz: TimeZone,
-    _tz_handle: ContextHandle<TimeZone>,
+    time: TimeInfo,
+    _time_info_handle: ContextHandle<TimeInfo>,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
     _show_req: ws::Request,
@@ -179,7 +179,7 @@ pub(crate) enum Msg {
     EditRemote(api::RemoteId, Option<String>, api::Remote),
     RemoveRemote(api::RemoteId),
     RemoteDone(Result<(), ws::Error>),
-    SetTz(TimeZone),
+    SetTime(TimeInfo),
     FixWatched(api::WatchedId),
     CancelFixWatched,
     MoveWatched(api::WatchedId, api::SeasonNumber, u32),
@@ -212,9 +212,9 @@ impl Component for ShowDetail {
         let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
-        let (tz, _tz_handle) = ctx
+        let (time_info, _time_info_handle) = ctx
             .link()
-            .context::<TimeZone>(ctx.link().callback(Msg::SetTz))
+            .context::<TimeInfo>(ctx.link().callback(Msg::SetTime))
             .expect("Expected a configured time zone");
 
         let (background, _) = ctx
@@ -270,8 +270,8 @@ impl Component for ShowDetail {
             outline,
             _outline: None,
             scroll_target,
-            tz,
-            _tz_handle,
+            time: time_info,
+            _time_info_handle,
             _setup,
             _broadcast,
             _show_req: ws::Request::default(),
@@ -345,7 +345,7 @@ impl Component for ShowDetail {
                         <h1>{show.title.as_deref().unwrap_or("Untitled Show")}</h1>
 
                         if let Some(date) = show.first_air_date {
-                            <span class="text-muted">{date.date(self.tz.clone()).year()}</span>
+                            <span class="text-muted">{date.date(self.time.clone()).year()}</span>
                         }
                     </div>
 
@@ -445,7 +445,7 @@ impl Component for ShowDetail {
                         include_specials={show.include_specials}
                         has_images={!show.images.is_empty()}
                         has_remotes={!show.remotes.is_empty()}
-                        last_synced={show.last_synced_at.map(|ts| AttrValue::from(ts.display(self.tz.clone())))}
+                        last_synced={show.last_synced_at.map(|ts| AttrValue::from(ts.human_date_time(self.time.clone())))}
                         syncing={self.syncing}
                         on_sync={link.callback(|_| Msg::SyncShow)}
                         auto_sync={show.auto_sync}
@@ -1446,8 +1446,8 @@ impl ShowDetail {
                 self.load_show(ctx);
                 Ok(false)
             }
-            Msg::SetTz(tz) => {
-                self.tz = tz;
+            Msg::SetTime(time) => {
+                self.time = time;
                 Ok(true)
             }
             Msg::FixWatched(id) => {
@@ -1614,6 +1614,7 @@ impl ShowDetail {
                 OutlineEntry {
                     code: code.clone(),
                     label: code,
+                    pending: e.pending,
                 }
             })
             .collect();
@@ -1742,7 +1743,7 @@ impl ShowDetail {
 
                     <div class="row">
                         if let Some(ts) = s.air_date {
-                            <span class="text-muted">{ts.date(self.tz.clone()).year().to_string()}</span>
+                            <span class="text-muted">{ts.date(self.time.clone()).year().to_string()}</span>
                         }
 
                         if clickable {
@@ -1787,6 +1788,8 @@ impl ShowDetail {
         });
 
         let season_expanded = self.season_actions_expanded.contains(&season_number);
+        let toggle_menu =
+            link.callback(move |_: MouseEvent| Msg::ToggleSeasonActionsExpanded(season_number));
 
         html! {
             <div class="detail-content">
@@ -1807,9 +1810,17 @@ impl ShowDetail {
                         </div>
 
                         <div class="toolbar-toggle">
-                            <button class="btn" onclick={link.callback(move |_| Msg::ToggleSeasonActionsExpanded(season_number))}>
-                                <span class={classes!("icon", if season_expanded { "ellipsis-horizontal" } else { "bars-2" })} />
-                            </button>
+                            <div class="input-group">
+                                if let Some((ref label, _)) = pending_episode {
+                                    <a class="btn-primary" href={format!("#{label}")} title="Jump to pending episode">
+                                        <span class="icon chevron-down" />
+                                    </a>
+                                }
+
+                                <button class="btn" onclick={link.callback(move |_| Msg::ToggleSeasonActionsExpanded(season_number))}>
+                                    <span class={classes!("icon", if season_expanded { "ellipsis-horizontal" } else { "bars-2" })} />
+                                </button>
+                            </div>
                         </div>
 
                         <div class={classes!("toolbar-dropdown", "desktop-input-group", (!season_expanded).then_some("hide-mobile"))}>
@@ -1831,14 +1842,14 @@ impl ShowDetail {
                             }
 
                             if let Some((label, on_remove_next)) = pending_episode {
-                                <a class="btn-primary" href={format!("#{label}")} title="Jump to pending episode">
-                                    <span class="icon bookmark" />
+                                <a class="btn-primary" href={format!("#{label}")} onclick={toggle_menu} title="Jump to pending episode">
                                     <span class="icon chevron-down" />
+                                    <span class="hide-desktop">{format!("Jump to next episode {label}")}</span>
                                 </a>
 
                                 <button class="btn-danger" onclick={on_remove_next} title="Remove pending">
                                     <span class="icon bookmark" />
-                                    <span class="hide-desktop">{label}</span>
+                                    <span class="hide-desktop">{format!("Clear next episode {label}")}</span>
                                 </button>
                             } else if let Some((label, episode_id)) = next_unwatched {
                                 <MarkTimeMenu
@@ -2002,8 +2013,11 @@ impl ShowDetail {
                             <span class={classes!("icon", if episode.aired().is_some() { "clock" } else { "exclamation-circle" })} />
                         </span>
 
-                        if let Some(aired) = episode.display_at(self.tz.clone()) {
-                            <span class="text-muted">{aired}</span>
+                        if let Some(aired) = episode.human_aired(self.time.clone()) {
+                            <span class="date-time">
+                                <span>{if aired.is_past() { "Aired" } else { "Airs" }}</span>
+                                {aired.lower().view()}
+                            </span>
                         } else {
                             <span class="text-muted">{"No air date"}</span>
                         }
@@ -2019,13 +2033,25 @@ impl ShowDetail {
                         }
 
                         if episode.pending {
-                            <span class="text-muted">{"Next episode"}</span>
+                            <span class="date-time">
+                                <span class="special">{"Next episode"}</span>
+                            </span>
                         } else {
-                            <span class="text-muted">
+                            <span class="date-time">
                                 {match watched {
-                                    [] => "Never watched".to_string(),
-                                    [w] => format!("Watched at {}", w.watched.timestamp.display(self.tz.clone())),
-                                    [first, ..] => format!("Watched {} times, first at {}", watched.len(), first.watched.timestamp.display(self.tz.clone())),
+                                    [] => html!(<span class="special">{"Never watched"}</span>),
+                                    [w] => html! {
+                                        <>
+                                            <span>{"Watched once"}</span>
+                                            {w.watched.timestamp.human_date_time(self.time.clone()).lower().view()}
+                                        </>
+                                    },
+                                    [w, ..] => html! {
+                                        <>
+                                            {format!("Watched {} times, first", watched.len())}
+                                            {w.watched.timestamp.human_date_time(self.time.clone()).view()}
+                                        </>
+                                    }
                                 }}
                             </span>
                         }
@@ -2054,7 +2080,7 @@ impl ShowDetail {
                                 html! {
                                     <div class="row-split">
                                         <div class="row">
-                                            <span>{w.watched.timestamp.display(self.tz.clone())}</span>
+                                            <span>{w.watched.timestamp.human_date_time(self.time.clone())}</span>
                                         </div>
 
                                         <div class="row end">
@@ -2067,7 +2093,7 @@ impl ShowDetail {
                                                 if self.fixing_watched == Some(wid) {
                                                     <ContextMenu
                                                         prompt="Where do you want to move watch at"
-                                                        label={w.watched.timestamp.display(self.tz.clone())}
+                                                        label={w.watched.timestamp.human_date_time(self.time.clone())}
                                                         anchor={w.context_anchor.clone()}
                                                         on_close={link.callback(|_| Msg::CancelFixWatched)}
                                                         onerror={ctx.props().onerror.clone()}>
@@ -2090,7 +2116,7 @@ impl ShowDetail {
                                                 if self.confirm_remove_watch == Some(wid) {
                                                     <ContextMenu
                                                         prompt="Remove watch at"
-                                                        label={w.watched.timestamp.display(self.tz.clone())}
+                                                        label={w.watched.timestamp.human_date_time(self.time.clone())}
                                                         anchor={w.context_anchor.clone()}
                                                         on_close={link.callback(|_| Msg::CancelRemoveWatch)}
                                                         onerror={ctx.props().onerror.clone()}>
@@ -2149,7 +2175,7 @@ impl ShowDetail {
                             <div class="row-split">
                                 <div class="row">
                                     <span class="text-muted">{w.watched.code()}</span>
-                                    <span>{w.watched.timestamp.display(self.tz.clone())}</span>
+                                    <span>{w.watched.timestamp.human_date_time(self.time.clone())}</span>
                                 </div>
 
                                 <div class="end input-group">
@@ -2160,7 +2186,7 @@ impl ShowDetail {
                                     if self.fixing_watched == Some(wid) {
                                         <ContextMenu
                                             prompt="Where do you want to move watch at"
-                                            label={w.watched.timestamp.display(self.tz.clone())}
+                                            label={w.watched.timestamp.human_date_time(self.time.clone())}
                                             anchor={w.context_anchor.clone()}
                                             on_close={ctx.link().callback(|_| Msg::CancelFixWatched)}
                                             onerror={ctx.props().onerror.clone()}>
@@ -2183,7 +2209,7 @@ impl ShowDetail {
                                     if self.confirm_remove_watch == Some(wid) {
                                         <ContextMenu
                                             prompt="Remove watch at"
-                                            label={w.watched.timestamp.display(self.tz.clone())}
+                                            label={w.watched.timestamp.human_date_time(self.time.clone())}
                                             anchor={w.context_anchor.clone()}
                                             on_close={ctx.link().callback(|_| Msg::CancelRemoveWatch)}
                                             onerror={ctx.props().onerror.clone()}>

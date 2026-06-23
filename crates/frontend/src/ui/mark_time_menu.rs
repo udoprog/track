@@ -5,7 +5,7 @@
 use web_sys::{Element, PointerEvent};
 use yew::prelude::*;
 
-use api::TimeZone;
+use api::TimeInfo;
 
 use crate::error::Error;
 use crate::ui::ContextMenu;
@@ -163,7 +163,7 @@ pub(crate) enum Msg {
     Open,
     Close,
     Confirm,
-    SetTz(TimeZone),
+    SetTime(TimeInfo),
     SelectPreset(Preset),
     PrevMonth,
     NextMonth,
@@ -181,8 +181,8 @@ pub(crate) enum Msg {
 pub(crate) struct MarkTimeMenu {
     /// Open/position state for the popover. `false` is closed; `true` is open.
     context_open: bool,
-    tz: TimeZone,
-    _tz_handle: ContextHandle<TimeZone>,
+    time: TimeInfo,
+    _time_handle: ContextHandle<TimeInfo>,
     /// First day of the month shown in the calendar.
     view: api::Date,
     /// The selected day.
@@ -202,9 +202,9 @@ pub(crate) struct MarkTimeMenu {
 impl MarkTimeMenu {
     /// Load the working date/time fields from an instant in the active timezone.
     fn load_from(&mut self, ts: api::Timestamp) {
-        self.date = ts.date(self.tz.clone());
+        self.date = ts.date(self.time.clone());
         self.view = self.date.first_of_month();
-        let (h, m) = ts.hour_minute(self.tz.clone());
+        let (h, m) = ts.hour_minute(self.time.clone());
         self.hour = h;
         self.minute = m;
     }
@@ -271,15 +271,15 @@ impl Component for MarkTimeMenu {
     type Properties = Props;
 
     fn create(ctx: &Context<Self>) -> Self {
-        let (tz, _tz_handle) = ctx
+        let (time, _time_handle) = ctx
             .link()
-            .context::<TimeZone>(ctx.link().callback(Msg::SetTz))
+            .context::<TimeInfo>(ctx.link().callback(Msg::SetTime))
             .expect("Expected a configured time zone");
 
         let mut this = Self {
             context_open: false,
-            tz,
-            _tz_handle,
+            time,
+            _time_handle,
             view: api::Date::today(),
             date: api::Date::today(),
             hour: 0,
@@ -297,8 +297,8 @@ impl Component for MarkTimeMenu {
 
     fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
         match msg {
-            Msg::SetTz(tz) => {
-                self.tz = tz;
+            Msg::SetTime(time) => {
+                self.time = time;
                 false
             }
             Msg::Open => {
@@ -319,7 +319,7 @@ impl Component for MarkTimeMenu {
                     Preset::Custom => match self.date.to_timestamp_at_zoned(
                         self.hour,
                         self.minute,
-                        self.tz.clone(),
+                        self.time.tz().clone(),
                     ) {
                         Ok(ts) => api::MarkTime::At(ts),
                         Err(_) => return true,
