@@ -39,7 +39,7 @@ pub(crate) use self::image_gallery::{ImageGallery, ImageItem};
 pub(crate) use self::language_modal::{LanguageModal, TopLanguages, locale_label};
 pub(crate) use self::language_picker::LanguagePicker;
 pub(crate) use self::loading::Loading;
-pub(crate) use self::mark_time_menu::MarkTimeMenu;
+pub(crate) use self::mark_time_menu::{MarkTimeMenu, TimePreset};
 pub(crate) use self::media_kind_toggle::MediaKindToggle;
 pub(crate) use self::media_settings_modal::MediaSettingsModal;
 pub(crate) use self::modal::Modal;

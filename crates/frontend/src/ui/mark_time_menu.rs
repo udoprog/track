@@ -23,7 +23,7 @@ pub(crate) enum Preset {
     /// The current time.
     Now,
     /// The aired/released instant.
-    Aired,
+    Preset,
     /// A custom time.
     Custom,
 }
@@ -130,6 +130,13 @@ thread_local! {
     static LABELS: Labels = Labels::build();
 }
 
+#[derive(Clone, PartialEq)]
+pub(crate) struct TimePreset {
+    pub icon: AttrValue,
+    pub label: AttrValue,
+    pub timestamp: api::Timestamp,
+}
+
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
     /// Inner content of the trigger button (icons, labels). The component wraps
@@ -144,18 +151,9 @@ pub(crate) struct Props {
     pub(crate) title: AttrValue,
     /// Heading shown at the top of the popover.
     pub(crate) prompt: AttrValue,
-    /// Label for the "when aired" quick option. Defaults to "Aired"; movies pass
-    /// "Released" since "aired" reads oddly for them.
-    #[prop_or(AttrValue::Static("Aired"))]
-    pub(crate) aired_label: AttrValue,
-    /// The aired/released instant, used by the "Aired" quick option to pre-fill
-    /// the picker. When present the "Aired" option is shown.
+    /// Custom timestamps to provide as presets.
     #[prop_or_default]
-    pub(crate) default_at: Option<api::Timestamp>,
-    /// Force-show the "Aired" option even without a concrete `default_at` for
-    /// bulk flows where each item resolves its own air date server-side.
-    #[prop_or(false)]
-    pub(crate) show_aired: bool,
+    pub(crate) preset: Option<TimePreset>,
     pub(crate) on_confirm: Callback<api::MarkTime>,
     /// Surfaces a positioning failure to the host page's error handler.
     pub(crate) onerror: Callback<Error>,
@@ -317,7 +315,10 @@ impl Component for MarkTimeMenu {
             Msg::Confirm => {
                 let mark = match self.preset {
                     Preset::Now => api::MarkTime::Now,
-                    Preset::Aired => api::MarkTime::WhenAired,
+                    Preset::Preset => match &ctx.props().preset {
+                        Some(preset) => api::MarkTime::At(preset.timestamp),
+                        None => return false,
+                    },
                     Preset::Custom => match self.date.to_timestamp_at_zoned(
                         self.hour,
                         self.minute,
@@ -335,7 +336,7 @@ impl Component for MarkTimeMenu {
             Msg::SelectPreset(preset) => {
                 let ts = match preset {
                     Preset::Now => Some(api::Timestamp::now()),
-                    Preset::Aired => ctx.props().default_at,
+                    Preset::Preset => ctx.props().preset.as_ref().map(|p| p.timestamp),
                     Preset::Custom => None,
                 };
 
@@ -557,11 +558,6 @@ impl MarkTimeMenu {
             (self.preset == Preset::Now).then_some("selected")
         );
 
-        let aired_class = classes!(
-            "btn-primary",
-            (self.preset == Preset::Aired).then_some("selected")
-        );
-
         let custom_class = classes!("btn", (self.preset == Preset::Custom).then_some("selected"));
 
         html! {
@@ -574,15 +570,22 @@ impl MarkTimeMenu {
                         <span>{"Now"}</span>
                     </button>
 
-                    if props.default_at.is_some() || props.show_aired {
-                        <button class={aired_class} onclick={link.callback(|_| Msg::SelectPreset(Preset::Aired))}>
-                            <span class="item-inline">
-                                <span class="icon calendar" />
-                            </span>
+                    {props.preset.as_ref().map(|preset| {
+                        let class = classes!(
+                            "btn-primary",
+                            (matches!(self.preset, Preset::Preset)).then_some("selected")
+                        );
 
-                            <span>{&props.aired_label}</span>
-                        </button>
-                    }
+                        html! {
+                            <button key="preset-button" {class} onclick={link.callback(move |_| Msg::SelectPreset(Preset::Preset))}>
+                                <span class="item-inline">
+                                    <span class="icon calendar" />
+                                </span>
+
+                                <span>{&preset.label}</span>
+                            </button>
+                        }
+                    })}
 
                     <button class={custom_class} onclick={link.callback(|_| Msg::SelectPreset(Preset::Custom))}>
                         <span class="item-inline">

@@ -9,7 +9,7 @@ use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{DashboardQuery, Route, Router, ShowDetailQuery};
-use crate::ui::{ConfirmDanger, ContextMenu, Image, MarkTimeMenu, PaginationButtons};
+use crate::ui::{ConfirmDanger, ContextMenu, Image, MarkTimeMenu, PaginationButtons, TimePreset};
 
 use super::Calendar;
 
@@ -504,11 +504,14 @@ impl Dashboard {
             api::PendingKind::Movie { movie } => api::WatchedKind::Movie { movie },
         };
 
-        // "Aired" reads oddly for movies; label that choice "Released" instead.
-        let aired_label = match pending.kind {
-            api::PendingKind::Episode { .. } => "Aired",
-            api::PendingKind::Movie { .. } => "Released",
-        };
+        let preset = pending.aired.map(|timestamp| TimePreset {
+            icon: "clock".into(),
+            label: match pending.kind {
+                api::PendingKind::Episode { .. } => "Aired".into(),
+                api::PendingKind::Movie { .. } => "Released".into(),
+            },
+            timestamp,
+        });
 
         let now = api::Timestamp::now();
         let aired_in_past = pending.aired.is_some_and(|a| a <= now);
@@ -556,61 +559,6 @@ impl Dashboard {
             }
         };
 
-        let actions = html! {
-            <div class="input-group">
-                if aired_in_past {
-                    <MarkTimeMenu
-                        onerror={ctx.props().onerror.clone()}
-                        trigger_class="btn-success"
-                        icon="check"
-                        title="Mark watched"
-                        prompt={format!("When did you watch this {}?", pending.kind.title())}
-                        {aired_label}
-                        default_at={pending.aired}
-                        on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(kind, mark_time))}>
-                        <span class="icon check" />
-                    </MarkTimeMenu>
-                } else {
-                    <button class="btn-success" onclick={ctx.link().callback(move |_| Msg::MarkWatched(kind, api::MarkTime::Now))} title="Mark watched">
-                        <span class="icon check" />
-                    </button>
-                }
-
-                <MarkTimeMenu
-                    onerror={ctx.props().onerror.clone()}
-                    trigger_class="btn-primary"
-                    title="Move pending"
-                    icon="bookmark"
-                    prompt={format!("When do you want to queue this {}?", pending.kind.title())}
-                    {aired_label}
-                    default_at={pending.aired}
-                    on_confirm={ctx.link().callback(move |mark_time| Msg::MarkPending(pending_kind, mark_time))}>
-                    <span class="icon bookmark" />
-                </MarkTimeMenu>
-
-                if let Some((show, episode)) = skip_ids {
-                    <button key="skip-button" ref={anchor.clone()} class="btn" onclick={ctx.link().callback(move |_| Msg::AskSkipEpisode(show, episode))} title="Skip episode">
-                        <span class="icon forward" />
-                    </button>
-
-                    if confirming && let Some(code) = skip_code {
-                        <ContextMenu
-                            icon="forward"
-                            prompt="Skip episode"
-                            label={code}
-                            anchor={anchor.clone()}
-                            on_close={ctx.link().callback(|_| Msg::CancelSkipEpisode)}
-                            onerror={ctx.props().onerror.clone()}>
-                            <ConfirmDanger
-                                on_confirm={ctx.link().callback(move |_| Msg::SkipEpisode(show, episode))}
-                                on_cancel={ctx.link().callback(|_| Msg::CancelSkipEpisode)}
-                            />
-                        </ContextMenu>
-                    }
-                }
-            </div>
-        };
-
         html! {
             <div class="pending-item">
                 <Image class="poster clickable hide-mobile" src={pending.poster.clone()} onclick={on_navigate.clone()} />
@@ -626,7 +574,56 @@ impl Dashboard {
                     </div>
 
                     <div class="pending-actions">
-                        {actions}
+                        <div class="input-group">
+                            if aired_in_past {
+                                <MarkTimeMenu
+                                    onerror={ctx.props().onerror.clone()}
+                                    trigger_class="btn-success"
+                                    icon="check"
+                                    title="Mark watched"
+                                    prompt={format!("When did you watch this {}?", pending.kind.title())}
+                                    preset={preset.clone()}
+                                    on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(kind, mark_time))}>
+                                    <span class="icon check" />
+                                </MarkTimeMenu>
+                            } else {
+                                <button class="btn-success" onclick={ctx.link().callback(move |_| Msg::MarkWatched(kind, api::MarkTime::Now))} title="Mark watched">
+                                    <span class="icon check" />
+                                </button>
+                            }
+
+                            <MarkTimeMenu
+                                onerror={ctx.props().onerror.clone()}
+                                trigger_class="btn-primary"
+                                title="Move pending"
+                                icon="bookmark"
+                                prompt={format!("When do you want to queue this {}?", pending.kind.title())}
+                                preset={preset.clone()}
+                                on_confirm={ctx.link().callback(move |mark_time| Msg::MarkPending(pending_kind, mark_time))}>
+                                <span class="icon bookmark" />
+                            </MarkTimeMenu>
+
+                            if let Some((show, episode)) = skip_ids {
+                                <button key="skip-button" ref={anchor.clone()} class="btn" onclick={ctx.link().callback(move |_| Msg::AskSkipEpisode(show, episode))} title="Skip episode">
+                                    <span class="icon forward" />
+                                </button>
+
+                                if confirming && let Some(code) = skip_code {
+                                    <ContextMenu
+                                        icon="forward"
+                                        prompt="Skip episode"
+                                        label={code}
+                                        anchor={anchor.clone()}
+                                        on_close={ctx.link().callback(|_| Msg::CancelSkipEpisode)}
+                                        onerror={ctx.props().onerror.clone()}>
+                                        <ConfirmDanger
+                                            on_confirm={ctx.link().callback(move |_| Msg::SkipEpisode(show, episode))}
+                                            on_cancel={ctx.link().callback(|_| Msg::CancelSkipEpisode)}
+                                        />
+                                    </ContextMenu>
+                                }
+                            }
+                        </div>
                     </div>
                 </div>
             </div>

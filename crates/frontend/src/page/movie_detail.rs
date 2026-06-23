@@ -1084,8 +1084,9 @@ impl MovieDetail {
                                         icon="check"
                                         title="Mark watched"
                                         prompt="When did you watch the movie?"
-                                        aired_label="Released"
-                                        default_at={release_at}
+                                        at_label="Released"
+                                        at_timestamp={release_at}
+                                        at_only_if_released=true
                                         on_confirm={link.callback(Msg::MarkWatched)}>
                                         <span class="icon check" />
                                         <span class="hide-desktop">{"Mark watched"}</span>
@@ -1101,9 +1102,9 @@ impl MovieDetail {
                                             onerror={ctx.props().onerror.clone()}
                                             trigger_class="btn"
                                             title="Not next movie"
-                                            prompt="When do you want the movie to be pending?"
-                                            aired_label="Released"
-                                            default_at={release_at}
+                                            prompt="When do you want to watch the movie?"
+                                            at_label="When released"
+                                            at_timestamp={release_at}
                                             on_confirm={link.callback(Msg::OnWatchNext)}>
                                             <span class="icon bookmark-slash" />
                                             <span class="hide-desktop">{"Not next movie"}</span>

@@ -10,7 +10,7 @@ use crate::error::{CustomContext, Error, Message};
 use crate::router::{
     MediaQuery, MediaSelection, Route, Router, ShowDetailQuery, SortField, TrackedFilter,
 };
-use crate::ui::{Image, MarkTimeMenu, MediaKindToggle, PaginationButtons};
+use crate::ui::{Image, MarkTimeMenu, MediaKindToggle, PaginationButtons, TimePreset};
 
 const PAGE_SIZE: usize = 20;
 
@@ -594,6 +594,12 @@ impl MediaList {
                 .flatten()
         };
 
+        let preset = m.date.map(|timestamp| TimePreset {
+            icon: "clock".into(),
+            label: "Released".into(),
+            timestamp,
+        });
+
         html! {
             <div class="table-entry">
                 <div class="desktop-row mobile-column align-top">
@@ -684,8 +690,7 @@ impl MediaList {
                                                 trigger_class="btn-success"
                                                 title="Mark watched"
                                                 prompt="Watched when?"
-                                                aired_label="Released"
-                                                default_at={m.date}
+                                                {preset}
                                                 on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(id, mark_time))}>
                                                 <span class="icon check" />
                                             </MarkTimeMenu>

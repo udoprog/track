@@ -13,7 +13,7 @@ use crate::router::{MediaQuery, Route, Router, ShowDetailQuery};
 use crate::ui::{
     ConfirmDanger, ContextMenu, EpisodePicker, Image, ImageGallery, ImageItem, Loading, MDASH,
     MarkTimeMenu, MediaSettingsModal, Modal, OutlineControl, OutlineEntry, OutlineHandle,
-    RemoteEditor, RemoteSourceKind, Tracked, TranslationsModal,
+    RemoteEditor, RemoteSourceKind, TimePreset, Tracked, TranslationsModal,
 };
 
 struct WatchedState {
@@ -1853,7 +1853,6 @@ impl ShowDetail {
                                     trigger_class="btn"
                                     title="Make next episode"
                                     prompt={format!("Pending {label} since when?")}
-                                    show_aired=true
                                     on_confirm={link.callback(move |mark_time| Msg::OnWatchNext(episode_id, mark_time))}>
                                     <span class="icon bookmark-slash" />
                                     <span class="hide-desktop">{label}</span>
@@ -1866,7 +1865,6 @@ impl ShowDetail {
                                     trigger_class="btn-success"
                                     title="Mark remaining episodes as watched"
                                     prompt="Watched when?"
-                                    show_aired=true
                                     on_confirm={link.callback({
                                         let season = season.season;
                                         move |mark_time| Msg::WatchRemaining(season, mark_time)
@@ -1936,6 +1934,12 @@ impl ShowDetail {
             link.callback(move |mark_time| Msg::MarkWatched(show_id, episode_id, mark_time))
         };
 
+        let preset = episode.aired.map(|timestamp| TimePreset {
+            icon: "clock".into(),
+            label: "Air date".into(),
+            timestamp,
+        });
+
         html! {
             <div class={classes!("episode", (!watched.is_empty()).then_some("watched"))} id={episode.code()}>
                 <div class="column">
@@ -1967,7 +1971,7 @@ impl ShowDetail {
                                 icon="check"
                                 title="Mark watched"
                                 prompt={format!("When did you watch {}?", episode.code())}
-                                default_at={episode.aired}
+                                preset={preset.clone()}
                                 on_confirm={on_mark_confirm}>
                                 <span class="icon check" />
                                 <span class="hide-desktop">{"Mark watched"}</span>
@@ -1985,7 +1989,7 @@ impl ShowDetail {
                                     icon="bookmark"
                                     title="Mark next"
                                     prompt={format!("When do you want to queue {}?", episode.code())}
-                                    default_at={episode.aired}
+                                    preset={preset.clone()}
                                     on_confirm={on_next_episode}>
                                     <span class="icon bookmark-slash" />
                                     <span class="hide-desktop">{"Set as next episode"}</span>
