@@ -1,6 +1,7 @@
 //! Anchored date/time picker (`MarkTimeMenu`) used by the mark-watched and
-//! mark-pending flows: quick "Now"/"Aired" presets plus a round analog clock
-//! and a month calendar for choosing an exact instant.
+//! mark-pending flows: a quick "Now" preset, an optional caller-supplied
+//! [`TimePreset`], plus a round analog clock and a month calendar for choosing
+//! an exact instant.
 
 use web_sys::{Element, PointerEvent};
 use yew::prelude::*;
@@ -22,8 +23,8 @@ pub(crate) enum ClockMode {
 pub(crate) enum Preset {
     /// The current time.
     Now,
-    /// The aired/released instant.
-    Preset,
+    /// The caller-supplied [`TimePreset`].
+    Supplied,
     /// A custom time.
     Custom,
 }
@@ -130,11 +131,57 @@ thread_local! {
     static LABELS: Labels = Labels::build();
 }
 
+/// A caller-supplied quick option shown alongside "Now". Built via [`TimePreset::at`]
+/// for an exact instant or [`TimePreset::when_aired`] for an air/release date that
+/// the server resolves per item (bulk flows).
 #[derive(Clone, PartialEq)]
 pub(crate) struct TimePreset {
-    pub icon: AttrValue,
-    pub label: AttrValue,
-    pub timestamp: api::Timestamp,
+    icon: AttrValue,
+    label: AttrValue,
+    kind: TimePresetKind,
+}
+
+#[derive(Clone, PartialEq)]
+enum TimePresetKind {
+    /// An exact instant: pre-fills the picker, confirms as `MarkTime::At`.
+    At(api::Timestamp),
+    /// Air/release date resolved per-item server-side: no pre-fill, confirms as
+    /// `MarkTime::WhenAired`. Used by bulk flows. Carries a caller-supplied
+    /// description of what instant each item resolves to (the menu has no access to
+    /// the per-item air dates, so the wording must be passed in).
+    WhenAired { description: AttrValue },
+}
+
+impl TimePreset {
+    /// A preset that loads an exact instant into the picker.
+    pub(crate) fn at(
+        icon: impl Into<AttrValue>,
+        label: impl Into<AttrValue>,
+        timestamp: api::Timestamp,
+    ) -> Self {
+        Self {
+            icon: icon.into(),
+            label: label.into(),
+            kind: TimePresetKind::At(timestamp),
+        }
+    }
+
+    /// A preset that defers to each item's own server-resolved air/release date.
+    /// `description` explains which instant that resolves to (e.g. "When each
+    /// episode in Season 1 aired"), shown once selected.
+    pub(crate) fn when_aired(
+        icon: impl Into<AttrValue>,
+        label: impl Into<AttrValue>,
+        description: impl Into<AttrValue>,
+    ) -> Self {
+        Self {
+            icon: icon.into(),
+            label: label.into(),
+            kind: TimePresetKind::WhenAired {
+                description: description.into(),
+            },
+        }
+    }
 }
 
 #[derive(Properties, PartialEq)]
@@ -151,7 +198,7 @@ pub(crate) struct Props {
     pub(crate) title: AttrValue,
     /// Heading shown at the top of the popover.
     pub(crate) prompt: AttrValue,
-    /// Custom timestamps to provide as presets.
+    /// An optional caller-supplied quick option shown alongside "Now".
     #[prop_or_default]
     pub(crate) preset: Option<TimePreset>,
     pub(crate) on_confirm: Callback<api::MarkTime>,
@@ -175,9 +222,9 @@ pub(crate) enum Msg {
 }
 
 /// A trigger button that opens an anchored popover for choosing a
-/// [`api::MarkTime`]: quick "Now"/"Aired" presets plus a round analog clock and a
-/// month calendar for an exact instant. Shared by the "mark watched" and "mark
-/// pending" flows.
+/// [`api::MarkTime`]: a "Now" preset, an optional caller-supplied [`TimePreset`],
+/// plus a round analog clock and a month calendar for an exact instant. Shared by
+/// the "mark watched" and "mark pending" flows.
 pub(crate) struct MarkTimeMenu {
     /// Open/position state for the popover. `false` is closed; `true` is open.
     context_open: bool,
@@ -291,7 +338,7 @@ impl Component for MarkTimeMenu {
             anchor: NodeRef::default(),
         };
 
-        this.load_from(api::Timestamp::now());
+        this.load_from(this.time.now());
         this
     }
 
@@ -302,7 +349,7 @@ impl Component for MarkTimeMenu {
                 false
             }
             Msg::Open => {
-                self.load_from(api::Timestamp::now());
+                self.load_from(self.time.now());
                 self.preset = Preset::Now;
                 self.mode = ClockMode::Hours;
                 self.context_open = true;
@@ -315,8 +362,9 @@ impl Component for MarkTimeMenu {
             Msg::Confirm => {
                 let mark = match self.preset {
                     Preset::Now => api::MarkTime::Now,
-                    Preset::Preset => match &ctx.props().preset {
-                        Some(preset) => api::MarkTime::At(preset.timestamp),
+                    Preset::Supplied => match ctx.props().preset.as_ref().map(|p| &p.kind) {
+                        Some(TimePresetKind::At(ts)) => api::MarkTime::At(*ts),
+                        Some(TimePresetKind::WhenAired { .. }) => api::MarkTime::WhenAired,
                         None => return false,
                     },
                     Preset::Custom => match self.date.to_timestamp_at_zoned(
@@ -335,13 +383,16 @@ impl Component for MarkTimeMenu {
             }
             Msg::SelectPreset(preset) => {
                 let ts = match preset {
-                    Preset::Now => Some(api::Timestamp::now()),
-                    Preset::Preset => ctx.props().preset.as_ref().map(|p| p.timestamp),
+                    Preset::Now => Some(self.time.now()),
+                    Preset::Supplied => match ctx.props().preset.as_ref().map(|p| &p.kind) {
+                        Some(TimePresetKind::At(ts)) => Some(*ts),
+                        Some(TimePresetKind::WhenAired { .. }) | None => None,
+                    },
                     Preset::Custom => None,
                 };
 
                 // Pre-fill the clock/calendar when we have a concrete instant; a
-                // bare "Aired" (bulk, server-resolved) just marks the preset.
+                // bare "when aired" (bulk, server-resolved) just marks the preset.
                 if let Some(ts) = ts {
                     self.load_from(ts);
                 }
@@ -418,24 +469,6 @@ impl Component for MarkTimeMenu {
         let link = ctx.link();
         let props = ctx.props();
 
-        let context_content = if self.context_open {
-            html! {
-                <>
-                    {self.view_interaction(ctx)}
-
-                    if self.preset == Preset::Custom {
-                        <div class="mark-time-body">
-                            {self.view_clock(ctx)}
-
-                            {self.view_calendar(ctx)}
-                        </div>
-                    }
-                </>
-            }
-        } else {
-            html!()
-        };
-
         html! {
             <>
                 <button ref={self.anchor.clone()} class={props.trigger_class.clone()} title={props.title.clone()} onclick={link.callback(|_| Msg::Open)}>
@@ -444,7 +477,17 @@ impl Component for MarkTimeMenu {
 
                 if self.context_open {
                     <ContextMenu icon={props.icon.clone()} prompt={props.prompt.clone()} anchor={self.anchor.clone()} on_close={link.callback(|_| Msg::Close)} onerror={props.onerror.clone()}>
-                        {context_content}
+                        {self.view_interaction(ctx)}
+
+                        {self.view_resolved(ctx)}
+
+                        if self.preset == Preset::Custom {
+                            <div class="mark-time-body">
+                                {self.view_clock(ctx)}
+
+                                {self.view_calendar(ctx)}
+                            </div>
+                        }
                     </ContextMenu>
                 }
             </>
@@ -549,6 +592,41 @@ impl MarkTimeMenu {
         }
     }
 
+    /// A line describing the instant the current selection resolves to: a
+    /// formatted timestamp for the concrete presets, or the caller-supplied
+    /// description for the abstract "when aired" preset.
+    fn view_resolved(&self, ctx: &Context<Self>) -> Html {
+        if self.preset == Preset::Custom {
+            return html!();
+        }
+
+        let props = ctx.props();
+        let time = self.time.clone();
+
+        let body = match self.preset {
+            Preset::Now => self.time.now().human_date_time(time).view(),
+            Preset::Supplied => match props.preset.as_ref().map(|p| &p.kind) {
+                Some(TimePresetKind::At(ts)) => ts.human_date_time(time).view(),
+                Some(TimePresetKind::WhenAired { description }) => description.into(),
+                None => return html!(),
+            },
+            Preset::Custom => {
+                match self.date.to_timestamp_at_zoned(
+                    self.hour,
+                    self.minute,
+                    self.time.tz().clone(),
+                ) {
+                    Ok(ts) => ts.human_date_time(time).view(),
+                    Err(_) => return html!(),
+                }
+            }
+        };
+
+        html! {
+            <div class="date-time">{body}</div>
+        }
+    }
+
     fn view_interaction(&self, ctx: &Context<Self>) -> Html {
         let link = ctx.link();
         let props = ctx.props();
@@ -573,13 +651,13 @@ impl MarkTimeMenu {
                     {props.preset.as_ref().map(|preset| {
                         let class = classes!(
                             "btn-primary",
-                            (matches!(self.preset, Preset::Preset)).then_some("selected")
+                            (matches!(self.preset, Preset::Supplied)).then_some("selected")
                         );
 
                         html! {
-                            <button key="preset-button" {class} onclick={link.callback(move |_| Msg::SelectPreset(Preset::Preset))}>
+                            <button key="preset-button" {class} onclick={link.callback(move |_| Msg::SelectPreset(Preset::Supplied))}>
                                 <span class="item-inline">
-                                    <span class="icon calendar" />
+                                    <span class={classes!("icon", preset.icon.clone())} />
                                 </span>
 
                                 <span>{&preset.label}</span>

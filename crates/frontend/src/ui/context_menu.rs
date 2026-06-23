@@ -25,10 +25,10 @@ pub(crate) struct Props {
     pub(crate) anchor: NodeRef,
     /// Invoked when the backdrop is clicked, so the host can close the menu.
     pub(crate) on_close: Callback<()>,
-    /// Popover content.
-    pub(crate) children: Children,
     /// Surfaces a positioning failure to the host's error handler.
     pub(crate) onerror: Callback<Error>,
+    /// Popover content.
+    pub(crate) children: Children,
 }
 
 pub(crate) struct ContextMenu {

@@ -34,9 +34,9 @@ pub(crate) struct MediaList {
     tracked: TrackedFilter,
     selection: MediaSelection,
     time: TimeInfo,
+    _time_handle: ContextHandle<TimeInfo>,
     background: Background,
     router: Router,
-    _time_handle: ContextHandle<TimeInfo>,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
     list_req: ws::Request,
@@ -594,11 +594,9 @@ impl MediaList {
                 .flatten()
         };
 
-        let preset = m.date.map(|timestamp| TimePreset {
-            icon: "clock".into(),
-            label: "Released".into(),
-            timestamp,
-        });
+        let preset = m
+            .date
+            .map(|timestamp| TimePreset::at("clock", "Released", timestamp));
 
         html! {
             <div class="table-entry">
@@ -689,7 +687,7 @@ impl MediaList {
                                                 onerror={ctx.props().onerror.clone()}
                                                 trigger_class="btn-success"
                                                 title="Mark watched"
-                                                prompt="Watched when?"
+                                                prompt={match m.title { Some(ref title) => format!("When did you watch {}?", title), None => "When did you watch this movie?".to_string() }}
                                                 {preset}
                                                 on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(id, mark_time))}>
                                                 <span class="icon check" />

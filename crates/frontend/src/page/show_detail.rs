@@ -1787,6 +1787,16 @@ impl ShowDetail {
         let toggle_menu =
             link.callback(move |_: MouseEvent| Msg::ToggleSeasonActionsExpanded(season_number));
 
+        let next_episode_preset = next_unwatched.map(|(label, _)| {
+            TimePreset::when_aired("clock", "Aired", format!("When {label} aired"))
+        });
+
+        let remaining_description = format!(
+            "When each individual episode in {} aired",
+            season.season.long()
+        );
+        let remaining_preset = TimePreset::when_aired("clock", "Aired", remaining_description);
+
         html! {
             <div class="detail-content">
                 <div class="column">
@@ -1853,6 +1863,7 @@ impl ShowDetail {
                                     trigger_class="btn"
                                     title="Make next episode"
                                     prompt={format!("Pending {label} since when?")}
+                                    preset={next_episode_preset.clone()}
                                     on_confirm={link.callback(move |mark_time| Msg::OnWatchNext(episode_id, mark_time))}>
                                     <span class="icon bookmark-slash" />
                                     <span class="hide-desktop">{label}</span>
@@ -1864,7 +1875,8 @@ impl ShowDetail {
                                     onerror={ctx.props().onerror.clone()}
                                     trigger_class="btn-success"
                                     title="Mark remaining episodes as watched"
-                                    prompt="Watched when?"
+                                    prompt="When did you watch the remaining episodes?"
+                                    preset={Some(remaining_preset.clone())}
                                     on_confirm={link.callback({
                                         let season = season.season;
                                         move |mark_time| Msg::WatchRemaining(season, mark_time)
@@ -1916,11 +1928,7 @@ impl ShowDetail {
         let on_toggle_history =
             (!watched.is_empty()).then(|| link.callback(move |_| Msg::ToggleHistory(episode_id)));
 
-        // If the episode has already aired, let the user pick whether the
-        // pending slot is dated now or at the air date; otherwise just set it.
-        let now = api::Timestamp::now();
-
-        let aired_in_past = episode.aired.is_some_and(|a| a <= now);
+        let aired_in_past = episode.aired.is_some_and(|a| a <= self.time.now());
 
         let actions_expanded = self.episode_actions_expanded.contains(&episode_id);
 
@@ -1934,11 +1942,9 @@ impl ShowDetail {
             link.callback(move |mark_time| Msg::MarkWatched(show_id, episode_id, mark_time))
         };
 
-        let preset = episode.aired.map(|timestamp| TimePreset {
-            icon: "clock".into(),
-            label: "Air date".into(),
-            timestamp,
-        });
+        let preset = episode
+            .aired
+            .map(|timestamp| TimePreset::at("clock", "Air date", timestamp));
 
         html! {
             <div class={classes!("episode", (!watched.is_empty()).then_some("watched"))} id={episode.code()}>

@@ -1,4 +1,4 @@
-use gloo::timers::callback::Interval;
+use api::TimeInfo;
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
@@ -17,9 +17,10 @@ pub(crate) struct Queue {
     pending: Vec<api::Task>,
     running: Vec<api::Task>,
     completed: Vec<api::CompletedTask>,
+    time: TimeInfo,
+    _time_handle: ContextHandle<TimeInfo>,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
-    _tick: Interval,
     _list_req: ws::Request,
     _sync_req: ws::Request,
     _remove_req: ws::Request,
@@ -35,10 +36,10 @@ pub(crate) enum Msg {
     RemoveDone(Result<ws::Packet<api::RemoveTask>, ws::Error>),
     Bump(api::TaskId),
     BumpDone(Result<ws::Packet<api::BumpTask>, ws::Error>),
-    Tick,
     Focus(Option<QueueFocus>),
     SetPage(usize),
     Navigate(Route),
+    SetTime(TimeInfo),
 }
 
 #[derive(Properties, PartialEq)]
@@ -73,8 +74,10 @@ impl Component for Queue {
             .context::<Router>(Callback::noop())
             .expect("Expected router in context");
 
-        let tick_link = ctx.link().clone();
-        let _tick = Interval::new(1000, move || tick_link.send_message(Msg::Tick));
+        let (time, _time_handle) = ctx
+            .link()
+            .context::<TimeInfo>(ctx.link().callback(Msg::SetTime))
+            .expect("Expected a configured time zone");
 
         Self {
             channel: ws::Channel::default(),
@@ -83,9 +86,10 @@ impl Component for Queue {
             pending: Vec::new(),
             running: Vec::new(),
             completed: Vec::new(),
+            time,
+            _time_handle,
             _setup,
             _broadcast,
-            _tick,
             _list_req: ws::Request::default(),
             _sync_req: ws::Request::default(),
             _remove_req: ws::Request::default(),
@@ -230,11 +234,6 @@ impl Queue {
                 result.context(Message::LoadingTasks)?;
                 Ok(false)
             }
-            Msg::Tick => {
-                // Re-render so the relative pending ("in ...") and completed
-                // ("... ago") labels refresh; they are derived from timestamps.
-                Ok(!self.pending.is_empty() || !self.completed.is_empty())
-            }
             Msg::Focus(focus) => {
                 self.router
                     .push(Route::Queue(QueueQuery { focus, page: 0 }));
@@ -250,6 +249,10 @@ impl Queue {
             Msg::Navigate(route) => {
                 self.router.push(route);
                 Ok(false)
+            }
+            Msg::SetTime(time) => {
+                self.time = time;
+                Ok(!self.pending.is_empty() || !self.completed.is_empty())
             }
         }
     }
@@ -415,7 +418,7 @@ impl Queue {
                     </span>
 
                     if !spinning {
-                        <span class="text-muted">{ eta_label(task.run_at) }</span>
+                        <span class="text-muted">{ eta_label(task.run_at, self.time.now()) }</span>
 
                         <button class="btn" onclick={ctx.link().callback(move |_| Msg::Bump(id))} title="Run now">
                             <span class="icon forward" />
@@ -511,7 +514,7 @@ impl Queue {
                         { self.view_completed_label(task, on_navigate) }
                     </span>
 
-                    <span class="text-muted">{ ago_label(task.completed_at) }</span>
+                    <span class="text-muted">{ ago_label(task.completed_at, self.time.now()) }</span>
                 </div>
             </div>
         }
@@ -568,12 +571,12 @@ fn humanize_count(secs: u64) -> (u64, &'static str) {
 /// Format when a pending task is expected to run as a human label, e.g.
 /// "in 20 seconds", "in 5 minutes", "in 1 hour", or "momentarily" when it is
 /// already due.
-fn eta_label(run_at: Option<api::Timestamp>) -> String {
+fn eta_label(run_at: Option<api::Timestamp>, now: api::Timestamp) -> String {
     let Some(run_at) = run_at else {
         return "momentarily".to_string();
     };
 
-    let Some(remaining) = run_at.checked_duration_since(api::Timestamp::now()) else {
+    let Some(remaining) = run_at.checked_duration_since(now) else {
         return "momentarily".to_string();
     };
 
@@ -590,8 +593,8 @@ fn eta_label(run_at: Option<api::Timestamp>) -> String {
 
 /// Format how long ago a task completed as a human label, e.g. "5 seconds ago",
 /// "2 minutes ago", or "just now".
-fn ago_label(completed_at: api::Timestamp) -> String {
-    let Some(elapsed) = api::Timestamp::now().checked_duration_since(completed_at) else {
+fn ago_label(completed_at: api::Timestamp, now: api::Timestamp) -> String {
+    let Some(elapsed) = now.checked_duration_since(completed_at) else {
         return "just now".to_string();
     };
 

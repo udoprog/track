@@ -298,7 +298,7 @@ enum HumanDateKind {
 
 fn nth(day: i8) -> impl fmt::Display {
     let suffix = match day {
-        11 | 12 | 13 => "th",
+        11..=13 => "th",
         _ => match day % 10 {
             1 => "st",
             2 => "nd",

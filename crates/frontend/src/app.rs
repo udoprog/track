@@ -34,7 +34,7 @@ pub(super) struct App {
 pub(super) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
-    TickMinute,
+    TickTime,
     ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
     TopLanguagesLoaded(Result<ws::Packet<api::GetTopLanguages>, ws::Error>),
     /// A consumer set (or cleared) the outline contents.
@@ -74,8 +74,8 @@ impl Component for App {
         let outline_control = OutlineControl::new(ctx.link().callback(Msg::SetOutline));
 
         let link = ctx.link().clone();
-        let _tick_minute_interval =
-            Interval::new(10_000, move || link.send_message(Msg::TickMinute));
+
+        let _tick_minute_interval = Interval::new(10_000, move || link.send_message(Msg::TickTime));
 
         Self {
             channel: ws::Channel::default(),
@@ -201,7 +201,7 @@ impl App {
 
                 Ok(false)
             }
-            Msg::TickMinute => {
+            Msg::TickTime => {
                 let now = Timestamp::now();
                 let date = self.time.now().date(self.time.clone());
 

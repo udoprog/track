@@ -373,11 +373,12 @@ impl Dashboard {
         self.pending
             .retain(|state| state.pending.kind != pending.kind);
 
-        if pending.timestamp <= api::Timestamp::now() {
+        if pending.timestamp <= self.time.now() {
             self.pending.push(PendingState {
                 pending,
                 anchor: NodeRef::default(),
             });
+
             self.pending
                 .sort_by_key(|state| Reverse(state.pending.timestamp));
         }
@@ -504,17 +505,17 @@ impl Dashboard {
             api::PendingKind::Movie { movie } => api::WatchedKind::Movie { movie },
         };
 
-        let preset = pending.aired.map(|timestamp| TimePreset {
-            icon: "clock".into(),
-            label: match pending.kind {
-                api::PendingKind::Episode { .. } => "Aired".into(),
-                api::PendingKind::Movie { .. } => "Released".into(),
-            },
-            timestamp,
+        let preset = pending.aired.map(|timestamp| {
+            // "Aired" reads oddly for movies; label that choice "Released" instead.
+            let label = match pending.kind {
+                api::PendingKind::Episode { .. } => "Aired",
+                api::PendingKind::Movie { .. } => "Released",
+            };
+
+            TimePreset::at("clock", label, timestamp)
         });
 
-        let now = api::Timestamp::now();
-        let aired_in_past = pending.aired.is_some_and(|a| a <= now);
+        let aired_in_past = pending.aired.is_some_and(|a| a <= self.time.now());
 
         let skip_ids = if let api::PendingKind::Episode { show, episode } = pending.kind {
             Some((show, episode))

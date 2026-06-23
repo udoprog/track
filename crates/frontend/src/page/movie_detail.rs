@@ -9,7 +9,8 @@ use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaQuery, Route, Router};
 use crate::ui::{
     ConfirmDanger, ContextMenu, Image, ImageGallery, ImageItem, Loading, MarkTimeMenu,
-    MediaSettingsModal, Modal, RemoteEditor, RemoteSourceKind, Tracked, TranslationsModal,
+    MediaSettingsModal, Modal, RemoteEditor, RemoteSourceKind, TimePreset, Tracked,
+    TranslationsModal,
 };
 
 struct WatchedState {
@@ -1011,6 +1012,13 @@ impl MovieDetail {
         // Earliest release, used to pre-fill the "Released" quick option.
         let release_at = movie.releases.iter().map(|r| r.timestamp).min();
 
+        // Mark-watched only offers the release date once the movie is actually out.
+        let watched_preset = release_at
+            .filter(|&r| r <= self.time.now())
+            .map(|ts| TimePreset::at("clock", "Released", ts));
+
+        let release_preset = release_at.map(|ts| TimePreset::at("clock", "When released", ts));
+
         let on_remove_next = link.callback(move |_| Msg::OnRemoveNext);
 
         html! {
@@ -1084,9 +1092,7 @@ impl MovieDetail {
                                         icon="check"
                                         title="Mark watched"
                                         prompt="When did you watch the movie?"
-                                        at_label="Released"
-                                        at_timestamp={release_at}
-                                        at_only_if_released=true
+                                        preset={watched_preset.clone()}
                                         on_confirm={link.callback(Msg::MarkWatched)}>
                                         <span class="icon check" />
                                         <span class="hide-desktop">{"Mark watched"}</span>
@@ -1103,8 +1109,7 @@ impl MovieDetail {
                                             trigger_class="btn"
                                             title="Not next movie"
                                             prompt="When do you want to watch the movie?"
-                                            at_label="When released"
-                                            at_timestamp={release_at}
+                                            preset={release_preset.clone()}
                                             on_confirm={link.callback(Msg::OnWatchNext)}>
                                             <span class="icon bookmark-slash" />
                                             <span class="hide-desktop">{"Not next movie"}</span>
