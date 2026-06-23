@@ -1718,7 +1718,7 @@ impl ShowDetail {
         };
 
         html! {
-            <div class={classes!("table-entry", "column", clickable.then_some("clickable"), active.then_some("active"), (!active && !self.expanded_seasons).then_some("hide-mobile"))} {onclick}>
+            <div class={classes!("column", clickable.then_some("clickable"), active.then_some("active"), (!active && !self.expanded_seasons).then_some("hide-mobile"))} {onclick}>
                 <div class="row-split fill">
                     <span>
                         if let Some(ref name) = s.name {
@@ -2085,7 +2085,7 @@ impl ShowDetail {
                                     <div class="row-split">
                                         {w.watched.timestamp.human_date_time(self.time.clone()).view()}
 
-                                        <div class="row end">
+                                        <div class="row">
                                             <div class="input-group" ref={w.context_anchor.clone()}>
                                                 <button class="btn" onclick={link.callback(move |_| Msg::FixWatched(wid))} title="Move to different episode">
                                                     <span class="icon pencil-square" />
@@ -2169,65 +2169,63 @@ impl ShowDetail {
         };
 
         html! {
-            <div class="column">
-                <div class="table">
-                    { for self.orphaned.iter().map(|w| {
-                        let wid = w.watched.id;
-                        let kind = api::WatchedKind::Episode { show: show_id, episode: api::EpisodeId::new(0) };
+            <div class="table">
+                { for self.orphaned.iter().map(|w| {
+                    let wid = w.watched.id;
+                    let kind = api::WatchedKind::Episode { show: show_id, episode: api::EpisodeId::new(0) };
 
-                        html! {
-                            <div class="row-split">
-                                <div class="row">
-                                    <span class="text-muted">{w.watched.code()}</span>
-                                    <span>{w.watched.timestamp.human_date_time(self.time.clone())}</span>
-                                </div>
-
-                                <div class="end input-group">
-                                    <button class="btn" onclick={link.callback(move |_| Msg::FixWatched(wid))} title="Move to episode">
-                                        <span class="icon pencil-square" />
-                                    </button>
-
-                                    if self.fixing_watched == Some(wid) {
-                                        <ContextMenu
-                                            prompt="Where do you want to move watch at"
-                                            label={w.watched.timestamp.human_date_time(self.time.clone())}
-                                            anchor={w.context_anchor.clone()}
-                                            on_close={ctx.link().callback(|_| Msg::CancelFixWatched)}
-                                            onerror={props.onerror.clone()}>
-                                            <EpisodePicker
-                                                {show_id}
-                                                seasons={self.seasons.clone()}
-                                                selected_season={self.selected().map(|s| s.season)}
-                                                selected_episode={selected_episode()}
-                                                on_confirm={link.callback(move |(season, ep)| Msg::MoveWatched(wid, season, ep))}
-                                                on_cancel={link.callback(|_| Msg::CancelFixWatched)}
-                                            />
-                                        </ContextMenu>
-                                    }
-
-                                    <button class="btn-danger" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
-                                        <span class="icon trash" />
-                                        <span class="hide-desktop">{"Remove"}</span>
-                                    </button>
-
-                                    if self.confirm_remove_watch == Some(wid) {
-                                        <ContextMenu
-                                            prompt="Remove watch at"
-                                            label={w.watched.timestamp.human_date_time(self.time.clone())}
-                                            anchor={w.context_anchor.clone()}
-                                            on_close={ctx.link().callback(|_| Msg::CancelRemoveWatch)}
-                                            onerror={props.onerror.clone()}>
-                                            <ConfirmDanger
-                                                on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, kind))}
-                                                on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
-                                            />
-                                        </ContextMenu>
-                                    }
-                                </div>
+                    html! {
+                        <div class="row-split">
+                            <div class="row">
+                                <span class="text-muted">{w.watched.code()}</span>
+                                <span>{w.watched.timestamp.human_date_time(self.time.clone())}</span>
                             </div>
-                        }
-                    }) }
-                </div>
+
+                            <div class="input-group">
+                                <button class="btn" onclick={link.callback(move |_| Msg::FixWatched(wid))} title="Move to episode">
+                                    <span class="icon pencil-square" />
+                                </button>
+
+                                if self.fixing_watched == Some(wid) {
+                                    <ContextMenu
+                                        prompt="Where do you want to move watch at"
+                                        label={w.watched.timestamp.human_date_time(self.time.clone())}
+                                        anchor={w.context_anchor.clone()}
+                                        on_close={ctx.link().callback(|_| Msg::CancelFixWatched)}
+                                        onerror={props.onerror.clone()}>
+                                        <EpisodePicker
+                                            {show_id}
+                                            seasons={self.seasons.clone()}
+                                            selected_season={self.selected().map(|s| s.season)}
+                                            selected_episode={selected_episode()}
+                                            on_confirm={link.callback(move |(season, ep)| Msg::MoveWatched(wid, season, ep))}
+                                            on_cancel={link.callback(|_| Msg::CancelFixWatched)}
+                                        />
+                                    </ContextMenu>
+                                }
+
+                                <button class="btn-danger" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
+                                    <span class="icon trash" />
+                                    <span class="hide-desktop">{"Remove"}</span>
+                                </button>
+
+                                if self.confirm_remove_watch == Some(wid) {
+                                    <ContextMenu
+                                        prompt="Remove watch at"
+                                        label={w.watched.timestamp.human_date_time(self.time.clone())}
+                                        anchor={w.context_anchor.clone()}
+                                        on_close={ctx.link().callback(|_| Msg::CancelRemoveWatch)}
+                                        onerror={props.onerror.clone()}>
+                                        <ConfirmDanger
+                                            on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, kind))}
+                                            on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
+                                        />
+                                    </ContextMenu>
+                                }
+                            </div>
+                        </div>
+                    }
+                }) }
             </div>
         }
     }

@@ -20,8 +20,8 @@ pub(crate) fn ConfirmDanger(props: &Props) -> Html {
     });
 
     html! {
-        <div class="row-split fill">
-            <div class="input-group end">
+        <div class="row align-end">
+            <div class="input-group">
                 <button onclick={on_cancel} class={classes!("btn", &props.btn_class)} title="No">
                     <span class="icon x-mark" />
                 </button>

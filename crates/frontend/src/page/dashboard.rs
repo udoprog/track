@@ -406,21 +406,19 @@ impl Dashboard {
             <div class="column">
                 <h1 class="center">{"What's next?"}</h1>
 
-                <div class="row-split">
-                    <div class="row end">
-                        <div class="input-group hide-mobile">
-                            <button class="btn" title="Show fewer" onclick={link.callback(|_| Msg::AdjustPageSize(-1))}>
-                                <span class="icon minus" />
-                            </button>
+                <div class="row align-end">
+                    <div class="input-group hide-mobile">
+                        <button class="btn" title="Show fewer" onclick={link.callback(|_| Msg::AdjustPageSize(-1))}>
+                            <span class="icon minus" />
+                        </button>
 
-                            <button class="btn" title="Show more" onclick={link.callback(|_| Msg::AdjustPageSize(1))}>
-                                <span class="icon plus" />
-                            </button>
-                        </div>
+                        <button class="btn" title="Show more" onclick={link.callback(|_| Msg::AdjustPageSize(1))}>
+                            <span class="icon plus" />
+                        </button>
+                    </div>
 
-                        <div class="input-group">
-                            <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
-                        </div>
+                    <div class="input-group">
+                        <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
                     </div>
                 </div>
 
@@ -443,7 +441,7 @@ impl Dashboard {
                         </button>
                     </div>
 
-                    <div class="input-group end">
+                    <div class="input-group">
                         <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
                     </div>
                 </div>

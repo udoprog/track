@@ -125,7 +125,7 @@ impl Component for Queue {
                 <div class="row-split">
                     <h1>{"Queue"}</h1>
 
-                    <button class="btn end" onclick={link.callback(|_| Msg::SyncAll)}
+                    <button class="btn" onclick={link.callback(|_| Msg::SyncAll)}
                         title="Queue sync for all show and movies">
                         <span class="item-inline"><span class="icon arrow-path" /></span>
                         <span class="hide-mobile">{"Sync All"}</span>
@@ -279,7 +279,7 @@ impl Queue {
             .map(|t| self.view_completed_label(t, None));
 
         html! {
-            <div class="table">
+            <div class="column">
                 { self.view_overview_card(ctx, QueueFocus::Running, "arrow-path", self.running.len(), running_current) }
                 { self.view_overview_card(ctx, QueueFocus::Pending, "clock", self.pending.len(), pending_current) }
                 { self.view_overview_card(ctx, QueueFocus::Completed, "check", self.completed.len(), completed_current) }
@@ -299,7 +299,7 @@ impl Queue {
         let clickable = onclick.is_some().then_some("clickable");
 
         html! {
-            <div class={classes!("table-entry", "row", clickable)} onclick={onclick}>
+            <div class={classes!("row", clickable)} onclick={onclick}>
                 <span class="item-inline"><span class={classes!("icon", icon)} /></span>
 
                 <span class="row fill">
@@ -355,7 +355,7 @@ impl Queue {
         }
 
         html! {
-            <div class="table">
+            <div class="column">
                 { for self.running.iter().map(|t| self.view_task_row(ctx, t, true)) }
             </div>
         }
@@ -385,7 +385,7 @@ impl Queue {
         });
 
         let body = html! {
-                <div class="table">
+                <div class="column">
                     { for page_pending.map(|t| self.view_task_row(ctx, t, false)) }
                 </div>
         };
@@ -407,28 +407,26 @@ impl Queue {
         let id = task.id;
 
         html! {
-            <div class="table-entry">
-                <div class="row">
-                    <span class="item-inline">
-                        <span class={if spinning { "icon arrow-path" } else { "icon clock" }} />
-                    </span>
+            <div class="row">
+                <span class="item-inline">
+                    <span class={if spinning { "icon arrow-path" } else { "icon clock" }} />
+                </span>
 
-                    <span class="row fill">
-                        { self.view_task_label(task, on_navigate) }
-                    </span>
+                <span class="row fill">
+                    { self.view_task_label(task, on_navigate) }
+                </span>
 
-                    if !spinning {
-                        <span class="text-muted">{ eta_label(task.run_at, self.time.now()) }</span>
+                if !spinning {
+                    <span class="text-muted">{ eta_label(task.run_at, self.time.now()) }</span>
 
-                        <button class="btn" onclick={ctx.link().callback(move |_| Msg::Bump(id))} title="Run now">
-                            <span class="icon forward" />
-                        </button>
+                    <button class="btn" onclick={ctx.link().callback(move |_| Msg::Bump(id))} title="Run now">
+                        <span class="icon forward" />
+                    </button>
 
-                        <button class="btn-danger" onclick={ctx.link().callback(move |_| Msg::Remove(id))} title="Remove from queue">
-                            <span class="icon trash" />
-                        </button>
-                    }
-                </div>
+                    <button class="btn-danger" onclick={ctx.link().callback(move |_| Msg::Remove(id))} title="Remove from queue">
+                        <span class="icon trash" />
+                    </button>
+                }
             </div>
         }
     }
@@ -486,7 +484,7 @@ impl Queue {
         });
 
         let body = html! {
-            <div class="table">
+            <div class="column">
                 { for page_completed.map(|t| self.view_completed_row(ctx, t)) }
             </div>
         };
@@ -506,16 +504,14 @@ impl Queue {
         let on_navigate = route.map(|r| ctx.link().callback(move |_| Msg::Navigate(r.clone())));
 
         html! {
-            <div class="table-entry">
-                <div class="row">
-                    <span class="item-inline"><span class="icon check" /></span>
+            <div class="row">
+                <span class="item-inline"><span class="icon check" /></span>
 
-                    <span class="row fill">
-                        { self.view_completed_label(task, on_navigate) }
-                    </span>
+                <span class="row fill">
+                    { self.view_completed_label(task, on_navigate) }
+                </span>
 
-                    <span class="text-muted">{ ago_label(task.completed_at, self.time.now()) }</span>
-                </div>
+                <span class="text-muted">{ ago_label(task.completed_at, self.time.now()) }</span>
             </div>
         }
     }

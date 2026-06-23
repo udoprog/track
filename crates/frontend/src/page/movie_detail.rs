@@ -1212,7 +1212,7 @@ impl MovieDetail {
                                 {w.watched.timestamp.human_date_time(self.time.clone()).view()}
                             </div>
 
-                            <button ref={w.remove_watch_anchor.clone()} class="btn-danger end" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
+                            <button ref={w.remove_watch_anchor.clone()} class="btn-danger" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
                                 <span class="icon trash" />
                                 <span class="hide-desktop">{"Remove"}</span>
                             </button>
@@ -1293,7 +1293,7 @@ impl MovieDetail {
                                         <span>{ty.as_str()}</span>
                                     </div>
 
-                                    <div class="row end">
+                                    <div class="row">
                                         <span class="text-muted">{earliest.timestamp.human_date_time(self.time.clone())}</span>
                                     </div>
                                 </div>

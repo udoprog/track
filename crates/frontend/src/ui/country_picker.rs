@@ -132,7 +132,7 @@ impl Component for CountryPicker {
                     </div>
 
                     <div class="table">
-                        <div class="table-entry row clickable" onclick={link.callback(|_| Msg::All)}>
+                        <div class="row clickable" onclick={link.callback(|_| Msg::All)}>
                             <span class="fill">{"All countries"}</span>
 
                             <span class="item-inline">
@@ -153,7 +153,7 @@ impl Component for CountryPicker {
                                     let code = *code;
 
                                     html! {
-                                        <div key={code} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| Msg::Toggle(code))}>
+                                        <div key={code} class={classes!("row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| Msg::Toggle(code))}>
                                             <span class="fill">{country.name}</span>
 
                                             if let Some(c) = code.to_iso().filter(|c| c.has_flag) {

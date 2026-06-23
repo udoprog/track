@@ -409,7 +409,7 @@ impl Component for RemoteEditor {
                                         </div>
                                     }
 
-                                    <div class="row end">
+                                    <div class="row">
                                         <div ref={r.context_anchor.clone()} class="input-group">
                                             <button class="btn" onclick={link.callback(move |_| Msg::Edit(edit_entry.clone()))} title="Edit identifier">
                                                 <span class="icon pencil-square" />
@@ -451,7 +451,7 @@ impl Component for RemoteEditor {
                                         { for kind_toggles }
                                     </div>
 
-                                    <div class="row end">
+                                    <div class="row">
                                         <span class={classes!("input-checkbox", enabled.then_some("checked"))} onclick={link.callback(move |_| Msg::SetEnabled(id, !enabled))} title="Use this source for air dates and sync">
                                             <span class="mark" />
                                             <span class="hide-desktop">{"Enabled"}</span>

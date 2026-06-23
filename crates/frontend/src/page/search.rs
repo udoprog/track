@@ -151,7 +151,7 @@ impl Component for Search {
             <>
                 <h1>{"Search Remotes"}</h1>
 
-                <div class="input-controls">
+                <input-controls>
                     <div class="input-group">
                         <input
                             class="input-text fill"
@@ -169,13 +169,15 @@ impl Component for Search {
                         </button>
                     </div>
 
-                    <div class="input-group">
-                        <MediaKindToggle
-                            selection={self.selection}
-                            on_change={link.callback(Msg::SelectionChanged)}
-                        />
-                    </div>
-                </div>
+                    <controls>
+                        <div class="input-group">
+                            <MediaKindToggle
+                                selection={self.selection}
+                                on_change={link.callback(Msg::SelectionChanged)}
+                            />
+                        </div>
+                    </controls>
+                </input-controls>
 
                 { self.view_results(ctx) }
             </>
@@ -398,7 +400,7 @@ impl Search {
                             <span class="item-title">{r.title.as_deref().unwrap_or("Untitled Movie")}</span>
                         </h2>
 
-                        <div class="row end">
+                        <div class="row">
                             if let Some(on_nav) = on_nav {
                                 <button class="btn" onclick={on_nav} title="Already tracked">
                                     <span class="icon check" />
@@ -459,7 +461,7 @@ impl Search {
                             <span class="item-title">{r.title.as_deref().unwrap_or("Untitled Movie")}</span>
                         </h2>
 
-                        <div class="row end">
+                        <div class="row">
                             if let Some(on_nav) = on_nav {
                                 <button class="btn" onclick={on_nav} title="Already tracked">
                                     <span class="icon check" />

@@ -221,10 +221,10 @@ impl Component for MediaList {
             <>
                 <div class="row-split">
                     <h1>{"Media"}</h1>
-                    <h4 class="text-muted end">{total}</h4>
+                    <h4 class="text-muted">{total}</h4>
                 </div>
 
-                <div class="input-controls">
+                <input-controls>
                     <div class="input-group">
                         <input
                             type="text"
@@ -242,13 +242,13 @@ impl Component for MediaList {
                         }
                     </div>
 
-                    <div class="row">
-                        <div class="input-group">
+                    <controls>
+                        <div class="input-group fill">
                             <div class="input-text">
                                 {"Sort by:"}
                             </div>
 
-                            <select class="input-select" onchange={on_sort} value={sort_value}>
+                            <select class="input-select fill" onchange={on_sort} value={sort_value}>
                                 <option value="title" selected={matches!(self.sort, SortField::Title)}>
                                     {"Title"}
                                 </option>
@@ -270,7 +270,7 @@ impl Component for MediaList {
                             <button class="btn" title={format!("Showing: {tracked_label}")}
                                 onclick={link.callback(|_| Msg::CycleTracked)}>
                                 <span class={classes!("icon", tracked_icon)} />
-                                <span class="hide-mobile">{tracked_label}</span>
+                                <span class="hide-desktop">{tracked_label}</span>
                             </button>
 
                             <MediaKindToggle
@@ -279,11 +279,11 @@ impl Component for MediaList {
                             />
                         </div>
 
-                        <div class="input-group">
+                        <div class="input-group align-end">
                             <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
                         </div>
-                    </div>
-                </div>
+                    </controls>
+                </input-controls>
 
                 if self.list_req.is_pending() {
                     <div class="row center">
@@ -599,121 +599,119 @@ impl MediaList {
             .map(|timestamp| TimePreset::at("clock", "Released", timestamp));
 
         html! {
-            <div class="table-entry">
-                <div class="desktop-row mobile-column align-top">
-                    <Image class="banner clickable hide-desktop" onclick={&onclick} src={m.banner.clone()} />
-                    <Image class="poster poster-side clickable hide-mobile" onclick={&onclick} src={m.poster.clone()} />
+            <div class="desktop-row mobile-column align-top">
+                <Image class="banner clickable hide-desktop" onclick={&onclick} src={m.banner.clone()} />
+                <Image class="poster poster-side clickable hide-mobile" onclick={&onclick} src={m.poster.clone()} />
 
-                    <div class="column fill">
-                            <div class="row-split fill align-top">
-                                <div class="column fill">
-                                    <div class="row clickable" onclick={&onclick}>
-                                        <div class="item-inline" title={kind_title}>
-                                            <div class={classes!("icon", kind_icon)} />
-                                        </div>
-
-                                        <span class="item-title">{m.title.as_deref().unwrap_or("Untitled Media")}</span>
-                                    </div>
-
-                                    if let Some(alt) = matched_alt {
-                                        <div class="row text-gap text-muted">
-                                            <span>{"Alt:"}</span>
-                                            <span>{alt}</span>
-                                        </div>
-                                    }
-
-                                    if !m.remotes.is_empty() {
-                                        <div class="row">
-                                            { for m.remotes.iter().filter_map(|r| {
-                                                let url = match m.kind {
-                                                    api::MediaKind::Shows => r.remote.show_url(r.slug.as_deref()),
-                                                    api::MediaKind::Movies => r.remote.movie_url(),
-                                                }?;
-                                                let label = r.remote.source().as_label();
-                                                let id = r.remote.source().as_id();
-
-                                                Some(html! {
-                                                    <a class="item-inline-source" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
-                                                        <span class={classes!("logo", id)} />
-                                                    </a>
-                                                })
-                                            }) }
-                                        </div>
-                                    }
-
-                                    <div class="row">
-                                        if let Some(ts) = m.date {
-                                            <div class="row">
-                                                <span class="text-muted item-inline" title="Release date">
-                                                    <span class="icon calendar" />
-                                                </span>
-
-                                                <span>{ts.human_date(self.time.clone())}</span>
-                                            </div>
-                                        } else {
-                                            <div class="row">
-                                                <span class="text-muted item-inline" title="Unknown release date">
-                                                    <span class="icon calendar" />
-                                                </span>
-
-                                                {"No release date"}
-                                            </div>
-                                        }
-
-                                        if let Some(ts) = m.last_watched_at {
-                                            <div class="row">
-                                                <span class="text-muted item-inline" title="Last watched">
-                                                    <span class="icon eye" />
-                                                </span>
-
-                                                <span>{ts.human_date(self.time.clone())}</span>
-                                            </div>
-                                        } else {
-                                            <div class="row">
-                                                <span class="text-muted item-inline" title="Not watched">
-                                                    <span class="icon eye-slash" />
-                                                </span>
-
-                                                {"Never watched"}
-                                            </div>
-                                        }
-                                    </div>
+                <div class="column fill">
+                    <div class="row-split fill align-top">
+                        <div class="column fill">
+                            <div class="row clickable" onclick={&onclick}>
+                                <div class="item-inline" title={kind_title}>
+                                    <div class={classes!("icon", kind_icon)} />
                                 </div>
 
-                                <div class="row end">
-                                    <div class="row">
-                                        if is_movie {
-                                            <MarkTimeMenu
-                                                onerror={ctx.props().onerror.clone()}
-                                                trigger_class="btn-success"
-                                                title="Mark watched"
-                                                prompt={match m.title { Some(ref title) => format!("When did you watch {}?", title), None => "When did you watch this movie?".to_string() }}
-                                                {preset}
-                                                on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(id, mark_time))}>
-                                                <span class="icon check" />
-                                            </MarkTimeMenu>
-                                        }
-                                    </div>
+                                <span class="item-title">{m.title.as_deref().unwrap_or("Untitled Media")}</span>
+                            </div>
 
-                                    if !m.tracked {
-                                        <button class="btn" title="Track"
-                                            onclick={ctx.link().callback(move |_| Msg::SetTracked(kind, id, true))}>
+                            if let Some(alt) = matched_alt {
+                                <div class="row text-gap text-muted">
+                                    <span>{"Alt:"}</span>
+                                    <span>{alt}</span>
+                                </div>
+                            }
+
+                            if !m.remotes.is_empty() {
+                                <div class="row">
+                                    { for m.remotes.iter().filter_map(|r| {
+                                        let url = match m.kind {
+                                            api::MediaKind::Shows => r.remote.show_url(r.slug.as_deref()),
+                                            api::MediaKind::Movies => r.remote.movie_url(),
+                                        }?;
+                                        let label = r.remote.source().as_label();
+                                        let id = r.remote.source().as_id();
+
+                                        Some(html! {
+                                            <a class="item-inline-source" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
+                                                <span class={classes!("logo", id)} />
+                                            </a>
+                                        })
+                                    }) }
+                                </div>
+                            }
+
+                            <div class="row">
+                                if let Some(ts) = m.date {
+                                    <div class="row">
+                                        <span class="text-muted item-inline" title="Release date">
+                                            <span class="icon calendar" />
+                                        </span>
+
+                                        <span>{ts.human_date(self.time.clone())}</span>
+                                    </div>
+                                } else {
+                                    <div class="row">
+                                        <span class="text-muted item-inline" title="Unknown release date">
+                                            <span class="icon calendar" />
+                                        </span>
+
+                                        {"No release date"}
+                                    </div>
+                                }
+
+                                if let Some(ts) = m.last_watched_at {
+                                    <div class="row">
+                                        <span class="text-muted item-inline" title="Last watched">
+                                            <span class="icon eye" />
+                                        </span>
+
+                                        <span>{ts.human_date(self.time.clone())}</span>
+                                    </div>
+                                } else {
+                                    <div class="row">
+                                        <span class="text-muted item-inline" title="Not watched">
                                             <span class="icon eye-slash" />
-                                            <span class="hide-mobile">{"Track"}</span>
-                                        </button>
-                                    }
-                                </div>
+                                        </span>
+
+                                        {"Never watched"}
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="row">
+                                if is_movie {
+                                    <MarkTimeMenu
+                                        onerror={ctx.props().onerror.clone()}
+                                        trigger_class="btn-success"
+                                        title="Mark watched"
+                                        prompt={match m.title { Some(ref title) => format!("When did you watch {}?", title), None => "When did you watch this movie?".to_string() }}
+                                        {preset}
+                                        on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(id, mark_time))}>
+                                        <span class="icon check" />
+                                    </MarkTimeMenu>
+                                }
                             </div>
 
-                        if let Some(ref overview) = m.overview {
-                            <div class="overview">
-                                {overview}
-                            </div>
-                        }
+                            if !m.tracked {
+                                <button class="btn" title="Track"
+                                    onclick={ctx.link().callback(move |_| Msg::SetTracked(kind, id, true))}>
+                                    <span class="icon eye-slash" />
+                                    <span class="hide-mobile">{"Track"}</span>
+                                </button>
+                            }
+                        </div>
                     </div>
 
-                    <span class="item-inline align-end clickable"><span onclick={&onclick} class="icon chevron-right" /></span>
+                    if let Some(ref overview) = m.overview {
+                        <div class="overview">
+                            {overview}
+                        </div>
+                    }
                 </div>
+
+                <span class="item-inline align-end clickable"><span onclick={&onclick} class="icon chevron-right" /></span>
             </div>
         }
     }

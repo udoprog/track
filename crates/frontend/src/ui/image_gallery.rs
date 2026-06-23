@@ -46,7 +46,7 @@ pub(crate) fn ImageGallery(props: &Props) -> Html {
             <div class="row-split">
                 <h2>{props.kind.title()}</h2>
 
-                <div class="row end">
+                <div class="row">
                     <button class="btn-danger" onclick={on_clear}>
                         <span class="icon x-mark" />
                         {format!("Clear {}", props.kind)}

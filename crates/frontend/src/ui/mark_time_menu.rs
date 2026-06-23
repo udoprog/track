@@ -562,7 +562,7 @@ impl MarkTimeMenu {
 
                     <span class="fill center">{format!("{} {year}", self.view.month_name())}</span>
 
-                    <button class="btn end" onclick={link.callback(|_| Msg::NextMonth)} title="Next month">
+                    <button class="btn" onclick={link.callback(|_| Msg::NextMonth)} title="Next month">
                         <span class="icon chevron-right" />
                     </button>
                 </div>
@@ -674,7 +674,7 @@ impl MarkTimeMenu {
                     </button>
                 </div>
 
-                <div class="input-group end">
+                <div class="input-group">
                     <button class="btn" onclick={link.callback(|_| Msg::Close)} title="Cancel">
                         <span class="icon x-mark" />
                     </button>

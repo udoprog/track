@@ -19,15 +19,15 @@ $text-muted: #aaa;
 $border-subtle: #252525;
 $border-subtle-transparent: rgba(8, 8, 8, $transparency);
 $border-input: #555;
-$color-primary: #89adeb;
-$color-secondary: #acacac;
-$color-danger: #e5c3ae;
-$color-success: #74ca74;
+$color-primary: #708dc0;
+$color-secondary: #999;
+$color-danger: #a56868;
+$color-success: #5ca05c;
 $color-title: $color-primary;
 $link-color: rgb(87, 127, 195);
-$text-color: #ccc;
-$text-color-inverted: #777;
-$adjust-bg: -25%;
+$text-color: #ddd;
+$text-color-selected: #fff;
+$adjust-bg: -20%;
 
 $font-title: 24px;
 $font-xl: 20px;
@@ -168,6 +168,10 @@ p {
         align-items: start;
     }
 
+    &.align-end {
+        justify-content: flex-end;
+    }
+
     &.no-gap {
         gap: 0;
     }
@@ -268,16 +272,6 @@ p {
     &.reverse {
         flex-direction: row-reverse;
     }
-
-    >.start {
-        margin-right: auto;
-        justify-content: flex-start;
-    }
-
-    >.end {
-        margin-left: auto;
-        justify-content: flex-end;
-    }
 }
 
 .row-split {
@@ -346,7 +340,7 @@ p {
     }
 }
 
-@mixin btn-base($color, $text-color, $input-height, $input-height-touch) {
+@mixin btn-base($color, $input-height, $input-height-touch) {
     cursor: pointer;
 
     --icon-color: #{$text-color};
@@ -359,17 +353,13 @@ p {
     align-items: center;
     justify-content: start;
     border: none;
-    border-radius: $radius-sm;
+    border-radius: $radius;
     font-size: $font-sm;
     font-family: $sans-serif-font;
 
     height: $input-height;
     min-width: $input-height;
     padding: $padding;
-
-    border-width: 2px;
-    border-style: solid;
-    border-color: transparent;
 
     @include g.on-mobile {
         height: $input-height-touch;
@@ -387,28 +377,26 @@ p {
     }
 
     &.selected {
-        border-color: rgba(color.change($color, $lightness: 75%), 0.5);
+        --icon-color: #{$text-color-selected};
+        color: $text-color-selected;
+        background-color: $color;
     }
 }
 
 .btn {
-    @include btn-base($color-secondary, $text-color, $input-height, $input-height-touch);
-}
-
-.btn-lg {
-    @include btn-base($color-secondary, $text-color, $input-height-lg, $input-height-touch-lg);
+    @include btn-base($color-secondary, $input-height, $input-height-touch);
 }
 
 .btn-primary {
-    @include btn-base($color-primary, $text-color, $input-height, $input-height-touch);
+    @include btn-base($color-primary, $input-height, $input-height-touch);
 }
 
 .btn-success {
-    @include btn-base($color-success, $text-color, $input-height, $input-height-touch);
+    @include btn-base($color-success, $input-height, $input-height-touch);
 }
 
 .btn-danger {
-    @include btn-base($color-danger, $text-color, $input-height, $input-height-touch);
+    @include btn-base($color-danger, $input-height, $input-height-touch);
 }
 
 .hide-mobile {
@@ -439,7 +427,7 @@ p {
     >.input-group,
     .input-number,
     .input-text,
-    .input-controls,
+    input-controls,
     .input-checkbox,
     .input-select {
         align-self: stretch;
@@ -730,13 +718,23 @@ image {
 }
 
 .status {
-    font-size: $font-xs;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     background: $color-secondary;
-    border: 1px solid $border-subtle;
+    color: color.adjust($color-secondary, $lightness: -50%);
+    border: 1px solid $border-subtle-transparent;
     border-radius: $radius;
     padding: 1px $padding;
-    color: $text-muted;
     white-space: nowrap;
+
+    height: $input-height;
+    min-width: $input-height;
+
+    @include g.on-mobile {
+        height: $input-height-touch;
+        min-width: $input-height-touch;
+    }
 }
 
 .detail-layout {
@@ -895,6 +893,10 @@ image {
             border-radius: $radius-sm !important;
         }
     }
+
+    &.align-end {
+        justify-content: flex-end;
+    }
 }
 
 .input-group {
@@ -917,26 +919,29 @@ image {
 // the input field, the second is the controls. On desktop they sit on one row
 // (input fills, controls hug the right); on mobile the controls flow onto the
 // next row(s) and wrap as needed.
-.input-controls {
+input-controls {
     display: grid;
     grid-template-columns: 1fr auto;
-    gap: $gap-xs;
+    gap: $gap;
     align-items: center;
 
-    >:last-child {
+    >controls {
         display: flex;
-        flex-wrap: wrap;
-        gap: $gap-xs;
-        align-items: center;
+        flex-direction: row;
+        gap: $gap;
         justify-content: flex-end;
+        flex-wrap: wrap;
+
+        @include g.on-mobile {
+            flex-direction: column;
+            align-items: stretch;
+        }
     }
 
     @include g.on-mobile {
-        grid-template-columns: 1fr;
-
-        >:last-child {
-            justify-content: flex-start;
-        }
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
     }
 }
 
@@ -946,30 +951,18 @@ image {
     font-size: $font-sm;
     gap: $gap-xs;
 
-    &-separator {
+    >table-separator {
         height: 1px;
         background: $border-subtle-transparent;
         margin: $gap-xs 0;
     }
 
-    &-entry {
-        display: flex;
-        flex-direction: column;
-        gap: $gap-sm;
+    >:not(table-separator) {
         padding: $gap-sm;
         border-style: solid;
         border-color: $border-subtle-transparent;
         background: $bg-dark-transparent;
         border-width: 1px;
-
-        &.row {
-            flex-direction: row;
-            align-items: center;
-        }
-
-        .row-split {
-            flex-direction: row;
-        }
 
         &.clickable:hover {
             background: rgba($color-secondary, $transparency);

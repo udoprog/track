@@ -5,9 +5,6 @@ use musli_web::web03::prelude::*;
 
 use crate::SetupChannel;
 
-/// Inline season + episode picker used for moving or fixing watched entries.
-/// Renders two `<select>` elements and confirm/cancel buttons, fitting inside
-/// a `row` or `table-entry` without taking up extra vertical space.
 pub(crate) struct EpisodePicker {
     channel: ws::Channel,
     selected_season: Option<api::SeasonNumber>,

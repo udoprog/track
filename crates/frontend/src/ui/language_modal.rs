@@ -216,7 +216,7 @@ impl Component for LanguageModal {
                     // and entirely when `show_top` is disabled.
                     if self.filter.is_empty() {
                         if props.allow_default {
-                            <div class="table-entry row clickable" onclick={link.callback(|_| Msg::Pick(api::Locale::DEFAULT))}>
+                            <div class="row clickable" onclick={link.callback(|_| Msg::Pick(api::Locale::DEFAULT))}>
                                 <span class="fill">{props.placeholder}</span>
 
                                 if current.is_default() {
@@ -237,7 +237,7 @@ impl Component for LanguageModal {
                                 let (name, flag) = locale_label(locale, "Default Language");
 
                                 html! {
-                                    <div key={format!("top-{locale}")} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| Msg::Pick(locale))}>
+                                    <div key={format!("top-{locale}")} class={classes!("row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| Msg::Pick(locale))}>
                                         <span class="fill">{name}</span>
 
                                         if selected {
@@ -260,7 +260,7 @@ impl Component for LanguageModal {
                     }
 
                     if !self.filtered.is_empty() {
-                        <div class="table-separator" />
+                        <table-separator />
                     }
 
                     {
@@ -273,7 +273,7 @@ impl Component for LanguageModal {
                                 let (name, flag) = locale_label(locale, "Default Language");
 
                                 html! {
-                                    <div key={locale.to_string()} class={classes!("table-entry", "row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| Msg::Pick(locale))}>
+                                    <div key={locale.to_string()} class={classes!("row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| Msg::Pick(locale))}>
                                         <span class="fill">{name}</span>
 
                                         if selected {

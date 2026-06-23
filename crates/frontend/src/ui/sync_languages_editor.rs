@@ -76,7 +76,7 @@ impl Component for SyncLanguagesEditor {
                         let (label, flag) = locale_label(l, "Default Language");
 
                         html! {
-                            <div key={l.to_string()} class="table-entry row">
+                            <div key={l.to_string()} class="row">
                                 <span class="fill">{label}</span>
 
                                 if let Some(flag) = flag {
@@ -92,7 +92,7 @@ impl Component for SyncLanguagesEditor {
                     })
                 }
 
-                <div class="table-entry row">
+                <div class="row">
                     <button class="btn" onclick={link.callback(|_| Msg::Open)} title="Add language">
                         <span class="icon plus" />
                         <span class="hide-desktop">{"Add language"}</span>
