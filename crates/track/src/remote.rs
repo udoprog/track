@@ -1,3 +1,5 @@
+use core::time::Duration;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
@@ -25,6 +27,7 @@ pub(crate) fn best_image(images: &[Image], selected: Option<ImageKey>) -> Option
 #[derive(Clone)]
 pub(crate) struct RemoteClients {
     http: reqwest::Client,
+    rate_limiter: Arc<leaky_bucket::RateLimiter>,
     inner: Arc<Mutex<Inner>>,
 }
 
@@ -41,8 +44,16 @@ impl RemoteClients {
             tvmaze: Some(crate::tvmaze::Client::new(http.clone())),
             ..Inner::default()
         };
+
+        let rate_limiter = leaky_bucket::RateLimiter::builder()
+            .initial(10)
+            .interval(Duration::from_millis(100))
+            .refill(1)
+            .build();
+
         Self {
             http,
+            rate_limiter: Arc::new(rate_limiter),
             inner: Arc::new(Mutex::new(inner)),
         }
     }
@@ -76,16 +87,27 @@ impl RemoteClients {
         Ok(())
     }
 
-    fn tmdb(&self) -> Option<tmdb::Client> {
-        self.inner.lock().tmdb.clone()
+    async fn tmdb(&self) -> Option<tmdb::Client> {
+        let Some(tmdb) = self.inner.lock().tmdb.clone() else {
+            return None;
+        };
+
+        self.rate_limiter.acquire_one().await;
+        Some(tmdb)
     }
 
-    fn tvdb(&self) -> Option<tvdb::Client> {
-        self.inner.lock().tvdb.clone()
+    async fn tvdb(&self) -> Option<tvdb::Client> {
+        let Some(tvdb) = self.inner.lock().tvdb.clone() else {
+            return None;
+        };
+
+        self.rate_limiter.acquire_one().await;
+        Some(tvdb)
     }
 
     pub(crate) async fn fetch_tmdb_image(&self, path: &str) -> Result<Option<bytes::Bytes>> {
         self.tmdb()
+            .await
             .context("Expected a configured TMDB client")?
             .fetch_image(path)
             .await
@@ -93,6 +115,7 @@ impl RemoteClients {
 
     pub(crate) async fn fetch_tvdb_image(&self, path: &str) -> Result<Option<bytes::Bytes>> {
         self.tvdb()
+            .await
             .context("Expected a configured TVDB client")?
             .fetch_image(path)
             .await
@@ -111,8 +134,8 @@ impl RemoteClients {
         query: &str,
         page: usize,
     ) -> Result<(Vec<api::SearchShow>, usize)> {
-        let tmdb = self.tmdb();
-        let tvdb = self.tvdb();
+        let tmdb = self.tmdb().await;
+        let tvdb = self.tvdb().await;
 
         let mut a = Vec::new();
         let mut b = Vec::new();
@@ -188,7 +211,7 @@ impl RemoteClients {
         let mut out = Vec::new();
         let mut total = 0;
 
-        if let Some(client) = self.tmdb() {
+        if let Some(client) = self.tmdb().await {
             let (results, count) = client.search_movies(query, page).await?;
             total += count;
 
@@ -209,14 +232,11 @@ impl RemoteClients {
         Ok((out, total))
     }
 
-    pub(crate) async fn fetch_tmdb_show(
-        &self,
-        id: u32,
-        language: api::Locale,
-    ) -> Result<tmdb::ShowInfo> {
+    pub(crate) async fn fetch_tmdb_show(&self, id: u32) -> Result<tmdb::ShowInfo> {
         self.tmdb()
+            .await
             .context("Expected a configured TMDB client")?
-            .fetch_show(id, language)
+            .fetch_show(id)
             .await
     }
 
@@ -224,22 +244,19 @@ impl RemoteClients {
         &self,
         show_id: u32,
         season: api::SeasonNumber,
-        language: api::Locale,
     ) -> Result<Vec<tmdb::EpisodeInfo>> {
         self.tmdb()
+            .await
             .context("Expected a configured TMDB client")?
-            .fetch_season_episodes(show_id, season, language)
+            .fetch_season_episodes(show_id, season)
             .await
     }
 
-    pub(crate) async fn fetch_tmdb_movie(
-        &self,
-        id: u32,
-        language: api::Locale,
-    ) -> Result<tmdb::MovieInfo> {
+    pub(crate) async fn fetch_tmdb_movie(&self, id: u32) -> Result<tmdb::MovieInfo> {
         self.tmdb()
+            .await
             .context("Expected a configured TMDB client")?
-            .fetch_movie(id, language)
+            .fetch_movie(id)
             .await
     }
 
@@ -248,6 +265,7 @@ impl RemoteClients {
         id: u32,
     ) -> Result<Vec<tmdb::MovieReleaseInfo>> {
         self.tmdb()
+            .await
             .context("Expected a configured TMDB client")?
             .fetch_movie_releases(id)
             .await
@@ -256,8 +274,9 @@ impl RemoteClients {
     pub(crate) async fn fetch_tmdb_show_translations(
         &self,
         id: u32,
-    ) -> Result<Vec<tmdb::TranslationRow>> {
+    ) -> Result<Vec<tmdb::Translation>> {
         self.tmdb()
+            .await
             .context("Expected a configured TMDB client")?
             .fetch_show_translations(id)
             .await
@@ -267,42 +286,90 @@ impl RemoteClients {
         &self,
         show_id: u32,
         season: api::SeasonNumber,
-    ) -> Result<Vec<tmdb::TranslationRow>> {
+    ) -> Result<Vec<tmdb::Translation>> {
         self.tmdb()
+            .await
             .context("Expected a configured TMDB client")?
             .fetch_season_translations(show_id, season)
             .await
     }
 
-    pub(crate) async fn fetch_tmdb_movie_translations(
-        &self,
-        id: u32,
-    ) -> Result<Vec<tmdb::TranslationRow>> {
-        self.tmdb()
-            .context("Expected a configured TMDB client")?
-            .fetch_movie_translations(id)
-            .await
-    }
-
-    pub(crate) async fn fetch_tvdb_show(
-        &self,
-        id: u32,
-        language: api::Locale,
-    ) -> Result<tvdb::SeriesInfo> {
-        self.tvdb()
-            .context("Expected a configured TVDB client")?
-            .fetch_show(id, language)
-            .await
-    }
-
-    pub(crate) async fn fetch_tvdb_episodes(
+    pub(crate) async fn fetch_tmdb_episode_translations(
         &self,
         show_id: u32,
-        language: api::Locale,
-    ) -> Result<Vec<tvdb::EpisodeInfo>> {
+        season: api::SeasonNumber,
+        episode: u32,
+    ) -> Result<Vec<tmdb::Translation>> {
+        self.tmdb()
+            .await
+            .context("Expected a configured TMDB client")?
+            .fetch_episode_translations(show_id, season, episode)
+            .await
+    }
+
+    pub(crate) async fn fetch_tmdb_movie_translations(
+        &self,
+        tvdb_id: u32,
+    ) -> Result<Vec<tmdb::Translation>> {
+        self.tmdb()
+            .await
+            .context("Expected a configured TMDB client")?
+            .fetch_movie_translations(tvdb_id)
+            .await
+    }
+
+    pub(crate) async fn fetch_tvdb_show(&self, tvdb_id: u32) -> Result<tvdb::SeriesInfo> {
         self.tvdb()
+            .await
             .context("Expected a configured TVDB client")?
-            .fetch_episodes(show_id, language)
+            .fetch_show(tvdb_id)
+            .await
+    }
+
+    pub(crate) async fn fetch_tvdb_episodes(&self, tvdb_id: u32) -> Result<Vec<tvdb::EpisodeInfo>> {
+        self.tvdb()
+            .await
+            .context("Expected a configured TVDB client")?
+            .fetch_episodes(tvdb_id)
+            .await
+    }
+
+    pub(crate) async fn fetch_tvdb_show_translation(
+        &self,
+        tvdb_id: u32,
+        language: api::Locale,
+        available: &HashSet<String>,
+    ) -> Result<Option<tvdb::Translation>> {
+        self.tvdb()
+            .await
+            .context("Expected a configured TVDB client")?
+            .fetch_show_translation(tvdb_id, language, available)
+            .await
+    }
+
+    pub(crate) async fn fetch_tvdb_season_translation(
+        &self,
+        season_id: u32,
+        language: api::Locale,
+        available: &HashSet<String>,
+    ) -> Result<Option<tvdb::Translation>> {
+        self.tvdb()
+            .await
+            .context("Expected a configured TVDB client")?
+            .fetch_season_translation(season_id, language, available)
+            .await
+    }
+
+    pub(crate) async fn fetch_tvdb_episode_translation(
+        &self,
+        episode_id: u32,
+        language: api::Locale,
+        available: &HashSet<String>,
+    ) -> Result<Option<tvdb::Translation>> {
+        self.tvdb()
+            .await
+            .context("Expected a configured TVDB client")?
+            .fetch_episode_translation(episode_id, language, available)
             .await
     }
 

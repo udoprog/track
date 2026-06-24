@@ -1,3 +1,5 @@
+use core::mem;
+
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use anyhow::{Context as _, Result};
@@ -5,7 +7,6 @@ use api::{
     EpisodeId, Image, ImageId, ImageKey, ImageKind, RemoteSource, SeasonNumber, SyncKind,
     SyncKindSet,
 };
-use tracing::{info, warn};
 
 use crate::app_broadcast::Broadcaster;
 use crate::db::Database;
@@ -24,7 +25,7 @@ pub(crate) async fn sync_show(
         .context("Expected show to exist")?;
 
     let config = db.load_config().await?;
-    let base_language = show.language.or(config.language);
+    let language = show.language.or(config.language);
 
     // Ensure a TVmaze remote is stored (resolved via TVDB/IMDb) so air-date
     // enrichment participates in the layered order, as it did unconditionally
@@ -32,7 +33,7 @@ pub(crate) async fn sync_show(
     if show.remote_by_source(RemoteSource::Tvmaze).is_none()
         && let Err(e) = ensure_tvmaze_remote(show_id, &show, remote, db).await
     {
-        warn!("TVmaze id resolution skipped for show {show_id}: {e:#}");
+        tracing::warn!("TVmaze id resolution skipped for show {show_id}: {e:#}");
     }
 
     // Re-read so a freshly stored TVmaze remote is included in the order.
@@ -41,7 +42,7 @@ pub(crate) async fn sync_show(
         .await?
         .context("Expected show to exist")?;
 
-    info!(show_id = %show_id, title = show.strings.title(), ?base_language, "Syncing show");
+    tracing::info!(show_id = %show_id, title = show.strings.title(), ?language, "Syncing show");
 
     // Visit enabled remotes in priority order, one layer per source (the
     // highest-priority entry of each source wins). Each layer contributes the
@@ -83,9 +84,9 @@ pub(crate) async fn sync_show(
                 Some(tmdb_id) => {
                     tmdb_layer(
                         &mut draft,
+                        &config,
                         &show,
                         tmdb_id,
-                        base_language,
                         do_base,
                         do_air_date,
                         remote,
@@ -96,15 +97,7 @@ pub(crate) async fn sync_show(
             },
             RemoteSource::Tvdb => match entry.remote.value().as_u32() {
                 Some(tvdb_id) => {
-                    tvdb_layer(
-                        &mut draft,
-                        tvdb_id,
-                        base_language,
-                        do_base,
-                        do_air_date,
-                        remote,
-                    )
-                    .await
+                    tvdb_layer(&mut draft, &config, tvdb_id, do_base, do_air_date, remote).await
                 }
                 None => continue,
             },
@@ -119,7 +112,7 @@ pub(crate) async fn sync_show(
         // data already collected still persist, and the kind stays unclaimed so a
         // later layer can fill it.
         if let Err(e) = result {
-            warn!(?source, "Sync layer failed for show {show_id}: {e:#}");
+            tracing::warn!(?source, "Sync layer failed for show {show_id}: {e:#}");
             continue;
         }
 
@@ -136,17 +129,11 @@ pub(crate) async fn sync_show(
 
     // Base drives the show's seasons and episodes:
     //   - provided           → persist the fresh draft;
-    //   - eligible, missing   → a configured Base source failed this run, so keep
-    //                           the existing show rather than wiping it;
+    //   - eligible, missing   → a configured Base source failed this run, so
+    //                           keep the existing show rather than wiping it;
     //   - not eligible        → no enabled remote contributes Base, so the
     //                           seasons/episodes are orphaned and get cleared.
     if draft.provided.contains(SyncKind::Base) {
-        // Populate per-language translated strings alongside the direct columns.
-        // Best-effort: a failure here must not abort the rest of the sync.
-        if let Err(e) = collect_show_strings(&mut draft, &config, remote).await {
-            warn!("String collection failed for show {show_id}: {e:#}");
-        }
-
         persist_show_draft(show_id, &show, &draft, db, broadcast).await?;
     } else if eligible.contains(SyncKind::Base) {
         anyhow::bail!("Show has no syncable Base remote available");
@@ -183,7 +170,7 @@ pub(crate) async fn sync_show(
         .await?;
     db.set_show_synced_at(show_id, now).await?;
     broadcast.broadcast_event(api::AppEventKind::PendingChanged);
-    info!(show_id = %show_id, "Sync complete");
+    tracing::info!(show_id = %show_id, "Sync complete");
     Ok(())
 }
 
@@ -206,7 +193,7 @@ async fn ensure_tvmaze_remote(
                 .value()
                 .as_u32()
                 .context("Expected a valid TVDB id")?;
-            info!(tvdb_id = id, "Looking up TVmaze id via TVDB");
+            tracing::info!(tvdb_id = id, "Looking up TVmaze id via TVDB");
             break 'id remote.lookup_tvmaze_by_tvdb(id).await?;
         }
 
@@ -220,16 +207,16 @@ async fn ensure_tvmaze_remote(
                 .value()
                 .as_str()
                 .context("Expected a valid IMDB id")?;
-            info!(imdb_id, "Looking up TVmaze id via IMDB");
+            tracing::info!(imdb_id, "Looking up TVmaze id via IMDB");
             break 'id remote.lookup_tvmaze_by_imdb(imdb_id).await?;
         }
 
-        info!(show_id = %show_id, "Skipping TVmaze id resolution: no TVDB or IMDB remote");
+        tracing::info!(show_id = %show_id, "Skipping TVmaze id resolution: no TVDB or IMDB remote");
         return Ok(());
     };
 
     let Some(tvmaze_id) = tvmaze_id else {
-        info!(show_id = %show_id, "TVmaze id not found");
+        tracing::info!(show_id = %show_id, "TVmaze id not found");
         return Ok(());
     };
 
@@ -250,15 +237,23 @@ struct DraftImage {
 /// A season's metadata contributed by the base layer.
 #[derive(Default)]
 struct SeasonDraft {
+    tvdb_id: Option<u32>,
     air_date: Option<api::Timestamp>,
     poster: Option<Image>,
+    /// This is set by tvdb to indicate that languages which are available for
+    /// names.
+    translations: HashSet<String>,
 }
 
 /// An episode's metadata contributed by the base layer.
 struct EpisodeDraft {
+    tvdb_id: Option<u32>,
     absolute_number: Option<u32>,
     aired: Option<api::Timestamp>,
     screenshot: Option<Image>,
+    /// This is set by tvdb to indicate that languages which are available for
+    /// names.
+    translations: HashSet<String>,
 }
 
 /// An episode air-date release accumulated from an air-date layer, keyed by
@@ -279,6 +274,7 @@ struct DraftRelease {
 #[derive(Default)]
 struct ShowDraft {
     provided: SyncKindSet,
+    original_name: Option<String>,
     first_air_date: Option<api::Timestamp>,
     /// The show's own original language, discovered from the Base layer.
     default_language: api::Locale,
@@ -291,10 +287,13 @@ struct ShowDraft {
     images: Vec<DraftImage>,
     selected: HashMap<ImageKind, ImageKey>,
     /// Per-language translated strings keyed by owner, populated for every target
-    /// language in [`collect_show_strings`].
+    /// remote.
     show_strings: StringRows,
     season_strings: BTreeMap<SeasonNumber, StringRows>,
     episode_strings: BTreeMap<(SeasonNumber, u32), StringRows>,
+    /// This is set by tvdb to indicate that languages which are available for
+    /// names.
+    translations: HashSet<String>,
 }
 
 /// A batch of `(locale, kind, text)` rows destined for a `*_strings` table.
@@ -376,18 +375,21 @@ impl ShowDraft {
     }
 }
 
+#[tracing::instrument(skip_all, fields(tmdb_id, do_base, do_air_date))]
 async fn tmdb_layer(
     draft: &mut ShowDraft,
+    config: &api::Config,
     show: &api::Show,
     tmdb_id: u32,
-    base_language: api::Locale,
     do_base: bool,
     do_air_date: bool,
     remote: &RemoteClients,
 ) -> Result<()> {
-    info!(tmdb_id, do_base, do_air_date, "Fetching TMDB show");
+    tracing::info!(tmdb_id, do_base, do_air_date, "Fetching TMDB show");
 
-    let info = remote.fetch_tmdb_show(tmdb_id, base_language).await?;
+    let info = remote.fetch_tmdb_show(tmdb_id).await?;
+
+    draft.original_name = info.original_name.or(draft.original_name.take());
 
     for r in &info.remotes {
         draft.add_remote(r.slug.clone(), r.remote.clone());
@@ -408,19 +410,7 @@ async fn tmdb_layer(
         return Ok(());
     }
 
-    // When no language is configured, use the show's own original language for
-    // episode fetches so episode titles and overviews are also localized.
-    let language = base_language.or(info.original_language.filter(|l| l != api::Locale::EN_US));
-
     if do_base {
-        // The show + season metadata was fetched in `base_language`; episodes are
-        // fetched in `language` below. Strings are keyed by the locale they came in.
-        draft.add_show_string(base_language, api::StringKind::Title, info.title.clone());
-        draft.add_show_string(
-            base_language,
-            api::StringKind::Overview,
-            info.overview.clone(),
-        );
         draft.first_air_date = info.first_air_date.or(show.first_air_date);
         draft.default_language = info.original_language;
         draft.base_remote = Some((RemoteSource::Tmdb, tmdb_id));
@@ -431,57 +421,31 @@ async fn tmdb_layer(
             let entry = draft.seasons.entry(season.number).or_default();
             entry.air_date = season.air_date;
             entry.poster = season.poster.clone().map(Image::from);
-
-            draft.add_season_string(
-                season.number,
-                base_language,
-                api::StringKind::Title,
-                season.name.clone(),
-            );
-            draft.add_season_string(
-                season.number,
-                base_language,
-                api::StringKind::Overview,
-                season.overview.clone(),
-            );
         }
 
-        info!(tmdb_id, ?season.number, ?language, "Fetching TMDB season episodes");
+        tracing::info!(tmdb_id, ?season.number, "Fetching TMDB season episodes");
 
-        for ep in remote
-            .fetch_tmdb_season_episodes(tmdb_id, season.number, language)
+        for e in remote
+            .fetch_tmdb_season_episodes(tmdb_id, season.number)
             .await?
         {
             if do_base {
-                draft.add_episode_string(
-                    ep.season,
-                    ep.number,
-                    language,
-                    api::StringKind::Title,
-                    ep.name.clone(),
-                );
-                draft.add_episode_string(
-                    ep.season,
-                    ep.number,
-                    language,
-                    api::StringKind::Overview,
-                    ep.overview.clone(),
-                );
-
                 draft.episodes.insert(
-                    (ep.season, ep.number),
+                    (e.season, e.number),
                     EpisodeDraft {
+                        tvdb_id: None,
                         absolute_number: None,
-                        aired: ep.aired,
-                        screenshot: ep.filename.map(Image::from),
+                        aired: e.aired,
+                        screenshot: e.filename.map(Image::from),
+                        translations: HashSet::new(),
                     },
                 );
             }
 
-            if do_air_date && let Some(aired) = ep.aired {
+            if do_air_date && let Some(aired) = e.aired {
                 draft.releases.push(DraftRelease {
-                    season: ep.season,
-                    number: ep.number,
+                    season: e.season,
+                    number: e.number,
                     source: RemoteSource::Tmdb,
                     country: api::Country::DEFAULT,
                     network: String::new(),
@@ -491,20 +455,31 @@ async fn tmdb_layer(
         }
     }
 
+    if do_base {
+        let targets = api::expand_sync_languages(&config.sync_languages, draft.default_language);
+
+        tracing::info!("Collecting strings");
+
+        if let Err(error) = collect_tmdb_strings(draft, tmdb_id, &targets, remote).await {
+            tracing::warn!("String collection failed: {error:#}");
+        }
+    }
+
     Ok(())
 }
 
+#[tracing::instrument(skip_all, fields(tvdb_id, do_base, do_air_date))]
 async fn tvdb_layer(
     draft: &mut ShowDraft,
+    config: &api::Config,
     tvdb_id: u32,
-    base_language: api::Locale,
     do_base: bool,
     do_air_date: bool,
     remote: &RemoteClients,
 ) -> Result<()> {
-    info!(tvdb_id, do_base, do_air_date, "Fetching TVDB show");
+    tracing::info!(tvdb_id, do_base, do_air_date, "Fetching TVDB show");
 
-    let info = remote.fetch_tvdb_show(tvdb_id, base_language).await?;
+    let info = remote.fetch_tvdb_show(tvdb_id).await?;
 
     for r in &info.remotes {
         draft.add_remote(r.slug.clone(), r.remote.clone());
@@ -525,85 +500,112 @@ async fn tvdb_layer(
         draft.add_image(ImageKind::Backdrop, fanart.clone(), selected);
     }
 
-    if !do_base && !do_air_date {
-        return Ok(());
-    }
-
     if do_base {
-        // The show metadata was fetched in `base_language`.
-        draft.add_show_string(base_language, api::StringKind::Title, info.title.clone());
-        draft.add_show_string(
-            base_language,
-            api::StringKind::Overview,
-            info.overview.clone(),
-        );
         // TVDB has no first-air-date field; persist falls back to the existing value.
         draft.default_language = info.original_language;
         draft.base_remote = Some((RemoteSource::Tvdb, tvdb_id));
+        draft
+            .translations
+            .extend(info.name_translations.into_iter().map(|n| n.to_lowercase()));
+        draft.translations.extend(
+            info.overview_translations
+                .into_iter()
+                .map(|n| n.to_lowercase()),
+        );
+
+        for s in info.seasons {
+            let entry = draft.seasons.entry(s.number).or_default();
+            entry.tvdb_id = Some(s.id);
+            entry
+                .translations
+                .extend(s.name_translations.into_iter().map(|n| n.to_lowercase()));
+            entry.translations.extend(
+                s.overview_translations
+                    .into_iter()
+                    .map(|n| n.to_lowercase()),
+            );
+        }
     }
 
-    // When no language is configured, use the show's own original language for
-    // episode fetches. TVDB uses 3-letter language codes; "eng" is the default.
-    let language = base_language.or(info.original_language.filter(|l| l != api::Locale::EN_US));
+    tracing::info!(tvdb_id, "Fetching TVDB episodes");
 
-    info!(tvdb_id, ?language, "Fetching TVDB episodes");
+    let episodes = remote.fetch_tvdb_episodes(tvdb_id).await?;
 
-    let episodes = remote.fetch_tvdb_episodes(tvdb_id, language).await?;
+    tracing::info!(count = episodes.len(), "Got episodes from TVDB");
 
-    info!(count = episodes.len(), "Got episodes from TVDB");
-
-    for ep in episodes {
+    for e in episodes {
         if do_base {
             // TVDB has no season records; derive the air date as the earliest
             // episode air date in the season.
-            let entry = draft.seasons.entry(ep.season).or_default();
+            let entry = draft.seasons.entry(e.season).or_default();
 
-            if let Some(aired) = ep.aired {
+            if let Some(aired) = e.aired {
                 entry.air_date = Some(match entry.air_date {
                     Some(cur) if cur <= aired => cur,
                     _ => aired,
                 });
             }
 
-            let screenshot = ep
+            let screenshot = e
                 .image
                 .as_ref()
                 .map(|(source, path)| Image::new(*source, path));
 
-            draft.add_episode_string(
-                ep.season,
-                ep.number,
-                language,
-                api::StringKind::Title,
-                ep.name.clone(),
-            );
-            draft.add_episode_string(
-                ep.season,
-                ep.number,
-                language,
-                api::StringKind::Overview,
-                ep.overview.clone(),
-            );
+            let translations = e
+                .name_translations
+                .into_iter()
+                .chain(e.overview_translations.into_iter())
+                .map(|n| n.to_lowercase())
+                .collect();
 
             draft.episodes.insert(
-                (ep.season, ep.number),
+                (e.season, e.number),
                 EpisodeDraft {
-                    absolute_number: ep.absolute_number,
-                    aired: ep.aired,
+                    tvdb_id: Some(e.id),
+                    absolute_number: e.absolute_number,
+                    aired: e.aired,
                     screenshot,
+                    translations,
                 },
             );
         }
 
-        if do_air_date && let Some(aired) = ep.aired {
+        if do_air_date && let Some(aired) = e.aired {
             draft.releases.push(DraftRelease {
-                season: ep.season,
-                number: ep.number,
+                season: e.season,
+                number: e.number,
                 source: RemoteSource::Tvdb,
                 country: api::Country::DEFAULT,
                 network: String::new(),
                 timestamp: aired,
             });
+        }
+    }
+
+    if do_base {
+        let targets = api::expand_sync_languages(&config.sync_languages, draft.default_language);
+
+        // TVDB has no country dimension, so its strings are language-only.
+        // Collapse each target to its language (country = DEFAULT) before
+        // fetching; the `BTreeSet` then dedupes locales that differ only by
+        // country.
+        let tvdb_targets: BTreeSet<api::Locale> = targets
+            .into_iter()
+            .map(|l| api::Locale::new(l.language(), api::Country::DEFAULT))
+            .collect();
+
+        for language in tvdb_targets {
+            tracing::info!(?language, "Collecting strings");
+
+            // Remotes key on ISO 639-1; skip any locale whose language has no
+            // 2-letter form.
+            if language.language().to_part1().is_none() {
+                continue;
+            }
+
+            if let Err(error) = collect_tvdb_strings(draft, tvdb_id, language, remote).await {
+                tracing::warn!("String collection failed: {error:#}");
+            }
         }
     }
 
@@ -620,12 +622,12 @@ async fn tvmaze_layer(
     let network = match remote.fetch_tvmaze_show_network(tvmaze_id).await {
         Ok(network) => network,
         Err(e) => {
-            warn!("TVmaze network lookup failed for show {show_id}: {e:#}");
+            tracing::warn!("TVmaze network lookup failed for show {show_id}: {e:#}");
             Default::default()
         }
     };
 
-    info!(tvmaze_id, "Fetching TVmaze episodes");
+    tracing::info!(tvmaze_id, "Fetching TVmaze episodes");
 
     let episodes = remote.fetch_tvmaze_episodes(tvmaze_id).await?;
     let count = episodes.len();
@@ -641,54 +643,7 @@ async fn tvmaze_layer(
         });
     }
 
-    info!(episodes = count, "Collected TVmaze air dates");
-
-    Ok(())
-}
-
-/// Fetch and record per-language translated strings for the show, its seasons
-/// and its episodes. The set of languages is [`api::expand_sync_languages`] of
-/// the configured `sync_languages` against the show's own original language; the
-/// strings come from the same source that provided the Base layer.
-async fn collect_show_strings(
-    draft: &mut ShowDraft,
-    config: &api::Config,
-    remote: &RemoteClients,
-) -> Result<()> {
-    let Some((source, id)) = draft.base_remote else {
-        return Ok(());
-    };
-
-    let targets = api::expand_sync_languages(&config.sync_languages, draft.default_language);
-
-    match source {
-        RemoteSource::Tmdb => {
-            tracing::info!(?source, "Collecting strings via translations endpoints");
-            collect_tmdb_strings(draft, id, &targets, remote).await?;
-        }
-        RemoteSource::Tvdb => {
-            // TVDB has no country dimension, so its strings are language-only. Collapse
-            // each target to its language (country = DEFAULT) before fetching; the
-            // `BTreeSet` then dedupes locales that differ only by country.
-            let tvdb_targets: BTreeSet<api::Locale> = targets
-                .into_iter()
-                .map(|l| api::Locale::new(l.language(), api::Country::DEFAULT))
-                .collect();
-
-            for language in tvdb_targets {
-                tracing::info!(?language, ?source, "Collecting strings for language");
-
-                // Remotes key on ISO 639-1; skip any locale whose language has no
-                // 2-letter form.
-                if language.language().to_part1().is_none() {
-                    continue;
-                }
-
-                collect_tvdb_strings(draft, id, language, remote).await?;
-            }
-        }
-        _ => {}
-    }
+    tracing::info!(episodes = count, "Collected TVmaze air dates");
 
     Ok(())
 }
@@ -718,15 +673,24 @@ async fn collect_tmdb_strings(
     // language.
     let translations = remote.fetch_tmdb_show_translations(tmdb_id).await?;
 
-    for row in translations {
-        if !locale_matches_targets(row.locale, targets) {
+    for translation in translations {
+        if !locale_matches_targets(translation.locale, targets) {
             continue;
         }
 
-        tracing::info!(?row.locale, ?targets, "TMDB show translation row");
+        tracing::info!(?translation, ?targets, "TMDB show translation row");
 
-        draft.add_show_string(row.locale, api::StringKind::Title, row.name);
-        draft.add_show_string(row.locale, api::StringKind::Overview, row.overview);
+        draft.add_show_string(
+            translation.locale,
+            api::StringKind::Title,
+            translation.name.or(draft.original_name.clone()),
+        );
+
+        draft.add_show_string(
+            translation.locale,
+            api::StringKind::Overview,
+            translation.overview,
+        );
     }
 
     // Season strings: one translations call per season instead of one
@@ -738,47 +702,62 @@ async fn collect_tmdb_strings(
             .fetch_tmdb_season_translations(tmdb_id, *season_number)
             .await?;
 
+        for translation in translations {
+            if !locale_matches_targets(translation.locale, targets) {
+                continue;
+            }
+
+            tracing::info!(
+                ?translation,
+                ?targets,
+                ?season_number,
+                "TMDB season translation"
+            );
+
+            draft.add_season_string(
+                *season_number,
+                translation.locale,
+                api::StringKind::Title,
+                translation.name,
+            );
+
+            draft.add_season_string(
+                *season_number,
+                translation.locale,
+                api::StringKind::Overview,
+                translation.overview,
+            );
+        }
+    }
+
+    // Episode strings: one translations call per episode.
+    let episode_keys: Vec<(SeasonNumber, u32)> = draft.episodes.keys().copied().collect();
+
+    for (season_number, episode_number) in &episode_keys {
+        let translations = remote
+            .fetch_tmdb_episode_translations(tmdb_id, *season_number, *episode_number)
+            .await?;
+
         for row in translations {
             if !locale_matches_targets(row.locale, targets) {
                 continue;
             }
 
-            tracing::info!(?row.locale, ?targets, ?season_number, "TMDB season translation row");
-
-            draft.add_season_string(*season_number, row.locale, api::StringKind::Title, row.name);
-            draft.add_season_string(
+            draft.add_episode_string(
                 *season_number,
+                *episode_number,
+                row.locale,
+                api::StringKind::Title,
+                row.name,
+            );
+
+            draft.add_episode_string(
+                *season_number,
+                *episode_number,
                 row.locale,
                 api::StringKind::Overview,
                 row.overview,
             );
-        }
-    }
-
-    // Episode strings: no bulk translations endpoint exists; keep per-language
-    // per-season fetches unchanged.
-    for language in targets {
-        for season_number in &season_numbers {
-            for e in remote
-                .fetch_tmdb_season_episodes(tmdb_id, *season_number, *language)
-                .await?
-            {
-                draft.add_episode_string(
-                    e.season,
-                    e.number,
-                    *language,
-                    api::StringKind::Title,
-                    e.name,
-                );
-
-                draft.add_episode_string(
-                    e.season,
-                    e.number,
-                    *language,
-                    api::StringKind::Overview,
-                    e.overview,
-                );
-            }
         }
     }
 
@@ -791,28 +770,89 @@ async fn collect_tvdb_strings(
     language: api::Locale,
     remote: &RemoteClients,
 ) -> Result<()> {
-    let info = remote.fetch_tvdb_show(tvdb_id, language).await?;
-
-    draft.add_show_string(language, api::StringKind::Title, info.title.clone());
-    draft.add_show_string(language, api::StringKind::Overview, info.overview.clone());
-
-    // TVDB has no season records, so only show- and episode-level strings.
-    for ep in remote.fetch_tvdb_episodes(tvdb_id, language).await? {
-        draft.add_episode_string(
-            ep.season,
-            ep.number,
-            language,
-            api::StringKind::Title,
-            ep.name,
+    if let Some(translation) = remote
+        .fetch_tvdb_show_translation(tvdb_id, language, &draft.translations)
+        .await?
+    {
+        tracing::info!(
+            ?tvdb_id,
+            ?language,
+            translations = ?draft.translations,
+            ?translation,
+            "Fetching show translation"
         );
 
-        draft.add_episode_string(
-            ep.season,
-            ep.number,
-            language,
-            api::StringKind::Overview,
-            ep.overview,
-        );
+        draft.add_show_string(language, api::StringKind::Title, translation.name);
+        draft.add_show_string(language, api::StringKind::Overview, translation.overview);
+    }
+
+    let seasons = draft
+        .seasons
+        .iter_mut()
+        .flat_map(|(number, s)| Some((*number, s.tvdb_id?, mem::take(&mut s.translations))))
+        .collect::<Vec<_>>();
+
+    for (season, tvdb_id, translations) in seasons {
+        if let Some(translation) = remote
+            .fetch_tvdb_season_translation(tvdb_id, language, &translations)
+            .await?
+        {
+            tracing::info!(
+                ?tvdb_id,
+                ?season,
+                ?language,
+                ?translation,
+                "Fetching season translation"
+            );
+
+            draft.add_season_string(season, language, api::StringKind::Title, translation.name);
+
+            draft.add_season_string(
+                season,
+                language,
+                api::StringKind::Overview,
+                translation.overview,
+            );
+        }
+    }
+
+    let episodes = draft
+        .episodes
+        .iter_mut()
+        .flat_map(|(key, e)| Some((*key, e.tvdb_id?, mem::take(&mut e.translations))))
+        .collect::<Vec<_>>();
+
+    for ((season, number), tvdb_id, translations) in episodes {
+        if let Some(translation) = remote
+            .fetch_tvdb_episode_translation(tvdb_id, language, &translations)
+            .await?
+        {
+            tracing::info!(
+                ?tvdb_id,
+                ?season,
+                ?number,
+                ?translations,
+                ?language,
+                ?translation,
+                "Fetching episode translation"
+            );
+
+            draft.add_episode_string(
+                season,
+                number,
+                language,
+                api::StringKind::Title,
+                translation.name,
+            );
+
+            draft.add_episode_string(
+                season,
+                number,
+                language,
+                api::StringKind::Overview,
+                translation.overview,
+            );
+        }
     }
 
     Ok(())
@@ -1003,7 +1043,7 @@ pub(crate) async fn sync_movie(
     let language = movie.language.or(config.language);
 
     let source = movie.primary_sync_source();
-    info!(movie_id = %movie_id, title = movie.strings.title(), ?source, ?language, "Syncing movie");
+    tracing::info!(movie_id = %movie_id, title = movie.strings.title(), ?source, ?language, "Syncing movie");
 
     match source {
         Some(api::RemoteSource::Tmdb) => {
@@ -1015,9 +1055,10 @@ pub(crate) async fn sync_movie(
                 .value()
                 .as_u32()
                 .context("Expected a valid TMDB id")?;
-            info!(tmdb_id, "Fetching TMDB movie");
 
-            let info = remote.fetch_tmdb_movie(tmdb_id, language).await?;
+            tracing::info!(tmdb_id, "Fetching TMDB movie");
+
+            let info = remote.fetch_tmdb_movie(tmdb_id).await?;
 
             let original_locale = info.original_language;
 
@@ -1037,7 +1078,7 @@ pub(crate) async fn sync_movie(
             )
             .await
             {
-                warn!(movie_id = %movie_id, "String collection failed: {e:#}");
+                tracing::warn!(movie_id = %movie_id, "String collection failed: {e:#}");
             }
 
             for remote in &info.remotes {
@@ -1086,7 +1127,7 @@ pub(crate) async fn sync_movie(
 
             match remote.fetch_tmdb_movie_releases(tmdb_id).await {
                 Ok(releases) => {
-                    info!(count = releases.len(), "Fetched TMDB movie releases");
+                    tracing::info!(count = releases.len(), "Fetched TMDB movie releases");
 
                     let mut kept = HashSet::new();
 
@@ -1104,7 +1145,9 @@ pub(crate) async fn sync_movie(
 
                     db.prune_movie_releases(movie_id, &kept).await?;
                 }
-                Err(e) => warn!(movie_id = %movie_id, "Movie release dates skipped: {e:#}"),
+                Err(e) => {
+                    tracing::warn!(movie_id = %movie_id, "Movie release dates skipped: {e:#}")
+                }
             }
         }
         Some(api::RemoteSource::Tvdb) => anyhow::bail!("Unsupported movie sync source: TVDB"),
@@ -1129,7 +1172,7 @@ pub(crate) async fn sync_movie(
     db.set_movie_synced_at(movie_id, api::Timestamp::now())
         .await?;
     broadcast.broadcast_event(api::AppEventKind::PendingChanged);
-    info!(movie_id = %movie_id, "Sync complete");
+    tracing::info!(movie_id = %movie_id, "Sync complete");
     Ok(())
 }
 
@@ -1159,15 +1202,25 @@ async fn collect_movie_strings(
 
     let mut rows: StringRows = Vec::new();
 
-    for row in translations {
-        if !locale_matches_targets(row.locale, &targets) {
+    for translation in translations {
+        if !locale_matches_targets(translation.locale, &targets) {
             continue;
         }
 
-        tracing::info!(?row.locale, ?targets, "TMDB movie translation row");
+        tracing::info!(?translation, ?targets, "TMDB movie translation row");
 
-        push_string(&mut rows, row.locale, api::StringKind::Title, row.name);
-        push_string(&mut rows, row.locale, api::StringKind::Overview, row.overview);
+        push_string(
+            &mut rows,
+            translation.locale,
+            api::StringKind::Title,
+            translation.title,
+        );
+        push_string(
+            &mut rows,
+            translation.locale,
+            api::StringKind::Overview,
+            translation.overview,
+        );
     }
 
     db.replace_movie_strings(movie_id, rows).await?;

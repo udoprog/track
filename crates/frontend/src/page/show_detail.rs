@@ -11,7 +11,7 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaQuery, Route, Router, ShowDetailQuery};
 use crate::ui::{
-    ConfirmDanger, ContextMenu, EpisodePicker, Image, ImageGallery, ImageItem, Loading, MDASH,
+    ConfirmDanger, ContextMenu, EpisodePicker, Image, ImageGallery, ImageItem, Loading,
     MarkTimeMenu, MediaSettingsModal, Modal, OutlineControl, OutlineEntry, OutlineHandle,
     RemoteEditor, RemoteSourceKind, TimePreset, Tracked, TranslationsModal,
 };
@@ -1945,16 +1945,18 @@ impl ShowDetail {
                 <div class="column">
                     <div class="toolbar">
                         <div class="column">
-                            <div class="row-split align-top">
+                            <div class="row align-top">
                                 <a class="episode-code" href={format!("#{}", episode.code())}>
-                                    <span>{episode.code()}</span>
-
                                     <span class="item-inline-xs">
                                         <span class="icon link" />
                                     </span>
+
+                                    <span>{episode.code()}</span>
                                 </a>
 
-                                <h4 class="start">{ episode.strings.title().unwrap_or(MDASH) }</h4>
+                                if let Some(name) = episode.strings.title() {
+                                    <h4>{name}</h4>
+                                }
                             </div>
                         </div>
 

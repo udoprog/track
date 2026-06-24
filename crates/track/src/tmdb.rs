@@ -48,26 +48,43 @@ impl Client {
     }
 
     #[tracing::instrument(skip(self, url))]
-    async fn get_json<T>(&self, url: impl AsRef<str>, language: api::Locale) -> Result<T>
+    async fn try_get_json<T>(&self, url: impl AsRef<str>) -> Result<Option<T>>
     where
         T: DeserializeOwned,
     {
-        let mut req = self.request(Method::GET, url.as_ref())?;
+        let req = self.request(Method::GET, url.as_ref())?;
 
-        if !language.is_default() {
-            req = req.query(&[("language", language)]);
+        let res = req.send().await.context("Sending request")?;
+
+        if res.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
         }
 
+        let bytes = res
+            .error_for_status()
+            .context("Bad response status")?
+            .bytes()
+            .await
+            .context("Reading response body")?;
+
+        serde_json::from_slice(&bytes).context("Deserializing JSON response")
+    }
+
+    #[tracing::instrument(skip(self, url))]
+    async fn get_json<T>(&self, url: impl AsRef<str>) -> Result<T>
+    where
+        T: DeserializeOwned,
+    {
+        let req = self.request(Method::GET, url.as_ref())?;
         Self::send_json(req).await
     }
 
     #[tracing::instrument(skip(self, url))]
-    async fn get_images<T>(&self, url: impl AsRef<str>, language: api::Locale) -> Result<T>
+    async fn get_images<T>(&self, url: impl AsRef<str>) -> Result<T>
     where
         T: DeserializeOwned,
     {
-        let mut req = self.request(Method::GET, url.as_ref())?;
-        req = req.query(&[("language", language.or(api::Locale::EN_US))]);
+        let req = self.request(Method::GET, url.as_ref())?;
         Self::send_json(req).await
     }
 
@@ -223,17 +240,13 @@ impl Client {
         Ok((out, resp.total_results))
     }
 
-    pub(crate) async fn fetch_show(&self, id: u32, language: api::Locale) -> Result<ShowInfo> {
+    pub(crate) async fn fetch_show(&self, id: u32) -> Result<ShowInfo> {
         #[derive(Deserialize)]
         struct SeasonDetails {
             #[serde(default)]
             season_number: Option<u32>,
             #[serde(default)]
             air_date: Option<String>,
-            #[serde(default)]
-            name: Option<String>,
-            #[serde(default)]
-            overview: Option<String>,
             #[serde(default)]
             poster_path: Option<String>,
         }
@@ -249,12 +262,6 @@ impl Client {
         #[derive(Deserialize)]
         struct Details {
             #[serde(default)]
-            name: Option<String>,
-            #[serde(default)]
-            original_name: Option<String>,
-            #[serde(default)]
-            overview: Option<String>,
-            #[serde(default)]
             poster_path: Option<String>,
             #[serde(default)]
             backdrop_path: Option<String>,
@@ -263,36 +270,19 @@ impl Client {
             #[serde(default)]
             original_language: api::Locale,
             #[serde(default)]
+            original_name: Option<String>,
+            #[serde(default)]
             seasons: Vec<SeasonDetails>,
             #[serde(default)]
             external_ids: ExternalIds,
         }
 
         let details: Details = self
-            .get_json(format!("tv/{id}?append_to_response=external_ids"), language)
+            .get_json(format!("tv/{id}?append_to_response=external_ids"))
             .await?;
 
-        // When no language is configured, fall back to the show's own original language.
-        let effective_language = language.or(details
-            .original_language
-            .filter(|l| l != api::Locale::EN_US));
-
-        // Re-fetch for a localized title and overview when the effective language
-        // differs from what was used for the initial request (i.e., no language was
-        // configured but the show has a non-English original language).
-        let localized: Option<Details> = if effective_language != language {
-            self.get_json(
-                format!("tv/{id}?append_to_response=external_ids"),
-                effective_language,
-            )
-            .await
-            .ok()
-        } else {
-            None
-        };
-
         let images: Images = self
-            .get_images(format!("tv/{id}/images"), effective_language)
+            .get_images(format!("tv/{id}/images"))
             .await
             .context("Fetching images")?;
 
@@ -305,28 +295,6 @@ impl Client {
         let mut seasons = Vec::with_capacity(details.seasons.len());
 
         for s in details.seasons {
-            // Prefer the localized season name/overview, falling back to
-            // whatever the default-language request returned the same
-            // resolution applied to the show title/overview below. Reuses the
-            // already-fetched `localized` response.
-            let localized_season = localized.as_ref().and_then(|l| {
-                l.seasons
-                    .iter()
-                    .find(|ls| ls.season_number == s.season_number)
-            });
-
-            let name = localized_season
-                .and_then(|ls| ls.name.as_deref())
-                .filter(|s| !s.trim().is_empty())
-                .or(s.name.as_deref().filter(|s| !s.trim().is_empty()))
-                .map(str::to_owned);
-
-            let overview = localized_season
-                .and_then(|ls| ls.overview.as_deref())
-                .filter(|s| !s.trim().is_empty())
-                .or(s.overview.as_deref().filter(|s| !s.trim().is_empty()))
-                .map(str::to_owned);
-
             seasons.push(SeasonInfo {
                 number: match s.season_number {
                     Some(n) => SeasonNumber::from_ordinal(n),
@@ -335,8 +303,6 @@ impl Client {
                 air_date: opt_date(s.air_date.as_deref())
                     .map(|d| d.to_timestamp_at_midnight_utc())
                     .transpose()?,
-                name,
-                overview,
                 poster: s.poster_path.as_deref().map(ImageKey::tmdb),
             })
         }
@@ -370,26 +336,12 @@ impl Client {
         let selected_backdrop =
             best_image(&backdrops, backdrop_path.as_deref().map(ImageKey::tmdb));
 
-        // Prefer the localized title/overview; fall back to the original-language
-        // name, then whatever the default language returned.
-        let title = localized
-            .as_ref()
-            .and_then(|l| l.name.as_deref())
-            .or(details.name.as_deref())
-            .filter(|s| !s.trim().is_empty())
-            .map(str::to_owned)
-            .or(details.original_name);
-
-        let overview = localized
-            .as_ref()
-            .and_then(|l| l.overview.as_deref().filter(|s| !s.trim().is_empty()))
-            .map(str::to_owned)
-            .or(details.overview);
-
         Ok(ShowInfo {
-            title,
-            overview,
             original_language,
+            original_name: details
+                .original_name
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
             first_air_date: opt_date(first_air_date.as_deref())
                 .map(|d| d.to_timestamp_at_midnight_utc())
                 .transpose()?,
@@ -406,16 +358,11 @@ impl Client {
         &self,
         show_id: u32,
         season: api::SeasonNumber,
-        language: api::Locale,
     ) -> Result<Vec<EpisodeInfo>> {
         #[derive(Debug, Deserialize)]
         struct EpisodeResponse {
             #[serde(default)]
             episode_number: u32,
-            #[serde(default)]
-            name: Option<String>,
-            #[serde(default)]
-            overview: Option<String>,
             #[serde(default)]
             air_date: Option<String>,
             #[serde(default)]
@@ -429,10 +376,7 @@ impl Client {
         }
 
         let resp: SeasonResponse = self
-            .get_json(
-                format!("tv/{show_id}/season/{}", season.ordinal()),
-                language,
-            )
+            .get_json(format!("tv/{show_id}/season/{}", season.ordinal()))
             .await?;
 
         let mut updates = Vec::new();
@@ -441,8 +385,6 @@ impl Client {
             updates.push(EpisodeInfo {
                 season,
                 number: e.episode_number,
-                name: e.name.filter(|s| !s.is_empty()),
-                overview: e.overview,
                 aired: opt_date(e.air_date.as_deref())
                     .map(|d| d.to_timestamp_at_midnight_utc())
                     .transpose()?,
@@ -453,32 +395,54 @@ impl Client {
         Ok(updates)
     }
 
-    pub(crate) async fn fetch_show_translations(&self, id: u32) -> Result<Vec<TranslationRow>> {
+    pub(crate) async fn fetch_show_translations(&self, id: u32) -> Result<Vec<Translation>> {
         let resp: TmdbTranslationsResponse = self
-            .get_json(format!("tv/{id}/translations"), api::Locale::DEFAULT)
-            .await?;
-        Ok(parse_translations(resp, false))
+            .try_get_json(format!("tv/{id}/translations"))
+            .await?
+            .unwrap_or_default();
+        Ok(parse_translations(resp))
     }
 
     pub(crate) async fn fetch_season_translations(
         &self,
         show_id: u32,
         season: api::SeasonNumber,
-    ) -> Result<Vec<TranslationRow>> {
+    ) -> Result<Vec<Translation>> {
         let resp: TmdbTranslationsResponse = self
-            .get_json(
-                format!("tv/{show_id}/season/{}/translations", season.ordinal()),
-                api::Locale::DEFAULT,
-            )
-            .await?;
-        Ok(parse_translations(resp, false))
+            .try_get_json(format!(
+                "tv/{show_id}/season/{}/translations",
+                season.ordinal()
+            ))
+            .await?
+            .unwrap_or_default();
+
+        Ok(parse_translations(resp))
     }
 
-    pub(crate) async fn fetch_movie_translations(&self, id: u32) -> Result<Vec<TranslationRow>> {
+    pub(crate) async fn fetch_episode_translations(
+        &self,
+        show_id: u32,
+        season: api::SeasonNumber,
+        episode: u32,
+    ) -> Result<Vec<Translation>> {
         let resp: TmdbTranslationsResponse = self
-            .get_json(format!("movie/{id}/translations"), api::Locale::DEFAULT)
-            .await?;
-        Ok(parse_translations(resp, true))
+            .try_get_json(format!(
+                "tv/{show_id}/season/{}/episode/{episode}/translations",
+                season.ordinal()
+            ))
+            .await?
+            .unwrap_or_default();
+
+        Ok(parse_translations(resp))
+    }
+
+    pub(crate) async fn fetch_movie_translations(&self, id: u32) -> Result<Vec<Translation>> {
+        let resp: TmdbTranslationsResponse = self
+            .try_get_json(format!("movie/{id}/translations"))
+            .await?
+            .unwrap_or_default();
+
+        Ok(parse_translations(resp))
     }
 
     pub(crate) async fn fetch_movie_releases(&self, id: u32) -> Result<Vec<MovieReleaseInfo>> {
@@ -515,9 +479,7 @@ impl Client {
             results: Vec<CountryBlock>,
         }
 
-        let d: Resp = self
-            .get_json(format!("movie/{id}/release_dates"), api::Locale::DEFAULT)
-            .await?;
+        let d: Resp = self.get_json(format!("movie/{id}/release_dates")).await?;
 
         let mut out = Vec::new();
 
@@ -540,7 +502,7 @@ impl Client {
         Ok(out)
     }
 
-    pub(crate) async fn fetch_movie(&self, id: u32, language: api::Locale) -> Result<MovieInfo> {
+    pub(crate) async fn fetch_movie(&self, id: u32) -> Result<MovieInfo> {
         #[derive(Debug, Deserialize, Default)]
         struct ExternalIds {
             #[serde(default)]
@@ -560,18 +522,11 @@ impl Client {
         }
 
         let details: Details = self
-            .get_json(
-                format!("movie/{id}?append_to_response=external_ids"),
-                language,
-            )
+            .get_json(format!("movie/{id}?append_to_response=external_ids"))
             .await?;
 
-        let effective_language = language.or(details
-            .original_language
-            .filter(|l| l != api::Locale::EN_US));
-
         let images: Images = self
-            .get_images(format!("movie/{id}/images"), effective_language)
+            .get_images(format!("movie/{id}/images"))
             .await
             .context("Fetching images")?;
 
@@ -613,9 +568,8 @@ pub(crate) struct ShowRemote {
 }
 
 pub(crate) struct ShowInfo {
-    pub title: Option<String>,
-    pub overview: Option<String>,
     pub original_language: api::Locale,
+    pub original_name: Option<String>,
     pub first_air_date: Option<Timestamp>,
     pub posters: Vec<Image>,
     pub backdrops: Vec<Image>,
@@ -628,16 +582,12 @@ pub(crate) struct ShowInfo {
 pub(crate) struct SeasonInfo {
     pub number: SeasonNumber,
     pub air_date: Option<Timestamp>,
-    pub name: Option<String>,
-    pub overview: Option<String>,
     pub poster: Option<ImageKey>,
 }
 
 pub(crate) struct EpisodeInfo {
     pub season: SeasonNumber,
     pub number: u32,
-    pub name: Option<String>,
-    pub overview: Option<String>,
     pub aired: Option<Timestamp>,
     pub filename: Option<ImageKey>,
 }
@@ -752,45 +702,61 @@ struct TmdbTranslationData {
     overview: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
 struct TmdbTranslationsResponse {
     #[serde(default)]
     translations: Vec<TmdbTranslationEntry>,
 }
 
-pub(crate) struct TranslationRow {
+#[derive(Debug)]
+pub(crate) struct Translation {
     pub locale: api::Locale,
     pub name: Option<String>,
+    pub title: Option<String>,
     pub overview: Option<String>,
 }
 
 fn locale_from_tmdb(iso_639_1: &str, iso_3166_1: &str) -> Option<api::Locale> {
     let language = api::Language::from_iso(iso_639_1)?;
+
     if language.is_default() {
         return None;
     }
+
     let country = api::Country::from_iso(iso_3166_1).unwrap_or_default();
     Some(api::Locale::new(language, country))
 }
 
-fn parse_translations(resp: TmdbTranslationsResponse, use_title: bool) -> Vec<TranslationRow> {
-    resp.translations
-        .into_iter()
-        .filter_map(|e| {
-            let locale = locale_from_tmdb(&e.iso_639_1, &e.iso_3166_1)?;
-            let name = if use_title { e.data.title } else { e.data.name };
-            let name = name.filter(|s| !s.trim().is_empty());
-            let overview = e.data.overview.filter(|s| !s.trim().is_empty());
-            // Skip entries with no actual translated content (TMDB includes
-            // placeholder entries for locales where no translation exists).
-            if name.is_none() && overview.is_none() {
-                return None;
-            }
-            Some(TranslationRow {
-                locale,
-                name,
-                overview,
-            })
-        })
-        .collect()
+fn parse_translations(resp: TmdbTranslationsResponse) -> Vec<Translation> {
+    let mut rows = Vec::new();
+
+    for e in resp.translations {
+        let Some(locale) = locale_from_tmdb(&e.iso_639_1, &e.iso_3166_1) else {
+            continue;
+        };
+
+        rows.push(Translation {
+            locale,
+            name: e
+                .data
+                .name
+                .as_ref()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
+            title: e
+                .data
+                .title
+                .as_ref()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
+            overview: e
+                .data
+                .overview
+                .as_ref()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
+        });
+    }
+
+    rows
 }

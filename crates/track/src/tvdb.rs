@@ -1,4 +1,5 @@
 use core::time::Duration;
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -246,7 +247,7 @@ impl Client {
         Ok((out, total))
     }
 
-    pub(crate) async fn fetch_show(&self, id: u32, language: api::Locale) -> Result<SeriesInfo> {
+    pub(crate) async fn fetch_show(&self, id: u32) -> Result<SeriesInfo> {
         #[derive(Deserialize)]
         struct Resp {
             data: Extended,
@@ -256,11 +257,7 @@ impl Client {
         #[serde(rename_all = "camelCase")]
         struct Extended {
             #[serde(default)]
-            name: Option<String>,
-            #[serde(default)]
             slug: Option<String>,
-            #[serde(default)]
-            overview: Option<String>,
             #[serde(default)]
             image: Option<String>,
             #[serde(default)]
@@ -269,6 +266,21 @@ impl Client {
             remote_ids: Vec<RemoteIdRow>,
             #[serde(default)]
             artworks: Vec<Artwork>,
+            #[serde(default)]
+            overview_translations: Vec<String>,
+            #[serde(default)]
+            name_translations: Vec<String>,
+            #[serde(default)]
+            seasons: Vec<SeasonRow>,
+        }
+
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct SeasonRow {
+            #[serde(default)]
+            id: u32,
+            #[serde(default)]
+            number: u32,
         }
 
         #[derive(Deserialize)]
@@ -306,40 +318,19 @@ impl Client {
         let resp: Resp = serde_json::from_slice(&bytes)?;
         let v = resp.data;
 
+        let mut seasons = Vec::new();
+
+        for season in v.seasons {
+            seasons.push(SeasonInfo {
+                id: season.id,
+                number: api::SeasonNumber::from_ordinal(season.number),
+                name_translations: Vec::new(),
+                overview_translations: Vec::new(),
+            });
+        }
+
         let slug = v.slug;
         let original_language = v.original_language;
-
-        let mut title = v
-            .name
-            .as_deref()
-            .filter(|s| !s.trim().is_empty())
-            .map(str::to_owned);
-
-        let mut overview = v
-            .overview
-            .as_deref()
-            .filter(|s| !s.trim().is_empty())
-            .map(str::to_owned);
-
-        // When no user preference is configured, fall back to the show's own
-        // original language for the translation fetch. "eng" is the default and
-        // needs no separate fetch.
-        let original_language_tvdb =
-            original_language.filter(|l| l.language() != api::Language::ENG);
-
-        let language = language.or(original_language_tvdb);
-
-        if !language.is_default()
-            && let Some(tr) = self.fetch_show_translation(id, language).await?
-        {
-            if tr.name.as_deref().is_some_and(|s| !s.trim().is_empty()) {
-                title = tr.name;
-            }
-
-            if tr.overview.as_deref().is_some_and(|s| !s.trim().is_empty()) {
-                overview = tr.overview;
-            }
-        }
 
         let mut remotes = vec![SeriesRemote {
             slug,
@@ -399,8 +390,6 @@ impl Client {
         let selected_fanart = best_image(&fanart, None);
 
         Ok(SeriesInfo {
-            title,
-            overview,
             original_language,
             poster,
             selected_poster,
@@ -409,45 +398,117 @@ impl Client {
             fanart,
             selected_fanart,
             remotes,
+            seasons,
+            name_translations: v.name_translations,
+            overview_translations: v.overview_translations,
         })
     }
 
-    async fn fetch_show_translation(
+    /// Fetch a show's translation in the given language, if available.
+    pub async fn fetch_show_translation(
         &self,
         id: u32,
         language: api::Locale,
+        available: &HashSet<String>,
     ) -> Result<Option<Translation>> {
         #[derive(Deserialize)]
         struct Resp {
-            data: Translation,
+            data: TranslationData,
         }
 
-        let resp = self
-            .request(Method::GET, format!("series/{id}/translations/{language}"))
-            .await?
-            .send()
-            .await?;
+        for language in supported(language, available) {
+            let resp = self
+                .request(Method::GET, format!("series/{id}/translations/{language}"))
+                .await?
+                .send()
+                .await?;
 
-        if resp.status() == reqwest::StatusCode::NOT_FOUND {
-            return Ok(None);
+            if resp.status() == reqwest::StatusCode::NOT_FOUND {
+                continue;
+            }
+
+            let bytes = resp.error_for_status()?.bytes().await?;
+            let resp: Resp = serde_json::from_slice(&bytes)?;
+            return Ok(Some(Translation::from_data(resp.data)));
         }
 
-        let bytes = resp.error_for_status()?.bytes().await?;
-        let resp: Resp = serde_json::from_slice(&bytes)?;
-        Ok(Some(resp.data))
+        Ok(None)
     }
 
-    pub(crate) async fn fetch_episodes(
+    /// Fetch a season translation in the given language, if available.
+    pub async fn fetch_season_translation(
         &self,
-        show_id: u32,
+        id: u32,
         language: api::Locale,
-    ) -> Result<Vec<EpisodeInfo>> {
-        // TVDB keys on 3-letter ISO 639 language codes and ignores country.
-        let language = language.language();
+        available: &HashSet<String>,
+    ) -> Result<Option<Translation>> {
+        #[derive(Deserialize)]
+        struct Resp {
+            data: TranslationData,
+        }
 
+        for language in supported(language, available) {
+            let resp = self
+                .request(Method::GET, format!("seasons/{id}/translations/{language}"))
+                .await?
+                .send()
+                .await?;
+
+            if resp.status() == reqwest::StatusCode::NOT_FOUND {
+                continue;
+            }
+
+            let bytes = resp.error_for_status()?.bytes().await?;
+
+            let resp: Resp = serde_json::from_slice(&bytes)?;
+
+            return Ok(Some(Translation::from_data(resp.data)));
+        }
+
+        Ok(None)
+    }
+
+    /// Fetch an episode's translation in the given language, if available.
+    pub async fn fetch_episode_translation(
+        &self,
+        id: u32,
+        language: api::Locale,
+        available: &HashSet<String>,
+    ) -> Result<Option<Translation>> {
+        #[derive(Deserialize)]
+        struct Resp {
+            data: TranslationData,
+        }
+
+        for language in supported(language, available) {
+            let resp = self
+                .request(
+                    Method::GET,
+                    format!("episodes/{id}/translations/{language}"),
+                )
+                .await?
+                .send()
+                .await?;
+
+            if resp.status() == reqwest::StatusCode::NOT_FOUND {
+                continue;
+            }
+
+            let bytes = resp.error_for_status()?.bytes().await?;
+
+            let resp: Resp = serde_json::from_slice(&bytes)?;
+
+            return Ok(Some(Translation::from_data(resp.data)));
+        }
+
+        Ok(None)
+    }
+
+    pub(crate) async fn fetch_episodes(&self, show_id: u32) -> Result<Vec<EpisodeInfo>> {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct Row {
+            id: u32,
             #[serde(default)]
             season_number: Option<u32>,
             #[serde(default)]
@@ -455,13 +516,13 @@ impl Client {
             #[serde(default)]
             absolute_number: Option<u32>,
             #[serde(default)]
-            name: Option<String>,
-            #[serde(default)]
-            overview: Option<String>,
-            #[serde(default)]
             image: Option<String>,
             #[serde(default)]
             aired: Option<String>,
+            #[serde(default)]
+            overview_translations: Vec<String>,
+            #[serde(default)]
+            name_translations: Vec<String>,
         }
 
         #[derive(Deserialize)]
@@ -483,13 +544,7 @@ impl Client {
             links: Option<Links>,
         }
 
-        // Default (aired-order) season type, optionally translated to `language`.
-
-        let path = if language.is_default() {
-            format!("series/{show_id}/episodes/default")
-        } else {
-            format!("series/{show_id}/episodes/default/{language}")
-        };
+        let path = format!("series/{show_id}/episodes/default");
 
         let mut output = Vec::new();
         let mut page = 0u32;
@@ -507,22 +562,23 @@ impl Client {
 
             let resp: Resp = serde_json::from_slice(&bytes)?;
 
-            for val in resp.data.episodes {
-                let row: Row = serde_json::from_value(val)?;
+            for row in resp.data.episodes {
+                let row: Row = serde_json::from_value(row)?;
 
                 output.push(EpisodeInfo {
+                    id: row.id,
                     season: match row.season_number {
                         Some(n) => api::SeasonNumber::from_ordinal(n),
                         _ => api::SeasonNumber::Specials,
                     },
                     number: row.number,
                     absolute_number: row.absolute_number,
-                    name: row.name.filter(|s| !s.trim().is_empty()),
-                    overview: row.overview.filter(|s| !s.trim().is_empty()),
                     aired: opt_date(row.aired.as_deref())
                         .map(|d| d.to_timestamp_at_midnight_utc())
                         .transpose()?,
                     image: opt_image(row.image.as_deref()),
+                    name_translations: row.name_translations,
+                    overview_translations: row.overview_translations,
                 });
             }
 
@@ -537,12 +593,44 @@ impl Client {
     }
 }
 
+fn supported(
+    language: api::Locale,
+    available: &HashSet<String>,
+) -> impl Iterator<Item = &'static str> {
+    let language = language.language();
+
+    let base = language.to_id().into_iter().chain(language.to_part1());
+
+    base.flat_map(move |l| {
+        if available.contains(l) {
+            return Some(l);
+        }
+
+        None
+    })
+}
+
+#[derive(Debug)]
+pub(crate) struct Translation {
+    pub(crate) name: Option<String>,
+    pub(crate) overview: Option<String>,
+}
+
+impl Translation {
+    fn from_data(data: TranslationData) -> Self {
+        Self {
+            name: data.name.filter(|s| !s.trim().is_empty()),
+            overview: data.overview.filter(|s| !s.trim().is_empty()),
+        }
+    }
+}
+
 #[derive(Deserialize)]
-struct Translation {
+pub(crate) struct TranslationData {
     #[serde(default)]
-    name: Option<String>,
+    pub(crate) name: Option<String>,
     #[serde(default)]
-    overview: Option<String>,
+    pub(crate) overview: Option<String>,
 }
 
 pub(crate) struct SeriesRemote {
@@ -550,9 +638,14 @@ pub(crate) struct SeriesRemote {
     pub remote: Remote,
 }
 
+pub(crate) struct SeasonInfo {
+    pub id: u32,
+    pub number: SeasonNumber,
+    pub name_translations: Vec<String>,
+    pub overview_translations: Vec<String>,
+}
+
 pub(crate) struct SeriesInfo {
-    pub title: Option<String>,
-    pub overview: Option<String>,
     pub original_language: api::Locale,
     pub poster: Vec<Image>,
     pub selected_poster: Option<ImageKey>,
@@ -561,16 +654,20 @@ pub(crate) struct SeriesInfo {
     pub fanart: Vec<Image>,
     pub selected_fanart: Option<ImageKey>,
     pub remotes: Vec<SeriesRemote>,
+    pub name_translations: Vec<String>,
+    pub overview_translations: Vec<String>,
+    pub seasons: Vec<SeasonInfo>,
 }
 
 pub(crate) struct EpisodeInfo {
+    pub id: u32,
     pub season: SeasonNumber,
     pub number: u32,
     pub absolute_number: Option<u32>,
-    pub name: Option<String>,
-    pub overview: Option<String>,
     pub aired: Option<Timestamp>,
     pub image: Option<(ImageSource, String)>,
+    pub name_translations: Vec<String>,
+    pub overview_translations: Vec<String>,
 }
 
 pub(crate) struct SearchSeriesResult {
