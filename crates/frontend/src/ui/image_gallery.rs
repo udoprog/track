@@ -58,11 +58,7 @@ pub(crate) fn ImageGallery(props: &Props) -> Html {
                 <div class="text-muted">{"No images"}</div>
             } else {
                 if total_pages > 1 {
-                    <div class="row center">
-                        <div class="input-group">
-                            <PaginationButtons page={this_page} {total_pages} on_page={on_page} />
-                        </div>
-                    </div>
+                    <PaginationButtons page={this_page} {total_pages} on_page={on_page} />
                 }
 
                 <div class={classes!("image-gallery", props.kind.as_str())}>

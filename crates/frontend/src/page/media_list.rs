@@ -244,7 +244,7 @@ impl Component for MediaList {
 
                     <controls>
                         <div class="input-group fill">
-                            <div class="input-text">
+                            <div class="input-label">
                                 {"Sort by:"}
                             </div>
 
@@ -279,9 +279,7 @@ impl Component for MediaList {
                             />
                         </div>
 
-                        <div class="input-group align-end">
-                            <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
-                        </div>
+                        <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
                     </controls>
                 </input-controls>
 
@@ -298,11 +296,7 @@ impl Component for MediaList {
                         { for items.into_iter().map(|m| self.view_row(ctx, m)) }
                     </div>
 
-                    <div class="row center">
-                        <div class="input-group">
-                            <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
-                        </div>
-                    </div>
+                    <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
                 }
             </>
         }

@@ -406,7 +406,7 @@ impl Dashboard {
             <div class="column">
                 <h1 class="center">{"What's next?"}</h1>
 
-                <div class="row align-end">
+                <div class="row desktop-align-end">
                     <div class="input-group hide-mobile">
                         <button class="btn" title="Show fewer" onclick={link.callback(|_| Msg::AdjustPageSize(-1))}>
                             <span class="icon minus" />
@@ -417,9 +417,7 @@ impl Dashboard {
                         </button>
                     </div>
 
-                    <div class="input-group">
-                        <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
-                    </div>
+                    <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
                 </div>
 
                 if self.pending.is_empty() {
@@ -441,9 +439,7 @@ impl Dashboard {
                         </button>
                     </div>
 
-                    <div class="input-group">
-                        <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
-                    </div>
+                    <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
                 </div>
             </div>
         }

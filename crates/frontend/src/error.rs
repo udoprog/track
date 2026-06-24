@@ -127,8 +127,8 @@ pub(crate) enum Message {
     SettingLanguage(api::Locale),
     #[display("Setting release dates")]
     SettingReleaseFilters,
-    #[display("Setting specials handling to {_0:?}")]
-    SettingIncludeSpecials(Option<bool>),
+    #[display("Setting specials handling to {_0}")]
+    SettingIncludeSpecials(api::IncludeSpecials),
     #[display("Setting air dates")]
     SettingAirDateFilters,
     #[display("Setting automatic sync to {_0}")]

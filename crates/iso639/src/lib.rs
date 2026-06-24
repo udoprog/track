@@ -53,6 +53,7 @@ pub struct Language {
     pub comment: Option<&'static str>,
 }
 
+#[allow(clippy::match_like_matches_macro)]
 mod generated;
 use generated::ENTRIES;
 

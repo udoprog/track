@@ -1,3 +1,4 @@
+use api::IncludeSpecials;
 use web_sys::{Event, MouseEvent};
 use yew::prelude::*;
 
@@ -19,9 +20,9 @@ pub(crate) struct Props {
     pub(crate) auto_sync: bool,
     pub(crate) on_auto_sync_change: Callback<bool>,
     #[prop_or_default]
-    pub(crate) include_specials: Option<bool>,
+    pub(crate) include_specials: IncludeSpecials,
     #[prop_or_default]
-    pub(crate) on_include_specials_change: Option<Callback<Option<bool>>>,
+    pub(crate) on_include_specials_change: Callback<IncludeSpecials>,
     #[prop_or_default]
     pub(crate) release_filters: Option<Vec<api::ReleaseFilter>>,
     #[prop_or_default]
@@ -47,34 +48,13 @@ pub(crate) fn MediaSettingsModal(props: &Props) -> Html {
         .on_auto_sync_change
         .reform(move |_: MouseEvent| !auto_sync);
 
-    let specials = props.on_include_specials_change.as_ref().map(|cb| {
-        let include_specials = props.include_specials;
-        let value = match include_specials {
-            None => "default",
-            Some(true) => "include",
-            Some(false) => "skip",
-        };
+    let include_specials = props.include_specials;
 
-        let on_change = cb.reform(|e: Event| {
-            let select: web_sys::HtmlSelectElement = e.target_unchecked_into();
-            match select.value().as_str() {
-                "include" => Some(true),
-                "skip" => Some(false),
-                _ => None,
-            }
-        });
-
-        html! {
-            <div class="field">
-                <label>{"Specials when syncing"}</label>
-                <select class="input-select" onchange={on_change} {value}>
-                    <option value="default" selected={include_specials.is_none()}>{"Default"}</option>
-                    <option value="include" selected={include_specials == Some(true)}>{"Include"}</option>
-                    <option value="skip" selected={include_specials == Some(false)}>{"Skip"}</option>
-                </select>
-            </div>
-        }
-    });
+    let special_on_change = |value: IncludeSpecials| {
+        props
+            .on_include_specials_change
+            .reform(move |_| value.cycle())
+    };
 
     let release = props.on_release_filters_change.as_ref().map(|cb| {
         let is_custom = props.release_filters.is_some();
@@ -161,15 +141,16 @@ pub(crate) fn MediaSettingsModal(props: &Props) -> Html {
                     />
                 </div>
 
-                <div class="field">
-                    <label>{"Automatic sync"}</label>
-                    <span class={classes!("input-checkbox", auto_sync.then_some("checked"))} id="auto-sync-enabled" onclick={on_auto_sync}>
-                        <span class="mark" />
-                        {if auto_sync { "Enabled" } else { "Disabled" }}
-                    </span>
-                </div>
+                <span class={classes!("input-checkbox", auto_sync.then_some("checked"))} id="auto-sync-enabled" onclick={on_auto_sync}>
+                    <span class="mark" />
+                    {if auto_sync { "Automatic Sync Enabled" } else { "Automatic Sync Disabled" }}
+                </span>
 
-                {specials}
+                <div class="field">
+                    <div class="input-label clickable" onclick={special_on_change(include_specials)}>
+                        {include_specials.as_label()}
+                    </div>
+                </div>
 
                 {release}
 

@@ -4,7 +4,7 @@ use std::rc::Rc;
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
-use api::{TimeInfo, Timed};
+use api::{IncludeSpecials, TimeInfo, Timed};
 
 use crate::SetupChannel;
 use crate::background::Background;
@@ -164,9 +164,9 @@ pub(crate) enum Msg {
     CloseSeasonTranslations,
     OpenEpisodeTranslations(api::EpisodeId),
     CloseEpisodeTranslations,
-    SetIncludeSpecials(Option<bool>),
+    SetIncludeSpecials(IncludeSpecials),
     SetIncludeSpecialsDone(
-        Option<bool>,
+        IncludeSpecials,
         Result<ws::Packet<api::SetShowIncludeSpecials>, ws::Error>,
     ),
     SetAutoSync(bool),
@@ -449,7 +449,7 @@ impl Component for ShowDetail {
                         auto_sync={show.auto_sync}
                         on_auto_sync_change={link.callback(Msg::SetAutoSync)}
                         on_language_change={link.callback(Msg::SetLanguage)}
-                        on_include_specials_change={Some(link.callback(Msg::SetIncludeSpecials))}
+                        on_include_specials_change={link.callback(Msg::SetIncludeSpecials)}
                         air_date_filters={show.air_date_filters.clone()}
                         on_air_date_filters_change={Some(link.callback(Msg::SetAirDateFilters))}
                         on_edit_graphics={link.callback(|_| Msg::OpenImageModal)}
@@ -1315,10 +1315,15 @@ impl ShowDetail {
                 Ok(false)
             }
             Msg::SetIncludeSpecialsDone(include_specials, result) => {
-                result.context(Message::SettingIncludeSpecials(include_specials))?;
+                result
+                    .context(Message::SettingIncludeSpecials(include_specials))?
+                    .decode()
+                    .context(Message::SettingIncludeSpecials(include_specials))?;
+
                 if let Some(ref mut show) = self.show {
                     show.include_specials = include_specials;
                 }
+
                 Ok(true)
             }
             Msg::SetAutoSync(auto_sync) => {

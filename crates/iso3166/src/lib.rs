@@ -10,6 +10,7 @@ pub struct Country {
     pub has_flag: bool,
 }
 
+#[allow(clippy::match_like_matches_macro)]
 mod generated;
 use generated::ENTRIES;
 

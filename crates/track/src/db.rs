@@ -11,9 +11,9 @@ use anyhow::{Context as _, Result, anyhow};
 use std::collections::{HashMap, HashSet};
 
 use api::{
-    Config, Country, Date, EpisodeId, Image, ImageId, ImageKind, ImageSource, MarkTime, MovieId,
-    PendingId, ReleaseType, Remote, RemoteId, RemoteSource, RemoteValue, SeasonId, SeasonNumber,
-    ShowId, ThemeType, Timestamp, WatchedId, WatchedKind,
+    Config, Country, Date, EpisodeId, Image, ImageId, ImageKind, ImageSource, IncludeSpecials,
+    MarkTime, MovieId, PendingId, ReleaseType, Remote, RemoteId, RemoteSource, RemoteValue,
+    SeasonId, SeasonNumber, ShowId, ThemeType, Timestamp, WatchedId, WatchedKind,
 };
 use rust_embed::RustEmbed;
 use sqll::{OpenOptions, Pool, PoolBuilder, Row, Statements, TypedStatement};
@@ -44,7 +44,7 @@ struct ShowRow {
     last_synced_at: Option<Timestamp>,
     language: api::Locale,
     default_language: api::Locale,
-    include_specials: Option<bool>,
+    include_specials: api::IncludeSpecials,
     air_date_filters: Option<String>,
 }
 
@@ -766,7 +766,7 @@ struct InnerRead {
     #[sql = "    )"]
     #[sql = "ORDER BY e.season, e.episode"]
     #[sql = "LIMIT 1"]
-    next_pending_episode_for_show: TypedStatement<(ShowId, bool), NextEpisodeRow>,
+    next_pending_episode_for_show: TypedStatement<(ShowId, api::IncludeSpecials), NextEpisodeRow>,
     #[sql = "SELECT e.id, e.aired"]
     #[sql = "FROM episodes e"]
     #[sql = "WHERE e.show_id = ?"]
@@ -1670,7 +1670,7 @@ impl Database {
     pub(crate) async fn set_show_include_specials(
         &self,
         id: ShowId,
-        include_specials: Option<bool>,
+        include_specials: IncludeSpecials,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 

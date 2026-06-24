@@ -403,8 +403,8 @@ fn en() -> Locale {
 }
 
 /// Build a [`Translations`] incrementally from `(kind, locale, text)` rows.
-fn build(locale: Locale, default: Locale, entries: &[(StringKind, Locale, &str)]) -> Translations {
-    let mut t = Translations::new(locale, default);
+fn build(locale: Locale, entries: &[(StringKind, Locale, &str)]) -> Translations {
+    let mut t = Translations::new(locale);
     for (kind, loc, text) in entries {
         t.insert(*kind, *loc, text);
     }
@@ -416,7 +416,6 @@ fn translations_exact_and_fallbacks() {
     // Configured locale en-US, default (original) language pt-BR.
     let t = build(
         Locale::EN_US,
-        pt_br(),
         &[
             (StringKind::Title, en(), "English"),
             (StringKind::Title, pt_br(), "Portugues"),
@@ -436,7 +435,6 @@ fn translations_default_locale_fallback() {
     // default/original language.
     let t = build(
         Locale::from_iso("de").unwrap(),
-        pt_br(),
         &[(StringKind::Title, pt_br(), "Portugues")],
     );
 
@@ -447,7 +445,6 @@ fn translations_default_locale_fallback() {
 fn translations_get_with_explicit_fallback() {
     let t = build(
         Locale::DEFAULT,
-        Locale::from_iso("ja").unwrap(),
         &[
             (StringKind::Title, en(), "English"),
             (
@@ -460,19 +457,19 @@ fn translations_get_with_explicit_fallback() {
 
     // Prefer French (missing) -> explicit English fallback.
     assert_eq!(
-        t.get_with(StringKind::Title, Locale::from_iso("fr").unwrap(), en()),
+        t.get_with(StringKind::Title, Locale::from_iso("fr").unwrap()),
         Some("English"),
     );
     // No locale/fallback -> resolves to the default (original) language.
     assert_eq!(
-        t.get_with(StringKind::Title, Locale::DEFAULT, Locale::DEFAULT),
+        t.get_with(StringKind::Title, Locale::DEFAULT),
         Some("Nihongo"),
     );
 }
 
 #[test]
 fn translations_empty_is_none() {
-    let t = Translations::new(Locale::EN_US, Locale::DEFAULT);
+    let t = Translations::new(Locale::EN_US);
     assert_eq!(t.title(), None);
     assert!(t.is_empty());
 }
@@ -481,7 +478,6 @@ fn translations_empty_is_none() {
 fn translations_texts_lists_all_locales() {
     let t = build(
         Locale::EN_US,
-        pt_br(),
         &[
             (StringKind::Title, en(), "English"),
             (StringKind::Title, pt_br(), "Portugues"),
@@ -496,7 +492,7 @@ fn translations_texts_lists_all_locales() {
 
 #[test]
 fn translations_dedup_replaces() {
-    let mut t = Translations::new(Locale::EN_US, pt_br());
+    let mut t = Translations::new(Locale::EN_US);
 
     // Inserting the same (kind, locale) twice replaces rather than appends.
     t.insert(StringKind::Title, Locale::EN_US, "First");
@@ -513,16 +509,9 @@ fn translations_dedup_replaces() {
     );
     assert_eq!(t.texts(StringKind::Title).count(), 2);
     // Exact lookups still distinguish the two countries.
+    assert_eq!(t.get_with(StringKind::Title, Locale::EN_US), Some("Second"),);
     assert_eq!(
-        t.get_with(StringKind::Title, Locale::EN_US, Locale::DEFAULT),
-        Some("Second"),
-    );
-    assert_eq!(
-        t.get_with(
-            StringKind::Title,
-            Locale::from_iso("en-GB").unwrap(),
-            Locale::DEFAULT
-        ),
+        t.get_with(StringKind::Title, Locale::from_iso("en-GB").unwrap(),),
         Some("British"),
     );
 }

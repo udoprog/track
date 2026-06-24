@@ -94,7 +94,7 @@ impl Component for SyncLanguagesEditor {
                     })
                 }
 
-                <div class="row">
+                <div class="row align-end">
                     <button class="btn" onclick={link.callback(|_| Msg::Open)} title="Add language">
                         <span class="icon plus" />
                         <span class="hide-desktop">{"Add language"}</span>

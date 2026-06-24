@@ -231,7 +231,7 @@ impl Component for Settings {
 
                             <span class={classes!("input-checkbox", self.config.include_specials.then_some("checked"))} onclick={on_include_specials_change}>
                                 <span class="mark" />
-                                <span>{"Consider Specials for Watch Next"}</span>
+                                <span>{"Specials for Watch Next"}</span>
                             </span>
 
                             <div class="field">

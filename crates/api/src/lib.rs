@@ -1231,7 +1231,7 @@ pub struct Show {
     pub backdrop: Option<Image>,
     pub last_synced_at: Option<Timestamp>,
     pub language: Locale,
-    pub include_specials: Option<bool>,
+    pub include_specials: IncludeSpecials,
     pub air_date_filters: Option<Vec<AirDateFilter>>,
 }
 
@@ -2144,11 +2144,91 @@ pub struct SetShowLanguageRequest {
     pub language: Locale,
 }
 
+#[derive(Default, Debug, Clone, Copy, PartialEq, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub enum IncludeSpecials {
+    #[default]
+    Default,
+    Include,
+    Skip,
+}
+
+impl IncludeSpecials {
+    #[inline]
+    pub fn cycle(self) -> Self {
+        match self {
+            IncludeSpecials::Default => IncludeSpecials::Include,
+            IncludeSpecials::Include => IncludeSpecials::Skip,
+            IncludeSpecials::Skip => IncludeSpecials::Default,
+        }
+    }
+
+    /// Resolve this to a concrete boolean value.
+    #[inline]
+    pub fn unwrap_or(self, default: bool) -> bool {
+        match self {
+            IncludeSpecials::Default => default,
+            IncludeSpecials::Include => true,
+            IncludeSpecials::Skip => false,
+        }
+    }
+
+    /// Return a human-readable label for this option, suitable for use in a UI.
+    #[inline]
+    pub fn as_label(&self) -> &'static str {
+        match self {
+            IncludeSpecials::Default => "Use global default",
+            IncludeSpecials::Include => "Include specials",
+            IncludeSpecials::Skip => "Skip specials",
+        }
+    }
+}
+
+impl fmt::Display for IncludeSpecials {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            IncludeSpecials::Default => write!(f, "default"),
+            IncludeSpecials::Include => write!(f, "include"),
+            IncludeSpecials::Skip => write!(f, "skip"),
+        }
+    }
+}
+
+#[cfg(feature = "sqll")]
+impl ::sqll::FromColumn<'_> for IncludeSpecials {
+    type Type = ::sqll::ty::Nullable<::sqll::ty::Integer>;
+
+    fn from_column(
+        stmt: &::sqll::Statement,
+        index: ::sqll::ty::Nullable<::sqll::ty::Integer>,
+    ) -> ::sqll::Result<Self> {
+        match Option::<bool>::from_column(stmt, index)? {
+            Some(true) => Ok(IncludeSpecials::Include),
+            Some(false) => Ok(IncludeSpecials::Skip),
+            None => Ok(IncludeSpecials::Default),
+        }
+    }
+}
+
+#[cfg(feature = "sqll")]
+impl ::sqll::BindValue for IncludeSpecials {
+    fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
+        let value = match self {
+            IncludeSpecials::Default => None,
+            IncludeSpecials::Include => Some(true),
+            IncludeSpecials::Skip => Some(false),
+        };
+
+        value.bind_value(stmt, index)
+    }
+}
+
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct SetShowIncludeSpecialsRequest {
     pub id: ShowId,
-    pub include_specials: Option<bool>,
+    pub include_specials: IncludeSpecials,
 }
 
 #[derive(Debug, Encode, Decode)]

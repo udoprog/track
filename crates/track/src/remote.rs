@@ -88,19 +88,13 @@ impl RemoteClients {
     }
 
     async fn tmdb(&self) -> Option<tmdb::Client> {
-        let Some(tmdb) = self.inner.lock().tmdb.clone() else {
-            return None;
-        };
-
+        let tmdb = self.inner.lock().tmdb.clone()?;
         self.rate_limiter.acquire_one().await;
         Some(tmdb)
     }
 
     async fn tvdb(&self) -> Option<tvdb::Client> {
-        let Some(tvdb) = self.inner.lock().tvdb.clone() else {
-            return None;
-        };
-
+        let tvdb = self.inner.lock().tvdb.clone()?;
         self.rate_limiter.acquire_one().await;
         Some(tvdb)
     }

@@ -603,14 +603,14 @@ impl MarkTimeMenu {
         let props = ctx.props();
         let time = self.time.clone();
 
-        let body = match self.preset {
+        match self.preset {
             Preset::Now => self.time.now().human_date_time(time).view(),
             Preset::Supplied => match props.preset.as_ref().map(|p| &p.kind) {
                 Some(TimePresetKind::At(ts)) => ts.human_date_time(time).view(),
                 Some(TimePresetKind::WhenAired { description }) => {
                     html!(<span>{description}</span>)
                 }
-                None => return html!(),
+                None => html!(),
             },
             Preset::Custom => {
                 match self.date.to_timestamp_at_zoned(
@@ -619,12 +619,10 @@ impl MarkTimeMenu {
                     self.time.tz().clone(),
                 ) {
                     Ok(ts) => ts.human_date_time(time).view(),
-                    Err(_) => return html!(),
+                    Err(_) => html!(),
                 }
             }
-        };
-
-        body
+        }
     }
 
     fn view_interaction(&self, ctx: &Context<Self>) -> Html {
