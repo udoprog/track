@@ -453,6 +453,34 @@ impl Client {
         Ok(updates)
     }
 
+    pub(crate) async fn fetch_show_translations(&self, id: u32) -> Result<Vec<TranslationRow>> {
+        let resp: TmdbTranslationsResponse = self
+            .get_json(format!("tv/{id}/translations"), api::Locale::DEFAULT)
+            .await?;
+        Ok(parse_translations(resp, false))
+    }
+
+    pub(crate) async fn fetch_season_translations(
+        &self,
+        show_id: u32,
+        season: api::SeasonNumber,
+    ) -> Result<Vec<TranslationRow>> {
+        let resp: TmdbTranslationsResponse = self
+            .get_json(
+                format!("tv/{show_id}/season/{}/translations", season.ordinal()),
+                api::Locale::DEFAULT,
+            )
+            .await?;
+        Ok(parse_translations(resp, false))
+    }
+
+    pub(crate) async fn fetch_movie_translations(&self, id: u32) -> Result<Vec<TranslationRow>> {
+        let resp: TmdbTranslationsResponse = self
+            .get_json(format!("movie/{id}/translations"), api::Locale::DEFAULT)
+            .await?;
+        Ok(parse_translations(resp, true))
+    }
+
     pub(crate) async fn fetch_movie_releases(&self, id: u32) -> Result<Vec<MovieReleaseInfo>> {
         pub fn release_type_from_tmdb(n: u8) -> ReleaseType {
             match n {
@@ -522,12 +550,6 @@ impl Client {
         #[derive(Debug, Deserialize)]
         struct Details {
             #[serde(default)]
-            title: Option<String>,
-            #[serde(default)]
-            original_title: Option<String>,
-            #[serde(default)]
-            overview: Option<String>,
-            #[serde(default)]
             poster_path: Option<String>,
             #[serde(default)]
             backdrop_path: Option<String>,
@@ -547,17 +569,6 @@ impl Client {
         let effective_language = language.or(details
             .original_language
             .filter(|l| l != api::Locale::EN_US));
-
-        let localized: Option<Details> = if effective_language != language {
-            self.get_json(
-                format!("movie/{id}?append_to_response=external_ids"),
-                effective_language,
-            )
-            .await
-            .ok()
-        } else {
-            None
-        };
 
         let images: Images = self
             .get_images(format!("movie/{id}/images"), effective_language)
@@ -584,23 +595,7 @@ impl Client {
         let selected_backdrop =
             best_image(&backdrops, backdrop_path.as_deref().map(ImageKey::tmdb));
 
-        let title = localized
-            .as_ref()
-            .and_then(|l| l.title.as_deref())
-            .or(details.title.as_deref())
-            .filter(|s| !s.trim().is_empty())
-            .map(str::to_owned)
-            .or(details.original_title);
-
-        let overview = localized
-            .as_ref()
-            .and_then(|l| l.overview.as_deref().filter(|s| !s.trim().is_empty()))
-            .map(str::to_owned)
-            .or(details.overview);
-
         Ok(MovieInfo {
-            title,
-            overview,
             original_language,
             posters,
             backdrops,
@@ -648,8 +643,6 @@ pub(crate) struct EpisodeInfo {
 }
 
 pub(crate) struct MovieInfo {
-    pub title: Option<String>,
-    pub overview: Option<String>,
     pub original_language: api::Locale,
     pub posters: Vec<Image>,
     pub backdrops: Vec<Image>,
@@ -740,4 +733,64 @@ struct Images {
     backdrops: Vec<ImageResponse>,
     #[serde(default)]
     posters: Vec<ImageResponse>,
+}
+
+#[derive(Deserialize)]
+struct TmdbTranslationEntry {
+    iso_639_1: String,
+    iso_3166_1: String,
+    data: TmdbTranslationData,
+}
+
+#[derive(Deserialize, Default)]
+struct TmdbTranslationData {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    overview: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct TmdbTranslationsResponse {
+    #[serde(default)]
+    translations: Vec<TmdbTranslationEntry>,
+}
+
+pub(crate) struct TranslationRow {
+    pub locale: api::Locale,
+    pub name: Option<String>,
+    pub overview: Option<String>,
+}
+
+fn locale_from_tmdb(iso_639_1: &str, iso_3166_1: &str) -> Option<api::Locale> {
+    let language = api::Language::from_iso(iso_639_1)?;
+    if language.is_default() {
+        return None;
+    }
+    let country = api::Country::from_iso(iso_3166_1).unwrap_or_default();
+    Some(api::Locale::new(language, country))
+}
+
+fn parse_translations(resp: TmdbTranslationsResponse, use_title: bool) -> Vec<TranslationRow> {
+    resp.translations
+        .into_iter()
+        .filter_map(|e| {
+            let locale = locale_from_tmdb(&e.iso_639_1, &e.iso_3166_1)?;
+            let name = if use_title { e.data.title } else { e.data.name };
+            let name = name.filter(|s| !s.trim().is_empty());
+            let overview = e.data.overview.filter(|s| !s.trim().is_empty());
+            // Skip entries with no actual translated content (TMDB includes
+            // placeholder entries for locales where no translation exists).
+            if name.is_none() && overview.is_none() {
+                return None;
+            }
+            Some(TranslationRow {
+                locale,
+                name,
+                overview,
+            })
+        })
+        .collect()
 }

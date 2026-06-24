@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use anyhow::{Context as _, Result};
 use api::{
@@ -610,7 +610,7 @@ async fn tvdb_layer(
     Ok(())
 }
 
-#[tracing::instrument(skip_all, fields(show_id = %show_id))]
+#[tracing::instrument(skip_all, fields(show_id))]
 async fn tvmaze_layer(
     draft: &mut ShowDraft,
     show_id: api::ShowId,
@@ -659,85 +659,126 @@ async fn collect_show_strings(
         return Ok(());
     };
 
-    let mut targets = api::expand_sync_languages(&config.sync_languages, draft.default_language);
+    let targets = api::expand_sync_languages(&config.sync_languages, draft.default_language);
 
-    // TVDB has no country dimension, so its strings are language-only. Collapse
-    // each target to its language (country = DEFAULT) before fetching; the
-    // `BTreeSet` then dedupes locales that differ only by country.
-    if source == RemoteSource::Tvdb {
-        targets = targets
-            .into_iter()
-            .map(|l| api::Locale::new(l.language(), api::Country::DEFAULT))
-            .collect();
-    }
+    match source {
+        RemoteSource::Tmdb => {
+            tracing::info!(?source, "Collecting strings via translations endpoints");
+            collect_tmdb_strings(draft, id, &targets, remote).await?;
+        }
+        RemoteSource::Tvdb => {
+            // TVDB has no country dimension, so its strings are language-only. Collapse
+            // each target to its language (country = DEFAULT) before fetching; the
+            // `BTreeSet` then dedupes locales that differ only by country.
+            let tvdb_targets: BTreeSet<api::Locale> = targets
+                .into_iter()
+                .map(|l| api::Locale::new(l.language(), api::Country::DEFAULT))
+                .collect();
 
-    for language in targets {
-        tracing::info!(?language, ?source, "Collecting strings for language");
+            for language in tvdb_targets {
+                tracing::info!(?language, ?source, "Collecting strings for language");
 
-        match source {
-            RemoteSource::Tmdb => collect_tmdb_strings(draft, id, language, remote).await?,
-            RemoteSource::Tvdb => {
                 // Remotes key on ISO 639-1; skip any locale whose language has no
                 // 2-letter form.
                 if language.language().to_part1().is_none() {
                     continue;
-                };
+                }
 
-                collect_tvdb_strings(draft, id, language, remote).await?
+                collect_tvdb_strings(draft, id, language, remote).await?;
             }
-            _ => {}
         }
+        _ => {}
     }
 
     Ok(())
 }
 
+/// Returns true if `locale` (from a TMDB translations response) is relevant
+/// given the set of configured target languages. A language-only target
+/// (country = DEFAULT) matches any country variant; an exact-country target
+/// requires a full match.
+fn locale_matches_targets(locale: api::Locale, targets: &BTreeSet<api::Locale>) -> bool {
+    targets.iter().any(|t| {
+        if t.country().is_default() {
+            t.language() == locale.language()
+        } else {
+            *t == locale
+        }
+    })
+}
+
+#[tracing::instrument(skip_all, fields(tmdb_id))]
 async fn collect_tmdb_strings(
     draft: &mut ShowDraft,
     tmdb_id: u32,
-    language: api::Locale,
+    targets: &BTreeSet<api::Locale>,
     remote: &RemoteClients,
 ) -> Result<()> {
-    let info = remote.fetch_tmdb_show(tmdb_id, language).await?;
+    // Show strings: one translations call instead of one full-detail call per
+    // language.
+    let translations = remote.fetch_tmdb_show_translations(tmdb_id).await?;
 
-    draft.add_show_string(language, api::StringKind::Title, info.title.clone());
-    draft.add_show_string(language, api::StringKind::Overview, info.overview.clone());
+    for row in translations {
+        if !locale_matches_targets(row.locale, targets) {
+            continue;
+        }
 
-    for season in &info.seasons {
-        draft.add_season_string(
-            season.number,
-            language,
-            api::StringKind::Title,
-            season.name.clone(),
-        );
+        tracing::info!(?row.locale, ?targets, "TMDB show translation row");
 
-        draft.add_season_string(
-            season.number,
-            language,
-            api::StringKind::Overview,
-            season.overview.clone(),
-        );
+        draft.add_show_string(row.locale, api::StringKind::Title, row.name);
+        draft.add_show_string(row.locale, api::StringKind::Overview, row.overview);
     }
 
-    for season in info.seasons {
-        for ep in remote
-            .fetch_tmdb_season_episodes(tmdb_id, season.number, language)
-            .await?
-        {
-            draft.add_episode_string(
-                ep.season,
-                ep.number,
-                language,
-                api::StringKind::Title,
-                ep.name,
-            );
-            draft.add_episode_string(
-                ep.season,
-                ep.number,
-                language,
+    // Season strings: one translations call per season instead of one
+    // full-detail call per season per language.
+    let season_numbers: Vec<SeasonNumber> = draft.seasons.keys().copied().collect();
+
+    for season_number in &season_numbers {
+        let translations = remote
+            .fetch_tmdb_season_translations(tmdb_id, *season_number)
+            .await?;
+
+        for row in translations {
+            if !locale_matches_targets(row.locale, targets) {
+                continue;
+            }
+
+            tracing::info!(?row.locale, ?targets, ?season_number, "TMDB season translation row");
+
+            draft.add_season_string(*season_number, row.locale, api::StringKind::Title, row.name);
+            draft.add_season_string(
+                *season_number,
+                row.locale,
                 api::StringKind::Overview,
-                ep.overview,
+                row.overview,
             );
+        }
+    }
+
+    // Episode strings: no bulk translations endpoint exists; keep per-language
+    // per-season fetches unchanged.
+    for language in targets {
+        for season_number in &season_numbers {
+            for e in remote
+                .fetch_tmdb_season_episodes(tmdb_id, *season_number, *language)
+                .await?
+            {
+                draft.add_episode_string(
+                    e.season,
+                    e.number,
+                    *language,
+                    api::StringKind::Title,
+                    e.name,
+                );
+
+                draft.add_episode_string(
+                    e.season,
+                    e.number,
+                    *language,
+                    api::StringKind::Overview,
+                    e.overview,
+                );
+            }
         }
     }
 
@@ -1095,6 +1136,7 @@ pub(crate) async fn sync_movie(
 /// Fetch and replace a movie's per-language translated strings. Languages are
 /// [`api::expand_sync_languages`] of the configured `sync_languages` against the
 /// movie's own original language.
+#[tracing::instrument(skip_all, fields(movie_id, tmdb_id))]
 async fn collect_movie_strings(
     movie_id: api::MovieId,
     tmdb_id: u32,
@@ -1113,21 +1155,19 @@ async fn collect_movie_strings(
         targets.insert(base);
     }
 
+    let translations = remote.fetch_tmdb_movie_translations(tmdb_id).await?;
+
     let mut rows: StringRows = Vec::new();
 
-    for language in targets {
-        if language.language().to_part1().is_none() {
+    for row in translations {
+        if !locale_matches_targets(row.locale, &targets) {
             continue;
         }
 
-        let info = remote.fetch_tmdb_movie(tmdb_id, language).await?;
-        push_string(&mut rows, language, api::StringKind::Title, info.title);
-        push_string(
-            &mut rows,
-            language,
-            api::StringKind::Overview,
-            info.overview,
-        );
+        tracing::info!(?row.locale, ?targets, "TMDB movie translation row");
+
+        push_string(&mut rows, row.locale, api::StringKind::Title, row.name);
+        push_string(&mut rows, row.locale, api::StringKind::Overview, row.overview);
     }
 
     db.replace_movie_strings(movie_id, rows).await?;

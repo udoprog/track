@@ -253,6 +253,37 @@ impl RemoteClients {
             .await
     }
 
+    pub(crate) async fn fetch_tmdb_show_translations(
+        &self,
+        id: u32,
+    ) -> Result<Vec<tmdb::TranslationRow>> {
+        self.tmdb()
+            .context("Expected a configured TMDB client")?
+            .fetch_show_translations(id)
+            .await
+    }
+
+    pub(crate) async fn fetch_tmdb_season_translations(
+        &self,
+        show_id: u32,
+        season: api::SeasonNumber,
+    ) -> Result<Vec<tmdb::TranslationRow>> {
+        self.tmdb()
+            .context("Expected a configured TMDB client")?
+            .fetch_season_translations(show_id, season)
+            .await
+    }
+
+    pub(crate) async fn fetch_tmdb_movie_translations(
+        &self,
+        id: u32,
+    ) -> Result<Vec<tmdb::TranslationRow>> {
+        self.tmdb()
+            .context("Expected a configured TMDB client")?
+            .fetch_movie_translations(id)
+            .await
+    }
+
     pub(crate) async fn fetch_tvdb_show(
         &self,
         id: u32,
