@@ -296,7 +296,9 @@ impl Component for MediaList {
                         { for items.into_iter().map(|m| self.view_row(ctx, m)) }
                     </div>
 
-                    <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
+                    <div class="row desktop-align-end">
+                        <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
+                    </div>
                 }
             </>
         }

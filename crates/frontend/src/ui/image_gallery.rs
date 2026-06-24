@@ -47,20 +47,20 @@ pub(crate) fn ImageGallery(props: &Props) -> Html {
                 <h2>{props.kind.title()}</h2>
 
                 <div class="row">
-                    <button class="btn-danger" onclick={on_clear}>
+                    <button class="btn-danger" onclick={on_clear} title={format!("Clear {}", props.kind)}>
                         <span class="icon x-mark" />
-                        {format!("Clear {}", props.kind)}
+                        <span class="hide-desktop">{format!("Clear {}", props.kind)}</span>
                     </button>
                 </div>
+            </div>
+
+            <div class="row desktop-align-end">
+                <PaginationButtons page={this_page} {total_pages} on_page={on_page} />
             </div>
 
             if props.items.is_empty() {
                 <div class="text-muted">{"No images"}</div>
             } else {
-                if total_pages > 1 {
-                    <PaginationButtons page={this_page} {total_pages} on_page={on_page} />
-                }
-
                 <div class={classes!("image-gallery", props.kind.as_str())}>
                     { for page_images.iter().map(|img| {
                         let id = img.id;

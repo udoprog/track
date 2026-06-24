@@ -169,11 +169,9 @@ impl Component for CountryPicker {
                         }
                     </div>
 
-                    <PaginationButtons
-                        page={page}
-                        total_pages={total_pages}
-                        on_page={link.callback(Msg::Page)}
-                    />
+                    <div class="row desktop-align-end">
+                        <PaginationButtons page={page} total_pages={total_pages} on_page={link.callback(Msg::Page)} />
+                    </div>
                 </Modal>
             </>
         }

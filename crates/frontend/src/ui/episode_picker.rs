@@ -164,13 +164,11 @@ impl Component for EpisodePicker {
                     </select>
 
                     <div class="input-group">
-                        <button class="btn" onclick={link.callback(|_| Msg::Cancel)}
-                            title="Cancel">
+                        <button class="btn" onclick={link.callback(|_| Msg::Cancel)} title="Cancel">
                             <span class="icon x-mark" />
                         </button>
 
-                        <button class="btn-success" onclick={link.callback(|_| Msg::Confirm)}
-                            title="Confirm" disabled={!can_confirm}>
+                        <button class="btn-success" onclick={link.callback(|_| Msg::Confirm)} title="Confirm" disabled={!can_confirm}>
                             <span class="icon check" />
                         </button>
                     </div>
