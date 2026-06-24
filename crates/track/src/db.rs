@@ -921,7 +921,8 @@ struct InnerWrite {
     set_show_auto_sync: TypedStatement<(bool, ShowId), ()>,
 
     // remotes (one table per owner; source is a numeric enum, value is dynamic)
-    #[sql = "INSERT OR IGNORE INTO show_remotes (id, slug, show_id, source, value, enabled, priority, sync_kinds) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"]
+    #[sql = "INSERT INTO show_remotes (id, slug, show_id, source, value, enabled, priority, sync_kinds) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"]
+    #[sql = "ON CONFLICT(show_id, source, value) DO UPDATE SET slug = COALESCE(excluded.slug, slug)"]
     insert_show_remote: TypedStatement<
         (
             RemoteId,
@@ -1077,7 +1078,8 @@ struct InnerWrite {
     set_movie_release_date: TypedStatement<(Option<Timestamp>, MovieId), ()>,
     #[sql = "DELETE FROM movies WHERE id = ?"]
     delete_movie: TypedStatement<(MovieId,), ()>,
-    #[sql = "INSERT OR IGNORE INTO movie_remotes (id, slug, movie_id, source, value, enabled, priority, sync_kinds) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"]
+    #[sql = "INSERT INTO movie_remotes (id, slug, movie_id, source, value, enabled, priority, sync_kinds) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"]
+    #[sql = "ON CONFLICT(movie_id, source, value) DO UPDATE SET slug = COALESCE(excluded.slug, slug)"]
     insert_movie_remote: TypedStatement<
         (
             RemoteId,
