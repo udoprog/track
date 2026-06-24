@@ -1306,6 +1306,7 @@ pagination {
             align-items: center;
             justify-content: center;
 
+            min-width: 3ch;
             height: $input-height;
 
             @include g.on-mobile {

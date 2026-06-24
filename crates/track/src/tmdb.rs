@@ -516,6 +516,8 @@ impl Client {
             #[serde(default)]
             backdrop_path: Option<String>,
             #[serde(default)]
+            original_title: Option<String>,
+            #[serde(default)]
             original_language: api::Locale,
             #[serde(default)]
             external_ids: ExternalIds,
@@ -552,6 +554,11 @@ impl Client {
 
         Ok(MovieInfo {
             original_language,
+            original_title: details
+                .original_title
+                .as_ref()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
             posters,
             backdrops,
             selected_poster,
@@ -594,6 +601,7 @@ pub(crate) struct EpisodeInfo {
 
 pub(crate) struct MovieInfo {
     pub original_language: api::Locale,
+    pub original_title: Option<String>,
     pub posters: Vec<Image>,
     pub backdrops: Vec<Image>,
     pub selected_poster: Option<ImageKey>,

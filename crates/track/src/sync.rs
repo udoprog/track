@@ -11,6 +11,7 @@ use api::{
 use crate::app_broadcast::Broadcaster;
 use crate::db::Database;
 use crate::remote::RemoteClients;
+use crate::tmdb;
 
 pub(crate) async fn sync_show(
     show_id: api::ShowId,
@@ -82,7 +83,7 @@ pub(crate) async fn sync_show(
         let result = match source {
             RemoteSource::Tmdb => match entry.remote.value().as_u32() {
                 Some(tmdb_id) => {
-                    tmdb_layer(
+                    tmdb_show_layer(
                         &mut draft,
                         &config,
                         &show,
@@ -97,7 +98,8 @@ pub(crate) async fn sync_show(
             },
             RemoteSource::Tvdb => match entry.remote.value().as_u32() {
                 Some(tvdb_id) => {
-                    tvdb_layer(&mut draft, &config, tvdb_id, do_base, do_air_date, remote).await
+                    tvdb_show_layer(&mut draft, &config, tvdb_id, do_base, do_air_date, remote)
+                        .await
                 }
                 None => continue,
             },
@@ -376,7 +378,7 @@ impl ShowDraft {
 }
 
 #[tracing::instrument(skip_all, fields(tmdb_id, do_base, do_air_date))]
-async fn tmdb_layer(
+async fn tmdb_show_layer(
     draft: &mut ShowDraft,
     config: &api::Config,
     show: &api::Show,
@@ -460,7 +462,7 @@ async fn tmdb_layer(
 
         tracing::info!("Collecting strings");
 
-        if let Err(error) = collect_tmdb_strings(draft, tmdb_id, &targets, remote).await {
+        if let Err(error) = collect_tmdb_show_strings(draft, tmdb_id, &targets, remote).await {
             tracing::warn!("String collection failed: {error:#}");
         }
     }
@@ -469,7 +471,7 @@ async fn tmdb_layer(
 }
 
 #[tracing::instrument(skip_all, fields(tvdb_id, do_base, do_air_date))]
-async fn tvdb_layer(
+async fn tvdb_show_layer(
     draft: &mut ShowDraft,
     config: &api::Config,
     tvdb_id: u32,
@@ -663,7 +665,7 @@ fn locale_matches_targets(locale: api::Locale, targets: &BTreeSet<api::Locale>) 
 }
 
 #[tracing::instrument(skip_all, fields(tmdb_id))]
-async fn collect_tmdb_strings(
+async fn collect_tmdb_show_strings(
     draft: &mut ShowDraft,
     tmdb_id: u32,
     targets: &BTreeSet<api::Locale>,
@@ -1060,23 +1062,14 @@ pub(crate) async fn sync_movie(
 
             let info = remote.fetch_tmdb_movie(tmdb_id).await?;
 
-            let original_locale = info.original_language;
-
             if !info.original_language.is_default() {
-                db.set_movie_default_language(movie_id, original_locale)
+                db.set_movie_default_language(movie_id, info.original_language)
                     .await?;
             }
 
-            if let Err(e) = collect_movie_strings(
-                movie_id,
-                tmdb_id,
-                language,
-                original_locale,
-                &config,
-                db,
-                remote,
-            )
-            .await
+            if let Err(e) =
+                collect_tmdb_movie_strings(movie_id, tmdb_id, &info, &config, language, db, remote)
+                    .await
             {
                 tracing::warn!(movie_id = %movie_id, "String collection failed: {e:#}");
             }
@@ -1180,20 +1173,21 @@ pub(crate) async fn sync_movie(
 /// [`api::expand_sync_languages`] of the configured `sync_languages` against the
 /// movie's own original language.
 #[tracing::instrument(skip_all, fields(movie_id, tmdb_id))]
-async fn collect_movie_strings(
+async fn collect_tmdb_movie_strings(
     movie_id: api::MovieId,
     tmdb_id: u32,
-    base_language: api::Locale,
-    original: api::Locale,
+    info: &tmdb::MovieInfo,
     config: &api::Config,
+    language: api::Locale,
     db: &Database,
     remote: &RemoteClients,
 ) -> Result<()> {
-    let mut targets = api::expand_sync_languages(&config.sync_languages, original);
+    let mut targets = api::expand_sync_languages(&config.sync_languages, info.original_language);
 
-    // Always include the configured display locale so the shown title/overview is
-    // stored even when it isn't one of the configured sync languages.
-    let base = base_language.or(original);
+    // Always include the configured display locale so the shown title/overview
+    // is stored even when it isn't one of the configured sync languages.
+    let base = language.or(info.original_language);
+
     if !base.language().is_default() {
         targets.insert(base);
     }
@@ -1213,8 +1207,9 @@ async fn collect_movie_strings(
             &mut rows,
             translation.locale,
             api::StringKind::Title,
-            translation.title,
+            translation.title.or(info.original_title.clone()),
         );
+
         push_string(
             &mut rows,
             translation.locale,
