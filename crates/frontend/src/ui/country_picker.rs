@@ -82,7 +82,7 @@ impl Component for CountryPicker {
         let current = &ctx.props().current;
 
         let trigger = html! {
-            <button class="btn" onclick={link.callback(|_| Msg::Open)} title="Select countries">
+            <button class="has-text" onclick={link.callback(|_| Msg::Open)} title="Select countries">
                 <span class="icon globe-alt" />
 
                 if current.is_empty() {
@@ -92,7 +92,7 @@ impl Component for CountryPicker {
 
                     {for current.iter().filter_map(|code| {
                         code.to_iso().filter(|c| c.has_flag).map(|c| html! {
-                            <span class={classes!("item-inline", "flag", c.alpha2)} />
+                            <span class={classes!("flag", c.alpha2)} />
                         })
                     })}
                 }
@@ -128,7 +128,7 @@ impl Component for CountryPicker {
 
                 <Modal icon="globe" title="Select Countries" on_close={link.callback(|_| Msg::Close)}>
                     <div class="row">
-                        <input autofocus={true} type="text" class="input-text fill" placeholder="Filter" value={self.filter.clone()} oninput={on_filter} />
+                        <input class="input-text fill" type="text" autofocus={true} placeholder="Filter" value={self.filter.clone()} oninput={on_filter} />
                     </div>
 
                     <div class="table">

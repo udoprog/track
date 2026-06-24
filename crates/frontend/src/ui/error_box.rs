@@ -16,7 +16,7 @@ pub(crate) fn ErrorBox(props: &Props) -> Html {
                 { for props.error.sources().map(|e| html! { <p>{e.to_string()}</p> }) }
             </div>
 
-            <button class="btn-danger" onclick={props.onclearerror.reform(|_| ())}>
+            <button class="danger" onclick={props.onclearerror.reform(|_| ())}>
                 <span class="icon x-mark" />
             </button>
         </>

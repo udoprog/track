@@ -88,13 +88,7 @@ pub(crate) fn AirDateFiltersEditor(props: &Props) -> Html {
 
                                 if enabled {
                                     <CountryPicker current={countries} on_change={on_countries} />
-                                    <input
-                                        type="text"
-                                        class="input-text fill"
-                                        placeholder="Networks (comma separated)"
-                                        value={networks.join(", ")}
-                                        onchange={on_networks}
-                                    />
+                                    <input class="input-text fill" type="text" placeholder="Networks (comma separated)" value={networks.join(", ")} onchange={on_networks} />
                                 }
                             </div>
                         </div>

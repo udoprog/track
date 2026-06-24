@@ -141,13 +141,13 @@ pub(crate) fn MediaSettingsModal(props: &Props) -> Html {
                     />
                 </div>
 
-                <span class={classes!("input-checkbox", auto_sync.then_some("checked"))} id="auto-sync-enabled" onclick={on_auto_sync}>
+                <span class={classes!("input-checkbox", "has-text", auto_sync.then_some("checked"))} id="auto-sync-enabled" onclick={on_auto_sync}>
                     <span class="mark" />
                     {if auto_sync { "Automatic Sync Enabled" } else { "Automatic Sync Disabled" }}
                 </span>
 
                 <div class="field">
-                    <div class="input-label clickable" onclick={special_on_change(include_specials)}>
+                    <div class="input-label has-text clickable" onclick={special_on_change(include_specials)}>
                         {include_specials.as_label()}
                     </div>
                 </div>
@@ -160,13 +160,17 @@ pub(crate) fn MediaSettingsModal(props: &Props) -> Html {
                     <label>{"Sync"}</label>
                     <div class="input-group">
                         if let Some(ref ts) = props.last_synced {
-                            <div class="input-text fill" title="Last synced at">{ts}</div>
+                            <div class="input-text has-text fill" title="Last synced at">
+                                <span>{ts}</span>
+                            </div>
                         } else {
-                            <div class="input-text fill text-muted">{"Never synced"}</div>
+                            <div class="input-text has-text fill text-muted">
+                                <span>{"Never synced"}</span>
+                            </div>
                         }
 
                         if props.has_remotes {
-                            <button class="btn" onclick={on_sync} title="Sync now">
+                            <button onclick={on_sync} title="Sync now">
                                 <span class={classes!("icon", "arrow-path", props.syncing.then_some("spin"))} />
                             </button>
                         }
@@ -175,7 +179,7 @@ pub(crate) fn MediaSettingsModal(props: &Props) -> Html {
 
                 <div class="field">
                     if props.has_images {
-                        <button class="btn" onclick={on_edit_graphics}>
+                        <button class="has-text" onclick={on_edit_graphics}>
                             <span class="icon photo" />
                             <span>{"Graphics"}</span>
                         </button>
@@ -187,7 +191,7 @@ pub(crate) fn MediaSettingsModal(props: &Props) -> Html {
                 </div>
 
                 <div class="field">
-                    <button class="btn" onclick={on_edit_remotes}>
+                    <button class="has-text" onclick={on_edit_remotes}>
                         <span class="icon identification" />
                         <span>{"Remotes"}</span>
                     </button>

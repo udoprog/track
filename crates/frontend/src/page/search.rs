@@ -153,19 +153,11 @@ impl Component for Search {
 
                 <input-controls>
                     <div class="input-group">
-                        <input
-                            class="input-text fill"
-                            type="text"
-                            placeholder={SEARCH}
-                            autofocus=true
-                            value={self.query.clone()}
-                            oninput={on_input}
-                            onkeydown={on_keydown}
-                        />
+                        <input class="input-text fill" type="text" placeholder={SEARCH} autofocus=true value={self.query.clone()} oninput={on_input} onkeydown={on_keydown} />
 
-                        <button class="btn" onclick={on_submit}>
+                        <button class="desktop-has-text" onclick={on_submit}>
                             <span class="icon magnifying-glass" />
-                            <span class="hide-mobile">{"Search Remotes"}</span>
+                            <span class="desktop-only">{"Search Remotes"}</span>
                         </button>
                     </div>
 
@@ -383,8 +375,8 @@ impl Search {
 
         html! {
             <div key={r.remote.to_string()} class="desktop-row mobile-column">
-                <Image class="poster poster-side top hide-mobile" src={r.poster.clone()} placeholder=true />
-                <Image class="banner hide-desktop" src={r.banner.clone()} placeholder=true />
+                <Image class="poster poster-side top desktop-only" src={r.poster.clone()} placeholder=true />
+                <Image class="banner mobile-only" src={r.banner.clone()} placeholder=true />
 
                 <div class="column top fill">
                     <div class="row-split">
@@ -402,14 +394,14 @@ impl Search {
 
                         <div class="row">
                             if let Some(on_nav) = on_nav {
-                                <button class="btn" onclick={on_nav} title="Already tracked">
+                                <button class="desktop-has-text" onclick={on_nav} title="Already tracked">
                                     <span class="icon check" />
-                                    <span class="hide-mobile">{"Tracked"}</span>
+                                    <span class="desktop-only">{"Tracked"}</span>
                                 </button>
                             } else {
-                                <button class="btn" onclick={on_track} title="Track show">
+                                <button class="desktop-has-text" onclick={on_track} title="Track show">
                                     <span class="icon plus" />
-                                    <span class="hide-mobile">{"Track"}</span>
+                                    <span class="desktop-only">{"Track"}</span>
                                 </button>
                             }
                         </div>
@@ -444,8 +436,8 @@ impl Search {
 
         html! {
             <div key={r.remote.to_string()} class="desktop-row mobile-column align-top">
-                <Image class="poster poster-side top hide-mobile" src={r.poster.clone()} placeholder=true />
-                <Image class="banner hide-desktop" src={r.banner.clone()} placeholder=true />
+                <Image class="poster poster-side top desktop-only" src={r.poster.clone()} placeholder=true />
+                <Image class="banner mobile-only" src={r.banner.clone()} placeholder=true />
 
                 <div class="column fill">
                     <div class="row-split">
@@ -463,14 +455,14 @@ impl Search {
 
                         <div class="row">
                             if let Some(on_nav) = on_nav {
-                                <button class="btn" onclick={on_nav} title="Already tracked">
+                                <button class="desktop-has-text" onclick={on_nav} title="Already tracked">
                                     <span class="icon check" />
-                                    <span class="hide-mobile">{"Tracked"}</span>
+                                    <span class="desktop-only">{"Tracked"}</span>
                                 </button>
                             } else {
-                                <button class="btn" onclick={on_track} title="Track movie">
+                                <button class="desktop-has-text" onclick={on_track} title="Track movie">
                                     <span class="icon plus" />
-                                    <span class="hide-mobile">{"Track"}</span>
+                                    <span class="desktop-only">{"Track"}</span>
                                 </button>
                             }
                         </div>

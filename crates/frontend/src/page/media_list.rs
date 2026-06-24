@@ -10,7 +10,7 @@ use crate::error::{CustomContext, Error, Message};
 use crate::router::{
     MediaQuery, MediaSelection, Route, Router, ShowDetailQuery, SortField, TrackedFilter,
 };
-use crate::ui::{Image, MarkTimeMenu, MediaKindToggle, PaginationButtons, TimePreset};
+use crate::ui::{Button, Image, MarkTimeMenu, MediaKindToggle, PaginationButtons, TimePreset};
 
 const PAGE_SIZE: usize = 20;
 
@@ -226,25 +226,16 @@ impl Component for MediaList {
 
                 <input-controls>
                     <div class="input-group">
-                        <input
-                            type="text"
-                            placeholder="Filter"
-                            value={self.filter.clone()}
-                            oninput={on_filter}
-                            class="input-text fill"
-                        />
+                        <input type="text" placeholder="Filter" value={self.filter.clone()} oninput={on_filter} class="input-text fill" />
 
                         if !self.filter.is_empty() {
-                            <button class="btn" title="Clear filter"
-                                onclick={link.callback(|_| Msg::Filter(String::new()))}>
-                                <span class="icon backspace" />
-                            </button>
+                            <Button icon="backspace" title="Clear filter" onclick={link.callback(|_| Msg::Filter(String::new()))} />
                         }
                     </div>
 
                     <controls>
                         <div class="input-group fill">
-                            <div class="input-label">
+                            <div class="input-label has-text">
                                 {"Sort by:"}
                             </div>
 
@@ -260,18 +251,11 @@ impl Component for MediaList {
                                 </option>
                             </select>
 
-                            <button class="btn" title={dir_title}
-                                onclick={link.callback(|_| Msg::ToggleDir)}>
-                                <span class={classes!("icon", dir_icon)} />
-                            </button>
+                            <Button icon={dir_icon} title={dir_title} onclick={link.callback(|_| Msg::ToggleDir)} />
                         </div>
 
                         <div class="input-group">
-                            <button class="btn" title={format!("Showing: {tracked_label}")}
-                                onclick={link.callback(|_| Msg::CycleTracked)}>
-                                <span class={classes!("icon", tracked_icon)} />
-                                <span class="hide-desktop">{tracked_label}</span>
-                            </button>
+                            <Button icon={tracked_icon} title={format!("Showing: {tracked_label}")} text={tracked_label} onclick={link.callback(|_| Msg::CycleTracked)} />
 
                             <MediaKindToggle
                                 selection={self.selection}
@@ -591,8 +575,8 @@ impl MediaList {
 
         html! {
             <div class="desktop-row mobile-column align-top">
-                <Image class="banner clickable hide-desktop" onclick={&onclick} src={m.banner.clone()} />
-                <Image class="poster poster-side clickable hide-mobile" onclick={&onclick} src={m.poster.clone()} />
+                <Image class="banner clickable mobile-only" onclick={&onclick} src={m.banner.clone()} />
+                <Image class="poster poster-side clickable desktop-only" onclick={&onclick} src={m.poster.clone()} />
 
                 <div class="column fill">
                     <div class="row-split fill align-top">
@@ -675,7 +659,7 @@ impl MediaList {
                                 if is_movie {
                                     <MarkTimeMenu
                                         onerror={ctx.props().onerror.clone()}
-                                        trigger_class="btn-success"
+                                        trigger_class="success"
                                         title="Mark watched"
                                         prompt={match primary_title { Some(title) => format!("When did you watch {}?", title), None => "When did you watch this movie?".to_string() }}
                                         {preset}
@@ -686,10 +670,10 @@ impl MediaList {
                             </div>
 
                             if !m.tracked {
-                                <button class="btn" title="Track"
+                                <button class="desktop-has-text" title="Track"
                                     onclick={ctx.link().callback(move |_| Msg::SetTracked(kind, id, true))}>
                                     <span class="icon eye-slash" />
-                                    <span class="hide-mobile">{"Track"}</span>
+                                    <span class="desktop-only">{"Track"}</span>
                                 </button>
                             }
                         </div>

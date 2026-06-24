@@ -4,6 +4,7 @@ use yew::prelude::*;
 use musli_web::web03::prelude::*;
 
 use crate::SetupChannel;
+use crate::ui::{Button, Variant};
 
 pub(crate) struct EpisodePicker {
     channel: ws::Channel,
@@ -164,13 +165,9 @@ impl Component for EpisodePicker {
                     </select>
 
                     <div class="input-group">
-                        <button class="btn" onclick={link.callback(|_| Msg::Cancel)} title="Cancel">
-                            <span class="icon x-mark" />
-                        </button>
+                        <Button icon="x-mark" title="Cancel" onclick={link.callback(|_| Msg::Cancel)} />
 
-                        <button class="btn-success" onclick={link.callback(|_| Msg::Confirm)} title="Confirm" disabled={!can_confirm}>
-                            <span class="icon check" />
-                        </button>
+                        <Button icon="check" title="Confirm" variant={Variant::Success} disabled={!can_confirm} onclick={link.callback(|_| Msg::Confirm)} />
                     </div>
                 </div>
             </div>

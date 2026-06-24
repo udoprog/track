@@ -4,6 +4,7 @@
 //! to it as `crate::ui::<Name>`.
 
 mod air_date_filters_editor;
+mod button;
 mod confirm_danger;
 mod context_menu;
 mod country_picker;
@@ -29,6 +30,7 @@ mod tracked;
 mod translations_modal;
 
 pub(crate) use self::air_date_filters_editor::AirDateFiltersEditor;
+pub(crate) use self::button::{Button, Variant};
 pub(crate) use self::confirm_danger::ConfirmDanger;
 pub(crate) use self::context_menu::ContextMenu;
 pub(crate) use self::country_picker::CountryPicker;

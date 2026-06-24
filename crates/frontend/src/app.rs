@@ -325,26 +325,30 @@ fn Toolbar() -> Html {
                 <span class={classes!("icon", if *menu_open { "ellipsis-horizontal" } else { "bars-3" })} />
             </div>
 
-            <div class={classes!("toolbar-dropdown", (!*menu_open).then_some("hide-mobile"))}>
-                <button onclick={on_nav(Route::Dashboard(DashboardQuery::default()))} class="toolbar-item" title="Dashboard">
+            <div class={classes!("toolbar-dropdown", (!*menu_open).then_some("desktop-only"))}>
+                <button class="toolbar-item has-text" onclick={on_nav(Route::Dashboard(DashboardQuery::default()))} title="Dashboard">
                     <span class="icon rectangle-stack" />
                     <span>{"Dashboard"}</span>
                 </button>
-                <button onclick={on_nav(Route::Media(MediaQuery::default()))} class="toolbar-item" title="Media">
+
+                <button class="toolbar-item has-text" onclick={on_nav(Route::Media(MediaQuery::default()))} title="Media">
                     <span class="icon film" />
                     <span>{"Media"}</span>
                 </button>
-                <button onclick={on_nav(Route::Search(SearchQuery::default()))} class="toolbar-item" title="Search Remotes">
+
+                <button class="toolbar-item mobile-has-text" onclick={on_nav(Route::Search(SearchQuery::default()))} title="Search Remotes">
                     <span class="icon magnifying-glass" />
-                    <span class="hide-desktop">{"Search Remotes"}</span>
+                    <span class="mobile-only">{"Search Remotes"}</span>
                 </button>
-                <button onclick={on_nav(Route::Queue(QueueQuery::default()))} class="toolbar-item" title="Queue">
+
+                <button class="toolbar-item mobile-has-text" onclick={on_nav(Route::Queue(QueueQuery::default()))} title="Queue">
                     <span class="icon queue-list" />
-                    <span class="hide-desktop">{"Queue"}</span>
+                    <span class="mobile-only">{"Queue"}</span>
                 </button>
-                <button onclick={on_nav(Route::Settings)} class="toolbar-item" title="Settings">
+
+                <button class="toolbar-item mobile-has-text" onclick={on_nav(Route::Settings)} title="Settings">
                     <span class="icon cog-6-tooth" />
-                    <span class="hide-desktop">{"Settings"}</span>
+                    <span class="mobile-only">{"Settings"}</span>
                 </button>
             </div>
         </div>

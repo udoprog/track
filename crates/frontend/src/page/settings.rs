@@ -150,7 +150,7 @@ impl Component for Settings {
                         <div class={classes!("field", (!tz_is_valid(&self.config.timezone)).then_some("error"))}>
                             <label>{"TimeZone"}</label>
 
-                            <input type="text" class="input-text" placeholder="Leave empty to use browser timezone" value={self.config.timezone.clone()} onchange={on_timezone} list="tz-datalist" autocomplete="off" />
+                            <input class="input-text" type="text" placeholder="Leave empty to use browser timezone" value={self.config.timezone.clone()} onchange={on_timezone} list="tz-datalist" autocomplete="off" />
 
                             <datalist id="tz-datalist">
                                 { for jiff_tzdb::available().map(|name| html! {
@@ -211,13 +211,15 @@ impl Component for Settings {
 
                     <div class="desktop-row mobile-column align-top">
                         <div class="column fill">
-                            <span class={classes!("input-checkbox", self.config.auto_sync_enabled.then_some("checked"))} onclick={on_auto_sync_toggle}>
+                            <span class={classes!("input-checkbox", "has-text", self.config.auto_sync_enabled.then_some("checked"))} onclick={on_auto_sync_toggle}>
                                 <span class="mark" />
                                 <span>{"Automatic Sync"}</span>
                             </span>
 
                             <div class="input-group fill">
-                                <span class="input-label">{"Sync Interval in Hours"}</span>
+                                <span class="input-label has-text">
+                                    {"Sync Interval in Hours"}
+                                </span>
 
                                 <input
                                     type="number"
@@ -229,7 +231,7 @@ impl Component for Settings {
                                 />
                             </div>
 
-                            <span class={classes!("input-checkbox", self.config.include_specials.then_some("checked"))} onclick={on_include_specials_change}>
+                            <span class={classes!("input-checkbox", "has-text", self.config.include_specials.then_some("checked"))} onclick={on_include_specials_change}>
                                 <span class="mark" />
                                 <span>{"Specials for Watch Next"}</span>
                             </span>

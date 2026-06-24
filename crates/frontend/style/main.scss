@@ -376,18 +376,52 @@ p {
     }
 }
 
-@mixin btn-base($color, $input-height, $input-height-touch) {
+@mixin button-color($color) {
+    background-color: color.adjust($color, $lightness: $adjust-bg);
+
+    &.selected {
+        background-color: $color;
+    }
+}
+
+@mixin has-text {
+    &.has-text>.icon, .mark {
+        margin-inline: -0.1em;
+    }
+
+    @include g.on-mobile {
+        &.mobile-has-text>.icon, .mark {
+            margin-inline: -0.1em;
+        }
+
+        &:not(.mobile-has-text, .has-text) {
+            justify-content: center;
+        }
+    }
+
+    @include g.on-desktop {
+        &.desktop-has-text>.icon, .mark {
+            margin-inline: -0.1em;
+        }
+
+        &:not(.desktop-has-text, .has-text) {
+            justify-content: center;
+        }
+    }
+}
+
+button,
+.button {
     cursor: pointer;
 
     --icon-color: #{$text-color};
     color: $text-color;
-    background-color: color.adjust($color, $lightness: $adjust-bg);
 
     display: inline-flex;
     box-sizing: border-box;
     gap: 0.25rem;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     border: none;
     border-radius: $radius;
     font-size: $font-sm;
@@ -401,6 +435,8 @@ p {
     border-width: 1px;
     border-color: transparent;
 
+    @include has-text;
+
     @include g.on-mobile {
         height: $input-height-touch;
         min-width: $input-height-touch;
@@ -408,6 +444,20 @@ p {
 
     &:hover {
         border-color: $color-primary;
+    }
+
+    @include button-color($color-secondary);
+
+    &.primary {
+        @include button-color($color-primary);
+    }
+
+    &.success {
+        @include button-color($color-success);
+    }
+
+    &.danger {
+        @include button-color($color-danger);
     }
 
     &.fill {
@@ -422,37 +472,16 @@ p {
     &.selected {
         --icon-color: #{$text-color-selected};
         color: $text-color-selected;
-        background-color: $color;
-    }
-
-    >.icon {
-        height: $input-icon-height;
     }
 }
 
-.btn {
-    @include btn-base($color-secondary, $input-height, $input-height-touch);
-}
-
-.btn-primary {
-    @include btn-base($color-primary, $input-height, $input-height-touch);
-}
-
-.btn-success {
-    @include btn-base($color-success, $input-height, $input-height-touch);
-}
-
-.btn-danger {
-    @include btn-base($color-danger, $input-height, $input-height-touch);
-}
-
-.hide-mobile {
+.desktop-only {
     @include g.on-mobile {
         display: none;
     }
 }
 
-.hide-desktop {
+.mobile-only {
     @include g.on-desktop {
         display: none;
     }
@@ -1044,18 +1073,17 @@ input-controls {
 
     height: $input-height;
     min-width: 0;
-    padding: $padding-md;
+    padding: $padding;
+
+    border-radius: $radius;
 
     @if $has-border {
         border-width: 1px;
         border-style: solid;
-        border-radius: $radius;
         border-color: $border-input;
     }
 
-    >.icon {
-        height: $input-icon-height;
-    }
+    @include has-text;
 
     @if $hover {
         &:hover {
@@ -1077,9 +1105,7 @@ input-controls {
 
 .input-label {
     @include input-base($hover: false, $has-border: false);
-
     background-color: color.adjust($color-secondary, $lightness: $adjust-bg);
-
     text-transform: uppercase;
     font-family: $monospace-font;
     font-size: 0.8em;
@@ -1290,7 +1316,7 @@ pagination {
         flex: 1;
     }
 
-    > pages {
+    >pages {
         display: flex;
         font-size: $font-base;
         font-family: $monospace-font;
@@ -1299,7 +1325,7 @@ pagination {
 
         background-color: $bg-surface;
 
-        > ellipsis {
+        >ellipsis {
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -1312,7 +1338,7 @@ pagination {
             }
         }
 
-        > page {
+        >page {
             cursor: pointer;
 
             display: inline-flex;

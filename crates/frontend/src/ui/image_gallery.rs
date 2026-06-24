@@ -1,6 +1,6 @@
 use yew::prelude::*;
 
-use super::{Image, PaginationButtons};
+use super::{Button, Image, PaginationButtons, Variant};
 
 const GALLERY_PAGE_SIZE: usize = 4;
 
@@ -47,10 +47,7 @@ pub(crate) fn ImageGallery(props: &Props) -> Html {
                 <h2>{props.kind.title()}</h2>
 
                 <div class="row">
-                    <button class="btn-danger" onclick={on_clear} title={format!("Clear {}", props.kind)}>
-                        <span class="icon x-mark" />
-                        <span class="hide-desktop">{format!("Clear {}", props.kind)}</span>
-                    </button>
+                    <Button icon="x-mark" variant={Variant::Danger} title={format!("Clear {}", props.kind)} text={format!("Clear {}", props.kind)} onclick={on_clear} />
                 </div>
             </div>
 

@@ -106,28 +106,21 @@ impl Component for SecretInput {
             ("eye", "Reveal")
         };
 
+        let ty = if revealed { "text" } else { "password" };
+
         html! {
             <div class="input-group">
-                <input
-                    id={props.id.clone()}
-                    type={if revealed { "text" } else { "password" }}
-                    class="input-text fill"
-                    placeholder={props.placeholder.clone()}
-                    value={props.value.clone()}
-                    onchange={on_change}
-                    autocomplete="off"
-                    spellcheck="false"
-                />
+                <input id={props.id.clone()} class="input-text fill" type={ty} placeholder={props.placeholder.clone()} value={props.value.clone()} onchange={on_change} autocomplete="off" spellcheck="false" />
 
-                <button type="button" class="btn" title={toggle_title} disabled={is_empty} onclick={on_toggle}>
+                <button type="button" title={toggle_title} disabled={is_empty} onclick={on_toggle}>
                     <span class={classes!("icon", toggle_icon)} />
                 </button>
 
-                <button type="button" class="btn" title="Copy to clipboard" disabled={is_empty} onclick={link.callback(|_| Msg::Copy)}>
+                <button type="button" title="Copy to clipboard" disabled={is_empty} onclick={link.callback(|_| Msg::Copy)}>
                     <span class="icon clipboard" />
                 </button>
 
-                <button type="button" class="btn" title="Clear" disabled={is_empty} onclick={link.callback(|_| Msg::Clear)}>
+                <button type="button" title="Clear" disabled={is_empty} onclick={link.callback(|_| Msg::Clear)}>
                     <span class="icon x-mark" />
                 </button>
             </div>

@@ -59,7 +59,7 @@ pub(crate) fn ReleaseFiltersEditor(props: &Props) -> Html {
 
                     html! {
                         <div class="row input-group">
-                            <span class={classes!("input-checkbox", "fill", enabled.then_some("checked"))} onclick={on_toggle}>
+                            <span class={classes!("input-checkbox", "has-text", "fill", enabled.then_some("checked"))} onclick={on_toggle}>
                                 <span class="mark" />
                                 <span>{rt.as_str()}</span>
                             </span>

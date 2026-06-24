@@ -9,7 +9,7 @@ use yew::prelude::*;
 use api::TimeInfo;
 
 use crate::error::Error;
-use crate::ui::ContextMenu;
+use crate::ui::{Button, ContextMenu, Variant};
 
 /// Which ring of the clock is being edited.
 #[derive(Clone, Copy, PartialEq)]
@@ -189,7 +189,7 @@ pub(crate) struct Props {
     /// Inner content of the trigger button (icons, labels). The component wraps
     /// it in a `<button>` that opens the popover.
     pub(crate) children: Children,
-    /// Classes for the trigger button (e.g. `"btn-success"`).
+    /// Classes for the trigger button (e.g. `"success"`).
     #[prop_or_default]
     pub(crate) trigger_class: Classes,
     #[prop_or_default]
@@ -556,15 +556,11 @@ impl MarkTimeMenu {
         html! {
             <div class="mark-time-calendar column">
                 <div class="row">
-                    <button class="btn" onclick={link.callback(|_| Msg::PrevMonth)} title="Previous month">
-                        <span class="icon chevron-left" />
-                    </button>
+                    <Button icon="chevron-left" title="Previous month" onclick={link.callback(|_| Msg::PrevMonth)} />
 
                     <span class="fill center">{format!("{} {year}", self.view.month_name())}</span>
 
-                    <button class="btn" onclick={link.callback(|_| Msg::NextMonth)} title="Next month">
-                        <span class="icon chevron-right" />
-                    </button>
+                    <Button icon="chevron-right" title="Next month" onclick={link.callback(|_| Msg::NextMonth)} />
                 </div>
 
                 <div class="mark-time-grid">
@@ -630,56 +626,49 @@ impl MarkTimeMenu {
         let props = ctx.props();
 
         let now_class = classes!(
-            "btn-primary",
+            "primary",
+            "has-text",
             (self.preset == Preset::Now).then_some("selected")
         );
 
-        let custom_class = classes!("btn", (self.preset == Preset::Custom).then_some("selected"));
+        let custom_class = classes!(
+            "has-text",
+            (self.preset == Preset::Custom).then_some("selected")
+        );
 
         html! {
             <div class="row-split">
                 <div class="input-group">
                     <button class={now_class} onclick={link.callback(|_| Msg::SelectPreset(Preset::Now))}>
-                        <span class="item-inline">
-                            <span class="icon clock" />
-                        </span>
+                        <span class="icon clock" />
                         <span>{"Now"}</span>
                     </button>
 
                     {props.preset.as_ref().map(|preset| {
                         let class = classes!(
-                            "btn-primary",
+                            "primary",
+                            "has-text",
                             (matches!(self.preset, Preset::Supplied)).then_some("selected")
                         );
 
                         html! {
                             <button key="preset-button" {class} onclick={link.callback(move |_| Msg::SelectPreset(Preset::Supplied))}>
-                                <span class="item-inline">
-                                    <span class={classes!("icon", preset.icon.clone())} />
-                                </span>
-
+                                <span class={classes!("icon", preset.icon.clone())} />
                                 <span>{&preset.label}</span>
                             </button>
                         }
                     })}
 
                     <button class={custom_class} onclick={link.callback(|_| Msg::SelectPreset(Preset::Custom))}>
-                        <span class="item-inline">
-                            <span class="icon pencil-square" />
-                        </span>
-
+                        <span class="icon pencil-square" />
                         <span>{"Custom"}</span>
                     </button>
                 </div>
 
                 <div class="input-group">
-                    <button class="btn" onclick={link.callback(|_| Msg::Close)} title="Cancel">
-                        <span class="icon x-mark" />
-                    </button>
+                    <Button icon="x-mark" title="Cancel" onclick={link.callback(|_| Msg::Close)} />
 
-                    <button class="btn-success" onclick={link.callback(|_| Msg::Confirm)} title="Confirm">
-                        <span class="icon check" />
-                    </button>
+                    <Button icon="check" variant={Variant::Success} title="Confirm" onclick={link.callback(|_| Msg::Confirm)} />
                 </div>
             </div>
         }

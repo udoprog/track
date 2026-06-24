@@ -1,5 +1,7 @@
 use yew::prelude::*;
 
+use crate::ui::Button;
+
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
     pub(crate) tracked: bool,
@@ -11,9 +13,11 @@ pub(crate) fn Tracked(props: &Props) -> Html {
     let tracked = props.tracked;
 
     html! {
-        <button class="btn" onclick={props.ontoggle.reform(move |_| !tracked)} title="Track movie">
-            <span class={classes!("icon", if tracked { "eye" } else { "eye-slash" })} />
-            <span class="hide-desktop">{if tracked { "Tracking" } else { "Not tracking" }}</span>
-        </button>
+        <Button
+            icon={if tracked { "eye" } else { "eye-slash" }}
+            title="Track movie"
+            text={if tracked { "Tracking" } else { "Not tracking" }}
+            onclick={props.ontoggle.reform(move |_| !tracked)}
+        />
     }
 }

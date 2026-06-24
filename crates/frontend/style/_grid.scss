@@ -12,7 +12,7 @@ $mobile-limit: 768px;
     }
 }
 
-.hide-mobile {
+.desktop-only {
     @include on-mobile {
         display: none !important;
     }

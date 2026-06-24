@@ -58,7 +58,7 @@ impl Component for LanguagePicker {
 
         let trigger = if current.is_default() {
             html! {
-                <button class="btn" onclick={link.callback(|_| Msg::Open)} title="Select language">
+                <button class="has-text" onclick={link.callback(|_| Msg::Open)} title="Select language">
                     <span class="icon language" />
                     <span>{props.placeholder}</span>
                 </button>
@@ -67,7 +67,7 @@ impl Component for LanguagePicker {
             let (label, flag) = locale_label(current, "Default Language");
 
             html! {
-                <button class="btn" onclick={link.callback(|_| Msg::Open)} title="Select language">
+                <button class="has-text" onclick={link.callback(|_| Msg::Open)} title="Select language">
                     <span class="icon language" />
                     <span>{label}</span>
 

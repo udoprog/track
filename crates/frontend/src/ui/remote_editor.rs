@@ -4,7 +4,7 @@ use yew::prelude::*;
 use crate::error::Error;
 use crate::ui::ContextMenu;
 
-use super::{ConfirmDanger, Modal};
+use super::{Button, ConfirmDanger, Modal, Variant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RemoteSourceKind {
@@ -357,11 +357,7 @@ impl Component for RemoteEditor {
                                     let on = effective.contains(kind);
                                     let next = effective.with(kind, !on);
                                     html! {
-                                        <span
-                                            class={classes!("input-checkbox", on.then_some("checked"))}
-                                            onclick={link.callback(move |_| Msg::SetSyncKinds(id, Some(next)))}
-                                            title={kind.as_label()}
-                                        >
+                                        <span class={classes!("input-checkbox", "has-text", on.then_some("checked"))} onclick={link.callback(move |_| Msg::SetSyncKinds(id, Some(next)))} title={kind.as_label()}>
                                             <span class="mark" />
                                             <span>{kind.as_label()}</span>
                                         </span>
@@ -369,9 +365,7 @@ impl Component for RemoteEditor {
                                 }) }
 
                                 if overriding {
-                                    <button class="btn" onclick={link.callback(move |_| Msg::SetSyncKinds(id, None))} title="Reset to global default">
-                                        <span class="icon arrow-uturn-left" />
-                                    </button>
+                                    <Button icon="arrow-uturn-left" title="Reset to global default" onclick={link.callback(move |_| Msg::SetSyncKinds(id, None))} />
                                 }
                             </div>
                         });
@@ -411,23 +405,13 @@ impl Component for RemoteEditor {
 
                                     <div class="row">
                                         <div ref={r.context_anchor.clone()} class="input-group">
-                                            <button class="btn" onclick={link.callback(move |_| Msg::Edit(edit_entry.clone()))} title="Edit identifier">
-                                                <span class="icon pencil-square" />
-                                                <span class="hide-desktop">{"Edit"}</span>
-                                            </button>
+                                            <Button icon="pencil-square" title="Edit identifier" text="Edit" onclick={link.callback(move |_| Msg::Edit(edit_entry.clone()))} />
 
-                                            <button class="btn-danger" onclick={link.callback(move |_| Msg::AskRemove(id))} title="Remove identifier">
-                                                <span class="icon trash" />
-                                                <span class="hide-desktop">{"Remove"}</span>
-                                            </button>
+                                            <Button icon="trash" variant={Variant::Danger} title="Remove identifier" text="Remove" onclick={link.callback(move |_| Msg::AskRemove(id))} />
 
-                                            <button class="btn" disabled={index == 0} onclick={link.callback(move |_| Msg::Move(index, -1))} title="Higher priority">
-                                                <span class="icon chevron-up" />
-                                            </button>
+                                            <Button icon="chevron-up" title="Higher priority" disabled={index == 0} onclick={link.callback(move |_| Msg::Move(index, -1))} />
 
-                                            <button class="btn" disabled={index + 1 == count} onclick={link.callback(move |_| Msg::Move(index, 1))} title="Lower priority">
-                                                <span class="icon chevron-down" />
-                                            </button>
+                                            <Button icon="chevron-down" title="Lower priority" disabled={index + 1 == count} onclick={link.callback(move |_| Msg::Move(index, 1))} />
                                         </div>
 
                                         if self.confirming_remove == Some(id) {
@@ -452,9 +436,9 @@ impl Component for RemoteEditor {
                                     </div>
 
                                     <div class="row">
-                                        <span class={classes!("input-checkbox", enabled.then_some("checked"))} onclick={link.callback(move |_| Msg::SetEnabled(id, !enabled))} title="Use this source for air dates and sync">
+                                        <span class={classes!("input-checkbox", "has-text", enabled.then_some("checked"))} onclick={link.callback(move |_| Msg::SetEnabled(id, !enabled))} title="Use this source for air dates and sync">
                                             <span class="mark" />
-                                            <span class="hide-desktop">{"Enabled"}</span>
+                                            <span class="mobile-only">{"Enabled"}</span>
                                         </span>
                                     </div>
                                 </div>
@@ -472,34 +456,27 @@ impl Component for RemoteEditor {
                                 }) }
                             </select>
 
-                            <input type="text" class="input-text fill" placeholder="Identifier" value={self.value.clone()} oninput={on_value} />
+                            <input class="input-text fill" type="text" placeholder="Identifier" value={self.value.clone()} oninput={on_value} />
 
-                            <button class={classes!("btn", self.show_slug.then_some("selected"))} onclick={link.callback(|_| Msg::ToggleSlug)} title="Edit slug">
-                                <span class="icon link" />
-                            </button>
+                            <Button icon="link" title="Edit slug" class={classes!(self.show_slug.then_some("selected"))} onclick={link.callback(|_| Msg::ToggleSlug)} />
 
-                            <button class="btn-success" onclick={link.callback(|_| Msg::Submit)} disabled={self.value.trim().is_empty()} title={if editing { "Save identifier" } else { "Add identifier" }}>
+                            <button class="success has-text" onclick={link.callback(|_| Msg::Submit)} disabled={self.value.trim().is_empty()} title={if editing { "Save identifier" } else { "Add identifier" }}>
                                 <span class={classes!("icon", if editing { "check" } else { "plus" })} />
                                 <span>{if editing { "Save" } else { "Add" }}</span>
                             </button>
 
                             if editing {
-                                <button class="btn" onclick={link.callback(|_| Msg::CancelEdit)} title="Cancel edit">
-                                    <span class="icon x-mark" />
-                                </button>
+                                <Button icon="x-mark" title="Cancel edit" onclick={link.callback(|_| Msg::CancelEdit)} />
                             }
                         </div>
 
                         if self.show_slug {
                             <div class="input-group fill">
-                                <span class="input-label" title="Slug">{"/"}</span>
-                                <input type="text" class="input-text fill" placeholder="slug" value={self.slug.clone()} oninput={on_slug} />
+                                <span class="input-label has-text" title="Slug">{"/"}</span>
+                                <input class="input-text fill" type="text" placeholder="slug" value={self.slug.clone()} oninput={on_slug} />
 
                                 if !self.slug.is_empty() {
-                                    <button class="btn" title="Clear slug"
-                                        onclick={link.callback(|_| Msg::ClearSlug)}>
-                                        <span class="icon backspace" />
-                                    </button>
+                                    <Button icon="backspace" title="Clear slug" onclick={link.callback(|_| Msg::ClearSlug)} />
                                 }
                             </div>
                         }

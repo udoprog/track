@@ -51,17 +51,9 @@
 }
 
 .toolbar-item {
-    display: flex;
-    align-items: center;
-    gap: $gap-xs;
-    padding: 0 $gap;
-    cursor: pointer;
-
-    height: $input-height * 1.5;
-
-    @include g.on-mobile {
-        height: $input-height-touch;
-    }
+    height: $input-height-touch;
+    min-width: $input-height-touch;
+    padding: $padding;
 
     color: $text-primary;
     background-color: $bg-dark-transparent;
@@ -75,13 +67,5 @@
     &.active {
         background: $bg-highlight;
         color: $color-primary;
-    }
-
-    >.icon {
-        height: $input-height;
-
-        @include g.on-mobile {
-            height: $input-height-touch;
-        }
     }
 }

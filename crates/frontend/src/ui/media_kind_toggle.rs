@@ -27,22 +27,16 @@ pub(crate) fn MediaKindToggle(props: &Props) -> Html {
 
     html! {
         <>
-            <span
-                class={classes!("input-checkbox", "fill", selection.shows.then_some("checked"))}
-                title="Show series"
-                onclick={on_shows}>
+            <span class={classes!("input-checkbox", "has-text", "fill", selection.shows.then_some("checked"))} title="Show series" onclick={on_shows}>
                 <span class="mark" />
                 <span class="icon tv" />
-                <span class="hide-desktop">{"Shows"}</span>
+                <span class="mobile-only">{"Shows"}</span>
             </span>
 
-            <span
-                class={classes!("input-checkbox", "fill", selection.movies.then_some("checked"))}
-                title="Show movies"
-                onclick={on_movies}>
+            <span class={classes!("input-checkbox", "has-text", "fill", selection.movies.then_some("checked"))} title="Show movies" onclick={on_movies}>
                 <span class="mark" />
                 <span class="icon film" />
-                <span class="hide-desktop">{"Movies"}</span>
+                <span class="mobile-only">{"Movies"}</span>
             </span>
         </>
     }

@@ -1,6 +1,8 @@
 use web_sys::MouseEvent;
 use yew::prelude::*;
 
+use crate::ui::{Button, Variant};
+
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
     pub(crate) on_confirm: Callback<()>,
@@ -22,13 +24,9 @@ pub(crate) fn ConfirmDanger(props: &Props) -> Html {
     html! {
         <div class="row align-end">
             <div class="input-group">
-                <button onclick={on_cancel} class={classes!("btn", &props.btn_class)} title="No">
-                    <span class="icon x-mark" />
-                </button>
+                <Button icon="x-mark" title="No" class={props.btn_class.clone()} onclick={on_cancel} />
 
-                <button onclick={on_confirm} class={classes!("btn-danger", &props.btn_class)} title="Yes">
-                    <span class="icon check" />
-                </button>
+                <Button icon="check" title="Yes" variant={Variant::Danger} class={props.btn_class.clone()} onclick={on_confirm} />
             </div>
         </div>
     }

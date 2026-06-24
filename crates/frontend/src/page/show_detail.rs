@@ -11,9 +11,9 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaQuery, Route, Router, ShowDetailQuery};
 use crate::ui::{
-    ConfirmDanger, ContextMenu, EpisodePicker, Image, ImageGallery, ImageItem, Loading,
+    Button, ConfirmDanger, ContextMenu, EpisodePicker, Image, ImageGallery, ImageItem, Loading,
     MarkTimeMenu, MediaSettingsModal, Modal, OutlineControl, OutlineEntry, OutlineHandle,
-    RemoteEditor, RemoteSourceKind, TimePreset, Tracked, TranslationsModal,
+    RemoteEditor, RemoteSourceKind, TimePreset, Tracked, TranslationsModal, Variant,
 };
 
 struct WatchedState {
@@ -365,35 +365,26 @@ impl Component for ShowDetail {
                     </div>
 
                     <div class="toolbar-toggle">
-                        <button class="btn" onclick={link.callback(|_| Msg::ToggleActionsExpanded)}>
+                        <button onclick={link.callback(|_| Msg::ToggleActionsExpanded)}>
                             <span class={classes!("icon", if self.actions_expanded { "ellipsis-horizontal" } else { "bars-2" })} />
                         </button>
                     </div>
 
-                    <div class={classes!("toolbar-dropdown", "desktop-input-group", (!self.actions_expanded).then_some("hide-mobile"))}>
+                    <div class={classes!("toolbar-dropdown", "desktop-input-group", (!self.actions_expanded).then_some("desktop-only"))}>
                         <Tracked tracked={show.tracked} ontoggle={link.callback(Msg::SetTracked)} />
 
                         if !show.remotes.is_empty() {
-                            <button class="btn" onclick={link.callback(|_| Msg::SyncShow)} title="Sync now">
+                            <button class="mobile-has-text" onclick={link.callback(|_| Msg::SyncShow)} title="Sync now">
                                 <span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} />
-                                <span class="hide-desktop">{"Sync"}</span>
+                                <span class="mobile-only">{"Sync"}</span>
                             </button>
                         }
 
-                        <button class="btn" onclick={link.callback(|_| Msg::OpenShowTranslations)} title="Translations">
-                            <span class="icon language" />
-                            <span class="hide-desktop">{"Translations"}</span>
-                        </button>
+                        <Button icon="language" title="Translations" text="Translations" onclick={link.callback(|_| Msg::OpenShowTranslations)} />
 
-                        <button class="btn" onclick={link.callback(|_| Msg::OpenSettingsModal)} title="Settings">
-                            <span class="icon cog-6-tooth" />
-                            <span class="hide-desktop">{"Settings"}</span>
-                        </button>
+                        <Button icon="cog-6-tooth" title="Settings" text="Settings" onclick={link.callback(|_| Msg::OpenSettingsModal)} />
 
-                        <button ref={self.remove_anchor.clone()} class="btn-danger" onclick={link.callback(|_| Msg::ConfirmRemove)} title="Remove show">
-                            <span class="icon trash" />
-                            <span class="hide-desktop">{"Remove"}</span>
-                        </button>
+                        <Button node_ref={self.remove_anchor.clone()} icon="trash" variant={Variant::Danger} title="Remove show" text="Remove" onclick={link.callback(|_| Msg::ConfirmRemove)} />
 
                         if self.confirm_remove {
                             <ContextMenu
@@ -413,7 +404,7 @@ impl Component for ShowDetail {
                 }
 
                 <div class="detail-layout">
-                    <div class="hide-desktop">
+                    <div class="mobile-only">
                         if let Some(ref banner) = show.banner {
                             <Image class="banner" src={banner.clone()} />
                         } else if let Some(ref backdrop) = show.backdrop {
@@ -1656,7 +1647,7 @@ impl ShowDetail {
 
         html! {
             <div class="detail-sidebar">
-                <Image class="poster hide-mobile" src={poster.cloned()} />
+                <Image class="poster desktop-only" src={poster.cloned()} />
 
                 <div class="table">
                     { for self.seasons.iter().map(|s| self.view_season(ctx, s, self.seasons.len())) }
@@ -1724,7 +1715,7 @@ impl ShowDetail {
         };
 
         html! {
-            <div class={classes!("column", clickable.then_some("clickable"), active.then_some("active"), (!active && !self.expanded_seasons).then_some("hide-mobile"))} {onclick}>
+            <div class={classes!("column", clickable.then_some("clickable"), active.then_some("active"), (!active && !self.expanded_seasons).then_some("desktop-only"))} {onclick}>
                 <div class="row-split fill">
                     <span>
                         if let Some(name) = s.strings.title() {
@@ -1816,62 +1807,55 @@ impl ShowDetail {
                         <div class="toolbar-toggle">
                             <div class="input-group">
                                 if let Some((ref label, _)) = pending_episode {
-                                    <a class="btn-primary" href={format!("#{label}")} title="Jump to pending episode">
+                                    <a class="button primary" href={format!("#{label}")} title="Jump to pending episode">
                                         <span class="icon chevron-down" />
                                     </a>
                                 }
 
-                                <button class="btn" onclick={link.callback(move |_| Msg::ToggleSeasonActionsExpanded(season_number))}>
+                                <button onclick={link.callback(move |_| Msg::ToggleSeasonActionsExpanded(season_number))}>
                                     <span class={classes!("icon", if season_expanded { "ellipsis-horizontal" } else { "bars-2" })} />
                                 </button>
                             </div>
                         </div>
 
-                        <div class={classes!("toolbar-dropdown", "desktop-input-group", (!season_expanded).then_some("hide-mobile"))}>
-                            <button class="btn" onclick={link.callback(|_| Msg::OpenSeasonTranslations)} title="Season Translations">
-                                <span class="icon language" />
-                                <span class="hide-desktop">{"Translations"}</span>
-                            </button>
+                        <div class={classes!("toolbar-dropdown", "desktop-input-group", (!season_expanded).then_some("desktop-only"))}>
+                            <Button icon="language" title="Season Translations" text="Translations" onclick={link.callback(|_| Msg::OpenSeasonTranslations)} />
 
-                            <button class="btn" onclick={link.callback(|_| Msg::OpenSeasonImageModal)} title="Season Graphics">
-                                <span class="icon photo" />
-                                <span class="hide-desktop">{"Graphics"}</span>
-                            </button>
+                            <Button icon="photo" title="Season Graphics" text="Graphics" onclick={link.callback(|_| Msg::OpenSeasonImageModal)} />
 
                             if !self.orphaned.is_empty() {
-                                <button class="btn-danger" onclick={link.callback(|_| Msg::ToggleOrphaned)} title="View orphaned watched episodes">
-                                    <span class={classes!("icon", if self.view_orphaned { "ellipsis-horizontal" } else { "exclamation-triangle" })} />
-                                    <span class="hide-desktop">{"Show orphaned watches"}</span>
-                                </button>
+                                <Button
+                                    icon={if self.view_orphaned { "ellipsis-horizontal" } else { "exclamation-triangle" }}
+                                    variant={Variant::Danger}
+                                    title="View orphaned watched episodes"
+                                    text="Show orphaned watches"
+                                    onclick={link.callback(|_| Msg::ToggleOrphaned)}
+                                />
                             }
 
                             if let Some((label, on_remove_next)) = pending_episode {
-                                <a class="btn-primary" href={format!("#{label}")} onclick={toggle_menu} title="Jump to pending episode">
+                                <a class="button primary" href={format!("#{label}")} onclick={toggle_menu} title="Jump to pending episode">
                                     <span class="icon chevron-down" />
-                                    <span class="hide-desktop">{format!("Jump to next episode {label}")}</span>
+                                    <span class="mobile-only">{format!("Jump to next episode {label}")}</span>
                                 </a>
 
-                                <button class="btn-danger" onclick={on_remove_next} title="Remove pending">
-                                    <span class="icon bookmark" />
-                                    <span class="hide-desktop">{format!("Clear next episode {label}")}</span>
-                                </button>
+                                <Button icon="bookmark" variant={Variant::Danger} title="Remove pending" text={format!("Clear next episode {label}")} onclick={on_remove_next} />
                             } else if let Some((label, episode_id)) = next_unwatched {
                                 <MarkTimeMenu
                                     onerror={props.onerror.clone()}
-                                    trigger_class="btn"
                                     title="Make next episode"
                                     prompt={format!("Pending {label} since when?")}
                                     preset={next_episode_preset.clone()}
                                     on_confirm={link.callback(move |mark_time| Msg::OnWatchNext(episode_id, mark_time))}>
                                     <span class="icon bookmark-slash" />
-                                    <span class="hide-desktop">{label}</span>
+                                    <span class="mobile-only">{label}</span>
                                 </MarkTimeMenu>
                             }
 
                             if !self.view_orphaned && watched_count < total {
                                 <MarkTimeMenu
                                     onerror={props.onerror.clone()}
-                                    trigger_class="btn-success"
+                                    trigger_class="success"
                                     title="Mark remaining episodes as watched"
                                     prompt="When did you watch the remaining episodes?"
                                     preset={Some(remaining_preset.clone())}
@@ -1880,7 +1864,7 @@ impl ShowDetail {
                                         move |mark_time| Msg::WatchRemaining(season, mark_time)
                                     })}>
                                     <span class="icon check" />
-                                    <span class="hide-desktop">{"Remaining"}</span>
+                                    <span class="mobile-only">{"Remaining"}</span>
                                 </MarkTimeMenu>
                             }
                         </div>
@@ -1966,53 +1950,43 @@ impl ShowDetail {
                         </div>
 
                         <div class="toolbar-toggle">
-                            <button class="btn" onclick={link.callback(move |_| Msg::ToggleEpisodeActionsExpanded(episode_id))}>
+                            <button onclick={link.callback(move |_| Msg::ToggleEpisodeActionsExpanded(episode_id))}>
                                 <span class={classes!("icon", if actions_expanded { "ellipsis-horizontal" } else { "bars-2" })} />
                             </button>
                         </div>
 
-                        <div class={classes!("toolbar-dropdown", "desktop-input-group", (!actions_expanded).then_some("hide-mobile"))}>
+                        <div class={classes!("toolbar-dropdown", "desktop-input-group", (!actions_expanded).then_some("desktop-only"))}>
                             <MarkTimeMenu
                                 onerror={props.onerror.clone()}
-                                trigger_class="btn-success"
+                                trigger_class="success"
                                 icon="check"
                                 title="Mark watched"
                                 prompt={format!("When did you watch {}?", episode.code())}
                                 preset={preset.clone()}
                                 on_confirm={on_mark_confirm}>
                                 <span class="icon check" />
-                                <span class="hide-desktop">{"Mark watched"}</span>
+                                <span class="mobile-only">{"Mark watched"}</span>
                             </MarkTimeMenu>
 
                             if episode.pending.is_some() {
-                                <button class="btn-primary" onclick={on_remove_next} title="Clear next episode">
-                                    <span class="icon bookmark" />
-                                    <span class="hide-desktop">{"Clear next episode"}</span>
-                                </button>
+                                <Button icon="bookmark" variant={Variant::Primary} title="Clear next episode" text="Clear next episode" onclick={on_remove_next} />
                             } else {
                                 <MarkTimeMenu
                                     onerror={props.onerror.clone()}
-                                    trigger_class="btn"
                                     icon="bookmark"
                                     title="Mark next"
                                     prompt={format!("When do you want to queue {}?", episode.code())}
                                     preset={preset.clone()}
                                     on_confirm={on_next_episode}>
                                     <span class="icon bookmark-slash" />
-                                    <span class="hide-desktop">{"Set as next episode"}</span>
+                                    <span class="mobile-only">{"Set as next episode"}</span>
                                 </MarkTimeMenu>
                             }
 
-                            <button class="btn" onclick={link.callback(move |_| Msg::OpenEpisodeTranslations(episode_id))} title="Translations">
-                                <span class="icon language" />
-                                <span class="hide-desktop">{"Translations"}</span>
-                            </button>
+                            <Button icon="language" title="Translations" text="Translations" onclick={link.callback(move |_| Msg::OpenEpisodeTranslations(episode_id))} />
 
                             if let Some(on_toggle) = on_toggle_history {
-                                <button class="btn" onclick={on_toggle} title="Watch history">
-                                    <span class="icon clock" />
-                                    <span class="hide-desktop">{"Watch history"}</span>
-                                </button>
+                                <Button icon="clock" title="Watch history" text="Watch history" onclick={on_toggle} />
                             }
                         </div>
                     </div>
@@ -2095,7 +2069,7 @@ impl ShowDetail {
 
                                         <div class="row">
                                             <div class="input-group" ref={w.context_anchor.clone()}>
-                                                <button class="btn" onclick={link.callback(move |_| Msg::FixWatched(wid))} title="Move to different episode">
+                                                <button class="has-text" onclick={link.callback(move |_| Msg::FixWatched(wid))} title="Move to different episode">
                                                     <span class="icon pencil-square" />
                                                     <span>{"Move"}</span>
                                                 </button>
@@ -2118,10 +2092,7 @@ impl ShowDetail {
                                                     </ContextMenu>
                                                 }
 
-                                                <button class="btn-danger" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
-                                                    <span class="icon trash" />
-                                                    <span class="hide-desktop">{"Remove"}</span>
-                                                </button>
+                                                <Button icon="trash" variant={Variant::Danger} title="Remove" text="Remove" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} />
 
                                                 if self.confirm_remove_watch == Some(wid) {
                                                     <ContextMenu
@@ -2190,9 +2161,7 @@ impl ShowDetail {
                             </div>
 
                             <div class="input-group">
-                                <button class="btn" onclick={link.callback(move |_| Msg::FixWatched(wid))} title="Move to episode">
-                                    <span class="icon pencil-square" />
-                                </button>
+                                <Button icon="pencil-square" title="Move to episode" onclick={link.callback(move |_| Msg::FixWatched(wid))} />
 
                                 if self.fixing_watched == Some(wid) {
                                     <ContextMenu
@@ -2212,10 +2181,7 @@ impl ShowDetail {
                                     </ContextMenu>
                                 }
 
-                                <button class="btn-danger" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
-                                    <span class="icon trash" />
-                                    <span class="hide-desktop">{"Remove"}</span>
-                                </button>
+                                <Button icon="trash" variant={Variant::Danger} title="Remove" text="Remove" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} />
 
                                 if self.confirm_remove_watch == Some(wid) {
                                     <ContextMenu

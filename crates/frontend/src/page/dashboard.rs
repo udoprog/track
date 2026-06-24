@@ -9,7 +9,9 @@ use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{DashboardQuery, Route, Router, ShowDetailQuery};
-use crate::ui::{ConfirmDanger, ContextMenu, Image, MarkTimeMenu, PaginationButtons, TimePreset};
+use crate::ui::{
+    Button, ConfirmDanger, ContextMenu, Image, MarkTimeMenu, PaginationButtons, TimePreset, Variant,
+};
 
 use super::Calendar;
 
@@ -407,14 +409,10 @@ impl Dashboard {
                 <h1 class="center">{"What's next?"}</h1>
 
                 <div class="row desktop-align-end">
-                    <div class="input-group hide-mobile">
-                        <button class="btn" title="Show fewer" onclick={link.callback(|_| Msg::AdjustPageSize(-1))}>
-                            <span class="icon minus" />
-                        </button>
+                    <div class="input-group desktop-only">
+                        <Button icon="minus" title="Show fewer" onclick={link.callback(|_| Msg::AdjustPageSize(-1))} />
 
-                        <button class="btn" title="Show more" onclick={link.callback(|_| Msg::AdjustPageSize(1))}>
-                            <span class="icon plus" />
-                        </button>
+                        <Button icon="plus" title="Show more" onclick={link.callback(|_| Msg::AdjustPageSize(1))} />
                     </div>
 
                     <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
@@ -428,15 +426,11 @@ impl Dashboard {
                     </div>
                 }
 
-                <div class="row-split hide-desktop">
+                <div class="row-split mobile-only">
                     <div class="input-group">
-                        <button class="btn" title="Show fewer" onclick={link.callback(|_| Msg::AdjustPageSize(-1))}>
-                            <span class="icon minus" />
-                        </button>
+                        <Button icon="minus" title="Show fewer" onclick={link.callback(|_| Msg::AdjustPageSize(-1))} />
 
-                        <button class="btn" title="Show more" onclick={link.callback(|_| Msg::AdjustPageSize(1))}>
-                            <span class="icon plus" />
-                        </button>
+                        <Button icon="plus" title="Show more" onclick={link.callback(|_| Msg::AdjustPageSize(1))} />
                     </div>
 
                     <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
@@ -556,8 +550,8 @@ impl Dashboard {
 
         html! {
             <div class="pending-item">
-                <Image class="poster clickable hide-mobile" src={pending.poster.clone()} onclick={on_navigate.clone()} />
-                <Image class="banner clickable hide-desktop" src={pending.banner.clone()} onclick={on_navigate.clone()} />
+                <Image class="poster clickable desktop-only" src={pending.poster.clone()} onclick={on_navigate.clone()} />
+                <Image class="banner clickable mobile-only" src={pending.banner.clone()} onclick={on_navigate.clone()} />
 
                 <div class="pending-info">
                     <div class="pending-content">
@@ -573,7 +567,7 @@ impl Dashboard {
                             if aired_in_past {
                                 <MarkTimeMenu
                                     onerror={ctx.props().onerror.clone()}
-                                    trigger_class="btn-success"
+                                    trigger_class="success"
                                     icon="check"
                                     title="Mark watched"
                                     prompt={format!("When did you watch this {}?", pending.kind.title())}
@@ -582,14 +576,12 @@ impl Dashboard {
                                     <span class="icon check" />
                                 </MarkTimeMenu>
                             } else {
-                                <button class="btn-success" onclick={ctx.link().callback(move |_| Msg::MarkWatched(kind, api::MarkTime::Now))} title="Mark watched">
-                                    <span class="icon check" />
-                                </button>
+                                <Button icon="check" variant={Variant::Success} title="Mark watched" onclick={ctx.link().callback(move |_| Msg::MarkWatched(kind, api::MarkTime::Now))} />
                             }
 
                             <MarkTimeMenu
                                 onerror={ctx.props().onerror.clone()}
-                                trigger_class="btn-primary"
+                                trigger_class="primary"
                                 title="Move pending"
                                 icon="bookmark"
                                 prompt={format!("When do you want to queue this {}?", pending.kind.title())}
@@ -599,9 +591,7 @@ impl Dashboard {
                             </MarkTimeMenu>
 
                             if let Some((show, episode)) = skip_ids {
-                                <button key="skip-button" ref={anchor.clone()} class="btn-danger" onclick={ctx.link().callback(move |_| Msg::AskSkipEpisode(show, episode))} title="Skip episode">
-                                    <span class="icon forward" />
-                                </button>
+                                <Button key="skip-button" node_ref={anchor.clone()} icon="forward" variant={Variant::Danger} title="Skip episode" onclick={ctx.link().callback(move |_| Msg::AskSkipEpisode(show, episode))} />
 
                                 if confirming && let Some(code) = skip_code {
                                     <ContextMenu

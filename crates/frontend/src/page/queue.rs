@@ -6,7 +6,7 @@ use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{QueueFocus, QueueQuery, Route, Router, ShowDetailQuery};
-use crate::ui::{MDASH, PaginationButtons};
+use crate::ui::{Button, MDASH, PaginationButtons, Variant};
 
 const PAGE_SIZE: usize = 20;
 
@@ -125,10 +125,9 @@ impl Component for Queue {
                 <div class="row-split">
                     <h1>{"Queue"}</h1>
 
-                    <button class="btn" onclick={link.callback(|_| Msg::SyncAll)}
-                        title="Queue sync for all show and movies">
-                        <span class="item-inline"><span class="icon arrow-path" /></span>
-                        <span class="hide-mobile">{"Sync All"}</span>
+                    <button class="desktop-has-text" onclick={link.callback(|_| Msg::SyncAll)} title="Queue sync for all show and movies">
+                        <span class="icon arrow-path" />
+                        <span class="desktop-only">{"Sync All"}</span>
                     </button>
                 </div>
 
@@ -335,9 +334,9 @@ impl Queue {
 
                 <div class="row">
                     <div class="input-group">
-                        <button class="btn" onclick={link.callback(|_| Msg::Focus(None))} title="Back to overview">
+                        <button class="desktop-has-text" onclick={link.callback(|_| Msg::Focus(None))} title="Back to overview">
                             <span class="icon arrow-uturn-left" />
-                            <span class="hide-mobile">{"Back"}</span>
+                            <span class="desktop-only">{"Back"}</span>
                         </button>
 
                         {buttons}
@@ -419,13 +418,9 @@ impl Queue {
                 if !spinning {
                     <span class="text-muted">{ eta_label(task.run_at, self.time.now()) }</span>
 
-                    <button class="btn" onclick={ctx.link().callback(move |_| Msg::Bump(id))} title="Run now">
-                        <span class="icon forward" />
-                    </button>
+                    <Button icon="forward" title="Run now" onclick={ctx.link().callback(move |_| Msg::Bump(id))} />
 
-                    <button class="btn-danger" onclick={ctx.link().callback(move |_| Msg::Remove(id))} title="Remove from queue">
-                        <span class="icon trash" />
-                    </button>
+                    <Button icon="trash" variant={Variant::Danger} title="Remove from queue" onclick={ctx.link().callback(move |_| Msg::Remove(id))} />
                 }
             </div>
         }

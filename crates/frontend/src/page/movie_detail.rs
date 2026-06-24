@@ -8,9 +8,9 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaQuery, Route, Router};
 use crate::ui::{
-    ConfirmDanger, ContextMenu, Image, ImageGallery, ImageItem, Loading, MarkTimeMenu,
+    Button, ConfirmDanger, ContextMenu, Image, ImageGallery, ImageItem, Loading, MarkTimeMenu,
     MediaSettingsModal, Modal, RemoteEditor, RemoteSourceKind, TimePreset, Tracked,
-    TranslationsModal,
+    TranslationsModal, Variant,
 };
 
 struct WatchedState {
@@ -937,36 +937,27 @@ impl MovieDetail {
                     </div>
 
                     <div class="toolbar-toggle">
-                        <button class="btn" onclick={link.callback(|_| Msg::ToggleActionsExpanded)}>
+                        <button onclick={link.callback(|_| Msg::ToggleActionsExpanded)}>
                             <span class={classes!("icon", if self.actions_expanded { "ellipsis-horizontal" } else { "bars-3" })} />
                         </button>
                     </div>
 
-                    <div class={classes!("toolbar-dropdown", (!self.actions_expanded).then_some("hide-mobile"))}>
+                    <div class={classes!("toolbar-dropdown", (!self.actions_expanded).then_some("desktop-only"))}>
                         <div class="desktop-row mobile-column desktop-input-group">
                             <Tracked tracked={movie.tracked} ontoggle={link.callback(Msg::SetTracked)} />
 
                             if !movie.remotes.is_empty() {
-                                <button class="btn" onclick={link.callback(|_| Msg::SyncMovie)} title="Sync now">
+                                <button class="mobile-has-text" onclick={link.callback(|_| Msg::SyncMovie)} title="Sync now">
                                     <span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} />
-                                    <span class="hide-desktop">{"Sync"}</span>
+                                    <span class="mobile-only">{"Sync"}</span>
                                 </button>
                             }
 
-                            <button class="btn" onclick={link.callback(|_| Msg::OpenTranslations)} title="Translations">
-                                <span class="icon language" />
-                                <span class="hide-desktop">{"Translations"}</span>
-                            </button>
+                            <Button icon="language" title="Translations" text="Translations" onclick={link.callback(|_| Msg::OpenTranslations)} />
 
-                            <button class="btn" onclick={link.callback(|_| Msg::OpenSettingsModal)} title="Settings">
-                                <span class="icon cog-6-tooth" />
-                                <span class="hide-desktop">{"Settings"}</span>
-                            </button>
+                            <Button icon="cog-6-tooth" title="Settings" text="Settings" onclick={link.callback(|_| Msg::OpenSettingsModal)} />
 
-                            <button ref={self.remove_anchor.clone()} class="btn-danger" onclick={link.callback(|_| Msg::ConfirmRemove)} title="Remove movie">
-                                <span class="icon trash" />
-                                <span class="hide-desktop">{"Remove"}</span>
-                            </button>
+                            <Button node_ref={self.remove_anchor.clone()} icon="trash" variant={Variant::Danger} title="Remove movie" text="Remove" onclick={link.callback(|_| Msg::ConfirmRemove)} />
 
                             if self.confirm_remove {
                                 <ContextMenu
@@ -1025,7 +1016,7 @@ impl MovieDetail {
             }
 
             <div class="detail-layout">
-                <div class="hide-desktop">
+                <div class="mobile-only">
                     if let Some(ref banner) = movie.banner {
                         <Image class="banner" src={banner.clone()} />
                     } else if let Some(ref backdrop) = movie.backdrop {
@@ -1034,7 +1025,7 @@ impl MovieDetail {
                 </div>
 
                 <div class="detail-sidebar">
-                    <Image class="poster hide-mobile" src={movie.poster.clone()} />
+                    <Image class="poster desktop-only" src={movie.poster.clone()} />
                 </div>
 
                 <div class="detail-content">
@@ -1081,51 +1072,41 @@ impl MovieDetail {
                                 </indicator>
 
                                 <div class="toolbar-toggle">
-                                    <button class="btn" onclick={link.callback(move |_| Msg::ToggleDetailedActionsExpanded)}>
-                                        <span class="item-inline"><span class={classes!("icon", if self.detailed_expand { "ellipsis-horizontal" } else { "bars-3" })} /></span>
+                                    <button onclick={link.callback(move |_| Msg::ToggleDetailedActionsExpanded)}>
+                                        <span class={classes!("icon", if self.detailed_expand { "ellipsis-horizontal" } else { "bars-3" })} />
                                     </button>
                                 </div>
 
-                                <div class={classes!("toolbar-dropdown", "desktop-input-group", (!self.detailed_expand).then_some("hide-mobile"))}>
+                                <div class={classes!("toolbar-dropdown", "desktop-input-group", (!self.detailed_expand).then_some("desktop-only"))}>
                                     <MarkTimeMenu
                                         onerror={ctx.props().onerror.clone()}
-                                        trigger_class="btn-success"
+                                        trigger_class="success"
                                         icon="check"
                                         title="Mark watched"
                                         prompt="When did you watch the movie?"
                                         preset={watched_preset.clone()}
                                         on_confirm={link.callback(Msg::MarkWatched)}>
                                         <span class="icon check" />
-                                        <span class="hide-desktop">{"Mark watched"}</span>
+                                        <span class="mobile-only">{"Mark watched"}</span>
                                     </MarkTimeMenu>
 
                                     if movie.pending.is_some() {
-                                        <button class="btn-primary" onclick={on_remove_next} title="Next movie">
-                                            <span class="icon bookmark" />
-                                            <span class="hide-desktop">{"Next movie"}</span>
-                                        </button>
+                                        <Button icon="bookmark" variant={Variant::Primary} title="Next movie" text="Next movie" onclick={on_remove_next} />
                                     } else {
                                         <MarkTimeMenu
                                             onerror={ctx.props().onerror.clone()}
-                                            trigger_class="btn"
                                             title="Not next movie"
                                             prompt="When do you want to watch the movie?"
                                             preset={release_preset.clone()}
                                             on_confirm={link.callback(Msg::OnWatchNext)}>
                                             <span class="icon bookmark-slash" />
-                                            <span class="hide-desktop">{"Not next movie"}</span>
+                                            <span class="mobile-only">{"Not next movie"}</span>
                                         </MarkTimeMenu>
                                     }
 
-                                    <button class="btn" onclick={link.callback(|_| Msg::ToggleOpenWatched)} title="Watch history">
-                                        <span class="icon clock" />
-                                        <span class="hide-desktop">{"Watch history"}</span>
-                                    </button>
+                                    <Button icon="clock" title="Watch history" text="Watch history" onclick={link.callback(|_| Msg::ToggleOpenWatched)} />
 
-                                    <button class="btn" onclick={link.callback(|_| Msg::ToggleOpenReleases)} title="Releases">
-                                        <span class="icon calendar" />
-                                        <span class="hide-desktop">{"Releases"}</span>
-                                    </button>
+                                    <Button icon="calendar" title="Releases" text="Releases" onclick={link.callback(|_| Msg::ToggleOpenReleases)} />
                                 </div>
                             </div>
                         </div>
@@ -1213,10 +1194,7 @@ impl MovieDetail {
                                 {w.watched.timestamp.human_date_time(self.time.clone()).view()}
                             </div>
 
-                            <button ref={w.remove_watch_anchor.clone()} class="btn-danger" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} title="Remove">
-                                <span class="icon trash" />
-                                <span class="hide-desktop">{"Remove"}</span>
-                            </button>
+                            <Button node_ref={w.remove_watch_anchor.clone()} icon="trash" variant={Variant::Danger} title="Remove" text="Remove" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} />
 
                             if self.confirm_remove_watch == Some(wid) {
                                 <ContextMenu

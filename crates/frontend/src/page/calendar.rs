@@ -98,7 +98,7 @@ impl Component for Calendar {
                                 {format!("{month_name} {year}")}
                             </div>
 
-                            <div class="calendar-weekdays hide-mobile">
+                            <div class="calendar-weekdays desktop-only">
                                 { for api::Weekday::ALL.iter().map(|wd| html! {
                                     <div class="calendar-weekday">{wd.short_name()}</div>
                                 }) }
@@ -118,8 +118,8 @@ impl Component for Calendar {
                                         "calendar-cell",
                                         is_today.then_some("today"),
                                         is_past.then_some("past"),
-                                        is_past.then_some("hide-mobile"),
-                                        (shows.is_empty() && movies.is_empty()).then_some("hide-mobile"),
+                                        is_past.then_some("desktop-only"),
+                                        (shows.is_empty() && movies.is_empty()).then_some("desktop-only"),
                                     )}>
                                         <div class="calendar-day-number">
                                             <span class="bullet">{day.day()}</span>
@@ -127,17 +127,17 @@ impl Component for Calendar {
                                             if is_today {
                                                 <div class="day-of-week">
                                                     <span>{"Today"}</span>
-                                                    <span class="hide-desktop">{DOT}</span>
-                                                    <span class="hide-desktop">{day.weekday().long_name()}</span>
+                                                    <span class="mobile-only">{DOT}</span>
+                                                    <span class="mobile-only">{day.weekday().long_name()}</span>
                                                 </div>
                                             } else if is_tomorrow {
                                                 <div class="day-of-week">
                                                     <span>{"Tomorrow"}</span>
-                                                    <span class="hide-desktop">{DOT}</span>
-                                                    <span class="hide-desktop">{day.weekday().long_name()}</span>
+                                                    <span class="mobile-only">{DOT}</span>
+                                                    <span class="mobile-only">{day.weekday().long_name()}</span>
                                                 </div>
                                             } else {
-                                                <span class="day-of-week hide-desktop">{day.weekday().short_name()}</span>
+                                                <span class="day-of-week mobile-only">{day.weekday().short_name()}</span>
                                             }
                                         </div>
 

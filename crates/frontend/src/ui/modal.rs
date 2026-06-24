@@ -1,5 +1,7 @@
 use yew::prelude::*;
 
+use crate::ui::Button;
+
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
     #[prop_or_default]
@@ -30,9 +32,7 @@ pub(crate) fn Modal(props: &Props) -> Html {
                         </h2>
                     }
 
-                    <button class="btn" onclick={on_close.clone()} title="Close">
-                        <span class="icon x-mark" />
-                    </button>
+                    <Button icon="x-mark" title="Close" onclick={on_close.clone()} />
                 </div>
 
                 <div class="modal-content">

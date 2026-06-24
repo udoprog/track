@@ -1,7 +1,7 @@
 use web_sys::MouseEvent;
 use yew::prelude::*;
 
-use super::{LanguageModal, locale_label};
+use super::{Button, LanguageModal, Variant, locale_label};
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
@@ -85,20 +85,14 @@ impl Component for SyncLanguagesEditor {
                                     <span class={classes!("item-inline", "flag", flag)} />
                                 }
 
-                                <button class="btn-danger" onclick={on_remove} title="Remove language">
-                                    <span class="icon trash" />
-                                    <span class="hide-desktop">{"Remove"}</span>
-                                </button>
+                                <Button icon="trash" variant={Variant::Danger} title="Remove language" text="Remove" onclick={on_remove} />
                             </div>
                         }
                     })
                 }
 
                 <div class="row align-end">
-                    <button class="btn" onclick={link.callback(|_| Msg::Open)} title="Add language">
-                        <span class="icon plus" />
-                        <span class="hide-desktop">{"Add language"}</span>
-                    </button>
+                    <Button icon="plus" title="Add language" text="Add language" onclick={link.callback(|_| Msg::Open)} />
                 </div>
 
                 if self.open {
