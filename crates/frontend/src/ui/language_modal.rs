@@ -111,7 +111,8 @@ pub(crate) struct Props {
     /// The currently-selected locale, highlighted in the list. Pass
     /// [`api::Locale::DEFAULT`] together with `allow_default = false` for a
     /// "fresh pick" with nothing pre-selected.
-    pub(crate) current: api::Locale,
+    #[prop_or_default]
+    pub(crate) current: Option<api::Locale>,
     pub(crate) on_pick: Callback<api::Locale>,
     pub(crate) on_close: Callback<()>,
     /// Label for the "Default" row.
@@ -219,7 +220,7 @@ impl Component for LanguageModal {
                             <div class="row clickable" onclick={link.callback(|_| Msg::Pick(api::Locale::DEFAULT))}>
                                 <span class="fill">{props.placeholder}</span>
 
-                                if current.is_default() {
+                                if let Some(current) = current &&  current.is_default() {
                                     <span class="item-inline">
                                         <span class="icon check" />
                                     </span>
@@ -233,7 +234,7 @@ impl Component for LanguageModal {
 
                         if props.show_top {
                             { for self.top_languages.iter().copied().map(|locale| {
-                                let selected = current == locale;
+                                let selected = current == Some(locale);
                                 let (name, flag) = locale_label(locale, "Default Language");
 
                                 html! {
@@ -269,7 +270,7 @@ impl Component for LanguageModal {
                             .skip(page.saturating_mul(LANGUAGE_PAGE_SIZE))
                             .take(LANGUAGE_PAGE_SIZE)
                             .map(|locale| {
-                                let selected = current == locale;
+                                let selected = current == Some(locale);
                                 let (name, flag) = locale_label(locale, "Default Language");
 
                                 html! {

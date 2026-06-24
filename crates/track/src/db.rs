@@ -454,7 +454,6 @@ impl InnerTranslations {
             .unwrap_or_default();
 
         let mut translations = api::Translations::new(language.or(config).or(default));
-
         let mut stmt = self.list_show_strings.bind((id,))?;
 
         while let Some((locale, kind, text)) = stmt.next()? {
@@ -1511,8 +1510,8 @@ impl Database {
                 return Ok(None);
             };
 
-            let cfg = s.config_language()?;
-            let strings = s.translations.show(id, cfg)?;
+            let config = s.config_language()?;
+            let strings = s.translations.show(id, config)?;
             let mut show = show_from_row(r, strings);
 
             let mut stmt = s.list_show_remotes.bind((id,))?;
@@ -2681,8 +2680,8 @@ impl Database {
             };
 
             let show_id = row.id;
-            let cfg = s.config_language()?;
-            let strings = s.translations.show(show_id, cfg)?;
+            let config = s.config_language()?;
+            let strings = s.translations.show(show_id, config)?;
             let mut show = show_from_row(row, strings);
 
             let mut stmt = s.list_show_remotes.bind((show_id,))?;
@@ -4208,13 +4207,13 @@ impl Database {
         let result = spawn_blocking(move || {
             let s = &mut *s;
 
-            let cfg = s.config_language()?;
+            let config = s.config_language()?;
 
             let mut out = Vec::new();
             let mut stmt = s.shows_needing_sync.bind((cutoff,))?;
 
             while let Some(r) = stmt.next()? {
-                let strings = s.translations.show(r.id, cfg)?;
+                let strings = s.translations.show(r.id, config)?;
                 out.push(show_from_row(r, strings));
             }
 
@@ -4261,7 +4260,7 @@ impl Database {
 
             let s = &mut *s;
 
-            let cfg = s.config_language()?;
+            let config = s.config_language()?;
 
             let mut stmt = s.list_pending_before.bind((now,))?;
 
@@ -4279,13 +4278,13 @@ impl Database {
 
                         let show_title = s
                             .translations
-                            .show(d.show_id, cfg)?
+                            .show(d.show_id, config)?
                             .title()
                             .map(str::to_owned);
 
                         let episode_name = s
                             .translations
-                            .episode(episode_id, d.language, d.default_language, cfg)?
+                            .episode(episode_id, d.language, d.default_language, config)?
                             .title()
                             .map(str::to_owned);
 
@@ -4319,7 +4318,7 @@ impl Database {
 
                         let title = s
                             .translations
-                            .movie(movie_id, cfg)?
+                            .movie(movie_id, config)?
                             .title()
                             .map(str::to_owned);
 
@@ -4368,18 +4367,19 @@ impl Database {
                     return Ok(None);
                 };
 
-                let cfg = s.config_language()?;
+                let config = s.config_language()?;
                 let poster = s.image.image_for_show(d.show_id, ImageKind::Poster)?;
                 let banner = s.image.image_for_show(d.show_id, ImageKind::Banner)?;
 
                 let show_title = s
                     .translations
-                    .show(d.show_id, cfg)?
+                    .show(d.show_id, config)?
                     .title()
                     .map(str::to_owned);
+
                 let episode_name = s
                     .translations
-                    .episode(episode, d.language, d.default_language, cfg)?
+                    .episode(episode, d.language, d.default_language, config)?
                     .title()
                     .map(str::to_owned);
 
@@ -4450,7 +4450,7 @@ impl Database {
 
             let s = &mut *s;
 
-            let cfg = s.config_language()?;
+            let config = s.config_language()?;
 
             // Resolved show titles, cached so each show is looked up once.
             let mut show_titles: HashMap<ShowId, String> = HashMap::new();
@@ -4473,10 +4473,11 @@ impl Database {
                     None => {
                         let title = s
                             .translations
-                            .show(r.show_id, cfg)?
+                            .show(r.show_id, config)?
                             .title()
                             .unwrap_or_default()
                             .to_owned();
+
                         show_titles.insert(r.show_id, title.clone());
                         title
                     }
@@ -4504,7 +4505,7 @@ impl Database {
 
                 let title = s
                     .translations
-                    .movie(r.movie_id, cfg)?
+                    .movie(r.movie_id, config)?
                     .title()
                     .unwrap_or_default()
                     .to_owned();

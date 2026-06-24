@@ -678,7 +678,7 @@ async fn collect_tmdb_strings(
             continue;
         }
 
-        tracing::info!(?translation, ?targets, "TMDB show translation row");
+        tracing::info!(?translation, ?targets, "TMDB show translation");
 
         draft.add_show_string(
             translation.locale,

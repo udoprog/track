@@ -306,6 +306,13 @@ p {
     @include item-inline-base($input-height, $input-height-touch);
 }
 
+.item-logo {
+    display: inline-flex;
+    align-items: center;
+    height: 100%;
+    aspect-ratio: 1 / 2;
+}
+
 .item-inline-xs {
     display: inline-flex;
     height: $input-height-xs;
@@ -333,10 +340,10 @@ p {
 .item-inline-source {
     display: inline-flex;
     align-items: center;
-    height: $input-height-lg;
+    height: $input-height;
 
     @include g.on-mobile {
-        height: $input-height-touch-lg;
+        height: $input-height-touch;
     }
 }
 
@@ -981,9 +988,10 @@ input-controls {
     border-radius: $radius-sm;
     border-color: $border-input;
     padding: 0 $padding-lg;
-    height: $input-height;
     font-size: $font-sm;
     font-family: $sans-serif-font;
+
+    height: $input-height;
     min-width: 0;
 
     &:focus {
@@ -1005,7 +1013,6 @@ input-controls {
 .input-label {
     @include input-base;
     font-weight: bold;
-    background-color: $color-secondary;
 }
 
 .input-text {
@@ -1040,12 +1047,12 @@ input-controls {
     background: $bg-surface;
 
     min-width: $input-height;
-    min-height: $input-height;
-    padding: $padding-md;
+    height: $input-height;
+    padding: 0 $padding-md;
 
     @include g.on-mobile {
         min-width: $input-height-touch;
-        min-height: $input-height-touch;
+        height: $input-height-touch;
         padding: $padding-lg;
     }
 

@@ -47,6 +47,8 @@ impl Component for SyncLanguagesEditor {
                 if !current.contains(&code) {
                     let mut next = current.clone();
                     next.push(code);
+                    next.sort();
+                    next.dedup();
                     ctx.props().on_change.emit(next);
                 }
             }
@@ -101,11 +103,8 @@ impl Component for SyncLanguagesEditor {
 
                 if self.open {
                     <LanguageModal
-                        current={api::Locale::DEFAULT}
-                        placeholder="Add language"
+                        placeholder="Default Language"
                         title="Add Language"
-                        show_top={false}
-                        allow_default={false}
                         on_pick={link.callback(Msg::Add)}
                         on_close={link.callback(|_| Msg::Close)}
                     />

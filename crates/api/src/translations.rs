@@ -1,3 +1,5 @@
+use core::fmt;
+
 use std::collections::HashMap;
 
 use musli_core::{Allocator, Decode, Decoder, Encode, Encoder};
@@ -28,7 +30,7 @@ struct Entry {
 /// inserting a `(kind, locale)` that already exists replaces it (no duplicate
 /// entry). The two indexes are derived data - they are not serialized and are
 /// rebuilt on decode.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Clone, Default, PartialEq)]
 pub struct Translations {
     /// The preferred display locale, already resolved against the global config.
     locale: Locale,
@@ -218,4 +220,13 @@ where
     }
 
     const IS_BITWISE_DECODE: bool = false;
+}
+
+impl fmt::Debug for Translations {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Translations")
+            .field("locale", &self.locale)
+            .field("entries", &self.entries)
+            .finish()
+    }
 }

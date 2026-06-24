@@ -3,10 +3,10 @@ use yew::prelude::*;
 
 /// Sources that can contribute syncable data, with the kinds they support fixed
 /// by [`api::RemoteSource::default_sync_kinds`].
-const SYNC_KIND_SOURCES: &[(api::RemoteSource, &str)] = &[
-    (api::RemoteSource::Tmdb, "TMDB"),
-    (api::RemoteSource::Tvdb, "TVDB"),
-    (api::RemoteSource::Tvmaze, "TVmaze"),
+const SYNC_KIND_SOURCES: &[api::RemoteSource] = &[
+    api::RemoteSource::Tmdb,
+    api::RemoteSource::Tvdb,
+    api::RemoteSource::Tvmaze,
 ];
 
 #[derive(Properties, PartialEq)]
@@ -23,7 +23,7 @@ pub(crate) fn SyncKindsEditor(props: &Props) -> Html {
     html! {
         <div class="form">
             {
-                for SYNC_KIND_SOURCES.iter().copied().map(|(source, label)| {
+                for SYNC_KIND_SOURCES.iter().copied().map(|source| {
                     let capability = source.default_sync_kinds();
                     let current = props
                         .kinds
@@ -34,39 +34,40 @@ pub(crate) fn SyncKindsEditor(props: &Props) -> Html {
                         .intersect(capability);
 
                     html! {
-                        <div class="field">
-                            <label>{label}</label>
-                            <div class="row input-group">
-                                { for capability.iter().map(|kind| {
-                                    let on = current.contains(kind);
-                                    let next_kinds = current.with(kind, !on);
+                        <div class="row input-group">
+                            <span class="input-label">
+                                <span class={classes!("logo", source.as_id())} />
+                            </span>
 
-                                    let on_toggle = {
-                                        let all = props.kinds.clone();
-                                        let cb = props.on_change.clone();
-                                        Callback::from(move |_: MouseEvent| {
-                                            let mut next = all.clone();
-                                            if let Some(e) = next.iter_mut().find(|s| s.source == source) {
-                                                e.kinds = next_kinds;
-                                            } else {
-                                                next.push(api::SourceSyncKinds { source, kinds: next_kinds });
-                                            }
-                                            cb.emit(next);
-                                        })
-                                    };
+                            { for capability.iter().map(|kind| {
+                                let on = current.contains(kind);
+                                let next_kinds = current.with(kind, !on);
 
-                                    html! {
-                                        <span
-                                            class={classes!("input-checkbox", on.then_some("checked"))}
-                                            onclick={on_toggle}
-                                            title={kind.as_label()}
-                                        >
-                                            <span class="mark" />
-                                            <span>{kind.as_label()}</span>
-                                        </span>
-                                    }
-                                }) }
-                            </div>
+                                let on_toggle = {
+                                    let all = props.kinds.clone();
+                                    let cb = props.on_change.clone();
+                                    Callback::from(move |_: MouseEvent| {
+                                        let mut next = all.clone();
+                                        if let Some(e) = next.iter_mut().find(|s| s.source == source) {
+                                            e.kinds = next_kinds;
+                                        } else {
+                                            next.push(api::SourceSyncKinds { source, kinds: next_kinds });
+                                        }
+                                        cb.emit(next);
+                                    })
+                                };
+
+                                html! {
+                                    <span
+                                        class={classes!("input-checkbox", on.then_some("checked"))}
+                                        onclick={on_toggle}
+                                        title={kind.as_label()}
+                                    >
+                                        <span class="mark" />
+                                        <span>{kind.as_label()}</span>
+                                    </span>
+                                }
+                            }) }
                         </div>
                     }
                 })

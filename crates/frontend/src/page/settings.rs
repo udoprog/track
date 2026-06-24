@@ -37,7 +37,7 @@ pub(crate) enum Msg {
     DashboardPageChanged(String),
     AutoSyncEnabledToggle,
     AutoSyncIntervalChanged(String),
-    IncludeSpecialsChanged(bool),
+    IncludeSpecialsToggle,
     ReleaseFiltersChanged(Vec<api::ReleaseFilter>),
     AirDateFiltersChanged(Vec<api::AirDateFilter>),
     SyncKindsChanged(Vec<api::SourceSyncKinds>),
@@ -124,10 +124,7 @@ impl Component for Settings {
         });
 
         let on_auto_sync_toggle = link.callback(|_| Msg::AutoSyncEnabledToggle);
-        let on_include_specials_change = link.callback(|e: Event| {
-            let select: web_sys::HtmlSelectElement = e.target_unchecked_into();
-            Msg::IncludeSpecialsChanged(select.value() == "include")
-        });
+        let on_include_specials_change = link.callback(|_| Msg::IncludeSpecialsToggle);
 
         let on_auto_sync_interval = link.callback(|e: Event| {
             let input: web_sys::HtmlInputElement = e.target_unchecked_into();
@@ -138,15 +135,138 @@ impl Component for Settings {
 
         html! {
             <>
-                <div class="column">
-                    <h4>{"Appearance"}</h4>
+                <div class="desktop-row mobile-column align-top">
+                    <div class="column fill">
+                        <h4>{"Appearance"}</h4>
 
-                    <div class="field">
-                        <label>{"Theme"}</label>
-                        <select class="input-select" onchange={on_theme} value={theme_val}>
-                            <option value="dark" selected={self.config.theme == api::ThemeType::Dark}>{"Dark"}</option>
-                            <option value="light" selected={self.config.theme == api::ThemeType::Light}>{"Light"}</option>
-                        </select>
+                        <div class="field">
+                            <label>{"Theme"}</label>
+                            <select class="input-select" onchange={on_theme} value={theme_val}>
+                                <option value="dark" selected={self.config.theme == api::ThemeType::Dark}>{"Dark"}</option>
+                                <option value="light" selected={self.config.theme == api::ThemeType::Light}>{"Light"}</option>
+                            </select>
+                        </div>
+
+                        <div class={classes!("field", (!tz_is_valid(&self.config.timezone)).then_some("error"))}>
+                            <label>{"TimeZone"}</label>
+
+                            <input type="text" class="input-text" placeholder="Leave empty to use browser timezone" value={self.config.timezone.clone()} onchange={on_timezone} list="tz-datalist" autocomplete="off" />
+
+                            <datalist id="tz-datalist">
+                                { for jiff_tzdb::available().map(|name| html! {
+                                    <option value={name} />
+                                }) }
+                            </datalist>
+
+                            if !tz_is_valid(&self.config.timezone) {
+                                <span>
+                                    <span class="item-inline"><span class="icon exclamation-triangle" /></span>
+                                    {"Unknown timezone"}
+                                </span>
+                            }
+                        </div>
+
+                        <div class="field fill">
+                            <label>{"Pending size"}</label>
+
+                            <input
+                                type="number"
+                                class="input-number"
+                                min="1"
+                                max="100"
+                                value={self.config.dashboard_page.to_string()}
+                                onchange={on_dashboard_page}
+                            />
+                        </div>
+                    </div>
+
+                    <div class="column fill">
+                        <h4>{"Language"}</h4>
+
+                        <div class="field">
+                            <label>{"Language"}</label>
+                            <span class="hint">{"The default language used for shows and movies."}</span>
+
+                            <LanguagePicker
+                                current={self.config.language}
+                                placeholder="Default"
+                                on_change={link.callback(Msg::LanguageChanged)}
+                            />
+                        </div>
+
+                        <div class="field">
+                            <label>{"Sync Languages"}</label>
+                            <span class="hint">{"Which languages to fetch translations for. This will allow for searching and filtering based on these languages."}</span>
+
+                            <SyncLanguagesEditor
+                                languages={self.config.sync_languages.clone()}
+                                on_change={link.callback(Msg::SyncLanguagesChanged)}
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                <div class="column">
+                    <h4>{"Sync"}</h4>
+
+                    <div class="desktop-row mobile-column align-top">
+                        <div class="column fill">
+                            <span class={classes!("input-checkbox", self.config.auto_sync_enabled.then_some("checked"))} onclick={on_auto_sync_toggle}>
+                                <span class="mark" />
+                                <span>{"Automatic Sync"}</span>
+                            </span>
+
+                            <div class="input-group fill">
+                                <span class="input-label">{"Sync Interval in Hours"}</span>
+
+                                <input
+                                    type="number"
+                                    class="input-number fill"
+                                    min="1"
+                                    max="168"
+                                    value={self.config.auto_sync_interval_hours.to_string()}
+                                    onchange={on_auto_sync_interval}
+                                />
+                            </div>
+
+                            <span class={classes!("input-checkbox", self.config.include_specials.then_some("checked"))} onclick={on_include_specials_change}>
+                                <span class="mark" />
+                                <span>{"Consider Specials for Watch Next"}</span>
+                            </span>
+
+                            <div class="field">
+                                <label>{"Sync Sources"}</label>
+                                <span class="hint">{"Which kinds of data each source contributes by default. Base covers titles, overviews and episodes; air dates merge by remote priority. Graphics always accumulate from every source. Individual shows and movies can override this per remote."}</span>
+
+                                <SyncKindsEditor
+                                    kinds={self.config.sync_kinds.clone()}
+                                    on_change={link.callback(Msg::SyncKindsChanged)}
+                                />
+                            </div>
+                        </div>
+
+                        <div class="column fill">
+                            <div class="field">
+                                <label>{"Release Date"}</label>
+                                <span class="hint">{"Release types (and countries) used to determine when a movie becomes available. The earliest matching date is used."}</span>
+
+                                <ReleaseFiltersEditor
+                                    filters={self.config.release_filters.clone()}
+                                    on_change={link.callback(Msg::ReleaseFiltersChanged)}
+                                />
+                            </div>
+
+
+                            <div class="field">
+                                <label>{"Air Date"}</label>
+                                <span class="hint">{"Restrict which sources' episode air dates qualify, by country and network. Source priority comes from each show's remote order (TVmaze ranks above TMDB by default)."}</span>
+
+                                <AirDateFiltersEditor
+                                    filters={self.config.air_date_filters.clone()}
+                                    on_change={link.callback(Msg::AirDateFiltersChanged)}
+                                />
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -183,129 +303,6 @@ impl Component for Settings {
                             placeholder="Enter TMDB API key"
                             value={self.config.tmdb_api_key.clone()}
                             on_change={link.callback(Msg::TmdbKeyChanged)}
-                        />
-                    </div>
-                </div>
-
-                <div class="column">
-                    <h4>{"Dashboard"}</h4>
-
-                    <div class="field fill">
-                        <label>{"Pending size"}</label>
-
-                        <input
-                            type="number"
-                            class="input-number"
-                            min="1"
-                            max="100"
-                            value={self.config.dashboard_page.to_string()}
-                            onchange={on_dashboard_page}
-                        />
-                    </div>
-                </div>
-
-                <div class="column">
-                    <h4>{"Display"}</h4>
-
-                    <div class={classes!("field", (!tz_is_valid(&self.config.timezone)).then_some("error"))}>
-                        <label>{"Timezone (IANA name)"}</label>
-
-                        <input type="text" class="input-text" placeholder="Leave empty to use browser timezone" value={self.config.timezone.clone()} onchange={on_timezone} list="tz-datalist" autocomplete="off" />
-
-                        <datalist id="tz-datalist">
-                            { for jiff_tzdb::available().map(|name| html! {
-                                <option value={name} />
-                            }) }
-                        </datalist>
-
-                        if !tz_is_valid(&self.config.timezone) {
-                            <span>
-                                <span class="item-inline"><span class="icon exclamation-triangle" /></span>
-                                {"Unknown timezone"}
-                            </span>
-                        }
-                    </div>
-
-                    <div class="field">
-                        <label>{"Default language"}</label>
-
-                        <LanguagePicker
-                            current={self.config.language}
-                            placeholder="Default"
-                            on_change={link.callback(Msg::LanguageChanged)}
-                        />
-                    </div>
-                </div>
-
-                <div class="column">
-                    <h4>{"Sync"}</h4>
-
-                    <div class="field">
-                        <label class="clickable" onclick={&on_auto_sync_toggle}>{"Auto-sync enabled"}</label>
-
-                        <div class="row">
-                            <span class={classes!("input-checkbox", self.config.auto_sync_enabled.then_some("checked"))} id="auto-sync-enabled" onclick={on_auto_sync_toggle}>
-                                <span class="mark" />
-                            </span>
-                        </div>
-                    </div>
-
-                    <div class="field">
-                        <label>{"Sync interval (hours)"}</label>
-                        <input
-                            type="number"
-                            class="input-number"
-                            min="1"
-                            max="168"
-                            value={self.config.auto_sync_interval_hours.to_string()}
-                            onchange={on_auto_sync_interval}
-                        />
-                    </div>
-
-                    <div class="field">
-                        <label>{"Specials when syncing"}</label>
-                        <select class="input-select" onchange={on_include_specials_change}>
-                            <option value="include" selected={self.config.include_specials}>{"Include"}</option>
-                            <option value="skip" selected={!self.config.include_specials}>{"Skip"}</option>
-                        </select>
-                    </div>
-
-                    <div class="field">
-                        <label>{"Sync languages"}</label>
-                        <span class="hint">{"Which languages to fetch translations for during sync. \"Default\" uses each show's or movie's original language."}</span>
-                        <SyncLanguagesEditor
-                            languages={self.config.sync_languages.clone()}
-                            on_change={link.callback(Msg::SyncLanguagesChanged)}
-                        />
-                    </div>
-
-                    <h4>{"Release Date"}</h4>
-
-                    <div class="field">
-                        <span class="hint">{"Release types (and countries) used to determine when a movie becomes available. The earliest matching date is used."}</span>
-                        <ReleaseFiltersEditor
-                            filters={self.config.release_filters.clone()}
-                            on_change={link.callback(Msg::ReleaseFiltersChanged)}
-                        />
-                    </div>
-
-                    <h4>{"Air Date"}</h4>
-
-                    <div class="field">
-                        <span class="hint">{"Restrict which sources' episode air dates qualify, by country and network. Source priority comes from each show's remote order (TVmaze ranks above TMDB by default)."}</span>
-                        <AirDateFiltersEditor
-                            filters={self.config.air_date_filters.clone()}
-                            on_change={link.callback(Msg::AirDateFiltersChanged)}
-                        />
-                    </div>
-
-                    <h4>{"Sync sources"}</h4>
-
-                    <div class="field">
-                        <span class="hint">{"Which kinds of data each source contributes by default. Base covers titles, overviews and episodes; air dates merge by remote priority. Graphics always accumulate from every source. Individual shows and movies can override this per remote."}</span>
-                        <SyncKindsEditor
-                            kinds={self.config.sync_kinds.clone()}
-                            on_change={link.callback(Msg::SyncKindsChanged)}
                         />
                     </div>
                 </div>
@@ -367,23 +364,23 @@ impl Settings {
                 self.persist(ctx);
                 Ok(true)
             }
-            Msg::TmdbKeyChanged(val) => {
-                self.config.tmdb_api_key = val;
+            Msg::TmdbKeyChanged(value) => {
+                self.config.tmdb_api_key = value;
                 self.persist(ctx);
                 Ok(true)
             }
-            Msg::TimezoneChanged(val) => {
-                self.config.timezone = val;
+            Msg::TimezoneChanged(tz) => {
+                self.config.timezone = tz;
                 self.persist(ctx);
                 Ok(true)
             }
-            Msg::LanguageChanged(val) => {
-                self.config.language = val;
+            Msg::LanguageChanged(language) => {
+                self.config.language = language;
                 self.persist(ctx);
                 Ok(true)
             }
-            Msg::SyncLanguagesChanged(val) => {
-                self.config.sync_languages = val;
+            Msg::SyncLanguagesChanged(languages) => {
+                self.config.sync_languages = languages;
                 self.persist(ctx);
                 Ok(true)
             }
@@ -406,8 +403,8 @@ impl Settings {
                 }
                 Ok(false)
             }
-            Msg::IncludeSpecialsChanged(include) => {
-                self.config.include_specials = include;
+            Msg::IncludeSpecialsToggle => {
+                self.config.include_specials = !self.config.include_specials;
                 self.persist(ctx);
                 Ok(true)
             }

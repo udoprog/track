@@ -36,7 +36,7 @@ impl SyncKind {
     pub fn as_label(&self) -> &'static str {
         match self {
             Self::Base => "Base",
-            Self::AirDate => "Air Date",
+            Self::AirDate => "Air Dates",
         }
     }
 

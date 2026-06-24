@@ -58,17 +58,15 @@ pub(crate) fn ReleaseFiltersEditor(props: &Props) -> Html {
                     };
 
                     html! {
-                        <div class="field">
-                            <label class="clickable" onclick={on_toggle.clone()}>{rt.as_str()}</label>
-                            <div class="row input-group">
-                                <span class={classes!("input-checkbox", enabled.then_some("checked"))} onclick={on_toggle}>
-                                    <span class="mark" />
-                                </span>
+                        <div class="row input-group">
+                            <span class={classes!("input-checkbox", "fill", enabled.then_some("checked"))} onclick={on_toggle}>
+                                <span class="mark" />
+                                <span>{rt.as_str()}</span>
+                            </span>
 
-                                if enabled {
-                                    <CountryPicker current={countries} on_change={on_countries} />
-                                }
-                            </div>
+                            if enabled {
+                                <CountryPicker current={countries} on_change={on_countries} />
+                            }
                         </div>
                     }
                 })

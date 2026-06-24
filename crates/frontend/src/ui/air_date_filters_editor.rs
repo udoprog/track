@@ -4,10 +4,10 @@ use yew::prelude::*;
 use super::CountryPicker;
 
 /// Enriching sources that can contribute episode air dates.
-const AIR_DATE_SOURCES: &[(api::RemoteSource, &str)] = &[
-    (api::RemoteSource::Tvmaze, "TVmaze"),
-    (api::RemoteSource::Tmdb, "TMDB"),
-    (api::RemoteSource::Tvdb, "TVDB"),
+const AIR_DATE_SOURCES: &[api::RemoteSource] = &[
+    api::RemoteSource::Tvmaze,
+    api::RemoteSource::Tmdb,
+    api::RemoteSource::Tvdb,
 ];
 
 #[derive(Properties, PartialEq)]
@@ -24,7 +24,7 @@ pub(crate) fn AirDateFiltersEditor(props: &Props) -> Html {
     html! {
         <div class="form">
             {
-                for AIR_DATE_SOURCES.iter().copied().map(|(source, label)| {
+                for AIR_DATE_SOURCES.iter().copied().map(|source| {
                     let existing = props.filters.iter().find(|f| f.source == source);
                     let enabled = existing.is_some();
                     let countries = existing.map(|f| f.countries.clone()).unwrap_or_default();
@@ -80,10 +80,10 @@ pub(crate) fn AirDateFiltersEditor(props: &Props) -> Html {
 
                     html! {
                         <div class="field">
-                            <label class="clickable" onclick={on_toggle.clone()}>{label}</label>
                             <div class="row input-group">
                                 <span class={classes!("input-checkbox", enabled.then_some("checked"))} onclick={on_toggle}>
                                     <span class="mark" />
+                                    <span class={classes!("logo", source.as_id())} title={source.as_label()} / >
                                 </span>
 
                                 if enabled {
