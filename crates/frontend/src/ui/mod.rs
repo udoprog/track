@@ -45,7 +45,7 @@ pub(crate) use self::language_picker::LanguagePicker;
 pub(crate) use self::loading::Loading;
 pub(crate) use self::mark_time_menu::{MarkTimeMenu, TimePreset};
 pub(crate) use self::media_kind_toggle::MediaKindToggle;
-pub(crate) use self::media_settings_modal::MediaSettingsModal;
+pub(crate) use self::media_settings_modal::{MediaSettingsModal, SettingsTarget};
 pub(crate) use self::modal::Modal;
 pub(crate) use self::outline::{Outline, OutlineControl, OutlineEntry, OutlineHandle};
 pub(crate) use self::pagination_buttons::PaginationButtons;

@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
-use api::{IncludeSpecials, TimeInfo, Timed};
+use api::{TimeInfo, Timed};
 
 use crate::SetupChannel;
 use crate::background::Background;
@@ -12,8 +12,8 @@ use crate::router::{MediaQuery, Route, Router, ShowDetailQuery};
 use crate::ui::{
     Button, ConfirmDanger, ContextMenu, EpisodePicker, Image, ImageGallery, ImageItem, Loading,
     MarkTimeMenu, MediaSettingsModal, Modal, OutlineControl, OutlineEntry, OutlineHandle,
-    ReleaseModal, ReleaseTarget, RemoteEditor, RemoteSourceKind, TimePreset, Tracked,
-    TranslationsModal, Variant,
+    ReleaseModal, ReleaseTarget, RemoteEditor, RemoteSourceKind, SettingsTarget, TimePreset,
+    Tracked, TranslationsModal, Variant,
 };
 
 const ORPHAN_HINT: &str = r#"
@@ -101,10 +101,6 @@ pub(crate) struct ShowDetail {
     _set_remote_enabled_req: ws::Request,
     _reorder_remotes_req: ws::Request,
     _set_remote_sync_kinds_req: ws::Request,
-    _set_language_req: ws::Request,
-    _set_include_specials_req: ws::Request,
-    _set_auto_sync_req: ws::Request,
-    _set_air_date_filters_req: ws::Request,
     _config_req: ws::Request,
     _orphaned_req: ws::Request,
     _move_req: ws::Request,
@@ -152,11 +148,6 @@ pub(crate) enum Msg {
     ReorderRemotes(Vec<api::RemoteId>),
     ReorderRemotesDone(Result<ws::Packet<api::ReorderShowRemotes>, ws::Error>),
     ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
-    SetLanguage(api::Locale),
-    SetLanguageDone(
-        api::Locale,
-        Result<ws::Packet<api::SetShowLanguage>, ws::Error>,
-    ),
     OpenImageModal,
     CloseImageModal,
     OpenSeasonImageModal,
@@ -176,15 +167,6 @@ pub(crate) enum Msg {
     CloseEpisodeTranslations,
     OpenEpisodeReleases(api::EpisodeId),
     CloseEpisodeReleases,
-    SetIncludeSpecials(IncludeSpecials),
-    SetIncludeSpecialsDone(
-        IncludeSpecials,
-        Result<ws::Packet<api::SetShowIncludeSpecials>, ws::Error>,
-    ),
-    SetAutoSync(bool),
-    SetAutoSyncDone(bool, Result<ws::Packet<api::SetShowAutoSync>, ws::Error>),
-    SetAirDateFilters(Option<Vec<api::FilterRule>>),
-    SetAirDateFiltersDone(Result<ws::Packet<api::SetShowAirDateFilters>, ws::Error>),
     OpenRemoteEditor,
     CloseRemoteEditor,
     AddRemote(Option<String>, api::Remote),
@@ -305,10 +287,6 @@ impl Component for ShowDetail {
             _set_remote_enabled_req: ws::Request::default(),
             _reorder_remotes_req: ws::Request::default(),
             _set_remote_sync_kinds_req: ws::Request::default(),
-            _set_language_req: ws::Request::default(),
-            _set_include_specials_req: ws::Request::default(),
-            _set_auto_sync_req: ws::Request::default(),
-            _set_air_date_filters_req: ws::Request::default(),
             _config_req: ws::Request::default(),
             _orphaned_req: ws::Request::default(),
             _move_req: ws::Request::default(),
@@ -459,20 +437,7 @@ impl Component for ShowDetail {
 
                 if self.settings_modal {
                     <MediaSettingsModal
-                        title="Settings"
-                        language={show.language}
-                        include_specials={show.include_specials}
-                        has_images={!show.images.is_empty()}
-                        has_remotes={!show.remotes.is_empty()}
-                        last_synced={show.last_synced_at.map(|ts| AttrValue::from(ts.human_date_time(self.time.clone())))}
-                        syncing={self.syncing}
-                        on_sync={link.callback(|_| Msg::SyncShow)}
-                        auto_sync={show.auto_sync}
-                        on_auto_sync_change={link.callback(Msg::SetAutoSync)}
-                        on_language_change={link.callback(Msg::SetLanguage)}
-                        on_include_specials_change={link.callback(Msg::SetIncludeSpecials)}
-                        air_date_filters={show.air_date_filters.clone()}
-                        on_air_date_filters_change={Some(link.callback(Msg::SetAirDateFilters))}
+                        target={SettingsTarget::Show(show.id)}
                         on_edit_graphics={link.callback(|_| Msg::OpenImageModal)}
                         on_edit_remotes={link.callback(|_| Msg::OpenRemoteEditor)}
                         on_close={link.callback(|_| Msg::CloseSettingsModal)}
@@ -1175,30 +1140,6 @@ impl ShowDetail {
                 result.context(Message::ReorderingRemotes)?;
                 Ok(true)
             }
-            Msg::SetLanguage(language) => {
-                let id = props.show_id;
-
-                self._set_language_req = self
-                    .channel
-                    .request()
-                    .body(api::SetShowLanguageRequest { id, language })
-                    .on_packet(
-                        ctx.link()
-                            .callback(move |r| Msg::SetLanguageDone(language, r)),
-                    )
-                    .send();
-
-                Ok(false)
-            }
-            Msg::SetLanguageDone(language, result) => {
-                result.context(Message::SettingLanguage(language))?;
-
-                if let Some(ref mut show) = self.show {
-                    show.language = language;
-                }
-
-                Ok(true)
-            }
             Msg::OpenImageModal => {
                 self.image_modal = true;
                 self.settings_modal = false;
@@ -1336,81 +1277,6 @@ impl ShowDetail {
             Msg::CloseEpisodeReleases => {
                 self.episode_releases_modal = None;
                 Ok(true)
-            }
-            Msg::SetIncludeSpecials(include_specials) => {
-                let id = props.show_id;
-
-                self._set_include_specials_req = self
-                    .channel
-                    .request()
-                    .body(api::SetShowIncludeSpecialsRequest {
-                        id,
-                        include_specials,
-                    })
-                    .on_packet(
-                        ctx.link()
-                            .callback(move |r| Msg::SetIncludeSpecialsDone(include_specials, r)),
-                    )
-                    .send();
-
-                Ok(false)
-            }
-            Msg::SetIncludeSpecialsDone(include_specials, result) => {
-                result
-                    .context(Message::SettingIncludeSpecials(include_specials))?
-                    .decode()
-                    .context(Message::SettingIncludeSpecials(include_specials))?;
-
-                if let Some(ref mut show) = self.show {
-                    show.include_specials = include_specials;
-                }
-
-                Ok(true)
-            }
-            Msg::SetAutoSync(auto_sync) => {
-                let id = props.show_id;
-
-                self._set_auto_sync_req = self
-                    .channel
-                    .request()
-                    .body(api::SetShowAutoSyncRequest { id, auto_sync })
-                    .on_packet(
-                        ctx.link()
-                            .callback(move |r| Msg::SetAutoSyncDone(auto_sync, r)),
-                    )
-                    .send();
-
-                Ok(false)
-            }
-            Msg::SetAutoSyncDone(auto_sync, result) => {
-                result.context(Message::SettingAutoSync(auto_sync))?;
-                if let Some(ref mut show) = self.show {
-                    show.auto_sync = auto_sync;
-                }
-                Ok(true)
-            }
-            Msg::SetAirDateFilters(air_date_filters) => {
-                if let Some(ref mut show) = self.show {
-                    show.air_date_filters = air_date_filters.clone();
-                }
-
-                let id = props.show_id;
-
-                self._set_air_date_filters_req = self
-                    .channel
-                    .request()
-                    .body(api::SetShowAirDateFiltersRequest {
-                        id,
-                        air_date_filters,
-                    })
-                    .on_packet(ctx.link().callback(Msg::SetAirDateFiltersDone))
-                    .send();
-
-                Ok(true)
-            }
-            Msg::SetAirDateFiltersDone(result) => {
-                result.context(Message::SettingAirDateFilters)?;
-                Ok(false)
             }
             Msg::OpenRemoteEditor => {
                 self.remote_editor = true;

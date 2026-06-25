@@ -10,7 +10,7 @@ use crate::router::{MediaQuery, Route, Router};
 use crate::ui::{
     Button, ConfirmDanger, ContextMenu, Image, ImageGallery, ImageItem, Loading, MarkTimeMenu,
     MediaSettingsModal, Modal, ReleaseModal, ReleaseTarget, RemoteEditor, RemoteSourceKind,
-    TimePreset, Tracked, TranslationsModal, Variant,
+    SettingsTarget, TimePreset, Tracked, TranslationsModal, Variant,
 };
 
 struct WatchedState {
@@ -56,9 +56,6 @@ pub(crate) struct MovieDetail {
     _set_remote_enabled_req: ws::Request,
     _reorder_remotes_req: ws::Request,
     _set_remote_sync_kinds_req: ws::Request,
-    _set_language_req: ws::Request,
-    _set_release_filters_req: ws::Request,
-    _set_auto_sync_req: ws::Request,
     _config_req: ws::Request,
     _remote_req: ws::Request,
 }
@@ -102,19 +99,7 @@ pub(crate) enum Msg {
     SetRemoteSyncKindsDone(Result<ws::Packet<api::SetMovieRemoteSyncKinds>, ws::Error>),
     ReorderRemotes(Vec<api::RemoteId>),
     ReorderRemotesDone(Result<ws::Packet<api::ReorderMovieRemotes>, ws::Error>),
-    SetLanguage(api::Locale),
-    SetLanguageDone(
-        api::Locale,
-        Result<ws::Packet<api::SetMovieLanguage>, ws::Error>,
-    ),
     ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
-    SetReleaseFilters(Option<Vec<api::FilterRule>>),
-    SetReleaseFiltersDone(
-        Option<Vec<api::FilterRule>>,
-        Result<ws::Packet<api::SetMovieReleaseFilters>, ws::Error>,
-    ),
-    SetAutoSync(bool),
-    SetAutoSyncDone(bool, Result<ws::Packet<api::SetMovieAutoSync>, ws::Error>),
     SetTracked(bool),
     SetTrackedDone(bool, Result<ws::Packet<api::UntrackMovie>, ws::Error>),
     OnWatchNext(api::MarkTime),
@@ -199,9 +184,6 @@ impl Component for MovieDetail {
             _set_remote_enabled_req: ws::Request::default(),
             _reorder_remotes_req: ws::Request::default(),
             _set_remote_sync_kinds_req: ws::Request::default(),
-            _set_language_req: ws::Request::default(),
-            _set_release_filters_req: ws::Request::default(),
-            _set_auto_sync_req: ws::Request::default(),
             _config_req: ws::Request::default(),
             _remote_req: ws::Request::default(),
         }
@@ -498,30 +480,6 @@ impl MovieDetail {
                 result.context(Message::ReorderingRemotes)?;
                 Ok(false)
             }
-            Msg::SetLanguage(language) => {
-                let id = ctx.props().movie_id;
-
-                self._set_language_req = self
-                    .channel
-                    .request()
-                    .body(api::SetMovieLanguageRequest { id, language })
-                    .on_packet(
-                        ctx.link()
-                            .callback(move |r| Msg::SetLanguageDone(language, r)),
-                    )
-                    .send();
-
-                Ok(false)
-            }
-            Msg::SetLanguageDone(language, result) => {
-                result.context(Message::SettingLanguage(language))?;
-
-                if let Some(ref mut movie) = self.movie {
-                    movie.language = language;
-                }
-
-                Ok(true)
-            }
             Msg::ConfigLoaded(result) => {
                 let config = result
                     .context(Message::LoadingConfig)?
@@ -530,60 +488,6 @@ impl MovieDetail {
                     .config;
                 self.default_release_filters = config.release_filters;
                 self.global_sync_kinds = config.sync_kinds;
-                Ok(true)
-            }
-            Msg::SetReleaseFilters(release_filters) => {
-                let id = ctx.props().movie_id;
-
-                self._set_release_filters_req =
-                    self.channel
-                        .request()
-                        .body(api::SetMovieReleaseFiltersRequest {
-                            id,
-                            release_filters: release_filters.clone(),
-                        })
-                        .on_packet(ctx.link().callback(move |r| {
-                            Msg::SetReleaseFiltersDone(release_filters.clone(), r)
-                        }))
-                        .send();
-
-                Ok(false)
-            }
-            Msg::SetReleaseFiltersDone(release_filters, result) => {
-                result.context(Message::SettingReleaseFilters)?;
-
-                if let Some(ref mut movie) = self.movie {
-                    movie.release_filters = release_filters;
-                }
-
-                // The server recomputes the effective release date from the new filters; reload to
-                // reflect it (the change broadcast excludes this originating channel).
-                self.load_movie(ctx);
-
-                Ok(true)
-            }
-            Msg::SetAutoSync(auto_sync) => {
-                let id = ctx.props().movie_id;
-
-                self._set_auto_sync_req = self
-                    .channel
-                    .request()
-                    .body(api::SetMovieAutoSyncRequest { id, auto_sync })
-                    .on_packet(
-                        ctx.link()
-                            .callback(move |r| Msg::SetAutoSyncDone(auto_sync, r)),
-                    )
-                    .send();
-
-                Ok(false)
-            }
-            Msg::SetAutoSyncDone(auto_sync, result) => {
-                result.context(Message::SettingAutoSync(auto_sync))?;
-
-                if let Some(ref mut movie) = self.movie {
-                    movie.auto_sync = auto_sync;
-                }
-
                 Ok(true)
             }
             Msg::SetTracked(tracked) => {
@@ -1114,19 +1018,7 @@ impl MovieDetail {
 
             if self.settings_modal {
                 <MediaSettingsModal
-                    title="Settings"
-                    language={movie.language}
-                    has_images={!movie.images.is_empty()}
-                    has_remotes={!movie.remotes.is_empty()}
-                    last_synced={movie.last_synced_at.map(|ts| AttrValue::from(ts.human_date_time(self.time.clone())))}
-                    syncing={self.syncing}
-                    on_sync={link.callback(|_| Msg::SyncMovie)}
-                    auto_sync={movie.auto_sync}
-                    on_auto_sync_change={link.callback(Msg::SetAutoSync)}
-                    on_language_change={link.callback(Msg::SetLanguage)}
-                    release_filters={movie.release_filters.clone()}
-                    default_release_filters={self.default_release_filters.clone()}
-                    on_release_filters_change={link.callback(Msg::SetReleaseFilters)}
+                    target={SettingsTarget::Movie(movie.id)}
                     on_edit_graphics={link.callback(|_| Msg::OpenImageModal)}
                     on_edit_remotes={link.callback(|_| Msg::OpenRemoteEditor)}
                     on_close={link.callback(|_| Msg::CloseSettingsModal)}

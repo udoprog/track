@@ -1332,10 +1332,7 @@ impl Show {
     }
 
     /// The air-date filters in effect for this show, falling back to `default`.
-    pub fn effective_air_date_filters<'a>(
-        &'a self,
-        default: &'a [FilterRule],
-    ) -> &'a [FilterRule] {
+    pub fn effective_air_date_filters<'a>(&'a self, default: &'a [FilterRule]) -> &'a [FilterRule] {
         self.air_date_filters.as_deref().unwrap_or(default)
     }
 
@@ -1496,10 +1493,7 @@ pub struct Movie {
 
 impl Movie {
     /// The release filters in effect for this movie, falling back to the global `default`.
-    pub fn effective_release_filters<'a>(
-        &'a self,
-        default: &'a [FilterRule],
-    ) -> &'a [FilterRule] {
+    pub fn effective_release_filters<'a>(&'a self, default: &'a [FilterRule]) -> &'a [FilterRule] {
         self.release_filters.as_deref().unwrap_or(default)
     }
 

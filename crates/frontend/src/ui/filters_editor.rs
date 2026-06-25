@@ -76,26 +76,32 @@ pub(crate) fn FiltersEditor(props: &Props) -> Html {
 }
 
 /// Replace the predicate at `(ri, pi)`, removing it when its set is empty.
-fn set_predicate(rules: &mut [api::FilterRule], ri: usize, pi: usize, p: api::FilterPredicate) {
+fn set_predicate(
+    rules: &mut [api::FilterRule],
+    index: usize,
+    predicate: usize,
+    p: api::FilterPredicate,
+) {
     if p.is_empty() {
-        rules[ri].predicates.remove(pi);
+        rules[index].predicates.remove(predicate);
     } else {
-        rules[ri].predicates[pi] = p;
+        rules[index].predicates[predicate] = p;
     }
 }
 
-fn view_rule(props: &Props, ri: usize, rule: &api::FilterRule) -> Html {
+fn view_rule(props: &Props, index: usize, rule: &api::FilterRule) -> Html {
     let on_remove = {
         let rules = props.rules.clone();
         let cb = props.on_change.clone();
         Callback::from(move |_: MouseEvent| {
             let mut next = rules.clone();
-            next.remove(ri);
+            next.remove(index);
             cb.emit(next);
         })
     };
 
     let present: Vec<api::PredicateKind> = rule.predicates.iter().map(|p| p.kind()).collect();
+
     let available: Vec<api::PredicateKind> = props
         .kinds
         .iter()
@@ -106,23 +112,23 @@ fn view_rule(props: &Props, ri: usize, rule: &api::FilterRule) -> Html {
     html! {
         <div class="field">
             <div class="row input-group">
-                <span class="input-label has-text fill">{format!("Rule {}", ri + 1)}</span>
+                <span class="input-label has-text fill">{format!("Rule {}", index + 1)}</span>
 
-                <button class="has-text" onclick={on_remove} title="Remove rule">
+                <button class="danger" onclick={on_remove} title="Remove rule">
                     <span class="icon x-mark" />
                 </button>
             </div>
 
-            {for rule.predicates.iter().enumerate().map(|(pi, p)| view_predicate(props, ri, pi, p))}
+            {for rule.predicates.iter().enumerate().map(|(pi, p)| view_predicate(props, index, pi, p))}
 
             if !available.is_empty() {
-                {view_add_predicate(props, ri, available)}
+                {view_add_predicate(props, index, available)}
             }
         </div>
     }
 }
 
-fn view_add_predicate(props: &Props, ri: usize, available: Vec<api::PredicateKind>) -> Html {
+fn view_add_predicate(props: &Props, index: usize, available: Vec<api::PredicateKind>) -> Html {
     let on_add = {
         let rules = props.rules.clone();
         let cb = props.on_change.clone();
@@ -133,7 +139,7 @@ fn view_add_predicate(props: &Props, ri: usize, available: Vec<api::PredicateKin
                 && let Some(kind) = available.get(idx)
             {
                 let mut next = rules.clone();
-                next[ri].predicates.push(kind.empty());
+                next[index].predicates.push(kind.empty());
                 cb.emit(next);
             }
             select.set_value("");
@@ -145,21 +151,27 @@ fn view_add_predicate(props: &Props, ri: usize, available: Vec<api::PredicateKin
             <select class="input-select fill" onchange={on_add}>
                 <option value="" selected={true}>{"Add predicate…"}</option>
 
-                {for available.iter().enumerate().map(|(idx, kind)| html! {
-                    <option value={idx.to_string()}>{kind.label()}</option>
+                {for available.iter().enumerate().map(|(i, kind)| html! {
+                    <option value={i.to_string()}>{kind.label()}</option>
                 })}
             </select>
         </div>
     }
 }
 
-fn view_predicate(props: &Props, ri: usize, pi: usize, p: &api::FilterPredicate) -> Html {
+fn view_predicate(
+    props: &Props,
+    rule_index: usize,
+    predicate: usize,
+    p: &api::FilterPredicate,
+) -> Html {
     let on_remove = {
         let rules = props.rules.clone();
         let cb = props.on_change.clone();
+
         Callback::from(move |_: MouseEvent| {
             let mut next = rules.clone();
-            next[ri].predicates.remove(pi);
+            next[rule_index].predicates.remove(predicate);
             cb.emit(next);
         })
     };
@@ -168,25 +180,27 @@ fn view_predicate(props: &Props, ri: usize, pi: usize, p: &api::FilterPredicate)
         <div class="row input-group">
             <span class="input-label has-text">{p.kind().label()}</span>
 
-            <span class="fill">{view_selector(props, ri, pi, p)}</span>
+            {view_selector(props, rule_index, predicate, p)}
 
-            <button class="has-text" onclick={on_remove} title="Remove predicate">
+            <button class="danger" onclick={on_remove} title="Remove predicate">
                 <span class="icon x-mark" />
             </button>
         </div>
     }
 }
 
-fn view_selector(props: &Props, ri: usize, pi: usize, p: &api::FilterPredicate) -> Html {
+fn view_selector(props: &Props, index: usize, predicate: usize, p: &api::FilterPredicate) -> Html {
     match p {
         api::FilterPredicate::Sources(selected) => html! {
-            <div class="row input-group">
+            <>
                 {for props.sources.iter().copied().map(|source| {
                     let checked = selected.contains(&source);
                     let selected = selected.clone();
+
                     let on_toggle = {
                         let rules = props.rules.clone();
                         let cb = props.on_change.clone();
+
                         Callback::from(move |_: MouseEvent| {
                             let mut set = selected.clone();
                             if let Some(pos) = set.iter().position(|s| *s == source) {
@@ -195,7 +209,7 @@ fn view_selector(props: &Props, ri: usize, pi: usize, p: &api::FilterPredicate) 
                                 set.push(source);
                             }
                             let mut next = rules.clone();
-                            set_predicate(&mut next, ri, pi, api::FilterPredicate::Sources(set));
+                            set_predicate(&mut next, index, predicate, api::FilterPredicate::Sources(set));
                             cb.emit(next);
                         })
                     };
@@ -207,16 +221,18 @@ fn view_selector(props: &Props, ri: usize, pi: usize, p: &api::FilterPredicate) 
                         </span>
                     }
                 })}
-            </div>
+            </>
         },
         api::FilterPredicate::ReleaseTypes(selected) => html! {
-            <div class="row input-group">
+            <>
                 {for RELEASE_TYPES.iter().copied().map(|rt| {
                     let checked = selected.contains(&rt);
                     let selected = selected.clone();
+
                     let on_toggle = {
                         let rules = props.rules.clone();
                         let cb = props.on_change.clone();
+
                         Callback::from(move |_: MouseEvent| {
                             let mut set = selected.clone();
                             if let Some(pos) = set.iter().position(|t| *t == rt) {
@@ -225,7 +241,7 @@ fn view_selector(props: &Props, ri: usize, pi: usize, p: &api::FilterPredicate) 
                                 set.push(rt);
                             }
                             let mut next = rules.clone();
-                            set_predicate(&mut next, ri, pi, api::FilterPredicate::ReleaseTypes(set));
+                            set_predicate(&mut next, index, predicate, api::FilterPredicate::ReleaseTypes(set));
                             cb.emit(next);
                         })
                     };
@@ -237,15 +253,21 @@ fn view_selector(props: &Props, ri: usize, pi: usize, p: &api::FilterPredicate) 
                         </span>
                     }
                 })}
-            </div>
+            </>
         },
         api::FilterPredicate::Countries(selected) => {
             let on_change = {
                 let rules = props.rules.clone();
                 let cb = props.on_change.clone();
+
                 Callback::from(move |countries: Vec<api::Country>| {
                     let mut next = rules.clone();
-                    set_predicate(&mut next, ri, pi, api::FilterPredicate::Countries(countries));
+                    set_predicate(
+                        &mut next,
+                        index,
+                        predicate,
+                        api::FilterPredicate::Countries(countries),
+                    );
                     cb.emit(next);
                 })
             };
@@ -256,16 +278,24 @@ fn view_selector(props: &Props, ri: usize, pi: usize, p: &api::FilterPredicate) 
             let on_change = {
                 let rules = props.rules.clone();
                 let cb = props.on_change.clone();
+
                 Callback::from(move |e: Event| {
                     let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+
                     let networks = input
                         .value()
                         .split(',')
                         .map(|s| s.trim().to_owned())
                         .filter(|s| !s.is_empty())
                         .collect::<Vec<_>>();
+
                     let mut next = rules.clone();
-                    set_predicate(&mut next, ri, pi, api::FilterPredicate::Networks(networks));
+                    set_predicate(
+                        &mut next,
+                        index,
+                        predicate,
+                        api::FilterPredicate::Networks(networks),
+                    );
                     cb.emit(next);
                 })
             };

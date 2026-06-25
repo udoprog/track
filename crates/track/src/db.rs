@@ -2207,9 +2207,7 @@ impl Database {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            let text = air_date_filters
-                .as_deref()
-                .map(config::encode_filter_rules);
+            let text = air_date_filters.as_deref().map(config::encode_filter_rules);
             s.update_show_air_date_filters.execute((text, id))?;
             Ok(())
         });
@@ -2979,9 +2977,7 @@ impl Database {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            let text = release_filters
-                .as_deref()
-                .map(config::encode_filter_rules);
+            let text = release_filters.as_deref().map(config::encode_filter_rules);
             s.set_movie_release_filters.execute((text, id))?;
             Ok(())
         });

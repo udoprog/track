@@ -9,7 +9,12 @@ fn rel(source: RemoteSource, country: Country, network: &str, ts: i64) -> Episod
     }
 }
 
-fn mrel(source: RemoteSource, country: Country, release_type: ReleaseType, ts: i64) -> MovieRelease {
+fn mrel(
+    source: RemoteSource,
+    country: Country,
+    release_type: ReleaseType,
+    ts: i64,
+) -> MovieRelease {
     MovieRelease {
         source,
         country,
@@ -328,7 +333,13 @@ fn release_empty_rules_accept_all() {
 
     // No rules => accept everything, so the earliest (the premiere) wins.
     assert!(release_accepted(&releases[0], &[]));
-    assert_eq!(earliest_release(&releases, &[]).unwrap().inner().as_second(), 50);
+    assert_eq!(
+        earliest_release(&releases, &[])
+            .unwrap()
+            .inner()
+            .as_second(),
+        50
+    );
 }
 
 #[test]
@@ -346,7 +357,10 @@ fn release_rule_restricts_type() {
     // The premiere is excluded; earliest accepted is the digital release.
     assert!(!release_accepted(&releases[0], &rules));
     assert_eq!(
-        earliest_release(&releases, &rules).unwrap().inner().as_second(),
+        earliest_release(&releases, &rules)
+            .unwrap()
+            .inner()
+            .as_second(),
         200
     );
 }
