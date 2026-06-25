@@ -15,6 +15,14 @@ use crate::ui::{
     RemoteEditor, RemoteSourceKind, TimePreset, Tracked, TranslationsModal, Variant,
 };
 
+const ORPHAN_HINT: &str = r#"
+    These are orphaned watches of this series.
+    Orphaned watches are watches that are not associated
+    with any valid season and episode, and can occur if
+    the source of the series changes the season or
+    episode structure of the show.
+"#;
+
 struct WatchedState {
     context_anchor: NodeRef,
     watched: api::WatchedEpisode,
@@ -36,7 +44,6 @@ pub(crate) struct ShowDetail {
     episodes: Vec<api::Episode>,
     pending_episode: Option<(api::Code, api::EpisodeId)>,
     next_unwatched: Option<(api::Code, api::EpisodeId)>,
-    view_orphaned: bool,
     confirm_remove: bool,
     remove_anchor: NodeRef,
     syncing: bool,
@@ -195,6 +202,7 @@ pub(crate) struct Props {
     pub(crate) show_id: api::ShowId,
     #[prop_or_default]
     pub(crate) season: api::SeasonNumber,
+    pub(crate) orphaned: bool,
 }
 
 impl Component for ShowDetail {
@@ -243,7 +251,6 @@ impl Component for ShowDetail {
             episodes: Vec::new(),
             pending_episode: None,
             next_unwatched: None,
-            view_orphaned: false,
             confirm_remove: false,
             remove_anchor: NodeRef::default(),
             syncing: false,
@@ -335,6 +342,7 @@ impl Component for ShowDetail {
         };
 
         let link = ctx.link();
+        let props = ctx.props();
 
         html! {
             <>
@@ -367,6 +375,16 @@ impl Component for ShowDetail {
                     </div>
 
                     <div class={classes!("toolbar-dropdown", "desktop-input-group", (!self.actions_expanded).then_some("desktop-only"))}>
+                        if !self.orphaned.is_empty() || props.orphaned {
+                            <Button
+                                icon={if props.orphaned { "ellipsis-horizontal" } else { "exclamation-triangle" }}
+                                variant={Variant::Danger}
+                                title={if props.orphaned { "View orphaned watches" } else { "Hide orphaned watches" }}
+                                text="Orphaned watches"
+                                onclick={link.callback(|_| Msg::ToggleOrphaned)}
+                            />
+                        }
+
                         <Tracked tracked={show.tracked} ontoggle={link.callback(Msg::SetTracked)} />
 
                         if !show.remotes.is_empty() {
@@ -390,25 +408,39 @@ impl Component for ShowDetail {
                     </div>
                 </div>
 
-                if let Some(overview) = show.strings.overview() {
-                    <p class="overview">{overview}</p>
-                }
+                if props.orphaned {
+                    <p class="hint">{ORPHAN_HINT}</p>
 
-                <div class="detail-layout">
-                    <div class="mobile-only">
-                        if let Some(ref banner) = show.banner {
-                            <Image class="banner" src={banner.clone()} />
-                        } else if let Some(ref backdrop) = show.backdrop {
-                            <Image class="backdrop" src={backdrop.clone()} />
+                    <div class="detail-layout">
+                        if let Some(season) = self.selected() {
+                            { self.view_sidebar(ctx, show, season) }
+                        } else {
+                            <div id="detail-sidebar" />
+                        }
+
+                        { self.view_orphaned(ctx) }
+                    </div>
+                } else {
+                    if let Some(overview) = show.strings.overview() {
+                        <p class="overview">{overview}</p>
+                    }
+
+                    <div class="detail-layout">
+                        <div class="mobile-only">
+                            if let Some(ref banner) = show.banner {
+                                <Image class="banner" src={banner.clone()} />
+                            } else if let Some(ref backdrop) = show.backdrop {
+                                <Image class="backdrop" src={backdrop.clone()} />
+                            }
+                        </div>
+
+                        if let Some(season) = self.selected() {
+                            { self.view_sidebar(ctx, show, season) }
+
+                            { self.view_episodes(ctx, season) }
                         }
                     </div>
-
-                    if let Some(season) = self.selected() {
-                        { self.view_sidebar(ctx, show, season) }
-
-                        { self.view_episodes(ctx, season) }
-                    }
-                </div>
+                }
 
                 if self.image_modal {
                     { self.view_image_modal(ctx) }
@@ -530,7 +562,7 @@ impl Component for ShowDetail {
             return true;
         }
 
-        false
+        props.orphaned != old.orphaned
     }
 }
 
@@ -682,7 +714,7 @@ impl ShowDetail {
                 Ok(true)
             }
             Msg::SelectSeason(season) => {
-                if self.selected().map(|s| s.season) != Some(season) {
+                if self.selected().map(|s| s.season) != Some(season) || props.orphaned {
                     let id = props.show_id;
 
                     self.router.push(Route::ShowDetail(
@@ -690,17 +722,28 @@ impl ShowDetail {
                         ShowDetailQuery {
                             season,
                             episode: None,
+                            orphaned: false,
                         },
                     ));
                 }
 
                 self.expanded_seasons = false;
-                self.view_orphaned = false;
                 Ok(false)
             }
             Msg::ToggleExpandSeasons => {
                 self.expanded_seasons = !self.expanded_seasons;
-                self.view_orphaned = false;
+
+                if props.orphaned {
+                    self.router.push(Route::ShowDetail(
+                        props.show_id,
+                        ShowDetailQuery {
+                            season: props.season,
+                            episode: None,
+                            orphaned: false,
+                        },
+                    ));
+                }
+
                 Ok(true)
             }
             Msg::EpisodesLoaded(result) => {
@@ -780,8 +823,15 @@ impl ShowDetail {
                     self.episode_actions_expanded.remove(&episode);
                 }
 
-                if self.orphaned.is_empty() {
-                    self.view_orphaned = false;
+                if self.orphaned.is_empty() && props.orphaned {
+                    self.router.push(Route::ShowDetail(
+                        props.show_id,
+                        ShowDetailQuery {
+                            season: props.season,
+                            episode: None,
+                            orphaned: false,
+                        },
+                    ));
                 }
 
                 self._remove_watch_req = self
@@ -1145,7 +1195,6 @@ impl ShowDetail {
             Msg::OpenImageModal => {
                 self.image_modal = true;
                 self.settings_modal = false;
-                self.view_orphaned = false;
                 Ok(true)
             }
             Msg::CloseImageModal => {
@@ -1241,7 +1290,6 @@ impl ShowDetail {
             }
             Msg::OpenSettingsModal => {
                 self.settings_modal = true;
-                self.view_orphaned = false;
                 self.actions_expanded = false;
                 Ok(true)
             }
@@ -1352,7 +1400,6 @@ impl ShowDetail {
             Msg::OpenRemoteEditor => {
                 self.remote_editor = true;
                 self.settings_modal = false;
-                self.view_orphaned = false;
                 Ok(true)
             }
             Msg::CloseRemoteEditor => {
@@ -1479,7 +1526,6 @@ impl ShowDetail {
             }
             Msg::ToggleActionsExpanded => {
                 self.actions_expanded = !self.actions_expanded;
-                self.view_orphaned = false;
                 Ok(true)
             }
             Msg::ToggleEpisodeActionsExpanded(episode_id) => {
@@ -1498,7 +1544,15 @@ impl ShowDetail {
                 Ok(true)
             }
             Msg::ToggleOrphaned => {
-                self.view_orphaned = !self.view_orphaned;
+                self.router.push(Route::ShowDetail(
+                    props.show_id,
+                    ShowDetailQuery {
+                        season: props.season,
+                        episode: None,
+                        orphaned: !props.orphaned,
+                    },
+                ));
+
                 Ok(true)
             }
         }
@@ -1585,6 +1639,7 @@ impl ShowDetail {
                 OutlineEntry {
                     code: code.clone(),
                     label: code,
+                    seen: e.watched_count > 0,
                     pending: e.pending.is_some(),
                 }
             })
@@ -1780,19 +1835,13 @@ impl ShowDetail {
             <div class="detail-content">
                 <div class="column">
                     <div class="toolbar">
-                        <div class="column">
-                            if self.view_orphaned {
-                                <h2>{format!("{} orphaned episodes", self.orphaned.len())}</h2>
+                        <h2>
+                            if let Some(name) = season.strings.title() {
+                                {name}
                             } else {
-                                <h2>
-                                    if let Some(name) = season.strings.title() {
-                                        {name}
-                                    } else {
-                                        {season.season.long().to_string()}
-                                    }
-                                </h2>
+                                {season.season.long().to_string()}
                             }
-                        </div>
+                        </h2>
 
                         <div class="toolbar-toggle">
                             <div class="input-group">
@@ -1813,16 +1862,6 @@ impl ShowDetail {
 
                             <Button icon="photo" title="Season Graphics" text="Graphics" onclick={link.callback(|_| Msg::OpenSeasonImageModal)} />
 
-                            if !self.orphaned.is_empty() {
-                                <Button
-                                    icon={if self.view_orphaned { "ellipsis-horizontal" } else { "exclamation-triangle" }}
-                                    variant={Variant::Danger}
-                                    title="View orphaned watched episodes"
-                                    text="Show orphaned watches"
-                                    onclick={link.callback(|_| Msg::ToggleOrphaned)}
-                                />
-                            }
-
                             if let Some((label, on_remove_next)) = pending_episode {
                                 <a class="button primary" href={format!("#{label}")} onclick={toggle_menu} title="Jump to pending episode">
                                     <span class="icon chevron-down" />
@@ -1831,13 +1870,13 @@ impl ShowDetail {
 
                                 <Button icon="bookmark" variant={Variant::Danger} title="Remove pending" text={format!("Clear next episode {label}")} onclick={on_remove_next} />
                             } else if let Some((label, episode_id)) = next_unwatched {
-                                <MarkTimeMenu title="Make next episode" prompt={format!("Pending {label} since when?")} preset={next_episode_preset.clone()} on_confirm={link.callback(move |mark_time| Msg::OnWatchNext(episode_id, mark_time))}>
+                                <MarkTimeMenu class="mobile-has-text" title="Make next episode" prompt={format!("Pending {label} since when?")} preset={next_episode_preset.clone()} on_confirm={link.callback(move |mark_time| Msg::OnWatchNext(episode_id, mark_time))}>
                                     <span class="icon bookmark-slash" />
                                     <span class="mobile-only">{label}</span>
                                 </MarkTimeMenu>
                             }
 
-                            if !self.view_orphaned && watched_count < total {
+                            if watched_count < total {
                                 <MarkTimeMenu class="success mobile-has-text" title="Mark remaining episodes as watched" prompt="When did you watch the remaining episodes?" preset={Some(remaining_preset.clone())} on_confirm={watch_remaining}>
                                     <span class="icon check" />
                                     <span class="mobile-only">{"Remaining"}</span>
@@ -1859,13 +1898,9 @@ impl ShowDetail {
                     <div class="text-muted">{"No episodes."}</div>
                 }
 
-                if self.view_orphaned {
-                    { self.view_orphaned(ctx) }
-                } else {
-                    <div class="episodes">
-                        { for self.episodes.iter().map(|ep| self.view_episode(ctx, ep)) }
-                    </div>
-                }
+                <div class="episodes">
+                    { for self.episodes.iter().map(|ep| self.view_episode(ctx, ep)) }
+                </div>
             </div>
         }
     }
@@ -1960,7 +1995,7 @@ impl ShowDetail {
                         </span>
 
                         <content>
-                            if let Some(aired) = episode.human_aired(self.time.clone()) {
+                            if let Some(aired) = episode.human_date_time(self.time.clone()) {
                                 <span>{if aired.is_past() { "Aired" } else { "Airs" }}</span>
                                 {aired.lower().view()}
                             } else {
@@ -2041,9 +2076,8 @@ impl ShowDetail {
                                                     <ContextMenu prompt="Where do you want to move watch at" label={w.watched.timestamp.human_date_time(self.time.clone())} anchor={w.context_anchor.clone()} on_close={link.callback(|_| Msg::CancelFixWatched)}>
                                                         <EpisodePicker
                                                             show_id={show_id}
-                                                            seasons={self.seasons.clone()}
-                                                            selected_season={episode.season}
-                                                            selected_episode={episode.episode}
+                                                            season={episode.season}
+                                                            episode={episode.episode}
                                                             on_confirm={link.callback(move |(season, ep)| Msg::MoveWatched(wid, season, ep))}
                                                             on_cancel={link.callback(|_| Msg::CancelFixWatched)}
                                                         />
@@ -2082,67 +2116,51 @@ impl ShowDetail {
         let link = ctx.link();
         let show_id = props.show_id;
 
-        // The first unwatched episode in the current season is the default
-        // selected value.
-        let selected_episode = || {
-            self.selected().and_then(|season| {
-                for e in self.episodes.iter().filter(|ep| ep.season == season.season) {
-                    let Some(watched) = self.watched_by_episode.get(&e.id) else {
-                        return Some(e.episode);
-                    };
-
-                    if watched.is_empty() {
-                        return Some(e.episode);
-                    }
-                }
-
-                None
-            })
-        };
-
         html! {
-            <div class="table">
-                { for self.orphaned.iter().map(|w| {
-                    let wid = w.watched.id;
-                    let kind = api::WatchedKind::Episode { show: show_id, episode: api::EpisodeId::new(0) };
+            <div class="detail-content">
+                <div class="table">
+                    { for self.orphaned.iter().map(|w| {
+                        let id = w.watched.id;
+                        let kind = api::WatchedKind::Episode { show: show_id, episode: api::EpisodeId::new(0) };
 
-                    html! {
-                        <div class="row-split">
-                            <div class="row">
-                                <span class="text-muted">{w.watched.code()}</span>
-                                <span>{w.watched.timestamp.human_date_time(self.time.clone())}</span>
-                            </div>
+                        html! {
+                            <div class="row-split">
+                                <div class="row">
+                                    <span class="text-muted">{w.watched.code()}</span>
+                                    <span>{w.watched.timestamp.human_date_time(self.time.clone())}</span>
+                                </div>
 
-                            <div class="input-group">
-                                <Button icon="pencil-square" title="Move to episode" onclick={link.callback(move |_| Msg::FixWatched(wid))} />
+                                <div ref={w.context_anchor.clone()} class="input-group">
+                                    <Button icon="pencil-square" title="Move to episode" onclick={link.callback(move |_| Msg::FixWatched(id))} />
 
-                                if self.fixing_watched == Some(wid) {
-                                    <ContextMenu prompt="Where do you want to move watch at" label={w.watched.timestamp.human_date_time(self.time.clone())} anchor={w.context_anchor.clone()} on_close={ctx.link().callback(|_| Msg::CancelFixWatched)}>
+                                    <Button icon="trash" variant={Variant::Danger} title="Remove" text="Remove" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(id))} />
+                                </div>
+
+                                if self.fixing_watched == Some(id) {
+                                    <ContextMenu anchor={w.context_anchor.clone()} prompt="Where do you want to move orphaned watch at" label={w.watched.timestamp.human_date_time(self.time.clone())} on_close={ctx.link().callback(|_| Msg::CancelFixWatched)}>
                                         <EpisodePicker
                                             {show_id}
-                                            seasons={self.seasons.clone()}
-                                            selected_season={self.selected().map(|s| s.season)}
-                                            selected_episode={selected_episode()}
-                                            on_confirm={link.callback(move |(season, ep)| Msg::MoveWatched(wid, season, ep))}
+                                            season={w.watched.season}
+                                            episode={w.watched.episode}
+                                            timestamp={w.watched.timestamp}
+                                            on_confirm={link.callback(move |(season, ep)| Msg::MoveWatched(id, season, ep))}
                                             on_cancel={link.callback(|_| Msg::CancelFixWatched)}
                                         />
                                     </ContextMenu>
                                 }
 
-                                <Button icon="trash" variant={Variant::Danger} title="Remove" text="Remove" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} />
-
-                                if self.confirm_remove_watch == Some(wid) {
-                                    <ContextMenu prompt="Remove watch at" label={w.watched.timestamp.human_date_time(self.time.clone())} anchor={w.context_anchor.clone()} on_close={ctx.link().callback(|_| Msg::CancelRemoveWatch)}>
+                                if self.confirm_remove_watch == Some(id) {
+                                    <ContextMenu anchor={w.context_anchor.clone()} prompt="Remove orphaned watch at" label={w.watched.timestamp.human_date_time(self.time.clone())} on_close={ctx.link().callback(|_| Msg::CancelRemoveWatch)}>
                                         <ConfirmDanger
-                                            on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, kind))}
+                                            on_confirm={link.callback(move |_| Msg::RemoveWatched(id, kind))}
                                             on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
                                         />
                                     </ContextMenu>
                                 }
                             </div>
-                        </div>
-                    }
-                }) }
+                        }
+                    }) }
+                </div>
             </div>
         }
     }

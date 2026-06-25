@@ -287,6 +287,12 @@ struct NextEpisodeRow {
 }
 
 #[derive(Row)]
+struct EpisodeMatchRow {
+    season: SeasonNumber,
+    episode: u32,
+}
+
+#[derive(Row)]
 struct PendingEpisodeAiredRow {
     aired: Option<Timestamp>,
     timestamp: Timestamp,
@@ -755,6 +761,14 @@ struct InnerRead {
     #[sql = "JOIN episodes e ON e.id = p.episode_id"]
     #[sql = "WHERE p.show_id = ?"]
     pending_episode_aired_for_show: TypedStatement<(ShowId,), PendingEpisodeAiredRow>,
+    #[sql = "SELECT e.season, e.episode"]
+    #[sql = "FROM episodes e"]
+    #[sql = "WHERE e.show_id = ?1"]
+    #[sql = "    AND e.aired IS NOT NULL"]
+    #[sql = "    AND e.season <> 0"]
+    #[sql = "ORDER BY ABS(e.aired - ?2)"]
+    #[sql = "LIMIT 1"]
+    find_episode_by_timestamp: TypedStatement<(ShowId, Timestamp), EpisodeMatchRow>,
     #[sql = "SELECT e.id, e.aired"]
     #[sql = "FROM episodes e"]
     #[sql = "WHERE e.show_id = ?1"]
@@ -1932,6 +1946,31 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
+    /// Find the episode whose `aired` timestamp is closest to `timestamp`,
+    /// across the whole show. Only considers episodes that have aired and skips
+    /// specials.
+    pub(crate) async fn find_episode_by_timestamp(
+        &self,
+        show_id: ShowId,
+        timestamp: Timestamp,
+    ) -> Result<Option<api::EpisodeMatch>> {
+        let mut s = self.inner.clone().shared().await?;
+
+        let result = spawn_blocking(move || {
+            let row = s
+                .find_episode_by_timestamp
+                .bind((show_id, timestamp))?
+                .first()?;
+
+            Ok(row.map(|r| api::EpisodeMatch {
+                season: r.season,
+                episode: r.episode,
+            }))
+        });
+
+        result.await?
+    }
+
     pub(crate) async fn episodes(
         &self,
         show_id: ShowId,

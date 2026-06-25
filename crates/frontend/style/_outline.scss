@@ -38,6 +38,11 @@
         visibility: hidden;
     }
 
+    &.seen {
+        color: $color-success;
+        font-weight: $bold-weight;
+    }
+
     &.pending {
         color: $color-primary;
         font-weight: $bold-weight;

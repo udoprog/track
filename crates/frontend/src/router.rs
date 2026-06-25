@@ -347,6 +347,8 @@ impl QueueQuery {
 #[derive(Default, Debug, Clone, PartialEq)]
 pub(super) struct ShowDetailQuery {
     pub(super) season: api::SeasonNumber,
+    /// Whether the show details are currently displaying orphaned episodes.
+    pub(super) orphaned: bool,
     /// Episode to scroll to, emitted as the URL fragment (`#S01E05`). Write-only:
     /// it is never parsed back from the location, since the fragment is read
     /// directly by the detail page (see [`Router::hash`]).
@@ -360,6 +362,10 @@ impl ShowDetailQuery {
         if self.season != api::SeasonNumber::FIRST {
             let ordinal = self.season.ordinal().to_string();
             s.append_pair("season", &ordinal);
+        }
+
+        if self.orphaned {
+            s.append_pair("orphaned", "true");
         }
 
         s.finish()
@@ -376,6 +382,9 @@ impl ShowDetailQuery {
                         .ok()
                         .map(api::SeasonNumber::from_ordinal)
                         .unwrap_or_default();
+                }
+                "orphaned" => {
+                    this.orphaned = value.as_ref() == "true";
                 }
                 _ => continue,
             }

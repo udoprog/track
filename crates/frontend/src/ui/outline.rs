@@ -17,6 +17,7 @@ use crate::error::{CustomContext, Error, Message};
 pub(crate) struct OutlineEntry {
     pub(crate) code: AttrValue,
     pub(crate) label: AttrValue,
+    pub(crate) seen: bool,
     pub(crate) pending: bool,
 }
 
@@ -73,6 +74,7 @@ impl Drop for OutlineHandle {
 struct OutlineMark {
     label: AttrValue,
     top: f64,
+    seen: bool,
     pending: bool,
 }
 
@@ -227,7 +229,7 @@ impl Component for Outline {
                     let hidden = self.hidden.get(i).copied().unwrap_or(false);
 
                     html! {
-                        <div class={classes!("outline-sample", hidden.then_some("hidden"), mark.pending.then_some("pending"))} style={format!("top: {}%;", mark.top)} title={mark.label.clone()}>
+                        <div class={classes!("outline-sample", hidden.then_some("hidden"), mark.seen.then_some("seen"), mark.pending.then_some("pending"))} style={format!("top: {}%;", mark.top)} title={mark.label.clone()}>
                             {mark.label.clone()}
                         </div>
                     }
@@ -347,6 +349,7 @@ impl Outline {
             out.push(OutlineMark {
                 label: entry.label.clone(),
                 top,
+                seen: entry.seen && !entry.pending,
                 pending: entry.pending,
             });
         }

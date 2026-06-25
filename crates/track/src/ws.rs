@@ -227,6 +227,16 @@ impl WsHandler {
                 let watched = self.db.episodes_watched(req.show_id).await?;
                 outgoing.write(api::ListEpisodesResponse { episodes, watched });
             }
+            api::Request::FindEpisodeByTimestamp => {
+                let req = incoming
+                    .read::<api::FindEpisodeByTimestampRequest>()
+                    .context("Expected a request payload")?;
+                let matched = self
+                    .db
+                    .find_episode_by_timestamp(req.show_id, req.timestamp)
+                    .await?;
+                outgoing.write(api::FindEpisodeByTimestampResponse { matched });
+            }
             api::Request::GetMovie => {
                 let req = incoming
                     .read::<api::GetMovieRequest>()

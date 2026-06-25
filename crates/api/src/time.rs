@@ -1,5 +1,6 @@
 use core::fmt;
 use core::str::FromStr;
+use std::time::Duration;
 
 use jiff::Timestamp as JiffTimestamp;
 use jiff::civil::Date as JiffDate;
@@ -90,7 +91,7 @@ impl Timestamp {
 
     /// The wall-clock timestamp `duration` from now.
     #[inline]
-    pub fn from_now(duration: std::time::Duration) -> Self {
+    pub fn from_now(duration: Duration) -> Self {
         let ms = JiffTimestamp::now().as_millisecond() + duration.as_millis() as i64;
         Self(JiffTimestamp::from_millisecond(ms).unwrap_or_else(|_| JiffTimestamp::now()))
     }
@@ -98,9 +99,17 @@ impl Timestamp {
     /// The duration from `earlier` until this timestamp, or `None` if this
     /// timestamp is not after `earlier`.
     #[inline]
-    pub fn checked_duration_since(self, earlier: Timestamp) -> Option<std::time::Duration> {
+    pub fn checked_duration_since(self, earlier: Timestamp) -> Option<Duration> {
         let ms = self.0.as_millisecond() - earlier.0.as_millisecond();
-        u64::try_from(ms).ok().map(std::time::Duration::from_millis)
+        u64::try_from(ms).ok().map(Duration::from_millis)
+    }
+
+    /// The absolute duration between this timestamp and `earlier`, regardless
+    /// of which is earlier.
+    #[inline]
+    pub fn absolute_duration_since(self, earlier: Timestamp) -> Duration {
+        let ms = self.0.as_millisecond() - earlier.0.as_millisecond();
+        Duration::from_millis(ms.unsigned_abs())
     }
 
     #[inline]

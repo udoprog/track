@@ -1,24 +1,41 @@
+use core::fmt;
+
+use api::Timed as _;
 use web_sys::Event;
 use yew::prelude::*;
 
 use musli_web::web03::prelude::*;
 
 use crate::SetupChannel;
+use crate::background::Background;
+use crate::error::{CustomContext as _, Error, Message};
 use crate::ui::{Button, Variant};
 
 pub(crate) struct EpisodePicker {
     channel: ws::Channel,
-    selected_season: Option<api::SeasonNumber>,
+    seasons: Vec<api::Season>,
     episodes: Vec<api::Episode>,
-    selected_episode: Option<u32>,
+    // The selected season.
+    season: Option<api::SeasonNumber>,
+    // The selected episode.
+    episode: Option<u32>,
+    time: api::TimeInfo,
+    background: Background,
+    // Ensures the timestamp-based best match only resolves once.
+    did_best_match: bool,
+    _time_handle: ContextHandle<api::TimeInfo>,
     _setup: SetupChannel,
-    _req: ws::Request,
+    _seasons_req: ws::Request,
+    _episodes_req: ws::Request,
+    _best_match_req: ws::Request,
 }
 
 pub(crate) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
     SelectSeason(api::SeasonNumber),
+    SeasonsLoaded(Result<ws::Packet<api::ListSeasons>, ws::Error>),
     EpisodesLoaded(Result<ws::Packet<api::ListEpisodes>, ws::Error>),
+    BestMatchLoaded(Result<ws::Packet<api::FindEpisodeByTimestamp>, ws::Error>),
     SelectEpisode(u32),
     Confirm,
     Cancel,
@@ -27,11 +44,12 @@ pub(crate) enum Msg {
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
     pub(crate) show_id: api::ShowId,
-    pub(crate) seasons: Vec<api::Season>,
     #[prop_or_default]
-    pub(crate) selected_season: Option<api::SeasonNumber>,
+    pub(crate) season: Option<api::SeasonNumber>,
     #[prop_or_default]
-    pub(crate) selected_episode: Option<u32>,
+    pub(crate) episode: Option<u32>,
+    #[prop_or_default]
+    pub(crate) timestamp: Option<api::Timestamp>,
     pub(crate) on_confirm: Callback<(api::SeasonNumber, u32)>,
     pub(crate) on_cancel: Callback<()>,
 }
@@ -46,81 +64,40 @@ impl Component for EpisodePicker {
             .context::<ws::Handle>(Callback::noop())
             .expect("Expected ws::Handle in context");
 
-        let selected_season = match ctx.props().selected_season {
-            Some(selected_season) => Some(selected_season),
-            None => ctx
-                .props()
-                .seasons
-                .iter()
-                .find(|s| !s.season.is_special())
-                .or_else(|| ctx.props().seasons.first())
-                .map(|s| s.season),
-        };
+        let (background, _) = ctx
+            .link()
+            .context::<Background>(Callback::noop())
+            .expect("Expected Background in context");
+
+        let (time, _time_handle) = ctx
+            .link()
+            .context::<api::TimeInfo>(Callback::noop())
+            .expect("Expected api::TimeInfo in context");
 
         let _setup = SetupChannel::new(ws, ctx.link().callback(Msg::Channel));
 
-        tracing::warn!(selected_episode = ?ctx.props().selected_episode);
-
         Self {
             channel: ws::Channel::default(),
-            selected_season,
+            seasons: Vec::new(),
             episodes: Vec::new(),
-            selected_episode: ctx.props().selected_episode,
+            season: ctx.props().season,
+            episode: ctx.props().episode,
+            time,
+            background,
+            did_best_match: false,
+            _time_handle,
             _setup,
-            _req: ws::Request::default(),
+            _seasons_req: ws::Request::default(),
+            _episodes_req: ws::Request::default(),
+            _best_match_req: ws::Request::default(),
         }
     }
 
     fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
-        match msg {
-            Msg::Channel(result) => {
-                self.channel = result.unwrap_or_default();
-                if self.channel.id() != ws::ChannelId::NONE
-                    && let Some(season) = self.selected_season
-                {
-                    self.load_episodes(ctx, season);
-                }
-                false
-            }
-            Msg::SelectSeason(season) => {
-                self.selected_season = Some(season);
-                self.episodes.clear();
-                self.selected_episode = None;
-                self.load_episodes(ctx, season);
-                true
-            }
-            Msg::EpisodesLoaded(result) => {
-                if let Ok(packet) = result
-                    && let Ok(resp) = packet.decode()
-                {
-                    self.episodes = resp.episodes;
-
-                    if let Some(selected_episode) = self.selected_episode
-                        && !self
-                            .episodes
-                            .iter()
-                            .any(|ep| ep.episode == selected_episode)
-                    {
-                        self.selected_episode = None;
-                    }
-                }
-
-                true
-            }
-            Msg::SelectEpisode(episode) => {
-                self.selected_episode = Some(episode);
-                false
-            }
-            Msg::Confirm => {
-                if let (Some(season), Some(episode)) = (self.selected_season, self.selected_episode)
-                {
-                    ctx.props().on_confirm.emit((season, episode));
-                }
-
-                false
-            }
-            Msg::Cancel => {
-                ctx.props().on_cancel.emit(());
+        match self.try_update(ctx, msg) {
+            Ok(changed) => changed,
+            Err(error) => {
+                self.background.error(error);
                 false
             }
         }
@@ -128,7 +105,6 @@ impl Component for EpisodePicker {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let link = ctx.link();
-        let props = ctx.props();
 
         let on_season_change = link.callback(|e: Event| {
             let select: web_sys::HtmlSelectElement = e.target_unchecked_into();
@@ -142,33 +118,40 @@ impl Component for EpisodePicker {
             Msg::SelectEpisode(n)
         });
 
-        let can_confirm = self.selected_season.is_some() && self.selected_episode.is_some();
+        let can_confirm = self.season.is_some() && self.episode.is_some();
 
         html! {
-            <div class="column">
-                <div class="row align-end">
-                    <select class="input-select" onchange={on_season_change}>
-                        { for props.seasons.iter().map(|s| {
-                            let value = s.season.ordinal().to_string();
-                            let selected = self.selected_season == Some(s.season);
-                            html! { <option {value} {selected}>{s.season.long().to_string()}</option> }
-                        }) }
-                    </select>
+            <div class="column align-end">
+                <select class="input-select" onchange={on_season_change}>
+                    { for self.seasons.iter().map(|s| {
+                        let value = s.season.ordinal().to_string();
+                        let selected = self.season == Some(s.season);
 
-                    <select class="input-select" onchange={on_episode_change} disabled={self.episodes.is_empty()}>
-                        { for self.episodes.iter().map(|ep| {
-                            let value = ep.episode.to_string();
-                            let label = format!("E{:02}", ep.episode);
-                            let selected = self.selected_episode == Some(ep.episode);
-                            html! { <option {value} {selected}>{label}</option> }
-                        }) }
-                    </select>
+                        html! {
+                            <option {value} {selected}>
+                                {format_season_string(s, self.time.clone()).to_string()}
+                            </option>
+                        }
+                    }) }
+                </select>
 
-                    <div class="input-group">
-                        <Button icon="x-mark" title="Cancel" onclick={link.callback(|_| Msg::Cancel)} />
+                <select class="input-select" onchange={on_episode_change} disabled={self.episodes.is_empty()}>
+                    { for self.episodes.iter().map(|e| {
+                        let value = e.episode.to_string();
+                        let selected = self.episode == Some(e.episode);
 
-                        <Button icon="check" title="Confirm" variant={Variant::Success} disabled={!can_confirm} onclick={link.callback(|_| Msg::Confirm)} />
-                    </div>
+                        html! {
+                            <option {value} {selected}>
+                                {format_episode_string(e, self.time.clone()).to_string()}
+                            </option>
+                        }
+                    }) }
+                </select>
+
+                <div class="input-group">
+                    <Button icon="x-mark" title="Cancel" onclick={link.callback(|_| Msg::Cancel)} />
+
+                    <Button icon="check" title="Confirm" variant={Variant::Success} disabled={!can_confirm} onclick={link.callback(|_| Msg::Confirm)} />
                 </div>
             </div>
         }
@@ -176,8 +159,107 @@ impl Component for EpisodePicker {
 }
 
 impl EpisodePicker {
+    fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
+        match msg {
+            Msg::Channel(result) => {
+                self.channel = result.unwrap_or_default();
+
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self.load_seasons(ctx);
+
+                    if let (Some(ts), false) = (ctx.props().timestamp, self.did_best_match) {
+                        self.load_best_match(ctx, ts);
+                    } else if let Some(season) = self.season {
+                        self.load_episodes(ctx, season);
+                    }
+                }
+
+                Ok(false)
+            }
+            Msg::SelectSeason(season) => {
+                self.season = Some(season);
+                self.episodes.clear();
+                self.episode = None;
+                self.load_episodes(ctx, season);
+                Ok(true)
+            }
+            Msg::SeasonsLoaded(result) => {
+                let packet = result
+                    .context(Message::LoadingSeasons)?
+                    .decode()
+                    .context(Message::LoadingSeasons)?;
+
+                self.seasons = packet.seasons;
+                Ok(true)
+            }
+            Msg::EpisodesLoaded(result) => {
+                let packet = result
+                    .context(Message::LoadingEpisodes)?
+                    .decode()
+                    .context(Message::LoadingEpisodes)?;
+
+                self.episodes = packet.episodes;
+                Ok(true)
+            }
+            Msg::BestMatchLoaded(result) => {
+                let packet = result
+                    .context(Message::LoadingEpisodes)?
+                    .decode()
+                    .context(Message::LoadingEpisodes)?;
+
+                self.did_best_match = true;
+
+                if let Some(matched) = packet.matched {
+                    self.season = Some(matched.season);
+                    self.episode = Some(matched.episode);
+                    self.load_episodes(ctx, matched.season);
+                }
+
+                Ok(true)
+            }
+            Msg::SelectEpisode(episode) => {
+                self.episode = Some(episode);
+                Ok(false)
+            }
+            Msg::Confirm => {
+                if let (Some(season), Some(episode)) = (self.season, self.episode) {
+                    ctx.props().on_confirm.emit((season, episode));
+                }
+
+                Ok(false)
+            }
+            Msg::Cancel => {
+                ctx.props().on_cancel.emit(());
+                Ok(false)
+            }
+        }
+    }
+
+    fn load_best_match(&mut self, ctx: &Context<Self>, timestamp: api::Timestamp) {
+        self._best_match_req = self
+            .channel
+            .request()
+            .body(api::FindEpisodeByTimestampRequest {
+                show_id: ctx.props().show_id,
+                timestamp,
+            })
+            .on_packet(ctx.link().callback(Msg::BestMatchLoaded))
+            .send();
+    }
+
+    fn load_seasons(&mut self, ctx: &Context<Self>) {
+        self._seasons_req = self
+            .channel
+            .request()
+            .body(api::ListSeasonsRequest {
+                show_id: ctx.props().show_id,
+            })
+            .on_packet(ctx.link().callback(Msg::SeasonsLoaded))
+            .send();
+    }
+
     fn load_episodes(&mut self, ctx: &Context<Self>, season: api::SeasonNumber) {
-        self._req = self
+        self._episodes_req = self
             .channel
             .request()
             .body(api::ListEpisodesRequest {
@@ -187,4 +269,40 @@ impl EpisodePicker {
             .on_packet(ctx.link().callback(Msg::EpisodesLoaded))
             .send();
     }
+}
+
+fn format_season_string(season: &api::Season, time: api::TimeInfo) -> impl fmt::Display + '_ {
+    fmt::from_fn(move |f| {
+        if let Some(title) = season.strings.title() {
+            write!(f, "{} - {}", season.season.short(), title)?;
+        } else {
+            write!(f, "{}", season.season.long())?;
+        }
+
+        if let Some(date_time) = season.human_date_time(time.clone()) {
+            write!(f, " - {date_time}")?;
+        }
+
+        Ok(())
+    })
+}
+
+fn format_episode_string(e: &api::Episode, time: api::TimeInfo) -> impl fmt::Display + '_ {
+    fmt::from_fn(move |f| {
+        if let Some(title) = e.strings.title() {
+            write!(f, "{title}")?;
+        } else {
+            write!(f, "E{}", e.episode)?;
+        }
+
+        if let Some(date_time) = e.human_date_time(time.clone()) {
+            write!(f, " - {date_time}")?;
+        }
+
+        if e.watched_count > 0 {
+            write!(f, " - Watched {} time(s)", e.watched_count)?;
+        }
+
+        Ok(())
+    })
 }

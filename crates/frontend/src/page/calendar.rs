@@ -151,7 +151,7 @@ impl Component for Calendar {
                                                     let episode = entry.episodes.last().map(|ep| ep.code());
                                                     let onclick = link.callback(move |_| {
                                                         let season = episode.map(|e| e.season).unwrap_or_default();
-                                                        Msg::Navigate(Route::ShowDetail(show_id, ShowDetailQuery { season, episode }))
+                                                        Msg::Navigate(Route::ShowDetail(show_id, ShowDetailQuery { season, episode, orphaned: false }))
                                                     });
 
                                                     html! {
@@ -167,7 +167,7 @@ impl Component for Calendar {
                                                             {for entry.episodes.iter().map(move |ep| {
                                                                 let episode = ep.code();
                                                                 let onclick = link.callback(move |_|
-                                                                    Msg::Navigate(Route::ShowDetail(show_id, ShowDetailQuery { season: episode.season, episode: Some(episode) }))
+                                                                    Msg::Navigate(Route::ShowDetail(show_id, ShowDetailQuery { season: episode.season, episode: Some(episode), orphaned: false }))
                                                                 );
 
                                                                 html! {

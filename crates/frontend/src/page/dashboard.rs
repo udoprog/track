@@ -458,12 +458,14 @@ impl Dashboard {
                 on_navigate_episode = ctx.link().callback({
                     let season = *season;
                     let code = api::Code::new(season, *number);
+
                     move |_| {
                         Msg::Navigate(Route::ShowDetail(
                             show,
                             ShowDetailQuery {
                                 season,
                                 episode: Some(code),
+                                orphaned: false,
                             },
                         ))
                     }
@@ -556,7 +558,7 @@ impl Dashboard {
                     <div class="pending-content">
                         {title}
 
-                        if let Some(s) = pending.human_aired(self.time.clone()) {
+                        if let Some(s) = pending.human_date_time(self.time.clone()) {
                             <span class="pending-date">{s}</span>
                         }
                     </div>

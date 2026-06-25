@@ -341,7 +341,7 @@ impl App {
             },
             Route::ShowDetail(show_id, ref q) => {
                 html! {
-                    <ShowDetail {show_id} season={q.season} />
+                    <ShowDetail {show_id} season={q.season} orphaned={q.orphaned} />
                 }
             }
             Route::MovieDetail(movie_id) => {

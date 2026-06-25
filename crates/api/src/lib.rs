@@ -1532,9 +1532,14 @@ pub struct Pending {
 pub trait Timed {
     fn aired(&self) -> Option<Timestamp>;
 
-    fn human_aired(&self, time: TimeInfo) -> Option<HumanDateTime> {
+    fn human_date_time(&self, time: TimeInfo) -> Option<HumanDateTime> {
         let ts = self.aired()?;
         Some(ts.human_date_time(time))
+    }
+
+    fn date(&self, time: TimeInfo) -> Option<Date> {
+        let ts = self.aired()?;
+        Some(ts.date(time))
     }
 }
 
@@ -1542,6 +1547,13 @@ impl Timed for Episode {
     #[inline]
     fn aired(&self) -> Option<Timestamp> {
         self.aired
+    }
+}
+
+impl Timed for Season {
+    #[inline]
+    fn aired(&self) -> Option<Timestamp> {
+        self.air_date
     }
 }
 
@@ -1887,6 +1899,26 @@ pub struct ListEpisodesRequest {
 pub struct ListEpisodesResponse {
     pub episodes: Vec<Episode>,
     pub watched: Vec<WatchedEpisode>,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct FindEpisodeByTimestampRequest {
+    pub show_id: ShowId,
+    pub timestamp: Timestamp,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct EpisodeMatch {
+    pub season: SeasonNumber,
+    pub episode: u32,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct FindEpisodeByTimestampResponse {
+    pub matched: Option<EpisodeMatch>,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -2562,6 +2594,12 @@ api::define! {
     impl Endpoint for ListEpisodes {
         impl Request for ListEpisodesRequest;
         type Response<'de> = ListEpisodesResponse;
+    }
+
+    pub type FindEpisodeByTimestamp;
+    impl Endpoint for FindEpisodeByTimestamp {
+        impl Request for FindEpisodeByTimestampRequest;
+        type Response<'de> = FindEpisodeByTimestampResponse;
     }
 
     pub type GetMovie;
