@@ -601,9 +601,9 @@ fn supported(
 
     let base = language.to_id().into_iter().chain(language.to_part1());
 
-    base.flat_map(move |l| {
-        if available.contains(l) {
-            return Some(l);
+    base.flat_map(move |id| {
+        if available.contains(id) {
+            return Some(id);
         }
 
         None

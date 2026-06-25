@@ -362,6 +362,8 @@ impl Client {
         #[derive(Debug, Deserialize)]
         struct EpisodeResponse {
             #[serde(default)]
+            name: Option<String>,
+            #[serde(default)]
             episode_number: u32,
             #[serde(default)]
             air_date: Option<String>,
@@ -383,6 +385,11 @@ impl Client {
 
         for e in resp.episodes {
             updates.push(EpisodeInfo {
+                original_name: e
+                    .name
+                    .as_ref()
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty()),
                 season,
                 number: e.episode_number,
                 aired: opt_date(e.air_date.as_deref())
@@ -593,6 +600,7 @@ pub(crate) struct SeasonInfo {
 }
 
 pub(crate) struct EpisodeInfo {
+    pub original_name: Option<String>,
     pub season: SeasonNumber,
     pub number: u32,
     pub aired: Option<Timestamp>,

@@ -1,6 +1,5 @@
-use core::mem;
-
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
 use api::{
@@ -248,18 +247,19 @@ struct SeasonDraft {
     poster: Option<Image>,
     /// This is set by tvdb to indicate that languages which are available for
     /// names.
-    translations: HashSet<String>,
+    tvdb_translations: Arc<HashSet<String>>,
 }
 
 /// An episode's metadata contributed by the base layer.
 struct EpisodeDraft {
     tvdb_id: Option<u32>,
+    original_name: Option<String>,
     absolute_number: Option<u32>,
     aired: Option<api::Timestamp>,
     screenshot: Option<Image>,
     /// This is set by tvdb to indicate that languages which are available for
     /// names.
-    translations: HashSet<String>,
+    tvdb_translations: Arc<HashSet<String>>,
 }
 
 /// An episode air-date release accumulated from an air-date layer, keyed by
@@ -397,7 +397,7 @@ async fn tmdb_show_layer(
     do_air_date: bool,
     remote: &RemoteClients,
 ) -> Result<()> {
-    tracing::info!(tmdb_id, do_base, do_air_date, "Fetching TMDB show");
+    tracing::info!(tmdb_id, do_base, do_air_date, "Show");
 
     let info = remote.fetch_tmdb_show(tmdb_id).await?;
 
@@ -435,7 +435,7 @@ async fn tmdb_show_layer(
             entry.poster = season.poster.clone().map(Image::from);
         }
 
-        tracing::info!(tmdb_id, ?season.number, "Fetching TMDB season episodes");
+        tracing::info!(tmdb_id, ?season.number, "Season episodes");
 
         for e in remote
             .fetch_tmdb_season_episodes(tmdb_id, season.number)
@@ -446,10 +446,11 @@ async fn tmdb_show_layer(
                     (e.season, e.number),
                     EpisodeDraft {
                         tvdb_id: None,
+                        original_name: e.original_name.clone(),
                         absolute_number: None,
                         aired: e.aired,
                         screenshot: e.filename.map(Image::from),
-                        translations: HashSet::new(),
+                        tvdb_translations: Arc::new(HashSet::new()),
                     },
                 );
             }
@@ -489,7 +490,7 @@ async fn tvdb_show_layer(
     do_air_date: bool,
     remote: &RemoteClients,
 ) -> Result<()> {
-    tracing::info!(tvdb_id, do_base, do_air_date, "Fetching TVDB show");
+    tracing::info!(tvdb_id, do_base, do_air_date, "Show");
 
     let info = remote.fetch_tvdb_show(tvdb_id).await?;
 
@@ -528,18 +529,22 @@ async fn tvdb_show_layer(
         for s in info.seasons {
             let entry = draft.seasons.entry(s.number).or_default();
             entry.tvdb_id = Some(s.id);
-            entry
-                .translations
-                .extend(s.name_translations.into_iter().map(|n| n.to_lowercase()));
-            entry.translations.extend(
+
+            let mut translations = HashSet::new();
+
+            translations.extend(s.name_translations.into_iter().map(|n| n.to_lowercase()));
+
+            translations.extend(
                 s.overview_translations
                     .into_iter()
                     .map(|n| n.to_lowercase()),
             );
+
+            entry.tvdb_translations = Arc::new(translations);
         }
     }
 
-    tracing::info!(tvdb_id, "Fetching TVDB episodes");
+    tracing::info!(tvdb_id, "Episodes");
 
     let episodes = remote.fetch_tvdb_episodes(tvdb_id).await?;
 
@@ -568,16 +573,17 @@ async fn tvdb_show_layer(
                 .into_iter()
                 .chain(e.overview_translations.into_iter())
                 .map(|n| n.to_lowercase())
-                .collect();
+                .collect::<HashSet<_>>();
 
             draft.episodes.insert(
                 (e.season, e.number),
                 EpisodeDraft {
                     tvdb_id: Some(e.id),
+                    original_name: None,
                     absolute_number: e.absolute_number,
                     aired: e.aired,
                     screenshot,
-                    translations,
+                    tvdb_translations: Arc::new(translations),
                 },
             );
         }
@@ -639,7 +645,7 @@ async fn tvmaze_layer(
         }
     };
 
-    tracing::info!(tvmaze_id, "Fetching TVmaze episodes");
+    tracing::info!(tvmaze_id, "Episodes");
 
     let episodes = remote.fetch_tvmaze_episodes(tvmaze_id).await?;
     let count = episodes.len();
@@ -690,7 +696,7 @@ async fn collect_tmdb_show_strings(
             continue;
         }
 
-        tracing::info!(?translation, ?targets, "TMDB show translation");
+        tracing::info!(?translation, ?targets, "Show translation");
 
         draft.add_show_string(
             translation.locale,
@@ -719,12 +725,7 @@ async fn collect_tmdb_show_strings(
                 continue;
             }
 
-            tracing::info!(
-                ?translation,
-                ?targets,
-                ?season_number,
-                "TMDB season translation"
-            );
+            tracing::info!(?translation, ?targets, ?season_number, "Season translation");
 
             draft.add_season_string(
                 *season_number,
@@ -745,30 +746,43 @@ async fn collect_tmdb_show_strings(
     // Episode strings: one translations call per episode.
     let episode_keys: Vec<(SeasonNumber, u32)> = draft.episodes.keys().copied().collect();
 
-    for (season_number, episode_number) in &episode_keys {
+    for (season, episode) in &episode_keys {
         let translations = remote
-            .fetch_tmdb_episode_translations(tmdb_id, *season_number, *episode_number)
+            .fetch_tmdb_episode_translations(tmdb_id, *season, *episode)
             .await?;
 
-        for row in translations {
-            if !locale_matches_targets(row.locale, targets) {
+        let original_name = draft
+            .episodes
+            .get(&(*season, *episode))
+            .and_then(|draft| draft.original_name.clone());
+
+        for translation in translations {
+            if !locale_matches_targets(translation.locale, targets) {
                 continue;
             }
 
-            draft.add_episode_string(
-                *season_number,
-                *episode_number,
-                row.locale,
-                api::StringKind::Title,
-                row.name,
+            tracing::info!(
+                ?translation,
+                ?targets,
+                ?season,
+                ?episode,
+                "Episode translation"
             );
 
             draft.add_episode_string(
-                *season_number,
-                *episode_number,
-                row.locale,
+                *season,
+                *episode,
+                translation.locale,
+                api::StringKind::Title,
+                translation.name.or(original_name.clone()),
+            );
+
+            draft.add_episode_string(
+                *season,
+                *episode,
+                translation.locale,
                 api::StringKind::Overview,
-                row.overview,
+                translation.overview,
             );
         }
     }
@@ -791,7 +805,7 @@ async fn collect_tvdb_strings(
             ?language,
             translations = ?draft.translations,
             ?translation,
-            "Fetching show translation"
+            "Show translation"
         );
 
         draft.add_show_string(language, api::StringKind::Title, translation.name);
@@ -801,7 +815,7 @@ async fn collect_tvdb_strings(
     let seasons = draft
         .seasons
         .iter_mut()
-        .flat_map(|(number, s)| Some((*number, s.tvdb_id?, mem::take(&mut s.translations))))
+        .flat_map(|(number, s)| Some((*number, s.tvdb_id?, s.tvdb_translations.clone())))
         .collect::<Vec<_>>();
 
     for (season, tvdb_id, translations) in seasons {
@@ -814,7 +828,7 @@ async fn collect_tvdb_strings(
                 ?season,
                 ?language,
                 ?translation,
-                "Fetching season translation"
+                "Season translation"
             );
 
             draft.add_season_string(season, language, api::StringKind::Title, translation.name);
@@ -831,7 +845,7 @@ async fn collect_tvdb_strings(
     let episodes = draft
         .episodes
         .iter_mut()
-        .flat_map(|(key, e)| Some((*key, e.tvdb_id?, mem::take(&mut e.translations))))
+        .flat_map(|(key, e)| Some((*key, e.tvdb_id?, e.tvdb_translations.clone())))
         .collect::<Vec<_>>();
 
     for ((season, number), tvdb_id, translations) in episodes {
@@ -846,7 +860,7 @@ async fn collect_tvdb_strings(
                 ?translations,
                 ?language,
                 ?translation,
-                "Fetching episode translation"
+                "Episode translation"
             );
 
             draft.add_episode_string(
@@ -1066,7 +1080,7 @@ pub(crate) async fn sync_movie(
                 .as_u32()
                 .context("Expected a valid TMDB id")?;
 
-            tracing::info!(tmdb_id, "Fetching TMDB movie");
+            tracing::info!(tmdb_id, "Movie");
 
             let info = remote.fetch_tmdb_movie(tmdb_id).await?;
 
