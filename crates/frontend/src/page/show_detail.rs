@@ -12,7 +12,8 @@ use crate::router::{MediaQuery, Route, Router, ShowDetailQuery};
 use crate::ui::{
     Button, ConfirmDanger, ContextMenu, EpisodePicker, Image, ImageGallery, ImageItem, Loading,
     MarkTimeMenu, MediaSettingsModal, Modal, OutlineControl, OutlineEntry, OutlineHandle,
-    RemoteEditor, RemoteSourceKind, TimePreset, Tracked, TranslationsModal, Variant,
+    ReleaseModal, ReleaseTarget, RemoteEditor, RemoteSourceKind, TimePreset, Tracked,
+    TranslationsModal, Variant,
 };
 
 const ORPHAN_HINT: &str = r#"
@@ -62,6 +63,9 @@ pub(crate) struct ShowDetail {
     show_translations_modal: bool,
     season_translations_modal: bool,
     episode_translations: Option<api::EpisodeId>,
+    /// The episode whose air-date releases modal is open. The modal ([`ReleaseModal`])
+    /// fetches and renders the releases itself.
+    episode_releases_modal: Option<api::EpisodeId>,
     global_sync_kinds: Vec<api::SourceSyncKinds>,
     background: Background,
     router: Router,
@@ -170,6 +174,8 @@ pub(crate) enum Msg {
     CloseSeasonTranslations,
     OpenEpisodeTranslations(api::EpisodeId),
     CloseEpisodeTranslations,
+    OpenEpisodeReleases(api::EpisodeId),
+    CloseEpisodeReleases,
     SetIncludeSpecials(IncludeSpecials),
     SetIncludeSpecialsDone(
         IncludeSpecials,
@@ -269,6 +275,7 @@ impl Component for ShowDetail {
             show_translations_modal: false,
             season_translations_modal: false,
             episode_translations: None,
+            episode_releases_modal: None,
             global_sync_kinds: Vec::new(),
             background,
             router,
@@ -1322,6 +1329,14 @@ impl ShowDetail {
                 self.episode_translations = None;
                 Ok(true)
             }
+            Msg::OpenEpisodeReleases(episode_id) => {
+                self.episode_releases_modal = Some(episode_id);
+                Ok(true)
+            }
+            Msg::CloseEpisodeReleases => {
+                self.episode_releases_modal = None;
+                Ok(true)
+            }
             Msg::SetIncludeSpecials(include_specials) => {
                 let id = props.show_id;
 
@@ -1983,6 +1998,8 @@ impl ShowDetail {
 
                             <Button icon="language" title="Translations" text="Translations" onclick={link.callback(move |_| Msg::OpenEpisodeTranslations(episode_id))} />
 
+                            <Button icon="calendar" title="Air dates" text="Air dates" onclick={link.callback(move |_| Msg::OpenEpisodeReleases(episode_id))} />
+
                             if let Some(on_toggle) = on_toggle_history {
                                 <Button icon="clock" title="Watch history" text="Watch history" onclick={on_toggle} />
                             }
@@ -2101,6 +2118,14 @@ impl ShowDetail {
                             }) }
                         </div>
                     </Modal>
+                }
+
+                if self.episode_releases_modal == Some(episode_id) {
+                    <ReleaseModal
+                        target={ReleaseTarget::Episode(episode_id)}
+                        title={format!("Air dates for {}", episode.code())}
+                        on_close={link.callback(|_| Msg::CloseEpisodeReleases)}
+                    />
                 }
             </div>
         }

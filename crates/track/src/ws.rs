@@ -237,6 +237,20 @@ impl WsHandler {
                     .await?;
                 outgoing.write(api::FindEpisodeByTimestampResponse { matched });
             }
+            api::Request::GetEpisodeReleases => {
+                let req = incoming
+                    .read::<api::GetEpisodeReleasesRequest>()
+                    .context("Expected a request payload")?;
+                let releases = self.db.episode_release_rows(req.episode_id).await?;
+                outgoing.write(api::GetEpisodeReleasesResponse { releases });
+            }
+            api::Request::GetMovieReleases => {
+                let req = incoming
+                    .read::<api::GetMovieReleasesRequest>()
+                    .context("Expected a request payload")?;
+                let releases = self.db.movie_release_rows(req.movie_id).await?;
+                outgoing.write(api::GetMovieReleasesResponse { releases });
+            }
             api::Request::GetMovie => {
                 let req = incoming
                     .read::<api::GetMovieRequest>()

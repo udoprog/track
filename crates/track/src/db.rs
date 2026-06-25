@@ -173,6 +173,7 @@ struct MovieRow {
 
 #[derive(Row)]
 struct MovieReleaseRow {
+    source: RemoteSource,
     country: Country,
     release_type: ReleaseType,
     timestamp: Timestamp,
@@ -707,6 +708,8 @@ struct InnerRead {
     #[sql = "SELECT m.id, m.release_date, m.tracked, m.auto_sync, m.last_synced_at, m.language, m.default_language, m.release_filters"]
     #[sql = "FROM movies m WHERE m.id = ?"]
     movie_by_id: TypedStatement<(MovieId,), MovieRow>,
+    #[sql = "SELECT release_filters FROM movies WHERE id = ?"]
+    movie_release_filters: TypedStatement<(MovieId,), Option<String>>,
     #[sql = "SELECT m.id, m.release_date, m.tracked, m.auto_sync, m.last_synced_at, m.language, m.default_language, m.release_filters"]
     #[sql = "FROM movies m"]
     #[sql = "JOIN movie_remotes r ON r.movie_id = m.id"]
@@ -885,10 +888,10 @@ struct InnerRead {
     movies_needing_sync: TypedStatement<(Timestamp,), MovieRow>,
 
     // movie releases
-    #[sql = "SELECT country, release_type, timestamp"]
+    #[sql = "SELECT source, country, release_type, timestamp"]
     #[sql = "FROM movie_releases"]
     #[sql = "WHERE movie_id = ?"]
-    #[sql = "ORDER BY timestamp, country, release_type"]
+    #[sql = "ORDER BY timestamp, source, country, release_type"]
     list_movie_releases: TypedStatement<(MovieId,), MovieReleaseRow>,
     #[sql = "SELECT timestamp"]
     #[sql = "FROM movie_releases"]
@@ -902,6 +905,11 @@ struct InnerRead {
     #[sql = "JOIN episodes e ON e.id = er.episode_id"]
     #[sql = "WHERE e.show_id = ?"]
     list_episode_releases_for_show: TypedStatement<(ShowId,), EpisodeReleaseRow>,
+    #[sql = "SELECT source, country, network, timestamp"]
+    #[sql = "FROM episode_releases"]
+    #[sql = "WHERE episode_id = ?"]
+    #[sql = "ORDER BY timestamp, source, country, network"]
+    list_episode_releases: TypedStatement<(EpisodeId,), (RemoteSource, Country, String, Timestamp)>,
 
     // translated strings (per entity)
     #[sql = "SELECT language, kind, text FROM season_strings WHERE season_id = ? ORDER BY kind, language"]
@@ -1191,13 +1199,14 @@ struct InnerWrite {
 
     // movie releases
     #[sql = "DELETE FROM movie_releases"]
-    #[sql = "WHERE movie_id = ? AND country = ? AND release_type = ?"]
-    delete_movie_release: TypedStatement<(MovieId, Country, ReleaseType), ()>,
-    #[sql = "INSERT INTO movie_releases (movie_id, country, release_type, timestamp)"]
-    #[sql = "VALUES (?, ?, ?, ?)"]
-    #[sql = "ON CONFLICT(movie_id, country, release_type)"]
+    #[sql = "WHERE movie_id = ? AND source = ? AND country = ? AND release_type = ?"]
+    delete_movie_release: TypedStatement<(MovieId, RemoteSource, Country, ReleaseType), ()>,
+    #[sql = "INSERT INTO movie_releases (movie_id, source, country, release_type, timestamp)"]
+    #[sql = "VALUES (?, ?, ?, ?, ?)"]
+    #[sql = "ON CONFLICT(movie_id, source, country, release_type)"]
     #[sql = "    DO UPDATE SET timestamp = excluded.timestamp"]
-    upsert_movie_release: TypedStatement<(MovieId, Country, ReleaseType, Timestamp), ()>,
+    upsert_movie_release:
+        TypedStatement<(MovieId, RemoteSource, Country, ReleaseType, Timestamp), ()>,
 
     // last_synced_at stamping
     #[sql = "UPDATE shows SET last_synced_at = ? WHERE id = ?"]
@@ -2125,19 +2134,35 @@ impl Database {
         result.await?
     }
 
-    /// Drop stored releases that a fresh sync no longer reports. Only sources that
-    /// contributed this run (`sources`) are pruned, so a source that failed to
-    /// fetch keeps its existing releases rather than having them wiped. `kept` is
-    /// the set of `(episode_id, source, country, network)` tuples just upserted.
-    #[tracing::instrument(skip(self, kept, sources), ret(level = "trace"))]
+    /// Drop stored releases that are no longer current. A release is retained only
+    /// while its source is an *eligible* air-date source (an enabled remote
+    /// configured to contribute air dates): such a source that ran this sync keeps
+    /// the releases it just reported (`kept`) and loses any stale ones, while one
+    /// that didn't run keeps all of its releases so a transient fetch failure
+    /// doesn't wipe them. Releases from any other source — disabled, or `Unknown`
+    /// (e.g. the legacy air-date backfill) — can never be contributed again and are
+    /// always pruned. `ran` is the set of sources whose air-date layer ran this
+    /// sync; `kept` is the `(episode_id, source, country, network)` tuples just
+    /// upserted.
+    #[tracing::instrument(skip(self, kept, ran), ret(level = "trace"))]
     pub(crate) async fn prune_episode_releases(
         &self,
         show_id: ShowId,
         kept: &HashSet<(EpisodeId, RemoteSource, Country, String)>,
-        sources: &HashSet<RemoteSource>,
+        ran: &HashSet<RemoteSource>,
     ) -> Result<()> {
+        let Some(show) = self.show_by_id(show_id).await? else {
+            return Ok(());
+        };
+
+        let config = self.load_config().await?;
+        let eligible: HashSet<RemoteSource> =
+            api::air_date_sources_by_priority(&show.remotes, &config)
+                .into_iter()
+                .collect();
+
         let kept = kept.clone();
-        let sources = sources.clone();
+        let ran = ran.clone();
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
@@ -2146,7 +2171,10 @@ impl Database {
             let mut stmt = s.list_episode_releases_for_show.bind((show_id,))?;
 
             while let Some(r) = stmt.next()? {
-                if !sources.contains(&r.source) {
+                // An eligible source that didn't run this sync keeps its releases (a
+                // transient fetch failure); every other source is pruned down to what
+                // it just reported, so disabled and `Unknown` sources are dropped.
+                if eligible.contains(&r.source) && !ran.contains(&r.source) {
                     continue;
                 }
 
@@ -2667,6 +2695,7 @@ impl Database {
 
             while let Some(r) = stmt.next()? {
                 movie.releases.push(api::MovieRelease {
+                    source: r.source,
                     country: r.country,
                     release_type: r.release_type,
                     timestamp: r.timestamp,
@@ -4144,6 +4173,7 @@ impl Database {
 
             while let Some(r) = stmt.next()? {
                 out.push(api::MovieRelease {
+                    source: r.source,
                     country: r.country,
                     release_type: r.release_type,
                     timestamp: r.timestamp,
@@ -4155,6 +4185,133 @@ impl Database {
         });
 
         result.await?
+    }
+
+    /// The air dates recorded for a single episode, attributed to their source.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn episode_releases(&self, id: EpisodeId) -> Result<Vec<api::EpisodeRelease>> {
+        let mut s = self.inner.clone().shared().await?;
+
+        let result = spawn_blocking(move || {
+            let mut out = Vec::new();
+
+            let mut stmt = s.list_episode_releases.bind((id,))?;
+
+            while let Some((source, country, network, timestamp)) = stmt.next()? {
+                out.push(api::EpisodeRelease {
+                    source,
+                    country,
+                    network,
+                    timestamp,
+                });
+            }
+
+            stmt.reset()?;
+            Ok(out)
+        });
+
+        result.await?
+    }
+
+    /// The owning show of an episode, if it exists.
+    async fn episode_show_id(&self, id: EpisodeId) -> Result<Option<ShowId>> {
+        let mut s = self.inner.clone().shared().await?;
+        let result = spawn_blocking(move || {
+            Ok(s.episode_natural_key
+                .bind((id,))?
+                .first()?
+                .map(|r| r.show_id))
+        });
+        result.await?
+    }
+
+    /// An episode's air-date releases as display rows, with `considered` and the
+    /// grouping `label` (network, or `"Unknown"`) resolved against the show's
+    /// air-date source priority and effective filters.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn episode_release_rows(&self, id: EpisodeId) -> Result<Vec<api::ReleaseRow>> {
+        let releases = self.episode_releases(id).await?;
+
+        let Some(show_id) = self.episode_show_id(id).await? else {
+            return Ok(Vec::new());
+        };
+
+        let Some(show) = self.show_by_id(show_id).await? else {
+            return Ok(Vec::new());
+        };
+
+        let config = self.load_config().await?;
+        let priority = api::air_date_sources_by_priority(&show.remotes, &config);
+        let filters = show.effective_air_date_filters(&config.air_date_filters);
+
+        let mut rows: Vec<api::ReleaseRow> = releases
+            .into_iter()
+            .map(|r| {
+                let considered = api::air_date_considered(&r, &priority, filters);
+                let label = if r.network.is_empty() {
+                    "Unknown".to_owned()
+                } else {
+                    r.network
+                };
+
+                api::ReleaseRow {
+                    label,
+                    source: r.source,
+                    country: r.country,
+                    timestamp: r.timestamp,
+                    considered,
+                }
+            })
+            .collect();
+
+        rows.sort_by(|a, b| a.label.cmp(&b.label).then(a.timestamp.cmp(&b.timestamp)));
+        Ok(rows)
+    }
+
+    /// A movie's release-date override filters, if any.
+    async fn movie_release_filters(&self, id: MovieId) -> Result<Option<Vec<api::ReleaseFilter>>> {
+        let mut s = self.inner.clone().shared().await?;
+        let result = spawn_blocking(move || {
+            let text = s.movie_release_filters.bind((id,))?.first()?.flatten();
+            Ok(text.as_deref().and_then(config::decode_release_filters))
+        });
+        result.await?
+    }
+
+    /// A movie's releases as display rows, with `considered` and the grouping
+    /// `label` (release type) resolved against the movie's effective release filters.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn movie_release_rows(&self, id: MovieId) -> Result<Vec<api::ReleaseRow>> {
+        let mut releases = self.movie_releases(id).await?;
+        let override_filters = self.movie_release_filters(id).await?;
+        let config = self.load_config().await?;
+        let effective = override_filters
+            .as_deref()
+            .unwrap_or(&config.release_filters);
+
+        releases.sort_by(|a, b| {
+            a.release_type
+                .as_u32()
+                .cmp(&b.release_type.as_u32())
+                .then(a.timestamp.cmp(&b.timestamp))
+        });
+
+        let rows = releases
+            .into_iter()
+            .map(|r| {
+                let considered = effective.iter().any(|f| f.matches(&r));
+
+                api::ReleaseRow {
+                    label: r.release_type.as_str().to_owned(),
+                    source: r.source,
+                    country: r.country,
+                    timestamp: r.timestamp,
+                    considered,
+                }
+            })
+            .collect();
+
+        Ok(rows)
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -4183,6 +4340,7 @@ impl Database {
     pub(crate) async fn upsert_movie_release(
         &self,
         movie_id: MovieId,
+        source: RemoteSource,
         country: Country,
         release_type: ReleaseType,
         timestamp: &Timestamp,
@@ -4192,7 +4350,7 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.upsert_movie_release
-                .execute((movie_id, country, release_type, timestamp))?;
+                .execute((movie_id, source, country, release_type, timestamp))?;
 
             Ok(())
         });
@@ -4201,7 +4359,7 @@ impl Database {
     }
 
     /// Drop stored releases that a fresh sync no longer reports. `kept` is the set
-    /// of `(country, release_type)` pairs just upserted for the movie. Mirrors
+    /// of `(source, country, release_type)` keys just upserted for the movie. Mirrors
     /// [`Self::prune_episode_releases`]; a movie has a single sync source, so the
     /// caller only prunes after a successful fetch and no per-source scoping is
     /// needed.
@@ -4209,7 +4367,7 @@ impl Database {
     pub(crate) async fn prune_movie_releases(
         &self,
         movie_id: MovieId,
-        kept: &HashSet<(Country, ReleaseType)>,
+        kept: &HashSet<(RemoteSource, Country, ReleaseType)>,
     ) -> Result<()> {
         let kept = kept.clone();
         let mut s = self.inner.clone().exclusive().await?;
@@ -4220,7 +4378,7 @@ impl Database {
             let mut stmt = s.list_movie_releases.bind((movie_id,))?;
 
             while let Some(r) = stmt.next()? {
-                let key = (r.country, r.release_type);
+                let key = (r.source, r.country, r.release_type);
 
                 if !kept.contains(&key) {
                     to_delete.push(key);
@@ -4229,9 +4387,9 @@ impl Database {
 
             stmt.reset()?;
 
-            for (country, release_type) in to_delete {
+            for (source, country, release_type) in to_delete {
                 s.delete_movie_release
-                    .execute((movie_id, country, release_type))?;
+                    .execute((movie_id, source, country, release_type))?;
             }
 
             Ok(())

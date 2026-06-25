@@ -75,6 +75,8 @@ pub(crate) enum Message {
     LoadingSeasons,
     #[display("Loading episodes")]
     LoadingEpisodes,
+    #[display("Loading releases")]
+    LoadingReleases,
     #[display("Loading translations")]
     LoadingTranslations,
     #[display("Loading season images")]

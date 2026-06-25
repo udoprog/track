@@ -425,24 +425,26 @@ fn translations_exact_and_fallbacks() {
 
     // en-US has no exact entry, but relaxes to language-only `en`.
     assert_eq!(t.title(), Some("English"));
-    // Overview only exists in the default language; resolves via the default.
-    assert_eq!(t.overview(), Some("Resumo"));
+    // Overview exists only in an unrelated language (pt-BR), so it stays missing
+    // rather than substituting that locale.
+    assert_eq!(t.overview(), None);
 }
 
 #[test]
-fn translations_default_locale_fallback() {
-    // Configured locale is a language with no stored string; falls back to the
-    // default/original language.
+fn translations_unmatched_language_is_none() {
+    // Configured locale (de) has no entry and shares no language with the only
+    // stored string (pt-BR), so the title is reported missing rather than
+    // substituting the unrelated locale.
     let t = build(
         Locale::from_iso("de").unwrap(),
         &[(StringKind::Title, pt_br(), "Portugues")],
     );
 
-    assert_eq!(t.title(), Some("Portugues"));
+    assert_eq!(t.title(), None);
 }
 
 #[test]
-fn translations_get_with_explicit_fallback() {
+fn translations_get_with_unmatched_locale_is_none() {
     let t = build(
         Locale::DEFAULT,
         &[
@@ -455,16 +457,14 @@ fn translations_get_with_explicit_fallback() {
         ],
     );
 
-    // Prefer French (missing) -> explicit English fallback.
+    // French has no exact or same-language entry, so it resolves to None rather
+    // than substituting an unrelated stored title.
     assert_eq!(
         t.get_with(StringKind::Title, Locale::from_iso("fr").unwrap()),
-        Some("English"),
+        None,
     );
-    // No locale/fallback -> resolves to the default (original) language.
-    assert_eq!(
-        t.get_with(StringKind::Title, Locale::DEFAULT),
-        Some("Nihongo"),
-    );
+    // DEFAULT carries no language to match, so it is also None.
+    assert_eq!(t.get_with(StringKind::Title, Locale::DEFAULT), None);
 }
 
 #[test]

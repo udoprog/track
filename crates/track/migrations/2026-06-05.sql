@@ -58,10 +58,11 @@ WHERE
 CREATE TABLE
     movie_releases (
         movie_id INTEGER NOT NULL REFERENCES movies (id) ON DELETE CASCADE,
+        source INTEGER NOT NULL DEFAULT 2,
         country INTEGER NOT NULL DEFAULT 0,
         release_type INTEGER NOT NULL,
         timestamp INTEGER NOT NULL,
-        PRIMARY KEY (movie_id, country, release_type)
+        PRIMARY KEY (movie_id, source, country, release_type)
     );
 
 CREATE INDEX idx_movie_releases_movie ON movie_releases (movie_id, release_type, timestamp);

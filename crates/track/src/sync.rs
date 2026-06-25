@@ -118,6 +118,10 @@ pub(crate) async fn sync_show(
             continue;
         }
 
+        if do_air_date {
+            draft.air_date_sources.insert(source);
+        }
+
         for k in kinds {
             draft.provided.insert(k);
         }
@@ -286,6 +290,12 @@ struct ShowDraft {
     episodes: BTreeMap<(SeasonNumber, u32), EpisodeDraft>,
     remotes: Vec<(Option<String>, api::Remote)>,
     releases: Vec<DraftRelease>,
+    /// Sources whose air-date layer ran successfully this sync. Scopes air-date
+    /// pruning: a source here had every release it still reports re-upserted, so
+    /// anything else stored for it is stale and removed - including when it now
+    /// reports none. A source whose layer failed is absent, so its stored releases
+    /// survive a transient fetch error.
+    air_date_sources: HashSet<RemoteSource>,
     images: Vec<DraftImage>,
     selected: HashMap<ImageKind, ImageKey>,
     /// Per-language translated strings keyed by owner, populated for every target
@@ -994,10 +1004,9 @@ async fn persist_show_draft(
     db.prune_seasons(show_id, &synced_seasons).await?;
 
     // Air-date releases, attributed per source; skip episodes we didn't persist.
-    // Track what we wrote so stale releases (and only for sources that synced this
-    // run) can be pruned afterwards.
+    // Track what we wrote so stale releases can be pruned afterwards, scoped to the
+    // sources whose air-date layer actually ran this sync (`draft.air_date_sources`).
     let mut kept_releases = HashSet::new();
-    let mut release_sources = HashSet::new();
 
     for r in &draft.releases {
         let Some(&episode_id) = episode_ids.get(&(r.season, r.number)) else {
@@ -1008,10 +1017,9 @@ async fn persist_show_draft(
             .await?;
 
         kept_releases.insert((episode_id, r.source, r.country, r.network.clone()));
-        release_sources.insert(r.source);
     }
 
-    db.prune_episode_releases(show_id, &kept_releases, &release_sources)
+    db.prune_episode_releases(show_id, &kept_releases, &draft.air_date_sources)
         .await?;
 
     let updated = db
@@ -1127,13 +1135,14 @@ pub(crate) async fn sync_movie(
                     for r in releases {
                         db.upsert_movie_release(
                             movie_id,
+                            api::RemoteSource::Tmdb,
                             r.country,
                             r.release_type,
                             &r.release_date,
                         )
                         .await?;
 
-                        kept.insert((r.country, r.release_type));
+                        kept.insert((api::RemoteSource::Tmdb, r.country, r.release_type));
                     }
 
                     db.prune_movie_releases(movie_id, &kept).await?;

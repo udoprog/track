@@ -21,10 +21,9 @@ struct Entry {
 /// Strings are held in a flat `entries` array; `by_locale` and `by_language`
 /// index into it for exact and country-relaxed lookups. [`Translations::get`]
 /// resolves using the entity's configured display [`locale`](Self::locale),
-/// falling back through the same language (any country), then the entity's
-/// [`default`](Self::default) (original) language, then any available locale -
-/// so a plain `get(StringKind::Title)` (or [`title`](Self::title)) resolves the
-/// best title without the caller specifying any locale.
+/// falling back to the same language (any country). A kind with no entry for that
+/// language resolves to `None` - a missing translation is reported as missing
+/// rather than substituting an unrelated locale.
 ///
 /// Built incrementally with [`new`](Self::new) + [`insert`](Self::insert):
 /// inserting a `(kind, locale)` that already exists replaces it (no duplicate
@@ -101,18 +100,17 @@ impl Translations {
         self.get(StringKind::Overview)
     }
 
-    /// Resolve a string of `kind` using the configured locale and the entity's
-    /// default language as the fallback. See [`Translations::get_with`].
+    /// Resolve a string of `kind` using the configured display locale. See
+    /// [`Translations::get_with`].
     #[inline]
     pub fn get(&self, kind: StringKind) -> Option<&str> {
         self.get_with(kind, self.locale)
     }
 
-    /// Resolve a string of `kind`, preferring `locale` then `fallback`. A
-    /// [`Locale::DEFAULT`] `locale`/`fallback` resolves to the entity's default
-    /// language. Resolution order: exact `locale`, same language as `locale`
-    /// (any country), exact `fallback`, same language as `fallback`, the
-    /// entity's default language, then any available string of `kind`.
+    /// Resolve a string of `kind`, preferring an exact match for `locale`, then
+    /// the same language as `locale` (any country). Returns `None` when no entry
+    /// matches that language, so a missing translation is reported as missing
+    /// rather than falling back to an unrelated locale.
     pub fn get_with(&self, kind: StringKind, locale: Locale) -> Option<&str> {
         if let Some(string) = self.exact(kind, locale) {
             return Some(string);

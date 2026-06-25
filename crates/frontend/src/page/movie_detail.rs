@@ -1,6 +1,6 @@
 use api::TimeInfo;
 use musli_web::web03::prelude::*;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
 use yew::prelude::*;
 
 use crate::SetupChannel;
@@ -9,8 +9,8 @@ use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaQuery, Route, Router};
 use crate::ui::{
     Button, ConfirmDanger, ContextMenu, Image, ImageGallery, ImageItem, Loading, MarkTimeMenu,
-    MediaSettingsModal, Modal, RemoteEditor, RemoteSourceKind, TimePreset, Tracked,
-    TranslationsModal, Variant,
+    MediaSettingsModal, Modal, ReleaseModal, ReleaseTarget, RemoteEditor, RemoteSourceKind,
+    TimePreset, Tracked, TranslationsModal, Variant,
 };
 
 struct WatchedState {
@@ -31,8 +31,6 @@ pub(crate) struct MovieDetail {
     detailed_expand: bool,
     open_watched: bool,
     open_releases: bool,
-    releases_expanded: HashSet<api::ReleaseType>,
-    movie_releases: Vec<(api::ReleaseType, Vec<api::MovieRelease>)>,
     default_release_filters: Vec<api::ReleaseFilter>,
     global_sync_kinds: Vec<api::SourceSyncKinds>,
     image_modal: bool,
@@ -126,7 +124,6 @@ pub(crate) enum Msg {
     SetTime(TimeInfo),
     ToggleActionsExpanded,
     ToggleDetailedActionsExpanded,
-    ToggleReleaseType(api::ReleaseType),
     ToggleOpenWatched,
     ToggleOpenReleases,
 }
@@ -177,8 +174,6 @@ impl Component for MovieDetail {
             detailed_expand: false,
             open_watched: false,
             open_releases: false,
-            releases_expanded: HashSet::new(),
-            movie_releases: Vec::new(),
             default_release_filters: api::ReleaseFilter::default_filters(),
             global_sync_kinds: Vec::new(),
             image_modal: false,
@@ -268,7 +263,6 @@ impl MovieDetail {
                     self.load_config(ctx);
                 } else {
                     self.movie = None;
-                    self.movie_releases.clear();
                     self.watched.clear();
                 }
                 Ok(true)
@@ -821,13 +815,6 @@ impl MovieDetail {
                 self.detailed_expand = !self.detailed_expand;
                 Ok(true)
             }
-            Msg::ToggleReleaseType(ty) => {
-                if !self.releases_expanded.remove(&ty) {
-                    self.releases_expanded.insert(ty);
-                }
-
-                Ok(true)
-            }
             Msg::ToggleOpenWatched => {
                 self.open_watched = !self.open_watched;
                 Ok(true)
@@ -840,18 +827,6 @@ impl MovieDetail {
     }
 
     fn set_movie(&mut self, movie: api::Movie) {
-        let mut by_type: BTreeMap<u32, (api::ReleaseType, Vec<api::MovieRelease>)> =
-            BTreeMap::new();
-
-        for r in &movie.releases {
-            let entry = by_type
-                .entry(r.release_type.as_u32())
-                .or_insert_with(|| (r.release_type, Vec::new()));
-
-            entry.1.push(r.clone());
-        }
-
-        self.movie_releases = by_type.into_values().collect();
         self.background
             .background(movie.backdrop.as_ref().map(|i| i.proxy_url()));
         self.background
@@ -910,6 +885,16 @@ impl MovieDetail {
 
     fn view_header(&self, ctx: &Context<Self>, movie: &api::Movie) -> Html {
         let link = ctx.link();
+
+        // The source of the earliest considered release, i.e. the one that determines
+        // the effective release date shown below.
+        let filters = movie.effective_release_filters(&self.default_release_filters);
+        let release_source = movie
+            .releases
+            .iter()
+            .filter(|r| filters.iter().any(|f| f.matches(r)))
+            .min_by_key(|r| r.timestamp)
+            .map(|r| r.source);
 
         html! {
             <div class="column">
@@ -979,6 +964,12 @@ impl MovieDetail {
                         if let Some(ts) = movie.release_date {
                             <span>{if self.time.now() < ts { "Releases" } else { "Released" }}</span>
                             {ts.human_date_time(self.time.clone()).lower().view()}
+
+                            if let Some(source) = release_source {
+                                <span class="item-inline" title={source.as_label()}>
+                                    <span class={classes!("logo", source.as_id())} />
+                                </span>
+                            }
                         } else {
                             <span class="text-muted">{"No release date"}</span>
                         }
@@ -1101,9 +1092,11 @@ impl MovieDetail {
                     }
 
                     if self.open_releases {
-                        <Modal icon="calendar" title="Releases" on_close={link.callback(|_| Msg::ToggleOpenReleases)}>
-                            {self.view_releases(ctx)}
-                        </Modal>
+                        <ReleaseModal
+                            target={ReleaseTarget::Movie(movie.id)}
+                            title="Releases"
+                            on_close={link.callback(|_| Msg::ToggleOpenReleases)}
+                        />
                     }
                 </div>
             </div>
@@ -1184,104 +1177,6 @@ impl MovieDetail {
                                     />
                                 </ContextMenu>
                             }
-                        </div>
-                    }
-                }) }
-            </div>
-        }
-    }
-
-    fn view_releases(&self, ctx: &Context<Self>) -> Html {
-        let link = ctx.link();
-
-        if self
-            .movie_releases
-            .iter()
-            .all(|(_, releases)| releases.is_empty())
-        {
-            return html! {};
-        }
-
-        // The release filters in effect for this movie (per-movie override or global default).
-        // A release is "considered" when it matches any of them, i.e. it feeds into the release
-        // date the earliest considered release determines.
-        let filters: &[api::ReleaseFilter] = match self.movie.as_ref() {
-            Some(movie) => movie.effective_release_filters(&self.default_release_filters),
-            None => &self.default_release_filters,
-        };
-
-        let considered = |r: &api::MovieRelease| filters.iter().any(|f| f.matches(r));
-
-        let indicator = |on: bool| {
-            let (icon, title) = if on {
-                ("check", "Considered for the release date")
-            } else {
-                ("minus", "Excluded by the current release date settings")
-            };
-
-            html! {
-                <span class={classes!("item-inline", (!on).then_some("text-muted"))} title={title}>
-                    <span class={classes!("icon", icon)} />
-                </span>
-            }
-        };
-
-        html! {
-            <div class="column">
-                { for self.movie_releases.iter().map(|(ty, releases)| {
-                    let ty = *ty;
-                    let earliest = releases.iter().min_by_key(|r| r.timestamp).unwrap();
-                    let expanded = self.releases_expanded.contains(&ty);
-                    let type_considered = releases.iter().any(&considered);
-
-                    html! {
-                        <div class="row clickable align-top" onclick={link.callback(move |_| Msg::ToggleReleaseType(ty))}>
-                            <span class="item-inline">
-                                <span class={classes!("icon", if expanded { "ellipsis-horizontal" } else { "chevron-right" })} />
-                            </span>
-
-                            <div class="column fill">
-                                <div class="row-split">
-                                    <div class="row">
-                                        {indicator(type_considered)}
-                                        <span>{ty.as_str()}</span>
-                                    </div>
-
-                                    <div class="row">
-                                        <span class="text-muted">{earliest.timestamp.human_date_time(self.time.clone())}</span>
-                                    </div>
-                                </div>
-
-                                if expanded {
-                                    <div class="column">
-                                        { for releases.iter().map(|r| html! {
-                                            <div class="row-split">
-                                                <div class="row">
-                                                    {indicator(considered(r))}
-
-                                                    if let Some(c) = r.country.to_iso() {
-                                                        if c.has_flag {
-                                                            <span class="item-inline" title={c.name}>
-                                                                <span class={classes!("flag", c.alpha2)}></span>
-                                                            </span>
-                                                        } else {
-                                                            <span class="text-muted">
-                                                                <span class={c.name}></span>
-                                                            </span>
-                                                        }
-                                                    } else {
-                                                        <span class="text-muted">
-                                                            {r.country}
-                                                        </span>
-                                                    }
-                                                </div>
-
-                                                <span class="text-muted">{r.timestamp.human_date_time(self.time.clone())}</span>
-                                            </div>
-                                        }) }
-                                    </div>
-                                }
-                            </div>
                         </div>
                     }
                 }) }

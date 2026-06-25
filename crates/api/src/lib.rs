@@ -1024,20 +1024,29 @@ impl ::sqll::BindValue for ReleaseType {
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct MovieRelease {
+    pub source: RemoteSource,
     pub country: Country,
     pub release_type: ReleaseType,
     pub timestamp: Timestamp,
 }
 
 /// A release type that contributes to a movie's effective release date, optionally restricted to a
-/// set of countries.
+/// set of countries. Attributed to the remote `source` that reported it.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize)]
 #[musli(crate = musli_core)]
 pub struct ReleaseFilter {
+    #[serde(default = "default_release_source")]
+    pub source: RemoteSource,
     pub release_type: ReleaseType,
     /// Countries (ISO 3166-1 alpha-2) of interest for this release type. Empty means all countries.
     #[serde(default)]
     pub countries: Vec<Country>,
+}
+
+/// The source assumed for release filters persisted before `source` was tracked
+/// (movies only ever synced releases from TMDB).
+fn default_release_source() -> RemoteSource {
+    RemoteSource::Tmdb
 }
 
 impl ReleaseFilter {
@@ -1046,6 +1055,7 @@ impl ReleaseFilter {
         [ReleaseType::Digital, ReleaseType::Physical, ReleaseType::Tv]
             .into_iter()
             .map(|release_type| ReleaseFilter {
+                source: RemoteSource::Tmdb,
                 release_type,
                 countries: Vec::new(),
             })
@@ -1054,7 +1064,8 @@ impl ReleaseFilter {
 
     /// Whether the given release matches this filter.
     pub fn matches(&self, release: &MovieRelease) -> bool {
-        self.release_type == release.release_type
+        self.source == release.source
+            && self.release_type == release.release_type
             && (self.countries.is_empty() || self.countries.contains(&release.country))
     }
 }
@@ -1176,22 +1187,33 @@ pub fn effective_aired(
     priority: &[RemoteSource],
     filters: &[AirDateFilter],
 ) -> Option<Timestamp> {
-    let qualifies = |r: &EpisodeRelease| {
-        if !priority.contains(&r.source) {
-            return false;
-        }
-
-        let has_source_filter = filters.iter().any(|f| f.source == r.source);
-        !has_source_filter || filters.iter().any(|f| f.matches(r))
-    };
-
     let mut merged = Prioritized::new();
 
-    for r in releases.iter().filter(|r| qualifies(r)) {
+    for r in releases
+        .iter()
+        .filter(|r| air_date_considered(r, priority, filters))
+    {
         merged.push(r.source, r.timestamp);
     }
 
     merged.best(priority).into_iter().min()
+}
+
+/// Whether `release` is considered for an episode's effective air date: its source
+/// must be present in `priority` (an eligible, AirDate-enabled source) and, if any
+/// filter targets that source, at least one such filter must match. A source with no
+/// filter entry qualifies fully.
+pub fn air_date_considered(
+    release: &EpisodeRelease,
+    priority: &[RemoteSource],
+    filters: &[AirDateFilter],
+) -> bool {
+    if !priority.contains(&release.source) {
+        return false;
+    }
+
+    let has_source_filter = filters.iter().any(|f| f.source == release.source);
+    !has_source_filter || filters.iter().any(|f| f.matches(release))
 }
 
 /// Default air-date source priority: TVmaze (exact airtimes) over TMDB over TVDB.
@@ -1903,6 +1925,44 @@ pub struct ListEpisodesResponse {
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
+pub struct GetEpisodeReleasesRequest {
+    pub episode_id: EpisodeId,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct GetEpisodeReleasesResponse {
+    pub releases: Vec<ReleaseRow>,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct GetMovieReleasesRequest {
+    pub movie_id: MovieId,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct GetMovieReleasesResponse {
+    pub releases: Vec<ReleaseRow>,
+}
+
+/// A single release as shown in the release/air-date modal, with its grouping
+/// `label` and `considered` flag already resolved server-side (movies via
+/// [`ReleaseFilter`], episodes via [`air_date_considered`]). `label` is the
+/// release type's name for movies and the network (or `"Unknown"`) for episodes.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct ReleaseRow {
+    pub label: String,
+    pub source: RemoteSource,
+    pub country: Country,
+    pub timestamp: Timestamp,
+    pub considered: bool,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
 pub struct FindEpisodeByTimestampRequest {
     pub show_id: ShowId,
     pub timestamp: Timestamp,
@@ -2600,6 +2660,18 @@ api::define! {
     impl Endpoint for FindEpisodeByTimestamp {
         impl Request for FindEpisodeByTimestampRequest;
         type Response<'de> = FindEpisodeByTimestampResponse;
+    }
+
+    pub type GetEpisodeReleases;
+    impl Endpoint for GetEpisodeReleases {
+        impl Request for GetEpisodeReleasesRequest;
+        type Response<'de> = GetEpisodeReleasesResponse;
+    }
+
+    pub type GetMovieReleases;
+    impl Endpoint for GetMovieReleases {
+        impl Request for GetMovieReleasesRequest;
+        type Response<'de> = GetMovieReleasesResponse;
     }
 
     pub type GetMovie;
