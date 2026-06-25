@@ -6,7 +6,7 @@
 CREATE TABLE
     movie_releases_new (
         movie_id INTEGER NOT NULL REFERENCES movies (id) ON DELETE CASCADE,
-        source INTEGER NOT NULL DEFAULT 2,
+        source INTEGER NOT NULL DEFAULT 0,
         country INTEGER NOT NULL DEFAULT 0,
         release_type INTEGER NOT NULL,
         timestamp INTEGER NOT NULL,
@@ -16,7 +16,7 @@ CREATE TABLE
 INSERT INTO
     movie_releases_new (movie_id, source, country, release_type, timestamp)
 SELECT
-    movie_id, 2, country, release_type, timestamp
+    movie_id, 0, country, release_type, timestamp
 FROM
     movie_releases;
 

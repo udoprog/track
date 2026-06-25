@@ -566,6 +566,7 @@ impl Client {
                 .as_ref()
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty()),
+            original_overview: None,
             posters,
             backdrops,
             selected_poster,
@@ -610,6 +611,7 @@ pub(crate) struct EpisodeInfo {
 pub(crate) struct MovieInfo {
     pub original_language: api::Locale,
     pub original_title: Option<String>,
+    pub original_overview: Option<String>,
     pub posters: Vec<Image>,
     pub backdrops: Vec<Image>,
     pub selected_poster: Option<ImageKey>,

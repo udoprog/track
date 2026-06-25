@@ -25,7 +25,6 @@ pub(crate) async fn sync_show(
         .context("Expected show to exist")?;
 
     let config = db.load_config().await?;
-    let language = show.language.or(config.language);
 
     // Ensure a TVmaze remote is stored (resolved via TVDB/IMDb) so air-date
     // enrichment participates in the layered order, as it did unconditionally
@@ -42,7 +41,7 @@ pub(crate) async fn sync_show(
         .await?
         .context("Expected show to exist")?;
 
-    tracing::info!(show_id = %show_id, title = show.strings.title(), ?language, "Syncing show");
+    tracing::info!(show_id = %show_id, title = show.strings.title(), "Syncing show");
 
     // Visit enabled remotes in priority order, one layer per source (the
     // highest-priority entry of each source wins). Each layer contributes the
@@ -401,7 +400,7 @@ async fn tmdb_show_layer(
 
     let info = remote.fetch_tmdb_show(tmdb_id).await?;
 
-    draft.original_name = info.original_name.or(draft.original_name.take());
+    draft.original_name = info.original_name.or(draft.original_name.clone());
 
     for r in &info.remotes {
         draft.add_remote(r.slug.clone(), r.remote.clone());
@@ -469,11 +468,13 @@ async fn tmdb_show_layer(
     }
 
     if do_base {
-        let targets = api::expand_sync_languages(&config.sync_languages, draft.default_language);
-
         tracing::info!("Collecting strings");
 
-        if let Err(error) = collect_tmdb_show_strings(draft, tmdb_id, &targets, remote).await {
+        let language = show.language.or(config.language);
+
+        if let Err(error) =
+            collect_tmdb_show_strings(draft, tmdb_id, config, language, remote).await
+        {
             tracing::warn!("String collection failed: {error:#}");
         }
     }
@@ -670,31 +671,45 @@ async fn tvmaze_layer(
 /// given the set of configured target languages. A language-only target
 /// (country = DEFAULT) matches any country variant; an exact-country target
 /// requires a full match.
-fn locale_matches_targets(locale: api::Locale, targets: &BTreeSet<api::Locale>) -> bool {
-    targets.iter().any(|t| {
-        if t.country().is_default() {
-            t.language() == locale.language()
-        } else {
-            *t == locale
+fn locale_matches_targets(
+    locale: api::Locale,
+    targets: &BTreeSet<api::Locale>,
+) -> Option<api::Locale> {
+    for t in targets {
+        if *t == locale || (t.country().is_default() && t.language() == locale.language()) {
+            return Some(*t);
         }
-    })
+    }
+
+    None
 }
 
 #[tracing::instrument(skip_all, fields(tmdb_id))]
 async fn collect_tmdb_show_strings(
     draft: &mut ShowDraft,
     tmdb_id: u32,
-    targets: &BTreeSet<api::Locale>,
+    config: &api::Config,
+    language: api::Locale,
     remote: &RemoteClients,
 ) -> Result<()> {
+    let mut targets = api::expand_sync_languages(&config.sync_languages, language);
+
+    if !language.is_default() {
+        targets.insert(language);
+    }
+
+    let mut remaining = targets.clone();
+
     // Show strings: one translations call instead of one full-detail call per
     // language.
     let translations = remote.fetch_tmdb_show_translations(tmdb_id).await?;
 
     for translation in translations {
-        if !locale_matches_targets(translation.locale, targets) {
+        let Some(locale) = locale_matches_targets(translation.locale, &targets) else {
             continue;
-        }
+        };
+
+        remaining.remove(&locale);
 
         tracing::info!(?translation, ?targets, "Show translation");
 
@@ -711,6 +726,10 @@ async fn collect_tmdb_show_strings(
         );
     }
 
+    for locale in remaining {
+        draft.add_show_string(locale, api::StringKind::Title, draft.original_name.clone());
+    }
+
     // Season strings: one translations call per season instead of one
     // full-detail call per season per language.
     let season_numbers: Vec<SeasonNumber> = draft.seasons.keys().copied().collect();
@@ -721,7 +740,7 @@ async fn collect_tmdb_show_strings(
             .await?;
 
         for translation in translations {
-            if !locale_matches_targets(translation.locale, targets) {
+            if locale_matches_targets(translation.locale, &targets).is_none() {
                 continue;
             }
 
@@ -757,7 +776,7 @@ async fn collect_tmdb_show_strings(
             .and_then(|draft| draft.original_name.clone());
 
         for translation in translations {
-            if !locale_matches_targets(translation.locale, targets) {
+            if locale_matches_targets(translation.locale, &targets).is_none() {
                 continue;
             }
 
@@ -1064,10 +1083,9 @@ pub(crate) async fn sync_movie(
         .context("Expected movie to exist")?;
 
     let config = db.load_config().await?;
-    let language = movie.language.or(config.language);
 
     let source = movie.primary_sync_source();
-    tracing::info!(movie_id = %movie_id, title = movie.strings.title(), ?source, ?language, "Syncing movie");
+    tracing::info!(movie_id = %movie_id, title = movie.strings.title(), ?source, "Syncing movie");
 
     match source {
         Some(api::RemoteSource::Tmdb) => {
@@ -1087,13 +1105,6 @@ pub(crate) async fn sync_movie(
             if !info.original_language.is_default() {
                 db.set_movie_default_language(movie_id, info.original_language)
                     .await?;
-            }
-
-            if let Err(e) =
-                collect_tmdb_movie_strings(movie_id, tmdb_id, &info, &config, language, db, remote)
-                    .await
-            {
-                tracing::warn!(movie_id = %movie_id, "String collection failed: {e:#}");
             }
 
             for remote in &info.remotes {
@@ -1165,6 +1176,15 @@ pub(crate) async fn sync_movie(
                     tracing::warn!(movie_id = %movie_id, "Movie release dates skipped: {e:#}")
                 }
             }
+
+            let language = movie.language.or(config.language);
+
+            if let Err(e) =
+                collect_tmdb_movie_strings(movie_id, tmdb_id, &info, &config, language, db, remote)
+                    .await
+            {
+                tracing::warn!(movie_id = %movie_id, "String collection failed: {e:#}");
+            }
         }
         Some(api::RemoteSource::Tvdb) => anyhow::bail!("Unsupported movie sync source: TVDB"),
         _ => anyhow::bail!("Movie has no syncable remote"),
@@ -1207,24 +1227,23 @@ async fn collect_tmdb_movie_strings(
 ) -> Result<()> {
     let mut targets = api::expand_sync_languages(&config.sync_languages, info.original_language);
 
-    // Always include the configured display locale so the shown title/overview
-    // is stored even when it isn't one of the configured sync languages.
-    let base = language.or(info.original_language);
-
-    if !base.language().is_default() {
-        targets.insert(base);
+    if !language.is_default() {
+        targets.insert(language);
     }
 
     let translations = remote.fetch_tmdb_movie_translations(tmdb_id).await?;
 
+    let mut remaining = targets.clone();
     let mut rows: StringRows = Vec::new();
 
     for translation in translations {
-        if !locale_matches_targets(translation.locale, &targets) {
+        let Some(locale) = locale_matches_targets(translation.locale, &targets) else {
             continue;
-        }
+        };
 
-        tracing::info!(?translation, ?targets, "TMDB movie translation row");
+        remaining.remove(&locale);
+
+        tracing::info!(?translation, ?targets, ?language, "Movie translation");
 
         push_string(
             &mut rows,
@@ -1237,7 +1256,23 @@ async fn collect_tmdb_movie_strings(
             &mut rows,
             translation.locale,
             api::StringKind::Overview,
-            translation.overview,
+            translation.overview.or(info.original_overview.clone()),
+        );
+    }
+
+    if remaining.contains(&info.original_language) {
+        push_string(
+            &mut rows,
+            info.original_language,
+            api::StringKind::Title,
+            info.original_title.clone(),
+        );
+
+        push_string(
+            &mut rows,
+            info.original_language,
+            api::StringKind::Overview,
+            info.original_overview.clone(),
         );
     }
 
