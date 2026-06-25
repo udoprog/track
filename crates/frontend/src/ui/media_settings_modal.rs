@@ -2,7 +2,10 @@ use api::IncludeSpecials;
 use web_sys::{Event, MouseEvent};
 use yew::prelude::*;
 
-use super::{AirDateFiltersEditor, LanguagePicker, Modal, ReleaseFiltersEditor};
+use super::{
+    AIR_DATE_KINDS, AIR_DATE_SOURCES, FiltersEditor, LanguagePicker, Modal, RELEASE_KINDS,
+    RELEASE_SOURCES,
+};
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
@@ -24,17 +27,17 @@ pub(crate) struct Props {
     #[prop_or_default]
     pub(crate) on_include_specials_change: Callback<IncludeSpecials>,
     #[prop_or_default]
-    pub(crate) release_filters: Option<Vec<api::ReleaseFilter>>,
+    pub(crate) release_filters: Option<Vec<api::FilterRule>>,
     #[prop_or_default]
-    pub(crate) default_release_filters: Vec<api::ReleaseFilter>,
+    pub(crate) default_release_filters: Vec<api::FilterRule>,
     #[prop_or_default]
-    pub(crate) on_release_filters_change: Option<Callback<Option<Vec<api::ReleaseFilter>>>>,
+    pub(crate) on_release_filters_change: Option<Callback<Option<Vec<api::FilterRule>>>>,
     #[prop_or_default]
-    pub(crate) air_date_filters: Option<Vec<api::AirDateFilter>>,
+    pub(crate) air_date_filters: Option<Vec<api::FilterRule>>,
     #[prop_or_default]
-    pub(crate) default_air_date_filters: Vec<api::AirDateFilter>,
+    pub(crate) default_air_date_filters: Vec<api::FilterRule>,
     #[prop_or_default]
-    pub(crate) on_air_date_filters_change: Option<Callback<Option<Vec<api::AirDateFilter>>>>,
+    pub(crate) on_air_date_filters_change: Option<Callback<Option<Vec<api::FilterRule>>>>,
 }
 
 #[function_component]
@@ -72,9 +75,9 @@ pub(crate) fn MediaSettingsModal(props: &Props) -> Html {
         };
 
         let editor = props.release_filters.as_ref().map(|filters| {
-            let on_change = cb.reform(|f: Vec<api::ReleaseFilter>| Some(f));
+            let on_change = cb.reform(|f: Vec<api::FilterRule>| Some(f));
             html! {
-                <ReleaseFiltersEditor filters={filters.clone()} on_change={on_change} />
+                <FiltersEditor rules={filters.clone()} on_change={on_change} kinds={RELEASE_KINDS} sources={RELEASE_SOURCES} />
             }
         });
 
@@ -98,10 +101,10 @@ pub(crate) fn MediaSettingsModal(props: &Props) -> Html {
         let on_mode = cb.reform(move |_| (!is_custom).then(|| default.clone()));
 
         let editor = props.air_date_filters.as_ref().map(|filters| {
-            let on_change = cb.reform(|f: Vec<api::AirDateFilter>| Some(f));
+            let on_change = cb.reform(|f: Vec<api::FilterRule>| Some(f));
 
             html! {
-                <AirDateFiltersEditor filters={filters.clone()} on_change={on_change} />
+                <FiltersEditor rules={filters.clone()} on_change={on_change} kinds={AIR_DATE_KINDS} sources={AIR_DATE_SOURCES} />
             }
         });
 

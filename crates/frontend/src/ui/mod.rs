@@ -3,13 +3,13 @@
 //! after the component it exports, and is re-exported here so callers can refer
 //! to it as `crate::ui::<Name>`.
 
-mod air_date_filters_editor;
 mod button;
 mod confirm_danger;
 mod context_menu;
 mod country_picker;
 mod episode_picker;
 mod error_box;
+mod filters_editor;
 mod image;
 mod image_gallery;
 mod language_modal;
@@ -21,7 +21,6 @@ mod media_settings_modal;
 mod modal;
 mod outline;
 mod pagination_buttons;
-mod release_filters_editor;
 mod release_modal;
 mod remote_editor;
 mod secret_input;
@@ -30,13 +29,15 @@ mod sync_languages_editor;
 mod tracked;
 mod translations_modal;
 
-pub(crate) use self::air_date_filters_editor::AirDateFiltersEditor;
 pub(crate) use self::button::{Button, Variant};
 pub(crate) use self::confirm_danger::ConfirmDanger;
 pub(crate) use self::context_menu::ContextMenu;
 pub(crate) use self::country_picker::CountryPicker;
 pub(crate) use self::episode_picker::EpisodePicker;
 pub(crate) use self::error_box::ErrorBox;
+pub(crate) use self::filters_editor::{
+    AIR_DATE_KINDS, AIR_DATE_SOURCES, FiltersEditor, RELEASE_KINDS, RELEASE_SOURCES,
+};
 pub(crate) use self::image::Image;
 pub(crate) use self::image_gallery::{ImageGallery, ImageItem};
 pub(crate) use self::language_modal::{LanguageModal, TopLanguages, locale_label};
@@ -48,7 +49,6 @@ pub(crate) use self::media_settings_modal::MediaSettingsModal;
 pub(crate) use self::modal::Modal;
 pub(crate) use self::outline::{Outline, OutlineControl, OutlineEntry, OutlineHandle};
 pub(crate) use self::pagination_buttons::PaginationButtons;
-pub(crate) use self::release_filters_editor::ReleaseFiltersEditor;
 pub(crate) use self::release_modal::{ReleaseModal, ReleaseTarget};
 pub(crate) use self::remote_editor::{RemoteEditor, RemoteSourceKind};
 pub(crate) use self::secret_input::SecretInput;

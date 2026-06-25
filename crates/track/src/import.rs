@@ -370,7 +370,7 @@ pub async fn import() -> Result<()> {
             timezone: String::new(),
             language: api::Locale::DEFAULT,
             include_specials: false,
-            release_filters: api::ReleaseFilter::default_filters(),
+            release_filters: api::FilterRule::default_release_rules(),
             air_date_filters: Vec::new(),
             sync_kinds: Vec::new(),
             sync_languages: vec![

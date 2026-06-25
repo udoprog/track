@@ -1,12 +1,12 @@
-use api::{AirDateFilter, Locale, ReleaseFilter, SourceSyncKinds};
+use api::{FilterRule, Locale, SourceSyncKinds};
 
-/// Serialize air-date filters for storage in a text column.
-pub(super) fn encode_air_date_filters(filters: &[AirDateFilter]) -> String {
-    serde_json::to_string(filters).unwrap_or_else(|_| "[]".to_string())
+/// Serialize a list of filter rules (release or air-date) for storage in a text column.
+pub(super) fn encode_filter_rules(rules: &[FilterRule]) -> String {
+    serde_json::to_string(rules).unwrap_or_else(|_| "[]".to_string())
 }
 
-/// Parse air-date filters previously written by [`encode_air_date_filters`].
-pub(super) fn decode_air_date_filters(s: &str) -> Option<Vec<AirDateFilter>> {
+/// Parse filter rules previously written by [`encode_filter_rules`].
+pub(super) fn decode_filter_rules(s: &str) -> Option<Vec<FilterRule>> {
     serde_json::from_str(s).ok()
 }
 
@@ -28,15 +28,5 @@ pub(super) fn encode_sync_languages(languages: &[Locale]) -> String {
 
 /// Parse sync locales written by [`encode_sync_languages`].
 pub(super) fn decode_sync_languages(s: &str) -> Option<Vec<Locale>> {
-    serde_json::from_str(s).ok()
-}
-
-/// Serialize release filters for storage in a text column.
-pub(super) fn encode_release_filters(filters: &[ReleaseFilter]) -> String {
-    serde_json::to_string(filters).unwrap_or_else(|_| "[]".to_string())
-}
-
-/// Parse release filters previously written by [`encode_release_filters`].
-pub(super) fn decode_release_filters(s: &str) -> Option<Vec<ReleaseFilter>> {
     serde_json::from_str(s).ok()
 }

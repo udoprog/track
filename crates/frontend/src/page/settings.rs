@@ -5,8 +5,8 @@ use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::ui::{
-    AirDateFiltersEditor, LanguagePicker, ReleaseFiltersEditor, SecretInput, SyncKindsEditor,
-    SyncLanguagesEditor,
+    AIR_DATE_KINDS, AIR_DATE_SOURCES, FiltersEditor, LanguagePicker, RELEASE_KINDS,
+    RELEASE_SOURCES, SecretInput, SyncKindsEditor, SyncLanguagesEditor,
 };
 
 fn tz_is_valid(name: &str) -> bool {
@@ -38,8 +38,8 @@ pub(crate) enum Msg {
     AutoSyncEnabledToggle,
     AutoSyncIntervalChanged(String),
     IncludeSpecialsToggle,
-    ReleaseFiltersChanged(Vec<api::ReleaseFilter>),
-    AirDateFiltersChanged(Vec<api::AirDateFilter>),
+    ReleaseFiltersChanged(Vec<api::FilterRule>),
+    AirDateFiltersChanged(Vec<api::FilterRule>),
     SyncKindsChanged(Vec<api::SourceSyncKinds>),
     SaveDone(Result<ws::Packet<api::SetConfig>, ws::Error>),
 }
@@ -247,9 +247,11 @@ impl Component for Settings {
                                 <label>{"Release Date"}</label>
                                 <span class="hint">{"Release types (and countries) used to determine when a movie becomes available. The earliest matching date is used."}</span>
 
-                                <ReleaseFiltersEditor
-                                    filters={self.config.release_filters.clone()}
+                                <FiltersEditor
+                                    rules={self.config.release_filters.clone()}
                                     on_change={link.callback(Msg::ReleaseFiltersChanged)}
+                                    kinds={RELEASE_KINDS}
+                                    sources={RELEASE_SOURCES}
                                 />
                             </div>
 
@@ -258,9 +260,11 @@ impl Component for Settings {
                                 <label>{"Air Date"}</label>
                                 <span class="hint">{"Restrict which sources' episode air dates qualify, by country and network. Source priority comes from each show's remote order (TVmaze ranks above TMDB by default)."}</span>
 
-                                <AirDateFiltersEditor
-                                    filters={self.config.air_date_filters.clone()}
+                                <FiltersEditor
+                                    rules={self.config.air_date_filters.clone()}
                                     on_change={link.callback(Msg::AirDateFiltersChanged)}
+                                    kinds={AIR_DATE_KINDS}
+                                    sources={AIR_DATE_SOURCES}
                                 />
                             </div>
                         </div>

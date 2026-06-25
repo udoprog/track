@@ -183,7 +183,7 @@ pub(crate) enum Msg {
     ),
     SetAutoSync(bool),
     SetAutoSyncDone(bool, Result<ws::Packet<api::SetShowAutoSync>, ws::Error>),
-    SetAirDateFilters(Option<Vec<api::AirDateFilter>>),
+    SetAirDateFilters(Option<Vec<api::FilterRule>>),
     SetAirDateFiltersDone(Result<ws::Packet<api::SetShowAirDateFilters>, ws::Error>),
     OpenRemoteEditor,
     CloseRemoteEditor,

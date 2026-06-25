@@ -9,6 +9,21 @@ fn rel(source: RemoteSource, country: Country, network: &str, ts: i64) -> Episod
     }
 }
 
+fn mrel(source: RemoteSource, country: Country, release_type: ReleaseType, ts: i64) -> MovieRelease {
+    MovieRelease {
+        source,
+        country,
+        release_type,
+        timestamp: Timestamp::from_jiff(jiff::Timestamp::from_second(ts).unwrap()),
+    }
+}
+
+fn rule(predicates: impl IntoIterator<Item = FilterPredicate>) -> FilterRule {
+    FilterRule {
+        predicates: predicates.into_iter().collect(),
+    }
+}
+
 fn entry(source: RemoteSource, sync_kinds: Option<SyncKindSet>) -> RemoteEntry {
     RemoteEntry {
         id: RemoteId::new(1),
@@ -255,21 +270,85 @@ fn air_date_priority_prefers_higher_ranked_source() {
 }
 
 #[test]
-fn air_date_filter_restricts_country() {
+fn air_date_rule_restricts_country() {
     let releases = [
         rel(RemoteSource::Tvmaze, Country::US, "", 300),
         rel(RemoteSource::Tvmaze, Country::GB, "", 100),
     ];
     let priority = default_air_date_priority();
-    let filters = [AirDateFilter {
-        source: RemoteSource::Tvmaze,
-        countries: vec![Country::GB],
-        networks: Vec::new(),
-    }];
+    let rules = [rule([FilterPredicate::Countries(vec![Country::GB])])];
 
-    // Only the GB date qualifies for TVmaze.
-    let aired = effective_aired(&releases, &priority, &filters).unwrap();
+    // Only the GB date qualifies.
+    let aired = effective_aired(&releases, &priority, &rules).unwrap();
     assert_eq!(aired.inner().as_second(), 100);
+}
+
+#[test]
+fn air_date_rule_predicates_and_together() {
+    let releases = [
+        rel(RemoteSource::Tvmaze, Country::GB, "BBC", 100),
+        rel(RemoteSource::Tvmaze, Country::GB, "ITV", 200),
+        rel(RemoteSource::Tvmaze, Country::US, "BBC", 50),
+    ];
+    let priority = default_air_date_priority();
+    // A single rule requires both GB *and* the BBC network to match.
+    let rules = [rule([
+        FilterPredicate::Countries(vec![Country::GB]),
+        FilterPredicate::Networks(vec!["BBC".to_owned()]),
+    ])];
+
+    let aired = effective_aired(&releases, &priority, &rules).unwrap();
+    assert_eq!(aired.inner().as_second(), 100);
+}
+
+#[test]
+fn air_date_rules_or_together() {
+    let releases = [
+        rel(RemoteSource::Tvmaze, Country::GB, "", 300),
+        rel(RemoteSource::Tvmaze, Country::JP, "", 200),
+        rel(RemoteSource::Tvmaze, Country::US, "", 100),
+    ];
+    let priority = default_air_date_priority();
+    // Either GB or JP qualifies; the US (100) release is excluded.
+    let rules = [
+        rule([FilterPredicate::Countries(vec![Country::GB])]),
+        rule([FilterPredicate::Countries(vec![Country::JP])]),
+    ];
+
+    let aired = effective_aired(&releases, &priority, &rules).unwrap();
+    assert_eq!(aired.inner().as_second(), 200);
+}
+
+#[test]
+fn release_empty_rules_accept_all() {
+    let releases = [
+        mrel(RemoteSource::Tmdb, Country::US, ReleaseType::Premiere, 50),
+        mrel(RemoteSource::Tmdb, Country::US, ReleaseType::Digital, 200),
+    ];
+
+    // No rules => accept everything, so the earliest (the premiere) wins.
+    assert!(release_accepted(&releases[0], &[]));
+    assert_eq!(earliest_release(&releases, &[]).unwrap().inner().as_second(), 50);
+}
+
+#[test]
+fn release_rule_restricts_type() {
+    let releases = [
+        mrel(RemoteSource::Tmdb, Country::US, ReleaseType::Premiere, 50),
+        mrel(RemoteSource::Tmdb, Country::US, ReleaseType::Digital, 200),
+        mrel(RemoteSource::Tmdb, Country::US, ReleaseType::Physical, 300),
+    ];
+    let rules = [rule([FilterPredicate::ReleaseTypes(vec![
+        ReleaseType::Digital,
+        ReleaseType::Physical,
+    ])])];
+
+    // The premiere is excluded; earliest accepted is the digital release.
+    assert!(!release_accepted(&releases[0], &rules));
+    assert_eq!(
+        earliest_release(&releases, &rules).unwrap().inner().as_second(),
+        200
+    );
 }
 
 #[test]
