@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::rc::Rc;
 
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
@@ -689,7 +688,7 @@ impl ShowDetail {
                     self.router.push(Route::ShowDetail(
                         id,
                         ShowDetailQuery {
-                            season: Some(season),
+                            season,
                             episode: None,
                         },
                     ));
@@ -1577,7 +1576,7 @@ impl ShowDetail {
             return;
         }
 
-        let entries: Rc<[OutlineEntry]> = self
+        let entries = self
             .episodes
             .iter()
             .map(|e| {

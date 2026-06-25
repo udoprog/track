@@ -584,7 +584,6 @@ impl From<ImageKey> for Image {
 
 /// Season number: Specials (stored as 0) or a regular numbered season.
 #[derive(
-    Default,
     Clone,
     Copy,
     PartialEq,
@@ -600,7 +599,6 @@ impl From<ImageKey> for Image {
 #[musli(crate = musli_core)]
 #[serde(untagged)]
 pub enum SeasonNumber {
-    #[default]
     Specials,
     Number(NonZero<u32>),
 }
@@ -645,6 +643,13 @@ impl SeasonNumber {
     #[inline]
     pub fn is_special(&self) -> bool {
         matches!(self, SeasonNumber::Specials)
+    }
+}
+
+impl Default for SeasonNumber {
+    #[inline]
+    fn default() -> Self {
+        Self::FIRST
     }
 }
 

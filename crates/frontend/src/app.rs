@@ -1,14 +1,17 @@
 use std::rc::Rc;
 
 use api::{TimeInfo, TimeZone, Timestamp};
+use gloo::events::EventListener;
 use gloo::timers::callback::Interval;
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
-use crate::background::Background;
+use crate::background::{Background, BackgroundState};
 use crate::error::{CustomContext, Error, Message, RcError};
 use crate::page::{Dashboard, MediaList, MovieDetail, Queue, Search, Settings, ShowDetail};
-use crate::router::{DashboardQuery, MediaQuery, QueueQuery, Route, Router, SearchQuery};
+use crate::router::{
+    DashboardQuery, MediaQuery, QueueQuery, Route, Router, RouterState, SearchQuery,
+};
 use crate::setup_channel::SetupChannel;
 use crate::ui::{ErrorBox, Outline, OutlineControl, OutlineEntry, TopLanguages};
 
@@ -17,20 +20,25 @@ pub(super) struct App {
     ws: ws::Service,
     time: TimeInfo,
     top_languages: TopLanguages,
+    error: Option<RcError>,
     /// Scroll container the outline reflects and drives; passed to [`Outline`].
     page: NodeRef,
     /// Entries currently shown in the outline, pushed in by a consumer through
     /// [`OutlineControl`] and forwarded to [`Outline`]. `None` hides it.
-    outline_entries: Option<Rc<[OutlineEntry]>>,
+    outline_entries: Rc<[OutlineEntry]>,
     /// Control handed to consumers via context.
     outline_control: OutlineControl,
+    router_state: RouterState,
     router: Router,
+    background_state: BackgroundState,
     background: Background,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
     _config_req: ws::Request,
     _top_languages_req: ws::Request,
     _tick_minute_interval: Interval,
+    _history_listener: EventListener,
+    onclearerror: Callback<()>,
 }
 
 pub(super) enum Msg {
@@ -40,70 +48,79 @@ pub(super) enum Msg {
     ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
     TopLanguagesLoaded(Result<ws::Packet<api::GetTopLanguages>, ws::Error>),
     /// A consumer set (or cleared) the outline contents.
-    SetOutline(Option<Rc<[OutlineEntry]>>),
+    SetOutline(Rc<[OutlineEntry]>),
     WsError(ws::Error),
-}
-
-#[derive(Properties, PartialEq)]
-pub(super) struct Props {
-    pub(super) error: Option<RcError>,
-    pub(super) onclearerror: Callback<()>,
-    pub(super) route: Route,
-    pub(super) on_navigate: Callback<Route>,
-    pub(super) on_replace: Callback<Route>,
-    pub(super) on_background: Callback<String>,
-    pub(super) on_title: Callback<Option<String>>,
-    pub(super) onerror: Callback<Error>,
+    Navigate(Route),
+    Replace(Route),
+    PopState,
+    SetBackground(String),
+    SetTitle(Option<String>),
+    Error(Error),
+    ClearError,
 }
 
 impl Component for App {
     type Message = Msg;
-    type Properties = Props;
+    type Properties = ();
 
     fn create(ctx: &Context<Self>) -> Self {
+        let link = ctx.link();
+
         let ws = ws::connect(ws::Connect::location("/ws"))
             .close_before_unload()
-            .on_error(ctx.link().callback(Msg::WsError))
+            .on_error(link.callback(Msg::WsError))
             .build();
 
-        let _setup = SetupChannel::new(ws.handle().clone(), ctx.link().callback(Msg::Channel));
+        let _setup = SetupChannel::new(ws.handle().clone(), link.callback(Msg::Channel));
 
         let _broadcast = ws
             .handle()
             .clone()
-            .on_broadcast(ctx.link().callback(Msg::AppBroadcast));
+            .on_broadcast(link.callback(Msg::AppBroadcast));
 
-        let outline_control = OutlineControl::new(ctx.link().callback(Msg::SetOutline));
+        let outline_control = OutlineControl::new(link.callback(Msg::SetOutline));
 
-        let link = ctx.link().clone();
-        let _tick_minute_interval = Interval::new(10_000, move || link.send_message(Msg::TickTime));
+        let _tick_minute_interval = Interval::new(10_000, {
+            let link = link.clone();
+            move || link.send_message(Msg::TickTime)
+        });
 
-        let router = Router::new(
-            ctx.props().on_navigate.clone(),
-            ctx.props().on_replace.clone(),
-        );
+        let background_state = BackgroundState::new();
 
-        let background = Background::new(
-            ctx.props().on_background.clone(),
-            ctx.props().on_title.clone(),
-            ctx.props().onerror.clone(),
-        );
+        let router_state = RouterState::new().expect("Setting up router");
+        let _history_listener = router_state.on_change(link.callback(|()| Msg::PopState));
+
+        let onerror = link.callback(Msg::Error);
+        let onclearerror = link.callback(|()| Msg::ClearError);
+        let on_navigate = link.callback(Msg::Navigate);
+        let on_replace = link.callback(Msg::Replace);
+        let on_background = link.callback(Msg::SetBackground);
+        let on_title = link.callback(Msg::SetTitle);
+
+        let router = Router::new(on_navigate, on_replace);
+
+        let background = Background::new(on_background, on_title, onerror);
 
         Self {
             channel: ws::Channel::default(),
             ws,
             time: TimeInfo::new(TimeZone::system(), Timestamp::now()),
             top_languages: TopLanguages::default(),
+            error: None,
             page: NodeRef::default(),
-            outline_entries: None,
+            outline_entries: Rc::from([]),
             outline_control,
+            router_state,
             router,
+            _history_listener,
+            background_state,
             background,
             _setup,
             _broadcast,
             _config_req: ws::Request::default(),
             _top_languages_req: ws::Request::default(),
             _tick_minute_interval,
+            onclearerror,
         }
     }
 
@@ -119,44 +136,58 @@ impl Component for App {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         html! {
-            <ContextProvider<ws::Handle> context={self.ws.handle()}>
-            <ContextProvider<TimeInfo> context={self.time.clone()}>
-            <ContextProvider<TopLanguages> context={self.top_languages.clone()}>
-            <ContextProvider<Router> context={self.router.clone()}>
-            <ContextProvider<Background> context={self.background.clone()}>
-            <ContextProvider<OutlineControl> context={self.outline_control.clone()}>
-                <div id="application">
-                    if let Some(error) = &ctx.props().error {
-                        <div id="error">
-                            <ErrorBox error={error.clone()} onclearerror={ctx.props().onclearerror.clone()} />
-                        </div>
-                    }
-
-                    <Toolbar />
-
-                    <div id="content">
-                        <div id="page" ref={self.page.clone()}>
-                            { self.view_page(ctx) }
-                        </div>
-
-                        <Outline
-                            page={self.page.clone()}
-                            entries={self.outline_entries.clone()}
+            <>
+                <div class="background">
+                    if let Some(url) = self.background_state.url() {
+                        <div
+                            key={url.to_owned()}
+                            class="background-image"
+                            style={format!("background-image: url('{url}')")}
                         />
-                    </div>
+                    }
                 </div>
-            </ContextProvider<OutlineControl>>
-            </ContextProvider<Background>>
-            </ContextProvider<Router>>
-            </ContextProvider<TopLanguages>>
-            </ContextProvider<TimeInfo>>
-            </ContextProvider<ws::Handle>>
+
+                <ContextProvider<ws::Handle> context={self.ws.handle()}>
+                <ContextProvider<TimeInfo> context={self.time.clone()}>
+                <ContextProvider<TopLanguages> context={self.top_languages.clone()}>
+                <ContextProvider<Router> context={self.router.clone()}>
+                <ContextProvider<Background> context={self.background.clone()}>
+                <ContextProvider<OutlineControl> context={self.outline_control.clone()}>
+                    <div id="application">
+                        if let Some(ref error) = self.error {
+                            <div id="error">
+                                <ErrorBox error={error.clone()} onclearerror={self.onclearerror.clone()} />
+                            </div>
+                        }
+
+                        <Toolbar />
+
+                        <div id="content">
+                            <div id="page" ref={self.page.clone()}>
+                                { self.view_page(ctx) }
+                            </div>
+
+                            <Outline
+                                page={self.page.clone()}
+                                entries={self.outline_entries.clone()}
+                            />
+                        </div>
+                    </div>
+                </ContextProvider<OutlineControl>>
+                </ContextProvider<Background>>
+                </ContextProvider<Router>>
+                </ContextProvider<TopLanguages>>
+                </ContextProvider<TimeInfo>>
+                </ContextProvider<ws::Handle>>
+            </>
         }
     }
 }
 
 impl App {
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
+        let link = ctx.link();
+
         match msg {
             Msg::Channel(result) => {
                 self.channel = result?;
@@ -166,14 +197,14 @@ impl App {
                         .channel
                         .request()
                         .body(api::GetConfigRequest)
-                        .on_packet(ctx.link().callback(Msg::ConfigLoaded))
+                        .on_packet(link.callback(Msg::ConfigLoaded))
                         .send();
 
                     self._top_languages_req = self
                         .channel
                         .request()
                         .body(api::GetTopLanguagesRequest)
-                        .on_packet(ctx.link().callback(Msg::TopLanguagesLoaded))
+                        .on_packet(link.callback(Msg::TopLanguagesLoaded))
                         .send();
                 }
 
@@ -244,6 +275,46 @@ impl App {
                 Ok(false)
             }
             Msg::WsError(e) => Err(e.into()),
+            Msg::Navigate(route) => {
+                if let Err(e) = self.router_state.navigate(&route) {
+                    self.error = Some(RcError::from(e));
+                }
+
+                Ok(true)
+            }
+            Msg::Replace(route) => {
+                if let Err(e) = self.router_state.replace(&route) {
+                    self.error = Some(RcError::from(e));
+                }
+
+                Ok(true)
+            }
+            Msg::PopState => {
+                if let Err(e) = self.router_state.on_pop() {
+                    self.error = Some(RcError::from(e));
+                }
+
+                Ok(true)
+            }
+            Msg::SetBackground(background) => {
+                if let Err(e) = self.background_state.set_background(background) {
+                    self.error = Some(RcError::from(e));
+                }
+
+                Ok(true)
+            }
+            Msg::SetTitle(title) => {
+                self.background_state.set_title(title);
+                Ok(false)
+            }
+            Msg::Error(e) => {
+                self.error = Some(RcError::from(e));
+                Ok(true)
+            }
+            Msg::ClearError => {
+                self.error = None;
+                Ok(true)
+            }
         }
     }
 
@@ -257,8 +328,8 @@ impl App {
         TimeZone::system()
     }
 
-    fn view_page(&self, ctx: &Context<Self>) -> Html {
-        match ctx.props().route {
+    fn view_page(&self, _: &Context<Self>) -> Html {
+        match self.router_state.route {
             Route::Dashboard(ref q) => {
                 html! { <Dashboard page={q.page} /> }
             }
@@ -269,10 +340,8 @@ impl App {
                 <MediaList page={q.page} filter={q.filter.clone()} sort={q.sort} desc={q.desc} tracked={q.tracked} selection={q.selection} />
             },
             Route::ShowDetail(show_id, ref q) => {
-                let season = q.season.unwrap_or(api::SeasonNumber::FIRST);
-
                 html! {
-                    <ShowDetail {show_id} {season} />
+                    <ShowDetail {show_id} season={q.season} />
                 }
             }
             Route::MovieDetail(movie_id) => {

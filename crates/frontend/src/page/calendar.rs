@@ -149,9 +149,10 @@ impl Component for Calendar {
                                                 { for shows.iter().map(|entry| {
                                                     let show_id = entry.show_id;
                                                     let episode = entry.episodes.last().map(|ep| ep.code());
-                                                    let onclick = link.callback(move |_|
-                                                        Msg::Navigate(Route::ShowDetail(show_id, ShowDetailQuery { season: episode.map(|e| e.season), episode }))
-                                                    );
+                                                    let onclick = link.callback(move |_| {
+                                                        let season = episode.map(|e| e.season).unwrap_or_default();
+                                                        Msg::Navigate(Route::ShowDetail(show_id, ShowDetailQuery { season, episode }))
+                                                    });
 
                                                     html! {
                                                         <div class="calendar-item" title={format!("Open {}", entry.show_title)}>
@@ -166,7 +167,7 @@ impl Component for Calendar {
                                                             {for entry.episodes.iter().map(move |ep| {
                                                                 let episode = ep.code();
                                                                 let onclick = link.callback(move |_|
-                                                                    Msg::Navigate(Route::ShowDetail(show_id, ShowDetailQuery { season: Some(episode.season), episode: Some(episode) }))
+                                                                    Msg::Navigate(Route::ShowDetail(show_id, ShowDetailQuery { season: episode.season, episode: Some(episode) }))
                                                                 );
 
                                                                 html! {

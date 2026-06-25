@@ -151,6 +151,8 @@ pub(crate) enum Message {
     ReadingViewport,
     #[display("Positioning the time menu")]
     PositioningMenu,
+    #[display("Setting storage item")]
+    SetStorageItem,
 }
 
 pub(crate) trait CustomContext<T> {

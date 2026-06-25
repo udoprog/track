@@ -462,7 +462,7 @@ impl Dashboard {
                         Msg::Navigate(Route::ShowDetail(
                             show,
                             ShowDetailQuery {
-                                season: Some(season),
+                                season,
                                 episode: Some(code),
                             },
                         ))

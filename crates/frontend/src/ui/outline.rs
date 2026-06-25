@@ -27,18 +27,19 @@ pub(crate) struct OutlineEntry {
 /// [`OutlineHandle`] keeps the outline alive and tears it down when dropped.
 #[derive(Clone, PartialEq)]
 pub(crate) struct OutlineControl {
-    set: Callback<Option<Rc<[OutlineEntry]>>>,
+    set: Callback<Rc<[OutlineEntry]>>,
 }
 
 impl OutlineControl {
-    pub(crate) fn new(set: Callback<Option<Rc<[OutlineEntry]>>>) -> Self {
+    pub(crate) fn new(set: Callback<Rc<[OutlineEntry]>>) -> Self {
         Self { set }
     }
 
     /// Show `entries` in the outline. The returned handle clears the outline
     /// when it is dropped.
     pub(crate) fn attach(&self, entries: Rc<[OutlineEntry]>) -> OutlineHandle {
-        self.set.emit(Some(entries));
+        self.set.emit(entries);
+
         OutlineHandle {
             set: self.set.clone(),
         }
@@ -48,19 +49,20 @@ impl OutlineControl {
 /// RAII handle that owns the current outline contents. Dropping it removes the
 /// outline (e.g. when the owning component is destroyed or navigated away).
 pub(crate) struct OutlineHandle {
-    set: Callback<Option<Rc<[OutlineEntry]>>>,
+    set: Callback<Rc<[OutlineEntry]>>,
 }
 
 impl OutlineHandle {
     /// Replace the displayed entries, e.g. when the selected season changes.
     pub(crate) fn set(&self, entries: Rc<[OutlineEntry]>) {
-        self.set.emit(Some(entries));
+        self.set.emit(entries);
     }
 }
 
 impl Drop for OutlineHandle {
+    #[inline]
     fn drop(&mut self) {
-        self.set.emit(None);
+        self.set.emit(Rc::from([]));
     }
 }
 
@@ -79,7 +81,7 @@ pub(crate) struct Props {
     /// The page scroll container the outline reflects and drives.
     pub(crate) page: NodeRef,
     /// Entries to show; `None` hides the outline entirely.
-    pub(crate) entries: Option<Rc<[OutlineEntry]>>,
+    pub(crate) entries: Rc<[OutlineEntry]>,
 }
 
 pub(crate) enum Msg {
@@ -124,12 +126,13 @@ impl Component for Outline {
     type Properties = Props;
 
     fn create(ctx: &Context<Self>) -> Self {
-        let on_resize = ctx.link().callback(|_| Msg::Resized);
+        let link = ctx.link();
+
+        let on_resize = link.callback(|_| Msg::Resized);
         let window = web_sys::window().expect("Expected a window");
         let _resize = EventListener::new(&window, "resize", move |_| on_resize.emit(()));
 
-        let (background, _) = ctx
-            .link()
+        let (background, _) = link
             .context::<Background>(Callback::noop())
             .expect("Expected Background in context");
 
@@ -158,12 +161,15 @@ impl Component for Outline {
     }
 
     fn rendered(&mut self, ctx: &Context<Self>, _first_render: bool) {
+        let props = ctx.props();
+        let link = ctx.link();
+
         // Attach the scroll listener once the page element exists. The page is
         // owned by `App` (a sibling), so we listen on the DOM node directly.
         if self._scroll.is_none()
-            && let Some(page) = ctx.props().page.cast::<Element>()
+            && let Some(page) = props.page.cast::<Element>()
         {
-            let link = ctx.link().clone();
+            let link = link.clone();
             self._scroll = Some(EventListener::new(&page, "scroll", move |_| {
                 link.send_message(Msg::Scrolled);
             }));
@@ -181,7 +187,7 @@ impl Component for Outline {
 
         if marks != self.marks {
             mem::swap(&mut self.marks, &mut marks);
-            ctx.link().send_message(Msg::Resized);
+            link.send_message(Msg::Resized);
         } else {
             let mut hidden = mem::take(&mut self.scratch_buf);
 
@@ -189,7 +195,7 @@ impl Component for Outline {
 
             if hidden != self.hidden {
                 mem::swap(&mut self.hidden, &mut hidden);
-                ctx.link().send_message(Msg::Resized);
+                link.send_message(Msg::Resized);
             }
 
             self.scratch_buf = hidden;
@@ -206,11 +212,12 @@ impl Component for Outline {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let link = ctx.link();
+        let props = ctx.props();
 
         html! {
             <div id="outline"
                 ref={self.outline.clone()}
-                class={classes!(ctx.props().entries.is_some().then_some("visible"))}
+                class={classes!((!props.entries.is_empty()).then_some("visible"))}
                 onpointerdown={link.callback(Msg::PointerDown)}
                 onpointermove={link.callback(Msg::PointerMove)}
                 onpointerup={link.callback(Msg::PointerUp)}
@@ -232,6 +239,8 @@ impl Component for Outline {
 
 impl Outline {
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
+        let props = ctx.props();
+
         match msg {
             Msg::Scrolled => {
                 self.update_mark(ctx)?;
@@ -277,7 +286,7 @@ impl Outline {
                 Ok(false)
             }
             Msg::Wheel(e) => {
-                if let Some(page) = ctx.props().page.cast::<Element>() {
+                if let Some(page) = props.page.cast::<Element>() {
                     e.prevent_default();
 
                     // Normalize the delta to pixels regardless of the wheel's
@@ -300,13 +309,16 @@ impl Outline {
     /// within the page so it lines up with the highlight band. Overlapping
     /// markers are later hidden by [`Outline::cull_into`].
     fn measure_into(ctx: &Context<Self>, out: &mut Vec<OutlineMark>) {
+        let props = ctx.props();
+        let entries = &props.entries;
+
         out.clear();
 
-        let Some(entries) = &ctx.props().entries else {
+        if entries.is_empty() {
             return;
-        };
+        }
 
-        let Some(page) = ctx.props().page.cast::<Element>() else {
+        let Some(page) = props.page.cast::<Element>() else {
             return;
         };
 
@@ -379,8 +391,10 @@ impl Outline {
     /// viewport. Its top and height depend on the page's scroll metrics, which
     /// change on scroll, on resize, and as content reflows.
     fn update_mark(&self, ctx: &Context<Self>) -> Result<(), Error> {
+        let props = ctx.props();
+
         let (Some(page), Some(mark)) = (
-            ctx.props().page.cast::<HtmlElement>(),
+            props.page.cast::<HtmlElement>(),
             self.mark.cast::<HtmlElement>(),
         ) else {
             return Ok(());
@@ -419,10 +433,11 @@ impl Outline {
     /// Map the pointer's vertical position over the rail onto the page scroll
     /// offset, so dragging the rail scrolls the content.
     fn scroll_to_pointer(&self, ctx: &Context<Self>, e: &PointerEvent) {
-        let (Some(outline), Some(page)) = (
-            self.outline.cast::<Element>(),
-            ctx.props().page.cast::<Element>(),
-        ) else {
+        let props = ctx.props();
+
+        let (Some(outline), Some(page)) =
+            (self.outline.cast::<Element>(), props.page.cast::<Element>())
+        else {
             return;
         };
 

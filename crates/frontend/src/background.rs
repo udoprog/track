@@ -1,7 +1,9 @@
+use std::rc::Rc;
+
 use web_sys::{Document, Storage};
 use yew::prelude::*;
 
-use crate::error::Error;
+use crate::error::{CustomContext, Error, Message};
 
 const STORAGE_KEY: &str = "background";
 
@@ -33,17 +35,19 @@ impl BackgroundState {
 
     /// Update the stored background, persisting it to local storage. Returns
     /// whether the value changed (and therefore a re-render is needed).
-    pub(super) fn set_background(&mut self, value: String) -> bool {
+    pub(super) fn set_background(&mut self, value: String) -> Result<bool, Error> {
         if self.value.as_ref() == Some(&value) {
-            return false;
+            return Ok(false);
         }
 
         if let Some(storage) = &self.storage {
-            let _ = storage.set_item(STORAGE_KEY, &value);
+            storage
+                .set_item(STORAGE_KEY, &value)
+                .context(Message::SetStorageItem)?;
         }
 
         self.value = Some(value);
-        true
+        Ok(true)
     }
 
     pub(super) fn set_title(&self, title: Option<String>) {
@@ -64,13 +68,24 @@ impl BackgroundState {
     }
 }
 
-/// Context handed to descendant components so they can set the page background.
-/// Backed by a callback into [`crate::root::Root`].
-#[derive(Clone, PartialEq)]
-pub(super) struct Background {
+struct Inner {
     background: Callback<String>,
     title: Callback<Option<String>>,
     error: Callback<Error>,
+}
+
+/// Context handed to descendant components so they can set the page background.
+/// Backed by a callback into [`crate::root::Root`].
+#[derive(Clone)]
+pub(super) struct Background {
+    inner: Rc<Inner>,
+}
+
+impl PartialEq for Background {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.inner, &other.inner)
+    }
 }
 
 impl Background {
@@ -80,9 +95,11 @@ impl Background {
         error: Callback<Error>,
     ) -> Self {
         Self {
-            background,
-            title,
-            error,
+            inner: Rc::new(Inner {
+                background,
+                title,
+                error,
+            }),
         }
     }
 
@@ -90,17 +107,17 @@ impl Background {
     /// with `None`.
     pub(super) fn background(&self, url: Option<String>) {
         if let Some(url) = url {
-            self.background.emit(url);
+            self.inner.background.emit(url);
         }
     }
 
     /// Set the title.
     pub(super) fn title(&self, title: Option<String>) {
-        self.title.emit(title);
+        self.inner.title.emit(title);
     }
 
     /// Emit an error.
     pub(super) fn error(&self, error: Error) {
-        self.error.emit(error);
+        self.inner.error.emit(error);
     }
 }

@@ -346,7 +346,7 @@ impl QueueQuery {
 
 #[derive(Default, Debug, Clone, PartialEq)]
 pub(super) struct ShowDetailQuery {
-    pub(super) season: Option<api::SeasonNumber>,
+    pub(super) season: api::SeasonNumber,
     /// Episode to scroll to, emitted as the URL fragment (`#S01E05`). Write-only:
     /// it is never parsed back from the location, since the fragment is read
     /// directly by the detail page (see [`Router::hash`]).
@@ -357,10 +357,8 @@ impl ShowDetailQuery {
     fn to_query_string(&self) -> String {
         let mut s = form_urlencoded::Serializer::new(String::new());
 
-        if let Some(season) = self.season
-            && season != api::SeasonNumber::FIRST
-        {
-            let ordinal = season.ordinal().to_string();
+        if self.season != api::SeasonNumber::FIRST {
+            let ordinal = self.season.ordinal().to_string();
             s.append_pair("season", &ordinal);
         }
 
@@ -376,7 +374,8 @@ impl ShowDetailQuery {
                     this.season = value
                         .parse::<u32>()
                         .ok()
-                        .map(api::SeasonNumber::from_ordinal);
+                        .map(api::SeasonNumber::from_ordinal)
+                        .unwrap_or_default();
                 }
                 _ => continue,
             }
