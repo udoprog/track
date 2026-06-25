@@ -8,7 +8,6 @@ use yew::prelude::*;
 
 use api::TimeInfo;
 
-use crate::error::Error;
 use crate::ui::{Button, ContextMenu, Variant};
 
 /// Which ring of the clock is being edited.
@@ -191,7 +190,7 @@ pub(crate) struct Props {
     pub(crate) children: Children,
     /// Classes for the trigger button (e.g. `"success"`).
     #[prop_or_default]
-    pub(crate) trigger_class: Classes,
+    pub(crate) class: Classes,
     #[prop_or_default]
     pub(crate) icon: Option<AttrValue>,
     #[prop_or_default]
@@ -202,8 +201,6 @@ pub(crate) struct Props {
     #[prop_or_default]
     pub(crate) preset: Option<TimePreset>,
     pub(crate) on_confirm: Callback<api::MarkTime>,
-    /// Surfaces a positioning failure to the host page's error handler.
-    pub(crate) onerror: Callback<Error>,
 }
 
 pub(crate) enum Msg {
@@ -222,9 +219,9 @@ pub(crate) enum Msg {
 }
 
 /// A trigger button that opens an anchored popover for choosing a
-/// [`api::MarkTime`]: a "Now" preset, an optional caller-supplied [`TimePreset`],
-/// plus a round analog clock and a month calendar for an exact instant. Shared by
-/// the "mark watched" and "mark pending" flows.
+/// [`api::MarkTime`]: a "Now" preset, an optional caller-supplied
+/// [`TimePreset`], plus a round analog clock and a month calendar for an exact
+/// instant. Shared by the "mark watched" and "mark pending" flows.
 pub(crate) struct MarkTimeMenu {
     /// Open/position state for the popover. `false` is closed; `true` is open.
     context_open: bool,
@@ -238,7 +235,8 @@ pub(crate) struct MarkTimeMenu {
     minute: u8,
     mode: ClockMode,
     /// The active quick preset, if the working value still matches one. Cleared
-    /// by any manual edit. Drives which `MarkTime` variant is emitted on confirm.
+    /// by any manual edit. Drives which `MarkTime` variant is emitted on
+    /// confirm.
     preset: Preset,
     dragging: bool,
     dial: NodeRef,
@@ -471,12 +469,12 @@ impl Component for MarkTimeMenu {
 
         html! {
             <>
-                <button ref={self.anchor.clone()} class={props.trigger_class.clone()} title={props.title.clone()} onclick={link.callback(|_| Msg::Open)}>
+                <button ref={self.anchor.clone()} class={props.class.clone()} title={props.title.clone()} onclick={link.callback(|_| Msg::Open)}>
                     { for props.children.iter() }
                 </button>
 
                 if self.context_open {
-                    <ContextMenu icon={props.icon.clone()} prompt={props.prompt.clone()} anchor={self.anchor.clone()} on_close={link.callback(|_| Msg::Close)} onerror={props.onerror.clone()}>
+                    <ContextMenu icon={props.icon.clone()} prompt={props.prompt.clone()} anchor={self.anchor.clone()} on_close={link.callback(|_| Msg::Close)}>
                         {self.view_interaction(ctx)}
 
                         {self.view_resolved(ctx)}

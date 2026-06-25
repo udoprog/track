@@ -1,6 +1,8 @@
 use web_sys::{Document, Storage};
 use yew::prelude::*;
 
+use crate::error::Error;
+
 const STORAGE_KEY: &str = "background";
 
 /// Persists the selected page background in local storage. Created alongside the
@@ -68,11 +70,20 @@ impl BackgroundState {
 pub(super) struct Background {
     background: Callback<String>,
     title: Callback<Option<String>>,
+    error: Callback<Error>,
 }
 
 impl Background {
-    pub(super) fn new(background: Callback<String>, title: Callback<Option<String>>) -> Self {
-        Self { background, title }
+    pub(super) fn new(
+        background: Callback<String>,
+        title: Callback<Option<String>>,
+        error: Callback<Error>,
+    ) -> Self {
+        Self {
+            background,
+            title,
+            error,
+        }
     }
 
     /// Set the page background to the given (proxied) image URL, or clear it
@@ -86,5 +97,10 @@ impl Background {
     /// Set the title.
     pub(super) fn title(&self, title: Option<String>) {
         self.title.emit(title);
+    }
+
+    /// Emit an error.
+    pub(super) fn error(&self, error: Error) {
+        self.error.emit(error);
     }
 }

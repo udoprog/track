@@ -24,6 +24,8 @@ pub(super) struct App {
     outline_entries: Option<Rc<[OutlineEntry]>>,
     /// Control handed to consumers via context.
     outline_control: OutlineControl,
+    router: Router,
+    background: Background,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
     _config_req: ws::Request,
@@ -45,13 +47,13 @@ pub(super) enum Msg {
 #[derive(Properties, PartialEq)]
 pub(super) struct Props {
     pub(super) error: Option<RcError>,
-    pub(super) onerror: Callback<Error>,
     pub(super) onclearerror: Callback<()>,
     pub(super) route: Route,
     pub(super) on_navigate: Callback<Route>,
     pub(super) on_replace: Callback<Route>,
     pub(super) on_background: Callback<String>,
     pub(super) on_title: Callback<Option<String>>,
+    pub(super) onerror: Callback<Error>,
 }
 
 impl Component for App {
@@ -76,6 +78,17 @@ impl Component for App {
         let link = ctx.link().clone();
         let _tick_minute_interval = Interval::new(10_000, move || link.send_message(Msg::TickTime));
 
+        let router = Router::new(
+            ctx.props().on_navigate.clone(),
+            ctx.props().on_replace.clone(),
+        );
+
+        let background = Background::new(
+            ctx.props().on_background.clone(),
+            ctx.props().on_title.clone(),
+            ctx.props().onerror.clone(),
+        );
+
         Self {
             channel: ws::Channel::default(),
             ws,
@@ -84,6 +97,8 @@ impl Component for App {
             page: NodeRef::default(),
             outline_entries: None,
             outline_control,
+            router,
+            background,
             _setup,
             _broadcast,
             _config_req: ws::Request::default(),
@@ -96,29 +111,19 @@ impl Component for App {
         match self.try_update(ctx, msg) {
             Ok(render) => render,
             Err(e) => {
-                ctx.props().onerror.emit(e);
+                self.background.error(e);
                 false
             }
         }
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
-        let router = Router::new(
-            ctx.props().on_navigate.clone(),
-            ctx.props().on_replace.clone(),
-        );
-
-        let background = Background::new(
-            ctx.props().on_background.clone(),
-            ctx.props().on_title.clone(),
-        );
-
         html! {
             <ContextProvider<ws::Handle> context={self.ws.handle()}>
             <ContextProvider<TimeInfo> context={self.time.clone()}>
             <ContextProvider<TopLanguages> context={self.top_languages.clone()}>
-            <ContextProvider<Router> context={router}>
-            <ContextProvider<Background> context={background}>
+            <ContextProvider<Router> context={self.router.clone()}>
+            <ContextProvider<Background> context={self.background.clone()}>
             <ContextProvider<OutlineControl> context={self.outline_control.clone()}>
                 <div id="application">
                     if let Some(error) = &ctx.props().error {
@@ -137,7 +142,6 @@ impl Component for App {
                         <Outline
                             page={self.page.clone()}
                             entries={self.outline_entries.clone()}
-                            onerror={ctx.props().onerror.clone()}
                         />
                     </div>
                 </div>
@@ -254,40 +258,30 @@ impl App {
     }
 
     fn view_page(&self, ctx: &Context<Self>) -> Html {
-        let onerror = ctx.props().onerror.clone();
-
         match ctx.props().route {
             Route::Dashboard(ref q) => {
-                html! { <Dashboard {onerror} page={q.page} /> }
+                html! { <Dashboard page={q.page} /> }
             }
             Route::Queue(ref q) => html! {
-                <Queue {onerror} focus={q.focus} page={q.page} />
+                <Queue focus={q.focus} page={q.page} />
             },
             Route::Media(ref q) => html! {
-                <MediaList
-                    {onerror}
-                    page={q.page}
-                    filter={q.filter.clone()}
-                    sort={q.sort}
-                    desc={q.desc}
-                    tracked={q.tracked}
-                    selection={q.selection}
-                />
+                <MediaList page={q.page} filter={q.filter.clone()} sort={q.sort} desc={q.desc} tracked={q.tracked} selection={q.selection} />
             },
             Route::ShowDetail(show_id, ref q) => {
                 let season = q.season.unwrap_or(api::SeasonNumber::FIRST);
 
                 html! {
-                    <ShowDetail {onerror} {show_id} {season} />
+                    <ShowDetail {show_id} {season} />
                 }
             }
             Route::MovieDetail(movie_id) => {
-                html! { <MovieDetail {onerror} {movie_id} /> }
+                html! { <MovieDetail {movie_id} /> }
             }
             Route::Search(ref q) => html! {
-                <Search {onerror} selection={q.selection} filter={q.filter.clone()} />
+                <Search selection={q.selection} filter={q.filter.clone()} />
             },
-            Route::Settings => html! { <Settings {onerror} /> },
+            Route::Settings => html! { <Settings /> },
         }
     }
 }

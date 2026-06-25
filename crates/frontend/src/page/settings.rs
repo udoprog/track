@@ -44,14 +44,9 @@ pub(crate) enum Msg {
     SaveDone(Result<ws::Packet<api::SetConfig>, ws::Error>),
 }
 
-#[derive(Properties, PartialEq)]
-pub(crate) struct Props {
-    pub(crate) onerror: Callback<Error>,
-}
-
 impl Component for Settings {
     type Message = Msg;
-    type Properties = Props;
+    type Properties = ();
 
     fn create(ctx: &Context<Self>) -> Self {
         let (ws, _) = ctx
@@ -82,7 +77,7 @@ impl Component for Settings {
         match self.try_update(ctx, msg) {
             Ok(render) => render,
             Err(e) => {
-                ctx.props().onerror.emit(e);
+                self.background.error(e);
                 false
             }
         }

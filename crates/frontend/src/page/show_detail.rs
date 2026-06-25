@@ -193,7 +193,6 @@ pub(crate) enum Msg {
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
-    pub(crate) onerror: Callback<Error>,
     pub(crate) show_id: api::ShowId,
     #[prop_or_default]
     pub(crate) season: api::SeasonNumber,
@@ -308,7 +307,7 @@ impl Component for ShowDetail {
         match self.try_update(ctx, msg) {
             Ok(render) => render,
             Err(e) => {
-                ctx.props().onerror.emit(e);
+                self.background.error(e);
                 false
             }
         }
@@ -332,8 +331,6 @@ impl Component for ShowDetail {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
-        let props = ctx.props();
-
         let Some(ref show) = self.show else {
             return html!(<Loading />);
         };
@@ -387,12 +384,7 @@ impl Component for ShowDetail {
                         <Button node_ref={self.remove_anchor.clone()} icon="trash" variant={Variant::Danger} title="Remove show" text="Remove" onclick={link.callback(|_| Msg::ConfirmRemove)} />
 
                         if self.confirm_remove {
-                            <ContextMenu
-                                prompt="Remove show"
-                                label={show.strings.title().map(str::to_owned)}
-                                anchor={self.remove_anchor.clone()}
-                                on_close={ctx.link().callback(|_| Msg::CancelRemove)}
-                                onerror={props.onerror.clone()}>
+                            <ContextMenu prompt="Remove show" label={show.strings.title().map(str::to_owned)} anchor={self.remove_anchor.clone()} on_close={ctx.link().callback(|_| Msg::CancelRemove)}>
                                 <ConfirmDanger on_confirm={link.callback(|_| Msg::RemoveShow)} on_cancel={link.callback(|_| Msg::CancelRemove)} />
                             </ContextMenu>
                         }
@@ -462,14 +454,12 @@ impl Component for ShowDetail {
                         on_set_sync_kinds={link.callback(|(id, kinds)| Msg::SetRemoteSyncKinds(id, kinds))}
                         global_sync_kinds={self.global_sync_kinds.clone()}
                         on_close={link.callback(|_| Msg::CloseRemoteEditor)}
-                        onerror={props.onerror.clone()}
                     />
                 }
 
                 if self.show_translations_modal {
                     <TranslationsModal
                         target={api::TranslationTarget::Show(show.id)}
-                        onerror={props.onerror.clone()}
                         on_close={link.callback(|_| Msg::CloseShowTranslations)}
                     />
                 }
@@ -478,7 +468,6 @@ impl Component for ShowDetail {
                     if let Some(season) = self.selected() {
                         <TranslationsModal
                             target={api::TranslationTarget::Season(season.id)}
-                            onerror={props.onerror.clone()}
                             on_close={link.callback(|_| Msg::CloseSeasonTranslations)}
                         />
                     }
@@ -487,7 +476,6 @@ impl Component for ShowDetail {
                 if let Some(episode_id) = self.episode_translations {
                     <TranslationsModal
                         target={api::TranslationTarget::Episode(episode_id)}
-                        onerror={props.onerror.clone()}
                         on_close={link.callback(|_| Msg::CloseEpisodeTranslations)}
                     />
                 }
@@ -1747,7 +1735,6 @@ impl ShowDetail {
 
     fn view_episodes(&self, ctx: &Context<Self>, season: &api::Season) -> Html {
         let link = ctx.link();
-        let props = ctx.props();
 
         let season_number = season.season;
 
@@ -1785,6 +1772,10 @@ impl ShowDetail {
             season.season.long()
         );
         let remaining_preset = TimePreset::when_aired("clock", "Aired", remaining_description);
+        let watch_remaining = link.callback({
+            let season = season.season;
+            move |mark_time| Msg::WatchRemaining(season, mark_time)
+        });
 
         html! {
             <div class="detail-content">
@@ -1841,28 +1832,14 @@ impl ShowDetail {
 
                                 <Button icon="bookmark" variant={Variant::Danger} title="Remove pending" text={format!("Clear next episode {label}")} onclick={on_remove_next} />
                             } else if let Some((label, episode_id)) = next_unwatched {
-                                <MarkTimeMenu
-                                    onerror={props.onerror.clone()}
-                                    title="Make next episode"
-                                    prompt={format!("Pending {label} since when?")}
-                                    preset={next_episode_preset.clone()}
-                                    on_confirm={link.callback(move |mark_time| Msg::OnWatchNext(episode_id, mark_time))}>
+                                <MarkTimeMenu title="Make next episode" prompt={format!("Pending {label} since when?")} preset={next_episode_preset.clone()} on_confirm={link.callback(move |mark_time| Msg::OnWatchNext(episode_id, mark_time))}>
                                     <span class="icon bookmark-slash" />
                                     <span class="mobile-only">{label}</span>
                                 </MarkTimeMenu>
                             }
 
                             if !self.view_orphaned && watched_count < total {
-                                <MarkTimeMenu
-                                    onerror={props.onerror.clone()}
-                                    trigger_class="success"
-                                    title="Mark remaining episodes as watched"
-                                    prompt="When did you watch the remaining episodes?"
-                                    preset={Some(remaining_preset.clone())}
-                                    on_confirm={link.callback({
-                                        let season = season.season;
-                                        move |mark_time| Msg::WatchRemaining(season, mark_time)
-                                    })}>
+                                <MarkTimeMenu class="success mobile-has-text" title="Mark remaining episodes as watched" prompt="When did you watch the remaining episodes?" preset={Some(remaining_preset.clone())} on_confirm={watch_remaining}>
                                     <span class="icon check" />
                                     <span class="mobile-only">{"Remaining"}</span>
                                 </MarkTimeMenu>
@@ -1956,14 +1933,7 @@ impl ShowDetail {
                         </div>
 
                         <div class={classes!("toolbar-dropdown", "desktop-input-group", (!actions_expanded).then_some("desktop-only"))}>
-                            <MarkTimeMenu
-                                onerror={props.onerror.clone()}
-                                trigger_class="success"
-                                icon="check"
-                                title="Mark watched"
-                                prompt={format!("When did you watch {}?", episode.code())}
-                                preset={preset.clone()}
-                                on_confirm={on_mark_confirm}>
+                            <MarkTimeMenu class="success has-text" icon="check" title="Mark watched" prompt={format!("When did you watch {}?", episode.code())} preset={preset.clone()} on_confirm={on_mark_confirm}>
                                 <span class="icon check" />
                                 <span class="mobile-only">{"Mark watched"}</span>
                             </MarkTimeMenu>
@@ -1971,13 +1941,7 @@ impl ShowDetail {
                             if episode.pending.is_some() {
                                 <Button icon="bookmark" variant={Variant::Primary} title="Clear next episode" text="Clear next episode" onclick={on_remove_next} />
                             } else {
-                                <MarkTimeMenu
-                                    onerror={props.onerror.clone()}
-                                    icon="bookmark"
-                                    title="Mark next"
-                                    prompt={format!("When do you want to queue {}?", episode.code())}
-                                    preset={preset.clone()}
-                                    on_confirm={on_next_episode}>
+                                <MarkTimeMenu class="has-text" icon="bookmark" title="Mark next" prompt={format!("When do you want to queue {}?", episode.code())} preset={preset.clone()} on_confirm={on_next_episode}>
                                     <span class="icon bookmark-slash" />
                                     <span class="mobile-only">{"Set as next episode"}</span>
                                 </MarkTimeMenu>
@@ -2075,12 +2039,7 @@ impl ShowDetail {
                                                 </button>
 
                                                 if self.fixing_watched == Some(wid) {
-                                                    <ContextMenu
-                                                        prompt="Where do you want to move watch at"
-                                                        label={w.watched.timestamp.human_date_time(self.time.clone())}
-                                                        anchor={w.context_anchor.clone()}
-                                                        on_close={link.callback(|_| Msg::CancelFixWatched)}
-                                                        onerror={props.onerror.clone()}>
+                                                    <ContextMenu prompt="Where do you want to move watch at" label={w.watched.timestamp.human_date_time(self.time.clone())} anchor={w.context_anchor.clone()} on_close={link.callback(|_| Msg::CancelFixWatched)}>
                                                         <EpisodePicker
                                                             show_id={show_id}
                                                             seasons={self.seasons.clone()}
@@ -2095,12 +2054,7 @@ impl ShowDetail {
                                                 <Button icon="trash" variant={Variant::Danger} title="Remove" text="Remove" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} />
 
                                                 if self.confirm_remove_watch == Some(wid) {
-                                                    <ContextMenu
-                                                        prompt="Remove watch at"
-                                                        label={w.watched.timestamp.human_date_time(self.time.clone())}
-                                                        anchor={w.context_anchor.clone()}
-                                                        on_close={link.callback(|_| Msg::CancelRemoveWatch)}
-                                                        onerror={props.onerror.clone()}>
+                                                    <ContextMenu prompt="Remove watch at" label={w.watched.timestamp.human_date_time(self.time.clone())} anchor={w.context_anchor.clone()} on_close={link.callback(|_| Msg::CancelRemoveWatch)}>
                                                         <ConfirmDanger
                                                             on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, kind))}
                                                             on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
@@ -2164,12 +2118,7 @@ impl ShowDetail {
                                 <Button icon="pencil-square" title="Move to episode" onclick={link.callback(move |_| Msg::FixWatched(wid))} />
 
                                 if self.fixing_watched == Some(wid) {
-                                    <ContextMenu
-                                        prompt="Where do you want to move watch at"
-                                        label={w.watched.timestamp.human_date_time(self.time.clone())}
-                                        anchor={w.context_anchor.clone()}
-                                        on_close={ctx.link().callback(|_| Msg::CancelFixWatched)}
-                                        onerror={props.onerror.clone()}>
+                                    <ContextMenu prompt="Where do you want to move watch at" label={w.watched.timestamp.human_date_time(self.time.clone())} anchor={w.context_anchor.clone()} on_close={ctx.link().callback(|_| Msg::CancelFixWatched)}>
                                         <EpisodePicker
                                             {show_id}
                                             seasons={self.seasons.clone()}
@@ -2184,12 +2133,7 @@ impl ShowDetail {
                                 <Button icon="trash" variant={Variant::Danger} title="Remove" text="Remove" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} />
 
                                 if self.confirm_remove_watch == Some(wid) {
-                                    <ContextMenu
-                                        prompt="Remove watch at"
-                                        label={w.watched.timestamp.human_date_time(self.time.clone())}
-                                        anchor={w.context_anchor.clone()}
-                                        on_close={ctx.link().callback(|_| Msg::CancelRemoveWatch)}
-                                        onerror={props.onerror.clone()}>
+                                    <ContextMenu prompt="Remove watch at" label={w.watched.timestamp.human_date_time(self.time.clone())} anchor={w.context_anchor.clone()} on_close={ctx.link().callback(|_| Msg::CancelRemoveWatch)}>
                                         <ConfirmDanger
                                             on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, kind))}
                                             on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}

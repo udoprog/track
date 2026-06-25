@@ -62,7 +62,6 @@ pub(crate) enum Msg {
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
-    pub(crate) onerror: Callback<Error>,
     pub(crate) page: usize,
 }
 
@@ -119,7 +118,7 @@ impl Component for Dashboard {
         match self.try_update(ctx, msg) {
             Ok(render) => render,
             Err(e) => {
-                ctx.props().onerror.emit(e);
+                self.background.error(e);
                 false
             }
         }
@@ -143,7 +142,7 @@ impl Component for Dashboard {
                 <div class="column">
                     <h1 class="center">{"Schedule"}</h1>
 
-                    <Calendar onerror={ctx.props().onerror.clone()} />
+                    <Calendar />
                 </div>
             </>
         }
@@ -565,28 +564,14 @@ impl Dashboard {
                     <div class="pending-actions">
                         <div class="input-group">
                             if aired_in_past {
-                                <MarkTimeMenu
-                                    onerror={ctx.props().onerror.clone()}
-                                    trigger_class="success"
-                                    icon="check"
-                                    title="Mark watched"
-                                    prompt={format!("When did you watch this {}?", pending.kind.title())}
-                                    preset={preset.clone()}
-                                    on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(kind, mark_time))}>
+                                <MarkTimeMenu class="success" icon="check" title="Mark watched" prompt={format!("When did you watch this {}?", pending.kind.title())} preset={preset.clone()} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(kind, mark_time))}>
                                     <span class="icon check" />
                                 </MarkTimeMenu>
                             } else {
                                 <Button icon="check" variant={Variant::Success} title="Mark watched" onclick={ctx.link().callback(move |_| Msg::MarkWatched(kind, api::MarkTime::Now))} />
                             }
 
-                            <MarkTimeMenu
-                                onerror={ctx.props().onerror.clone()}
-                                trigger_class="primary"
-                                title="Move pending"
-                                icon="bookmark"
-                                prompt={format!("When do you want to queue this {}?", pending.kind.title())}
-                                preset={preset.clone()}
-                                on_confirm={ctx.link().callback(move |mark_time| Msg::MarkPending(pending_kind, mark_time))}>
+                            <MarkTimeMenu class="primary" title="Move pending" icon="bookmark" prompt={format!("When do you want to queue this {}?", pending.kind.title())} preset={preset.clone()} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkPending(pending_kind, mark_time))}>
                                 <span class="icon bookmark" />
                             </MarkTimeMenu>
 
@@ -594,13 +579,7 @@ impl Dashboard {
                                 <Button key="skip-button" node_ref={anchor.clone()} icon="forward" variant={Variant::Danger} title="Skip episode" onclick={ctx.link().callback(move |_| Msg::AskSkipEpisode(show, episode))} />
 
                                 if confirming && let Some(code) = skip_code {
-                                    <ContextMenu
-                                        icon="forward"
-                                        prompt="Skip episode"
-                                        label={code}
-                                        anchor={anchor.clone()}
-                                        on_close={ctx.link().callback(|_| Msg::CancelSkipEpisode)}
-                                        onerror={ctx.props().onerror.clone()}>
+                                    <ContextMenu icon="forward" prompt="Skip episode" label={code} anchor={anchor.clone()} on_close={ctx.link().callback(|_| Msg::CancelSkipEpisode)}>
                                         <ConfirmDanger
                                             on_confirm={ctx.link().callback(move |_| Msg::SkipEpisode(show, episode))}
                                             on_cancel={ctx.link().callback(|_| Msg::CancelSkipEpisode)}

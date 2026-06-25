@@ -2,6 +2,7 @@ use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
 use crate::SetupChannel;
+use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 
 use super::Modal;
@@ -17,7 +18,6 @@ const FIELDS: [(api::StringKind, &str); 2] = [
 pub(crate) struct Props {
     /// The entity whose translations are displayed.
     pub(crate) target: api::TranslationTarget,
-    pub(crate) onerror: Callback<Error>,
     pub(crate) on_close: Callback<()>,
 }
 
@@ -34,6 +34,7 @@ pub(crate) struct TranslationsModal {
     _req: ws::Request,
     /// `None` while loading, `Some` once the response has arrived.
     translations: Option<Vec<api::Translation>>,
+    background: Background,
 }
 
 impl Component for TranslationsModal {
@@ -46,6 +47,11 @@ impl Component for TranslationsModal {
             .context::<ws::Handle>(Callback::noop())
             .expect("Expected ws::Handle in context");
 
+        let (background, _) = ctx
+            .link()
+            .context::<Background>(Callback::noop())
+            .expect("Expected Background in context");
+
         let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
@@ -55,6 +61,7 @@ impl Component for TranslationsModal {
             _broadcast,
             _req: ws::Request::default(),
             translations: None,
+            background,
         }
     }
 
@@ -62,7 +69,7 @@ impl Component for TranslationsModal {
         match self.try_update(ctx, msg) {
             Ok(render) => render,
             Err(e) => {
-                ctx.props().onerror.emit(e);
+                self.background.error(e);
                 false
             }
         }

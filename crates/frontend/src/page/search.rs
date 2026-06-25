@@ -45,7 +45,6 @@ pub(crate) enum Msg {
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
-    pub(crate) onerror: Callback<Error>,
     pub(crate) selection: MediaSelection,
     pub(crate) filter: String,
 }
@@ -95,7 +94,7 @@ impl Component for Search {
         match self.try_update(ctx, msg) {
             Ok(render) => render,
             Err(e) => {
-                ctx.props().onerror.emit(e);
+                self.background.error(e);
                 false
             }
         }

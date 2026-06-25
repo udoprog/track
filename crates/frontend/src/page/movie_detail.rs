@@ -133,7 +133,6 @@ pub(crate) enum Msg {
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
-    pub(crate) onerror: Callback<Error>,
     pub(crate) movie_id: api::MovieId,
 }
 
@@ -217,7 +216,7 @@ impl Component for MovieDetail {
         match self.try_update(ctx, msg) {
             Ok(render) => render,
             Err(e) => {
-                ctx.props().onerror.emit(e);
+                self.background.error(e);
                 false
             }
         }
@@ -960,12 +959,7 @@ impl MovieDetail {
                             <Button node_ref={self.remove_anchor.clone()} icon="trash" variant={Variant::Danger} title="Remove movie" text="Remove" onclick={link.callback(|_| Msg::ConfirmRemove)} />
 
                             if self.confirm_remove {
-                                <ContextMenu
-                                    prompt="Remove movie"
-                                    label={movie.strings.title().map(str::to_owned)}
-                                    anchor={self.remove_anchor.clone()}
-                                    on_close={link.callback(|_| Msg::CancelRemove)}
-                                    onerror={ctx.props().onerror.clone()}>
+                                <ContextMenu prompt="Remove movie" label={movie.strings.title().map(str::to_owned)} anchor={self.remove_anchor.clone()} on_close={link.callback(|_| Msg::CancelRemove)}>
                                     <ConfirmDanger
                                         on_confirm={link.callback(|_| Msg::RemoveMovie)}
                                         on_cancel={link.callback(|_| Msg::CancelRemove)}
@@ -1078,14 +1072,7 @@ impl MovieDetail {
                                 </div>
 
                                 <div class={classes!("toolbar-dropdown", "desktop-input-group", (!self.detailed_expand).then_some("desktop-only"))}>
-                                    <MarkTimeMenu
-                                        onerror={ctx.props().onerror.clone()}
-                                        trigger_class="success"
-                                        icon="check"
-                                        title="Mark watched"
-                                        prompt="When did you watch the movie?"
-                                        preset={watched_preset.clone()}
-                                        on_confirm={link.callback(Msg::MarkWatched)}>
+                                    <MarkTimeMenu class="success has-text" icon="check" title="Mark watched" prompt="When did you watch the movie?" preset={watched_preset.clone()} on_confirm={link.callback(Msg::MarkWatched)}>
                                         <span class="icon check" />
                                         <span class="mobile-only">{"Mark watched"}</span>
                                     </MarkTimeMenu>
@@ -1093,12 +1080,7 @@ impl MovieDetail {
                                     if movie.pending.is_some() {
                                         <Button icon="bookmark" variant={Variant::Primary} title="Next movie" text="Next movie" onclick={on_remove_next} />
                                     } else {
-                                        <MarkTimeMenu
-                                            onerror={ctx.props().onerror.clone()}
-                                            title="Not next movie"
-                                            prompt="When do you want to watch the movie?"
-                                            preset={release_preset.clone()}
-                                            on_confirm={link.callback(Msg::OnWatchNext)}>
+                                        <MarkTimeMenu class="has-text" title="Not next movie" prompt="When do you want to watch the movie?" preset={release_preset.clone()} on_confirm={link.callback(Msg::OnWatchNext)}>
                                             <span class="icon bookmark-slash" />
                                             <span class="mobile-only">{"Not next movie"}</span>
                                         </MarkTimeMenu>
@@ -1133,7 +1115,6 @@ impl MovieDetail {
             if self.translations_modal {
                 <TranslationsModal
                     target={api::TranslationTarget::Movie(movie.id)}
-                    onerror={ctx.props().onerror.clone()}
                     on_close={link.callback(|_| Msg::CloseTranslations)}
                 />
             }
@@ -1172,7 +1153,6 @@ impl MovieDetail {
                     on_set_sync_kinds={link.callback(|(id, kinds)| Msg::SetRemoteSyncKinds(id, kinds))}
                     global_sync_kinds={self.global_sync_kinds.clone()}
                     on_close={link.callback(|_| Msg::CloseRemoteEditor)}
-                    onerror={ctx.props().onerror.clone()}
                 />
             }
             </>
@@ -1197,12 +1177,7 @@ impl MovieDetail {
                             <Button node_ref={w.remove_watch_anchor.clone()} icon="trash" variant={Variant::Danger} title="Remove" text="Remove" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} />
 
                             if self.confirm_remove_watch == Some(wid) {
-                                <ContextMenu
-                                    prompt="Remove watch at"
-                                    label={w.watched.timestamp.human_date_time(self.time.clone())}
-                                    anchor={w.remove_watch_anchor.clone()}
-                                    on_close={link.callback(|_| Msg::CancelRemoveWatch)}
-                                    onerror={ctx.props().onerror.clone()}>
+                                <ContextMenu prompt="Remove watch at" label={w.watched.timestamp.human_date_time(self.time.clone())} anchor={w.remove_watch_anchor.clone()} on_close={link.callback(|_| Msg::CancelRemoveWatch)}>
                                     <ConfirmDanger
                                         on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, kind))}
                                         on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}

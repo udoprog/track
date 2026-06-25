@@ -6,6 +6,7 @@ use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
 use crate::SetupChannel;
+use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{Route, Router, ShowDetailQuery};
 use crate::ui::DOT;
@@ -16,6 +17,7 @@ pub(crate) struct Calendar {
     time: TimeInfo,
     _time_handle: ContextHandle<TimeInfo>,
     router: Router,
+    background: Background,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
     _schedule_req: ws::Request,
@@ -29,14 +31,9 @@ pub(crate) enum Msg {
     SetTime(TimeInfo),
 }
 
-#[derive(Properties, PartialEq)]
-pub(crate) struct Props {
-    pub(crate) onerror: Callback<Error>,
-}
-
 impl Component for Calendar {
     type Message = Msg;
-    type Properties = Props;
+    type Properties = ();
 
     fn create(ctx: &Context<Self>) -> Self {
         let (ws, _) = ctx
@@ -57,12 +54,18 @@ impl Component for Calendar {
             .context::<Router>(Callback::noop())
             .expect("Expected router in context");
 
+        let (background, _) = ctx
+            .link()
+            .context::<Background>(Callback::noop())
+            .expect("Expected Background in context");
+
         Self {
             channel: ws::Channel::default(),
             schedule: Vec::new(),
             time,
             _time_handle,
             router,
+            background,
             _setup,
             _broadcast,
             _schedule_req: ws::Request::default(),
@@ -73,7 +76,7 @@ impl Component for Calendar {
         match self.try_update(ctx, msg) {
             Ok(render) => render,
             Err(e) => {
-                ctx.props().onerror.emit(e);
+                self.background.error(e);
                 false
             }
         }

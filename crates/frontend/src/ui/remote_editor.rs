@@ -1,7 +1,6 @@
 use web_sys::{Event, InputEvent};
 use yew::prelude::*;
 
-use crate::error::Error;
 use crate::ui::ContextMenu;
 
 use super::{Button, ConfirmDanger, Modal, Variant};
@@ -65,7 +64,6 @@ pub(crate) struct Props {
     pub(crate) on_set_sync_kinds: Callback<(api::RemoteId, Option<api::SyncKindSet>)>,
     pub(crate) global_sync_kinds: Vec<api::SourceSyncKinds>,
     pub(crate) on_close: Callback<()>,
-    pub(crate) onerror: Callback<Error>,
 }
 
 pub(crate) enum Msg {
@@ -415,12 +413,7 @@ impl Component for RemoteEditor {
                                         </div>
 
                                         if self.confirming_remove == Some(id) {
-                                            <ContextMenu
-                                                prompt="Remove"
-                                                label={r.remote.remote.to_string()}
-                                                anchor={r.context_anchor.clone()}
-                                                on_close={link.callback(|_| Msg::CancelRemove)}
-                                                onerror={props.onerror.clone()}>
+                                            <ContextMenu prompt="Remove" label={r.remote.remote.to_string()} anchor={r.context_anchor.clone()} on_close={link.callback(|_| Msg::CancelRemove)}>
                                                 <ConfirmDanger
                                                     on_confirm={link.callback(move |_| Msg::ConfirmRemove(id))}
                                                     on_cancel={link.callback(|_| Msg::CancelRemove)}

@@ -8,6 +8,7 @@
 use web_sys::{HtmlElement, MouseEvent};
 use yew::prelude::*;
 
+use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 
 #[derive(Properties, PartialEq)]
@@ -25,8 +26,6 @@ pub(crate) struct Props {
     pub(crate) anchor: NodeRef,
     /// Invoked when the backdrop is clicked, so the host can close the menu.
     pub(crate) on_close: Callback<()>,
-    /// Surfaces a positioning failure to the host's error handler.
-    pub(crate) onerror: Callback<Error>,
     /// Popover content.
     pub(crate) children: Children,
 }
@@ -38,6 +37,8 @@ pub(crate) struct ContextMenu {
     /// render to decide whether to re-place: positioning is driven entirely by
     /// the body's own size, so a change here is the only thing that can shift it.
     placed: Option<(f64, f64)>,
+    /// The background context, so we can report errors to the user.
+    background: Background,
 }
 
 impl ContextMenu {
@@ -109,10 +110,16 @@ impl Component for ContextMenu {
     type Message = ();
     type Properties = Props;
 
-    fn create(_ctx: &Context<Self>) -> Self {
+    fn create(ctx: &Context<Self>) -> Self {
+        let (background, _) = ctx
+            .link()
+            .context::<Background>(Callback::noop())
+            .expect("background context");
+
         Self {
             menu: NodeRef::default(),
             placed: None,
+            background,
         }
     }
 
@@ -140,7 +147,7 @@ impl Component for ContextMenu {
         self.placed = Some(size);
 
         if let Err(e) = self.place(&anchor) {
-            ctx.props().onerror.emit(e);
+            self.background.error(e);
         }
     }
 

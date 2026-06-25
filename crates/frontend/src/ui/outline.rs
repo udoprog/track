@@ -7,6 +7,7 @@ use wasm_bindgen::JsCast as _;
 use web_sys::{Element, HtmlElement, PointerEvent, WheelEvent};
 use yew::prelude::*;
 
+use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 
 /// A single navigable entry in the outline. `code` is the `id` of the rendered
@@ -79,8 +80,6 @@ pub(crate) struct Props {
     pub(crate) page: NodeRef,
     /// Entries to show; `None` hides the outline entirely.
     pub(crate) entries: Option<Rc<[OutlineEntry]>>,
-    /// Surfaces failures to the application, as elsewhere.
-    pub(crate) onerror: Callback<Error>,
 }
 
 pub(crate) enum Msg {
@@ -114,6 +113,7 @@ pub(crate) struct Outline {
     scratch_buf: Vec<bool>,
     /// Whether a pointer drag on the rail is in progress.
     dragging: bool,
+    background: Background,
     _resize: EventListener,
     /// Scroll listener on the page element, attached once it is available.
     _scroll: Option<EventListener>,
@@ -128,6 +128,11 @@ impl Component for Outline {
         let window = web_sys::window().expect("Expected a window");
         let _resize = EventListener::new(&window, "resize", move |_| on_resize.emit(()));
 
+        let (background, _) = ctx
+            .link()
+            .context::<Background>(Callback::noop())
+            .expect("Expected Background in context");
+
         Self {
             outline: NodeRef::default(),
             mark: NodeRef::default(),
@@ -136,6 +141,7 @@ impl Component for Outline {
             marks_buf: Vec::new(),
             scratch_buf: Vec::new(),
             dragging: false,
+            background,
             _resize,
             _scroll: None,
         }
@@ -145,7 +151,7 @@ impl Component for Outline {
         match self.try_update(ctx, msg) {
             Ok(render) => render,
             Err(e) => {
-                ctx.props().onerror.emit(e);
+                self.background.error(e);
                 false
             }
         }
@@ -194,7 +200,7 @@ impl Component for Outline {
         // The band's geometry depends on the page's scroll metrics, which shift
         // on resize and as content reflows refresh it after every render.
         if let Err(e) = self.update_mark(ctx) {
-            ctx.props().onerror.emit(e);
+            self.background.error(e);
         }
     }
 

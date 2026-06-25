@@ -44,7 +44,6 @@ pub(crate) enum Msg {
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
-    pub(crate) onerror: Callback<Error>,
     /// Which list is focused, persisted in the route query. `None` is the overview.
     pub(crate) focus: Option<QueueFocus>,
     /// Current page of the focused pending list, persisted in the route query.
@@ -101,7 +100,7 @@ impl Component for Queue {
         match self.try_update(ctx, msg) {
             Ok(render) => render,
             Err(e) => {
-                ctx.props().onerror.emit(e);
+                self.background.error(e);
                 false
             }
         }

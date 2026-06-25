@@ -69,7 +69,6 @@ pub(crate) enum Msg {
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
-    pub(crate) onerror: Callback<Error>,
     pub(crate) page: usize,
     pub(crate) filter: String,
     pub(crate) sort: SortField,
@@ -134,7 +133,7 @@ impl Component for MediaList {
         match self.try_update(ctx, msg) {
             Ok(render) => render,
             Err(e) => {
-                ctx.props().onerror.emit(e);
+                self.background.error(e);
                 false
             }
         }
@@ -657,13 +656,7 @@ impl MediaList {
                         <div class="row">
                             <div class="row">
                                 if is_movie {
-                                    <MarkTimeMenu
-                                        onerror={ctx.props().onerror.clone()}
-                                        trigger_class="success"
-                                        title="Mark watched"
-                                        prompt={match primary_title { Some(title) => format!("When did you watch {}?", title), None => "When did you watch this movie?".to_string() }}
-                                        {preset}
-                                        on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(id, mark_time))}>
+                                    <MarkTimeMenu class="success" title="Mark watched" prompt={match primary_title { Some(title) => format!("When did you watch {}?", title), None => "When did you watch this movie?".to_string() }} {preset} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(id, mark_time))}>
                                         <span class="icon check" />
                                     </MarkTimeMenu>
                                 }
