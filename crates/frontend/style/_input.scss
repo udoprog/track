@@ -1,0 +1,175 @@
+@mixin has-text {
+    &.has-text {
+        &>.icon:first-child, &>.mark:first-child {
+            margin-inline-start: -0.25em;
+        }
+    }
+
+    &.has-text {
+        padding: $padding $padding * 2;
+    }
+
+    @include g.on-mobile {
+        &.mobile-has-text {
+            padding: $padding $padding * 2;
+
+            &>.icon:first-child, &>.mark:first-child {
+                margin-inline-start: -0.25em;
+            }
+        }
+
+        &:not(.mobile-has-text, .has-text) {
+            justify-content: center;
+        }
+    }
+
+    @include g.on-desktop {
+        &.desktop-has-text {
+            padding: $padding $padding * 2;
+
+            &>.icon:first-child, &>.mark:first-child {
+                margin-inline-start: -0.25em;
+            }
+        }
+
+        &:not(.desktop-has-text, .has-text) {
+            justify-content: center;
+        }
+    }
+}
+
+@mixin button-color($color) {
+    background-color: color.adjust($color, $lightness: $adjust-bg);
+
+    &.selected {
+        background-color: $color;
+    }
+}
+
+@mixin input-base($hover: true, $has-border: true, $editable: false) {
+    display: flex;
+    flex-direction: row;
+    gap: $text-gap;
+    align-items: center;
+
+    background: $bg-surface;
+    color: $text-primary;
+    font-size: $font-sm;
+    font-family: $sans-serif-font;
+
+    height: $input-height;
+    min-width: 0;
+
+    @if $editable {
+        padding: $padding $padding * 2;
+    }
+
+    @if not $editable {
+        padding: $padding;
+        @include has-text;
+    }
+
+    @include g.on-mobile {
+        height: $input-height-touch;
+    }
+
+    border-radius: $radius;
+
+    @if $has-border {
+        border-width: 1px;
+        border-style: solid;
+        border-color: $border-input;
+    }
+
+    @if $hover {
+        &:hover {
+            outline: none;
+            border-color: $color-primary;
+        }
+    }
+
+    user-select: none;
+}
+
+button,
+.button {
+    @include input-base;
+    cursor: pointer;
+
+    --icon-color: #{$text-color};
+    color: $text-color;
+
+    border-style: solid;
+    border-width: 1px;
+    border-color: transparent;
+
+    &:hover {
+        border-color: $color-primary;
+    }
+
+    @include button-color($color-secondary);
+
+    &.primary {
+        @include button-color($color-primary);
+    }
+
+    &.success {
+        @include button-color($color-success);
+    }
+
+    &.danger {
+        @include button-color($color-danger);
+    }
+
+    &.fill {
+        flex: 1;
+    }
+
+    &.disabled {
+        opacity: 0.5;
+        cursor: default;
+    }
+
+    &.selected {
+        --icon-color: #{$text-color-selected};
+        color: $text-color-selected;
+    }
+}
+
+.input-label {
+    @include input-base($hover: false, $has-border: false);
+
+    background-color: color.adjust($color-secondary, $lightness: $adjust-bg);
+}
+
+.input-text {
+    @include input-base($editable: true);
+}
+
+.input-select {
+    @include input-base($editable: true);
+}
+
+.input-number {
+    @include input-base($editable: true);
+}
+
+.input-checkbox {
+    @include input-base;
+    cursor: pointer;
+
+    >.mark {
+        height: 100%;
+        aspect-ratio: 1;
+    }
+
+    &.checked>.mark {
+        mask-image: url('/static/icons/check.svg');
+        background-color: $text-primary;
+    }
+
+    &:not(.checked)>.mark {
+        mask-image: url('/static/icons/x-mark.svg');
+        background-color: $text-primary;
+    }
+}

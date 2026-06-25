@@ -81,7 +81,7 @@ pub(crate) fn AirDateFiltersEditor(props: &Props) -> Html {
                     html! {
                         <div class="field">
                             <div class="row input-group">
-                                <span class={classes!("input-checkbox", enabled.then_some("checked"))} onclick={on_toggle}>
+                                <span class={classes!("input-checkbox", "has-text", enabled.then_some("checked"))} onclick={on_toggle}>
                                     <span class="mark" />
                                     <span class={classes!("logo", source.as_id())} title={source.as_label()} / >
                                 </span>

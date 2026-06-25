@@ -94,37 +94,29 @@ pub(crate) fn MediaSettingsModal(props: &Props) -> Html {
 
     let air_dates = props.on_air_date_filters_change.as_ref().map(|cb| {
         let is_custom = props.air_date_filters.is_some();
-
-        let on_mode = {
-            let cb = cb.clone();
-            let default = props.default_air_date_filters.clone();
-            Callback::from(move |e: Event| {
-                let select: web_sys::HtmlSelectElement = e.target_unchecked_into();
-                match select.value().as_str() {
-                    "custom" => cb.emit(Some(default.clone())),
-                    _ => cb.emit(None),
-                }
-            })
-        };
+        let default = props.default_air_date_filters.clone();
+        let on_mode = cb.reform(move |_| (!is_custom).then(|| default.clone()));
 
         let editor = props.air_date_filters.as_ref().map(|filters| {
             let on_change = cb.reform(|f: Vec<api::AirDateFilter>| Some(f));
+
             html! {
                 <AirDateFiltersEditor filters={filters.clone()} on_change={on_change} />
             }
         });
 
         html! {
-            <div class="field">
-                <label>{"Air Date"}</label>
+            <>
+                <div class="input-group">
+                    <span class="input-label has-text">{"Air Date"}</span>
 
-                <select class="input-select" onchange={on_mode}>
-                    <option value="default" selected={!is_custom}>{"Default"}</option>
-                    <option value="custom" selected={is_custom}>{"Customize"}</option>
-                </select>
+                    <button class="input-checkbox has-text fill" onclick={on_mode}>
+                        {if is_custom { "Custom" } else { "Use global default" }}
+                    </button>
+                </div>
 
                 {editor}
-            </div>
+            </>
         }
     });
 
@@ -141,13 +133,17 @@ pub(crate) fn MediaSettingsModal(props: &Props) -> Html {
                     />
                 </div>
 
-                <span class={classes!("input-checkbox", "has-text", auto_sync.then_some("checked"))} id="auto-sync-enabled" onclick={on_auto_sync}>
-                    <span class="mark" />
-                    {if auto_sync { "Automatic Sync Enabled" } else { "Automatic Sync Disabled" }}
-                </span>
+                <div class="input-group">
+                    <div class="input-label has-text">{"Automatic Sync"}</div>
+                    <div class={classes!("input-checkbox", "has-text", "fill", auto_sync.then_some("checked"))} id="auto-sync-enabled" onclick={on_auto_sync}>
+                        <span class="mark" />
+                        {if auto_sync { "Enabled" } else { "Disabled" }}
+                    </div>
+                </div>
 
-                <div class="field">
-                    <div class="input-label has-text clickable" onclick={special_on_change(include_specials)}>
+                <div class="input-group">
+                    <span class="input-label has-text">{"Include Specials"}</span>
+                    <div class="input-checkbox has-text fill" onclick={special_on_change(include_specials)}>
                         {include_specials.as_label()}
                     </div>
                 </div>
@@ -156,25 +152,24 @@ pub(crate) fn MediaSettingsModal(props: &Props) -> Html {
 
                 {air_dates}
 
-                <div class="field">
-                    <label>{"Sync"}</label>
-                    <div class="input-group">
-                        if let Some(ref ts) = props.last_synced {
-                            <div class="input-text has-text fill" title="Last synced at">
-                                <span>{ts}</span>
-                            </div>
-                        } else {
-                            <div class="input-text has-text fill text-muted">
-                                <span>{"Never synced"}</span>
-                            </div>
-                        }
+                <div class="input-group">
+                    <span class="input-label has-text">{"Last Sync"}</span>
 
-                        if props.has_remotes {
-                            <button onclick={on_sync} title="Sync now">
-                                <span class={classes!("icon", "arrow-path", props.syncing.then_some("spin"))} />
-                            </button>
-                        }
-                    </div>
+                    if let Some(ref ts) = props.last_synced {
+                        <div class="input-text has-text fill" title="Last synced at">
+                            <span>{ts}</span>
+                        </div>
+                    } else {
+                        <div class="input-text has-text fill text-muted">
+                            <span>{"Never synced"}</span>
+                        </div>
+                    }
+
+                    if props.has_remotes {
+                        <button onclick={on_sync} title="Sync now">
+                            <span class={classes!("icon", "arrow-path", props.syncing.then_some("spin"))} />
+                        </button>
+                    }
                 </div>
 
                 <div class="field">

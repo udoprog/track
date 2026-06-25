@@ -71,6 +71,7 @@ $input-icon-height: 100%;
 @import 'context_menu';
 @import 'mark_time_menu';
 @import 'outline';
+@import 'input';
 
 *,
 *::before,
@@ -376,105 +377,6 @@ p {
     }
 }
 
-@mixin button-color($color) {
-    background-color: color.adjust($color, $lightness: $adjust-bg);
-
-    &.selected {
-        background-color: $color;
-    }
-}
-
-@mixin has-text {
-    &.has-text>.icon, .mark {
-        margin-inline: -0.1em;
-    }
-
-    @include g.on-mobile {
-        &.mobile-has-text>.icon, .mark {
-            margin-inline: -0.1em;
-        }
-
-        &:not(.mobile-has-text, .has-text) {
-            justify-content: center;
-        }
-    }
-
-    @include g.on-desktop {
-        &.desktop-has-text>.icon, .mark {
-            margin-inline: -0.1em;
-        }
-
-        &:not(.desktop-has-text, .has-text) {
-            justify-content: center;
-        }
-    }
-}
-
-button,
-.button {
-    cursor: pointer;
-
-    --icon-color: #{$text-color};
-    color: $text-color;
-
-    display: inline-flex;
-    box-sizing: border-box;
-    gap: 0.25rem;
-    align-items: center;
-    justify-content: flex-start;
-    border: none;
-    border-radius: $radius;
-    font-size: $font-sm;
-    font-family: $sans-serif-font;
-    padding: $padding;
-
-    height: $input-height;
-    min-width: $input-height;
-
-    border-style: solid;
-    border-width: 1px;
-    border-color: transparent;
-
-    @include has-text;
-
-    @include g.on-mobile {
-        height: $input-height-touch;
-        min-width: $input-height-touch;
-    }
-
-    &:hover {
-        border-color: $color-primary;
-    }
-
-    @include button-color($color-secondary);
-
-    &.primary {
-        @include button-color($color-primary);
-    }
-
-    &.success {
-        @include button-color($color-success);
-    }
-
-    &.danger {
-        @include button-color($color-danger);
-    }
-
-    &.fill {
-        flex: 1;
-    }
-
-    &.disabled {
-        opacity: 0.5;
-        cursor: default;
-    }
-
-    &.selected {
-        --icon-color: #{$text-color-selected};
-        color: $text-color-selected;
-    }
-}
-
 .desktop-only {
     @include g.on-mobile {
         display: none;
@@ -499,15 +401,6 @@ button,
     flex-direction: column;
     align-items: stretch;
     gap: $gap-sm;
-
-    >.input-group,
-    .input-number,
-    .input-text,
-    input-controls,
-    .input-checkbox,
-    .input-select {
-        align-self: stretch;
-    }
 
     label {
         display: flex;
@@ -1057,93 +950,6 @@ input-controls {
         &.clickable:hover {
             background: rgba($color-secondary, $transparency);
         }
-    }
-}
-
-@mixin input-base($hover: true, $has-border: true) {
-    display: flex;
-    flex-direction: row;
-    gap: $text-gap;
-    align-items: center;
-
-    background: $bg-surface;
-    color: $text-primary;
-    font-size: $font-sm;
-    font-family: $sans-serif-font;
-
-    height: $input-height;
-    min-width: 0;
-    padding: $padding;
-
-    border-radius: $radius;
-
-    @if $has-border {
-        border-width: 1px;
-        border-style: solid;
-        border-color: $border-input;
-    }
-
-    @include has-text;
-
-    @if $hover {
-        &:hover {
-            outline: none;
-            border-color: $color-primary;
-        }
-    }
-
-    @include g.on-mobile {
-        height: $input-height-touch;
-    }
-
-    user-select: none;
-}
-
-.input-number {
-    @include input-base;
-}
-
-.input-label {
-    @include input-base($hover: false, $has-border: false);
-    background-color: color.adjust($color-secondary, $lightness: $adjust-bg);
-    text-transform: uppercase;
-    font-family: $monospace-font;
-    font-size: 0.8em;
-}
-
-.input-text {
-    @include input-base;
-}
-
-.input-select {
-    @include input-base;
-    cursor: pointer;
-}
-
-.input-number {
-    @include input-base;
-}
-
-.input-checkbox {
-    @include input-base;
-    cursor: pointer;
-
-    text-transform: uppercase;
-    font-family: $monospace-font;
-
-    >.mark {
-        height: $input-icon-height;
-        aspect-ratio: 1;
-    }
-
-    &.checked>.mark {
-        mask-image: url('/static/icons/check.svg');
-        background-color: $text-primary;
-    }
-
-    &:not(.checked)>.mark {
-        mask-image: url('/static/icons/x-mark.svg');
-        background-color: $text-primary;
     }
 }
 

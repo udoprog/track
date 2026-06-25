@@ -35,7 +35,7 @@ pub(crate) fn SyncKindsEditor(props: &Props) -> Html {
 
                     html! {
                         <div class="row input-group">
-                            <span class="input-label">
+                            <span class="input-label has-text">
                                 <span class={classes!("logo", source.as_id())} />
                             </span>
 
