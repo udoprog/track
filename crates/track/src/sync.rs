@@ -282,7 +282,7 @@ struct ShowDraft {
     original_name: Option<String>,
     first_air_date: Option<api::Timestamp>,
     /// The show's own original language, discovered from the Base layer.
-    default_language: api::Locale,
+    original_language: api::Locale,
     /// The source/id of the Base provider, used to re-fetch per-language strings.
     base_remote: Option<(RemoteSource, u32)>,
     seasons: BTreeMap<SeasonNumber, SeasonDraft>,
@@ -423,7 +423,7 @@ async fn tmdb_show_layer(
 
     if do_base {
         draft.first_air_date = info.first_air_date.or(show.first_air_date);
-        draft.default_language = info.original_language;
+        draft.original_language = info.original_language;
         draft.base_remote = Some((RemoteSource::Tmdb, tmdb_id));
     }
 
@@ -470,11 +470,7 @@ async fn tmdb_show_layer(
     if do_base {
         tracing::info!("Collecting strings");
 
-        let language = show.language.or(config.language);
-
-        if let Err(error) =
-            collect_tmdb_show_strings(draft, tmdb_id, config, language, remote).await
-        {
+        if let Err(error) = collect_tmdb_show_strings(draft, tmdb_id, show, config, remote).await {
             tracing::warn!("String collection failed: {error:#}");
         }
     }
@@ -516,7 +512,7 @@ async fn tvdb_show_layer(
 
     if do_base {
         // TVDB has no first-air-date field; persist falls back to the existing value.
-        draft.default_language = info.original_language;
+        draft.original_language = info.original_language;
         draft.base_remote = Some((RemoteSource::Tvdb, tvdb_id));
         draft
             .translations
@@ -602,7 +598,7 @@ async fn tvdb_show_layer(
     }
 
     if do_base {
-        let targets = api::expand_sync_languages(&config.sync_languages, draft.default_language);
+        let targets = api::expand_sync_languages(&config.sync_languages, draft.original_language);
 
         // TVDB has no country dimension, so its strings are language-only.
         // Collapse each target to its language (country = DEFAULT) before
@@ -688,15 +684,16 @@ fn locale_matches_targets(
 async fn collect_tmdb_show_strings(
     draft: &mut ShowDraft,
     tmdb_id: u32,
+    show: &api::Show,
     config: &api::Config,
-    language: api::Locale,
     remote: &RemoteClients,
 ) -> Result<()> {
-    let mut targets = api::expand_sync_languages(&config.sync_languages, language);
+    let language = show
+        .language
+        .or(config.language)
+        .or(draft.original_language);
 
-    if !language.is_default() {
-        targets.insert(language);
-    }
+    let targets = api::expand_sync_languages(&config.sync_languages, language);
 
     let mut remaining = targets.clone();
 
@@ -920,8 +917,8 @@ async fn persist_show_draft(
     )
     .await?;
 
-    if !draft.default_language.is_default() {
-        db.set_show_default_language(show_id, draft.default_language)
+    if !draft.original_language.is_default() {
+        db.set_show_default_language(show_id, draft.original_language)
             .await?;
     }
 
@@ -1177,10 +1174,8 @@ pub(crate) async fn sync_movie(
                 }
             }
 
-            let language = movie.language.or(config.language);
-
             if let Err(e) =
-                collect_tmdb_movie_strings(movie_id, tmdb_id, &info, &config, language, db, remote)
+                collect_tmdb_movie_strings(movie_id, tmdb_id, &info, &movie, &config, db, remote)
                     .await
             {
                 tracing::warn!(movie_id = %movie_id, "String collection failed: {e:#}");
@@ -1220,16 +1215,17 @@ async fn collect_tmdb_movie_strings(
     movie_id: api::MovieId,
     tmdb_id: u32,
     info: &tmdb::MovieInfo,
+    movie: &api::Movie,
     config: &api::Config,
-    language: api::Locale,
     db: &Database,
     remote: &RemoteClients,
 ) -> Result<()> {
-    let mut targets = api::expand_sync_languages(&config.sync_languages, info.original_language);
+    let language = movie
+        .language
+        .or(config.language)
+        .or(info.original_language);
 
-    if !language.is_default() {
-        targets.insert(language);
-    }
+    let targets = api::expand_sync_languages(&config.sync_languages, language);
 
     let translations = remote.fetch_tmdb_movie_translations(tmdb_id).await?;
 
