@@ -58,7 +58,7 @@ WHERE
 CREATE TABLE
     movie_releases (
         movie_id INTEGER NOT NULL REFERENCES movies (id) ON DELETE CASCADE,
-        source INTEGER NOT NULL DEFAULT 2,
+        source INTEGER NOT NULL DEFAULT 0,
         country INTEGER NOT NULL DEFAULT 0,
         release_type INTEGER NOT NULL,
         timestamp INTEGER NOT NULL,

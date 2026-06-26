@@ -2,7 +2,7 @@
 -- mirroring `episode_releases`. SQLite cannot add a column into an existing
 -- PRIMARY KEY in place, so the table is rebuilt. Every existing row was synced
 -- from TMDB (the only movie release source), so they are backfilled with the
--- TMDB source value (2).
+-- default source value (0).
 CREATE TABLE
     movie_releases_new (
         movie_id INTEGER NOT NULL REFERENCES movies (id) ON DELETE CASCADE,
