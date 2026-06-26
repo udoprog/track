@@ -1127,6 +1127,9 @@ impl PredicateKind {
 )]
 #[musli(crate = musli_core)]
 pub struct FilterRule {
+    /// Optional human-readable label shown in the editor. Purely informational.
+    #[serde(default)]
+    pub name: String,
     #[serde(default)]
     pub predicates: Vec<FilterPredicate>,
 }
@@ -1136,6 +1139,7 @@ impl FilterRule {
     /// Physical and Tv releases (from any source/country).
     pub fn default_release_rules() -> Vec<FilterRule> {
         vec![FilterRule {
+            name: String::new(),
             predicates: vec![FilterPredicate::ReleaseTypes(vec![
                 ReleaseType::Digital,
                 ReleaseType::Physical,

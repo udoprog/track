@@ -898,10 +898,39 @@ image {
     }
 }
 
-// A filter/search field paired with a cluster of controls. The first child is
-// the input field, the second is the controls. On desktop they sit on one row
-// (input fills, controls hug the right); on mobile the controls flow onto the
-// next row(s) and wrap as needed.
+rule {
+    display: flex;
+    flex-direction: column;
+    gap: $gap;
+    padding: $gap;
+
+    background: $bg-dark-transparent;
+    border: 1px solid $border-subtle-transparent;
+}
+
+input-label-controls {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: $gap;
+    align-items: start;
+
+    @include g.on-mobile {
+        grid-template-columns: 1fr;
+    }
+
+    >controls {
+        display: flex;
+        flex-direction: row;
+        gap: $gap;
+        flex-wrap: wrap;
+
+        @include g.on-mobile {
+            flex-direction: column;
+            align-items: stretch;
+        }
+    }
+}
+
 input-controls {
     display: grid;
     grid-template-columns: 1fr auto;

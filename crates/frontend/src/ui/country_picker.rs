@@ -105,16 +105,30 @@ impl Component for CountryPicker {
 
         let needle = self.filter.to_lowercase();
 
-        let filtered: Vec<(&'static iso3166::Country, api::Country)> = iso3166::iter()
-            .filter(|country| {
-                needle.is_empty()
-                    || country.name.to_lowercase().contains(&needle)
-                    || country.alpha2.contains(&needle)
+        let matches = |country: &iso3166::Country| {
+            needle.is_empty()
+                || country.name.to_lowercase().contains(&needle)
+                || country.alpha2.contains(&needle)
+        };
+
+        // Selected countries are pinned at the top (filtered by the search term)
+        // so they stay easy to deselect while still browsing the full list below.
+        let selected_list: Vec<(&'static iso3166::Country, api::Country)> = current
+            .iter()
+            .filter_map(|code| {
+                let iso = code.to_iso()?;
+                matches(iso).then_some((iso, *code))
             })
-            .flat_map(|country| Some((country, api::Country::from_iso(country.alpha2)?)))
             .collect();
 
-        let total_pages = filtered.len().div_ceil(COUNTRY_PAGE_SIZE).max(1);
+        // The full, paginated browse list (filtered), excluding what's selected.
+        let browse: Vec<(&'static iso3166::Country, api::Country)> = iso3166::iter()
+            .filter(|country| matches(country))
+            .flat_map(|country| Some((country, api::Country::from_iso(country.alpha2)?)))
+            .filter(|(_, code)| !current.contains(code))
+            .collect();
+
+        let total_pages = browse.len().div_ceil(COUNTRY_PAGE_SIZE).max(1);
         let page = self.page.min(total_pages.saturating_sub(1));
 
         let on_filter = link.callback(|e: InputEvent| {
@@ -122,11 +136,29 @@ impl Component for CountryPicker {
             Msg::Filter(input.value())
         });
 
+        let render_row = |country: &iso3166::Country, code: api::Country| {
+            let selected = current.contains(&code);
+
+            html! {
+                <div key={code} class={classes!("row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| Msg::Toggle(code))}>
+                    <span class="fill">{country.name}</span>
+
+                    if let Some(c) = code.to_iso().filter(|c| c.has_flag) {
+                        <span class={classes!("item-inline", "flag", c.alpha2)} />
+                    }
+
+                    <span class="item-inline" title={code}>
+                        <span class={classes!("icon", if selected { "check" } else { "x-mark" })} />
+                    </span>
+                </div>
+            }
+        };
+
         html! {
             <>
                 {trigger}
 
-                <Modal icon="globe" title="Select Countries" on_close={link.callback(|_| Msg::Close)}>
+                <Modal icon="globe-alt" title="Select Countries" on_close={link.callback(|_| Msg::Close)}>
                     <div class="row">
                         <input class="input-text fill" type="text" autofocus={true} placeholder="Filter" value={self.filter.clone()} oninput={on_filter} />
                     </div>
@@ -144,28 +176,17 @@ impl Component for CountryPicker {
                             </span>
                         </div>
 
+                        {for selected_list.iter().map(|(country, code)| render_row(country, *code))}
+
+                        if !selected_list.is_empty() && !browse.is_empty() {
+                            <table-separator />
+                        }
+
                         {
-                            for filtered.iter()
+                            for browse.iter()
                                 .skip(page.saturating_mul(COUNTRY_PAGE_SIZE))
                                 .take(COUNTRY_PAGE_SIZE)
-                                .map(|(country, code)| {
-                                    let selected = current.contains(code);
-                                    let code = *code;
-
-                                    html! {
-                                        <div key={code} class={classes!("row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| Msg::Toggle(code))}>
-                                            <span class="fill">{country.name}</span>
-
-                                            if let Some(c) = code.to_iso().filter(|c| c.has_flag) {
-                                                <span class={classes!("item-inline", "flag", c.alpha2)} />
-                                            }
-
-                                            <span class="item-inline" title={code}>
-                                                <span class={classes!("icon", if selected { "check" } else { "x-mark" })} />
-                                            </span>
-                                        </div>
-                                    }
-                                })
+                                .map(|(country, code)| render_row(country, *code))
                         }
                     </div>
 

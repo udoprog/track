@@ -1379,6 +1379,7 @@ impl Database {
     ) -> Result<()> {
         let remote = remote.clone();
         let slug = slug.map(str::to_owned);
+        let priority = default_remote_priority(*remote.source(), &self.load_config().await?);
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
@@ -1389,7 +1390,7 @@ impl Database {
                 remote.source(),
                 remote.value(),
                 true,
-                default_remote_priority(*remote.source()),
+                priority,
                 // NULL = inherit the global per-source sync-kinds default.
                 None::<api::SyncKindSet>,
             ))
@@ -2342,6 +2343,7 @@ impl Database {
     ) -> Result<()> {
         let remote = remote.clone();
         let slug = slug.map(str::to_owned);
+        let priority = default_remote_priority(*remote.source(), &self.load_config().await?);
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
@@ -2352,7 +2354,7 @@ impl Database {
                 remote.source(),
                 remote.value(),
                 true,
-                default_remote_priority(*remote.source()),
+                priority,
                 // NULL = inherit the global per-source sync-kinds default.
                 None::<api::SyncKindSet>,
             ))?;
@@ -5015,15 +5017,25 @@ fn show_from_row(row: ShowRow, strings: api::Translations) -> api::Show {
     }
 }
 
-/// Default merge priority for a freshly-added remote (lower wins). TVmaze ranks
-/// highest so its air dates win by default; matches the migration backfill.
-fn default_remote_priority(source: RemoteSource) -> i32 {
-    match source {
+/// Default merge priority for a freshly-added remote (lower wins). The global
+/// `config.sync_kinds` order is the default source priority, so reordering the
+/// sources in settings sets the default applied to remotes added afterward. A
+/// show's own remote order (set by reordering its remotes) overrides this
+/// default and is preserved. Sources absent from the global list rank after the
+/// listed ones, keeping the built-in TVmaze < TMDB < TVDB < IMDb < Unknown order.
+fn default_remote_priority(source: RemoteSource, config: &Config) -> i32 {
+    if let Some(idx) = config.sync_kinds.iter().position(|s| s.source == source) {
+        return idx as i32;
+    }
+
+    let base = config.sync_kinds.len() as i32;
+
+    base + match source {
         RemoteSource::Tvmaze => 0,
-        RemoteSource::Tmdb => 2,
-        RemoteSource::Tvdb => 3,
-        RemoteSource::Imdb => 4,
-        RemoteSource::Unknown => 9,
+        RemoteSource::Tmdb => 1,
+        RemoteSource::Tvdb => 2,
+        RemoteSource::Imdb => 3,
+        RemoteSource::Unknown => 4,
     }
 }
 

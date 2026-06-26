@@ -275,6 +275,7 @@ impl HumanDate {
         }
     }
 
+    #[cfg(feature = "yew")]
     pub fn view(&self) -> VNode {
         match self.kind {
             HumanDateKind::Special(special) if self.lower => {
@@ -465,6 +466,7 @@ pub struct TimeOfDay {
 
 impl TimeOfDay {
     #[inline]
+    #[cfg(feature = "yew")]
     pub fn view(&self) -> VNode {
         yew::html!(<time>{self.to_string()}</time>)
     }

@@ -25,6 +25,7 @@ fn mrel(
 
 fn rule(predicates: impl IntoIterator<Item = FilterPredicate>) -> FilterRule {
     FilterRule {
+        name: String::new(),
         predicates: predicates.into_iter().collect(),
     }
 }

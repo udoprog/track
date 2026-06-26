@@ -204,70 +204,64 @@ impl Component for Settings {
                 <div class="column">
                     <h4>{"Sync"}</h4>
 
-                    <div class="desktop-row mobile-column align-top">
-                        <div class="column fill">
-                            <span class={classes!("input-checkbox", "has-text", self.config.auto_sync_enabled.then_some("checked"))} onclick={on_auto_sync_toggle}>
-                                <span class="mark" />
-                                <span>{"Automatic Sync"}</span>
-                            </span>
+                    <span class={classes!("input-checkbox", "has-text", self.config.auto_sync_enabled.then_some("checked"))} onclick={on_auto_sync_toggle}>
+                        <span class="mark" />
+                        <span>{"Automatic Sync"}</span>
+                    </span>
 
-                            <div class="input-group fill">
-                                <span class="input-label has-text">
-                                    {"Sync Interval in Hours"}
-                                </span>
+                    <div class="input-group fill">
+                        <span class="input-label has-text">
+                            {"Sync Interval in Hours"}
+                        </span>
 
-                                <input
-                                    type="number"
-                                    class="input-number fill"
-                                    min="1"
-                                    max="168"
-                                    value={self.config.auto_sync_interval_hours.to_string()}
-                                    onchange={on_auto_sync_interval}
-                                />
-                            </div>
+                        <input
+                            type="number"
+                            class="input-number fill"
+                            min="1"
+                            max="168"
+                            value={self.config.auto_sync_interval_hours.to_string()}
+                            onchange={on_auto_sync_interval}
+                        />
+                    </div>
 
-                            <span class={classes!("input-checkbox", "has-text", self.config.include_specials.then_some("checked"))} onclick={on_include_specials_change}>
-                                <span class="mark" />
-                                <span>{"Specials for Watch Next"}</span>
-                            </span>
+                    <span class={classes!("input-checkbox", "has-text", self.config.include_specials.then_some("checked"))} onclick={on_include_specials_change}>
+                        <span class="mark" />
+                        <span>{"Specials for Watch Next"}</span>
+                    </span>
 
-                            <div class="field">
-                                <label>{"Sync Sources"}</label>
-                                <span class="hint">{"Which kinds of data each source contributes by default. Base covers titles, overviews and episodes; air dates merge by remote priority. Graphics always accumulate from every source. Individual shows and movies can override this per remote."}</span>
+                    <div class="field">
+                        <label>{"Sync Sources"}</label>
+                        <span class="hint">{"Which kinds of data each source contributes by default, and in which priority order (top wins). Base covers titles, overviews and episodes; air dates merge by this order. Graphics always accumulate from every source. Individual shows and movies can override this per remote."}</span>
 
-                                <SyncKindsEditor
-                                    kinds={self.config.sync_kinds.clone()}
-                                    on_change={link.callback(Msg::SyncKindsChanged)}
-                                />
-                            </div>
-                        </div>
+                        <SyncKindsEditor
+                            kinds={self.config.sync_kinds.clone()}
+                            on_change={link.callback(Msg::SyncKindsChanged)}
+                        />
+                    </div>
 
-                        <div class="column fill">
-                            <div class="field">
-                                <label>{"Release Date"}</label>
-                                <span class="hint">{"Release types (and countries) used to determine when a movie becomes available. The earliest matching date is used."}</span>
+                    <div class="field">
+                        <label>{"Release Date"}</label>
+                        <span class="hint">{"Restrict which release date qualifies, all rules that match will cause a date to be considered, and they will be prioritized according to their sync order."}</span>
 
-                                <FiltersEditor
-                                    rules={self.config.release_filters.clone()}
-                                    on_change={link.callback(Msg::ReleaseFiltersChanged)}
-                                    kinds={RELEASE_KINDS}
-                                    sources={RELEASE_SOURCES}
-                                />
-                            </div>
+                        <FiltersEditor
+                            rules={self.config.release_filters.clone()}
+                            on_change={link.callback(Msg::ReleaseFiltersChanged)}
+                            kinds={RELEASE_KINDS}
+                            sources={RELEASE_SOURCES}
+                        />
+                    </div>
 
 
-                            <div class="field">
-                                <label>{"Air Date"}</label>
-                                <span class="hint">{"Restrict which sources' episode air dates qualify, by country and network. Source priority comes from each show's remote order (TVmaze ranks above TMDB by default)."}</span>
+                    <div class="field">
+                        <label>{"Air Date"}</label>
+                        <span class="hint">{"Restrict which air date qualifies, all rules that match will cause a date to be considered, and they will be prioritized according to their sync order."}</span>
 
-                                <FiltersEditor
-                                    rules={self.config.air_date_filters.clone()}
-                                    on_change={link.callback(Msg::AirDateFiltersChanged)}
-                                    kinds={AIR_DATE_KINDS}
-                                    sources={AIR_DATE_SOURCES}
-                                />
-                            </div>
-                        </div>
+                        <FiltersEditor
+                            rules={self.config.air_date_filters.clone()}
+                            on_change={link.callback(Msg::AirDateFiltersChanged)}
+                            kinds={AIR_DATE_KINDS}
+                            sources={AIR_DATE_SOURCES}
+                        />
                     </div>
                 </div>
 
