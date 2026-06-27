@@ -1803,19 +1803,14 @@ impl ShowDetail {
         let on_toggle_history =
             (!watched.is_empty()).then(|| link.callback(move |_| Msg::ToggleHistory(episode_id)));
 
-        let aired_in_past = episode.aired.is_some_and(|a| a <= self.time.now());
-
         let actions_expanded = self.episode_actions_expanded.contains(&episode_id);
 
         let on_remove_next = link.callback(move |_| Msg::OnRemoveNext(episode_id));
         let on_next_episode =
             link.callback(move |mark_time| Msg::OnWatchNext(episode_id, mark_time));
 
-        let on_mark_confirm = if aired_in_past {
-            link.callback(move |mark_time| Msg::OnWatchNext(episode_id, mark_time))
-        } else {
-            link.callback(move |mark_time| Msg::MarkWatched(show_id, episode_id, mark_time))
-        };
+        let on_mark_confirm =
+            link.callback(move |mark_time| Msg::MarkWatched(show_id, episode_id, mark_time));
 
         let preset = episode
             .aired
