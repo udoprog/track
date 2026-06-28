@@ -310,7 +310,7 @@ impl TaskQueue {
 
             info!(task_id = ?task.id, task_kind = ?task.kind, "Task started");
             let start = Instant::now();
-            let result = execute(&task, &db, &remote, &broadcast, &pending).await;
+            let result = execute(&task, &db, &remote, &broadcast, &pending, &shutdown).await;
 
             match result {
                 Ok(()) => {
@@ -395,13 +395,14 @@ async fn execute(
     remote: &RemoteClients,
     broadcast: &Broadcaster,
     pending: &crate::pending::PendingSystem,
+    shutdown: &crate::shutdown::Shutdown,
 ) -> Result<()> {
     match &task.kind {
         api::TaskKind::SyncShow { show_id, .. } => {
-            sync::sync_show(*show_id, db, remote, broadcast, pending).await
+            sync::sync_show(*show_id, db, remote, broadcast, pending, shutdown).await
         }
         api::TaskKind::SyncMovie { movie_id, .. } => {
-            sync::sync_movie(*movie_id, db, remote, broadcast).await
+            sync::sync_movie(*movie_id, db, remote, broadcast, shutdown).await
         }
         api::TaskKind::RefreshTopLanguages => {
             crate::background::refresh_top_languages(db, broadcast).await

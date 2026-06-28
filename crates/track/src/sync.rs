@@ -10,6 +10,7 @@ use api::{
 use crate::app_broadcast::Broadcaster;
 use crate::db::Database;
 use crate::remote::RemoteClients;
+use crate::shutdown::Shutdown;
 use crate::tmdb;
 
 pub(crate) async fn sync_show(
@@ -18,6 +19,7 @@ pub(crate) async fn sync_show(
     remote: &RemoteClients,
     broadcast: &Broadcaster,
     pending: &crate::pending::PendingSystem,
+    shutdown: &Shutdown,
 ) -> Result<()> {
     let show = db
         .show_by_id(show_id)
@@ -59,6 +61,10 @@ pub(crate) async fn sync_show(
     let mut seen = HashSet::new();
 
     for entry in entries {
+        if shutdown.is_cancelled() {
+            break;
+        }
+
         let source = *entry.remote.source();
 
         if !seen.insert(source) {
@@ -89,6 +95,7 @@ pub(crate) async fn sync_show(
                         do_base,
                         do_air_date,
                         remote,
+                        shutdown,
                     )
                     .await
                 }
@@ -96,8 +103,16 @@ pub(crate) async fn sync_show(
             },
             RemoteSource::Tvdb => match entry.remote.value().as_u32() {
                 Some(tvdb_id) => {
-                    tvdb_show_layer(&mut draft, &config, tvdb_id, do_base, do_air_date, remote)
-                        .await
+                    tvdb_show_layer(
+                        &mut draft,
+                        &config,
+                        tvdb_id,
+                        do_base,
+                        do_air_date,
+                        remote,
+                        shutdown,
+                    )
+                    .await
                 }
                 None => continue,
             },
@@ -130,6 +145,12 @@ pub(crate) async fn sync_show(
     // transient fetch failure (keep what's already stored), mirroring how air
     // dates use eligibility in `recompute_episode_aired_for_show`.
     let eligible = api::eligible_sync_kinds(&show.remotes, &config);
+
+    // Don't persist a half-fetched draft: aborting here leaves the stored
+    // strings/seasons untouched rather than truncating them via `replace_*`.
+    if shutdown.is_cancelled() {
+        anyhow::bail!("Sync aborted: service is shutting down");
+    }
 
     // Base drives the show's seasons and episodes:
     //   - provided           → persist the fresh draft;
@@ -387,6 +408,7 @@ impl ShowDraft {
 }
 
 #[tracing::instrument(skip_all, fields(tmdb_id, do_base, do_air_date))]
+#[allow(clippy::too_many_arguments)]
 async fn tmdb_show_layer(
     draft: &mut ShowDraft,
     config: &api::Config,
@@ -395,6 +417,7 @@ async fn tmdb_show_layer(
     do_base: bool,
     do_air_date: bool,
     remote: &RemoteClients,
+    shutdown: &Shutdown,
 ) -> Result<()> {
     tracing::info!(tmdb_id, do_base, do_air_date, "Show");
 
@@ -428,6 +451,10 @@ async fn tmdb_show_layer(
     }
 
     for season in &info.seasons {
+        if shutdown.is_cancelled() {
+            anyhow::bail!("Sync aborted: service is shutting down");
+        }
+
         if do_base {
             let entry = draft.seasons.entry(season.number).or_default();
             entry.air_date = season.air_date;
@@ -470,7 +497,9 @@ async fn tmdb_show_layer(
     if do_base {
         tracing::info!("Collecting strings");
 
-        if let Err(error) = collect_tmdb_show_strings(draft, tmdb_id, show, config, remote).await {
+        if let Err(error) =
+            collect_tmdb_show_strings(draft, tmdb_id, show, config, remote, shutdown).await
+        {
             tracing::warn!("String collection failed: {error:#}");
         }
     }
@@ -486,6 +515,7 @@ async fn tvdb_show_layer(
     do_base: bool,
     do_air_date: bool,
     remote: &RemoteClients,
+    shutdown: &Shutdown,
 ) -> Result<()> {
     tracing::info!(tvdb_id, do_base, do_air_date, "Show");
 
@@ -610,6 +640,10 @@ async fn tvdb_show_layer(
             .collect();
 
         for language in tvdb_targets {
+            if shutdown.is_cancelled() {
+                anyhow::bail!("Sync aborted: service is shutting down");
+            }
+
             tracing::info!(?language, "Collecting strings");
 
             // Remotes key on ISO 639-1; skip any locale whose language has no
@@ -618,7 +652,9 @@ async fn tvdb_show_layer(
                 continue;
             }
 
-            if let Err(error) = collect_tvdb_strings(draft, tvdb_id, language, remote).await {
+            if let Err(error) =
+                collect_tvdb_strings(draft, tvdb_id, language, remote, shutdown).await
+            {
                 tracing::warn!("String collection failed: {error:#}");
             }
         }
@@ -687,6 +723,7 @@ async fn collect_tmdb_show_strings(
     show: &api::Show,
     config: &api::Config,
     remote: &RemoteClients,
+    shutdown: &Shutdown,
 ) -> Result<()> {
     let language = show
         .language
@@ -732,6 +769,10 @@ async fn collect_tmdb_show_strings(
     let season_numbers: Vec<SeasonNumber> = draft.seasons.keys().copied().collect();
 
     for season_number in &season_numbers {
+        if shutdown.is_cancelled() {
+            anyhow::bail!("Sync aborted: service is shutting down");
+        }
+
         let translations = remote
             .fetch_tmdb_season_translations(tmdb_id, *season_number)
             .await?;
@@ -763,6 +804,10 @@ async fn collect_tmdb_show_strings(
     let episode_keys: Vec<(SeasonNumber, u32)> = draft.episodes.keys().copied().collect();
 
     for (season, episode) in &episode_keys {
+        if shutdown.is_cancelled() {
+            anyhow::bail!("Sync aborted: service is shutting down");
+        }
+
         let translations = remote
             .fetch_tmdb_episode_translations(tmdb_id, *season, *episode)
             .await?;
@@ -811,6 +856,7 @@ async fn collect_tvdb_strings(
     tvdb_id: u32,
     language: api::Locale,
     remote: &RemoteClients,
+    shutdown: &Shutdown,
 ) -> Result<()> {
     if let Some(translation) = remote
         .fetch_tvdb_show_translation(tvdb_id, language, &draft.translations)
@@ -835,6 +881,10 @@ async fn collect_tvdb_strings(
         .collect::<Vec<_>>();
 
     for (season, tvdb_id, translations) in seasons {
+        if shutdown.is_cancelled() {
+            anyhow::bail!("Sync aborted: service is shutting down");
+        }
+
         if let Some(translation) = remote
             .fetch_tvdb_season_translation(tvdb_id, language, &translations)
             .await?
@@ -865,6 +915,10 @@ async fn collect_tvdb_strings(
         .collect::<Vec<_>>();
 
     for ((season, number), tvdb_id, translations) in episodes {
+        if shutdown.is_cancelled() {
+            anyhow::bail!("Sync aborted: service is shutting down");
+        }
+
         if let Some(translation) = remote
             .fetch_tvdb_episode_translation(tvdb_id, language, &translations)
             .await?
@@ -1073,6 +1127,7 @@ pub(crate) async fn sync_movie(
     db: &Database,
     remote: &RemoteClients,
     broadcast: &Broadcaster,
+    shutdown: &Shutdown,
 ) -> Result<()> {
     let movie = db
         .movie_by_id(movie_id)
@@ -1080,6 +1135,10 @@ pub(crate) async fn sync_movie(
         .context("Expected movie to exist")?;
 
     let config = db.load_config().await?;
+
+    if shutdown.is_cancelled() {
+        anyhow::bail!("Sync aborted: service is shutting down");
+    }
 
     let source = movie.primary_sync_source();
     tracing::info!(movie_id = %movie_id, title = movie.strings.title(), ?source, "Syncing movie");
@@ -1174,9 +1233,10 @@ pub(crate) async fn sync_movie(
                 }
             }
 
-            if let Err(e) =
-                collect_tmdb_movie_strings(movie_id, tmdb_id, &info, &movie, &config, db, remote)
-                    .await
+            if let Err(e) = collect_tmdb_movie_strings(
+                movie_id, tmdb_id, &info, &movie, &config, db, remote, shutdown,
+            )
+            .await
             {
                 tracing::warn!(movie_id = %movie_id, "String collection failed: {e:#}");
             }
@@ -1212,6 +1272,7 @@ pub(crate) async fn sync_movie(
 /// [`api::expand_sync_languages`] of the configured `sync_languages` against the
 /// movie's own original language.
 #[tracing::instrument(skip_all, fields(movie_id, tmdb_id))]
+#[allow(clippy::too_many_arguments)]
 async fn collect_tmdb_movie_strings(
     movie_id: api::MovieId,
     tmdb_id: u32,
@@ -1220,6 +1281,7 @@ async fn collect_tmdb_movie_strings(
     config: &api::Config,
     db: &Database,
     remote: &RemoteClients,
+    shutdown: &Shutdown,
 ) -> Result<()> {
     let language = movie
         .language
@@ -1234,6 +1296,10 @@ async fn collect_tmdb_movie_strings(
     let mut rows: StringRows = Vec::new();
 
     for translation in translations {
+        if shutdown.is_cancelled() {
+            anyhow::bail!("Sync aborted: service is shutting down");
+        }
+
         let Some(locale) = locale_matches_targets(translation.locale, &targets) else {
             continue;
         };
