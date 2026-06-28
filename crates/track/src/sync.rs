@@ -1187,7 +1187,8 @@ pub(crate) async fn sync_movie(
 
     // Recompute the effective release date + pending entry from the movie's release filters before
     // broadcasting, so the emitted movie reflects the filtered release date.
-    crate::background::update_movie_pending(db, movie_id).await?;
+    db.update_movie_pending(movie_id, config.release_filters.clone())
+        .await?;
 
     let updated = db
         .movie_by_id(movie_id)

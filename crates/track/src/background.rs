@@ -65,43 +65,6 @@ pub(crate) async fn discover_pending_movies(db: &Database) -> anyhow::Result<()>
     Ok(())
 }
 
-/// Recompute a movie's effective release date and pending entry from its release filters.
-///
-/// The effective release date is the earliest release matching the filters; it is written back to
-/// `movies.release_date` so the displayed date reflects the settings (when no release matches, the
-/// existing date is kept rather than cleared, e.g. when release detail could not be fetched).
-/// Movies with watches keep their release date but are left to the watch flow for pending; otherwise
-/// any qualifying release date (past or future) creates/updates the pending entry, and the absence
-/// of a qualifying release (e.g. filters changed so nothing matches) removes it. Future-dated pending
-/// rows stay dormant on the dashboard until their timestamp passes (`list_pending_before` filters
-/// `timestamp <= now`).
-pub(crate) async fn update_movie_pending(
-    db: &Database,
-    movie_id: api::MovieId,
-) -> anyhow::Result<()> {
-    let Some(movie) = db.movie_by_id(movie_id).await? else {
-        return Ok(());
-    };
-
-    let default = db.load_config().await?.release_filters;
-    let release = movie.pending_release(&default);
-
-    if movie.release_date != release {
-        db.set_movie_release_date(movie_id, release).await?;
-    }
-
-    if db.has_movie_watches(movie_id).await? {
-        return Ok(());
-    }
-
-    match release {
-        Some(ts) => db.add_pending_movie(movie_id, ts).await?,
-        None => db.remove_pending_movie(movie_id).await?,
-    }
-
-    Ok(())
-}
-
 pub(crate) async fn run(
     db: Database,
     queue: TaskQueue,

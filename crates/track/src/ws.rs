@@ -241,15 +241,20 @@ impl WsHandler {
                 let req = incoming
                     .read::<api::GetEpisodeReleasesRequest>()
                     .context("Expected a request payload")?;
-                let releases = self.db.episode_release_rows(req.episode_id).await?;
-                outgoing.write(api::GetEpisodeReleasesResponse { releases });
+                let (releases, show_id, filters) =
+                    self.db.episode_release_rows(req.episode_id).await?;
+                outgoing.write(api::GetEpisodeReleasesResponse {
+                    releases,
+                    show_id,
+                    filters,
+                });
             }
             api::Request::GetMovieReleases => {
                 let req = incoming
                     .read::<api::GetMovieReleasesRequest>()
                     .context("Expected a request payload")?;
-                let releases = self.db.movie_release_rows(req.movie_id).await?;
-                outgoing.write(api::GetMovieReleasesResponse { releases });
+                let (releases, filters) = self.db.movie_release_rows(req.movie_id).await?;
+                outgoing.write(api::GetMovieReleasesResponse { releases, filters });
             }
             api::Request::GetMovie => {
                 let req = incoming
@@ -1153,7 +1158,8 @@ impl WsHandler {
                     .await?;
 
                 // Recompute pending against the new filters and surface the updated movie.
-                crate::background::update_movie_pending(&self.db, req.id).await?;
+                let default = self.db.load_config().await?.release_filters;
+                self.db.update_movie_pending(req.id, default).await?;
 
                 let movie = self
                     .db
@@ -1275,6 +1281,25 @@ impl WsHandler {
                         incoming.channel(),
                         api::AppEventKind::PendingChanged,
                         "ws air date filters recompute",
+                    );
+                }
+
+                // Likewise the global release filters feed every movie's stored
+                // release date; recompute from existing data (no re-sync) when they
+                // change (per-movie overrides use their own).
+                if prev.release_filters != req.config.release_filters {
+                    let default = req.config.release_filters.clone();
+
+                    for movie in self.db.movies().await? {
+                        self.db
+                            .update_movie_pending(movie.id, default.clone())
+                            .await?;
+                    }
+
+                    self.broadcast.emit(
+                        incoming.channel(),
+                        api::AppEventKind::PendingChanged,
+                        "ws release filters recompute",
                     );
                 }
 

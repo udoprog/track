@@ -330,6 +330,21 @@ p {
             height: $input-height-touch * 0.8;
         }
     }
+
+    &.primary {
+        color: $color-primary;
+        --icon-color: #{$color-primary};
+    }
+
+    &.success {
+        color: $color-success;
+        --icon-color: #{$color-success};
+    }
+
+    &.danger {
+        color: $color-danger;
+        --icon-color: #{$color-danger};
+    }
 }
 
 .item-inline {

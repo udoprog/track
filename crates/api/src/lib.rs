@@ -1995,6 +1995,11 @@ pub struct GetEpisodeReleasesRequest {
 #[musli(crate = musli_core)]
 pub struct GetEpisodeReleasesResponse {
     pub releases: Vec<ReleaseRow>,
+    /// The owning show, whose air-date filters apply to this episode and which the
+    /// modal mutates to change the per-series override.
+    pub show_id: ShowId,
+    /// The show's air-date override, or `None` when the global default is in use.
+    pub filters: Option<Vec<FilterRule>>,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -2007,6 +2012,8 @@ pub struct GetMovieReleasesRequest {
 #[musli(crate = musli_core)]
 pub struct GetMovieReleasesResponse {
     pub releases: Vec<ReleaseRow>,
+    /// The movie's release override, or `None` when the global default is in use.
+    pub filters: Option<Vec<FilterRule>>,
 }
 
 /// A single release as shown in the release/air-date modal, with its grouping

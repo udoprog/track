@@ -8,7 +8,9 @@ use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 
-use super::Modal;
+use super::{
+    AIR_DATE_KINDS, AIR_DATE_SOURCES, FiltersEditor, Modal, RELEASE_KINDS, RELEASE_SOURCES,
+};
 
 /// What a [`ReleaseModal`] shows. Each variant fetches from its own endpoint; the
 /// server resolves the `considered` flag and grouping `label` for both.
@@ -30,6 +32,12 @@ pub(crate) enum Msg {
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     MovieLoaded(Result<ws::Packet<api::GetMovieReleases>, ws::Error>),
     EpisodeLoaded(Result<ws::Packet<api::GetEpisodeReleases>, ws::Error>),
+    ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
+    /// The active filter was edited (whichever scope is in effect).
+    EditFilters(Vec<api::FilterRule>),
+    /// Switch between the per-media override and the global default.
+    ToggleMode,
+    MutateDone(Message, Result<(), ws::Error>),
     ToggleGroup(AttrValue),
     SetTime(TimeInfo),
 }
@@ -39,8 +47,16 @@ pub(crate) struct ReleaseModal {
     _setup: SetupChannel,
     _broadcast: ws::Listener,
     _req: ws::Request,
+    _config_req: ws::Request,
+    _mutate_req: ws::Request,
     /// `None` while loading, `Some` once the response has arrived.
     rows: Option<Vec<api::ReleaseRow>>,
+    /// The global config, holding the default filters and resent on a global edit.
+    config: Option<api::Config>,
+    /// The per-media override; `None` means the active filter is the global default.
+    override_filters: Option<Vec<api::FilterRule>>,
+    /// The owning show of an episode target, needed to mutate its air-date override.
+    show_id: Option<api::ShowId>,
     /// Labels of the currently expanded groups.
     expanded: HashSet<AttrValue>,
     time: TimeInfo,
@@ -76,7 +92,12 @@ impl Component for ReleaseModal {
             _setup,
             _broadcast,
             _req: ws::Request::default(),
+            _config_req: ws::Request::default(),
+            _mutate_req: ws::Request::default(),
             rows: None,
+            config: None,
+            override_filters: None,
+            show_id: None,
             expanded: HashSet::new(),
             time,
             _time_handle,
@@ -100,6 +121,7 @@ impl Component for ReleaseModal {
 
         html! {
             <Modal icon="calendar" title={title} on_close={on_close}>
+                { self.view_filters(ctx) }
                 { self.view_content(ctx) }
             </Modal>
         }
@@ -112,6 +134,7 @@ impl ReleaseModal {
             Msg::Channel(result) => {
                 self.channel = result?;
                 self.load(ctx);
+                self.load_config(ctx);
                 Ok(true)
             }
             Msg::AppBroadcast(packet) => {
@@ -129,24 +152,65 @@ impl ReleaseModal {
                 Ok(false)
             }
             Msg::MovieLoaded(result) => {
-                self.rows = Some(
-                    result
-                        .context(Message::LoadingReleases)?
-                        .decode()
-                        .context(Message::LoadingReleases)?
-                        .releases,
-                );
+                let resp = result
+                    .context(Message::LoadingReleases)?
+                    .decode()
+                    .context(Message::LoadingReleases)?;
+                self.rows = Some(resp.releases);
+                self.override_filters = resp.filters;
                 Ok(true)
             }
             Msg::EpisodeLoaded(result) => {
-                self.rows = Some(
+                let resp = result
+                    .context(Message::LoadingReleases)?
+                    .decode()
+                    .context(Message::LoadingReleases)?;
+                self.rows = Some(resp.releases);
+                self.override_filters = resp.filters;
+                self.show_id = Some(resp.show_id);
+                Ok(true)
+            }
+            Msg::ConfigLoaded(result) => {
+                self.config = Some(
                     result
-                        .context(Message::LoadingReleases)?
+                        .context(Message::LoadingConfig)?
                         .decode()
-                        .context(Message::LoadingReleases)?
-                        .releases,
+                        .context(Message::LoadingConfig)?
+                        .config,
                 );
                 Ok(true)
+            }
+            Msg::EditFilters(filters) => {
+                if self.override_filters.is_some() {
+                    self.override_filters = Some(filters.clone());
+                    self.send_override(ctx, Some(filters));
+                } else {
+                    if let Some(config) = self.config.as_mut() {
+                        match ctx.props().target {
+                            ReleaseTarget::Movie(_) => config.release_filters = filters,
+                            ReleaseTarget::Episode(_) => config.air_date_filters = filters,
+                        }
+                    }
+                    self.send_global(ctx);
+                }
+                Ok(true)
+            }
+            Msg::ToggleMode => {
+                if self.override_filters.is_some() {
+                    self.override_filters = None;
+                    self.send_override(ctx, None);
+                } else if let Some(rules) = self.global_rules(ctx).map(<[_]>::to_vec) {
+                    self.override_filters = Some(rules.clone());
+                    self.send_override(ctx, Some(rules));
+                }
+                Ok(true)
+            }
+            Msg::MutateDone(message, result) => {
+                result.context(message)?;
+                // Re-fetch so the per-row `considered` indicators (resolved
+                // server-side) reflect the new filter.
+                self.load(ctx);
+                Ok(false)
             }
             Msg::ToggleGroup(label) => {
                 if !self.expanded.remove(&label) {
@@ -182,6 +246,150 @@ impl ReleaseModal {
                 .on_packet(ctx.link().callback(Msg::EpisodeLoaded))
                 .send(),
         };
+    }
+
+    /// Request the global config (default filters, plus the full config resent on
+    /// a global edit).
+    fn load_config(&mut self, ctx: &Context<Self>) {
+        self._config_req = self
+            .channel
+            .request()
+            .body(api::GetConfigRequest)
+            .on_packet(ctx.link().callback(Msg::ConfigLoaded))
+            .send();
+    }
+
+    /// The global default rules for this target, once the config has loaded.
+    fn global_rules(&self, ctx: &Context<Self>) -> Option<&[api::FilterRule]> {
+        let config = self.config.as_ref()?;
+        Some(match ctx.props().target {
+            ReleaseTarget::Movie(_) => &config.release_filters,
+            ReleaseTarget::Episode(_) => &config.air_date_filters,
+        })
+    }
+
+    /// Persist the per-media override (`None` reverts to the global default).
+    fn send_override(&mut self, ctx: &Context<Self>, filters: Option<Vec<api::FilterRule>>) {
+        match ctx.props().target {
+            ReleaseTarget::Movie(id) => {
+                self._mutate_req = self
+                    .channel
+                    .request()
+                    .body(api::SetMovieReleaseFiltersRequest {
+                        id,
+                        release_filters: filters,
+                    })
+                    .on_packet(ctx.link().callback(
+                        |r: Result<ws::Packet<api::SetMovieReleaseFilters>, ws::Error>| {
+                            Msg::MutateDone(Message::SettingReleaseFilters, r.map(|_| ()))
+                        },
+                    ))
+                    .send();
+            }
+            ReleaseTarget::Episode(_) => {
+                let Some(id) = self.show_id else {
+                    return;
+                };
+                self._mutate_req = self
+                    .channel
+                    .request()
+                    .body(api::SetShowAirDateFiltersRequest {
+                        id,
+                        air_date_filters: filters,
+                    })
+                    .on_packet(ctx.link().callback(
+                        |r: Result<ws::Packet<api::SetShowAirDateFilters>, ws::Error>| {
+                            Msg::MutateDone(Message::SettingAirDateFilters, r.map(|_| ()))
+                        },
+                    ))
+                    .send();
+            }
+        }
+    }
+
+    /// Persist the global config after a global-default edit.
+    fn send_global(&mut self, ctx: &Context<Self>) {
+        let Some(config) = self.config.clone() else {
+            return;
+        };
+
+        self._mutate_req =
+            self.channel
+                .request()
+                .body(api::SetConfigRequest { config })
+                .on_packet(ctx.link().callback(
+                    |r: Result<ws::Packet<api::SetConfig>, ws::Error>| {
+                        Msg::MutateDone(Message::SavingConfig, r.map(|_| ()))
+                    },
+                ))
+                .send();
+    }
+
+    /// The active filter shown above the list: a scope toggle, a warning when the
+    /// global default is being edited, and the editor bound to the active rules.
+    fn view_filters(&self, ctx: &Context<Self>) -> Html {
+        let Some(global) = self.global_rules(ctx) else {
+            return html! {};
+        };
+
+        let target = ctx.props().target;
+
+        // An episode's override lives on its show; without one there is nothing to
+        // edit.
+        if matches!(target, ReleaseTarget::Episode(_))
+            && !matches!(self.show_id, Some(id) if id != api::ShowId::new(0))
+        {
+            return html! {};
+        }
+
+        let is_custom = self.override_filters.is_some();
+        let rules = self
+            .override_filters
+            .clone()
+            .unwrap_or_else(|| global.to_vec());
+
+        let (kinds, sources, custom_label, warning) = match target {
+            ReleaseTarget::Movie(_) => (
+                RELEASE_KINDS,
+                RELEASE_SOURCES,
+                "Custom for this movie",
+                "Editing the global default, this applies to all movies.",
+            ),
+            ReleaseTarget::Episode(_) => (
+                AIR_DATE_KINDS,
+                AIR_DATE_SOURCES,
+                "Custom for this series",
+                "Editing the global default, this applies to all series.",
+            ),
+        };
+
+        let link = ctx.link();
+        let on_toggle = link.callback(|_| Msg::ToggleMode);
+        let on_change = link.callback(Msg::EditFilters);
+
+        html! {
+            <div class="form">
+                <div class="input-group">
+                    <span class="input-label has-text">{"Active filter"}</span>
+
+                    <button class="input-checkbox has-text fill" onclick={on_toggle}>
+                        {if is_custom { custom_label } else { "Use global default" }}
+                    </button>
+                </div>
+
+                if !is_custom {
+                    <span class="row text-gap">
+                        <span class="item-inline danger">
+                            <span class="icon exclamation-triangle" />
+                        </span>
+
+                        {warning}
+                    </span>
+                }
+
+                <FiltersEditor rules={rules} on_change={on_change} kinds={kinds} sources={sources} />
+            </div>
+        }
     }
 
     fn view_content(&self, ctx: &Context<Self>) -> Html {

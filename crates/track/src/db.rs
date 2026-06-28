@@ -2853,23 +2853,6 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn set_movie_release_date(
-        &self,
-        id: MovieId,
-        release_date: Option<Timestamp>,
-    ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.set_movie_release_date
-                .execute((release_date.as_ref(), id))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn delete_movie(&self, id: MovieId) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
@@ -3983,6 +3966,88 @@ impl Database {
         result.await?
     }
 
+    /// Recompute a movie's effective release date and pending entry from its release filters, in a
+    /// single exclusive transaction.
+    ///
+    /// The effective release date is the earliest release matching the filters; it is written back
+    /// to `movies.release_date` so the displayed date reflects the settings (when no release matches
+    /// the date is cleared). Movies with watches keep their release date but are left to the watch
+    /// flow for pending; otherwise any qualifying release date (past or future) creates/updates the
+    /// pending entry, and the absence of a qualifying release (e.g. filters changed so nothing
+    /// matches) removes it. Future-dated pending rows stay dormant on the dashboard until their
+    /// timestamp passes (`list_pending_before` filters `timestamp <= now`).
+    ///
+    /// `default_filters` are the global release filters used when the movie has no override.
+    #[tracing::instrument(skip(self, default_filters), ret(level = "trace"))]
+    pub(crate) async fn update_movie_pending(
+        &self,
+        movie_id: MovieId,
+        default_filters: Vec<api::FilterRule>,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            // Resolve the current release date, which also confirms the movie exists.
+            let Some(current_release_date) = s.movie_released_by_id.bind((movie_id,))?.first()?
+            else {
+                return Ok(());
+            };
+
+            let override_filters = s
+                .movie_release_filters
+                .bind((movie_id,))?
+                .first()?
+                .flatten();
+            let override_filters = override_filters
+                .as_deref()
+                .and_then(config::decode_filter_rules);
+
+            let releases = {
+                let mut out = Vec::new();
+                let mut stmt = s.list_movie_releases.bind((movie_id,))?;
+
+                while let Some(r) = stmt.next()? {
+                    out.push(api::MovieRelease {
+                        source: r.source,
+                        country: r.country,
+                        release_type: r.release_type,
+                        timestamp: r.timestamp,
+                    });
+                }
+
+                stmt.reset()?;
+                out
+            };
+
+            let effective = override_filters.as_deref().unwrap_or(&default_filters);
+            let release = api::earliest_release(&releases, effective);
+
+            if current_release_date != release {
+                s.set_movie_release_date
+                    .execute((release.as_ref(), movie_id))?;
+            }
+
+            // Movies with watches keep their release date but defer pending to the watch flow.
+            if s.has_watched_movie.bind((movie_id,))?.first()?.is_some() {
+                return Ok(());
+            }
+
+            match release {
+                Some(ts) => {
+                    s.upsert_pending_movie
+                        .execute((PendingId::random(), ts, movie_id))?;
+                }
+                None => {
+                    s.delete_pending_movie.execute((movie_id,))?;
+                }
+            }
+
+            Ok(())
+        });
+
+        result.await?
+    }
+
     /// Fill the pending slot for a show, but ONLY if it currently has no pending episode.
     /// Called after sync upserts episodes, and after MarkWatched clears the old pending row.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -4148,17 +4213,6 @@ impl Database {
         result.await?
     }
 
-    /// Whether the given movie has any watches.
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn has_movie_watches(&self, id: MovieId) -> Result<bool> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result =
-            spawn_blocking(move || Ok(s.has_watched_movie.bind((id,))?.first()?.is_some()));
-
-        result.await?
-    }
-
     /// The release dates recorded for a movie.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn movie_releases(&self, id: MovieId) -> Result<Vec<api::MovieRelease>> {
@@ -4227,15 +4281,18 @@ impl Database {
     /// grouping `label` (network, or `"Unknown"`) resolved against the show's
     /// air-date source priority and effective filters.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn episode_release_rows(&self, id: EpisodeId) -> Result<Vec<api::ReleaseRow>> {
+    pub(crate) async fn episode_release_rows(
+        &self,
+        id: EpisodeId,
+    ) -> Result<(Vec<api::ReleaseRow>, ShowId, Option<Vec<api::FilterRule>>)> {
         let releases = self.episode_releases(id).await?;
 
         let Some(show_id) = self.episode_show_id(id).await? else {
-            return Ok(Vec::new());
+            return Ok((Vec::new(), ShowId::new(0), None));
         };
 
         let Some(show) = self.show_by_id(show_id).await? else {
-            return Ok(Vec::new());
+            return Ok((Vec::new(), show_id, None));
         };
 
         let config = self.load_config().await?;
@@ -4263,7 +4320,7 @@ impl Database {
             .collect();
 
         rows.sort_by(|a, b| a.label.cmp(&b.label).then(a.timestamp.cmp(&b.timestamp)));
-        Ok(rows)
+        Ok((rows, show_id, show.air_date_filters))
     }
 
     /// A movie's release-date override filters, if any.
@@ -4279,7 +4336,10 @@ impl Database {
     /// A movie's releases as display rows, with `considered` and the grouping
     /// `label` (release type) resolved against the movie's effective release filters.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn movie_release_rows(&self, id: MovieId) -> Result<Vec<api::ReleaseRow>> {
+    pub(crate) async fn movie_release_rows(
+        &self,
+        id: MovieId,
+    ) -> Result<(Vec<api::ReleaseRow>, Option<Vec<api::FilterRule>>)> {
         let mut releases = self.movie_releases(id).await?;
         let override_filters = self.movie_release_filters(id).await?;
         let config = self.load_config().await?;
@@ -4309,7 +4369,7 @@ impl Database {
             })
             .collect();
 
-        Ok(rows)
+        Ok((rows, override_filters))
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
