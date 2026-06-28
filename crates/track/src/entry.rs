@@ -52,7 +52,7 @@ pub async fn server(args: Args, db: &Path, log: &[String]) -> Result<ExitCode> {
         .with_context(|| anyhow!("Opening database at {}", db.display()))?;
 
     let http = reqwest::Client::builder()
-        .user_agent("ontv-musli-web/0.1")
+        .user_agent("ontv/0.1.0")
         .build()
         .context("Building HTTP client")?;
 
