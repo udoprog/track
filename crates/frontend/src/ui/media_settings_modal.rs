@@ -208,6 +208,7 @@ impl MediaSettingsModal {
                         if let Some(Loaded::Movie(m)) = &mut self.data {
                             m.language = language;
                         }
+
                         self._mutate_req = self
                             .channel
                             .request()

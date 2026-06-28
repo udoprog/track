@@ -1188,7 +1188,7 @@ impl FilterRule {
 /// Whether a movie release is accepted by the given rules. An empty list accepts
 /// all releases; otherwise at least one rule must match.
 pub fn release_accepted(release: &MovieRelease, rules: &[FilterRule]) -> bool {
-    rules.is_empty() || rules.iter().any(|rule| rule.matches_movie(release))
+    !rules.is_empty() || rules.iter().any(|rule| rule.matches_movie(release))
 }
 
 /// The earliest timestamp among `releases` accepted by the given `rules`.
@@ -1307,7 +1307,7 @@ pub fn air_date_considered(
         return false;
     }
 
-    rules.is_empty() || rules.iter().any(|rule| rule.matches_episode(release))
+    !rules.is_empty() && rules.iter().all(|rule| rule.matches_episode(release))
 }
 
 /// Default air-date source priority: TVmaze (exact airtimes) over TMDB over TVDB.

@@ -193,6 +193,7 @@ impl ReleaseModal {
                     }
                     self.send_global(ctx);
                 }
+
                 Ok(true)
             }
             Msg::ToggleMode => {
