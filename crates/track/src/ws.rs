@@ -514,7 +514,10 @@ impl WsHandler {
                 let tz = req.tz.and_then(TimeZone::get).unwrap_or(TimeZone::UTC);
 
                 let time = api::TimeInfo::new(tz, api::Timestamp::now());
-                let days = self.db.schedule(req.days, time).await?;
+                let days = self
+                    .db
+                    .schedule(req.start_offset_days, req.days, time)
+                    .await?;
                 outgoing.write(api::ListScheduleResponse { days });
             }
             api::Request::ListWatchNext => {

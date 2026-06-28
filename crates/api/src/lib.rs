@@ -1660,21 +1660,40 @@ pub struct Watched {
 #[musli(crate = musli_core)]
 pub enum PendingInfo {
     Episode {
+        show_id: ShowId,
+        episode_id: EpisodeId,
         show: Option<String>,
         episode: Option<String>,
         season: SeasonNumber,
         number: u32,
     },
     Movie {
+        movie: MovieId,
         title: Option<String>,
     },
+}
+
+impl PendingInfo {
+    /// The lightweight identity ([`PendingKind`]) carried by this entry.
+    pub fn kind(&self) -> PendingKind {
+        match self {
+            PendingInfo::Episode {
+                show_id,
+                episode_id,
+                ..
+            } => PendingKind::Episode {
+                show: *show_id,
+                episode: *episode_id,
+            },
+            PendingInfo::Movie { movie, .. } => PendingKind::Movie { movie: *movie },
+        }
+    }
 }
 
 /// Denormalized pending item for dashboard/queue rendering.
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct Pending {
-    pub kind: PendingKind,
     pub info: PendingInfo,
     pub aired: Option<Timestamp>,
     /// The pending slot's date; the list is ordered by this, most recent first.
@@ -1776,6 +1795,8 @@ pub struct Config {
     pub tvdb_pin: Option<String>,
     pub tmdb_api_key: String,
     pub dashboard_page: u32,
+    /// Number of weeks shown in the dashboard schedule (always at least 1).
+    pub schedule_weeks: u32,
     pub auto_sync_enabled: bool,
     pub auto_sync_interval_hours: u32,
     pub timezone: String,
@@ -1804,6 +1825,7 @@ impl Default for Config {
             tvdb_pin: None,
             tmdb_api_key: String::new(),
             dashboard_page: 5,
+            schedule_weeks: 4,
             auto_sync_enabled: false,
             auto_sync_interval_hours: 24,
             timezone: String::new(),
@@ -2266,6 +2288,9 @@ pub struct ListPendingResponse {
 #[musli(crate = musli_core)]
 pub struct ListScheduleRequest<'a> {
     pub tz: Option<&'a str>,
+    /// Start of the window relative to the server's "today", in days. Negative
+    /// values reach into past weeks.
+    pub start_offset_days: i32,
     pub days: u32,
 }
 

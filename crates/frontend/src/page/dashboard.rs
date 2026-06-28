@@ -54,8 +54,11 @@ pub(crate) enum Msg {
     MarkPending(api::PendingKind, api::MarkTime),
     MarkPendingDone(Result<ws::Packet<api::AddPending>, ws::Error>),
     AdjustPageSize(i32),
+    AdjustScheduleWeeks(i32),
     SetConfigDone(Result<ws::Packet<api::SetConfig>, ws::Error>),
     SetPage(usize),
+    SetWeek(i32),
+    SetWeekStart(bool),
     Navigate(Route),
     SetTime(TimeInfo),
 }
@@ -63,6 +66,10 @@ pub(crate) enum Msg {
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
     pub(crate) page: usize,
+    /// Schedule window offset from the current week, in weeks.
+    pub(crate) week: i32,
+    /// Mobile-only: reveal the past days of the current week.
+    pub(crate) week_start: bool,
 }
 
 impl Component for Dashboard {
@@ -142,7 +149,14 @@ impl Component for Dashboard {
                 <div class="column">
                     <h1 class="center">{"Schedule"}</h1>
 
-                    <Calendar />
+                    <Calendar
+                        weeks={self.config.schedule_weeks}
+                        week_offset={ctx.props().week}
+                        week_start={ctx.props().week_start}
+                        on_adjust_weeks={ctx.link().callback(Msg::AdjustScheduleWeeks)}
+                        on_set_week={ctx.link().callback(Msg::SetWeek)}
+                        on_set_week_start={ctx.link().callback(Msg::SetWeekStart)}
+                    />
                 </div>
             </>
         }
@@ -152,6 +166,16 @@ impl Component for Dashboard {
 impl Dashboard {
     fn page_size(&self) -> usize {
         self.config.dashboard_page.max(1) as usize
+    }
+
+    /// The current dashboard query reconstructed from props, so navigation can
+    /// override a single field while preserving the rest.
+    fn dashboard_query(&self, ctx: &Context<Self>) -> DashboardQuery {
+        DashboardQuery {
+            page: ctx.props().page,
+            week: ctx.props().week,
+            week_start: ctx.props().week_start,
+        }
     }
 
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
@@ -319,13 +343,46 @@ impl Dashboard {
                     .send();
                 Ok(true)
             }
+            Msg::AdjustScheduleWeeks(delta) => {
+                self.config.schedule_weeks = self
+                    .config
+                    .schedule_weeks
+                    .saturating_add_signed(delta)
+                    .max(1);
+
+                self._set_config_req = self
+                    .channel
+                    .request()
+                    .body(api::SetConfigRequest {
+                        config: self.config.clone(),
+                    })
+                    .on_packet(ctx.link().callback(Msg::SetConfigDone))
+                    .send();
+                Ok(true)
+            }
             Msg::SetConfigDone(result) => {
                 result.context(Message::SavingConfig)?;
                 Ok(false)
             }
-            Msg::SetPage(p) => {
-                self.router
-                    .push(Route::Dashboard(DashboardQuery { page: p }));
+            Msg::SetPage(page) => {
+                self.router.push(Route::Dashboard(DashboardQuery {
+                    page,
+                    ..self.dashboard_query(ctx)
+                }));
+                Ok(true)
+            }
+            Msg::SetWeek(week) => {
+                self.router.push(Route::Dashboard(DashboardQuery {
+                    week,
+                    ..self.dashboard_query(ctx)
+                }));
+                Ok(true)
+            }
+            Msg::SetWeekStart(week_start) => {
+                self.router.push(Route::Dashboard(DashboardQuery {
+                    week_start,
+                    ..self.dashboard_query(ctx)
+                }));
                 Ok(true)
             }
             Msg::Navigate(route) => {
@@ -353,8 +410,10 @@ impl Dashboard {
         if page != ctx.props().page {
             // Replace rather than push: this is a URL correction, not a
             // navigation, so it should not leave a back-button target.
-            self.router
-                .replace(Route::Dashboard(DashboardQuery { page }));
+            self.router.replace(Route::Dashboard(DashboardQuery {
+                page,
+                ..self.dashboard_query(ctx)
+            }));
         }
     }
 
@@ -372,7 +431,7 @@ impl Dashboard {
     /// entry dated in the future falls outside the "next" view and is dropped.
     fn upsert_pending(&mut self, ctx: &Context<Self>, pending: api::Pending) {
         self.pending
-            .retain(|state| state.pending.kind != pending.kind);
+            .retain(|state| state.pending.info.kind() != pending.info.kind());
 
         if pending.timestamp <= self.time.now() {
             self.pending.push(PendingState {
@@ -441,16 +500,20 @@ impl Dashboard {
     fn view_pending_item(&self, ctx: &Context<Self>, pending: &PendingState) -> Html {
         let PendingState { pending, anchor } = pending;
 
-        let pending_kind = pending.kind;
+        let pending_kind = pending.info.kind();
 
         let on_navigate;
         let on_navigate_episode;
 
-        match (pending.kind, &pending.info) {
-            (
-                api::PendingKind::Episode { show, .. },
-                api::PendingInfo::Episode { season, number, .. },
-            ) => {
+        match &pending.info {
+            api::PendingInfo::Episode {
+                show_id,
+                season,
+                number,
+                ..
+            } => {
+                let show = *show_id;
+
                 on_navigate = ctx.link().callback({
                     move |_| Msg::Navigate(Route::ShowDetail(show, ShowDetailQuery::default()))
                 });
@@ -471,14 +534,9 @@ impl Dashboard {
                     }
                 });
             }
-            (api::PendingKind::Episode { show, .. }, _) => {
-                on_navigate = ctx.link().callback({
-                    move |_| Msg::Navigate(Route::ShowDetail(show, ShowDetailQuery::default()))
-                });
+            api::PendingInfo::Movie { movie, .. } => {
+                let movie = *movie;
 
-                on_navigate_episode = on_navigate.clone();
-            }
-            (api::PendingKind::Movie { movie }, _) => {
                 on_navigate = ctx
                     .link()
                     .callback(move |_| Msg::Navigate(Route::MovieDetail(movie)));
@@ -487,7 +545,7 @@ impl Dashboard {
             }
         };
 
-        let kind = match pending.kind {
+        let kind = match pending_kind {
             api::PendingKind::Episode { show, episode } => {
                 api::WatchedKind::Episode { show, episode }
             }
@@ -496,7 +554,7 @@ impl Dashboard {
 
         let preset = pending.aired.map(|timestamp| {
             // "Aired" reads oddly for movies; label that choice "Released" instead.
-            let label = match pending.kind {
+            let label = match pending_kind {
                 api::PendingKind::Episode { .. } => "Aired",
                 api::PendingKind::Movie { .. } => "Released",
             };
@@ -506,7 +564,7 @@ impl Dashboard {
 
         let aired_in_past = pending.aired.is_some_and(|a| a <= self.time.now());
 
-        let skip_ids = if let api::PendingKind::Episode { show, episode } = pending.kind {
+        let skip_ids = if let api::PendingKind::Episode { show, episode } = pending_kind {
             Some((show, episode))
         } else {
             None
@@ -566,14 +624,14 @@ impl Dashboard {
                     <div class="pending-actions">
                         <div class="input-group">
                             if aired_in_past {
-                                <MarkTimeMenu class="success" icon="check" title="Mark watched" prompt={format!("When did you watch this {}?", pending.kind.title())} preset={preset.clone()} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(kind, mark_time))}>
+                                <MarkTimeMenu class="success" icon="check" title="Mark watched" prompt={format!("When did you watch this {}?", pending_kind.title())} preset={preset.clone()} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(kind, mark_time))}>
                                     <span class="icon check" />
                                 </MarkTimeMenu>
                             } else {
                                 <Button icon="check" variant={Variant::Success} title="Mark watched" onclick={ctx.link().callback(move |_| Msg::MarkWatched(kind, api::MarkTime::Now))} />
                             }
 
-                            <MarkTimeMenu class="primary" title="Move pending" icon="bookmark" prompt={format!("When do you want to queue this {}?", pending.kind.title())} preset={preset.clone()} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkPending(pending_kind, mark_time))}>
+                            <MarkTimeMenu class="primary" title="Move pending" icon="bookmark" prompt={format!("When do you want to queue this {}?", pending_kind.title())} preset={preset.clone()} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkPending(pending_kind, mark_time))}>
                                 <span class="icon bookmark" />
                             </MarkTimeMenu>
 

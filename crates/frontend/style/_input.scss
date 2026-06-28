@@ -82,7 +82,7 @@
     }
 
     @if $hover {
-        &:hover {
+        &:hover:not(.disabled):not(:disabled) {
             outline: none;
             border-color: $color-primary;
         }
@@ -94,7 +94,6 @@
 button,
 .button {
     @include input-base;
-    cursor: pointer;
 
     --icon-color: #{$text-color};
     color: $text-color;
@@ -103,8 +102,8 @@ button,
     border-width: 1px;
     border-color: transparent;
 
-    &:hover {
-        border-color: $color-primary;
+    &:not(.disabled):not(:disabled) {
+        cursor: pointer;
     }
 
     @include button-color($color-secondary);
@@ -125,7 +124,7 @@ button,
         flex: 1;
     }
 
-    &.disabled {
+    &.disabled, &:disabled {
         opacity: 0.5;
         cursor: default;
     }

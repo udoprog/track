@@ -4620,11 +4620,9 @@ impl Database {
                             .map(str::to_owned);
 
                         break 'pending api::Pending {
-                            kind: api::PendingKind::Episode {
-                                show: d.show_id,
-                                episode: episode_id,
-                            },
                             info: api::PendingInfo::Episode {
+                                show_id: d.show_id,
+                                episode_id,
                                 show: show_title,
                                 episode: episode_name,
                                 season: d.season,
@@ -4654,8 +4652,10 @@ impl Database {
                             .map(str::to_owned);
 
                         break 'pending api::Pending {
-                            kind: api::PendingKind::Movie { movie: movie_id },
-                            info: api::PendingInfo::Movie { title },
+                            info: api::PendingInfo::Movie {
+                                movie: movie_id,
+                                title,
+                            },
                             aired: d.release_date,
                             timestamp: r.timestamp,
                             poster,
@@ -4715,8 +4715,9 @@ impl Database {
                     .map(str::to_owned);
 
                 Ok(Some(api::Pending {
-                    kind: api::PendingKind::Episode { show, episode },
                     info: api::PendingInfo::Episode {
+                        show_id: show,
+                        episode_id: episode,
                         show: show_title,
                         episode: episode_name,
                         season: d.season,
@@ -4745,8 +4746,7 @@ impl Database {
                 let title = s.translations.movie(movie, cfg)?.title().map(str::to_owned);
 
                 Ok(Some(api::Pending {
-                    kind: api::PendingKind::Movie { movie },
-                    info: api::PendingInfo::Movie { title },
+                    info: api::PendingInfo::Movie { movie, title },
                     aired: d.release_date,
                     timestamp,
                     poster,
@@ -4761,6 +4761,7 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn schedule(
         &self,
+        start_offset_days: i32,
         days: u32,
         time: api::TimeInfo,
     ) -> Result<Vec<api::ScheduledDay>> {
@@ -4768,10 +4769,21 @@ impl Database {
 
         let today = time.now().date(time.clone());
 
-        let Some(end) = today.checked_add_days(days) else {
+        let start = if start_offset_days >= 0 {
+            today.checked_add_days(start_offset_days as u32)
+        } else {
+            today.checked_sub_days(start_offset_days.unsigned_abs())
+        };
+
+        let Some(start) = start else {
             return Ok(vec![]);
         };
 
+        let Some(end) = start.checked_add_days(days) else {
+            return Ok(vec![]);
+        };
+
+        let start = start.to_timestamp_at_midnight_zoned(time.tz().clone())?;
         let end = end.to_timestamp_at_midnight_zoned(time.tz().clone())?;
 
         let mut s = self.inner.clone().shared().await?;
@@ -4786,7 +4798,7 @@ impl Database {
             // Resolved show titles, cached so each show is looked up once.
             let mut show_titles: HashMap<ShowId, String> = HashMap::new();
 
-            let mut stmt = s.list_schedule.bind((today, end))?;
+            let mut stmt = s.list_schedule.bind((start, end))?;
 
             while let Some(r) = stmt.next()? {
                 let Some(day) = r.aired else { continue };
@@ -4829,7 +4841,7 @@ impl Database {
 
             stmt.reset()?;
 
-            let mut stmt = s.list_schedule_movies.bind((today, end))?;
+            let mut stmt = s.list_schedule_movies.bind((start, end))?;
 
             while let Some(r) = stmt.next()? {
                 let Some(released) = r.released else { continue };
@@ -4909,6 +4921,11 @@ impl Database {
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(5);
 
+            let schedule_weeks = s
+                .get_config("schedule_weeks")?
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(4);
+
             let auto_sync_enabled = s
                 .get_config("auto_sync_enabled")?
                 .map(|v| v == "true")
@@ -4967,6 +4984,7 @@ impl Database {
                 tvdb_pin,
                 tmdb_api_key,
                 dashboard_page,
+                schedule_weeks,
                 auto_sync_enabled,
                 auto_sync_interval_hours,
                 timezone,
@@ -5002,6 +5020,8 @@ impl Database {
             s.set_config("tmdb_api_key", config.tmdb_api_key)?;
 
             s.set_config("dashboard_page", config.dashboard_page.to_string())?;
+
+            s.set_config("schedule_weeks", config.schedule_weeks.to_string())?;
 
             s.set_config(
                 "auto_sync_enabled",

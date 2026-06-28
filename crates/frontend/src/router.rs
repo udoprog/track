@@ -9,6 +9,10 @@ use crate::error::{CustomContext, Error, Message};
 #[derive(Default, Debug, Clone, PartialEq)]
 pub(super) struct DashboardQuery {
     pub(super) page: usize,
+    /// Offset of the schedule's visible window from the current week, in weeks.
+    pub(super) week: i32,
+    /// Mobile-only: reveal the past days of the current week.
+    pub(super) week_start: bool,
 }
 
 impl DashboardQuery {
@@ -17,6 +21,14 @@ impl DashboardQuery {
 
         if self.page > 0 {
             s.append_pair("page", &self.page.to_string());
+        }
+
+        if self.week != 0 {
+            s.append_pair("week", &self.week.to_string());
+        }
+
+        if self.week_start {
+            s.append_pair("week_start", "1");
         }
 
         s.finish()
@@ -29,6 +41,12 @@ impl DashboardQuery {
             match key.as_ref() {
                 "page" => {
                     this.page = value.parse::<usize>().unwrap_or(0);
+                }
+                "week" => {
+                    this.week = value.parse::<i32>().unwrap_or(0);
+                }
+                "week_start" => {
+                    this.week_start = value == "1" || value == "true";
                 }
                 _ => continue,
             }
