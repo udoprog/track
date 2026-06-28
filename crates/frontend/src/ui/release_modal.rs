@@ -353,13 +353,13 @@ impl ReleaseModal {
                 RELEASE_KINDS,
                 RELEASE_SOURCES,
                 "Custom for this movie",
-                "Editing the global default, this applies to all movies.",
+                "Global default, this applies to all movies.",
             ),
             ReleaseTarget::Episode(_) => (
                 AIR_DATE_KINDS,
                 AIR_DATE_SOURCES,
-                "Custom for this series",
-                "Editing the global default, this applies to all series.",
+                "Custom for this show",
+                "Global default, this applies to all shows.",
             ),
         };
 

@@ -105,8 +105,8 @@ impl RemoteSource {
     /// [`SyncKind`] for how a layered sync uses these.
     pub fn sync_kinds(&self) -> &'static [SyncKind] {
         match self {
-            Self::Tmdb | Self::Tvdb => &[SyncKind::Base, SyncKind::AirDate],
-            Self::Tvmaze => &[SyncKind::AirDate],
+            Self::Tmdb | Self::Tvdb => &[SyncKind::Base, SyncKind::Dates],
+            Self::Tvmaze => &[SyncKind::Dates],
             Self::Imdb | Self::Unknown => &[],
         }
     }
@@ -372,6 +372,32 @@ pub struct RemoteEntry {
     /// Per-remote override of which kinds this remote contributes; `None` inherits
     /// the global default for its source. See [`effective_remote_sync_kinds`].
     pub sync_kinds: Option<SyncKindSet>,
+    /// Source-specific conditional-request state from the last sync, used to skip
+    /// re-fetching an unchanged remote. `None` when never synced or unparsable.
+    pub cache: Option<RemoteCache>,
+}
+
+/// Per-remote cache validators captured during sync and replayed on the next one
+/// to detect "nothing changed". Stored as JSON in the `*_remotes.cache` column;
+/// the fields are per-source and optional, so older or other-shaped payloads
+/// deserialize tolerantly (missing → `None`) and new sources can add fields
+/// without breaking existing rows.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize)]
+#[musli(crate = musli_core)]
+pub struct RemoteCache {
+    /// TMDB `ETag`, replayed via `If-None-Match` (a `304` means unchanged).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub etag: Option<String>,
+    /// TVDB `lastUpdated`; an equal value on the extended record means unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_updated: Option<String>,
+    /// The sync kinds that were actually fetched and persisted under this
+    /// validator. A cache hit is only honored for a layer whose needed kinds are a
+    /// subset of this set, so e.g. an air-date-only validator never short-circuits
+    /// a later Base fetch (when a remote is re-prioritized). Defaults to empty for
+    /// rows written before this field existed, forcing a one-time re-fetch.
+    #[serde(default, skip_serializing_if = "SyncKindSet::is_empty")]
+    pub kinds: SyncKindSet,
 }
 
 /// The kinds a remote actually contributes during a sync: its per-remote override
@@ -410,7 +436,7 @@ pub fn eligible_sync_kinds(remotes: &[RemoteEntry], config: &Config) -> SyncKind
 pub fn air_date_sources_by_priority(remotes: &[RemoteEntry], config: &Config) -> Vec<RemoteSource> {
     let mut entries: Vec<&RemoteEntry> = remotes
         .iter()
-        .filter(|e| e.enabled && effective_remote_sync_kinds(e, config).contains(SyncKind::AirDate))
+        .filter(|e| e.enabled && effective_remote_sync_kinds(e, config).contains(SyncKind::Dates))
         .collect();
     entries.sort_by_key(|e| e.priority);
 
@@ -2464,6 +2490,20 @@ pub struct RemoveMovieRemoteRequest {
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
+pub struct PurgeShowRemoteCacheRequest {
+    pub id: ShowId,
+    pub remote_id: RemoteId,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct PurgeMovieRemoteCacheRequest {
+    pub id: MovieId,
+    pub remote_id: RemoteId,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
 pub struct UpdateShowRemoteRequest {
     pub id: ShowId,
     pub remote_id: RemoteId,
@@ -2944,6 +2984,18 @@ api::define! {
     pub type RemoveMovieRemote;
     impl Endpoint for RemoveMovieRemote {
         impl Request for RemoveMovieRemoteRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type PurgeShowRemoteCache;
+    impl Endpoint for PurgeShowRemoteCache {
+        impl Request for PurgeShowRemoteCacheRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type PurgeMovieRemoteCache;
+    impl Endpoint for PurgeMovieRemoteCache {
+        impl Request for PurgeMovieRemoteCacheRequest;
         type Response<'de> = Empty;
     }
 

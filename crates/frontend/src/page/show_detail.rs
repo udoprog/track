@@ -172,6 +172,7 @@ pub(crate) enum Msg {
     AddRemote(Option<String>, api::Remote),
     EditRemote(api::RemoteId, Option<String>, api::Remote),
     RemoveRemote(api::RemoteId),
+    PurgeRemoteCache(api::RemoteId),
     RemoteDone(Result<(), ws::Error>),
     SetTime(TimeInfo),
     FixWatched(api::WatchedId),
@@ -452,6 +453,7 @@ impl Component for ShowDetail {
                         on_add={link.callback(|(slug, remote)| Msg::AddRemote(slug, remote))}
                         on_edit={link.callback(|(id, slug, remote)| Msg::EditRemote(id, slug, remote))}
                         on_remove={link.callback(Msg::RemoveRemote)}
+                        on_purge_cache={link.callback(Msg::PurgeRemoteCache)}
                         on_set_enabled={link.callback(|(id, enabled)| Msg::SetRemoteEnabled(id, enabled))}
                         on_reorder={link.callback(Msg::ReorderRemotes)}
                         on_set_sync_kinds={link.callback(|(id, kinds)| Msg::SetRemoteSyncKinds(id, kinds))}
@@ -1333,6 +1335,22 @@ impl ShowDetail {
                     .body(api::RemoveShowRemoteRequest { id, remote_id })
                     .on_packet(ctx.link().callback(
                         |r: Result<ws::Packet<api::RemoveShowRemote>, ws::Error>| {
+                            Msg::RemoteDone(r.map(|_| ()))
+                        },
+                    ))
+                    .send();
+
+                Ok(false)
+            }
+            Msg::PurgeRemoteCache(remote_id) => {
+                let id = props.show_id;
+
+                self._remote_req = self
+                    .channel
+                    .request()
+                    .body(api::PurgeShowRemoteCacheRequest { id, remote_id })
+                    .on_packet(ctx.link().callback(
+                        |r: Result<ws::Packet<api::PurgeShowRemoteCache>, ws::Error>| {
                             Msg::RemoteDone(r.map(|_| ()))
                         },
                     ))

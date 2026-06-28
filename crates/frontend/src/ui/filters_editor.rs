@@ -62,7 +62,7 @@ enum Mode {
 
 pub(crate) enum Msg {
     Edit,
-    Done,
+    Save,
     AddRule,
     AskRemove(usize),
     CancelRemove,
@@ -123,7 +123,7 @@ impl Component for FiltersEditor {
                 self.mode = Mode::Edit;
                 true
             }
-            Msg::Done => {
+            Msg::Save => {
                 self.mode = Mode::View;
                 self.confirming_remove = None;
                 true
@@ -178,7 +178,7 @@ impl Component for FiltersEditor {
                 </button>
             },
             Mode::Edit => html! {
-                <button class="mobile-has-text" onclick={link.callback(|_| Msg::Done)} title="Save rules">
+                <button class="primary mobile-has-text" onclick={link.callback(|_| Msg::Save)} title="Save rules">
                     <span class="icon check" />
                     <span class="mobile-only">{"Save"}</span>
                 </button>
@@ -187,16 +187,16 @@ impl Component for FiltersEditor {
 
         html! {
             <div class="form">
-                <div class="row-split">
-                    <button class="primary mobile-has-text" onclick={link.callback(|_| Msg::AddRule)} title="Add rule">
+                {for rules}
+
+                {toggle}
+
+                <rule-add onclick={link.callback(|_| Msg::AddRule)} title="Add rule">
+                    <span class="item-inline">
                         <span class="icon plus" />
                         <span class="mobile-only">{"Add rule"}</span>
-                    </button>
-
-                    {toggle}
-                </div>
-
-                {for rules}
+                    </span>
+                </rule-add>
             </div>
         }
     }

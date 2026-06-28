@@ -923,6 +923,23 @@ rule {
     border: 1px solid $border-subtle-transparent;
 }
 
+rule-add {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: $gap;
+
+    background: $bg-dark-transparent;
+    border: 1px solid $border-subtle-transparent;
+
+    cursor: pointer;
+
+    &:hover {
+        background: rgba($color-secondary, $transparency);
+    }
+}
+
 input-label-controls {
     display: grid;
     grid-template-columns: auto 1fr;

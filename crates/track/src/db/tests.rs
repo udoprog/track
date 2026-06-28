@@ -118,6 +118,30 @@ fn oneshot_applies_on_existing_db() {
 
         INSERT INTO movie_releases (id, movie_id, country, release_type, timestamp)
         VALUES (1, 20, 0, 2, 5678);
+
+        CREATE TABLE show_remotes (
+            id INTEGER PRIMARY KEY,
+            show_id INTEGER NOT NULL,
+            source INTEGER NOT NULL,
+            value,
+            slug TEXT,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            priority INTEGER NOT NULL DEFAULT 0,
+            sync_kinds INTEGER,
+            UNIQUE (show_id, source, value)
+        );
+
+        CREATE TABLE movie_remotes (
+            id INTEGER PRIMARY KEY,
+            movie_id INTEGER NOT NULL,
+            source INTEGER NOT NULL,
+            value,
+            slug TEXT,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            priority INTEGER NOT NULL DEFAULT 0,
+            sync_kinds INTEGER,
+            UNIQUE (movie_id, source, value)
+        );
         ",
     )
     .unwrap();
@@ -182,4 +206,19 @@ fn oneshot_applies_on_existing_db() {
         !show_names.iter().any(|n| n == "title" || n == "overview"),
         "base columns should be dropped: {show_names:?}"
     );
+
+    // The add-remote-cache oneshot added the `cache` column to the remotes tables.
+    for table in ["show_remotes", "movie_remotes"] {
+        let mut cols = c
+            .prepare(&format!("SELECT name FROM pragma_table_info('{table}')"))
+            .unwrap();
+        let mut names = Vec::new();
+        while let Some(name) = cols.next::<String>().unwrap() {
+            names.push(name);
+        }
+        assert!(
+            names.iter().any(|n| n == "cache"),
+            "{table} should have a cache column: {names:?}"
+        );
+    }
 }

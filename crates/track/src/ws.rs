@@ -921,6 +921,67 @@ impl WsHandler {
 
                 outgoing.write(api::Empty);
             }
+            api::Request::PurgeShowRemoteCache => {
+                let req = incoming
+                    .read::<api::PurgeShowRemoteCacheRequest>()
+                    .context("Expected a request payload")?;
+
+                let show = self
+                    .db
+                    .show_by_id(req.id)
+                    .await?
+                    .context("Expected show to exist")?;
+
+                self.db.set_show_remote_cache(req.remote_id, None).await?;
+
+                // Force a fresh sync now that the cached validator is gone.
+                self.enqueue_show_sync(show.id, show.strings.title().map(str::to_owned), true)
+                    .await;
+
+                let show = self
+                    .db
+                    .show_by_id(req.id)
+                    .await?
+                    .context("Expected show to exist")?;
+
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::ShowChanged { show },
+                    "ws purge show remote cache",
+                );
+
+                outgoing.write(api::Empty);
+            }
+            api::Request::PurgeMovieRemoteCache => {
+                let req = incoming
+                    .read::<api::PurgeMovieRemoteCacheRequest>()
+                    .context("Expected a request payload")?;
+
+                let movie = self
+                    .db
+                    .movie_by_id(req.id)
+                    .await?
+                    .context("Expected movie to exist")?;
+
+                self.db.set_movie_remote_cache(req.remote_id, None).await?;
+
+                self.enqueue_movie_sync(movie.id, movie.strings.title().map(str::to_owned), true)
+                    .await;
+
+                let movie = self
+                    .db
+                    .movie_by_id(req.id)
+                    .await?
+                    .context("Expected movie to exist")?;
+
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::MovieChanged { movie },
+                    "ws purge movie remote cache",
+                );
+
+                outgoing.write(api::Empty);
+            }
             api::Request::UpdateShowRemote => {
                 let req = incoming
                     .read::<api::UpdateShowRemoteRequest>()

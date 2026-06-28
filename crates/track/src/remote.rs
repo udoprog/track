@@ -226,11 +226,15 @@ impl RemoteClients {
         Ok((out, total))
     }
 
-    pub(crate) async fn fetch_tmdb_show(&self, id: u32) -> Result<tmdb::ShowInfo> {
+    pub(crate) async fn fetch_tmdb_show(
+        &self,
+        id: u32,
+        etag: Option<&str>,
+    ) -> Result<tmdb::Conditional<tmdb::ShowInfo>> {
         self.tmdb()
             .await
             .context("Expected a configured TMDB client")?
-            .fetch_show(id)
+            .fetch_show(id, etag)
             .await
     }
 
@@ -246,11 +250,15 @@ impl RemoteClients {
             .await
     }
 
-    pub(crate) async fn fetch_tmdb_movie(&self, id: u32) -> Result<tmdb::MovieInfo> {
+    pub(crate) async fn fetch_tmdb_movie(
+        &self,
+        id: u32,
+        etag: Option<&str>,
+    ) -> Result<tmdb::Conditional<tmdb::MovieInfo>> {
         self.tmdb()
             .await
             .context("Expected a configured TMDB client")?
-            .fetch_movie(id)
+            .fetch_movie(id, etag)
             .await
     }
 

@@ -18,13 +18,13 @@ use musli_core::{Allocator, Decode, Decoder, Encode, Encoder};
 pub enum SyncKind {
     /// Core metadata: title, overview, seasons and episode details.
     Base,
-    /// Episode air dates (recorded as `episode_releases` and merged by priority).
-    AirDate,
+    /// Movie or episode dates.
+    Dates,
 }
 
 impl SyncKind {
     /// All sync kinds, in a stable order.
-    pub const ALL: &[Self] = &[Self::Base, Self::AirDate];
+    pub const ALL: &[Self] = &[Self::Base, Self::Dates];
 
     /// Whether only the first (highest-priority) source providing this kind
     /// contributes it. Non-exclusive kinds accumulate from every source.
@@ -36,7 +36,7 @@ impl SyncKind {
     pub fn as_label(&self) -> &'static str {
         match self {
             Self::Base => "Base",
-            Self::AirDate => "Air Dates",
+            Self::Dates => "Dates",
         }
     }
 
@@ -44,7 +44,7 @@ impl SyncKind {
     pub fn bit(&self) -> u32 {
         match self {
             Self::Base => 1 << 0,
-            Self::AirDate => 1 << 1,
+            Self::Dates => 1 << 1,
         }
     }
 }
@@ -83,6 +83,11 @@ impl SyncKindSet {
 
     pub fn contains(&self, kind: SyncKind) -> bool {
         self.0 & kind.bit() != 0
+    }
+
+    /// Whether every kind in `other` is also present in `self`.
+    pub fn contains_all(&self, other: SyncKindSet) -> bool {
+        self.0 & other.0 == other.0
     }
 
     pub fn insert(&mut self, kind: SyncKind) {
@@ -144,7 +149,7 @@ impl Iterator for SyncKindSetIter {
 
         match bit {
             0 => Some(SyncKind::Base),
-            1 => Some(SyncKind::AirDate),
+            1 => Some(SyncKind::Dates),
             _ => None,
         }
     }

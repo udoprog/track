@@ -215,6 +215,7 @@ CREATE TABLE
         enabled INTEGER NOT NULL DEFAULT 1,
         priority INTEGER NOT NULL DEFAULT 0,
         sync_kinds INTEGER,
+        cache TEXT,
         UNIQUE (show_id, source, value)
     );
 
@@ -228,6 +229,7 @@ CREATE TABLE
         enabled INTEGER NOT NULL DEFAULT 1,
         priority INTEGER NOT NULL DEFAULT 0,
         sync_kinds INTEGER,
+        cache TEXT,
         UNIQUE (movie_id, source, value)
     );
 

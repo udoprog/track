@@ -86,6 +86,7 @@ pub(crate) enum Msg {
     AddRemote(Option<String>, api::Remote),
     EditRemote(api::RemoteId, Option<String>, api::Remote),
     RemoveRemote(api::RemoteId),
+    PurgeRemoteCache(api::RemoteId),
     RemoteDone(Result<(), ws::Error>),
     ConfirmRemove,
     CancelRemove,
@@ -468,12 +469,14 @@ impl MovieDetail {
                 }
 
                 let id = ctx.props().movie_id;
+
                 self._reorder_remotes_req = self
                     .channel
                     .request()
                     .body(api::ReorderMovieRemotesRequest { id, remote_ids })
                     .on_packet(ctx.link().callback(Msg::ReorderRemotesDone))
                     .send();
+
                 Ok(true)
             }
             Msg::ReorderRemotesDone(result) => {
@@ -695,6 +698,22 @@ impl MovieDetail {
                     .body(api::RemoveMovieRemoteRequest { id, remote_id })
                     .on_packet(ctx.link().callback(
                         |r: Result<ws::Packet<api::RemoveMovieRemote>, ws::Error>| {
+                            Msg::RemoteDone(r.map(|_| ()))
+                        },
+                    ))
+                    .send();
+
+                Ok(false)
+            }
+            Msg::PurgeRemoteCache(remote_id) => {
+                let id = ctx.props().movie_id;
+
+                self._remote_req = self
+                    .channel
+                    .request()
+                    .body(api::PurgeMovieRemoteCacheRequest { id, remote_id })
+                    .on_packet(ctx.link().callback(
+                        |r: Result<ws::Packet<api::PurgeMovieRemoteCache>, ws::Error>| {
                             Msg::RemoteDone(r.map(|_| ()))
                         },
                     ))
@@ -1033,6 +1052,7 @@ impl MovieDetail {
                     on_add={link.callback(|(slug, remote)| Msg::AddRemote(slug, remote))}
                     on_edit={link.callback(|(id, slug, remote)| Msg::EditRemote(id, slug, remote))}
                     on_remove={link.callback(Msg::RemoveRemote)}
+                    on_purge_cache={link.callback(Msg::PurgeRemoteCache)}
                     on_set_enabled={link.callback(|(id, enabled)| Msg::SetRemoteEnabled(id, enabled))}
                     on_reorder={link.callback(Msg::ReorderRemotes)}
                     on_set_sync_kinds={link.callback(|(id, kinds)| Msg::SetRemoteSyncKinds(id, kinds))}

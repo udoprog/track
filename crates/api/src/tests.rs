@@ -38,12 +38,13 @@ fn entry(source: RemoteSource, sync_kinds: Option<SyncKindSet>) -> RemoteEntry {
         enabled: true,
         priority: 0,
         sync_kinds,
+        cache: None,
     }
 }
 
 #[test]
 fn sync_kind_set_serde() {
-    let set = SyncKindSet::from_kinds([SyncKind::Base, SyncKind::AirDate]);
+    let set = SyncKindSet::from_kinds([SyncKind::Base, SyncKind::Dates]);
 
     // Serializes as a sequence of snake_case strings.
     let json = serde_json::to_string(&set).unwrap();
@@ -124,8 +125,8 @@ fn expand_sync_languages_resolves_and_dedupes() {
 
 #[test]
 fn sync_kind_set_bits_round_trip() {
-    let set = SyncKindSet::from_kinds([SyncKind::AirDate]);
-    assert!(set.contains(SyncKind::AirDate));
+    let set = SyncKindSet::from_kinds([SyncKind::Dates]);
+    assert!(set.contains(SyncKind::Dates));
     assert!(!set.contains(SyncKind::Base));
     assert_eq!(SyncKindSet::from_bits(set.bits()), set);
 
@@ -138,11 +139,11 @@ fn sync_kind_set_bits_round_trip() {
 
     let toggled = SyncKindSet::empty()
         .with(SyncKind::Base, true)
-        .with(SyncKind::AirDate, true)
+        .with(SyncKind::Dates, true)
         .with(SyncKind::Base, false);
 
-    assert_eq!(toggled, SyncKindSet::from_kinds([SyncKind::AirDate]));
-    assert_eq!(toggled.iter().collect::<Vec<_>>(), vec![SyncKind::AirDate]);
+    assert_eq!(toggled, SyncKindSet::from_kinds([SyncKind::Dates]));
+    assert_eq!(toggled.iter().collect::<Vec<_>>(), vec![SyncKind::Dates]);
 }
 
 #[test]
@@ -151,7 +152,7 @@ fn config_sync_kinds_for_clamps_to_capability() {
     let config = Config::default();
     assert_eq!(
         config.sync_kinds_for(RemoteSource::Tvmaze),
-        SyncKindSet::from_kinds([SyncKind::AirDate])
+        SyncKindSet::from_kinds([SyncKind::Dates])
     );
 
     // A configured entry granting more than the capability is clamped.
@@ -164,7 +165,7 @@ fn config_sync_kinds_for_clamps_to_capability() {
     };
     assert_eq!(
         config.sync_kinds_for(RemoteSource::Tvmaze),
-        SyncKindSet::from_kinds([SyncKind::AirDate])
+        SyncKindSet::from_kinds([SyncKind::Dates])
     );
 }
 
@@ -173,7 +174,7 @@ fn effective_remote_sync_kinds_override_beats_global() {
     let config = Config {
         sync_kinds: vec![SourceSyncKinds {
             source: RemoteSource::Tmdb,
-            kinds: SyncKindSet::from_kinds([SyncKind::AirDate]),
+            kinds: SyncKindSet::from_kinds([SyncKind::Dates]),
         }],
         ..Config::default()
     };
@@ -182,7 +183,7 @@ fn effective_remote_sync_kinds_override_beats_global() {
     let inherited = entry(RemoteSource::Tmdb, None);
     assert_eq!(
         effective_remote_sync_kinds(&inherited, &config),
-        SyncKindSet::from_kinds([SyncKind::AirDate])
+        SyncKindSet::from_kinds([SyncKind::Dates])
     );
 
     // An override wins, still clamped to capability.
@@ -202,9 +203,9 @@ fn sync_kinds_capabilities() {
 
     // TMDB/TVDB are full base + air-date sources; TVmaze is air-dates only;
     // IMDb contributes nothing and no graphics.
-    assert_eq!(Tmdb.sync_kinds(), &[SyncKind::Base, SyncKind::AirDate]);
-    assert_eq!(Tvdb.sync_kinds(), &[SyncKind::Base, SyncKind::AirDate]);
-    assert_eq!(Tvmaze.sync_kinds(), &[SyncKind::AirDate]);
+    assert_eq!(Tmdb.sync_kinds(), &[SyncKind::Base, SyncKind::Dates]);
+    assert_eq!(Tvdb.sync_kinds(), &[SyncKind::Base, SyncKind::Dates]);
+    assert_eq!(Tvmaze.sync_kinds(), &[SyncKind::Dates]);
     assert_eq!(Imdb.sync_kinds(), &[]);
 
     assert!(Tmdb.has_graphics());
@@ -214,7 +215,7 @@ fn sync_kinds_capabilities() {
 
     // Base is exclusive (first source wins); air dates accumulate.
     assert!(SyncKind::Base.is_exclusive());
-    assert!(!SyncKind::AirDate.is_exclusive());
+    assert!(!SyncKind::Dates.is_exclusive());
 }
 
 #[test]
@@ -226,7 +227,7 @@ fn eligible_sync_kinds_unions_enabled_remotes() {
     let both = [
         entry(
             RemoteSource::Tmdb,
-            Some(SyncKindSet::from_kinds([SyncKind::AirDate])),
+            Some(SyncKindSet::from_kinds([SyncKind::Dates])),
         ),
         entry(
             RemoteSource::Tvdb,
@@ -235,7 +236,7 @@ fn eligible_sync_kinds_unions_enabled_remotes() {
     ];
     assert_eq!(
         eligible_sync_kinds(&both, &config),
-        SyncKindSet::from_kinds([SyncKind::Base, SyncKind::AirDate])
+        SyncKindSet::from_kinds([SyncKind::Base, SyncKind::Dates])
     );
 
     // With Base excluded from every remote, Base is no longer eligible, so its
@@ -243,13 +244,13 @@ fn eligible_sync_kinds_unions_enabled_remotes() {
     let air_only = [
         entry(
             RemoteSource::Tmdb,
-            Some(SyncKindSet::from_kinds([SyncKind::AirDate])),
+            Some(SyncKindSet::from_kinds([SyncKind::Dates])),
         ),
         entry(RemoteSource::Tvmaze, None),
     ];
     let eligible = eligible_sync_kinds(&air_only, &config);
     assert!(!eligible.contains(SyncKind::Base));
-    assert!(eligible.contains(SyncKind::AirDate));
+    assert!(eligible.contains(SyncKind::Dates));
 
     // A disabled remote contributes nothing.
     let mut disabled = entry(RemoteSource::Tmdb, None);

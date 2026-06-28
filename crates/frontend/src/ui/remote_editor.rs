@@ -59,6 +59,7 @@ pub(crate) struct Props {
     pub(crate) on_add: Callback<(Option<String>, api::Remote)>,
     pub(crate) on_edit: Callback<(api::RemoteId, Option<String>, api::Remote)>,
     pub(crate) on_remove: Callback<api::RemoteId>,
+    pub(crate) on_purge_cache: Callback<api::RemoteId>,
     pub(crate) on_set_enabled: Callback<(api::RemoteId, bool)>,
     pub(crate) on_reorder: Callback<Vec<api::RemoteId>>,
     pub(crate) on_set_sync_kinds: Callback<(api::RemoteId, Option<api::SyncKindSet>)>,
@@ -78,15 +79,18 @@ pub(crate) enum Msg {
     AskRemove(api::RemoteId),
     CancelRemove,
     ConfirmRemove(api::RemoteId),
+    PurgeCache(api::RemoteId),
     SetEnabled(api::RemoteId, bool),
     SetSyncKinds(api::RemoteId, Option<api::SyncKindSet>),
     Move(usize, isize),
     Close,
+    ToggleActionsExpanded(usize),
 }
 
 struct RemoteState {
     context_anchor: NodeRef,
     remote: api::RemoteEntry,
+    actions_expanded: bool,
 }
 
 impl PartialEq<api::RemoteEntry> for RemoteState {
@@ -129,12 +133,14 @@ impl RemoteEditor {
     fn populate_remotes(&mut self, ctx: &Context<Self>) {
         for (r, o) in ctx.props().remotes.iter().zip(self.remotes.iter_mut()) {
             o.remote = r.clone();
+            o.actions_expanded = false;
         }
 
         for remote in ctx.props().remotes.iter().skip(self.remotes.len()) {
             self.remotes.push(RemoteState {
                 context_anchor: NodeRef::default(),
                 remote: remote.clone(),
+                actions_expanded: false,
             });
         }
 
@@ -262,6 +268,10 @@ impl Component for RemoteEditor {
                 ctx.props().on_remove.emit(remote_id);
                 true
             }
+            Msg::PurgeCache(remote_id) => {
+                ctx.props().on_purge_cache.emit(remote_id);
+                false
+            }
             Msg::SetEnabled(remote_id, enabled) => {
                 ctx.props().on_set_enabled.emit((remote_id, enabled));
                 false
@@ -271,13 +281,16 @@ impl Component for RemoteEditor {
                 false
             }
             Msg::Move(index, delta) => {
-                let mut ids: Vec<api::RemoteId> =
+                let mut identifiers: Vec<api::RemoteId> =
                     ctx.props().remotes.iter().map(|r| r.id).collect();
-                let target = index as isize + delta;
 
-                if target >= 0 && (target as usize) < ids.len() {
-                    ids.swap(index, target as usize);
-                    ctx.props().on_reorder.emit(ids);
+                let Some(target) = index.checked_add_signed(delta) else {
+                    return false;
+                };
+
+                if target < identifiers.len() {
+                    identifiers.swap(index, target as usize);
+                    ctx.props().on_reorder.emit(identifiers);
                 }
 
                 false
@@ -285,6 +298,14 @@ impl Component for RemoteEditor {
             Msg::Close => {
                 ctx.props().on_close.emit(());
                 false
+            }
+            Msg::ToggleActionsExpanded(index) => {
+                if let Some(remote) = self.remotes.get_mut(index) {
+                    remote.actions_expanded = !remote.actions_expanded;
+                    true
+                } else {
+                    false
+                }
             }
         }
     }
@@ -320,96 +341,110 @@ impl Component for RemoteEditor {
 
         html! {
             <Modal icon="identification" title="Remotes" on_close={link.callback(|_| Msg::Close)}>
-                if props.remotes.is_empty() {
-                    <div class="text-muted">{"No remotes"}</div>
-                } else {
-                    { for self.remotes.iter().enumerate().map(|(index, r)| {
-                        let key = r.remote.remote.to_string();
-                        let count = props.remotes.len();
+                <div class="table">
+                    if props.remotes.is_empty() {
+                        <div class="text-muted">{"No remotes"}</div>
+                    } else {
+                        { for self.remotes.iter().enumerate().map(|(index, r)| {
+                            let key = r.remote.remote.to_string();
+                            let count = props.remotes.len();
 
-                        let editing_this = self.editing == Some(r.remote.id);
-                        let edit_entry = r.remote.clone();
-                        let id = r.remote.id;
-                        let enabled = r.remote.enabled;
+                            let edit_entry = r.remote.clone();
+                            let id = r.remote.id;
+                            let enabled = r.remote.enabled;
 
-                        // Per-remote sync-kind selection: show the effective set
-                        // (this remote's override, else the global default for its
-                        // source), clamped to what the source can provide.
-                        let source = *r.remote.remote.source();
-                        let capability = source.default_sync_kinds();
+                            let source = *r.remote.remote.source();
+                            let capability = source.default_sync_kinds();
 
-                        let global_default = props
-                            .global_sync_kinds
-                            .iter()
-                            .find(|s| s.source == source)
-                            .map(|s| s.kinds)
-                            .unwrap_or(capability)
-                            .intersect(capability);
+                            let global_default = props
+                                .global_sync_kinds
+                                .iter()
+                                .find(|s| s.source == source)
+                                .map(|s| s.kinds)
+                                .unwrap_or(capability)
+                                .intersect(capability);
 
-                        let effective = r.remote.sync_kinds.unwrap_or(global_default).intersect(capability);
-                        let overriding = r.remote.sync_kinds.is_some();
+                            let effective = r.remote.sync_kinds.unwrap_or(global_default).intersect(capability);
+                            let overriding = r.remote.sync_kinds.is_some();
 
-                        let kind_toggles = (!capability.is_empty()).then(|| html! {
-                            <div class="input-group" title="Kinds synced from this source">
-                                { for capability.iter().map(|kind| {
-                                    let on = effective.contains(kind);
-                                    let next = effective.with(kind, !on);
-                                    html! {
-                                        <span class={classes!("input-checkbox", "has-text", on.then_some("checked"))} onclick={link.callback(move |_| Msg::SetSyncKinds(id, Some(next)))} title={kind.as_label()}>
-                                            <span class="mark" />
-                                            <span>{kind.as_label()}</span>
-                                        </span>
+                            let kind_toggles = (!capability.is_empty()).then(|| html! {
+                                <div class="input-group" title="Kinds synced from this source">
+                                    { for capability.iter().map(|kind| {
+                                        let on = effective.contains(kind);
+                                        let next = effective.with(kind, !on);
+
+                                        html! {
+                                            <span class={classes!("input-checkbox", "has-text", on.then_some("checked"))} onclick={link.callback(move |_| Msg::SetSyncKinds(id, Some(next)))} title={kind.as_label()}>
+                                                <span class="mark" />
+                                                <span>{kind.as_label()}</span>
+                                            </span>
+                                        }
+                                    }) }
+
+                                    if overriding {
+                                        <Button icon="arrow-uturn-left" title="Reset to global default" onclick={link.callback(move |_| Msg::SetSyncKinds(id, None))} />
                                     }
-                                }) }
+                                </div>
+                            });
 
-                                if overriding {
-                                    <Button icon="arrow-uturn-left" title="Reset to global default" onclick={link.callback(move |_| Msg::SetSyncKinds(id, None))} />
-                                }
-                            </div>
-                        });
+                            let url = match props.kind {
+                                RemoteSourceKind::Show => r.remote.remote.show_url(r.remote.slug.as_deref()),
+                                RemoteSourceKind::Movie => r.remote.remote.movie_url(),
+                            };
 
-                        let url = match props.kind {
-                            RemoteSourceKind::Show => r.remote.remote.show_url(r.remote.slug.as_deref()),
-                            RemoteSourceKind::Movie => r.remote.remote.movie_url(),
-                        };
+                            let identifier = html! {
+                                <>
+                                    <span class="item-inline-lg">
+                                        <span class={classes!("logo", r.remote.remote.source().as_id())} />
+                                    </span>
 
-                        let identifier = html! {
-                            <>
-                                <span class="item-inline-lg">
-                                    <span class={classes!("logo", r.remote.remote.source().as_id())} />
-                                </span>
+                                    <span>{r.remote.remote.value().to_string()}</span>
 
-                                <span>{r.remote.remote.value().to_string()}</span>
+                                    if let Some(slug) = r.remote.slug.as_deref() {
+                                        <span>{format!("/{slug}")}</span>
+                                    }
 
-                                if let Some(slug) = r.remote.slug.as_deref() {
-                                    <span>{format!("/{slug}")}</span>
-                                }
+                                </>
+                            };
 
-                            </>
-                        };
+                            let toggle_actions = link.callback(move |_| Msg::ToggleActionsExpanded(index));
 
-                        html! {
-                            <div class="column">
-                                <div key={key} class={classes!("row-split", editing_this.then_some("active"))}>
-                                    if let Some(url) = url {
-                                        <a class="row clickable" href={url} target="_blank" rel="noopener noreferrer" title="Visit remote">
-                                            {identifier}
-                                        </a>
-                                    } else {
+                            html! {
+                                <div {key} class="column">
+                                    <div class="toolbar">
                                         <div class="row">
-                                            {identifier}
+                                            if let Some(url) = url {
+                                                <a class="row clickable" href={url} target="_blank" rel="noopener noreferrer" title="Visit remote">
+                                                    {identifier}
+                                                </a>
+                                            } else {
+                                                <div class="row">
+                                                    {identifier}
+                                                </div>
+                                            }
                                         </div>
-                                    }
 
-                                    <div class="row">
-                                        <div ref={r.context_anchor.clone()} class="input-group">
-                                            <Button icon="pencil-square" title="Edit identifier" text="Edit" onclick={link.callback(move |_| Msg::Edit(edit_entry.clone()))} />
+                                        <div class="toolbar-toggle">
+                                            <button onclick={toggle_actions}>
+                                                <span class={classes!("icon", if r.actions_expanded { "ellipsis-horizontal" } else { "bars-2" })} />
+                                            </button>
+                                        </div>
 
-                                            <Button icon="trash" variant={Variant::Danger} title="Remove identifier" text="Remove" onclick={link.callback(move |_| Msg::AskRemove(id))} />
+                                        <div ref={r.context_anchor.clone()} class={classes!("toolbar-dropdown", (!r.actions_expanded).then_some("desktop-only"))}>
+                                            <div class="desktop-input-group mobile-column">
+                                                <Button icon="pencil-square" title="Edit identifier" text="Edit" onclick={link.callback(move |_| Msg::Edit(edit_entry.clone()))} />
+                                                <Button icon="trash" variant={Variant::Danger} title="Remove identifier" text="Remove" onclick={link.callback(move |_| Msg::AskRemove(id))} />
+                                            </div>
 
-                                            <Button icon="chevron-up" title="Higher priority" disabled={index == 0} onclick={link.callback(move |_| Msg::Move(index, -1))} />
+                                            <div class="input-group">
+                                                <Button class="fill" icon="chevron-up" title="Higher priority" disabled={index == 0} onclick={link.callback(move |_| Msg::Move(index, -1))} />
+                                                <Button class="fill" icon="chevron-down" title="Lower priority" disabled={index + 1 == count} onclick={link.callback(move |_| Msg::Move(index, 1))} />
+                                            </div>
 
-                                            <Button icon="chevron-down" title="Lower priority" disabled={index + 1 == count} onclick={link.callback(move |_| Msg::Move(index, 1))} />
+                                            <span class={classes!("input-checkbox", "mobile-has-text", enabled.then_some("checked"))} onclick={link.callback(move |_| Msg::SetEnabled(id, !enabled))} title="Use this source for dates and sync">
+                                                <span class="mark" />
+                                                <span class="mobile-only">{"Enabled"}</span>
+                                            </span>
                                         </div>
 
                                         if self.confirming_remove == Some(id) {
@@ -421,24 +456,42 @@ impl Component for RemoteEditor {
                                             </ContextMenu>
                                         }
                                     </div>
-                                </div>
 
-                                <div class="row-split">
-                                    <div class="row">
-                                        { for kind_toggles }
-                                    </div>
+                                    if let Some(kind_toggles) = kind_toggles {
+                                        <div class="row">{kind_toggles}</div>
+                                    }
 
-                                    <div class="row">
-                                        <span class={classes!("input-checkbox", "has-text", enabled.then_some("checked"))} onclick={link.callback(move |_| Msg::SetEnabled(id, !enabled))} title="Use this source for air dates and sync">
-                                            <span class="mark" />
-                                            <span class="mobile-only">{"Enabled"}</span>
-                                        </span>
-                                    </div>
+                                    if let Some(ref cache) = r.remote.cache {
+                                        <div class="column">
+                                            <div class="row-split align-top">
+                                                <h4>{"Cache"}</h4>
+
+                                                <Button icon="arrow-path" variant="danger" title="Clear cache and force resync" onclick={link.callback(move |_| Msg::PurgeCache(id))} />
+                                            </div>
+
+                                            <div class="input-group">
+                                                if let Some(ref etag) = cache.etag {
+                                                    <span class="input-label has-text">{"ETag"}</span>
+                                                    <span class="input-text has-text fill">{etag}</span>
+                                                }
+
+                                                if let Some(ref last_updated) = cache.last_updated {
+                                                    <span class="input-label has-text">{"Last Updated"}</span>
+                                                    <span class="input-text has-text fill">{last_updated}</span>
+                                                }
+
+                                                if !cache.kinds.is_empty() {
+                                                    <span class="input-label has-text">{"Kinds"}</span>
+                                                    {for cache.kinds.iter().map(|k| html!(<span class="input-text has-text">{k.as_label()}</span>))}
+                                                }
+                                            </div>
+                                        </div>
+                                    }
                                 </div>
-                            </div>
-                        }
-                    }) }
-                }
+                            }
+                        }) }
+                    }
+                </div>
 
                 <div class="form">
                     <div class={classes!("field", self.error.is_some().then_some("error"))}>

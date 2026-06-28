@@ -1,4 +1,5 @@
 use web_sys::MouseEvent;
+use yew::html::IntoPropValue;
 use yew::prelude::*;
 
 /// The colour variant of a [`Button`]. [`Variant::Secondary`] is the default
@@ -20,6 +21,17 @@ impl Variant {
             Variant::Primary => Some("primary"),
             Variant::Success => Some("success"),
             Variant::Danger => Some("danger"),
+        }
+    }
+}
+
+impl IntoPropValue<Variant> for &str {
+    fn into_prop_value(self) -> Variant {
+        match self {
+            "primary" => Variant::Primary,
+            "success" => Variant::Success,
+            "danger" => Variant::Danger,
+            _ => Variant::Secondary,
         }
     }
 }

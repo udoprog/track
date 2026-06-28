@@ -13,6 +13,61 @@ use crate::remote::RemoteClients;
 use crate::shutdown::Shutdown;
 use crate::tmdb;
 
+/// Whether a sync layer fetched fresh data or detected (via ETag/`lastUpdated`)
+/// that its remote is unchanged and skipped the expensive re-fetch.
+enum LayerOutcome {
+    Updated,
+    Unchanged,
+}
+
+/// Serialize a remote's cache validators for the `*_remotes.cache` column,
+/// yielding `None` (stored as `NULL`) when there's nothing worth caching so the
+/// editor shows no stale "cached" state and the next sync sends no validator.
+fn cache_json(cache: &api::RemoteCache) -> Option<String> {
+    if cache.etag.is_none() && cache.last_updated.is_none() {
+        return None;
+    }
+
+    serde_json::to_string(cache).ok()
+}
+
+/// The kinds a layer is about to fetch and persist this run, used both to tag a
+/// fresh validator and to test an existing one for reuse.
+fn needed_kinds(do_base: bool, do_air_date: bool) -> SyncKindSet {
+    let mut kinds = SyncKindSet::empty();
+
+    if do_base {
+        kinds.insert(SyncKind::Base);
+    }
+
+    if do_air_date {
+        kinds.insert(SyncKind::Dates);
+    }
+
+    kinds
+}
+
+/// Whether a layer may use this cached validator to short-circuit: skipping must be
+/// rebuild-safe (`allow_skip`) and the cache must already cover every kind this run
+/// needs - so an air-date-only validator never short-circuits a Base fetch after a
+/// re-prioritization.
+fn usable_cache(cache: &api::RemoteCache, needed: SyncKindSet, allow_skip: bool) -> bool {
+    allow_skip && cache.kinds.contains_all(needed)
+}
+
+/// Flush the cache validators collected by Updated show layers. Called only after
+/// the matching data has been persisted, so a stored marker always has its data.
+async fn flush_show_cache_writes(
+    writes: &[(api::RemoteId, Option<String>)],
+    db: &Database,
+) -> Result<()> {
+    for (remote_id, cache) in writes {
+        db.set_show_remote_cache(*remote_id, cache.clone()).await?;
+    }
+
+    Ok(())
+}
+
 pub(crate) async fn sync_show(
     show_id: api::ShowId,
     db: &Database,
@@ -82,7 +137,14 @@ pub(crate) async fn sync_show(
         }
 
         let do_base = kinds.contains(SyncKind::Base);
-        let do_air_date = kinds.contains(SyncKind::AirDate);
+        let do_air_date = kinds.contains(SyncKind::Dates);
+
+        // A short-circuit is only rebuild-safe when this layer is the Base
+        // provider (skipping it routes to `persist_air_dates_only`, no rebuild) or
+        // the Base provider already reported unchanged. Otherwise a fresh Base
+        // elsewhere triggers a full rebuild that would wipe a skipped layer's data.
+        let allow_skip = do_base || draft.base_unchanged;
+        let cache = entry.cache.as_ref();
 
         let result = match source {
             RemoteSource::Tmdb => match entry.remote.value().as_u32() {
@@ -96,6 +158,9 @@ pub(crate) async fn sync_show(
                         do_air_date,
                         remote,
                         shutdown,
+                        cache,
+                        allow_skip,
+                        entry.id,
                     )
                     .await
                 }
@@ -111,13 +176,18 @@ pub(crate) async fn sync_show(
                         do_air_date,
                         remote,
                         shutdown,
+                        cache,
+                        allow_skip,
+                        entry.id,
                     )
                     .await
                 }
                 None => continue,
             },
             RemoteSource::Tvmaze => match entry.remote.value().as_u32() {
-                Some(tvmaze_id) => tvmaze_layer(&mut draft, show_id, tvmaze_id, remote).await,
+                Some(tvmaze_id) => tvmaze_layer(&mut draft, show_id, tvmaze_id, remote)
+                    .await
+                    .map(|()| LayerOutcome::Updated),
                 None => continue,
             },
             _ => continue,
@@ -126,13 +196,29 @@ pub(crate) async fn sync_show(
         // A failing layer shouldn't abort the sync: lower-priority layers and the
         // data already collected still persist, and the kind stays unclaimed so a
         // later layer can fill it.
-        if let Err(e) = result {
-            tracing::warn!(?source, "Sync layer failed for show {show_id}: {e:#}");
-            continue;
-        }
+        let outcome = match result {
+            Ok(outcome) => outcome,
+            Err(e) => {
+                tracing::warn!(?source, "Sync layer failed for show {show_id}: {e:#}");
+                continue;
+            }
+        };
 
-        if do_air_date {
-            draft.air_date_sources.insert(source);
+        match outcome {
+            // Cache hit: claim the kinds so lower-priority layers skip the
+            // exclusive Base kind (this source stays the owner), but keep the
+            // existing data - don't record an air-date source (its stored
+            // releases are preserved) and flag base so persist doesn't rebuild.
+            LayerOutcome::Unchanged => {
+                if kinds.contains(SyncKind::Base) {
+                    draft.base_unchanged = true;
+                }
+            }
+            LayerOutcome::Updated => {
+                if do_air_date {
+                    draft.air_date_sources.insert(source);
+                }
+            }
         }
 
         for k in kinds {
@@ -158,8 +244,15 @@ pub(crate) async fn sync_show(
     //                           keep the existing show rather than wiping it;
     //   - not eligible        → no enabled remote contributes Base, so the
     //                           seasons/episodes are orphaned and get cleared.
-    if draft.provided.contains(SyncKind::Base) {
+    if draft.provided.contains(SyncKind::Base) && !draft.base_unchanged {
         persist_show_draft(show_id, &show, &draft, db, broadcast).await?;
+        flush_show_cache_writes(&draft.cache_writes, db).await?;
+    } else if draft.base_unchanged {
+        // The Base source was unchanged (cache hit): keep the stored
+        // seasons/episodes/strings and only persist air dates other sources
+        // produced this run.
+        persist_air_dates_only(show_id, &draft, db).await?;
+        flush_show_cache_writes(&draft.cache_writes, db).await?;
     } else if eligible.contains(SyncKind::Base) {
         anyhow::bail!("Show has no syncable Base remote available");
     } else {
@@ -300,6 +393,14 @@ struct DraftRelease {
 #[derive(Default)]
 struct ShowDraft {
     provided: SyncKindSet,
+    /// A Base-providing layer reported its remote unchanged (cache hit), so the
+    /// existing seasons/episodes/strings are kept rather than rebuilt; only other
+    /// sources' air dates are persisted. See the persist decision in `sync_show`.
+    base_unchanged: bool,
+    /// Cache validators (ETag/`lastUpdated`) captured by Updated layers, keyed by
+    /// remote id, flushed to `*_remotes.cache` only after a successful persist so
+    /// a failed persist never records a validator without its data.
+    cache_writes: Vec<(api::RemoteId, Option<String>)>,
     original_name: Option<String>,
     first_air_date: Option<api::Timestamp>,
     /// The show's own original language, discovered from the Base layer.
@@ -418,10 +519,39 @@ async fn tmdb_show_layer(
     do_air_date: bool,
     remote: &RemoteClients,
     shutdown: &Shutdown,
-) -> Result<()> {
+    cache: Option<&api::RemoteCache>,
+    allow_skip: bool,
+    remote_id: api::RemoteId,
+) -> Result<LayerOutcome> {
     tracing::info!(tmdb_id, do_base, do_air_date, "Show");
 
-    let info = remote.fetch_tmdb_show(tmdb_id).await?;
+    let needed = needed_kinds(do_base, do_air_date);
+
+    // Only replay the ETag when the cache already covers what we owe; a 304 has no
+    // body, so we must force a full response when an uncovered kind is needed.
+    let etag = cache
+        .filter(|&c| usable_cache(c, needed, allow_skip))
+        .and_then(|c| c.etag.as_deref());
+
+    let info = match remote.fetch_tmdb_show(tmdb_id, etag).await? {
+        tmdb::Conditional::NotModified => {
+            tracing::info!(tmdb_id, "Show unchanged (ETag 304)");
+            return Ok(LayerOutcome::Unchanged);
+        }
+        tmdb::Conditional::Modified { etag, value } => {
+            if !needed.is_empty() {
+                draft.cache_writes.push((
+                    remote_id,
+                    cache_json(&api::RemoteCache {
+                        etag,
+                        last_updated: None,
+                        kinds: needed,
+                    }),
+                ));
+            }
+            value
+        }
+    };
 
     draft.original_name = info.original_name.or(draft.original_name.clone());
 
@@ -441,7 +571,7 @@ async fn tmdb_show_layer(
     }
 
     if !do_base && !do_air_date {
-        return Ok(());
+        return Ok(LayerOutcome::Updated);
     }
 
     if do_base {
@@ -504,10 +634,11 @@ async fn tmdb_show_layer(
         }
     }
 
-    Ok(())
+    Ok(LayerOutcome::Updated)
 }
 
 #[tracing::instrument(skip_all, fields(tvdb_id, do_base, do_air_date))]
+#[allow(clippy::too_many_arguments)]
 async fn tvdb_show_layer(
     draft: &mut ShowDraft,
     config: &api::Config,
@@ -516,10 +647,41 @@ async fn tvdb_show_layer(
     do_air_date: bool,
     remote: &RemoteClients,
     shutdown: &Shutdown,
-) -> Result<()> {
+    cache: Option<&api::RemoteCache>,
+    allow_skip: bool,
+    remote_id: api::RemoteId,
+) -> Result<LayerOutcome> {
     tracing::info!(tvdb_id, do_base, do_air_date, "Show");
 
+    let needed = needed_kinds(do_base, do_air_date);
+
     let info = remote.fetch_tvdb_show(tvdb_id).await?;
+
+    // TVDB has no ETag; the record-level `lastUpdated` marker detects an unchanged
+    // series. An equal marker on a cache that already covers what we owe means the
+    // whole entity (incl. episodes and air dates) is unchanged, so skip the episode
+    // + translation fetches and keep the stored data.
+    if let Some(cache) = cache
+        && usable_cache(cache, needed, allow_skip)
+        && let Some(cached) = cache.last_updated.as_deref()
+        && let Some(current) = info.last_updated.as_deref()
+        && cached == current
+    {
+        tracing::info!(tvdb_id, "Show unchanged (lastUpdated)");
+        return Ok(LayerOutcome::Unchanged);
+    }
+
+    // Record the fresh marker so the next sync can compare (flushed post-persist).
+    if !needed.is_empty() {
+        draft.cache_writes.push((
+            remote_id,
+            cache_json(&api::RemoteCache {
+                etag: None,
+                last_updated: info.last_updated.clone(),
+                kinds: needed,
+            }),
+        ));
+    }
 
     for r in &info.remotes {
         draft.add_remote(r.slug.clone(), r.remote.clone());
@@ -660,7 +822,7 @@ async fn tvdb_show_layer(
         }
     }
 
-    Ok(())
+    Ok(LayerOutcome::Updated)
 }
 
 #[tracing::instrument(skip_all, fields(show_id))]
@@ -1122,6 +1284,91 @@ async fn persist_show_draft(
     Ok(())
 }
 
+/// Persist only air-date releases when the Base layer was unchanged (cache hit):
+/// the stored seasons/episodes/strings are kept, and we just upsert the releases
+/// other sources produced this run (attributed to existing episodes) and prune
+/// stale ones, scoped to the sources that actually ran. The caller's downstream
+/// `recompute_episode_aired_for_show` + `EpisodesChanged` broadcasts surface any
+/// resulting change.
+async fn persist_air_dates_only(
+    show_id: api::ShowId,
+    draft: &ShowDraft,
+    db: &Database,
+) -> Result<()> {
+    let episode_ids = db.episode_ids(show_id).await?;
+    let mut kept_releases = HashSet::new();
+
+    for r in &draft.releases {
+        let Some(&episode_id) = episode_ids.get(&(r.season, r.number)) else {
+            continue;
+        };
+
+        db.upsert_episode_release(episode_id, r.source, r.country, &r.network, r.timestamp)
+            .await?;
+
+        kept_releases.insert((episode_id, r.source, r.country, r.network.clone()));
+    }
+
+    db.prune_episode_releases(show_id, &kept_releases, &draft.air_date_sources)
+        .await?;
+
+    Ok(())
+}
+
+/// A movie release accumulated from a layer, attributed to its source so pruning
+/// can be scoped like episode air dates.
+struct MovieDraftRelease {
+    source: RemoteSource,
+    country: api::Country,
+    release_type: api::ReleaseType,
+    timestamp: api::Timestamp,
+}
+
+/// The movie analog of [`ShowDraft`]: the shared model the movie sync layers
+/// contribute to before a single persist. Simpler than `ShowDraft` (no
+/// seasons/episodes).
+#[derive(Default)]
+struct MovieDraft {
+    provided: SyncKindSet,
+    /// A Base layer reported its remote unchanged (cache hit): keep the stored
+    /// metadata/images/strings and only persist other sources' fresh releases.
+    base_unchanged: bool,
+    /// Validators captured by Updated layers, flushed only after a successful
+    /// persist (see [`flush_movie_cache_writes`]).
+    cache_writes: Vec<(api::RemoteId, Option<String>)>,
+    original_language: api::Locale,
+    original_title: Option<String>,
+    original_overview: Option<String>,
+    remotes: Vec<(Option<String>, api::Remote)>,
+    images: Vec<DraftImage>,
+    selected: HashMap<ImageKind, ImageKey>,
+    releases: Vec<MovieDraftRelease>,
+    /// Sources whose release layer ran successfully this sync; scopes release
+    /// pruning (mirrors [`ShowDraft::air_date_sources`]).
+    release_sources: HashSet<RemoteSource>,
+    strings: StringRows,
+}
+
+impl MovieDraft {
+    fn needs(&self, kind: SyncKind) -> bool {
+        !kind.is_exclusive() || !self.provided.contains(kind)
+    }
+
+    fn add_remote(&mut self, slug: Option<String>, remote: api::Remote) {
+        self.remotes.push((slug, remote));
+    }
+
+    fn add_image(&mut self, kind: ImageKind, image: Image, selected: bool) {
+        if selected {
+            self.selected
+                .entry(kind)
+                .or_insert_with(|| image.key().clone());
+        }
+
+        self.images.push(DraftImage { kind, image });
+    }
+}
+
 pub(crate) async fn sync_movie(
     movie_id: api::MovieId,
     db: &Database,
@@ -1136,113 +1383,112 @@ pub(crate) async fn sync_movie(
 
     let config = db.load_config().await?;
 
+    tracing::info!(movie_id = %movie_id, title = movie.strings.title(), "Syncing movie");
+
+    // Visit enabled remotes in priority order, one layer per source - mirroring
+    // `sync_show`. For movies the AirDate kind carries release dates.
+    let mut entries = movie
+        .remotes
+        .iter()
+        .filter(|e| e.enabled)
+        .collect::<Vec<_>>();
+
+    entries.sort_by_key(|e| e.priority);
+
+    let mut draft = MovieDraft::default();
+    let mut seen = HashSet::new();
+
+    for entry in entries {
+        if shutdown.is_cancelled() {
+            break;
+        }
+
+        let source = *entry.remote.source();
+
+        if !seen.insert(source) {
+            continue;
+        }
+
+        let configured = api::effective_remote_sync_kinds(entry, &config);
+        let kinds: SyncKindSet = configured.iter().filter(|k| draft.needs(*k)).collect();
+
+        if kinds.is_empty() && !source.has_graphics() {
+            continue;
+        }
+
+        let do_base = kinds.contains(SyncKind::Base);
+        let do_release = kinds.contains(SyncKind::Dates);
+
+        let allow_skip = do_base || draft.base_unchanged;
+        let cache = entry.cache.as_ref();
+
+        let result = match source {
+            RemoteSource::Tmdb => match entry.remote.value().as_u32() {
+                Some(tmdb_id) => {
+                    tmdb_movie_layer(
+                        &mut draft, &config, &movie, tmdb_id, do_base, do_release, remote,
+                        shutdown, cache, allow_skip, entry.id,
+                    )
+                    .await
+                }
+                None => continue,
+            },
+            // TVDB now has movies in its API, but no client layer is implemented
+            // yet; surface it as a failure rather than silently skipping a source
+            // the user enabled for sync.
+            RemoteSource::Tvdb => Err(anyhow::anyhow!("TVDB movie sync is not yet supported")),
+            // IMDb/Unknown are external-id references, not sync sources.
+            _ => continue,
+        };
+
+        let outcome = match result {
+            Ok(outcome) => outcome,
+            Err(e) => {
+                tracing::warn!(?source, "Sync layer failed for movie {movie_id}: {e:#}");
+                continue;
+            }
+        };
+
+        match outcome {
+            LayerOutcome::Unchanged => {
+                if kinds.contains(SyncKind::Base) {
+                    draft.base_unchanged = true;
+                }
+            }
+            LayerOutcome::Updated => {
+                if do_release {
+                    draft.release_sources.insert(source);
+                }
+            }
+        }
+
+        for k in kinds {
+            draft.provided.insert(k);
+        }
+    }
+
+    let eligible = api::eligible_sync_kinds(&movie.remotes, &config);
+
     if shutdown.is_cancelled() {
         anyhow::bail!("Sync aborted: service is shutting down");
     }
 
-    let source = movie.primary_sync_source();
-    tracing::info!(movie_id = %movie_id, title = movie.strings.title(), ?source, "Syncing movie");
-
-    match source {
-        Some(api::RemoteSource::Tmdb) => {
-            let remote_id = movie
-                .remote_by_source(api::RemoteSource::Tmdb)
-                .context("Expected movie to have a TMDB remote")?;
-
-            let tmdb_id: u32 = remote_id
-                .value()
-                .as_u32()
-                .context("Expected a valid TMDB id")?;
-
-            tracing::info!(tmdb_id, "Movie");
-
-            let info = remote.fetch_tmdb_movie(tmdb_id).await?;
-
-            if !info.original_language.is_default() {
-                db.set_movie_default_language(movie_id, info.original_language)
-                    .await?;
-            }
-
-            for remote in &info.remotes {
-                db.add_movie_remote(movie_id, None, remote).await?;
-            }
-
-            db.clear_movie_images(movie_id).await?;
-
-            let mut selected_poster_id = None;
-            let mut selected_backdrop_id = None;
-
-            for (rank, img) in info.posters.iter().enumerate() {
-                let id = ImageId::random();
-
-                db.upsert_movie_image(id, movie_id, ImageKind::Poster, rank as u32, img)
-                    .await?;
-
-                if info.selected_poster.as_ref() == Some(img.key()) {
-                    selected_poster_id = Some(id);
-                }
-            }
-
-            for (rank, img) in info.backdrops.iter().enumerate() {
-                let id = ImageId::random();
-
-                db.upsert_movie_image(id, movie_id, ImageKind::Backdrop, rank as u32, img)
-                    .await?;
-
-                if info.selected_backdrop.as_ref() == Some(img.key()) {
-                    selected_backdrop_id = Some(id);
-                }
-            }
-
-            if let Some(id) = selected_poster_id {
-                db.set_movie_image_selection(movie_id, ImageKind::Poster, id)
-                    .await?;
-            }
-
-            if let Some(id) = selected_backdrop_id {
-                db.set_movie_image_selection(movie_id, ImageKind::Backdrop, id)
-                    .await?;
-
-                db.set_movie_image_selection(movie_id, ImageKind::Banner, id)
-                    .await?;
-            }
-
-            match remote.fetch_tmdb_movie_releases(tmdb_id).await {
-                Ok(releases) => {
-                    tracing::info!(count = releases.len(), "Fetched TMDB movie releases");
-
-                    let mut kept = HashSet::new();
-
-                    for r in releases {
-                        db.upsert_movie_release(
-                            movie_id,
-                            api::RemoteSource::Tmdb,
-                            r.country,
-                            r.release_type,
-                            &r.release_date,
-                        )
-                        .await?;
-
-                        kept.insert((api::RemoteSource::Tmdb, r.country, r.release_type));
-                    }
-
-                    db.prune_movie_releases(movie_id, &kept).await?;
-                }
-                Err(e) => {
-                    tracing::warn!(movie_id = %movie_id, "Movie release dates skipped: {e:#}")
-                }
-            }
-
-            if let Err(e) = collect_tmdb_movie_strings(
-                movie_id, tmdb_id, &info, &movie, &config, db, remote, shutdown,
-            )
-            .await
-            {
-                tracing::warn!(movie_id = %movie_id, "String collection failed: {e:#}");
-            }
-        }
-        Some(api::RemoteSource::Tvdb) => anyhow::bail!("Unsupported movie sync source: TVDB"),
-        _ => anyhow::bail!("Movie has no syncable remote"),
+    if draft.provided.contains(SyncKind::Base) && !draft.base_unchanged {
+        persist_movie_draft(movie_id, &draft, db).await?;
+        flush_movie_cache_writes(&draft.cache_writes, db).await?;
+    } else if draft.base_unchanged {
+        // Base source unchanged (cache hit): keep stored metadata/strings/images,
+        // persist only other sources' fresh releases.
+        persist_movie_releases_only(movie_id, &draft, db).await?;
+        flush_movie_cache_writes(&draft.cache_writes, db).await?;
+    } else if eligible.contains(SyncKind::Base) {
+        anyhow::bail!("Movie has no syncable Base remote available");
+    } else {
+        // No enabled remote contributes Base: the movie's derived metadata is
+        // orphaned, so clear it (mirrors the show clear branch).
+        db.replace_movie_strings(movie_id, Vec::new()).await?;
+        db.prune_movie_releases(movie_id, &HashSet::new(), &HashSet::new())
+            .await?;
     }
 
     // Recompute the effective release date + pending entry from the movie's release filters before
@@ -1268,21 +1514,216 @@ pub(crate) async fn sync_movie(
     Ok(())
 }
 
+/// Flush the cache validators collected by Updated movie layers, after persist.
+async fn flush_movie_cache_writes(
+    writes: &[(api::RemoteId, Option<String>)],
+    db: &Database,
+) -> Result<()> {
+    for (remote_id, cache) in writes {
+        db.set_movie_remote_cache(*remote_id, cache.clone()).await?;
+    }
+
+    Ok(())
+}
+
+/// The TMDB movie layer: fetch details conditionally (ETag), accumulating
+/// metadata, images, remotes, strings and releases into the draft. Returns
+/// [`LayerOutcome::Unchanged`] on a 304.
+#[tracing::instrument(skip_all, fields(tmdb_id, do_base, do_release))]
+#[allow(clippy::too_many_arguments)]
+async fn tmdb_movie_layer(
+    draft: &mut MovieDraft,
+    config: &api::Config,
+    movie: &api::Movie,
+    tmdb_id: u32,
+    do_base: bool,
+    do_release: bool,
+    remote: &RemoteClients,
+    shutdown: &Shutdown,
+    cache: Option<&api::RemoteCache>,
+    allow_skip: bool,
+    remote_id: api::RemoteId,
+) -> Result<LayerOutcome> {
+    tracing::info!(tmdb_id, do_base, do_release, "Movie");
+
+    let needed = needed_kinds(do_base, do_release);
+
+    let etag = cache
+        .filter(|&c| usable_cache(c, needed, allow_skip))
+        .and_then(|c| c.etag.as_deref());
+
+    let info = match remote.fetch_tmdb_movie(tmdb_id, etag).await? {
+        tmdb::Conditional::NotModified => {
+            tracing::info!(tmdb_id, "Movie unchanged (ETag 304)");
+            return Ok(LayerOutcome::Unchanged);
+        }
+        tmdb::Conditional::Modified { etag, value } => {
+            if !needed.is_empty() {
+                draft.cache_writes.push((
+                    remote_id,
+                    cache_json(&api::RemoteCache {
+                        etag,
+                        last_updated: None,
+                        kinds: needed,
+                    }),
+                ));
+            }
+            value
+        }
+    };
+
+    // Graphics accumulate from every source.
+    for poster in &info.posters {
+        let selected = info.selected_poster.as_ref() == Some(poster.key());
+        draft.add_image(ImageKind::Poster, poster.clone(), selected);
+    }
+
+    for backdrop in &info.backdrops {
+        let selected = info.selected_backdrop.as_ref() == Some(backdrop.key());
+        draft.add_image(ImageKind::Backdrop, backdrop.clone(), selected);
+    }
+
+    for r in &info.remotes {
+        draft.add_remote(None, r.clone());
+    }
+
+    if do_base {
+        draft.original_language = info.original_language;
+        draft.original_title = info.original_title.clone().or(draft.original_title.take());
+        draft.original_overview = info
+            .original_overview
+            .clone()
+            .or(draft.original_overview.take());
+
+        match collect_tmdb_movie_strings(tmdb_id, &info, movie, config, remote, shutdown).await {
+            Ok(rows) => draft.strings = rows,
+            Err(error) => tracing::warn!("String collection failed: {error:#}"),
+        }
+    }
+
+    if do_release {
+        match remote.fetch_tmdb_movie_releases(tmdb_id).await {
+            Ok(releases) => {
+                tracing::info!(count = releases.len(), "Fetched TMDB movie releases");
+
+                for r in releases {
+                    draft.releases.push(MovieDraftRelease {
+                        source: RemoteSource::Tmdb,
+                        country: r.country,
+                        release_type: r.release_type,
+                        timestamp: r.release_date,
+                    });
+                }
+            }
+            Err(e) => tracing::warn!("Movie release dates skipped: {e:#}"),
+        }
+    }
+
+    Ok(LayerOutcome::Updated)
+}
+
+/// Write the accumulated [`MovieDraft`] in one pass: base language, strings,
+/// discovered remotes, accumulated graphics (ranked, with selection) and
+/// per-source releases; prune releases no longer reported.
+async fn persist_movie_draft(
+    movie_id: api::MovieId,
+    draft: &MovieDraft,
+    db: &Database,
+) -> Result<()> {
+    if !draft.original_language.is_default() {
+        db.set_movie_default_language(movie_id, draft.original_language)
+            .await?;
+    }
+
+    db.replace_movie_strings(movie_id, draft.strings.clone())
+        .await?;
+
+    for (slug, remote) in &draft.remotes {
+        db.add_movie_remote(movie_id, slug.as_deref(), remote)
+            .await?;
+    }
+
+    // Graphics: replace all movie images with the accumulated set, ranked in
+    // source-priority order, selecting the highest-priority pick per kind.
+    db.clear_movie_images(movie_id).await?;
+
+    let mut ranks: HashMap<ImageKind, u32> = HashMap::new();
+    let mut selected_ids: HashMap<ImageKind, ImageId> = HashMap::new();
+
+    for draft_image in &draft.images {
+        let id = ImageId::random();
+        let rank = ranks.entry(draft_image.kind).or_default();
+
+        db.upsert_movie_image(id, movie_id, draft_image.kind, *rank, &draft_image.image)
+            .await?;
+        *rank += 1;
+
+        if draft.selected.get(&draft_image.kind) == Some(draft_image.image.key()) {
+            selected_ids.entry(draft_image.kind).or_insert(id);
+        }
+    }
+
+    for (kind, id) in &selected_ids {
+        db.set_movie_image_selection(movie_id, *kind, *id).await?;
+    }
+
+    // A movie has no banner artwork of its own; mirror the backdrop selection so
+    // banner slots display the backdrop (as the previous inline sync did).
+    if let Some(&id) = selected_ids.get(&ImageKind::Backdrop) {
+        db.set_movie_image_selection(movie_id, ImageKind::Banner, id)
+            .await?;
+    }
+
+    persist_movie_releases(movie_id, draft, db).await?;
+
+    Ok(())
+}
+
+/// Persist only the releases from a cache-hit movie sync: the base layer reported
+/// unchanged, so stored metadata/strings/images are kept and only releases other
+/// sources produced this run are written.
+async fn persist_movie_releases_only(
+    movie_id: api::MovieId,
+    draft: &MovieDraft,
+    db: &Database,
+) -> Result<()> {
+    persist_movie_releases(movie_id, draft, db).await
+}
+
+/// Upsert the draft's releases and prune stale ones, scoped to the sources whose
+/// release layer ran this sync. Shared by the full and cache-hit persist paths.
+async fn persist_movie_releases(
+    movie_id: api::MovieId,
+    draft: &MovieDraft,
+    db: &Database,
+) -> Result<()> {
+    let mut kept = HashSet::new();
+
+    for r in &draft.releases {
+        db.upsert_movie_release(movie_id, r.source, r.country, r.release_type, &r.timestamp)
+            .await?;
+
+        kept.insert((r.source, r.country, r.release_type));
+    }
+
+    db.prune_movie_releases(movie_id, &kept, &draft.release_sources)
+        .await?;
+
+    Ok(())
+}
+
 /// Fetch and replace a movie's per-language translated strings. Languages are
 /// [`api::expand_sync_languages`] of the configured `sync_languages` against the
 /// movie's own original language.
-#[tracing::instrument(skip_all, fields(movie_id, tmdb_id))]
-#[allow(clippy::too_many_arguments)]
+#[tracing::instrument(skip_all, fields(tmdb_id))]
 async fn collect_tmdb_movie_strings(
-    movie_id: api::MovieId,
     tmdb_id: u32,
     info: &tmdb::MovieInfo,
     movie: &api::Movie,
     config: &api::Config,
-    db: &Database,
     remote: &RemoteClients,
     shutdown: &Shutdown,
-) -> Result<()> {
+) -> Result<StringRows> {
     let language = movie
         .language
         .or(config.language)
@@ -1339,6 +1780,5 @@ async fn collect_tmdb_movie_strings(
         );
     }
 
-    db.replace_movie_strings(movie_id, rows).await?;
-    Ok(())
+    Ok(rows)
 }

@@ -105,6 +105,45 @@ impl Client {
         serde_json::from_slice(&bytes).context("Deserializing JSON response")
     }
 
+    /// Conditional GET: replay `etag` via `If-None-Match`. A `304 Not Modified`
+    /// returns [`Conditional::NotModified`]; otherwise the body is parsed and the
+    /// response's `ETag` (if any) is returned alongside it for re-storage.
+    #[tracing::instrument(skip(self, url))]
+    async fn get_json_conditional<T>(
+        &self,
+        url: impl AsRef<str>,
+        etag: Option<&str>,
+    ) -> Result<Conditional<T>>
+    where
+        T: DeserializeOwned,
+    {
+        let mut req = self.request(Method::GET, url.as_ref())?;
+
+        if let Some(etag) = etag {
+            req = req.header(reqwest::header::IF_NONE_MATCH, etag);
+        }
+
+        let res = req.send().await.context("Sending request")?;
+
+        // 304 is not a 4xx/5xx, so check it before `error_for_status`.
+        if res.status() == reqwest::StatusCode::NOT_MODIFIED {
+            return Ok(Conditional::NotModified);
+        }
+
+        let res = res.error_for_status().context("Bad response status")?;
+
+        let etag = res
+            .headers()
+            .get(reqwest::header::ETAG)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned);
+
+        let bytes = res.bytes().await.context("Reading response body")?;
+        let value = serde_json::from_slice(&bytes).context("Deserializing JSON response")?;
+
+        Ok(Conditional::Modified { etag, value })
+    }
+
     pub(crate) async fn fetch_image(&self, path: &str) -> Result<Option<bytes::Bytes>> {
         let url = self.inner.image_base.join(path)?;
         let resp = self.inner.http.get(url).send().await?;
@@ -240,7 +279,11 @@ impl Client {
         Ok((out, resp.total_results))
     }
 
-    pub(crate) async fn fetch_show(&self, id: u32) -> Result<ShowInfo> {
+    pub(crate) async fn fetch_show(
+        &self,
+        id: u32,
+        etag: Option<&str>,
+    ) -> Result<Conditional<ShowInfo>> {
         #[derive(Deserialize)]
         struct SeasonDetails {
             #[serde(default)]
@@ -277,9 +320,14 @@ impl Client {
             external_ids: ExternalIds,
         }
 
-        let details: Details = self
-            .get_json(format!("tv/{id}?append_to_response=external_ids"))
-            .await?;
+        // Only the details call is conditional; on 304 we skip images entirely.
+        let (new_etag, details): (Option<String>, Details) = match self
+            .get_json_conditional(format!("tv/{id}?append_to_response=external_ids"), etag)
+            .await?
+        {
+            Conditional::NotModified => return Ok(Conditional::NotModified),
+            Conditional::Modified { etag, value } => (etag, value),
+        };
 
         let images: Images = self
             .get_images(format!("tv/{id}/images"))
@@ -336,21 +384,24 @@ impl Client {
         let selected_backdrop =
             best_image(&backdrops, backdrop_path.as_deref().map(ImageKey::tmdb));
 
-        Ok(ShowInfo {
-            original_language,
-            original_name: details
-                .original_name
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty()),
-            first_air_date: opt_date(first_air_date.as_deref())
-                .map(|d| d.to_timestamp_at_midnight_utc())
-                .transpose()?,
-            posters,
-            backdrops,
-            selected_poster,
-            selected_backdrop,
-            seasons,
-            remotes,
+        Ok(Conditional::Modified {
+            etag: new_etag,
+            value: ShowInfo {
+                original_language,
+                original_name: details
+                    .original_name
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty()),
+                first_air_date: opt_date(first_air_date.as_deref())
+                    .map(|d| d.to_timestamp_at_midnight_utc())
+                    .transpose()?,
+                posters,
+                backdrops,
+                selected_poster,
+                selected_backdrop,
+                seasons,
+                remotes,
+            },
         })
     }
 
@@ -509,7 +560,11 @@ impl Client {
         Ok(out)
     }
 
-    pub(crate) async fn fetch_movie(&self, id: u32) -> Result<MovieInfo> {
+    pub(crate) async fn fetch_movie(
+        &self,
+        id: u32,
+        etag: Option<&str>,
+    ) -> Result<Conditional<MovieInfo>> {
         #[derive(Debug, Deserialize, Default)]
         struct ExternalIds {
             #[serde(default)]
@@ -530,9 +585,13 @@ impl Client {
             external_ids: ExternalIds,
         }
 
-        let details: Details = self
-            .get_json(format!("movie/{id}?append_to_response=external_ids"))
-            .await?;
+        let (new_etag, details): (Option<String>, Details) = match self
+            .get_json_conditional(format!("movie/{id}?append_to_response=external_ids"), etag)
+            .await?
+        {
+            Conditional::NotModified => return Ok(Conditional::NotModified),
+            Conditional::Modified { etag, value } => (etag, value),
+        };
 
         let images: Images = self
             .get_images(format!("movie/{id}/images"))
@@ -559,21 +618,31 @@ impl Client {
         let selected_backdrop =
             best_image(&backdrops, backdrop_path.as_deref().map(ImageKey::tmdb));
 
-        Ok(MovieInfo {
-            original_language,
-            original_title: details
-                .original_title
-                .as_ref()
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty()),
-            original_overview: None,
-            posters,
-            backdrops,
-            selected_poster,
-            selected_backdrop,
-            remotes,
+        Ok(Conditional::Modified {
+            etag: new_etag,
+            value: MovieInfo {
+                original_language,
+                original_title: details
+                    .original_title
+                    .as_ref()
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty()),
+                original_overview: None,
+                posters,
+                backdrops,
+                selected_poster,
+                selected_backdrop,
+                remotes,
+            },
         })
     }
+}
+
+/// The result of a conditional fetch (see [`Client::get_json_conditional`]):
+/// either fresh data with the response's new `ETag`, or an unchanged entity.
+pub(crate) enum Conditional<T> {
+    Modified { etag: Option<String>, value: T },
+    NotModified,
 }
 
 pub(crate) struct ShowRemote {

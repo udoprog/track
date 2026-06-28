@@ -319,6 +319,12 @@ struct ScheduleMovieRow {
     released: Option<Timestamp>,
 }
 
+/// Best-effort parse of a remote's stored cache JSON into [`api::RemoteCache`].
+/// A `NULL`, empty, or unparsable value yields `None` — the next sync overwrites it.
+fn parse_remote_cache(raw: Option<String>) -> Option<api::RemoteCache> {
+    serde_json::from_str(raw.as_deref()?).ok()
+}
+
 /// A single stored remote (`id`, `source`, `value`) for one show/movie.
 #[derive(Row)]
 struct RemoteRow {
@@ -329,6 +335,7 @@ struct RemoteRow {
     enabled: bool,
     priority: i32,
     sync_kinds: Option<api::SyncKindSet>,
+    cache: Option<String>,
 }
 
 /// A remote owned by a show (`list_all_show_remotes`) or movie
@@ -343,6 +350,7 @@ struct AllShowRemoteRow {
     enabled: bool,
     priority: i32,
     sync_kinds: Option<api::SyncKindSet>,
+    cache: Option<String>,
 }
 
 #[derive(Row)]
@@ -355,6 +363,7 @@ struct AllMovieRemoteRow {
     enabled: bool,
     priority: i32,
     sync_kinds: Option<api::SyncKindSet>,
+    cache: Option<String>,
 }
 
 /// A remote flattened for backup export: its stable identifier, the owning
@@ -599,9 +608,9 @@ struct InnerRead {
     shows_by_remote: TypedStatement<(RemoteSource, RemoteValue), ShowRow>,
 
     // remotes (one table per owner; source is a numeric enum, value is dynamic)
-    #[sql = "SELECT id, slug, source, value, enabled, priority, sync_kinds FROM show_remotes WHERE show_id = ? ORDER BY priority, id"]
+    #[sql = "SELECT id, slug, source, value, enabled, priority, sync_kinds, cache FROM show_remotes WHERE show_id = ? ORDER BY priority, id"]
     list_show_remotes: TypedStatement<(ShowId,), RemoteRow>,
-    #[sql = "SELECT show_id, id, slug, source, value, enabled, priority, sync_kinds FROM show_remotes ORDER BY show_id, priority, id"]
+    #[sql = "SELECT show_id, id, slug, source, value, enabled, priority, sync_kinds, cache FROM show_remotes ORDER BY show_id, priority, id"]
     list_all_show_remotes: TypedStatement<(), AllShowRemoteRow>,
     #[sql = "SELECT show_id, language, kind, text FROM show_strings ORDER BY show_id"]
     list_all_show_strings: TypedStatement<(), AllShowStringRow>,
@@ -715,9 +724,9 @@ struct InnerRead {
     #[sql = "JOIN movie_remotes r ON r.movie_id = m.id"]
     #[sql = "WHERE r.source = ? AND r.value = ?"]
     movie_by_remote: TypedStatement<(RemoteSource, RemoteValue), MovieRow>,
-    #[sql = "SELECT id, slug, source, value, enabled, priority, sync_kinds FROM movie_remotes WHERE movie_id = ? ORDER BY priority, id"]
+    #[sql = "SELECT id, slug, source, value, enabled, priority, sync_kinds, cache FROM movie_remotes WHERE movie_id = ? ORDER BY priority, id"]
     list_movie_remotes: TypedStatement<(MovieId,), RemoteRow>,
-    #[sql = "SELECT movie_id, id, slug, source, value, enabled, priority, sync_kinds FROM movie_remotes ORDER BY movie_id, priority, id"]
+    #[sql = "SELECT movie_id, id, slug, source, value, enabled, priority, sync_kinds, cache FROM movie_remotes ORDER BY movie_id, priority, id"]
     list_all_movie_remotes: TypedStatement<(), AllMovieRemoteRow>,
     #[sql = "SELECT movie_id, language, kind, text FROM movie_strings ORDER BY movie_id"]
     list_all_movie_strings: TypedStatement<(), AllMovieStringRow>,
@@ -968,6 +977,8 @@ struct InnerWrite {
     set_show_remote_priority: TypedStatement<(i32, RemoteId), ()>,
     #[sql = "UPDATE show_remotes SET sync_kinds = ? WHERE id = ?"]
     set_show_remote_sync_kinds: TypedStatement<(Option<api::SyncKindSet>, RemoteId), ()>,
+    #[sql = "UPDATE show_remotes SET cache = ? WHERE id = ?"]
+    set_show_remote_cache: TypedStatement<(Option<String>, RemoteId), ()>,
 
     // images (shows and movies share one table)
     #[sql = "DELETE FROM images WHERE show_id = ?"]
@@ -1125,6 +1136,8 @@ struct InnerWrite {
     set_movie_remote_priority: TypedStatement<(i32, RemoteId), ()>,
     #[sql = "UPDATE movie_remotes SET sync_kinds = ? WHERE id = ?"]
     set_movie_remote_sync_kinds: TypedStatement<(Option<api::SyncKindSet>, RemoteId), ()>,
+    #[sql = "UPDATE movie_remotes SET cache = ? WHERE id = ?"]
+    set_movie_remote_cache: TypedStatement<(Option<String>, RemoteId), ()>,
     #[sql = "UPDATE movies SET language = ? WHERE id = ?"]
     set_movie_language: TypedStatement<(Option<api::Locale>, MovieId), ()>,
     #[sql = "UPDATE movies SET release_filters = ? WHERE id = ?"]
@@ -1484,6 +1497,7 @@ impl Database {
                         enabled: r.enabled,
                         priority: r.priority,
                         sync_kinds: r.sync_kinds,
+                        cache: parse_remote_cache(r.cache),
                     });
                 }
             }
@@ -1550,6 +1564,7 @@ impl Database {
                     enabled: r.enabled,
                     priority: r.priority,
                     sync_kinds: r.sync_kinds,
+                    cache: parse_remote_cache(r.cache),
                 });
             }
 
@@ -1659,6 +1674,24 @@ impl Database {
         let result = spawn_blocking(move || {
             s.set_show_remote_sync_kinds
                 .execute((sync_kinds, remote_id))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    /// Replace a show remote's cached conditional-request state (JSON), or clear
+    /// it with `None`.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn set_show_remote_cache(
+        &self,
+        remote_id: RemoteId,
+        cache: Option<String>,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.set_show_remote_cache.execute((cache, remote_id))?;
             Ok(())
         });
 
@@ -2472,6 +2505,7 @@ impl Database {
                             enabled: r.enabled,
                             priority: r.priority,
                             sync_kinds: r.sync_kinds,
+                            cache: parse_remote_cache(r.cache),
                         });
                     }
                 }
@@ -2540,6 +2574,7 @@ impl Database {
                             enabled: r.enabled,
                             priority: r.priority,
                             sync_kinds: r.sync_kinds,
+                            cache: parse_remote_cache(r.cache),
                         });
                     }
                 }
@@ -2603,6 +2638,7 @@ impl Database {
                         enabled: r.enabled,
                         priority: r.priority,
                         sync_kinds: r.sync_kinds,
+                        cache: parse_remote_cache(r.cache),
                     });
                 }
             }
@@ -2670,6 +2706,7 @@ impl Database {
                     enabled: r.enabled,
                     priority: r.priority,
                     sync_kinds: r.sync_kinds,
+                    cache: parse_remote_cache(r.cache),
                 });
             }
 
@@ -2764,6 +2801,7 @@ impl Database {
                     enabled: r.enabled,
                     priority: r.priority,
                     sync_kinds: r.sync_kinds,
+                    cache: parse_remote_cache(r.cache),
                 });
             }
 
@@ -2822,6 +2860,7 @@ impl Database {
                     enabled: r.enabled,
                     priority: r.priority,
                     sync_kinds: r.sync_kinds,
+                    cache: parse_remote_cache(r.cache),
                 });
             }
 
@@ -2915,6 +2954,24 @@ impl Database {
         let result = spawn_blocking(move || {
             s.set_movie_remote_sync_kinds
                 .execute((sync_kinds, remote_id))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    /// Replace a movie remote's cached conditional-request state (JSON), or clear
+    /// it with `None`.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn set_movie_remote_cache(
+        &self,
+        remote_id: RemoteId,
+        cache: Option<String>,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.set_movie_remote_cache.execute((cache, remote_id))?;
             Ok(())
         });
 
@@ -4417,17 +4474,30 @@ impl Database {
     }
 
     /// Drop stored releases that a fresh sync no longer reports. `kept` is the set
-    /// of `(source, country, release_type)` keys just upserted for the movie. Mirrors
-    /// [`Self::prune_episode_releases`]; a movie has a single sync source, so the
-    /// caller only prunes after a successful fetch and no per-source scoping is
-    /// needed.
+    /// of `(source, country, release_type)` keys just upserted for the movie; `ran`
+    /// is the set of sources whose release layer actually ran this sync. Mirrors
+    /// [`Self::prune_episode_releases`]: a release-eligible source that didn't run
+    /// keeps its stored releases (a transient fetch failure or a cache hit), so the
+    /// caller can prune safely even when only some sources ran.
     #[tracing::instrument(skip(self, kept), ret(level = "trace"))]
     pub(crate) async fn prune_movie_releases(
         &self,
         movie_id: MovieId,
         kept: &HashSet<(RemoteSource, Country, ReleaseType)>,
+        ran: &HashSet<RemoteSource>,
     ) -> Result<()> {
+        let Some(movie) = self.movie_by_id(movie_id).await? else {
+            return Ok(());
+        };
+
+        let config = self.load_config().await?;
+        let eligible: HashSet<RemoteSource> =
+            api::air_date_sources_by_priority(&movie.remotes, &config)
+                .into_iter()
+                .collect();
+
         let kept = kept.clone();
+        let ran = ran.clone();
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
@@ -4436,6 +4506,12 @@ impl Database {
             let mut stmt = s.list_movie_releases.bind((movie_id,))?;
 
             while let Some(r) = stmt.next()? {
+                // An eligible source that didn't run this sync keeps its releases;
+                // every other source is pruned down to what it just reported.
+                if eligible.contains(&r.source) && !ran.contains(&r.source) {
+                    continue;
+                }
+
                 let key = (r.source, r.country, r.release_type);
 
                 if !kept.contains(&key) {

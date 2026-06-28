@@ -272,6 +272,12 @@ impl Client {
             name_translations: Vec<String>,
             #[serde(default)]
             seasons: Vec<SeasonRow>,
+            // TVDB has no ETag support; this record-level marker is compared on
+            // the next sync to detect an unchanged series. Captured as raw JSON
+            // (TVDB has returned it as both an int epoch and a string) and
+            // normalized to a string for storage/comparison.
+            #[serde(default)]
+            last_updated: Option<serde_json::Value>,
         }
 
         #[derive(Deserialize)]
@@ -389,6 +395,11 @@ impl Client {
         let selected_banner = best_image(&banner, None);
         let selected_fanart = best_image(&fanart, None);
 
+        let last_updated = v.last_updated.as_ref().map(|value| match value {
+            serde_json::Value::String(s) => s.clone(),
+            other => other.to_string(),
+        });
+
         Ok(SeriesInfo {
             original_language,
             poster,
@@ -401,6 +412,7 @@ impl Client {
             seasons,
             name_translations: v.name_translations,
             overview_translations: v.overview_translations,
+            last_updated,
         })
     }
 
@@ -657,6 +669,9 @@ pub(crate) struct SeriesInfo {
     pub name_translations: Vec<String>,
     pub overview_translations: Vec<String>,
     pub seasons: Vec<SeasonInfo>,
+    /// TVDB record-level `lastUpdated`, normalized to a string; equal across syncs
+    /// means the series is unchanged. `None` if the field was absent.
+    pub last_updated: Option<String>,
 }
 
 pub(crate) struct EpisodeInfo {
