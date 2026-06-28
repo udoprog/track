@@ -1146,8 +1146,8 @@ impl PredicateKind {
 }
 
 /// A rule: a conjunction (AND) of [`FilterPredicate`]s. An empty rule (no
-/// predicates) matches every release. A list of rules is a disjunction (OR): a
-/// release is accepted if any rule matches, and an empty list accepts all.
+/// predicates) matches every release. See [`FilterRules`] for how a collection
+/// of rules is combined.
 #[derive(
     Debug, Clone, Default, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize,
 )]
@@ -1161,19 +1161,6 @@ pub struct FilterRule {
 }
 
 impl FilterRule {
-    /// The default set of release rules: a single rule accepting Digital,
-    /// Physical and Tv releases (from any source/country).
-    pub fn default_release_rules() -> Vec<FilterRule> {
-        vec![FilterRule {
-            name: String::new(),
-            predicates: vec![FilterPredicate::ReleaseTypes(vec![
-                ReleaseType::Digital,
-                ReleaseType::Physical,
-                ReleaseType::Tv,
-            ])],
-        }]
-    }
-
     /// Whether all predicates accept the given movie release.
     pub fn matches_movie(&self, release: &MovieRelease) -> bool {
         self.predicates.iter().all(|p| p.matches_movie(release))
@@ -1185,19 +1172,118 @@ impl FilterRule {
     }
 }
 
-/// Whether a movie release is accepted by the given rules. An empty list accepts
-/// all releases; otherwise at least one rule must match.
-pub fn release_accepted(release: &MovieRelease, rules: &[FilterRule]) -> bool {
-    !rules.is_empty() || rules.iter().any(|rule| rule.matches_movie(release))
+/// A collection of [`FilterRule`]s applied together. A release is accepted only
+/// when the list is non-empty and *every* rule matches (rules are AND'd); an
+/// empty list accepts nothing.
+#[derive(
+    Debug, Clone, Default, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize,
+)]
+#[musli(crate = musli_core, transparent)]
+#[serde(transparent)]
+pub struct FilterRules {
+    rules: Vec<FilterRule>,
 }
 
-/// The earliest timestamp among `releases` accepted by the given `rules`.
-pub fn earliest_release(releases: &[MovieRelease], rules: &[FilterRule]) -> Option<Timestamp> {
-    releases
-        .iter()
-        .filter(|r| release_accepted(r, rules))
-        .map(|r| r.timestamp)
-        .min()
+impl FilterRules {
+    /// The default set of release rules: a single rule accepting Digital,
+    /// Physical and Tv releases (from any source/country).
+    pub fn default_release_rules() -> Self {
+        Self {
+            rules: vec![FilterRule {
+                name: String::new(),
+                predicates: vec![FilterPredicate::ReleaseTypes(vec![
+                    ReleaseType::Digital,
+                    ReleaseType::Physical,
+                    ReleaseType::Tv,
+                ])],
+            }],
+        }
+    }
+
+    /// Whether a movie release is accepted: the list must be non-empty and every
+    /// rule must match.
+    pub fn release_accepted(&self, release: &MovieRelease) -> bool {
+        !self.rules.is_empty() && self.rules.iter().all(|rule| rule.matches_movie(release))
+    }
+
+    /// The earliest timestamp among `releases` accepted by these rules.
+    pub fn earliest_release(&self, releases: &[MovieRelease]) -> Option<Timestamp> {
+        releases
+            .iter()
+            .filter(|r| self.release_accepted(r))
+            .map(|r| r.timestamp)
+            .min()
+    }
+
+    /// The effective air date for an episode: the earliest qualifying release
+    /// from the highest-priority source. Only sources present in `priority` (the
+    /// eligible, AirDate-enabled sources) contribute - a release from any other
+    /// source is ignored, so excluding a source's air dates drops its dates
+    /// entirely and an empty `priority` yields `None`. Among eligible releases,
+    /// these rules decide which qualify. Returns `None` when nothing qualifies.
+    pub fn effective_aired(
+        &self,
+        releases: &[EpisodeRelease],
+        priority: &[RemoteSource],
+    ) -> Option<Timestamp> {
+        let mut merged = Prioritized::new();
+
+        for r in releases
+            .iter()
+            .filter(|r| self.air_date_considered(r, priority))
+        {
+            merged.push(r.source, r.timestamp);
+        }
+
+        merged.best(priority).into_iter().min()
+    }
+
+    /// Whether `release` is considered for an episode's effective air date: its
+    /// source must be present in `priority` (an eligible, AirDate-enabled source)
+    /// and every rule must match (an empty list accepts nothing). Priority
+    /// between sources is the media's remote order, not part of the rules.
+    pub fn air_date_considered(&self, release: &EpisodeRelease, priority: &[RemoteSource]) -> bool {
+        priority.contains(&release.source)
+            && !self.rules.is_empty()
+            && self.rules.iter().all(|rule| rule.matches_episode(release))
+    }
+}
+
+impl core::ops::Deref for FilterRules {
+    type Target = Vec<FilterRule>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.rules
+    }
+}
+
+impl core::ops::DerefMut for FilterRules {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.rules
+    }
+}
+
+impl From<Vec<FilterRule>> for FilterRules {
+    fn from(rules: Vec<FilterRule>) -> Self {
+        Self { rules }
+    }
+}
+
+impl FromIterator<FilterRule> for FilterRules {
+    fn from_iter<I: IntoIterator<Item = FilterRule>>(iter: I) -> Self {
+        Self {
+            rules: iter.into_iter().collect(),
+        }
+    }
+}
+
+impl IntoIterator for FilterRules {
+    type Item = FilterRule;
+    type IntoIter = std::vec::IntoIter<FilterRule>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.rules.into_iter()
+    }
 }
 
 /// A candidate value contributed by a specific remote source.
@@ -1270,46 +1356,6 @@ pub struct EpisodeRelease {
     pub timestamp: Timestamp,
 }
 
-/// The effective air date for an episode: the earliest qualifying release from
-/// the highest-priority source. Only sources present in `priority` (the
-/// eligible, AirDate-enabled sources) contribute - a release from any other
-/// source is ignored, so excluding a source's air dates drops its dates
-/// entirely and an empty `priority` yields `None`. Among eligible releases, the
-/// `rules` decide which qualify (empty `rules` accept all). Returns `None` when
-/// nothing qualifies.
-pub fn effective_aired(
-    releases: &[EpisodeRelease],
-    priority: &[RemoteSource],
-    rules: &[FilterRule],
-) -> Option<Timestamp> {
-    let mut merged = Prioritized::new();
-
-    for r in releases
-        .iter()
-        .filter(|r| air_date_considered(r, priority, rules))
-    {
-        merged.push(r.source, r.timestamp);
-    }
-
-    merged.best(priority).into_iter().min()
-}
-
-/// Whether `release` is considered for an episode's effective air date: its
-/// source must be present in `priority` (an eligible, AirDate-enabled source)
-/// and the `rules` must accept it (an empty list accepts all). Priority between
-/// sources is the media's remote order, not part of the rules.
-pub fn air_date_considered(
-    release: &EpisodeRelease,
-    priority: &[RemoteSource],
-    rules: &[FilterRule],
-) -> bool {
-    if !priority.contains(&release.source) {
-        return false;
-    }
-
-    !rules.is_empty() && rules.iter().all(|rule| rule.matches_episode(release))
-}
-
 /// Default air-date source priority: TVmaze (exact airtimes) over TMDB over TVDB.
 pub fn default_air_date_priority() -> Vec<RemoteSource> {
     vec![RemoteSource::Tvmaze, RemoteSource::Tmdb, RemoteSource::Tvdb]
@@ -1353,7 +1399,7 @@ pub struct Show {
     pub last_synced_at: Option<Timestamp>,
     pub language: Locale,
     pub include_specials: IncludeSpecials,
-    pub air_date_filters: Option<Vec<FilterRule>>,
+    pub air_date_filters: Option<FilterRules>,
 }
 
 impl Show {
@@ -1362,8 +1408,8 @@ impl Show {
     }
 
     /// The air-date filters in effect for this show, falling back to `default`.
-    pub fn effective_air_date_filters<'a>(&'a self, default: &'a [FilterRule]) -> &'a [FilterRule] {
-        self.air_date_filters.as_deref().unwrap_or(default)
+    pub fn effective_air_date_filters<'a>(&'a self, default: &'a FilterRules) -> &'a FilterRules {
+        self.air_date_filters.as_ref().unwrap_or(default)
     }
 
     pub fn remote_by_source(&self, source: RemoteSource) -> Option<&Remote> {
@@ -1518,19 +1564,20 @@ pub struct Movie {
     pub last_synced_at: Option<Timestamp>,
     pub releases: Vec<MovieRelease>,
     pub language: Locale,
-    pub release_filters: Option<Vec<FilterRule>>,
+    pub release_filters: Option<FilterRules>,
 }
 
 impl Movie {
     /// The release filters in effect for this movie, falling back to the global `default`.
-    pub fn effective_release_filters<'a>(&'a self, default: &'a [FilterRule]) -> &'a [FilterRule] {
-        self.release_filters.as_deref().unwrap_or(default)
+    pub fn effective_release_filters<'a>(&'a self, default: &'a FilterRules) -> &'a FilterRules {
+        self.release_filters.as_ref().unwrap_or(default)
     }
 
     /// The effective release timestamp used to determine when this movie becomes pending, picking
     /// the earliest release matching the effective filters.
-    pub fn pending_release(&self, default: &[FilterRule]) -> Option<Timestamp> {
-        earliest_release(&self.releases, self.effective_release_filters(default))
+    pub fn pending_release(&self, default: &FilterRules) -> Option<Timestamp> {
+        self.effective_release_filters(default)
+            .earliest_release(&self.releases)
     }
 
     pub fn remote_by_source(&self, source: RemoteSource) -> Option<&Remote> {
@@ -1737,9 +1784,9 @@ pub struct Config {
     pub language: Locale,
     pub include_specials: bool,
     /// Default rules that determine which releases set a movie's release date.
-    pub release_filters: Vec<FilterRule>,
-    /// Default air-date qualification rules for episodes (empty = all qualify).
-    pub air_date_filters: Vec<FilterRule>,
+    pub release_filters: FilterRules,
+    /// Default air-date qualification rules for episodes (empty = none qualify).
+    pub air_date_filters: FilterRules,
     /// Global per-source selection of which kinds each source contributes during
     /// sync. A source absent here uses its full capability. Per-remote overrides
     /// take precedence. See [`Config::sync_kinds_for`].
@@ -1762,8 +1809,8 @@ impl Default for Config {
             timezone: String::new(),
             language: Locale::DEFAULT,
             include_specials: false,
-            release_filters: FilterRule::default_release_rules(),
-            air_date_filters: Vec::new(),
+            release_filters: FilterRules::default_release_rules(),
+            air_date_filters: FilterRules::default(),
             sync_kinds: Vec::new(),
             sync_languages: vec![
                 Locale::DEFAULT,
@@ -2025,7 +2072,7 @@ pub struct GetEpisodeReleasesResponse {
     /// modal mutates to change the per-series override.
     pub show_id: ShowId,
     /// The show's air-date override, or `None` when the global default is in use.
-    pub filters: Option<Vec<FilterRule>>,
+    pub filters: Option<FilterRules>,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -2039,12 +2086,13 @@ pub struct GetMovieReleasesRequest {
 pub struct GetMovieReleasesResponse {
     pub releases: Vec<ReleaseRow>,
     /// The movie's release override, or `None` when the global default is in use.
-    pub filters: Option<Vec<FilterRule>>,
+    pub filters: Option<FilterRules>,
 }
 
 /// A single release as shown in the release/air-date modal, with its grouping
 /// `label` and `considered` flag already resolved server-side (movies via
-/// [`release_accepted`], episodes via [`air_date_considered`]). `label` is the
+/// [`FilterRules::release_accepted`], episodes via
+/// [`FilterRules::air_date_considered`]). `label` is the
 /// release type's name for movies and the network (or `"Unknown"`) for episodes.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 #[musli(crate = musli_core)]
@@ -2441,7 +2489,7 @@ pub struct SetMovieAutoSyncRequest {
 #[musli(crate = musli_core)]
 pub struct SetShowAirDateFiltersRequest {
     pub id: ShowId,
-    pub air_date_filters: Option<Vec<FilterRule>>,
+    pub air_date_filters: Option<FilterRules>,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -2455,7 +2503,7 @@ pub struct SetMovieLanguageRequest {
 #[musli(crate = musli_core)]
 pub struct SetMovieReleaseFiltersRequest {
     pub id: MovieId,
-    pub release_filters: Option<Vec<FilterRule>>,
+    pub release_filters: Option<FilterRules>,
 }
 
 #[derive(Debug, Encode, Decode)]

@@ -31,7 +31,7 @@ pub(crate) struct MovieDetail {
     detailed_expand: bool,
     open_watched: bool,
     open_releases: bool,
-    default_release_filters: Vec<api::FilterRule>,
+    default_release_filters: api::FilterRules,
     global_sync_kinds: Vec<api::SourceSyncKinds>,
     image_modal: bool,
     settings_modal: bool,
@@ -160,7 +160,7 @@ impl Component for MovieDetail {
             detailed_expand: false,
             open_watched: false,
             open_releases: false,
-            default_release_filters: api::FilterRule::default_release_rules(),
+            default_release_filters: api::FilterRules::default_release_rules(),
             global_sync_kinds: Vec::new(),
             image_modal: false,
             settings_modal: false,
@@ -815,7 +815,7 @@ impl MovieDetail {
         let release_source = movie
             .releases
             .iter()
-            .filter(|r| api::release_accepted(r, filters))
+            .filter(|r| filters.release_accepted(r))
             .min_by_key(|r| r.timestamp)
             .map(|r| r.source);
 

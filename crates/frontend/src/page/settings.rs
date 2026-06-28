@@ -38,8 +38,8 @@ pub(crate) enum Msg {
     AutoSyncEnabledToggle,
     AutoSyncIntervalChanged(String),
     IncludeSpecialsToggle,
-    ReleaseFiltersChanged(Vec<api::FilterRule>),
-    AirDateFiltersChanged(Vec<api::FilterRule>),
+    ReleaseFiltersChanged(api::FilterRules),
+    AirDateFiltersChanged(api::FilterRules),
     SyncKindsChanged(Vec<api::SourceSyncKinds>),
     SaveDone(Result<ws::Packet<api::SetConfig>, ws::Error>),
 }

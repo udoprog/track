@@ -34,10 +34,12 @@ pub(crate) enum Msg {
     EpisodeLoaded(Result<ws::Packet<api::GetEpisodeReleases>, ws::Error>),
     ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
     /// The active filter was edited (whichever scope is in effect).
-    EditFilters(Vec<api::FilterRule>),
+    EditFilters(api::FilterRules),
     /// Switch between the per-media override and the global default.
     ToggleMode,
-    MutateDone(Message, Result<(), ws::Error>),
+    SetReleaseFiltersDone(Result<ws::Packet<api::SetMovieReleaseFilters>, ws::Error>),
+    SetAirDateFiltersDone(Result<ws::Packet<api::SetShowAirDateFilters>, ws::Error>),
+    SaveConfigDone(Result<ws::Packet<api::SetConfig>, ws::Error>),
     ToggleGroup(AttrValue),
     SetTime(TimeInfo),
 }
@@ -54,7 +56,7 @@ pub(crate) struct ReleaseModal {
     /// The global config, holding the default filters and resent on a global edit.
     config: Option<api::Config>,
     /// The per-media override; `None` means the active filter is the global default.
-    override_filters: Option<Vec<api::FilterRule>>,
+    override_filters: Option<api::FilterRules>,
     /// The owning show of an episode target, needed to mutate its air-date override.
     show_id: Option<api::ShowId>,
     /// Labels of the currently expanded groups.
@@ -200,16 +202,26 @@ impl ReleaseModal {
                 if self.override_filters.is_some() {
                     self.override_filters = None;
                     self.send_override(ctx, None);
-                } else if let Some(rules) = self.global_rules(ctx).map(<[_]>::to_vec) {
+                } else if let Some(rules) = self.global_rules(ctx).cloned() {
                     self.override_filters = Some(rules.clone());
                     self.send_override(ctx, Some(rules));
                 }
                 Ok(true)
             }
-            Msg::MutateDone(message, result) => {
-                result.context(message)?;
+            Msg::SetReleaseFiltersDone(result) => {
+                result.context(Message::SettingReleaseFilters)?;
                 // Re-fetch so the per-row `considered` indicators (resolved
                 // server-side) reflect the new filter.
+                self.load(ctx);
+                Ok(false)
+            }
+            Msg::SetAirDateFiltersDone(result) => {
+                result.context(Message::SettingAirDateFilters)?;
+                self.load(ctx);
+                Ok(false)
+            }
+            Msg::SaveConfigDone(result) => {
+                result.context(Message::SavingConfig)?;
                 self.load(ctx);
                 Ok(false)
             }
@@ -261,7 +273,7 @@ impl ReleaseModal {
     }
 
     /// The global default rules for this target, once the config has loaded.
-    fn global_rules(&self, ctx: &Context<Self>) -> Option<&[api::FilterRule]> {
+    fn global_rules(&self, ctx: &Context<Self>) -> Option<&api::FilterRules> {
         let config = self.config.as_ref()?;
         Some(match ctx.props().target {
             ReleaseTarget::Movie(_) => &config.release_filters,
@@ -270,7 +282,7 @@ impl ReleaseModal {
     }
 
     /// Persist the per-media override (`None` reverts to the global default).
-    fn send_override(&mut self, ctx: &Context<Self>, filters: Option<Vec<api::FilterRule>>) {
+    fn send_override(&mut self, ctx: &Context<Self>, filters: Option<api::FilterRules>) {
         match ctx.props().target {
             ReleaseTarget::Movie(id) => {
                 self._mutate_req = self
@@ -280,11 +292,7 @@ impl ReleaseModal {
                         id,
                         release_filters: filters,
                     })
-                    .on_packet(ctx.link().callback(
-                        |r: Result<ws::Packet<api::SetMovieReleaseFilters>, ws::Error>| {
-                            Msg::MutateDone(Message::SettingReleaseFilters, r.map(|_| ()))
-                        },
-                    ))
+                    .on_packet(ctx.link().callback(Msg::SetReleaseFiltersDone))
                     .send();
             }
             ReleaseTarget::Episode(_) => {
@@ -298,11 +306,7 @@ impl ReleaseModal {
                         id,
                         air_date_filters: filters,
                     })
-                    .on_packet(ctx.link().callback(
-                        |r: Result<ws::Packet<api::SetShowAirDateFilters>, ws::Error>| {
-                            Msg::MutateDone(Message::SettingAirDateFilters, r.map(|_| ()))
-                        },
-                    ))
+                    .on_packet(ctx.link().callback(Msg::SetAirDateFiltersDone))
                     .send();
             }
         }
@@ -314,16 +318,12 @@ impl ReleaseModal {
             return;
         };
 
-        self._mutate_req =
-            self.channel
-                .request()
-                .body(api::SetConfigRequest { config })
-                .on_packet(ctx.link().callback(
-                    |r: Result<ws::Packet<api::SetConfig>, ws::Error>| {
-                        Msg::MutateDone(Message::SavingConfig, r.map(|_| ()))
-                    },
-                ))
-                .send();
+        self._mutate_req = self
+            .channel
+            .request()
+            .body(api::SetConfigRequest { config })
+            .on_packet(ctx.link().callback(Msg::SaveConfigDone))
+            .send();
     }
 
     /// The active filter shown above the list: a scope toggle, a warning when the
@@ -347,7 +347,7 @@ impl ReleaseModal {
         let rules = self
             .override_filters
             .clone()
-            .unwrap_or_else(|| global.to_vec());
+            .unwrap_or_else(|| global.clone());
 
         let (kinds, sources, custom_label, warning) = match target {
             ReleaseTarget::Movie(_) => (

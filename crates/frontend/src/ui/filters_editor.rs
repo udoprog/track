@@ -43,8 +43,8 @@ const RELEASE_TYPES: &[api::ReleaseType] = &[
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
-    pub(crate) rules: Vec<api::FilterRule>,
-    pub(crate) on_change: Callback<Vec<api::FilterRule>>,
+    pub(crate) rules: api::FilterRules,
+    pub(crate) on_change: Callback<api::FilterRules>,
     /// Predicate kinds the editor may add (release vs air-date contexts differ).
     pub(crate) kinds: &'static [api::PredicateKind],
     /// Sources offered to a `Sources` predicate.
@@ -69,10 +69,10 @@ pub(crate) enum Msg {
     ConfirmRemove(usize),
 }
 
-/// Editor for a list of [`api::FilterRule`]s shared by release and air-date
-/// filters. Rules are OR'd, the predicates within a rule are AND'd, and each
-/// predicate is an OR over its set. An empty list accepts everything. Emptying a
-/// predicate's set removes it (= "no constraint of this kind").
+/// Editor for the [`api::FilterRules`] shared by release and air-date filters.
+/// Rules are AND'd, the predicates within a rule are AND'd, and each predicate is
+/// an OR over its set. An empty list accepts nothing. Emptying a predicate's set
+/// removes it (= "no constraint of this kind").
 ///
 /// The rule *order* is purely informational here (rules are OR'd); the editor
 /// only lets it be changed for presentation.

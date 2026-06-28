@@ -1,12 +1,12 @@
-use api::{FilterRule, Locale, SourceSyncKinds};
+use api::{FilterRules, Locale, SourceSyncKinds};
 
-/// Serialize a list of filter rules (release or air-date) for storage in a text column.
-pub(super) fn encode_filter_rules(rules: &[FilterRule]) -> String {
+/// Serialize a collection of filter rules (release or air-date) for storage in a text column.
+pub(super) fn encode_filter_rules(rules: &FilterRules) -> String {
     serde_json::to_string(rules).unwrap_or_else(|_| "[]".to_string())
 }
 
 /// Parse filter rules previously written by [`encode_filter_rules`].
-pub(super) fn decode_filter_rules(s: &str) -> Option<Vec<FilterRule>> {
+pub(super) fn decode_filter_rules(s: &str) -> Option<FilterRules> {
     serde_json::from_str(s).ok()
 }
 

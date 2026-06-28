@@ -53,7 +53,10 @@ pub(crate) async fn discover_pending_movies(db: &Database) -> anyhow::Result<()>
             .await
             .with_context(|| format!("Loading releases for movie {id}"))?;
 
-        if let Some(ts) = api::earliest_release(&releases, filters.as_deref().unwrap_or(&default))
+        if let Some(ts) = filters
+            .as_ref()
+            .unwrap_or(&default)
+            .earliest_release(&releases)
             && ts <= now
         {
             db.add_pending_movie(id, ts)

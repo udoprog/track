@@ -45,10 +45,27 @@ pub(crate) enum Msg {
     SetLanguage(api::Locale),
     SetAutoSync(bool),
     SetIncludeSpecials(IncludeSpecials),
-    SetReleaseFilters(Option<Vec<api::FilterRule>>),
-    SetAirDateFilters(Option<Vec<api::FilterRule>>),
+    SetReleaseFilters(Option<api::FilterRules>),
+    SetAirDateFilters(Option<api::FilterRules>),
     Sync,
-    MutateDone(Message, Result<(), ws::Error>),
+    SetMovieLanguageDone(
+        api::Locale,
+        Result<ws::Packet<api::SetMovieLanguage>, ws::Error>,
+    ),
+    SetShowLanguageDone(
+        api::Locale,
+        Result<ws::Packet<api::SetShowLanguage>, ws::Error>,
+    ),
+    SetMovieAutoSyncDone(bool, Result<ws::Packet<api::SetMovieAutoSync>, ws::Error>),
+    SetShowAutoSyncDone(bool, Result<ws::Packet<api::SetShowAutoSync>, ws::Error>),
+    SetIncludeSpecialsDone(
+        IncludeSpecials,
+        Result<ws::Packet<api::SetShowIncludeSpecials>, ws::Error>,
+    ),
+    SetReleaseFiltersDone(Result<ws::Packet<api::SetMovieReleaseFilters>, ws::Error>),
+    SetAirDateFiltersDone(Result<ws::Packet<api::SetShowAirDateFilters>, ws::Error>),
+    SyncMovieDone(Result<ws::Packet<api::SyncMovie>, ws::Error>),
+    SyncShowDone(Result<ws::Packet<api::SyncShow>, ws::Error>),
     SetTime(TimeInfo),
 }
 
@@ -61,8 +78,8 @@ pub(crate) struct MediaSettingsModal {
     _mutate_req: ws::Request,
     _sync_req: ws::Request,
     data: Option<Loaded>,
-    default_release_filters: Vec<api::FilterRule>,
-    default_air_date_filters: Vec<api::FilterRule>,
+    default_release_filters: api::FilterRules,
+    default_air_date_filters: api::FilterRules,
     syncing: bool,
     time: TimeInfo,
     _time_handle: ContextHandle<TimeInfo>,
@@ -101,8 +118,8 @@ impl Component for MediaSettingsModal {
             _mutate_req: ws::Request::default(),
             _sync_req: ws::Request::default(),
             data: None,
-            default_release_filters: api::FilterRule::default_release_rules(),
-            default_air_date_filters: Vec::new(),
+            default_release_filters: api::FilterRules::default_release_rules(),
+            default_air_date_filters: api::FilterRules::default(),
             syncing: false,
             time,
             _time_handle,
@@ -213,14 +230,10 @@ impl MediaSettingsModal {
                             .channel
                             .request()
                             .body(api::SetMovieLanguageRequest { id, language })
-                            .on_packet(ctx.link().callback(
-                                move |r: Result<ws::Packet<api::SetMovieLanguage>, ws::Error>| {
-                                    Msg::MutateDone(
-                                        Message::SettingLanguage(language),
-                                        r.map(|_| ()),
-                                    )
-                                },
-                            ))
+                            .on_packet(
+                                ctx.link()
+                                    .callback(move |r| Msg::SetMovieLanguageDone(language, r)),
+                            )
                             .send();
                     }
                     SettingsTarget::Show(id) => {
@@ -231,14 +244,10 @@ impl MediaSettingsModal {
                             .channel
                             .request()
                             .body(api::SetShowLanguageRequest { id, language })
-                            .on_packet(ctx.link().callback(
-                                move |r: Result<ws::Packet<api::SetShowLanguage>, ws::Error>| {
-                                    Msg::MutateDone(
-                                        Message::SettingLanguage(language),
-                                        r.map(|_| ()),
-                                    )
-                                },
-                            ))
+                            .on_packet(
+                                ctx.link()
+                                    .callback(move |r| Msg::SetShowLanguageDone(language, r)),
+                            )
                             .send();
                     }
                 }
@@ -254,14 +263,10 @@ impl MediaSettingsModal {
                             .channel
                             .request()
                             .body(api::SetMovieAutoSyncRequest { id, auto_sync })
-                            .on_packet(ctx.link().callback(
-                                move |r: Result<ws::Packet<api::SetMovieAutoSync>, ws::Error>| {
-                                    Msg::MutateDone(
-                                        Message::SettingAutoSync(auto_sync),
-                                        r.map(|_| ()),
-                                    )
-                                },
-                            ))
+                            .on_packet(
+                                ctx.link()
+                                    .callback(move |r| Msg::SetMovieAutoSyncDone(auto_sync, r)),
+                            )
                             .send();
                     }
                     SettingsTarget::Show(id) => {
@@ -272,14 +277,10 @@ impl MediaSettingsModal {
                             .channel
                             .request()
                             .body(api::SetShowAutoSyncRequest { id, auto_sync })
-                            .on_packet(ctx.link().callback(
-                                move |r: Result<ws::Packet<api::SetShowAutoSync>, ws::Error>| {
-                                    Msg::MutateDone(
-                                        Message::SettingAutoSync(auto_sync),
-                                        r.map(|_| ()),
-                                    )
-                                },
-                            ))
+                            .on_packet(
+                                ctx.link()
+                                    .callback(move |r| Msg::SetShowAutoSyncDone(auto_sync, r)),
+                            )
                             .send();
                     }
                 }
@@ -290,22 +291,17 @@ impl MediaSettingsModal {
                     if let Some(Loaded::Show(s)) = &mut self.data {
                         s.include_specials = include_specials;
                     }
-                    self._mutate_req = self
-                        .channel
-                        .request()
-                        .body(api::SetShowIncludeSpecialsRequest {
-                            id,
-                            include_specials,
-                        })
-                        .on_packet(ctx.link().callback(
-                            move |r: Result<ws::Packet<api::SetShowIncludeSpecials>, ws::Error>| {
-                                Msg::MutateDone(
-                                    Message::SettingIncludeSpecials(include_specials),
-                                    r.map(|_| ()),
-                                )
-                            },
-                        ))
-                        .send();
+                    self._mutate_req =
+                        self.channel
+                            .request()
+                            .body(api::SetShowIncludeSpecialsRequest {
+                                id,
+                                include_specials,
+                            })
+                            .on_packet(ctx.link().callback(move |r| {
+                                Msg::SetIncludeSpecialsDone(include_specials, r)
+                            }))
+                            .send();
                 }
                 Ok(true)
             }
@@ -321,11 +317,7 @@ impl MediaSettingsModal {
                             id,
                             release_filters,
                         })
-                        .on_packet(ctx.link().callback(
-                            |r: Result<ws::Packet<api::SetMovieReleaseFilters>, ws::Error>| {
-                                Msg::MutateDone(Message::SettingReleaseFilters, r.map(|_| ()))
-                            },
-                        ))
+                        .on_packet(ctx.link().callback(Msg::SetReleaseFiltersDone))
                         .send();
                 }
                 Ok(true)
@@ -342,11 +334,7 @@ impl MediaSettingsModal {
                             id,
                             air_date_filters,
                         })
-                        .on_packet(ctx.link().callback(
-                            |r: Result<ws::Packet<api::SetShowAirDateFilters>, ws::Error>| {
-                                Msg::MutateDone(Message::SettingAirDateFilters, r.map(|_| ()))
-                            },
-                        ))
+                        .on_packet(ctx.link().callback(Msg::SetAirDateFiltersDone))
                         .send();
                 }
                 Ok(true)
@@ -362,11 +350,7 @@ impl MediaSettingsModal {
                             .channel
                             .request()
                             .body(api::SyncMovieRequest { id })
-                            .on_packet(ctx.link().callback(
-                                |r: Result<ws::Packet<api::SyncMovie>, ws::Error>| {
-                                    Msg::MutateDone(Message::SyncingMovie, r.map(|_| ()))
-                                },
-                            ))
+                            .on_packet(ctx.link().callback(Msg::SyncMovieDone))
                             .send();
                     }
                     SettingsTarget::Show(id) => {
@@ -374,18 +358,46 @@ impl MediaSettingsModal {
                             .channel
                             .request()
                             .body(api::SyncShowRequest { id })
-                            .on_packet(ctx.link().callback(
-                                |r: Result<ws::Packet<api::SyncShow>, ws::Error>| {
-                                    Msg::MutateDone(Message::SyncingShow, r.map(|_| ()))
-                                },
-                            ))
+                            .on_packet(ctx.link().callback(Msg::SyncShowDone))
                             .send();
                     }
                 }
                 Ok(true)
             }
-            Msg::MutateDone(message, result) => {
-                result.context(message)?;
+            Msg::SetMovieLanguageDone(language, result) => {
+                result.context(Message::SettingLanguage(language))?;
+                Ok(false)
+            }
+            Msg::SetShowLanguageDone(language, result) => {
+                result.context(Message::SettingLanguage(language))?;
+                Ok(false)
+            }
+            Msg::SetMovieAutoSyncDone(auto_sync, result) => {
+                result.context(Message::SettingAutoSync(auto_sync))?;
+                Ok(false)
+            }
+            Msg::SetShowAutoSyncDone(auto_sync, result) => {
+                result.context(Message::SettingAutoSync(auto_sync))?;
+                Ok(false)
+            }
+            Msg::SetIncludeSpecialsDone(include_specials, result) => {
+                result.context(Message::SettingIncludeSpecials(include_specials))?;
+                Ok(false)
+            }
+            Msg::SetReleaseFiltersDone(result) => {
+                result.context(Message::SettingReleaseFilters)?;
+                Ok(false)
+            }
+            Msg::SetAirDateFiltersDone(result) => {
+                result.context(Message::SettingAirDateFilters)?;
+                Ok(false)
+            }
+            Msg::SyncMovieDone(result) => {
+                result.context(Message::SyncingMovie)?;
+                Ok(false)
+            }
+            Msg::SyncShowDone(result) => {
+                result.context(Message::SyncingShow)?;
                 Ok(false)
             }
             Msg::SetTime(time) => {
@@ -587,7 +599,7 @@ impl MediaSettingsModal {
         };
 
         let editor = movie.release_filters.as_ref().map(|filters| {
-            let on_change = link.callback(|f: Vec<api::FilterRule>| Msg::SetReleaseFilters(Some(f)));
+            let on_change = link.callback(|f: api::FilterRules| Msg::SetReleaseFilters(Some(f)));
             html! {
                 <FiltersEditor rules={filters.clone()} on_change={on_change} kinds={RELEASE_KINDS} sources={RELEASE_SOURCES} />
             }
@@ -619,7 +631,7 @@ impl MediaSettingsModal {
         };
 
         let editor = show.air_date_filters.as_ref().map(|filters| {
-            let on_change = link.callback(|f: Vec<api::FilterRule>| Msg::SetAirDateFilters(Some(f)));
+            let on_change = link.callback(|f: api::FilterRules| Msg::SetAirDateFilters(Some(f)));
             html! {
                 <FiltersEditor rules={filters.clone()} on_change={on_change} kinds={AIR_DATE_KINDS} sources={AIR_DATE_SOURCES} />
             }

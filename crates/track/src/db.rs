@@ -2236,12 +2236,12 @@ impl Database {
     pub(crate) async fn set_show_air_date_filters(
         &self,
         id: ShowId,
-        air_date_filters: Option<Vec<api::FilterRule>>,
+        air_date_filters: Option<api::FilterRules>,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            let text = air_date_filters.as_deref().map(config::encode_filter_rules);
+            let text = air_date_filters.as_ref().map(config::encode_filter_rules);
             s.update_show_air_date_filters.execute((text, id))?;
             Ok(())
         });
@@ -2259,7 +2259,7 @@ impl Database {
     pub(crate) async fn recompute_episode_aired_for_show(
         &self,
         show_id: ShowId,
-        default_filters: Vec<api::FilterRule>,
+        default_filters: api::FilterRules,
     ) -> Result<()> {
         let Some(show) = self.show_by_id(show_id).await? else {
             return Ok(());
@@ -2302,7 +2302,7 @@ impl Database {
             // cleared when none of its releases qualify under the current priority
             // and filters.
             for (episode_id, releases) in by_episode {
-                let aired = api::effective_aired(&releases, &priority, &filters);
+                let aired = filters.effective_aired(&releases, &priority);
                 s.set_episode_aired_by_id.execute((aired, episode_id))?;
             }
 
@@ -3014,12 +3014,12 @@ impl Database {
     pub(crate) async fn set_movie_release_filters(
         &self,
         id: MovieId,
-        release_filters: Option<Vec<api::FilterRule>>,
+        release_filters: Option<api::FilterRules>,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            let text = release_filters.as_deref().map(config::encode_filter_rules);
+            let text = release_filters.as_ref().map(config::encode_filter_rules);
             s.set_movie_release_filters.execute((text, id))?;
             Ok(())
         });
@@ -4039,7 +4039,7 @@ impl Database {
     pub(crate) async fn update_movie_pending(
         &self,
         movie_id: MovieId,
-        default_filters: Vec<api::FilterRule>,
+        default_filters: api::FilterRules,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
@@ -4076,8 +4076,8 @@ impl Database {
                 out
             };
 
-            let effective = override_filters.as_deref().unwrap_or(&default_filters);
-            let release = api::earliest_release(&releases, effective);
+            let effective = override_filters.as_ref().unwrap_or(&default_filters);
+            let release = effective.earliest_release(&releases);
 
             if current_release_date != release {
                 s.set_movie_release_date
@@ -4246,7 +4246,7 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn movie_pending_candidates(
         &self,
-    ) -> Result<Vec<(MovieId, Option<Vec<api::FilterRule>>)>> {
+    ) -> Result<Vec<(MovieId, Option<api::FilterRules>)>> {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
@@ -4341,7 +4341,7 @@ impl Database {
     pub(crate) async fn episode_release_rows(
         &self,
         id: EpisodeId,
-    ) -> Result<(Vec<api::ReleaseRow>, ShowId, Option<Vec<api::FilterRule>>)> {
+    ) -> Result<(Vec<api::ReleaseRow>, ShowId, Option<api::FilterRules>)> {
         let releases = self.episode_releases(id).await?;
 
         let Some(show_id) = self.episode_show_id(id).await? else {
@@ -4359,7 +4359,7 @@ impl Database {
         let mut rows: Vec<api::ReleaseRow> = releases
             .into_iter()
             .map(|r| {
-                let considered = api::air_date_considered(&r, &priority, filters);
+                let considered = filters.air_date_considered(&r, &priority);
                 let label = if r.network.is_empty() {
                     "Unknown".to_owned()
                 } else {
@@ -4381,7 +4381,7 @@ impl Database {
     }
 
     /// A movie's release-date override filters, if any.
-    async fn movie_release_filters(&self, id: MovieId) -> Result<Option<Vec<api::FilterRule>>> {
+    async fn movie_release_filters(&self, id: MovieId) -> Result<Option<api::FilterRules>> {
         let mut s = self.inner.clone().shared().await?;
         let result = spawn_blocking(move || {
             let text = s.movie_release_filters.bind((id,))?.first()?.flatten();
@@ -4396,13 +4396,11 @@ impl Database {
     pub(crate) async fn movie_release_rows(
         &self,
         id: MovieId,
-    ) -> Result<(Vec<api::ReleaseRow>, Option<Vec<api::FilterRule>>)> {
+    ) -> Result<(Vec<api::ReleaseRow>, Option<api::FilterRules>)> {
         let mut releases = self.movie_releases(id).await?;
         let override_filters = self.movie_release_filters(id).await?;
         let config = self.load_config().await?;
-        let effective = override_filters
-            .as_deref()
-            .unwrap_or(&config.release_filters);
+        let effective = override_filters.as_ref().unwrap_or(&config.release_filters);
 
         releases.sort_by(|a, b| {
             a.release_type
@@ -4414,7 +4412,7 @@ impl Database {
         let rows = releases
             .into_iter()
             .map(|r| {
-                let considered = api::release_accepted(&r, effective);
+                let considered = effective.release_accepted(&r);
 
                 api::ReleaseRow {
                     label: r.release_type.as_str().to_owned(),

@@ -30,6 +30,15 @@ fn rule(predicates: impl IntoIterator<Item = FilterPredicate>) -> FilterRule {
     }
 }
 
+fn rule_set(rules: impl IntoIterator<Item = FilterRule>) -> FilterRules {
+    rules.into_iter().collect()
+}
+
+/// Rules that accept every release: a single rule with no predicates.
+fn accept_all() -> FilterRules {
+    rule_set([rule([])])
+}
+
 fn entry(source: RemoteSource, sync_kinds: Option<SyncKindSet>) -> RemoteEntry {
     RemoteEntry {
         id: RemoteId::new(1),
@@ -265,14 +274,15 @@ fn air_date_priority_prefers_higher_ranked_source() {
         rel(RemoteSource::Tvmaze, Country::DEFAULT, "", 300),
     ];
     let priority = default_air_date_priority();
+    let accept = accept_all();
 
     // TVmaze outranks TMDB even though its date is later.
-    let aired = effective_aired(&releases, &priority, &[]).unwrap();
+    let aired = accept.effective_aired(&releases, &priority).unwrap();
     assert_eq!(aired.inner().as_second(), 300);
 
     // Flip the priority and TMDB wins.
     let flipped = [RemoteSource::Tmdb, RemoteSource::Tvmaze];
-    let aired = effective_aired(&releases, &flipped, &[]).unwrap();
+    let aired = accept.effective_aired(&releases, &flipped).unwrap();
     assert_eq!(aired.inner().as_second(), 200);
 }
 
@@ -283,10 +293,10 @@ fn air_date_rule_restricts_country() {
         rel(RemoteSource::Tvmaze, Country::GB, "", 100),
     ];
     let priority = default_air_date_priority();
-    let rules = [rule([FilterPredicate::Countries(vec![Country::GB])])];
+    let rules = rule_set([rule([FilterPredicate::Countries(vec![Country::GB])])]);
 
     // Only the GB date qualifies.
-    let aired = effective_aired(&releases, &priority, &rules).unwrap();
+    let aired = rules.effective_aired(&releases, &priority).unwrap();
     assert_eq!(aired.inner().as_second(), 100);
 }
 
@@ -299,49 +309,45 @@ fn air_date_rule_predicates_and_together() {
     ];
     let priority = default_air_date_priority();
     // A single rule requires both GB *and* the BBC network to match.
-    let rules = [rule([
+    let rules = rule_set([rule([
         FilterPredicate::Countries(vec![Country::GB]),
         FilterPredicate::Networks(vec!["BBC".to_owned()]),
-    ])];
+    ])]);
 
-    let aired = effective_aired(&releases, &priority, &rules).unwrap();
+    let aired = rules.effective_aired(&releases, &priority).unwrap();
     assert_eq!(aired.inner().as_second(), 100);
 }
 
 #[test]
-fn air_date_rules_or_together() {
+fn air_date_rules_and_together() {
     let releases = [
-        rel(RemoteSource::Tvmaze, Country::GB, "", 300),
-        rel(RemoteSource::Tvmaze, Country::JP, "", 200),
-        rel(RemoteSource::Tvmaze, Country::US, "", 100),
+        rel(RemoteSource::Tvmaze, Country::GB, "BBC", 300),
+        rel(RemoteSource::Tvmaze, Country::GB, "ITV", 200),
+        rel(RemoteSource::Tvmaze, Country::US, "BBC", 100),
     ];
     let priority = default_air_date_priority();
-    // Either GB or JP qualifies; the US (100) release is excluded.
-    let rules = [
+    // Separate rules are AND'd: a release must satisfy *every* rule, so only the
+    // GB+BBC release qualifies.
+    let rules = rule_set([
         rule([FilterPredicate::Countries(vec![Country::GB])]),
-        rule([FilterPredicate::Countries(vec![Country::JP])]),
-    ];
+        rule([FilterPredicate::Networks(vec!["BBC".to_owned()])]),
+    ]);
 
-    let aired = effective_aired(&releases, &priority, &rules).unwrap();
-    assert_eq!(aired.inner().as_second(), 200);
+    let aired = rules.effective_aired(&releases, &priority).unwrap();
+    assert_eq!(aired.inner().as_second(), 300);
 }
 
 #[test]
-fn release_empty_rules_accept_all() {
+fn release_empty_rules_reject_all() {
     let releases = [
         mrel(RemoteSource::Tmdb, Country::US, ReleaseType::Premiere, 50),
         mrel(RemoteSource::Tmdb, Country::US, ReleaseType::Digital, 200),
     ];
 
-    // No rules => accept everything, so the earliest (the premiere) wins.
-    assert!(release_accepted(&releases[0], &[]));
-    assert_eq!(
-        earliest_release(&releases, &[])
-            .unwrap()
-            .inner()
-            .as_second(),
-        50
-    );
+    // No rules => nothing is accepted.
+    let empty = FilterRules::default();
+    assert!(!empty.release_accepted(&releases[0]));
+    assert!(empty.earliest_release(&releases).is_none());
 }
 
 #[test]
@@ -351,15 +357,16 @@ fn release_rule_restricts_type() {
         mrel(RemoteSource::Tmdb, Country::US, ReleaseType::Digital, 200),
         mrel(RemoteSource::Tmdb, Country::US, ReleaseType::Physical, 300),
     ];
-    let rules = [rule([FilterPredicate::ReleaseTypes(vec![
+    let rules = rule_set([rule([FilterPredicate::ReleaseTypes(vec![
         ReleaseType::Digital,
         ReleaseType::Physical,
-    ])])];
+    ])])]);
 
     // The premiere is excluded; earliest accepted is the digital release.
-    assert!(!release_accepted(&releases[0], &rules));
+    assert!(!rules.release_accepted(&releases[0]));
     assert_eq!(
-        earliest_release(&releases, &rules)
+        rules
+            .earliest_release(&releases)
             .unwrap()
             .inner()
             .as_second(),
@@ -372,7 +379,11 @@ fn air_date_ignores_ineligible_source() {
     // A source absent from the priority list (e.g. its AirDate kind is
     // excluded) does not contribute, even as the only release.
     let releases = [rel(RemoteSource::Unknown, Country::DEFAULT, "", 50)];
-    assert!(effective_aired(&releases, &default_air_date_priority(), &[]).is_none());
+    assert!(
+        accept_all()
+            .effective_aired(&releases, &default_air_date_priority())
+            .is_none()
+    );
 }
 
 #[test]
@@ -380,7 +391,7 @@ fn air_date_none_when_no_eligible_source() {
     // Excluding air dates from every remote leaves no eligible source, so even
     // a stored release yields no effective date.
     let releases = [rel(RemoteSource::Tvmaze, Country::DEFAULT, "", 50)];
-    assert!(effective_aired(&releases, &[], &[]).is_none());
+    assert!(accept_all().effective_aired(&releases, &[]).is_none());
 }
 
 #[test]
@@ -390,7 +401,9 @@ fn air_date_earliest_within_winning_source() {
         rel(RemoteSource::Tvmaze, Country::JP, "", 150),
         rel(RemoteSource::Tmdb, Country::DEFAULT, "", 10),
     ];
-    let aired = effective_aired(&releases, &default_air_date_priority(), &[]).unwrap();
+    let aired = accept_all()
+        .effective_aired(&releases, &default_air_date_priority())
+        .unwrap();
     // TVmaze wins by priority; earliest of its dates is used.
     assert_eq!(aired.inner().as_second(), 150);
 }
