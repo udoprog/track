@@ -10,7 +10,7 @@ use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{Route, Router, ShowDetailQuery};
-use crate::ui::{Button, DOT};
+use crate::ui::{Button, DOT, Skeleton};
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
@@ -34,6 +34,7 @@ pub(crate) struct Props {
 pub(crate) struct Calendar {
     channel: ws::Channel,
     schedule: Vec<api::ScheduledDay>,
+    loading: bool,
     time: TimeInfo,
     _time_handle: ContextHandle<TimeInfo>,
     router: Router,
@@ -82,6 +83,7 @@ impl Component for Calendar {
         Self {
             channel: ws::Channel::default(),
             schedule: Vec::new(),
+            loading: false,
             time,
             _time_handle,
             router,
@@ -100,7 +102,7 @@ impl Component for Calendar {
         if (props.weeks, props.week_offset) != (old.weeks, old.week_offset)
             && self.channel.id() != ws::ChannelId::NONE
         {
-            self.load_schedule(ctx);
+            self.load_schedule(ctx, true);
         }
 
         true
@@ -130,6 +132,8 @@ impl Component for Calendar {
         // The reveal toggle only makes sense on the current week when there are
         // hidden past days (i.e. today is not the start of the week).
         let can_reveal_week_start = week_offset == 0 && today.weekday() != api::Weekday::Monday;
+
+        let loading = self.loading;
 
         let schedule_lookup: HashMap<api::Date, &api::ScheduledDay> =
             self.schedule.iter().map(|d| (d.date, d)).collect();
@@ -211,7 +215,7 @@ impl Component for Calendar {
                                             is_today.then_some("today"),
                                             is_past.then_some("past"),
                                             (is_past && !show_past).then_some("desktop-only"),
-                                            (shows.is_empty() && movies.is_empty()).then_some("desktop-only"),
+                                            (!loading && shows.is_empty() && movies.is_empty()).then_some("desktop-only"),
                                         )}>
                                             <div class="calendar-day-number">
                                                 <span class="bullet">{day.day()}</span>
@@ -233,7 +237,11 @@ impl Component for Calendar {
                                                 }
                                             </div>
 
-                                            if !shows.is_empty() || !movies.is_empty() {
+                                            if loading {
+                                                <div class="calendar-items">
+                                                    <Skeleton />
+                                                </div>
+                                            } else if !shows.is_empty() || !movies.is_empty() {
                                                 <div class="calendar-items">
                                                     { for shows.iter().enumerate().map(|(index, entry)| {
                                                         let show_id = entry.show_id;
@@ -314,7 +322,7 @@ impl Calendar {
             Msg::Channel(result) => {
                 self.channel = result?;
                 if self.channel.id() != ws::ChannelId::NONE {
-                    self.load_schedule(ctx);
+                    self.load_schedule(ctx, true);
                 } else {
                     self.schedule.clear();
                 }
@@ -336,7 +344,7 @@ impl Calendar {
                     | api::AppEventKind::WatchedChanged { .. }
                     | api::AppEventKind::TaskCompleted { .. } => {
                         if self.channel.id() != ws::ChannelId::NONE {
-                            self.load_schedule(ctx);
+                            self.load_schedule(ctx, false);
                         }
                         Ok(false)
                     }
@@ -344,6 +352,7 @@ impl Calendar {
                 }
             }
             Msg::ScheduleLoaded(result) => {
+                self.loading = false;
                 self.schedule = result
                     .context(Message::LoadingSchedule)?
                     .decode()
@@ -359,7 +368,7 @@ impl Calendar {
                 self.time = time;
 
                 if self.channel.id() != ws::ChannelId::NONE {
-                    self.load_schedule(ctx);
+                    self.load_schedule(ctx, false);
                 }
 
                 Ok(true)
@@ -367,7 +376,8 @@ impl Calendar {
         }
     }
 
-    fn load_schedule(&mut self, ctx: &Context<Self>) {
+    fn load_schedule(&mut self, ctx: &Context<Self>, show_loading: bool) {
+        self.loading = show_loading;
         let weeks = ctx.props().weeks.max(1);
         let today = api::Date::today();
 

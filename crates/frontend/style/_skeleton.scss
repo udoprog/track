@@ -1,0 +1,31 @@
+@use 'grid' as g;
+
+.skeleton {
+    min-height: $input-height;
+    border: 1px solid $border-subtle-transparent;
+    background: $bg-dark-transparent;
+    // Rolling shine that sweeps across to signal a temporary placeholder.
+    background-image: linear-gradient(
+        100deg,
+        transparent 30%,
+        rgba(255, 255, 255, 0.06) 50%,
+        transparent 70%
+    );
+    background-size: 200% 100%;
+    background-repeat: no-repeat;
+    animation: skeleton-shine 1.4s ease-in-out infinite;
+
+    @include g.on-mobile {
+        min-height: $input-height-touch;
+    }
+}
+
+@keyframes skeleton-shine {
+    from {
+        background-position: 200% 0;
+    }
+
+    to {
+        background-position: -200% 0;
+    }
+}
