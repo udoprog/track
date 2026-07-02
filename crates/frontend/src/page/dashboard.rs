@@ -59,6 +59,7 @@ pub(crate) enum Msg {
     SetPage(usize),
     SetWeek(i32),
     SetWeekStart(bool),
+    ResetSchedule,
     Navigate(Route),
     SetTime(TimeInfo),
 }
@@ -156,6 +157,7 @@ impl Component for Dashboard {
                         on_adjust_weeks={ctx.link().callback(Msg::AdjustScheduleWeeks)}
                         on_set_week={ctx.link().callback(Msg::SetWeek)}
                         on_set_week_start={ctx.link().callback(Msg::SetWeekStart)}
+                        on_reset={ctx.link().callback(|()| Msg::ResetSchedule)}
                     />
                 </div>
             </>
@@ -381,6 +383,14 @@ impl Dashboard {
             Msg::SetWeekStart(week_start) => {
                 self.router.push(Route::Dashboard(DashboardQuery {
                     week_start,
+                    ..self.dashboard_query(ctx)
+                }));
+                Ok(true)
+            }
+            Msg::ResetSchedule => {
+                self.router.push(Route::Dashboard(DashboardQuery {
+                    week: 0,
+                    week_start: false,
                     ..self.dashboard_query(ctx)
                 }));
                 Ok(true)

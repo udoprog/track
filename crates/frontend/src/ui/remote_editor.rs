@@ -441,7 +441,7 @@ impl Component for RemoteEditor {
                                                 <Button class="fill" icon="chevron-down" title="Lower priority" disabled={index + 1 == count} onclick={link.callback(move |_| Msg::Move(index, 1))} />
                                             </div>
 
-                                            <span class={classes!("input-checkbox", "mobile-has-text", enabled.then_some("checked"))} onclick={link.callback(move |_| Msg::SetEnabled(id, !enabled))} title="Use this source for dates and sync">
+                                            <span class={classes!("input-checkbox", "mobile-has-text", enabled.then_some("checked"))} onclick={link.callback(move |_| Msg::SetEnabled(id, !enabled))} title="Enable this remote">
                                                 <span class="mark" />
                                                 <span class="mobile-only">{"Enabled"}</span>
                                             </span>

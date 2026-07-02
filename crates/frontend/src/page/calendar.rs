@@ -29,6 +29,9 @@ pub(crate) struct Props {
     /// Set whether the start of the week is revealed (parent persists it in the
     /// URL).
     pub(crate) on_set_week_start: Callback<bool>,
+    /// Reset the visible window back to the current week (parent clears the
+    /// offset and week-start reveal in the URL).
+    pub(crate) on_reset: Callback<()>,
 }
 
 pub(crate) struct Calendar {
@@ -160,6 +163,10 @@ impl Component for Calendar {
             let cb = ctx.props().on_set_week_start.clone();
             Callback::from(move |_| cb.emit(!week_start))
         };
+        let on_reset = {
+            let cb = ctx.props().on_reset.clone();
+            Callback::from(move |_| cb.emit(()))
+        };
 
         html! {
             <div class="column">
@@ -182,6 +189,7 @@ impl Component for Calendar {
                         <Button icon="plus" title="More weeks" onclick={on_more} />
                     </div>
 
+                    <Button icon="arrow-uturn-left" title="Reset to current week" onclick={on_reset} disabled={week_offset == 0 && !week_start} />
                     <Button icon="chevron-right" title="Next week" onclick={on_next} />
                 </div>
 
