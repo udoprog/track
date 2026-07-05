@@ -861,7 +861,20 @@ impl ::sqll::BindValue for StringKind {
     }
 }
 
-#[derive(Debug, Clone, Copy, Encode, Decode, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    Clone,
+    Copy,
+    Encode,
+    Decode,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 #[musli(crate = musli_core)]
 #[serde(rename_all = "lowercase")]
 pub enum ImageSource {
@@ -885,16 +898,6 @@ impl ImageSource {
             ImageSource::Tmdb => "tmdb",
             ImageSource::Unknown => "unknown",
         }
-    }
-}
-
-impl PartialEq for ImageSource {
-    #[inline]
-    fn eq(&self, other: &ImageSource) -> bool {
-        matches!(
-            (self, other),
-            (ImageSource::Tvdb, ImageSource::Tvdb) | (ImageSource::Tmdb, ImageSource::Tmdb)
-        )
     }
 }
 

@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
@@ -10,10 +10,10 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaQuery, Route, Router, ShowDetailQuery};
 use crate::ui::{
-    Button, ConfirmDanger, ContextMenu, EpisodePicker, Image, ImageGallery, ImageItem, Loading,
-    MarkTimeMenu, MediaSettingsModal, Modal, OutlineControl, OutlineEntry, OutlineHandle,
-    ReleaseModal, ReleaseTarget, RemoteEditor, RemoteSourceKind, SettingsTarget, TimePreset,
-    Tracked, TranslationsModal, Variant,
+    Button, ConfirmDanger, ContextMenu, EpisodePicker, GraphicsSourceFilter, Image, ImageGallery,
+    ImageItem, Loading, MarkTimeMenu, MediaSettingsModal, Modal, OutlineControl, OutlineEntry,
+    OutlineHandle, ReleaseModal, ReleaseTarget, RemoteEditor, RemoteSourceKind, SettingsTarget,
+    TimePreset, Tracked, TranslationsModal, Variant,
 };
 
 const ORPHAN_HINT: &str = r#"
@@ -49,6 +49,8 @@ pub(crate) struct ShowDetail {
     channel: ws::Channel,
     show: ShowState,
     graphics: BTreeMap<api::ImageKind, Vec<ImageItem>>,
+    present: BTreeSet<api::ImageSource>,
+    graphics_hidden_sources: HashSet<api::ImageSource>,
     season_graphics: BTreeMap<api::ImageKind, Vec<ImageItem>>,
     seasons: Vec<api::Season>,
     selected: Option<usize>,
@@ -158,6 +160,7 @@ pub(crate) enum Msg {
     ResetImageSelection(api::ImageKind),
     PickBestImageDone(Result<ws::Packet<api::PickBestImages>, ws::Error>),
     ResetImageSelectionDone(Result<ws::Packet<api::ResetImageSelection>, ws::Error>),
+    ToggleGraphicsSource(api::ImageSource),
     SetRemoteEnabled(api::RemoteId, bool),
     SetRemoteEnabledDone(Result<ws::Packet<api::SetShowRemoteEnabled>, ws::Error>),
     SetRemoteSyncKinds(api::RemoteId, Option<api::SyncKindSet>),
@@ -250,6 +253,8 @@ impl Component for ShowDetail {
             channel: ws::Channel::default(),
             show: ShowState::Loading,
             graphics: BTreeMap::new(),
+            present: BTreeSet::new(),
+            graphics_hidden_sources: HashSet::new(),
             season_graphics: BTreeMap::new(),
             seasons: Vec::new(),
             selected: None,
@@ -1137,6 +1142,13 @@ impl ShowDetail {
                 self.load_show(ctx);
                 Ok(true)
             }
+            Msg::ToggleGraphicsSource(source) => {
+                if !self.graphics_hidden_sources.remove(&source) {
+                    self.graphics_hidden_sources.insert(source);
+                }
+
+                Ok(true)
+            }
             Msg::SetRemoteEnabled(remote_id, enabled) => {
                 if let ShowState::Loaded(show) = &mut self.show
                     && let Some(entry) = show.remotes.iter_mut().find(|e| e.id == remote_id)
@@ -1551,6 +1563,7 @@ impl ShowDetail {
 
     fn update_graphics(&mut self) {
         self.graphics.clear();
+        self.present.clear();
 
         if let ShowState::Loaded(show) = &self.show {
             for i in &show.images {
@@ -1562,6 +1575,8 @@ impl ShowDetail {
                     image: i.image.clone(),
                     score: i.score,
                 });
+
+                self.present.insert(i.source);
             }
         }
     }
@@ -1683,15 +1698,28 @@ impl ShowDetail {
             _ => false,
         };
 
+        let hidden = self.graphics_hidden_sources.clone();
+
         html! {
             <Modal icon="photo" title="Graphics" on_close={link.callback(|_| Msg::CloseImageModal)}>
                 <div class="row desktop-align-end">
+                    <GraphicsSourceFilter present={self.present.clone()} hidden={hidden.clone()} on_toggle={link.callback(Msg::ToggleGraphicsSource)} />
                     <Button icon="sparkles" variant={Variant::Primary} title="Pick the best graphic for every kind" text="Pick best (all)" onclick={link.callback(|_| Msg::PickBestImage(None))} />
                 </div>
-                {for self.graphics.iter().map(|(&kind, items)| {
-                    html! {
+                {for self.graphics.iter().filter_map(|(&kind, items)| {
+                    let items: Vec<ImageItem> = items
+                        .iter()
+                        .filter(|item| !hidden.contains(&item.source))
+                        .cloned()
+                        .collect();
+
+                    if items.is_empty() {
+                        return None;
+                    }
+
+                    Some(html! {
                         <ImageGallery
-                            items={items.clone()}
+                            {items}
                             {kind}
                             user_selected={user_selected(kind)}
                             on_select={link.callback(move |id| Msg::SelectImage(kind, id))}
@@ -1699,7 +1727,7 @@ impl ShowDetail {
                             on_pick_best={Some(link.callback(move |_| Msg::PickBestImage(Some(kind))))}
                             on_reset={Some(link.callback(move |_| Msg::ResetImageSelection(kind)))}
                         />
-                    }
+                    })
                 })}
             </Modal>
         }

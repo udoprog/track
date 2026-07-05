@@ -1,6 +1,6 @@
 use api::TimeInfo;
 use musli_web::web03::prelude::*;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use yew::prelude::*;
 
 use crate::SetupChannel;
@@ -8,9 +8,9 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaQuery, Route, Router};
 use crate::ui::{
-    Button, ConfirmDanger, ContextMenu, Image, ImageGallery, ImageItem, Loading, MarkTimeMenu,
-    MediaSettingsModal, Modal, ReleaseModal, ReleaseTarget, RemoteEditor, RemoteSourceKind,
-    SettingsTarget, TimePreset, Tracked, TranslationsModal, Variant,
+    Button, ConfirmDanger, ContextMenu, GraphicsSourceFilter, Image, ImageGallery, ImageItem,
+    Loading, MarkTimeMenu, MediaSettingsModal, Modal, ReleaseModal, ReleaseTarget, RemoteEditor,
+    RemoteSourceKind, SettingsTarget, TimePreset, Tracked, TranslationsModal, Variant,
 };
 
 struct WatchedState {
@@ -33,6 +33,8 @@ pub(crate) struct MovieDetail {
     channel: ws::Channel,
     movie: MovieState,
     graphics: BTreeMap<api::ImageKind, Vec<ImageItem>>,
+    present: BTreeSet<api::ImageSource>,
+    graphics_hidden_sources: HashSet<api::ImageSource>,
     watched: Vec<WatchedState>,
     confirm_remove: bool,
     remove_anchor: NodeRef,
@@ -92,6 +94,7 @@ pub(crate) enum Msg {
     ResetImageSelection(api::ImageKind),
     PickBestImageDone(Result<ws::Packet<api::PickBestImages>, ws::Error>),
     ResetImageSelectionDone(Result<ws::Packet<api::ResetImageSelection>, ws::Error>),
+    ToggleGraphicsSource(api::ImageSource),
     OpenImageModal,
     CloseImageModal,
     OpenSettingsModal,
@@ -168,6 +171,8 @@ impl Component for MovieDetail {
             channel: ws::Channel::default(),
             movie: MovieState::Loading,
             graphics: BTreeMap::new(),
+            present: BTreeSet::new(),
+            graphics_hidden_sources: HashSet::new(),
             watched: Vec::new(),
             confirm_remove: false,
             remove_anchor: NodeRef::default(),
@@ -688,6 +693,13 @@ impl MovieDetail {
                 self.load_movie(ctx);
                 Ok(true)
             }
+            Msg::ToggleGraphicsSource(source) => {
+                if !self.graphics_hidden_sources.remove(&source) {
+                    self.graphics_hidden_sources.insert(source);
+                }
+
+                Ok(true)
+            }
             Msg::OpenImageModal => {
                 self.image_modal = true;
                 self.settings_modal = false;
@@ -833,6 +845,7 @@ impl MovieDetail {
 
     fn update_graphics(&mut self) {
         self.graphics.clear();
+        self.present.clear();
 
         if let MovieState::Loaded(movie) = &self.movie {
             for i in &movie.images {
@@ -844,6 +857,8 @@ impl MovieDetail {
                     image: i.image.clone(),
                     score: i.score,
                 });
+
+                self.present.insert(i.source);
             }
         }
     }
@@ -1178,15 +1193,28 @@ impl MovieDetail {
             _ => false,
         };
 
+        let hidden = self.graphics_hidden_sources.clone();
+
         html! {
             <Modal icon="photo" title="Graphics" on_close={link.callback(|_| Msg::CloseImageModal)}>
                 <div class="row desktop-align-end">
+                    <GraphicsSourceFilter present={self.present.clone()} hidden={hidden.clone()} on_toggle={link.callback(Msg::ToggleGraphicsSource)} />
                     <Button icon="sparkles" variant={Variant::Primary} title="Pick the best graphic for every kind" text="Pick best (all)" onclick={link.callback(|_| Msg::PickBestImage(None))} />
                 </div>
-                {for self.graphics.iter().map(|(&kind, items)| {
-                    html! {
+                {for self.graphics.iter().filter_map(|(&kind, items)| {
+                    let items: Vec<ImageItem> = items
+                        .iter()
+                        .filter(|item| !hidden.contains(&item.source))
+                        .cloned()
+                        .collect();
+
+                    if items.is_empty() {
+                        return None;
+                    }
+
+                    Some(html! {
                         <ImageGallery
-                            items={items.clone()}
+                            {items}
                             kind={kind}
                             user_selected={user_selected(kind)}
                             on_select={link.callback(move |id| Msg::SelectImage(kind, id))}
@@ -1194,7 +1222,7 @@ impl MovieDetail {
                             on_pick_best={Some(link.callback(move |_| Msg::PickBestImage(Some(kind))))}
                             on_reset={Some(link.callback(move |_| Msg::ResetImageSelection(kind)))}
                         />
-                    }
+                    })
                 })}
             </Modal>
         }
