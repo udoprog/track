@@ -1,6 +1,7 @@
-//! Top-level pages, one per route, plus the dashboard's embedded calendar. Each
-//! page lives in its own module, named after the component it exports, and is
-//! re-exported here so callers can refer to it as `crate::page::<Name>`.
+//! Top-level pages, one per route, plus the dashboard's embedded calendar and
+//! watch-next sections. Each page lives in its own module, named after the
+//! component it exports, and is re-exported here so callers can refer to it as
+//! `crate::page::<Name>`.
 
 mod calendar;
 mod dashboard;
@@ -10,6 +11,7 @@ mod queue;
 mod search;
 mod settings;
 mod show_detail;
+mod watch_next;
 
 pub(crate) use self::calendar::Calendar;
 pub(crate) use self::dashboard::Dashboard;
@@ -19,3 +21,4 @@ pub(crate) use self::queue::Queue;
 pub(crate) use self::search::Search;
 pub(crate) use self::settings::Settings;
 pub(crate) use self::show_detail::ShowDetail;
+pub(crate) use self::watch_next::WatchNext;

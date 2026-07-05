@@ -1696,10 +1696,11 @@ impl PendingInfo {
 pub struct Pending {
     pub info: PendingInfo,
     pub aired: Option<Timestamp>,
-    /// The pending slot's date; the list is ordered by this, most recent first.
     pub timestamp: Timestamp,
     pub poster: Option<Image>,
     pub banner: Option<Image>,
+    pub season_poster: Option<Image>,
+    pub season_banner: Option<Image>,
 }
 
 /// Implemented by types that carry both a civil air date and an optional

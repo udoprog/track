@@ -533,6 +533,12 @@ struct InnerImage {
     #[sql = "FROM movie_images mi JOIN images i ON i.id = mi.image_id"]
     #[sql = "WHERE mi.movie_id = ? AND mi.kind = ?"]
     image_for_movie: TypedStatement<(MovieId, ImageKind), PendingImageRow>,
+    #[sql = "SELECT i.source, i.path"]
+    #[sql = "FROM season_images si"]
+    #[sql = "JOIN seasons se ON se.id = si.season_id"]
+    #[sql = "JOIN images i ON i.id = si.image_id"]
+    #[sql = "WHERE se.show_id = ? AND se.season = ? AND si.kind = ?"]
+    image_for_season: TypedStatement<(ShowId, SeasonNumber, ImageKind), PendingImageRow>,
 }
 
 impl InnerImage {
@@ -548,6 +554,19 @@ impl InnerImage {
     ) -> Result<Option<api::Image>> {
         let poster_row = self.image_for_movie.bind((movie_id, kind))?.first()?;
         Ok(poster_row.map(|p| api::Image::new(p.source, &p.path)))
+    }
+
+    fn image_for_season(
+        &mut self,
+        show_id: ShowId,
+        season: SeasonNumber,
+        kind: ImageKind,
+    ) -> Result<Option<api::Image>> {
+        let row = self
+            .image_for_season
+            .bind((show_id, season, kind))?
+            .first()?;
+        Ok(row.map(|p| api::Image::new(p.source, &p.path)))
     }
 }
 
@@ -4606,6 +4625,12 @@ impl Database {
 
                         let poster = s.image.image_for_show(d.show_id, ImageKind::Poster)?;
                         let banner = s.image.image_for_show(d.show_id, ImageKind::Banner)?;
+                        let season_poster =
+                            s.image
+                                .image_for_season(d.show_id, d.season, ImageKind::Poster)?;
+                        let season_banner =
+                            s.image
+                                .image_for_season(d.show_id, d.season, ImageKind::Banner)?;
 
                         let show_title = s
                             .translations
@@ -4632,6 +4657,8 @@ impl Database {
                             timestamp: r.timestamp,
                             poster,
                             banner,
+                            season_poster,
+                            season_banner,
                         };
                     }
 
@@ -4660,6 +4687,8 @@ impl Database {
                             timestamp: r.timestamp,
                             poster,
                             banner,
+                            season_poster: None,
+                            season_banner: None,
                         };
                     }
 
@@ -4701,6 +4730,12 @@ impl Database {
                 let config = s.config_language()?;
                 let poster = s.image.image_for_show(d.show_id, ImageKind::Poster)?;
                 let banner = s.image.image_for_show(d.show_id, ImageKind::Banner)?;
+                let season_poster =
+                    s.image
+                        .image_for_season(d.show_id, d.season, ImageKind::Poster)?;
+                let season_banner =
+                    s.image
+                        .image_for_season(d.show_id, d.season, ImageKind::Banner)?;
 
                 let show_title = s
                     .translations
@@ -4727,6 +4762,8 @@ impl Database {
                     timestamp,
                     poster,
                     banner,
+                    season_poster,
+                    season_banner,
                 }))
             }
             api::PendingKind::Movie { movie } => {
@@ -4751,6 +4788,8 @@ impl Database {
                     timestamp,
                     poster,
                     banner,
+                    season_poster: None,
+                    season_banner: None,
                 }))
             }
         });
