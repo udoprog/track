@@ -373,23 +373,25 @@ impl Search {
             .callback(move |_| Msg::TrackShow(slug.clone(), remote.clone()));
 
         html! {
-            <div key={r.remote.to_string()} class="desktop-row mobile-column">
+            <div key={r.remote.to_string()} class="desktop-row mobile-column align-top">
                 <Image class="poster poster-side top desktop-only" src={r.poster.clone()} placeholder=true />
                 <Image class="banner mobile-only" src={r.banner.clone()} placeholder=true />
 
                 <div class="column top fill">
                     <div class="row-split">
-                        <a class="item-inline-lg" href={r.remote.show_url(r.slug.as_deref())} target="_blank" rel="noopener noreferrer" title={format!("Open on {}", r.remote.source())}>
-                            <span class={classes!("logo", r.remote.source().as_id())} />
-                        </a>
+                        <div class="row">
+                            <a class="item-inline-lg" href={r.remote.show_url(r.slug.as_deref())} target="_blank" rel="noopener noreferrer" title={format!("Open on {}", r.remote.source())}>
+                                <span class={classes!("logo", r.remote.source().as_id())} />
+                            </a>
 
-                        <h2 class={classes!(on_nav.is_some().then_some("clickable"))} onclick={on_nav.clone()}>
-                            <div class="item-inline" title="Movie">
-                                <div class="icon tv" />
-                            </div>
+                            <h2 class={classes!(on_nav.is_some().then_some("clickable"))} onclick={on_nav.clone()}>
+                                <div class="item-inline" title="Movie">
+                                    <div class="icon tv" />
+                                </div>
 
-                            <span class="item-title">{r.title.as_deref().unwrap_or("Untitled Movie")}</span>
-                        </h2>
+                                <span class="item-title">{r.title.as_deref().unwrap_or("Untitled Movie")}</span>
+                            </h2>
+                        </div>
 
                         <div class="row">
                             if let Some(on_nav) = on_nav {
@@ -440,17 +442,19 @@ impl Search {
 
                 <div class="column fill">
                     <div class="row-split">
-                        <a class="item-inline-lg" href={r.remote.movie_url()} target="_blank" rel="noopener noreferrer" title={format!("Open on {}", r.remote.source())}>
-                            <span class={classes!("logo", r.remote.source().as_id())} />
-                        </a>
+                        <div class="row">
+                            <a class="item-inline-lg" href={r.remote.movie_url()} target="_blank" rel="noopener noreferrer" title={format!("Open on {}", r.remote.source())}>
+                                <span class={classes!("logo", r.remote.source().as_id())} />
+                            </a>
 
-                        <h2 class={classes!(on_nav.is_some().then_some("clickable"))} onclick={on_nav.clone()}>
-                            <div class="item-inline" title="Movie">
-                                <div class="icon film" />
-                            </div>
+                            <h2 class={classes!(on_nav.is_some().then_some("clickable"))} onclick={on_nav.clone()}>
+                                <div class="item-inline" title="Movie">
+                                    <div class="icon film" />
+                                </div>
 
-                            <span class="item-title">{r.title.as_deref().unwrap_or("Untitled Movie")}</span>
-                        </h2>
+                                <span class="item-title">{r.title.as_deref().unwrap_or("Untitled Movie")}</span>
+                            </h2>
+                        </div>
 
                         <div class="row">
                             if let Some(on_nav) = on_nav {
