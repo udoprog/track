@@ -103,11 +103,7 @@ impl WsHandler {
                     .read::<api::GetShowRequest>()
                     .context("Expected a request payload")?;
 
-                let show = self
-                    .db
-                    .show_by_id(req.id)
-                    .await?
-                    .context("Expected show to exist")?;
+                let show = self.db.show_by_id(req.id).await?;
 
                 outgoing.write(show);
             }
@@ -260,11 +256,7 @@ impl WsHandler {
                 let req = incoming
                     .read::<api::GetMovieRequest>()
                     .context("Expected a request payload")?;
-                let movie = self
-                    .db
-                    .movie_by_id(req.id)
-                    .await?
-                    .context("Expected movie to exist")?;
+                let movie = self.db.movie_by_id(req.id).await?;
                 outgoing.write(movie);
             }
             api::Request::TrackMovie => {

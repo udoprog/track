@@ -298,19 +298,21 @@ impl Queue {
 
         html! {
             <div class={classes!("row", clickable)} onclick={onclick}>
-                <span class="item-inline"><span class={classes!("icon", icon)} /></span>
+                <div class="row-split fill">
+                    <span class="item-inline"><span class={classes!("icon", icon)} /></span>
 
-                <span class="row fill">
-                    <strong>{focus.title()}</strong>
+                    <span class="row fill">
+                        <strong>{focus.title()}</strong>
 
-                    <span>{MDASH}</span>
+                        <span>{MDASH}</span>
 
-                    if let Some(current) = current {
-                        { current }
-                    } else {
-                        <span class="text-muted">{"None"}</span>
-                    }
-                </span>
+                        if let Some(current) = current {
+                            { current }
+                        } else {
+                            <span class="text-muted">{"None"}</span>
+                        }
+                    </span>
+                </div>
 
                 <span class="status">{count}</span>
             </div>
@@ -329,16 +331,18 @@ impl Queue {
 
         html! {
             <div class="column">
-                <h3>{focus.title()}</h3>
+                <div class="row-split">
+                    <h3>{focus.title()}</h3>
 
-                <div class="row">
-                    <div class="input-group">
-                        <button class="desktop-has-text" onclick={link.callback(|_| Msg::Focus(None))} title="Back to overview">
-                            <span class="icon arrow-uturn-left" />
-                            <span class="desktop-only">{"Back"}</span>
-                        </button>
+                    <div class="row">
+                        <div class="input-group">
+                            <button class="desktop-has-text" onclick={link.callback(|_| Msg::Focus(None))} title="Back to overview">
+                                <span class="icon arrow-uturn-left" />
+                                <span class="desktop-only">{"Back"}</span>
+                            </button>
 
-                        {buttons}
+                            {buttons}
+                        </div>
                     </div>
                 </div>
 

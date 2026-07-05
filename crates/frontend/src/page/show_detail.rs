@@ -34,9 +34,20 @@ struct OrphanedWatchedState {
     watched: api::OrphanedWatched,
 }
 
+/// Load state for the show this page renders.
+enum ShowState {
+    /// The initial request has not resolved yet.
+    Loading,
+    /// The backend confirmed there is no such show (e.g. deleted or a
+    /// hand-edited URL). Resolves itself if a matching create/change broadcast
+    /// arrives.
+    Missing,
+    Loaded(Box<api::Show>),
+}
+
 pub(crate) struct ShowDetail {
     channel: ws::Channel,
-    show: Option<api::Show>,
+    show: ShowState,
     graphics: BTreeMap<api::ImageKind, Vec<ImageItem>>,
     season_graphics: BTreeMap<api::ImageKind, Vec<ImageItem>>,
     seasons: Vec<api::Season>,
@@ -231,7 +242,7 @@ impl Component for ShowDetail {
 
         Self {
             channel: ws::Channel::default(),
-            show: None,
+            show: ShowState::Loading,
             graphics: BTreeMap::new(),
             season_graphics: BTreeMap::new(),
             seasons: Vec::new(),
@@ -323,8 +334,17 @@ impl Component for ShowDetail {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
-        let Some(ref show) = self.show else {
-            return html!(<Loading />);
+        let show = match &self.show {
+            ShowState::Loading => return html!(<Loading />),
+            ShowState::Missing => {
+                return html! {
+                    <div class="box info">
+                        <span class="icon exclamation-triangle" />
+                        <span>{"No such show"}</span>
+                    </div>
+                };
+            }
+            ShowState::Loaded(show) => show,
         };
 
         let link = ctx.link();
@@ -492,7 +512,7 @@ impl Component for ShowDetail {
         let props = ctx.props();
 
         if props.show_id != old.show_id {
-            self.show = None;
+            self.show = ShowState::Loading;
             self.seasons.clear();
             self.selected = None;
             self.expanded_seasons = false;
@@ -554,7 +574,7 @@ impl ShowDetail {
                     self.load_orphaned(ctx);
                     self.load_config(ctx);
                 } else {
-                    self.show = None;
+                    self.show = ShowState::Loading;
                     self.seasons.clear();
                     self.episodes.clear();
                     self.pending_episode = None;
@@ -570,10 +590,13 @@ impl ShowDetail {
                     return Ok(false);
                 }
                 match &event.kind {
-                    api::AppEventKind::ShowChanged { show } if show.id == props.show_id => {
+                    api::AppEventKind::ShowChanged { show }
+                    | api::AppEventKind::ShowCreated { show }
+                        if show.id == props.show_id =>
+                    {
                         self.background
                             .background(show.backdrop.as_ref().map(|i| i.proxy_url()));
-                        self.show = Some(show.clone());
+                        self.show = ShowState::Loaded(Box::new(show.clone()));
                         self.update_graphics();
                         Ok(true)
                     }
@@ -649,12 +672,23 @@ impl ShowDetail {
                     .decode()
                     .context(Message::LoadingShow)?;
 
-                self.background
-                    .background(show.backdrop.as_ref().map(|i| i.proxy_url()));
-                self.background
-                    .title(show.strings.title().map(str::to_owned));
-                self.show = Some(show);
-                self.update_graphics();
+                match show {
+                    Some(show) => {
+                        self.background
+                            .background(show.backdrop.as_ref().map(|i| i.proxy_url()));
+                        self.background
+                            .title(show.strings.title().map(str::to_owned));
+                        self.show = ShowState::Loaded(Box::new(show));
+                        self.update_graphics();
+                    }
+                    None => {
+                        self.background.background(None);
+                        self.background.title(None);
+                        self.show = ShowState::Missing;
+                        self.update_graphics();
+                    }
+                }
+
                 Ok(true)
             }
             Msg::SeasonsLoaded(result) => {
@@ -880,7 +914,7 @@ impl ShowDetail {
             }
             Msg::SetTrackedDone(tracked, result) => {
                 result.context(Message::UntrackingShow)?;
-                if let Some(ref mut show) = self.show {
+                if let ShowState::Loaded(show) = &mut self.show {
                     show.tracked = tracked;
                 }
                 Ok(true)
@@ -1061,7 +1095,7 @@ impl ShowDetail {
                 Ok(true)
             }
             Msg::SetRemoteEnabled(remote_id, enabled) => {
-                if let Some(ref mut show) = self.show
+                if let ShowState::Loaded(show) = &mut self.show
                     && let Some(entry) = show.remotes.iter_mut().find(|e| e.id == remote_id)
                 {
                     entry.enabled = enabled;
@@ -1087,7 +1121,7 @@ impl ShowDetail {
                 Ok(true)
             }
             Msg::SetRemoteSyncKinds(remote_id, sync_kinds) => {
-                if let Some(ref mut show) = self.show
+                if let ShowState::Loaded(show) = &mut self.show
                     && let Some(entry) = show.remotes.iter_mut().find(|e| e.id == remote_id)
                 {
                     entry.sync_kinds = sync_kinds;
@@ -1122,7 +1156,7 @@ impl ShowDetail {
                 Ok(true)
             }
             Msg::ReorderRemotes(remote_ids) => {
-                if let Some(ref mut show) = self.show {
+                if let ShowState::Loaded(show) = &mut self.show {
                     show.remotes
                         .sort_by_key(|e| remote_ids.iter().position(|id| *id == e.id));
                 }
@@ -1475,7 +1509,7 @@ impl ShowDetail {
     fn update_graphics(&mut self) {
         self.graphics.clear();
 
-        if let Some(ref show) = self.show {
+        if let ShowState::Loaded(show) = &self.show {
             for i in &show.images {
                 self.graphics.entry(i.kind).or_default().push(ImageItem {
                     selected: show.is_selected(i.kind, i.image.key()),

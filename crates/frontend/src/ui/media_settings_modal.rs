@@ -198,7 +198,9 @@ impl MediaSettingsModal {
                     .context(Message::LoadingMovies)?
                     .decode()
                     .context(Message::LoadingMovies)?;
-                self.data = Some(Loaded::Movie(movie));
+                if let Some(movie) = movie {
+                    self.data = Some(Loaded::Movie(movie));
+                }
                 Ok(true)
             }
             Msg::ShowLoaded(result) => {
@@ -206,7 +208,9 @@ impl MediaSettingsModal {
                     .context(Message::LoadingShow)?
                     .decode()
                     .context(Message::LoadingShow)?;
-                self.data = Some(Loaded::Show(show));
+                if let Some(show) = show {
+                    self.data = Some(Loaded::Show(show));
+                }
                 Ok(true)
             }
             Msg::ConfigLoaded(result) => {

@@ -2794,7 +2794,7 @@ api::define! {
     pub type GetShow;
     impl Endpoint for GetShow {
         impl Request for GetShowRequest;
-        type Response<'de> = Show;
+        type Response<'de> = Option<Show>;
     }
 
     pub type GetTranslations;
@@ -2860,7 +2860,7 @@ api::define! {
     pub type GetMovie;
     impl Endpoint for GetMovie {
         impl Request for GetMovieRequest;
-        type Response<'de> = Movie;
+        type Response<'de> = Option<Movie>;
     }
 
     pub type TrackMovie;

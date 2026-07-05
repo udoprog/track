@@ -18,9 +18,20 @@ struct WatchedState {
     watched: api::Watched,
 }
 
+/// Load state for the movie this page renders.
+enum MovieState {
+    /// The initial request has not resolved yet.
+    Loading,
+    /// The backend confirmed there is no such movie (e.g. deleted or a
+    /// hand-edited URL). Resolves itself if a matching create/change broadcast
+    /// arrives.
+    Missing,
+    Loaded(Box<api::Movie>),
+}
+
 pub(crate) struct MovieDetail {
     channel: ws::Channel,
-    movie: Option<api::Movie>,
+    movie: MovieState,
     graphics: BTreeMap<api::ImageKind, Vec<ImageItem>>,
     watched: Vec<WatchedState>,
     confirm_remove: bool,
@@ -149,7 +160,7 @@ impl Component for MovieDetail {
 
         Self {
             channel: ws::Channel::default(),
-            movie: None,
+            movie: MovieState::Loading,
             graphics: BTreeMap::new(),
             watched: Vec::new(),
             confirm_remove: false,
@@ -205,8 +216,17 @@ impl Component for MovieDetail {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
-        let Some(ref movie) = self.movie else {
-            return html!(<Loading />);
+        let movie = match &self.movie {
+            MovieState::Loading => return html!(<Loading />),
+            MovieState::Missing => {
+                return html! {
+                    <div class="box info">
+                        <span class="icon exclamation-triangle" />
+                        <span>{"No such movie"}</span>
+                    </div>
+                };
+            }
+            MovieState::Loaded(movie) => movie,
         };
 
         html! {
@@ -220,7 +240,7 @@ impl Component for MovieDetail {
 
     fn changed(&mut self, ctx: &Context<Self>, old_props: &Props) -> bool {
         if ctx.props().movie_id != old_props.movie_id {
-            self.movie = None;
+            self.movie = MovieState::Loading;
             self.watched.clear();
             self.confirm_remove = false;
             self.confirm_remove_watch = None;
@@ -245,7 +265,7 @@ impl MovieDetail {
                     self.load_watched(ctx);
                     self.load_config(ctx);
                 } else {
-                    self.movie = None;
+                    self.movie = MovieState::Loading;
                     self.watched.clear();
                 }
                 Ok(true)
@@ -259,6 +279,7 @@ impl MovieDetail {
 
                 match &event.kind {
                     api::AppEventKind::MovieChanged { movie }
+                    | api::AppEventKind::MovieCreated { movie }
                         if movie.id == ctx.props().movie_id =>
                     {
                         self.set_movie(movie.clone());
@@ -310,7 +331,16 @@ impl MovieDetail {
                     .decode()
                     .context(Message::LoadingMovies)?;
 
-                self.set_movie(movie);
+                match movie {
+                    Some(movie) => self.set_movie(movie),
+                    None => {
+                        self.background.background(None);
+                        self.background.title(None);
+                        self.movie = MovieState::Missing;
+                        self.update_graphics();
+                    }
+                }
+
                 Ok(true)
             }
             Msg::WatchedLoaded(result) => {
@@ -414,7 +444,7 @@ impl MovieDetail {
                 Ok(false)
             }
             Msg::SetRemoteEnabled(remote_id, enabled) => {
-                if let Some(ref mut movie) = self.movie
+                if let MovieState::Loaded(movie) = &mut self.movie
                     && let Some(entry) = movie.remotes.iter_mut().find(|e| e.id == remote_id)
                 {
                     entry.enabled = enabled;
@@ -438,7 +468,7 @@ impl MovieDetail {
                 Ok(false)
             }
             Msg::SetRemoteSyncKinds(remote_id, sync_kinds) => {
-                if let Some(ref mut movie) = self.movie
+                if let MovieState::Loaded(movie) = &mut self.movie
                     && let Some(entry) = movie.remotes.iter_mut().find(|e| e.id == remote_id)
                 {
                     entry.sync_kinds = sync_kinds;
@@ -462,7 +492,7 @@ impl MovieDetail {
                 Ok(false)
             }
             Msg::ReorderRemotes(remote_ids) => {
-                if let Some(ref mut movie) = self.movie {
+                if let MovieState::Loaded(movie) = &mut self.movie {
                     movie
                         .remotes
                         .sort_by_key(|e| remote_ids.iter().position(|id| *id == e.id));
@@ -513,7 +543,7 @@ impl MovieDetail {
             Msg::SetTrackedDone(tracked, result) => {
                 result.context(Message::UntrackingMovie)?;
 
-                if let Some(ref mut movie) = self.movie {
+                if let MovieState::Loaded(movie) = &mut self.movie {
                     movie.tracked = tracked;
                 }
 
@@ -538,7 +568,7 @@ impl MovieDetail {
                     .decode()
                     .context(Message::AddingPending)?;
 
-                if let Some(ref mut movie) = self.movie {
+                if let MovieState::Loaded(movie) = &mut self.movie {
                     movie.pending = packet.pending.map(|p| p.timestamp);
                 }
 
@@ -562,7 +592,7 @@ impl MovieDetail {
                     .decode()
                     .context(Message::RemovingPending)?;
 
-                if let Some(ref mut movie) = self.movie {
+                if let MovieState::Loaded(movie) = &mut self.movie {
                     movie.pending = None;
                 }
 
@@ -754,14 +784,14 @@ impl MovieDetail {
             .background(movie.backdrop.as_ref().map(|i| i.proxy_url()));
         self.background
             .title(movie.strings.title().map(str::to_owned));
-        self.movie = Some(movie);
+        self.movie = MovieState::Loaded(Box::new(movie));
         self.update_graphics();
     }
 
     fn update_graphics(&mut self) {
         self.graphics.clear();
 
-        if let Some(ref movie) = self.movie {
+        if let MovieState::Loaded(movie) = &self.movie {
             for i in &movie.images {
                 self.graphics.entry(i.kind).or_default().push(ImageItem {
                     selected: movie.is_selected(i.kind, i.image.key()),

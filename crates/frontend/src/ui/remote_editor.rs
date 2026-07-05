@@ -289,7 +289,7 @@ impl Component for RemoteEditor {
                 };
 
                 if target < identifiers.len() {
-                    identifiers.swap(index, target as usize);
+                    identifiers.swap(index, target);
                     ctx.props().on_reorder.emit(identifiers);
                 }
 
