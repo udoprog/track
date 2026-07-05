@@ -106,6 +106,8 @@ pub(crate) struct ShowDetail {
     _set_next_req: ws::Request,
     _select_image_req: ws::Request,
     _clear_image_req: ws::Request,
+    _pick_best_image_req: ws::Request,
+    _reset_image_req: ws::Request,
     _season_images_req: ws::Request,
     _select_season_image_req: ws::Request,
     _clear_season_image_req: ws::Request,
@@ -152,6 +154,10 @@ pub(crate) enum Msg {
     ClearSelectedImage(api::ImageKind),
     SelectImageDone(Result<ws::Packet<api::SelectImage>, ws::Error>),
     ClearSelectedImageDone(Result<ws::Packet<api::ClearSelectedImage>, ws::Error>),
+    PickBestImage(Option<api::ImageKind>),
+    ResetImageSelection(api::ImageKind),
+    PickBestImageDone(Result<ws::Packet<api::PickBestImages>, ws::Error>),
+    ResetImageSelectionDone(Result<ws::Packet<api::ResetImageSelection>, ws::Error>),
     SetRemoteEnabled(api::RemoteId, bool),
     SetRemoteEnabledDone(Result<ws::Packet<api::SetShowRemoteEnabled>, ws::Error>),
     SetRemoteSyncKinds(api::RemoteId, Option<api::SyncKindSet>),
@@ -293,6 +299,8 @@ impl Component for ShowDetail {
             _set_next_req: ws::Request::default(),
             _select_image_req: ws::Request::default(),
             _clear_image_req: ws::Request::default(),
+            _pick_best_image_req: ws::Request::default(),
+            _reset_image_req: ws::Request::default(),
             _season_images_req: ws::Request::default(),
             _select_season_image_req: ws::Request::default(),
             _clear_season_image_req: ws::Request::default(),
@@ -1084,13 +1092,48 @@ impl ShowDetail {
             }
             Msg::SelectImageDone(result) => {
                 result.context(Message::SelectingImage)?;
-                self.image_modal = false;
                 self.load_show(ctx);
                 Ok(true)
             }
             Msg::ClearSelectedImageDone(result) => {
                 result.context(Message::ClearingImage)?;
                 self.image_modal = false;
+                self.load_show(ctx);
+                Ok(true)
+            }
+            Msg::PickBestImage(kind) => {
+                self._pick_best_image_req = self
+                    .channel
+                    .request()
+                    .body(api::PickBestImagesRequest {
+                        owner: api::ImageOwner::Show(props.show_id),
+                        kind,
+                    })
+                    .on_packet(ctx.link().callback(Msg::PickBestImageDone))
+                    .send();
+
+                Ok(false)
+            }
+            Msg::ResetImageSelection(kind) => {
+                self._reset_image_req = self
+                    .channel
+                    .request()
+                    .body(api::ResetImageSelectionRequest {
+                        owner: api::ImageOwner::Show(props.show_id),
+                        kind,
+                    })
+                    .on_packet(ctx.link().callback(Msg::ResetImageSelectionDone))
+                    .send();
+
+                Ok(false)
+            }
+            Msg::PickBestImageDone(result) => {
+                result.context(Message::SelectingImage)?;
+                self.load_show(ctx);
+                Ok(true)
+            }
+            Msg::ResetImageSelectionDone(result) => {
+                result.context(Message::SelectingImage)?;
                 self.load_show(ctx);
                 Ok(true)
             }
@@ -1220,6 +1263,7 @@ impl ShowDetail {
                             kind: i.kind,
                             source: i.source,
                             image: i.image.clone(),
+                            score: i.score,
                         });
                 }
 
@@ -1243,7 +1287,6 @@ impl ShowDetail {
             }
             Msg::SelectSeasonImageDone(result) => {
                 result.context(Message::SelectingImage)?;
-                self.season_image_modal = false;
                 Ok(true)
             }
             Msg::ClearSelectedSeasonImage(kind) => {
@@ -1517,6 +1560,7 @@ impl ShowDetail {
                     kind: i.kind,
                     source: i.source,
                     image: i.image.clone(),
+                    score: i.score,
                 });
             }
         }
@@ -1634,15 +1678,26 @@ impl ShowDetail {
     fn view_image_modal(&self, ctx: &Context<Self>) -> Html {
         let link = ctx.link();
 
+        let user_selected = |kind: api::ImageKind| match &self.show {
+            ShowState::Loaded(show) => show.is_user_selected(kind),
+            _ => false,
+        };
+
         html! {
             <Modal icon="photo" title="Graphics" on_close={link.callback(|_| Msg::CloseImageModal)}>
+                <div class="row desktop-align-end">
+                    <Button icon="sparkles" variant={Variant::Primary} title="Pick the best graphic for every kind" text="Pick best (all)" onclick={link.callback(|_| Msg::PickBestImage(None))} />
+                </div>
                 {for self.graphics.iter().map(|(&kind, items)| {
                     html! {
                         <ImageGallery
                             items={items.clone()}
                             {kind}
+                            user_selected={user_selected(kind)}
                             on_select={link.callback(move |id| Msg::SelectImage(kind, id))}
                             on_clear={link.callback(move |_| Msg::ClearSelectedImage(kind))}
+                            on_pick_best={Some(link.callback(move |_| Msg::PickBestImage(Some(kind))))}
+                            on_reset={Some(link.callback(move |_| Msg::ResetImageSelection(kind)))}
                         />
                     }
                 })}

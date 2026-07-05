@@ -125,6 +125,7 @@ CREATE TABLE
         width INTEGER NOT NULL,
         height INTEGER NOT NULL,
         rank INTEGER NOT NULL DEFAULT 0,
+        score REAL,
         show_id INTEGER REFERENCES shows (id) ON DELETE CASCADE,
         movie_id INTEGER REFERENCES movies (id) ON DELETE CASCADE,
         episode_id INTEGER REFERENCES episodes (id) ON DELETE CASCADE,
@@ -170,6 +171,7 @@ CREATE TABLE
         show_id INTEGER NOT NULL REFERENCES shows (id) ON DELETE CASCADE,
         kind INTEGER NOT NULL,
         image_id INTEGER NOT NULL REFERENCES images (id) ON DELETE CASCADE,
+        user_selected INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (show_id, kind)
     );
 
@@ -178,6 +180,7 @@ CREATE TABLE
         movie_id INTEGER NOT NULL REFERENCES movies (id) ON DELETE CASCADE,
         kind INTEGER NOT NULL,
         image_id INTEGER NOT NULL REFERENCES images (id) ON DELETE CASCADE,
+        user_selected INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (movie_id, kind)
     );
 

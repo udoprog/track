@@ -655,8 +655,8 @@ pub(crate) struct ShowInfo {
     pub original_language: api::Locale,
     pub original_name: Option<String>,
     pub first_air_date: Option<Timestamp>,
-    pub posters: Vec<Image>,
-    pub backdrops: Vec<Image>,
+    pub posters: Vec<(f64, Image)>,
+    pub backdrops: Vec<(f64, Image)>,
     pub selected_poster: Option<ImageKey>,
     pub selected_backdrop: Option<ImageKey>,
     pub seasons: Vec<SeasonInfo>,
@@ -681,8 +681,8 @@ pub(crate) struct MovieInfo {
     pub original_language: api::Locale,
     pub original_title: Option<String>,
     pub original_overview: Option<String>,
-    pub posters: Vec<Image>,
-    pub backdrops: Vec<Image>,
+    pub posters: Vec<(f64, Image)>,
+    pub backdrops: Vec<(f64, Image)>,
     pub selected_poster: Option<ImageKey>,
     pub selected_backdrop: Option<ImageKey>,
     pub remotes: Vec<Remote>,
@@ -723,7 +723,7 @@ fn parse_release_date(s: Option<&str>) -> Option<Timestamp> {
 /// Convert TMDB image entries to `Image`s, ordered best-first by a vote-weighted
 /// Bayesian rating (see [`weighted_rating`]) so an image with a high average but
 /// very few votes can't outrank a well-voted one.
-fn to_images(entries: Vec<ImageResponse>) -> Vec<Image> {
+fn to_images(entries: Vec<ImageResponse>) -> Vec<(f64, Image)> {
     if entries.is_empty() {
         return Vec::new();
     }
@@ -742,7 +742,7 @@ fn to_images(entries: Vec<ImageResponse>) -> Vec<Image> {
         .collect();
 
     scored.sort_by(|a, b| b.0.total_cmp(&a.0));
-    scored.into_iter().map(|(_, image)| image).collect()
+    scored
 }
 
 fn weighted_rating(img: &ImageResponse, mean_rating: f64, m: f64) -> f64 {

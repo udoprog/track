@@ -370,13 +370,9 @@ impl Client {
             images
         };
 
-        let posters = collect(ARTWORK_POSTER);
-        let banners = collect(ARTWORK_BANNER);
+        let mut poster = collect(ARTWORK_POSTER);
+        let banner = collect(ARTWORK_BANNER);
         let fanart = collect(ARTWORK_BACKGROUND);
-
-        let mut poster: Vec<Image> = posters.iter().map(|(_, i)| i.clone()).collect();
-        let banner: Vec<Image> = banners.iter().map(|(_, i)| i.clone()).collect();
-        let fanart: Vec<Image> = fanart.iter().map(|(_, i)| i.clone()).collect();
 
         // The series record's `image` is TVDB's primary poster (its analog of
         // TMDB's poster_path). Prefer it when selecting, and fall back to it as
@@ -386,7 +382,7 @@ impl Client {
         if poster.is_empty()
             && let Some(image) = primary_poster.clone()
         {
-            poster.push(Image::from(image));
+            poster.push((0.0, Image::from(image)));
         }
 
         // Banner and fanart have no primary in the base record, so they fall
@@ -659,11 +655,11 @@ pub(crate) struct SeasonInfo {
 
 pub(crate) struct SeriesInfo {
     pub original_language: api::Locale,
-    pub poster: Vec<Image>,
+    pub poster: Vec<(f64, Image)>,
     pub selected_poster: Option<ImageKey>,
-    pub banner: Vec<Image>,
+    pub banner: Vec<(f64, Image)>,
     pub selected_banner: Option<ImageKey>,
-    pub fanart: Vec<Image>,
+    pub fanart: Vec<(f64, Image)>,
     pub selected_fanart: Option<ImageKey>,
     pub remotes: Vec<SeriesRemote>,
     pub name_translations: Vec<String>,

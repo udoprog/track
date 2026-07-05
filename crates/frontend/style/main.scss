@@ -1039,24 +1039,37 @@ input-controls {
         }
     }
 
-    &.poster>image {
+    .gallery-cell {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+    }
+
+    &.poster .gallery-cell>image {
         aspect-ratio: 2 / 3;
     }
 
-    &.backdrop>image {
+    &.backdrop .gallery-cell>image {
         aspect-ratio: 16 / 9;
     }
 
-    &.screenshot>image {
+    &.screenshot .gallery-cell>image {
         aspect-ratio: 16 / 9;
     }
 
-    &.banner>image {
+    &.banner .gallery-cell>image {
         aspect-ratio: 21 / 4;
     }
 
     image.selected {
         outline: 2px solid $color-primary;
+    }
+
+    .gallery-meta {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        height: 1.1rem;
     }
 }
 

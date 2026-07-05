@@ -1381,6 +1381,10 @@ pub struct MediaImage {
     pub kind: ImageKind,
     pub source: ImageSource,
     pub image: Image,
+    /// Raw remote score used to sort graphics within a single remote. Scores
+    /// are not comparable across remotes and are absent for owners we don't
+    /// score (seasons/episodes).
+    pub score: Option<f64>,
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
@@ -1396,6 +1400,9 @@ pub struct Show {
     pub poster: Option<Image>,
     pub banner: Option<Image>,
     pub backdrop: Option<Image>,
+    /// Kinds whose selected graphic was explicitly chosen by the user (and are
+    /// therefore protected from sync overwriting them).
+    pub user_selected: Vec<ImageKind>,
     pub last_synced_at: Option<Timestamp>,
     pub language: Locale,
     pub include_specials: IncludeSpecials,
@@ -1443,6 +1450,11 @@ impl Show {
                 .unwrap_or(false),
             _ => false,
         }
+    }
+
+    /// Whether the selected graphic for `kind` was explicitly chosen by the user.
+    pub fn is_user_selected(&self, kind: ImageKind) -> bool {
+        self.user_selected.contains(&kind)
     }
 }
 
@@ -1561,6 +1573,9 @@ pub struct Movie {
     pub poster: Option<Image>,
     pub banner: Option<Image>,
     pub backdrop: Option<Image>,
+    /// Kinds whose selected graphic was explicitly chosen by the user (and are
+    /// therefore protected from sync overwriting them).
+    pub user_selected: Vec<ImageKind>,
     pub last_synced_at: Option<Timestamp>,
     pub releases: Vec<MovieRelease>,
     pub language: Locale,
@@ -1611,6 +1626,11 @@ impl Movie {
                 .unwrap_or(false),
             _ => false,
         }
+    }
+
+    /// Whether the selected graphic for `kind` was explicitly chosen by the user.
+    pub fn is_user_selected(&self, kind: ImageKind) -> bool {
+        self.user_selected.contains(&kind)
     }
 }
 
@@ -2708,6 +2728,25 @@ pub struct ClearSelectedImageRequest {
     pub kind: ImageKind,
 }
 
+/// Select the best stored graphic (highest-priority remote's top-scored image)
+/// for a single kind when `kind` is `Some`, or for every kind when `None`. This
+/// marks the selection as user-chosen and operates only on stored data.
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct PickBestImagesRequest {
+    pub owner: ImageOwner,
+    pub kind: Option<ImageKind>,
+}
+
+/// Clear the user override for a kind, re-applying the configured-order default
+/// and handing the kind back to automatic sync management.
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct ResetImageSelectionRequest {
+    pub owner: ImageOwner,
+    pub kind: ImageKind,
+}
+
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct AppEvent {
@@ -3154,6 +3193,18 @@ api::define! {
     pub type ClearSelectedImage;
     impl Endpoint for ClearSelectedImage {
         impl Request for ClearSelectedImageRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type PickBestImages;
+    impl Endpoint for PickBestImages {
+        impl Request for PickBestImagesRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type ResetImageSelection;
+    impl Endpoint for ResetImageSelection {
+        impl Request for ResetImageSelectionRequest;
         type Response<'de> = Empty;
     }
 

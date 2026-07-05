@@ -1556,6 +1556,100 @@ impl WsHandler {
 
                 outgoing.write(api::Empty);
             }
+            api::Request::PickBestImages => {
+                let req = incoming
+                    .read::<api::PickBestImagesRequest>()
+                    .context("Expected a request payload")?;
+
+                match req.owner {
+                    api::ImageOwner::Show(show_id) => {
+                        self.db
+                            .pick_best_show_image(show_id, req.kind, true)
+                            .await?;
+
+                        let show = self
+                            .db
+                            .show_by_id(show_id)
+                            .await?
+                            .context("Expected show to exist")?;
+
+                        self.broadcast.emit(
+                            incoming.channel(),
+                            api::AppEventKind::ShowChanged { show: show.clone() },
+                            "ws pick best images show changed",
+                        );
+                    }
+                    api::ImageOwner::Movie(movie_id) => {
+                        self.db
+                            .pick_best_movie_image(movie_id, req.kind, true)
+                            .await?;
+
+                        let movie = self
+                            .db
+                            .movie_by_id(movie_id)
+                            .await?
+                            .context("Expected movie to exist")?;
+
+                        self.broadcast.emit(
+                            incoming.channel(),
+                            api::AppEventKind::MovieChanged {
+                                movie: movie.clone(),
+                            },
+                            "ws pick best images movie changed",
+                        );
+                    }
+                    api::ImageOwner::Season(_) => {}
+                }
+
+                outgoing.write(api::Empty);
+            }
+            api::Request::ResetImageSelection => {
+                let req = incoming
+                    .read::<api::ResetImageSelectionRequest>()
+                    .context("Expected a request payload")?;
+
+                match req.owner {
+                    api::ImageOwner::Show(show_id) => {
+                        self.db
+                            .pick_best_show_image(show_id, Some(req.kind), false)
+                            .await?;
+
+                        let show = self
+                            .db
+                            .show_by_id(show_id)
+                            .await?
+                            .context("Expected show to exist")?;
+
+                        self.broadcast.emit(
+                            incoming.channel(),
+                            api::AppEventKind::ShowChanged { show: show.clone() },
+                            "ws reset image selection show changed",
+                        );
+                    }
+                    api::ImageOwner::Movie(movie_id) => {
+                        self.db
+                            .pick_best_movie_image(movie_id, Some(req.kind), false)
+                            .await?;
+
+                        let movie = self
+                            .db
+                            .movie_by_id(movie_id)
+                            .await?
+                            .context("Expected movie to exist")?;
+
+                        self.broadcast.emit(
+                            incoming.channel(),
+                            api::AppEventKind::MovieChanged {
+                                movie: movie.clone(),
+                            },
+                            "ws reset image selection movie changed",
+                        );
+                    }
+                    api::ImageOwner::Season(_) => {}
+                }
+
+                outgoing.write(api::Empty);
+            }
             api::Request::Unknown(id) => {
                 anyhow::bail!("Unknown request id: {id:?}");
             }

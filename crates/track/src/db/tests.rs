@@ -142,6 +142,34 @@ fn oneshot_applies_on_existing_db() {
             sync_kinds INTEGER,
             UNIQUE (movie_id, source, value)
         );
+
+        CREATE TABLE images (
+            id INTEGER PRIMARY KEY,
+            kind INTEGER NOT NULL,
+            source INTEGER NOT NULL,
+            path TEXT NOT NULL,
+            width INTEGER NOT NULL,
+            height INTEGER NOT NULL,
+            rank INTEGER NOT NULL DEFAULT 0,
+            show_id INTEGER,
+            movie_id INTEGER,
+            episode_id INTEGER,
+            season_id INTEGER
+        );
+
+        CREATE TABLE show_images (
+            show_id INTEGER NOT NULL,
+            kind INTEGER NOT NULL,
+            image_id INTEGER NOT NULL,
+            PRIMARY KEY (show_id, kind)
+        );
+
+        CREATE TABLE movie_images (
+            movie_id INTEGER NOT NULL,
+            kind INTEGER NOT NULL,
+            image_id INTEGER NOT NULL,
+            PRIMARY KEY (movie_id, kind)
+        );
         ",
     )
     .unwrap();

@@ -11,9 +11,9 @@ use anyhow::{Context as _, Result, anyhow};
 use std::collections::{HashMap, HashSet};
 
 use api::{
-    Config, Country, Date, EpisodeId, Image, ImageId, ImageKind, ImageSource, IncludeSpecials,
-    MarkTime, MovieId, PendingId, ReleaseType, Remote, RemoteId, RemoteSource, RemoteValue,
-    SeasonId, SeasonNumber, ShowId, ThemeType, Timestamp, WatchedId, WatchedKind,
+    Config, Country, Date, EpisodeId, Image, ImageId, ImageKey, ImageKind, ImageSource,
+    IncludeSpecials, MarkTime, MovieId, PendingId, ReleaseType, Remote, RemoteId, RemoteSource,
+    RemoteValue, SeasonId, SeasonNumber, ShowId, ThemeType, Timestamp, WatchedId, WatchedKind,
 };
 use rust_embed::RustEmbed;
 use sqll::{OpenOptions, Pool, PoolBuilder, Row, Statements, TypedStatement};
@@ -62,6 +62,16 @@ struct ImageRow {
     kind: ImageKind,
     source: ImageSource,
     path: String,
+    score: Option<f64>,
+}
+
+/// Kind + (source, path) of a user-chosen selection, used to re-attach it to the
+/// freshly inserted image row after a sync clears and rebuilds images.
+#[derive(Row)]
+struct UserSelectedRow {
+    kind: ImageKind,
+    source: ImageSource,
+    path: String,
 }
 
 #[derive(Row)]
@@ -78,6 +88,7 @@ struct ShowImageRow {
     kind: ImageKind,
     source: ImageSource,
     path: String,
+    score: Option<f64>,
     show_id: ShowId,
 }
 
@@ -87,6 +98,7 @@ struct MovieImageRow {
     kind: ImageKind,
     source: ImageSource,
     path: String,
+    score: Option<f64>,
     movie_id: MovieId,
 }
 
@@ -97,6 +109,7 @@ struct ImageSelectionRow {
     path: String,
     width: u32,
     height: u32,
+    user_selected: bool,
 }
 
 #[derive(Row)]
@@ -116,6 +129,7 @@ struct AllShowImageSelectionRow {
     path: String,
     width: u32,
     height: u32,
+    user_selected: bool,
 }
 
 #[derive(Row)]
@@ -126,6 +140,7 @@ struct AllMovieImageSelectionRow {
     path: String,
     width: u32,
     height: u32,
+    user_selected: bool,
 }
 
 #[derive(Row)]
@@ -637,10 +652,10 @@ struct InnerRead {
     show_id_by_remote: TypedStatement<(RemoteSource, RemoteValue), ShowId>,
 
     // images (shows and movies share one table)
-    #[sql = "SELECT id, kind, source, path FROM images"]
+    #[sql = "SELECT id, kind, source, path, score FROM images"]
     #[sql = "WHERE show_id = ? ORDER BY kind, rank, id"]
     list_show_images: TypedStatement<(ShowId,), ImageRow>,
-    #[sql = "SELECT id, kind, source, path, show_id FROM images"]
+    #[sql = "SELECT id, kind, source, path, score, show_id FROM images"]
     #[sql = "WHERE show_id IS NOT NULL ORDER BY show_id, kind, rank, id"]
     list_all_show_images: TypedStatement<(), ShowImageRow>,
     #[sql = "SELECT ei.episode_id, i.source, i.path, i.width, i.height"]
@@ -648,33 +663,33 @@ struct InnerRead {
     #[sql = "WHERE ei.kind = ? AND ei.episode_id IN (SELECT id FROM episodes WHERE show_id = ? AND season = ?)"]
     list_season_episode_screenshots:
         TypedStatement<(ImageKind, ShowId, SeasonNumber), EpisodeScreenshotRow>,
-    #[sql = "SELECT id, kind, source, path FROM images"]
+    #[sql = "SELECT id, kind, source, path, score FROM images"]
     #[sql = "WHERE movie_id = ? ORDER BY kind, rank, id"]
     list_movie_images: TypedStatement<(MovieId,), ImageRow>,
-    #[sql = "SELECT id, kind, source, path, movie_id FROM images"]
+    #[sql = "SELECT id, kind, source, path, score, movie_id FROM images"]
     #[sql = "WHERE movie_id IS NOT NULL ORDER BY movie_id, kind, rank, id"]
     list_all_movie_images: TypedStatement<(), MovieImageRow>,
     #[sql = "SELECT kind, show_id, movie_id, season_id FROM images WHERE id = ?"]
     image_by_id: TypedStatement<(ImageId,), ImageMetaRow>,
-    #[sql = "SELECT id, kind, source, path FROM images"]
+    #[sql = "SELECT id, kind, source, path, score FROM images"]
     #[sql = "WHERE season_id = ? ORDER BY kind, rank, id"]
     list_season_images: TypedStatement<(SeasonId,), ImageRow>,
     #[sql = "SELECT show_id FROM seasons WHERE id = ?"]
     show_id_for_season: TypedStatement<(SeasonId,), ShowId>,
 
     // selection tables
-    #[sql = "SELECT si.kind, i.source, i.path, i.width, i.height"]
+    #[sql = "SELECT si.kind, i.source, i.path, i.width, i.height, si.user_selected"]
     #[sql = "FROM show_images si JOIN images i ON i.id = si.image_id"]
     #[sql = "WHERE si.show_id = ?"]
     list_show_image_selections: TypedStatement<(ShowId,), ImageSelectionRow>,
-    #[sql = "SELECT si.show_id, si.kind, i.source, i.path, i.width, i.height"]
+    #[sql = "SELECT si.show_id, si.kind, i.source, i.path, i.width, i.height, si.user_selected"]
     #[sql = "FROM show_images si JOIN images i ON i.id = si.image_id"]
     list_all_show_image_selections: TypedStatement<(), AllShowImageSelectionRow>,
-    #[sql = "SELECT mi.kind, i.source, i.path, i.width, i.height"]
+    #[sql = "SELECT mi.kind, i.source, i.path, i.width, i.height, mi.user_selected"]
     #[sql = "FROM movie_images mi JOIN images i ON i.id = mi.image_id"]
     #[sql = "WHERE mi.movie_id = ?"]
     list_movie_image_selections: TypedStatement<(MovieId,), ImageSelectionRow>,
-    #[sql = "SELECT mi.movie_id, mi.kind, i.source, i.path, i.width, i.height"]
+    #[sql = "SELECT mi.movie_id, mi.kind, i.source, i.path, i.width, i.height, mi.user_selected"]
     #[sql = "FROM movie_images mi JOIN images i ON i.id = mi.image_id"]
     list_all_movie_image_selections: TypedStatement<(), AllMovieImageSelectionRow>,
 
@@ -1002,7 +1017,7 @@ struct InnerWrite {
     // images (shows and movies share one table)
     #[sql = "DELETE FROM images WHERE show_id = ?"]
     delete_show_images: TypedStatement<(ShowId,), ()>,
-    #[sql = "INSERT INTO images (id, show_id, kind, source, path, width, height, rank) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"]
+    #[sql = "INSERT INTO images (id, show_id, kind, source, path, width, height, rank, score) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"]
     #[sql = "ON CONFLICT(show_id, kind, path) WHERE show_id IS NOT NULL DO NOTHING"]
     insert_show_image: TypedStatement<
         (
@@ -1014,6 +1029,7 @@ struct InnerWrite {
             u32,
             u32,
             u32,
+            Option<f64>,
         ),
         (),
     >,
@@ -1025,7 +1041,7 @@ struct InnerWrite {
     delete_episode_images_for_show: TypedStatement<(ShowId,), ()>,
     #[sql = "DELETE FROM images WHERE movie_id = ?"]
     delete_movie_images: TypedStatement<(MovieId,), ()>,
-    #[sql = "INSERT INTO images (id, movie_id, kind, source, path, width, height, rank) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"]
+    #[sql = "INSERT INTO images (id, movie_id, kind, source, path, width, height, rank, score) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"]
     #[sql = "ON CONFLICT(movie_id, kind, path) WHERE movie_id IS NOT NULL DO NOTHING"]
     insert_movie_image: TypedStatement<
         (
@@ -1037,6 +1053,7 @@ struct InnerWrite {
             u32,
             u32,
             u32,
+            Option<f64>,
         ),
         (),
     >,
@@ -1044,14 +1061,34 @@ struct InnerWrite {
     delete_season_image_selection: TypedStatement<(SeasonId, ImageKind), ()>,
 
     // selection tables
-    #[sql = "INSERT OR REPLACE INTO show_images (show_id, kind, image_id) VALUES (?, ?, ?)"]
-    set_show_image_selection: TypedStatement<(ShowId, ImageKind, ImageId), ()>,
+    #[sql = "INSERT OR REPLACE INTO show_images (show_id, kind, image_id, user_selected) VALUES (?, ?, ?, ?)"]
+    set_show_image_selection: TypedStatement<(ShowId, ImageKind, ImageId, bool), ()>,
     #[sql = "DELETE FROM show_images WHERE show_id = ? AND kind = ?"]
     delete_show_image_selection: TypedStatement<(ShowId, ImageKind), ()>,
-    #[sql = "INSERT OR REPLACE INTO movie_images (movie_id, kind, image_id) VALUES (?, ?, ?)"]
-    set_movie_image_selection: TypedStatement<(MovieId, ImageKind, ImageId), ()>,
+    // Kind + (source, path) of the show's user-chosen selections, for preserving
+    // them across a sync that clears and re-inserts image rows.
+    #[sql = "SELECT si.kind, i.source, i.path FROM show_images si"]
+    #[sql = "JOIN images i ON i.id = si.image_id"]
+    #[sql = "WHERE si.show_id = ? AND si.user_selected = 1"]
+    user_selected_show_images: TypedStatement<(ShowId,), UserSelectedRow>,
+    // Lowest-rank (highest-priority remote, top score) image id for a kind.
+    #[sql = "SELECT id FROM images WHERE show_id = ? AND kind = ? ORDER BY rank ASC LIMIT 1"]
+    best_show_image: TypedStatement<(ShowId, ImageKind), ImageId>,
+    // Distinct kinds with at least one stored image for a show.
+    #[sql = "SELECT DISTINCT kind FROM images WHERE show_id = ?"]
+    show_image_kinds: TypedStatement<(ShowId,), ImageKind>,
+    #[sql = "INSERT OR REPLACE INTO movie_images (movie_id, kind, image_id, user_selected) VALUES (?, ?, ?, ?)"]
+    set_movie_image_selection: TypedStatement<(MovieId, ImageKind, ImageId, bool), ()>,
     #[sql = "DELETE FROM movie_images WHERE movie_id = ? AND kind = ?"]
     delete_movie_image_selection: TypedStatement<(MovieId, ImageKind), ()>,
+    #[sql = "SELECT si.kind, i.source, i.path FROM movie_images si"]
+    #[sql = "JOIN images i ON i.id = si.image_id"]
+    #[sql = "WHERE si.movie_id = ? AND si.user_selected = 1"]
+    user_selected_movie_images: TypedStatement<(MovieId,), UserSelectedRow>,
+    #[sql = "SELECT id FROM images WHERE movie_id = ? AND kind = ? ORDER BY rank ASC LIMIT 1"]
+    best_movie_image: TypedStatement<(MovieId, ImageKind), ImageId>,
+    #[sql = "SELECT DISTINCT kind FROM images WHERE movie_id = ?"]
+    movie_image_kinds: TypedStatement<(MovieId,), ImageKind>,
     #[sql = "INSERT OR REPLACE INTO episode_images (episode_id, kind, image_id) VALUES (?, ?, ?)"]
     set_episode_image_selection: TypedStatement<(EpisodeId, ImageKind, ImageId), ()>,
     #[sql = "DELETE FROM images WHERE season_id = ?"]
@@ -1549,6 +1586,7 @@ impl Database {
                             path: r.path,
                             width: r.width,
                             height: r.height,
+                            user_selected: r.user_selected,
                         },
                     );
                 }
@@ -2690,6 +2728,7 @@ impl Database {
                             path: r.path,
                             width: r.width,
                             height: r.height,
+                            user_selected: r.user_selected,
                         },
                     );
                 }
@@ -3350,6 +3389,7 @@ impl Database {
         kind: ImageKind,
         rank: u32,
         image: &Image,
+        score: Option<f64>,
     ) -> Result<()> {
         let image = image.clone();
         let mut s = self.inner.clone().exclusive().await?;
@@ -3364,6 +3404,7 @@ impl Database {
                 image.width(),
                 image.height(),
                 rank,
+                score,
             ))?;
 
             Ok(())
@@ -3380,6 +3421,7 @@ impl Database {
         kind: ImageKind,
         rank: u32,
         image: &Image,
+        score: Option<f64>,
     ) -> Result<()> {
         let image = image.clone();
         let mut s = self.inner.clone().exclusive().await?;
@@ -3394,6 +3436,7 @@ impl Database {
                 image.width(),
                 image.height(),
                 rank,
+                score,
             ))?;
             Ok(())
         });
@@ -3407,12 +3450,13 @@ impl Database {
         show_id: ShowId,
         kind: ImageKind,
         image_id: ImageId,
+        user_selected: bool,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.set_show_image_selection
-                .execute((show_id, kind, image_id))?;
+                .execute((show_id, kind, image_id, user_selected))?;
             Ok(())
         });
 
@@ -3425,12 +3469,13 @@ impl Database {
         movie_id: MovieId,
         kind: ImageKind,
         image_id: ImageId,
+        user_selected: bool,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
             s.set_movie_image_selection
-                .execute((movie_id, kind, image_id))?;
+                .execute((movie_id, kind, image_id, user_selected))?;
             Ok(())
         });
 
@@ -3454,11 +3499,14 @@ impl Database {
 
             let owner = match (row.show_id, row.movie_id, row.season_id) {
                 (Some(show_id), _, _) => {
-                    s.set_show_image_selection.execute((show_id, kind, id))?;
+                    // A manual pick is a user selection: protect it from sync.
+                    s.set_show_image_selection
+                        .execute((show_id, kind, id, true))?;
                     api::ImageOwner::Show(show_id)
                 }
                 (_, Some(movie_id), _) => {
-                    s.set_movie_image_selection.execute((movie_id, kind, id))?;
+                    s.set_movie_image_selection
+                        .execute((movie_id, kind, id, true))?;
                     api::ImageOwner::Movie(movie_id)
                 }
                 (_, _, Some(season_id)) => {
@@ -3493,6 +3541,136 @@ impl Database {
                 }
                 api::ImageOwner::Season(season_id) => {
                     s.delete_season_image_selection.execute((season_id, kind))?;
+                }
+            }
+
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    /// Kind + key of the show's user-chosen selections, so a sync that clears
+    /// and rebuilds image rows can re-attach them.
+    pub(crate) async fn user_selected_show_image_keys(
+        &self,
+        show_id: ShowId,
+    ) -> Result<HashMap<ImageKind, ImageKey>> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            let mut out = HashMap::new();
+            let mut stmt = s.user_selected_show_images.bind((show_id,))?;
+
+            while let Some(r) = stmt.next()? {
+                out.insert(r.kind, ImageKey::new(r.source, &r.path));
+            }
+
+            stmt.reset()?;
+            Ok(out)
+        });
+
+        result.await?
+    }
+
+    /// Same as [`user_selected_show_image_keys`], for a movie.
+    pub(crate) async fn user_selected_movie_image_keys(
+        &self,
+        movie_id: MovieId,
+    ) -> Result<HashMap<ImageKind, ImageKey>> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            let mut out = HashMap::new();
+            let mut stmt = s.user_selected_movie_images.bind((movie_id,))?;
+
+            while let Some(r) = stmt.next()? {
+                out.insert(r.kind, ImageKey::new(r.source, &r.path));
+            }
+
+            stmt.reset()?;
+            Ok(out)
+        });
+
+        result.await?
+    }
+
+    /// Select the configured-order default (lowest-rank) stored graphic for the
+    /// given show kind(s) - one kind when `kind` is `Some`, else every kind that
+    /// has an image. `user_selected` records whether this is an explicit user
+    /// choice (pick-best) or a reset to automatic management.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn pick_best_show_image(
+        &self,
+        show_id: ShowId,
+        kind: Option<ImageKind>,
+        user_selected: bool,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            let kinds = match kind {
+                Some(kind) => vec![kind],
+                None => {
+                    let mut kinds = Vec::new();
+                    let mut stmt = s.show_image_kinds.bind((show_id,))?;
+                    while let Some(kind) = stmt.next()? {
+                        kinds.push(kind);
+                    }
+                    stmt.reset()?;
+                    kinds
+                }
+            };
+
+            for kind in kinds {
+                let best = s.best_show_image.bind((show_id, kind))?.first()?;
+
+                if let Some(image_id) = best {
+                    s.set_show_image_selection
+                        .execute((show_id, kind, image_id, user_selected))?;
+                }
+            }
+
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    /// Same as [`pick_best_show_image`], for a movie.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn pick_best_movie_image(
+        &self,
+        movie_id: MovieId,
+        kind: Option<ImageKind>,
+        user_selected: bool,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            let kinds = match kind {
+                Some(kind) => vec![kind],
+                None => {
+                    let mut kinds = Vec::new();
+                    let mut stmt = s.movie_image_kinds.bind((movie_id,))?;
+                    while let Some(kind) = stmt.next()? {
+                        kinds.push(kind);
+                    }
+                    stmt.reset()?;
+                    kinds
+                }
+            };
+
+            for kind in kinds {
+                let best = s.best_movie_image.bind((movie_id, kind))?.first()?;
+
+                if let Some(image_id) = best {
+                    s.set_movie_image_selection.execute((
+                        movie_id,
+                        kind,
+                        image_id,
+                        user_selected,
+                    ))?;
                 }
             }
 
@@ -5200,6 +5378,7 @@ fn show_from_row(row: ShowRow, strings: api::Translations) -> api::Show {
         poster: None,
         banner: None,
         backdrop: None,
+        user_selected: Vec::new(),
         last_synced_at: row.last_synced_at,
         language: row.language,
         include_specials: row.include_specials,
@@ -5238,6 +5417,7 @@ fn image_from_row(row: ImageRow) -> api::MediaImage {
         kind: row.kind,
         source: row.source,
         image: Image::new(row.source, &row.path),
+        score: row.score,
     }
 }
 
@@ -5247,6 +5427,7 @@ fn show_image_from_row(row: ShowImageRow) -> api::MediaImage {
         kind: row.kind,
         source: row.source,
         image: Image::new(row.source, &row.path),
+        score: row.score,
     }
 }
 
@@ -5256,6 +5437,7 @@ fn movie_image_from_row(r: MovieImageRow) -> api::MediaImage {
         kind: r.kind,
         source: r.source,
         image: Image::new(r.source, &r.path),
+        score: r.score,
     }
 }
 
@@ -5268,6 +5450,10 @@ fn apply_image_selection(target: &mut api::Show, r: ImageSelectionRow) {
         api::ImageKind::Backdrop => target.backdrop = Some(image),
         _ => {}
     }
+
+    if r.user_selected {
+        target.user_selected.push(r.kind);
+    }
 }
 
 fn apply_movie_image_selection(target: &mut api::Movie, sel: ImageSelectionRow) {
@@ -5278,6 +5464,10 @@ fn apply_movie_image_selection(target: &mut api::Movie, sel: ImageSelectionRow) 
         api::ImageKind::Banner => target.banner = Some(image),
         api::ImageKind::Backdrop => target.backdrop = Some(image),
         _ => {}
+    }
+
+    if sel.user_selected {
+        target.user_selected.push(sel.kind);
     }
 }
 
@@ -5335,6 +5525,7 @@ fn movie_from_row(row: MovieRow, strings: api::Translations) -> api::Movie {
         poster: None,
         banner: None,
         backdrop: None,
+        user_selected: Vec::new(),
         last_synced_at: row.last_synced_at,
         releases: Vec::new(),
         language: row.language,

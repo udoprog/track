@@ -12,14 +12,14 @@ use crate::{tmdb, tvdb};
 /// it's present in the gallery, otherwise fall back to the first entry.
 /// `images` is expected to be ordered best-first (highest score), so the
 /// fallback is the highest-scored image.
-pub(crate) fn best_image(images: &[Image], selected: Option<ImageKey>) -> Option<ImageKey> {
+pub(crate) fn best_image(images: &[(f64, Image)], selected: Option<ImageKey>) -> Option<ImageKey> {
     if let Some(ref selected) = selected
-        && let Some(found) = images.iter().find(|image| image.key() == selected)
+        && let Some((_, found)) = images.iter().find(|(_, image)| image.key() == selected)
     {
         return Some(found.key().clone());
     }
 
-    images.first().map(|image| image.key().clone())
+    images.first().map(|(_, image)| image.key().clone())
 }
 
 /// Holds tmdb and tvdb clients, constructed only when the relevant API key is

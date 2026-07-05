@@ -350,6 +350,7 @@ async fn ensure_tvmaze_remote(
 struct DraftImage {
     kind: ImageKind,
     image: Image,
+    score: f64,
 }
 
 /// A season's metadata contributed by the base layer.
@@ -497,14 +498,14 @@ impl ShowDraft {
         );
     }
 
-    fn add_image(&mut self, kind: ImageKind, image: Image, selected: bool) {
+    fn add_image(&mut self, kind: ImageKind, image: Image, score: f64, selected: bool) {
         if selected {
             self.selected
                 .entry(kind)
                 .or_insert_with(|| image.key().clone());
         }
 
-        self.images.push(DraftImage { kind, image });
+        self.images.push(DraftImage { kind, image, score });
     }
 }
 
@@ -560,14 +561,14 @@ async fn tmdb_show_layer(
     }
 
     // Graphics accumulate from every source.
-    for poster in &info.posters {
+    for (score, poster) in &info.posters {
         let selected = info.selected_poster.as_ref() == Some(poster.key());
-        draft.add_image(ImageKind::Poster, poster.clone(), selected);
+        draft.add_image(ImageKind::Poster, poster.clone(), *score, selected);
     }
 
-    for backdrop in &info.backdrops {
+    for (score, backdrop) in &info.backdrops {
         let selected = info.selected_backdrop.as_ref() == Some(backdrop.key());
-        draft.add_image(ImageKind::Backdrop, backdrop.clone(), selected);
+        draft.add_image(ImageKind::Backdrop, backdrop.clone(), *score, selected);
     }
 
     if !do_base && !do_air_date {
@@ -687,19 +688,19 @@ async fn tvdb_show_layer(
         draft.add_remote(r.slug.clone(), r.remote.clone());
     }
 
-    for poster in &info.poster {
+    for (score, poster) in &info.poster {
         let selected = info.selected_poster.as_ref() == Some(poster.key());
-        draft.add_image(ImageKind::Poster, poster.clone(), selected);
+        draft.add_image(ImageKind::Poster, poster.clone(), *score, selected);
     }
 
-    for banner in &info.banner {
+    for (score, banner) in &info.banner {
         let selected = info.selected_banner.as_ref() == Some(banner.key());
-        draft.add_image(ImageKind::Banner, banner.clone(), selected);
+        draft.add_image(ImageKind::Banner, banner.clone(), *score, selected);
     }
 
-    for fanart in &info.fanart {
+    for (score, fanart) in &info.fanart {
         let selected = info.selected_fanart.as_ref() == Some(fanart.key());
-        draft.add_image(ImageKind::Backdrop, fanart.clone(), selected);
+        draft.add_image(ImageKind::Backdrop, fanart.clone(), *score, selected);
     }
 
     if do_base {
@@ -1146,27 +1147,50 @@ async fn persist_show_draft(
     }
 
     // Graphics: replace all show images with the accumulated set, ranked in
-    // source-priority (accumulation) order, selecting the highest-priority pick.
+    // source-priority (accumulation) order. Preserve the user's explicit pick
+    // per kind if that image still exists; otherwise fall back to the
+    // highest-priority default.
+    let preserved = db.user_selected_show_image_keys(show_id).await?;
+
     db.clear_show_images(show_id).await?;
 
     let mut ranks: HashMap<ImageKind, u32> = HashMap::new();
-    let mut selected_ids: HashMap<ImageKind, ImageId> = HashMap::new();
+    let mut user_ids: HashMap<ImageKind, ImageId> = HashMap::new();
+    let mut default_ids: HashMap<ImageKind, ImageId> = HashMap::new();
 
     for draft_image in &draft.images {
         let id = ImageId::random();
         let rank = ranks.entry(draft_image.kind).or_default();
 
-        db.upsert_show_image(id, show_id, draft_image.kind, *rank, &draft_image.image)
-            .await?;
+        db.upsert_show_image(
+            id,
+            show_id,
+            draft_image.kind,
+            *rank,
+            &draft_image.image,
+            Some(draft_image.score),
+        )
+        .await?;
         *rank += 1;
 
+        if preserved.get(&draft_image.kind) == Some(draft_image.image.key()) {
+            user_ids.entry(draft_image.kind).or_insert(id);
+        }
+
         if draft.selected.get(&draft_image.kind) == Some(draft_image.image.key()) {
-            selected_ids.entry(draft_image.kind).or_insert(id);
+            default_ids.entry(draft_image.kind).or_insert(id);
         }
     }
 
-    for (kind, id) in selected_ids {
-        db.set_show_image_selection(show_id, kind, id).await?;
+    let kinds: HashSet<ImageKind> = user_ids.keys().chain(default_ids.keys()).copied().collect();
+
+    for kind in kinds {
+        if let Some(&id) = user_ids.get(&kind) {
+            db.set_show_image_selection(show_id, kind, id, true).await?;
+        } else if let Some(&id) = default_ids.get(&kind) {
+            db.set_show_image_selection(show_id, kind, id, false)
+                .await?;
+        }
     }
 
     // Episodes: assign stable ids (reuse existing) so air-date releases
@@ -1358,14 +1382,14 @@ impl MovieDraft {
         self.remotes.push((slug, remote));
     }
 
-    fn add_image(&mut self, kind: ImageKind, image: Image, selected: bool) {
+    fn add_image(&mut self, kind: ImageKind, image: Image, score: f64, selected: bool) {
         if selected {
             self.selected
                 .entry(kind)
                 .or_insert_with(|| image.key().clone());
         }
 
-        self.images.push(DraftImage { kind, image });
+        self.images.push(DraftImage { kind, image, score });
     }
 }
 
@@ -1573,14 +1597,14 @@ async fn tmdb_movie_layer(
     };
 
     // Graphics accumulate from every source.
-    for poster in &info.posters {
+    for (score, poster) in &info.posters {
         let selected = info.selected_poster.as_ref() == Some(poster.key());
-        draft.add_image(ImageKind::Poster, poster.clone(), selected);
+        draft.add_image(ImageKind::Poster, poster.clone(), *score, selected);
     }
 
-    for backdrop in &info.backdrops {
+    for (score, backdrop) in &info.backdrops {
         let selected = info.selected_backdrop.as_ref() == Some(backdrop.key());
-        draft.add_image(ImageKind::Backdrop, backdrop.clone(), selected);
+        draft.add_image(ImageKind::Backdrop, backdrop.clone(), *score, selected);
     }
 
     for r in &info.remotes {
@@ -1644,33 +1668,62 @@ async fn persist_movie_draft(
     }
 
     // Graphics: replace all movie images with the accumulated set, ranked in
-    // source-priority order, selecting the highest-priority pick per kind.
+    // source-priority order. Preserve the user's explicit pick per kind if that
+    // image still exists; otherwise fall back to the highest-priority default.
+    let preserved = db.user_selected_movie_image_keys(movie_id).await?;
+
     db.clear_movie_images(movie_id).await?;
 
     let mut ranks: HashMap<ImageKind, u32> = HashMap::new();
-    let mut selected_ids: HashMap<ImageKind, ImageId> = HashMap::new();
+    let mut user_ids: HashMap<ImageKind, ImageId> = HashMap::new();
+    let mut default_ids: HashMap<ImageKind, ImageId> = HashMap::new();
 
     for draft_image in &draft.images {
         let id = ImageId::random();
         let rank = ranks.entry(draft_image.kind).or_default();
 
-        db.upsert_movie_image(id, movie_id, draft_image.kind, *rank, &draft_image.image)
-            .await?;
+        db.upsert_movie_image(
+            id,
+            movie_id,
+            draft_image.kind,
+            *rank,
+            &draft_image.image,
+            Some(draft_image.score),
+        )
+        .await?;
         *rank += 1;
 
+        if preserved.get(&draft_image.kind) == Some(draft_image.image.key()) {
+            user_ids.entry(draft_image.kind).or_insert(id);
+        }
+
         if draft.selected.get(&draft_image.kind) == Some(draft_image.image.key()) {
-            selected_ids.entry(draft_image.kind).or_insert(id);
+            default_ids.entry(draft_image.kind).or_insert(id);
         }
     }
 
-    for (kind, id) in &selected_ids {
-        db.set_movie_image_selection(movie_id, *kind, *id).await?;
+    // Resolve each kind to (image, user-chosen?): a preserved user pick wins,
+    // else the highest-priority default.
+    let kinds: HashSet<ImageKind> = user_ids.keys().chain(default_ids.keys()).copied().collect();
+    let mut resolved: HashMap<ImageKind, (ImageId, bool)> = HashMap::new();
+
+    for kind in kinds {
+        if let Some(&id) = user_ids.get(&kind) {
+            resolved.insert(kind, (id, true));
+        } else if let Some(&id) = default_ids.get(&kind) {
+            resolved.insert(kind, (id, false));
+        }
+    }
+
+    for (kind, (id, user_selected)) in &resolved {
+        db.set_movie_image_selection(movie_id, *kind, *id, *user_selected)
+            .await?;
     }
 
     // A movie has no banner artwork of its own; mirror the backdrop selection so
     // banner slots display the backdrop (as the previous inline sync did).
-    if let Some(&id) = selected_ids.get(&ImageKind::Backdrop) {
-        db.set_movie_image_selection(movie_id, ImageKind::Banner, id)
+    if let Some(&(id, user_selected)) = resolved.get(&ImageKind::Backdrop) {
+        db.set_movie_image_selection(movie_id, ImageKind::Banner, id, user_selected)
             .await?;
     }
 

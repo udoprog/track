@@ -175,8 +175,9 @@ async fn import_show_image(
     img: &api::Image,
 ) -> Result<()> {
     let id = api::ImageId::random();
-    db.upsert_show_image(id, show_id, kind, 0, img).await?;
-    db.set_show_image_selection(show_id, kind, id).await?;
+    db.upsert_show_image(id, show_id, kind, 0, img, None)
+        .await?;
+    db.set_show_image_selection(show_id, kind, id, true).await?;
     Ok(())
 }
 
@@ -207,8 +208,10 @@ async fn import_movie_image(
     img: &api::Image,
 ) -> Result<()> {
     let id = api::ImageId::random();
-    db.upsert_movie_image(id, movie_id, kind, 0, img).await?;
-    db.set_movie_image_selection(movie_id, kind, id).await?;
+    db.upsert_movie_image(id, movie_id, kind, 0, img, None)
+        .await?;
+    db.set_movie_image_selection(movie_id, kind, id, true)
+        .await?;
     Ok(())
 }
 
