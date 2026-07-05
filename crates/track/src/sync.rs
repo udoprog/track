@@ -33,6 +33,16 @@ fn cache_json(cache: &api::RemoteCache) -> Option<String> {
 
 /// The kinds a layer is about to fetch and persist this run, used both to tag a
 /// fresh validator and to test an existing one for reuse.
+/// The image-table source enum for a remote source. Only graphics-capable
+/// sources (TMDB/TVDB) are ever passed here.
+fn image_source(source: RemoteSource) -> api::ImageSource {
+    match source {
+        RemoteSource::Tvdb => api::ImageSource::Tvdb,
+        RemoteSource::Tmdb => api::ImageSource::Tmdb,
+        _ => api::ImageSource::Unknown,
+    }
+}
+
 fn needed_kinds(do_base: bool, do_air_date: bool) -> SyncKindSet {
     let mut kinds = SyncKindSet::empty();
 
@@ -218,6 +228,13 @@ pub(crate) async fn sync_show(
                 if do_air_date {
                     draft.air_date_sources.insert(source);
                 }
+
+                // A source that ran fully re-supplied its graphics into the
+                // draft; mark it so the base-unchanged path can refresh just
+                // this source's stored images.
+                if source.has_graphics() {
+                    draft.graphics_sources.insert(source);
+                }
             }
         }
 
@@ -253,6 +270,14 @@ pub(crate) async fn sync_show(
         // produced this run.
         persist_air_dates_only(show_id, &draft, db).await?;
         flush_show_cache_writes(&draft.cache_writes, db).await?;
+
+        // A non-base source may have merged fresh graphics (or a slug); push the
+        // refreshed show so clients update without a manual reload.
+        if !draft.graphics_sources.is_empty()
+            && let Some(show) = db.show_by_id(show_id).await?
+        {
+            broadcast.broadcast_event(api::AppEventKind::ShowChanged { show });
+        }
     } else if eligible.contains(SyncKind::Base) {
         anyhow::bail!("Show has no syncable Base remote available");
     } else {
@@ -419,6 +444,10 @@ struct ShowDraft {
     /// survive a transient fetch error.
     air_date_sources: HashSet<RemoteSource>,
     images: Vec<DraftImage>,
+    /// Sources whose graphics layer ran (returned Updated) this sync, so their
+    /// `images` in the draft are authoritative. Scopes the per-source graphics
+    /// merge in the base-unchanged path (mirrors [`air_date_sources`]).
+    graphics_sources: HashSet<RemoteSource>,
     selected: HashMap<ImageKind, ImageKey>,
     /// Per-language translated strings keyed by owner, populated for every target
     /// remote.
@@ -658,6 +687,13 @@ async fn tvdb_show_layer(
 
     let info = remote.fetch_tvdb_show(tvdb_id).await?;
 
+    // Record discovered remotes (notably the TVDB slug that external links need)
+    // before any unchanged short-circuit, so the slug is kept current even when
+    // TVDB runs only to accumulate graphics under a higher-priority Base source.
+    for r in &info.remotes {
+        draft.add_remote(r.slug.clone(), r.remote.clone());
+    }
+
     // TVDB has no ETag; the record-level `lastUpdated` marker detects an unchanged
     // series. An equal marker on a cache that already covers what we owe means the
     // whole entity (incl. episodes and air dates) is unchanged, so skip the episode
@@ -682,10 +718,6 @@ async fn tvdb_show_layer(
                 kinds: needed,
             }),
         ));
-    }
-
-    for r in &info.remotes {
-        draft.add_remote(r.slug.clone(), r.remote.clone());
     }
 
     for (score, poster) in &info.poster {
@@ -1319,6 +1351,73 @@ async fn persist_air_dates_only(
     draft: &ShowDraft,
     db: &Database,
 ) -> Result<()> {
+    // Even when the Base layer is unchanged, a non-base layer (e.g. TVDB running
+    // only to accumulate graphics) may have discovered remote metadata such as a
+    // slug that external links depend on. `add_show_remote` only fills in the
+    // slug on conflict, so persisting the accumulated remotes here is idempotent.
+    for (slug, remote) in &draft.remotes {
+        db.add_show_remote(show_id, slug.as_deref(), remote).await?;
+    }
+
+    // The base-unchanged path keeps the base source's stored images (the base
+    // layer reported no fresh data). But a lower-priority source that ran this
+    // sync - e.g. a newly-enabled TVDB - did re-supply its graphics, and those
+    // would never be written otherwise. Refresh just those sources' images,
+    // appending them after the retained (higher-priority base) images per kind,
+    // and re-attach any user pick that pointed at a replaced image.
+    if !draft.graphics_sources.is_empty() {
+        let preserved = db.user_selected_show_image_keys(show_id).await?;
+
+        for source in &draft.graphics_sources {
+            db.delete_show_images_for_source(show_id, image_source(*source))
+                .await?;
+        }
+
+        let mut ranks = db.next_show_image_ranks(show_id).await?;
+        let mut user_ids: HashMap<ImageKind, ImageId> = HashMap::new();
+        let mut default_ids: HashMap<ImageKind, ImageId> = HashMap::new();
+
+        for draft_image in &draft.images {
+            let id = ImageId::random();
+            let rank = ranks.entry(draft_image.kind).or_default();
+
+            db.upsert_show_image(
+                id,
+                show_id,
+                draft_image.kind,
+                *rank,
+                &draft_image.image,
+                Some(draft_image.score),
+            )
+            .await?;
+            *rank += 1;
+
+            if preserved.get(&draft_image.kind) == Some(draft_image.image.key()) {
+                user_ids.entry(draft_image.kind).or_insert(id);
+            }
+
+            if draft.selected.get(&draft_image.kind) == Some(draft_image.image.key()) {
+                default_ids.entry(draft_image.kind).or_insert(id);
+            }
+        }
+
+        for (kind, id) in user_ids {
+            db.set_show_image_selection(show_id, kind, id, true).await?;
+        }
+
+        // Re-attach a default only for a kind whose selection was cascaded away
+        // with a replaced image (leaving it unselected). Kinds still selected by
+        // a surviving higher-priority source - or a user pick just set - keep it.
+        let selected = db.show_selected_image_kinds(show_id).await?;
+
+        for (kind, id) in default_ids {
+            if !selected.contains(&kind) {
+                db.set_show_image_selection(show_id, kind, id, false)
+                    .await?;
+            }
+        }
+    }
+
     let episode_ids = db.episode_ids(show_id).await?;
     let mut kept_releases = HashSet::new();
 

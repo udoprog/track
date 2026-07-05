@@ -75,6 +75,12 @@ struct UserSelectedRow {
 }
 
 #[derive(Row)]
+struct KindRankRow {
+    kind: ImageKind,
+    rank: u32,
+}
+
+#[derive(Row)]
 struct ImageMetaRow {
     kind: ImageKind,
     show_id: Option<ShowId>,
@@ -1017,6 +1023,12 @@ struct InnerWrite {
     // images (shows and movies share one table)
     #[sql = "DELETE FROM images WHERE show_id = ?"]
     delete_show_images: TypedStatement<(ShowId,), ()>,
+    #[sql = "DELETE FROM images WHERE show_id = ? AND source = ?"]
+    delete_show_images_for_source: TypedStatement<(ShowId, ImageSource), ()>,
+    #[sql = "SELECT kind, MAX(rank) AS rank FROM images WHERE show_id = ? GROUP BY kind"]
+    show_image_max_ranks: TypedStatement<(ShowId,), KindRankRow>,
+    #[sql = "SELECT kind FROM show_images WHERE show_id = ?"]
+    show_selected_image_kinds: TypedStatement<(ShowId,), ImageKind>,
     #[sql = "INSERT INTO images (id, show_id, kind, source, path, width, height, rank, score) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"]
     #[sql = "ON CONFLICT(show_id, kind, path) WHERE show_id IS NOT NULL DO NOTHING"]
     insert_show_image: TypedStatement<
@@ -3376,6 +3388,71 @@ impl Database {
             s.set_episode_image_selection
                 .execute((episode_id, kind, image_id))?;
             Ok(())
+        });
+
+        result.await?
+    }
+
+    /// Delete a show's images from a single source, leaving other sources'
+    /// images (and the show's overall selection rows) intact.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn delete_show_images_for_source(
+        &self,
+        show_id: ShowId,
+        source: ImageSource,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.delete_show_images_for_source.execute((show_id, source))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    /// The next free rank per kind for a show's images (current max + 1), so
+    /// freshly merged images append after the ones already stored.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn next_show_image_ranks(
+        &self,
+        show_id: ShowId,
+    ) -> Result<HashMap<ImageKind, u32>> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            let mut out = HashMap::new();
+            let mut stmt = s.show_image_max_ranks.bind((show_id,))?;
+
+            while let Some(r) = stmt.next()? {
+                out.insert(r.kind, r.rank + 1);
+            }
+
+            stmt.reset()?;
+            Ok(out)
+        });
+
+        result.await?
+    }
+
+    /// The kinds a show currently has a selected image for.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn show_selected_image_kinds(
+        &self,
+        show_id: ShowId,
+    ) -> Result<HashSet<ImageKind>> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            let mut out = HashSet::new();
+            let mut stmt = s.show_selected_image_kinds.bind((show_id,))?;
+
+            while let Some(kind) = stmt.next()? {
+                out.insert(kind);
+            }
+
+            stmt.reset()?;
+            Ok(out)
         });
 
         result.await?
