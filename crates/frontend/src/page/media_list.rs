@@ -55,6 +55,8 @@ pub(crate) enum Msg {
     Loaded(Result<ws::Packet<api::ListMedia>, ws::Error>),
     MarkWatched(u64, api::MarkTime),
     MarkWatchedDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
+    /// Hover a row: drive the page background from its backdrop and keep it.
+    HoverBackdrop(Option<String>),
     SetTracked(api::MediaKind, u64, bool),
     SetTrackedDone(Result<(), ws::Error>),
     Filter(String),
@@ -334,6 +336,15 @@ impl MediaList {
                     .items;
                 Ok(true)
             }
+            Msg::HoverBackdrop(url) => {
+                // Track it as the applied backdrop so `rendered()`'s default
+                // (first backdrop on the page) doesn't clobber the hovered one.
+                if let Some(url) = url {
+                    self.background.background(Some(url.clone()));
+                    self.applied_backdrop = Some(url);
+                }
+                Ok(false)
+            }
             Msg::MarkWatched(id, mark_time) => {
                 self._mark_req = self
                     .channel
@@ -540,6 +551,11 @@ impl MediaList {
             .link()
             .callback(move |_| Msg::Navigate(detail_route(kind, id)));
 
+        let backdrop_url = m.backdrop.as_ref().map(|i| i.proxy_url());
+        let onmouseover = ctx
+            .link()
+            .callback(move |_| Msg::HoverBackdrop(backdrop_url.clone()));
+
         let is_movie = matches!(m.kind, api::MediaKind::Movies);
 
         let kind_icon = match m.kind {
@@ -573,7 +589,7 @@ impl MediaList {
             .map(|timestamp| TimePreset::at("clock", "Released", timestamp));
 
         html! {
-            <div class="desktop-row mobile-column align-top">
+            <div class="desktop-row mobile-column align-top" {onmouseover}>
                 <Image class="banner clickable mobile-only" onclick={&onclick} src={m.banner.clone()} />
                 <Image class="poster poster-side clickable desktop-only" onclick={&onclick} src={m.poster.clone()} />
 

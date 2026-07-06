@@ -45,6 +45,8 @@ pub(crate) enum Msg {
     ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
     MarkWatched(api::WatchedKind, api::MarkTime),
     MarkWatchedDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
+    /// Hover a pending item: drive the page background from its backdrop, kept.
+    HoverBackdrop(Option<String>),
     AskSkipEpisode(api::ShowId, api::EpisodeId),
     CancelSkipEpisode,
     SkipEpisode(api::ShowId, api::EpisodeId),
@@ -251,6 +253,12 @@ impl WatchNext {
 
                 self.clamp_page(ctx);
                 Ok(true)
+            }
+            Msg::HoverBackdrop(url) => {
+                if url.is_some() {
+                    self.background.background(url);
+                }
+                Ok(false)
             }
             Msg::MarkWatched(kind, mark_time) => {
                 self._mark_req = self
@@ -524,8 +532,19 @@ impl WatchNext {
             }
         };
 
+        // Key on identity + current content: when marking watched advances this
+        // row to its next episode, the key changes and Yew remounts just this
+        // element, replaying the swap-in animation. Unchanged rows keep their
+        // key and don't re-animate.
+        let key = format!("{pending_kind:?}");
+
+        let backdrop_url = pending.backdrop.as_ref().map(|i| i.proxy_url());
+        let onmouseover = ctx
+            .link()
+            .callback(move |_| Msg::HoverBackdrop(backdrop_url.clone()));
+
         html! {
-            <div class="pending-item">
+            <div {key} class="pending-item" {onmouseover}>
                 <Image class="poster clickable desktop-only" src={pending.season_poster.clone().or_else(|| pending.poster.clone())} onclick={on_navigate.clone()} />
                 <Image class="banner clickable mobile-only" src={pending.season_banner.clone().or_else(|| pending.banner.clone())} onclick={on_navigate.clone()} />
 

@@ -1724,6 +1724,8 @@ pub struct Pending {
     pub banner: Option<Image>,
     pub season_poster: Option<Image>,
     pub season_banner: Option<Image>,
+    /// Backdrop used as the page background when this entry is hovered.
+    pub backdrop: Option<Image>,
 }
 
 /// Implemented by types that carry both a civil air date and an optional
@@ -1791,6 +1793,10 @@ pub struct ScheduledEntry {
     pub show_id: ShowId,
     pub show_title: String,
     pub episodes: Vec<ScheduleEpisode>,
+    /// Backdrop used as the page background when this entry is hovered.
+    pub backdrop: Option<Image>,
+    /// Poster shown in the schedule's side rail when this entry is hovered.
+    pub poster: Option<Image>,
 }
 
 /// Sparse movie shown in the schedule/calendar grid on its release date.
@@ -1801,6 +1807,10 @@ pub struct ScheduleMovie {
     pub title: String,
     /// When the movie releases/becomes available, rendered as a local time of day.
     pub released: Timestamp,
+    /// Backdrop used as the page background when this entry is hovered.
+    pub backdrop: Option<Image>,
+    /// Poster shown in the schedule's side rail when this entry is hovered.
+    pub poster: Option<Image>,
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
@@ -1821,6 +1831,9 @@ pub struct Config {
     pub dashboard_page: u32,
     /// Number of weeks shown in the dashboard schedule (always at least 1).
     pub schedule_weeks: u32,
+    /// Number of days shown in the dashboard's upcoming-days strip (always at
+    /// least 1).
+    pub schedule_range_days: u32,
     pub auto_sync_enabled: bool,
     pub auto_sync_interval_hours: u32,
     pub timezone: String,
@@ -1850,6 +1863,7 @@ impl Default for Config {
             tmdb_api_key: String::new(),
             dashboard_page: 5,
             schedule_weeks: 4,
+            schedule_range_days: 3,
             auto_sync_enabled: false,
             auto_sync_interval_hours: 24,
             timezone: String::new(),

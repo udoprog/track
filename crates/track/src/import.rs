@@ -369,6 +369,7 @@ pub async fn import() -> Result<()> {
             tmdb_api_key: config.tmdb_api_key,
             dashboard_page: config.dashboard_page,
             schedule_weeks: 4,
+            schedule_range_days: 3,
             auto_sync_enabled: false,
             auto_sync_interval_hours: 24,
             timezone: String::new(),

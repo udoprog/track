@@ -13,6 +13,8 @@ pub(super) struct DashboardQuery {
     pub(super) week: i32,
     /// Mobile-only: reveal the past days of the current week.
     pub(super) week_start: bool,
+    /// Offset of the upcoming-days strip's start from today, in days.
+    pub(super) range: i32,
 }
 
 impl DashboardQuery {
@@ -31,6 +33,10 @@ impl DashboardQuery {
             s.append_pair("week_start", "1");
         }
 
+        if self.range != 0 {
+            s.append_pair("range", &self.range.to_string());
+        }
+
         s.finish()
     }
 
@@ -47,6 +53,9 @@ impl DashboardQuery {
                 }
                 "week_start" => {
                     this.week_start = value == "1" || value == "true";
+                }
+                "range" => {
+                    this.range = value.parse::<i32>().unwrap_or(0);
                 }
                 _ => continue,
             }

@@ -4880,6 +4880,7 @@ impl Database {
 
                         let poster = s.image.image_for_show(d.show_id, ImageKind::Poster)?;
                         let banner = s.image.image_for_show(d.show_id, ImageKind::Banner)?;
+                        let backdrop = s.image.image_for_show(d.show_id, ImageKind::Backdrop)?;
                         let season_poster =
                             s.image
                                 .image_for_season(d.show_id, d.season, ImageKind::Poster)?;
@@ -4914,6 +4915,7 @@ impl Database {
                             banner,
                             season_poster,
                             season_banner,
+                            backdrop,
                         };
                     }
 
@@ -4926,6 +4928,7 @@ impl Database {
 
                         let poster = s.image.image_for_movie(movie_id, ImageKind::Poster)?;
                         let banner = s.image.image_for_movie(movie_id, ImageKind::Banner)?;
+                        let backdrop = s.image.image_for_movie(movie_id, ImageKind::Backdrop)?;
 
                         let title = s
                             .translations
@@ -4944,6 +4947,7 @@ impl Database {
                             banner,
                             season_poster: None,
                             season_banner: None,
+                            backdrop,
                         };
                     }
 
@@ -4985,6 +4989,7 @@ impl Database {
                 let config = s.config_language()?;
                 let poster = s.image.image_for_show(d.show_id, ImageKind::Poster)?;
                 let banner = s.image.image_for_show(d.show_id, ImageKind::Banner)?;
+                let backdrop = s.image.image_for_show(d.show_id, ImageKind::Backdrop)?;
                 let season_poster =
                     s.image
                         .image_for_season(d.show_id, d.season, ImageKind::Poster)?;
@@ -5019,6 +5024,7 @@ impl Database {
                     banner,
                     season_poster,
                     season_banner,
+                    backdrop,
                 }))
             }
             api::PendingKind::Movie { movie } => {
@@ -5034,6 +5040,7 @@ impl Database {
                 let cfg = s.config_language()?;
                 let poster = s.image.image_for_movie(movie, ImageKind::Poster)?;
                 let banner = s.image.image_for_movie(movie, ImageKind::Banner)?;
+                let backdrop = s.image.image_for_movie(movie, ImageKind::Backdrop)?;
 
                 let title = s.translations.movie(movie, cfg)?.title().map(str::to_owned);
 
@@ -5045,6 +5052,7 @@ impl Database {
                     banner,
                     season_poster: None,
                     season_banner: None,
+                    backdrop,
                 }))
             }
         });
@@ -5059,7 +5067,13 @@ impl Database {
         days: u32,
         time: api::TimeInfo,
     ) -> Result<Vec<api::ScheduledDay>> {
-        type DayShows = Vec<(ShowId, String, Vec<api::ScheduleEpisode>)>;
+        type DayShows = Vec<(
+            ShowId,
+            String,
+            Option<api::Image>,
+            Option<api::Image>,
+            Vec<api::ScheduleEpisode>,
+        )>;
 
         let today = time.now().date(time.clone());
 
@@ -5092,6 +5106,11 @@ impl Database {
             // Resolved show titles, cached so each show is looked up once.
             let mut show_titles: HashMap<ShowId, String> = HashMap::new();
 
+            // Resolved (backdrop, poster) per show, cached so each show is
+            // looked up once. Drives the hover background and schedule poster.
+            let mut show_images: HashMap<ShowId, (Option<api::Image>, Option<api::Image>)> =
+                HashMap::new();
+
             let mut stmt = s.list_schedule.bind((start, end))?;
 
             while let Some(r) = stmt.next()? {
@@ -5120,16 +5139,32 @@ impl Database {
                     }
                 };
 
+                let (backdrop, poster) = match show_images.get(&r.show_id) {
+                    Some(images) => images.clone(),
+                    None => {
+                        let backdrop = s.image.image_for_show(r.show_id, ImageKind::Backdrop)?;
+                        let poster = s.image.image_for_show(r.show_id, ImageKind::Poster)?;
+                        show_images.insert(r.show_id, (backdrop.clone(), poster.clone()));
+                        (backdrop, poster)
+                    }
+                };
+
                 if let Some(day_entry) = days_map.iter_mut().find(|(d, ..)| d == &day) {
                     if let Some(show_entry) =
                         day_entry.1.iter_mut().find(|(id, ..)| *id == r.show_id)
                     {
-                        show_entry.2.push(ep);
+                        show_entry.4.push(ep);
                     } else {
-                        day_entry.1.push((r.show_id, show_title, vec![ep]));
+                        day_entry
+                            .1
+                            .push((r.show_id, show_title, backdrop, poster, vec![ep]));
                     }
                 } else {
-                    days_map.push((day, vec![(r.show_id, show_title, vec![ep])], Vec::new()));
+                    days_map.push((
+                        day,
+                        vec![(r.show_id, show_title, backdrop, poster, vec![ep])],
+                        Vec::new(),
+                    ));
                 }
             }
 
@@ -5147,10 +5182,15 @@ impl Database {
                     .unwrap_or_default()
                     .to_owned();
 
+                let backdrop = s.image.image_for_movie(r.movie_id, ImageKind::Backdrop)?;
+                let poster = s.image.image_for_movie(r.movie_id, ImageKind::Poster)?;
+
                 let movie = api::ScheduleMovie {
                     movie_id: r.movie_id,
                     title,
                     released,
+                    backdrop,
+                    poster,
                 };
 
                 let day = released.date(time.clone());
@@ -5174,10 +5214,14 @@ impl Database {
                     date,
                     shows: show
                         .into_iter()
-                        .map(|(show_id, show_title, episodes)| api::ScheduledEntry {
-                            show_id,
-                            show_title,
-                            episodes,
+                        .map(|(show_id, show_title, backdrop, poster, episodes)| {
+                            api::ScheduledEntry {
+                                show_id,
+                                show_title,
+                                episodes,
+                                backdrop,
+                                poster,
+                            }
                         })
                         .collect(),
                     movies,
@@ -5219,6 +5263,11 @@ impl Database {
                 .get_config("schedule_weeks")?
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(4);
+
+            let schedule_range_days = s
+                .get_config("schedule_range_days")?
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(3);
 
             let auto_sync_enabled = s
                 .get_config("auto_sync_enabled")?
@@ -5279,6 +5328,7 @@ impl Database {
                 tmdb_api_key,
                 dashboard_page,
                 schedule_weeks,
+                schedule_range_days,
                 auto_sync_enabled,
                 auto_sync_interval_hours,
                 timezone,
@@ -5316,6 +5366,11 @@ impl Database {
             s.set_config("dashboard_page", config.dashboard_page.to_string())?;
 
             s.set_config("schedule_weeks", config.schedule_weeks.to_string())?;
+
+            s.set_config(
+                "schedule_range_days",
+                config.schedule_range_days.to_string(),
+            )?;
 
             s.set_config(
                 "auto_sync_enabled",

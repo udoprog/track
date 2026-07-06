@@ -4,7 +4,7 @@ use crate::background::Background;
 use crate::error::Error;
 use crate::router::{DashboardQuery, Route, Router};
 
-use super::{Calendar, WatchNext};
+use super::{Calendar, ScheduleRange, WatchNext};
 
 pub(crate) struct Dashboard {
     background: Background,
@@ -17,6 +17,7 @@ pub(crate) enum Msg {
     SetWeek(i32),
     SetWeekStart(bool),
     ResetSchedule,
+    SetRange(i32),
 }
 
 #[derive(Properties, PartialEq)]
@@ -26,6 +27,8 @@ pub(crate) struct Props {
     pub(crate) week: i32,
     /// Mobile-only: reveal the past days of the current week.
     pub(crate) week_start: bool,
+    /// Upcoming-days strip start offset from today, in days.
+    pub(crate) range: i32,
 }
 
 impl Component for Dashboard {
@@ -77,6 +80,15 @@ impl Component for Dashboard {
                     on_clamp_page={link.callback(Msg::ClampPage)}
                 />
 
+                <div class="column desktop-only">
+                    <h1 class="center">{"Upcoming"}</h1>
+
+                    <ScheduleRange
+                        day_offset={ctx.props().range}
+                        on_set_range={link.callback(Msg::SetRange)}
+                    />
+                </div>
+
                 <div class="column">
                     <h1 class="center">{"Schedule"}</h1>
 
@@ -101,6 +113,7 @@ impl Dashboard {
             page: ctx.props().page,
             week: ctx.props().week,
             week_start: ctx.props().week_start,
+            range: ctx.props().range,
         }
     }
 
@@ -140,6 +153,13 @@ impl Dashboard {
                 self.router.push(Route::Dashboard(DashboardQuery {
                     week: 0,
                     week_start: false,
+                    ..self.dashboard_query(ctx)
+                }));
+                Ok(false)
+            }
+            Msg::SetRange(range) => {
+                self.router.push(Route::Dashboard(DashboardQuery {
+                    range,
                     ..self.dashboard_query(ctx)
                 }));
                 Ok(false)

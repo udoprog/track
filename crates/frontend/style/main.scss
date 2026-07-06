@@ -541,6 +541,21 @@ h6 {
     border: 1px solid $border-subtle-transparent;
     border-radius: $radius;
     min-width: 0;
+    // Replays whenever the element mounts, i.e. when a row swaps to its next
+    // episode after being marked watched (the element is keyed on its content).
+    animation: pending-swap-in 0.35s ease-out;
+}
+
+@keyframes pending-swap-in {
+    from {
+        opacity: 0;
+        transform: translateY(-0.5rem) scale(0.98);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
 }
 
 img {
