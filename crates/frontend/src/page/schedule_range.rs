@@ -159,7 +159,7 @@ impl Component for ScheduleRange {
                 <div class="row center">
                     <Button icon="chevron-left" title="Previous day" onclick={on_prev} />
 
-                    <div class="input-group">
+                    <div class="input-group mobile-fill">
                         <Button icon="minus" title="Fewer days" onclick={on_fewer} disabled={days_count <= 1} />
                         <span class="input-text has-text fill">{format!("{days_count} {}", if days_count == 1 { "day" } else { "days" })}</span>
                         <Button icon="plus" title="More days" onclick={on_more} />
@@ -169,15 +169,17 @@ impl Component for ScheduleRange {
                 </div>
 
                 <div class={classes!("schedule-range-grid", (offset != 0).then_some("has-reset"))} style={format!("--range-days: {days_count}")}>
-                    <div class="schedule-range-poster">
+                    <div class="schedule-range-poster desktop-only">
                         <Image src={poster.clone()} />
                     </div>
 
                     if offset != 0 {
                         <div class="schedule-range-reset clickable" title="Back to today" onclick={on_reset}>
                             <span class="item-inline-lg">
-                                <span class={classes!("icon", if offset > 0 { "chevron-double-left" } else { "chevron-double-right" })} />
+                                <span class={classes!("desktop-only", "icon", if offset > 0 { "chevron-double-left" } else { "chevron-double-right" })} />
+                                <span class={classes!("mobile-only", "icon", if offset > 0 { "chevron-double-up" } else { "chevron-double-down" })} />
                             </span>
+
                             <span>{offset.abs()}</span>
                         </div>
                     }

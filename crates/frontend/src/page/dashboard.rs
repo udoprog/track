@@ -2,7 +2,7 @@ use yew::prelude::*;
 
 use crate::background::Background;
 use crate::error::Error;
-use crate::router::{DashboardQuery, Route, Router};
+use crate::router::{DashboardQuery, DashboardView, Route, Router};
 
 use super::{Calendar, ScheduleRange, WatchNext};
 
@@ -12,6 +12,7 @@ pub(crate) struct Dashboard {
 }
 
 pub(crate) enum Msg {
+    SetView(DashboardView),
     SetPage(usize),
     ClampPage(usize),
     SetWeek(i32),
@@ -29,6 +30,8 @@ pub(crate) struct Props {
     pub(crate) week_start: bool,
     /// Upcoming-days strip start offset from today, in days.
     pub(crate) range: i32,
+    /// Which tabbed view is shown.
+    pub(crate) view: DashboardView,
 }
 
 impl Component for Dashboard {
@@ -71,34 +74,56 @@ impl Component for Dashboard {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let link = ctx.link();
+        let view = ctx.props().view;
+
+        let tab = |v: DashboardView,
+                   icon: &'static str,
+                   label: &'static str,
+                   fill: Option<&'static str>| {
+            let onclick = link.callback(move |_| Msg::SetView(v));
+            html! {
+                <span class={classes!("input-text", "has-text", fill, (view == v).then_some("selected"))} {onclick}>
+                    <span class={classes!("icon", icon)} />
+                    {label}
+                </span>
+            }
+        };
 
         html! {
             <>
-                <WatchNext
-                    page={ctx.props().page}
-                    on_set_page={link.callback(Msg::SetPage)}
-                    on_clamp_page={link.callback(Msg::ClampPage)}
-                />
-
-                <div class="column desktop-only">
-                    <h1 class="center">{"Upcoming"}</h1>
-
-                    <ScheduleRange
-                        day_offset={ctx.props().range}
-                        on_set_range={link.callback(Msg::SetRange)}
-                    />
+                <div class="row center">
+                    <div class="input-group mobile-fill">
+                        { tab(DashboardView::WatchNext, "forward", "What's Next", Some("mobile-fill")) }
+                        { tab(DashboardView::Upcoming, "calendar-days", "Upcoming", None) }
+                        { tab(DashboardView::Schedule, "calendar", "Schedule", None) }
+                    </div>
                 </div>
 
                 <div class="column">
-                    <h1 class="center">{"Schedule"}</h1>
-
-                    <Calendar
-                        week_offset={ctx.props().week}
-                        week_start={ctx.props().week_start}
-                        on_set_week={link.callback(Msg::SetWeek)}
-                        on_set_week_start={link.callback(Msg::SetWeekStart)}
-                        on_reset={link.callback(|()| Msg::ResetSchedule)}
-                    />
+                    { match view {
+                        DashboardView::WatchNext => html! {
+                            <WatchNext
+                                page={ctx.props().page}
+                                on_set_page={link.callback(Msg::SetPage)}
+                                on_clamp_page={link.callback(Msg::ClampPage)}
+                            />
+                        },
+                        DashboardView::Upcoming => html! {
+                            <ScheduleRange
+                                day_offset={ctx.props().range}
+                                on_set_range={link.callback(Msg::SetRange)}
+                            />
+                        },
+                        DashboardView::Schedule => html! {
+                            <Calendar
+                                week_offset={ctx.props().week}
+                                week_start={ctx.props().week_start}
+                                on_set_week={link.callback(Msg::SetWeek)}
+                                on_set_week_start={link.callback(Msg::SetWeekStart)}
+                                on_reset={link.callback(|()| Msg::ResetSchedule)}
+                            />
+                        },
+                    } }
                 </div>
             </>
         }
@@ -114,11 +139,19 @@ impl Dashboard {
             week: ctx.props().week,
             week_start: ctx.props().week_start,
             range: ctx.props().range,
+            view: ctx.props().view,
         }
     }
 
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
+            Msg::SetView(view) => {
+                self.router.push(Route::Dashboard(DashboardQuery {
+                    view,
+                    ..self.dashboard_query(ctx)
+                }));
+                Ok(false)
+            }
             Msg::SetPage(page) => {
                 self.router.push(Route::Dashboard(DashboardQuery {
                     page,

@@ -3,6 +3,8 @@ use std::iter;
 use web_sys::MouseEvent;
 use yew::prelude::*;
 
+const BUTTONS: usize = 3;
+
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
     pub(crate) page: usize,
@@ -21,8 +23,8 @@ pub(crate) fn PaginationButtons(props: &Props) -> Html {
 
     let last_page = props.total_pages.saturating_sub(1);
 
-    let window = 5.min(props.total_pages);
-    let mut start = page.saturating_sub(2);
+    let window = BUTTONS.min(props.total_pages);
+    let mut start = page.saturating_sub(BUTTONS / 2);
     let mut end = start + window.saturating_sub(1);
 
     if end > last_page {

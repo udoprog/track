@@ -331,7 +331,7 @@ impl App {
     fn view_page(&self, _: &Context<Self>) -> Html {
         match self.router_state.route {
             Route::Dashboard(ref q) => {
-                html! { <Dashboard page={q.page} week={q.week} week_start={q.week_start} range={q.range} /> }
+                html! { <Dashboard page={q.page} week={q.week} week_start={q.week_start} range={q.range} view={q.view} /> }
             }
             Route::Queue(ref q) => html! {
                 <Queue focus={q.focus} page={q.page} />

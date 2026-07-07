@@ -6,6 +6,35 @@ use yew::prelude::*;
 
 use crate::error::{CustomContext, Error, Message};
 
+/// Which of the dashboard's tabbed views is shown. Stored in the URL;
+/// [`DashboardView::Upcoming`] is the default and is omitted from the query.
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum DashboardView {
+    WatchNext,
+    #[default]
+    Upcoming,
+    Schedule,
+}
+
+impl DashboardView {
+    fn as_str(self) -> &'static str {
+        match self {
+            DashboardView::WatchNext => "watch_next",
+            DashboardView::Upcoming => "upcoming",
+            DashboardView::Schedule => "schedule",
+        }
+    }
+
+    fn from_param(s: &str) -> Option<Self> {
+        match s {
+            "watch_next" => Some(DashboardView::WatchNext),
+            "upcoming" => Some(DashboardView::Upcoming),
+            "schedule" => Some(DashboardView::Schedule),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Default, Debug, Clone, PartialEq)]
 pub(super) struct DashboardQuery {
     pub(super) page: usize,
@@ -15,6 +44,8 @@ pub(super) struct DashboardQuery {
     pub(super) week_start: bool,
     /// Offset of the upcoming-days strip's start from today, in days.
     pub(super) range: i32,
+    /// Which tabbed view is shown.
+    pub(super) view: DashboardView,
 }
 
 impl DashboardQuery {
@@ -37,6 +68,10 @@ impl DashboardQuery {
             s.append_pair("range", &self.range.to_string());
         }
 
+        if self.view != DashboardView::Upcoming {
+            s.append_pair("view", self.view.as_str());
+        }
+
         s.finish()
     }
 
@@ -56,6 +91,9 @@ impl DashboardQuery {
                 }
                 "range" => {
                     this.range = value.parse::<i32>().unwrap_or(0);
+                }
+                "view" => {
+                    this.view = DashboardView::from_param(&value).unwrap_or_default();
                 }
                 _ => continue,
             }

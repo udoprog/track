@@ -139,8 +139,6 @@ impl Component for WatchNext {
 
         html! {
             <div class="column">
-                <h1 class="center">{"What's next?"}</h1>
-
                 <div class="row desktop-align-end">
                     <div class="input-group desktop-only">
                         <Button icon="minus" title="Show fewer" onclick={link.callback(|_| Msg::AdjustPageSize(-1))} />
