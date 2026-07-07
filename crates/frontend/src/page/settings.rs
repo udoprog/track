@@ -6,7 +6,7 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::ui::{
     AIR_DATE_KINDS, AIR_DATE_SOURCES, FiltersEditor, LanguagePicker, RELEASE_KINDS,
-    RELEASE_SOURCES, SecretInput, SyncKindsEditor, SyncLanguagesEditor,
+    RELEASE_SOURCES, SecretInput, Skeleton, SyncKindsEditor, SyncLanguagesEditor,
 };
 
 fn tz_is_valid(name: &str) -> bool {
@@ -17,6 +17,9 @@ pub(crate) struct Settings {
     channel: ws::Channel,
     background: Background,
     config: api::Config,
+    /// Whether the real config has loaded; until then fields render as skeletons
+    /// rather than flashing default values.
+    loaded: bool,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
     _config_req: ws::Request,
@@ -67,6 +70,7 @@ impl Component for Settings {
             channel: ws::Channel::default(),
             background,
             config: api::Config::default(),
+            loaded: false,
             _setup,
             _broadcast,
             _config_req: ws::Request::default(),
@@ -142,21 +146,27 @@ impl Component for Settings {
 
                         <div class="field">
                             <label>{"Theme"}</label>
-                            <select class="input-select" onchange={on_theme} value={theme_val}>
-                                <option value="dark" selected={self.config.theme == api::ThemeType::Dark}>{"Dark"}</option>
-                                <option value="light" selected={self.config.theme == api::ThemeType::Light}>{"Light"}</option>
-                            </select>
+                            { self.field_slot("", html! {
+                                <select class="input-select" onchange={on_theme} value={theme_val}>
+                                    <option value="dark" selected={self.config.theme == api::ThemeType::Dark}>{"Dark"}</option>
+                                    <option value="light" selected={self.config.theme == api::ThemeType::Light}>{"Light"}</option>
+                                </select>
+                            }) }
                         </div>
 
                         <div class="field">
                             <label>{"Page title"}</label>
-                            <input class="input-text" type="text" placeholder="Track" value={self.config.page_title.clone()} onchange={on_page_title} autocomplete="off" />
+                            { self.field_slot("", html! {
+                                <input class="input-text" type="text" placeholder="Track" value={self.config.page_title.clone()} onchange={on_page_title} autocomplete="off" />
+                            }) }
                         </div>
 
                         <div class={classes!("field", (!tz_is_valid(&self.config.timezone)).then_some("error"))}>
                             <label>{"TimeZone"}</label>
 
-                            <input class="input-text" type="text" placeholder="Leave empty to use browser timezone" value={self.config.timezone.clone()} onchange={on_timezone} list="tz-datalist" autocomplete="off" />
+                            { self.field_slot("", html! {
+                                <input class="input-text" type="text" placeholder="Leave empty to use browser timezone" value={self.config.timezone.clone()} onchange={on_timezone} list="tz-datalist" autocomplete="off" />
+                            }) }
 
                             <datalist id="tz-datalist">
                                 { for jiff_tzdb::available().map(|name| html! {
@@ -175,14 +185,16 @@ impl Component for Settings {
                         <div class="field fill">
                             <label>{"Pending size"}</label>
 
-                            <input
-                                type="number"
-                                class="input-number"
-                                min="1"
-                                max="100"
-                                value={self.config.dashboard_page.to_string()}
-                                onchange={on_dashboard_page}
-                            />
+                            { self.field_slot("", html! {
+                                <input
+                                    type="number"
+                                    class="input-number"
+                                    min="1"
+                                    max="100"
+                                    value={self.config.dashboard_page.to_string()}
+                                    onchange={on_dashboard_page}
+                                />
+                            }) }
                         </div>
                     </div>
 
@@ -193,21 +205,25 @@ impl Component for Settings {
                             <label>{"Language"}</label>
                             <span class="hint">{"The default language used for shows and movies."}</span>
 
-                            <LanguagePicker
-                                current={self.config.language}
-                                placeholder="Default"
-                                on_change={link.callback(Msg::LanguageChanged)}
-                            />
+                            { self.field_slot("", html! {
+                                <LanguagePicker
+                                    current={self.config.language}
+                                    placeholder="Default"
+                                    on_change={link.callback(Msg::LanguageChanged)}
+                                />
+                            }) }
                         </div>
 
                         <div class="field">
                             <label>{"Sync Languages"}</label>
                             <span class="hint">{"Which languages to fetch translations for. This will allow for searching and filtering based on these languages."}</span>
 
-                            <SyncLanguagesEditor
-                                languages={self.config.sync_languages.clone()}
-                                on_change={link.callback(Msg::SyncLanguagesChanged)}
-                            />
+                            { self.field_slot("tall", html! {
+                                <SyncLanguagesEditor
+                                    languages={self.config.sync_languages.clone()}
+                                    on_change={link.callback(Msg::SyncLanguagesChanged)}
+                                />
+                            }) }
                         </div>
                     </div>
                 </div>
@@ -215,51 +231,61 @@ impl Component for Settings {
                 <div class="column">
                     <h4>{"Sync"}</h4>
 
-                    <span class={classes!("input-checkbox", "has-text", self.config.auto_sync_enabled.then_some("checked"))} onclick={on_auto_sync_toggle}>
-                        <span class="mark" />
-                        <span>{"Automatic Sync"}</span>
-                    </span>
+                    { self.field_slot("", html! {
+                        <span class={classes!("input-checkbox", "has-text", self.config.auto_sync_enabled.then_some("checked"))} onclick={on_auto_sync_toggle}>
+                            <span class="mark" />
+                            <span>{"Automatic Sync"}</span>
+                        </span>
+                    }) }
 
                     <div class="input-group fill">
                         <span class="input-label has-text">
                             {"Sync Interval in Hours"}
                         </span>
 
-                        <input
-                            type="number"
-                            class="input-number fill"
-                            min="1"
-                            max="168"
-                            value={self.config.auto_sync_interval_hours.to_string()}
-                            onchange={on_auto_sync_interval}
-                        />
+                        { self.field_slot("", html! {
+                            <input
+                                type="number"
+                                class="input-number fill"
+                                min="1"
+                                max="168"
+                                value={self.config.auto_sync_interval_hours.to_string()}
+                                onchange={on_auto_sync_interval}
+                            />
+                        }) }
                     </div>
 
-                    <span class={classes!("input-checkbox", "has-text", self.config.include_specials.then_some("checked"))} onclick={on_include_specials_change}>
-                        <span class="mark" />
-                        <span>{"Specials for Watch Next"}</span>
-                    </span>
+                    { self.field_slot("", html! {
+                        <span class={classes!("input-checkbox", "has-text", self.config.include_specials.then_some("checked"))} onclick={on_include_specials_change}>
+                            <span class="mark" />
+                            <span>{"Specials for Watch Next"}</span>
+                        </span>
+                    }) }
 
                     <div class="field">
                         <label>{"Sync Sources"}</label>
                         <span class="hint">{"Which kinds of data each source contributes by default, and in which priority order (top wins). Base covers titles, overviews and episodes; air dates merge by this order. Graphics always accumulate from every source. Individual shows and movies can override this per remote."}</span>
 
-                        <SyncKindsEditor
-                            kinds={self.config.sync_kinds.clone()}
-                            on_change={link.callback(Msg::SyncKindsChanged)}
-                        />
+                        { self.field_slot("tall", html! {
+                            <SyncKindsEditor
+                                kinds={self.config.sync_kinds.clone()}
+                                on_change={link.callback(Msg::SyncKindsChanged)}
+                            />
+                        }) }
                     </div>
 
                     <div class="field">
                         <label>{"Release Date"}</label>
                         <span class="hint">{"Restrict which release date qualifies, all rules that match will cause a date to be considered, and they will be prioritized according to their sync order."}</span>
 
-                        <FiltersEditor
-                            rules={self.config.release_filters.clone()}
-                            on_change={link.callback(Msg::ReleaseFiltersChanged)}
-                            kinds={RELEASE_KINDS}
-                            sources={RELEASE_SOURCES}
-                        />
+                        { self.field_slot("tall", html! {
+                            <FiltersEditor
+                                rules={self.config.release_filters.clone()}
+                                on_change={link.callback(Msg::ReleaseFiltersChanged)}
+                                kinds={RELEASE_KINDS}
+                                sources={RELEASE_SOURCES}
+                            />
+                        }) }
                     </div>
 
 
@@ -267,12 +293,14 @@ impl Component for Settings {
                         <label>{"Air Date"}</label>
                         <span class="hint">{"Restrict which air date qualifies, all rules that match will cause a date to be considered, and they will be prioritized according to their sync order."}</span>
 
-                        <FiltersEditor
-                            rules={self.config.air_date_filters.clone()}
-                            on_change={link.callback(Msg::AirDateFiltersChanged)}
-                            kinds={AIR_DATE_KINDS}
-                            sources={AIR_DATE_SOURCES}
-                        />
+                        { self.field_slot("tall", html! {
+                            <FiltersEditor
+                                rules={self.config.air_date_filters.clone()}
+                                on_change={link.callback(Msg::AirDateFiltersChanged)}
+                                kinds={AIR_DATE_KINDS}
+                                sources={AIR_DATE_SOURCES}
+                            />
+                        }) }
                     </div>
                 </div>
 
@@ -282,34 +310,40 @@ impl Component for Settings {
                     <div class="field">
                         <label for="tvdb-api-key">{"TheTVDB API Key"}</label>
 
-                        <SecretInput
-                            id="tvdb-api-key"
-                            placeholder="Enter TVDB API key"
-                            value={self.config.tvdb_api_key.clone()}
-                            on_change={link.callback(Msg::TvdbKeyChanged)}
-                        />
+                        { self.field_slot("", html! {
+                            <SecretInput
+                                id="tvdb-api-key"
+                                placeholder="Enter TVDB API key"
+                                value={self.config.tvdb_api_key.clone()}
+                                on_change={link.callback(Msg::TvdbKeyChanged)}
+                            />
+                        }) }
                     </div>
 
                     <div class="field">
                         <label for="tvdb-pin">{"TheTVDB Subscriber PIN (optional)"}</label>
 
-                        <SecretInput
-                            id="tvdb-pin"
-                            placeholder="Enter TVDB subscriber PIN"
-                            value={self.config.tvdb_pin.clone().unwrap_or_default()}
-                            on_change={link.callback(Msg::TvdbPinChanged)}
-                        />
+                        { self.field_slot("", html! {
+                            <SecretInput
+                                id="tvdb-pin"
+                                placeholder="Enter TVDB subscriber PIN"
+                                value={self.config.tvdb_pin.clone().unwrap_or_default()}
+                                on_change={link.callback(Msg::TvdbPinChanged)}
+                            />
+                        }) }
                     </div>
 
                     <div class="field">
                         <label for="tmdb-api-key">{"TheMovieDB API Key"}</label>
 
-                        <SecretInput
-                            id="tmdb-api-key"
-                            placeholder="Enter TMDB API key"
-                            value={self.config.tmdb_api_key.clone()}
-                            on_change={link.callback(Msg::TmdbKeyChanged)}
-                        />
+                        { self.field_slot("", html! {
+                            <SecretInput
+                                id="tmdb-api-key"
+                                placeholder="Enter TMDB API key"
+                                value={self.config.tmdb_api_key.clone()}
+                                on_change={link.callback(Msg::TmdbKeyChanged)}
+                            />
+                        }) }
                     </div>
                 </div>
             </>
@@ -318,6 +352,17 @@ impl Component for Settings {
 }
 
 impl Settings {
+    /// Render `control` once the config has loaded, or a skeleton placeholder of
+    /// the given size class while it is still loading, so a field keeps its
+    /// static label/hint without flashing a default value.
+    fn field_slot(&self, skeleton: &'static str, control: Html) -> Html {
+        if self.loaded {
+            control
+        } else {
+            html! { <Skeleton class={classes!(skeleton)} /> }
+        }
+    }
+
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
             Msg::Channel(result) => {
@@ -326,6 +371,7 @@ impl Settings {
                     self.load(ctx);
                 } else {
                     self.config = api::Config::default();
+                    self.loaded = false;
                 }
                 Ok(true)
             }
@@ -336,6 +382,7 @@ impl Settings {
                 }
                 if let api::AppEventKind::ConfigChanged { config } = event.kind {
                     self.config = config;
+                    self.loaded = true;
                     return Ok(true);
                 }
                 Ok(false)
@@ -346,6 +393,7 @@ impl Settings {
                     .decode()
                     .context(Message::LoadingConfig)?
                     .config;
+                self.loaded = true;
                 Ok(true)
             }
             Msg::ThemeChanged(theme) => {

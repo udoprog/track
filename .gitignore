@@ -2,6 +2,7 @@
 /*.db*
 /target/
 /dist/
+/crates/frontend/dist/
 /image-cache/
 /.claude/
 /memory

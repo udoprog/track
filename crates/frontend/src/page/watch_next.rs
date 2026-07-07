@@ -10,7 +10,8 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{Route, Router, ShowDetailQuery};
 use crate::ui::{
-    Button, ConfirmDanger, ContextMenu, Image, MarkTimeMenu, PaginationButtons, TimePreset, Variant,
+    Button, ConfirmDanger, ContextMenu, Image, MarkTimeMenu, PaginationButtons, Skeleton,
+    TimePreset, Variant,
 };
 
 struct PendingState {
@@ -149,7 +150,11 @@ impl Component for WatchNext {
                     <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
                 </div>
 
-                if self.pending.is_empty() {
+                if !self.pending_loaded {
+                    <div class="pending-grid" style={format!("--pending-columns: {}", page_size)}>
+                        { for (0..page_size).map(|_| Self::view_pending_skeleton()) }
+                    </div>
+                } else if self.pending.is_empty() {
                     <p class="text-muted">{"Nothing pending."}</p>
                 } else {
                     <div class="pending-grid" style={format!("--pending-columns: {}", page_size)}>
@@ -186,6 +191,7 @@ impl WatchNext {
                     self.load_config(ctx);
                 } else {
                     self.pending.clear();
+                    self.pending_loaded = false;
                 }
 
                 Ok(true)
@@ -418,6 +424,24 @@ impl WatchNext {
             .body(api::GetConfigRequest)
             .on_packet(ctx.link().callback(Msg::ConfigLoaded))
             .send();
+    }
+
+    /// Placeholder card mirroring `view_pending_item`'s structure, shown for each
+    /// slot while the pending list is still loading.
+    fn view_pending_skeleton() -> Html {
+        html! {
+            <div class="pending-item">
+                <Skeleton class="poster desktop-only" />
+                <Skeleton class="banner mobile-only" />
+
+                <div class="pending-info">
+                    <div class="pending-content">
+                        <Skeleton class="line" style="width: 80%" />
+                        <Skeleton class="line" style="width: 50%" />
+                    </div>
+                </div>
+            </div>
+        }
     }
 
     fn view_pending_item(&self, ctx: &Context<Self>, pending: &PendingState) -> Html {

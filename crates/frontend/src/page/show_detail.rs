@@ -10,8 +10,8 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaQuery, Route, Router, ShowDetailQuery};
 use crate::ui::{
-    Button, ConfirmDanger, ContextMenu, EpisodePicker, GraphicsSourceFilter, Image, ImageGallery,
-    ImageItem, Loading, MarkTimeMenu, MediaSettingsModal, Modal, OutlineControl, OutlineEntry,
+    Button, ConfirmDanger, ContextMenu, DetailSkeleton, EpisodePicker, GraphicsSourceFilter, Image,
+    ImageGallery, ImageItem, MarkTimeMenu, MediaSettingsModal, Modal, OutlineControl, OutlineEntry,
     OutlineHandle, ReleaseModal, ReleaseTarget, RemoteEditor, RemoteSourceKind, SettingsTarget,
     TimePreset, Tracked, TranslationsModal, Variant,
 };
@@ -348,7 +348,7 @@ impl Component for ShowDetail {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let show = match &self.show {
-            ShowState::Loading => return html!(<Loading />),
+            ShowState::Loading => return html!(<DetailSkeleton />),
             ShowState::Missing => {
                 return html! {
                     <div class="box info">

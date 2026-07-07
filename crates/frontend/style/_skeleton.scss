@@ -18,6 +18,39 @@
     @include g.on-mobile {
         min-height: $input-height-touch;
     }
+
+    // Text-line placeholder: shorter than an input, for standing in for a run of
+    // text (titles, overview lines). Width is set by the caller.
+    &.line {
+        min-height: $input-height-sm;
+
+        @include g.on-mobile {
+            min-height: $input-height-sm;
+        }
+    }
+
+    // Taller placeholder for multi-row controls (list editors) so the skeleton
+    // roughly fills the space the real control will occupy.
+    &.tall {
+        min-height: $input-height-xl * 2;
+    }
+
+    // Image-shaped placeholders mirror the `image` aspect ratios so a skeleton
+    // occupies the same box its image will once loaded.
+    &.poster {
+        aspect-ratio: 2 / 3;
+        min-height: 0;
+    }
+
+    &.backdrop {
+        aspect-ratio: 16 / 9;
+        min-height: 0;
+    }
+
+    &.banner {
+        aspect-ratio: 21 / 4;
+        min-height: 0;
+    }
 }
 
 @keyframes skeleton-shine {

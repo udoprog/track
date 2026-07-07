@@ -8,8 +8,8 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaQuery, Route, Router};
 use crate::ui::{
-    Button, ConfirmDanger, ContextMenu, GraphicsSourceFilter, Image, ImageGallery, ImageItem,
-    Loading, MarkTimeMenu, MediaSettingsModal, Modal, ReleaseModal, ReleaseTarget, RemoteEditor,
+    Button, ConfirmDanger, ContextMenu, DetailSkeleton, GraphicsSourceFilter, Image, ImageGallery,
+    ImageItem, MarkTimeMenu, MediaSettingsModal, Modal, ReleaseModal, ReleaseTarget, RemoteEditor,
     RemoteSourceKind, SettingsTarget, TimePreset, Tracked, TranslationsModal, Variant,
 };
 
@@ -230,7 +230,7 @@ impl Component for MovieDetail {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let movie = match &self.movie {
-            MovieState::Loading => return html!(<Loading />),
+            MovieState::Loading => return html!(<DetailSkeleton />),
             MovieState::Missing => {
                 return html! {
                     <div class="box info">

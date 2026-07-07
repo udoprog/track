@@ -1,14 +1,17 @@
 use core::iter;
 
+use core::str::FromStr;
 use std::sync::Arc;
+use std::time::Duration;
 
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, Error, Result};
 use api::{MovieId, ShowId, TimeZone};
 use axum::extract::State;
 use axum::extract::WebSocketUpgrade;
 use musli_web::axum08;
 use musli_web::ws;
 use tokio::sync::broadcast;
+use tokio::time;
 
 use crate::app_broadcast::Broadcaster;
 use crate::db::Database;
@@ -16,6 +19,45 @@ use crate::pending::PendingSystem;
 use crate::remote::RemoteClients;
 use crate::task_queue::TaskQueue;
 use crate::web::AppState;
+
+/// An artificial random delay applied to every websocket request, used to
+/// preview loading/skeleton states on slow connections. Parsed from a
+/// `MIN..MAX` millisecond range on the command line.
+#[derive(Debug, Clone, Copy)]
+pub struct RandomDelay {
+    min: u64,
+    max: u64,
+}
+
+impl RandomDelay {
+    /// A random delay within the configured inclusive range.
+    fn sample(self) -> Duration {
+        Duration::from_millis(rand::random_range(self.min..=self.max))
+    }
+}
+
+impl FromStr for RandomDelay {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (min, max) = s.split_once("..").context("expected a `MIN..MAX`")?;
+
+        let min_ms = min.trim().parse().context("parsing minimum delay")?;
+
+        let max_ms = max.trim().parse().context("parsing maximum delay")?;
+
+        if min_ms > max_ms {
+            return Err(anyhow::anyhow!(
+                "MIN ({min_ms}) must not exceed MAX ({max_ms})"
+            ));
+        }
+
+        Ok(Self {
+            min: min_ms,
+            max: max_ms,
+        })
+    }
+}
 
 #[derive(Clone)]
 pub(super) struct WsHandler {
@@ -25,6 +67,7 @@ pub(super) struct WsHandler {
     pub(super) queue: TaskQueue,
     pub(super) pending: PendingSystem,
     pub(super) config_changed: Arc<tokio::sync::Notify>,
+    pub(super) delay: Option<RandomDelay>,
 }
 
 impl ws::Handler for WsHandler {
@@ -38,6 +81,12 @@ impl ws::Handler for WsHandler {
         outgoing: &mut ws::Outgoing<'_>,
     ) -> Self::Response {
         tracing::trace!(?id, "Request");
+
+        // Optional artificial latency so loading/skeleton states can be observed
+        // against a slow connection.
+        if let Some(delay) = self.delay {
+            time::sleep(delay.sample()).await;
+        }
 
         let result = self.handle_inner(id, incoming, outgoing).await;
 
@@ -1671,6 +1720,7 @@ pub(super) async fn ws_handler(
             queue: state.queue.clone(),
             pending: state.pending.clone(),
             config_changed: state.config_changed.clone(),
+            delay: state.delay,
         };
 
         let mut subscribe = state.broadcast.subscribe();

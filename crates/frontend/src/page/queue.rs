@@ -6,7 +6,7 @@ use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{QueueFocus, QueueQuery, Route, Router, ShowDetailQuery};
-use crate::ui::{Button, MDASH, PaginationButtons, Variant};
+use crate::ui::{Button, MDASH, PaginationButtons, Skeleton, Variant};
 
 const PAGE_SIZE: usize = 20;
 
@@ -17,6 +17,8 @@ pub(crate) struct Queue {
     pending: Vec<api::Task>,
     running: Vec<api::Task>,
     completed: Vec<api::CompletedTask>,
+    /// Whether the initial task lists have loaded; gates skeleton placeholders.
+    loaded: bool,
     time: TimeInfo,
     _time_handle: ContextHandle<TimeInfo>,
     _setup: SetupChannel,
@@ -85,6 +87,7 @@ impl Component for Queue {
             pending: Vec::new(),
             running: Vec::new(),
             completed: Vec::new(),
+            loaded: false,
             time,
             _time_handle,
             _setup,
@@ -151,6 +154,7 @@ impl Queue {
                     self.pending.clear();
                     self.running.clear();
                     self.completed.clear();
+                    self.loaded = false;
                 }
                 Ok(true)
             }
@@ -191,6 +195,7 @@ impl Queue {
                 self.pending = resp.pending;
                 self.running = resp.running;
                 self.completed = resp.completed;
+                self.loaded = true;
                 Ok(true)
             }
             Msg::SyncAll => {
@@ -264,9 +269,23 @@ impl Queue {
             .send();
     }
 
+    /// A short run of placeholder rows shown while the task lists load, so the
+    /// page reads as loading rather than empty.
+    fn view_task_skeletons() -> Html {
+        html! {
+            <div class="column">
+                { for (0..3).map(|_| html! { <Skeleton /> }) }
+            </div>
+        }
+    }
+
     /// The overview: one clickable card per task list showing its count and the
     /// current (first) task, without rendering the full, churning lists.
     fn view_overview(&self, ctx: &Context<Self>) -> Html {
+        if !self.loaded {
+            return Self::view_task_skeletons();
+        }
+
         let running_current = self.running.first().map(|t| self.view_task_label(t, None));
 
         let pending_current = self.pending.first().map(|t| self.view_task_label(t, None));
@@ -352,6 +371,10 @@ impl Queue {
     }
 
     fn view_running_list(&self, ctx: &Context<Self>) -> Html {
+        if !self.loaded {
+            return Self::view_task_skeletons();
+        }
+
         if self.running.is_empty() {
             return html! { <h4 class="text-muted">{"No running tasks"}</h4> };
         }
@@ -365,6 +388,10 @@ impl Queue {
 
     fn view_pending_list(&self, ctx: &Context<Self>) -> (Option<Html>, Html) {
         let link = ctx.link();
+
+        if !self.loaded {
+            return (None, Self::view_task_skeletons());
+        }
 
         let total_pending = self.pending.len();
 
@@ -460,6 +487,10 @@ impl Queue {
 
     fn view_completed_list(&self, ctx: &Context<Self>) -> (Option<Html>, Html) {
         let link = ctx.link();
+
+        if !self.loaded {
+            return (None, Self::view_task_skeletons());
+        }
 
         let total = self.completed.len();
 

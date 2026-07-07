@@ -12,6 +12,7 @@ use crate::db::Database;
 use crate::pending::PendingSystem;
 use crate::remote::RemoteClients;
 use crate::task_queue::TaskQueue;
+use crate::ws::RandomDelay;
 
 #[derive(Clone)]
 pub(crate) struct AppState {
@@ -23,6 +24,8 @@ pub(crate) struct AppState {
     pub(crate) remote: RemoteClients,
     pub(crate) pending: PendingSystem,
     pub(crate) config_changed: Arc<Notify>,
+    /// Optional artificial per-request websocket latency (dev/testing).
+    pub(crate) delay: Option<RandomDelay>,
 }
 
 pub(crate) fn router(state: AppState) -> Router {

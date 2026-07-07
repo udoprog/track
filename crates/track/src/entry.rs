@@ -20,6 +20,7 @@ use crate::remote::RemoteClients;
 use crate::shutdown::Shutdown;
 use crate::task_queue::TaskQueue;
 use crate::web::{self, AppState};
+use crate::ws::RandomDelay;
 
 #[derive(Parser)]
 #[command(version, about = "Track web server")]
@@ -35,6 +36,12 @@ pub struct Args {
     /// Address to listen on.
     #[arg(long, default_value = "127.0.0.1:3000")]
     bind: SocketAddr,
+
+    /// Inject an artificial random delay into every websocket request, given as
+    /// a `MIN..MAX` millisecond range, to preview loading/skeleton states on a
+    /// slow connection (e.g. `--delay 200..800`).
+    #[arg(long, value_name = "MIN..MAX")]
+    delay: Option<RandomDelay>,
 }
 
 pub async fn server(args: Args, db: &Path, log: &[String]) -> Result<ExitCode> {
@@ -97,7 +104,12 @@ pub async fn server(args: Args, db: &Path, log: &[String]) -> Result<ExitCode> {
         remote,
         pending,
         config_changed,
+        delay: args.delay,
     };
+
+    if let Some(delay) = args.delay {
+        tracing::info!(?delay, "Injecting artificial websocket delay");
+    }
 
     tracing::info!("Listening on {}", args.bind);
 
