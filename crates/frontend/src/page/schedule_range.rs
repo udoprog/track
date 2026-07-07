@@ -12,8 +12,8 @@ use crate::ui::{Button, Image, Skeleton};
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
-    /// Days the strip starts ahead of today (0 = starts today). Persisted in the
-    /// URL by the parent; kept non-negative — this is an upcoming view.
+    /// Days the strip starts from today (0 = starts today; negative reaches into
+    /// the past). Persisted in the URL by the parent.
     pub(crate) day_offset: i32,
     /// Navigate to a new day offset (the parent persists it in the URL).
     pub(crate) on_set_range: Callback<i32>,
@@ -21,9 +21,9 @@ pub(crate) struct Props {
 
 /// A compact upcoming-days strip: a configurable number of consecutive days
 /// rendered like the schedule but without week breaks, with a poster rail on the
-/// left that tracks the hovered entry. Scrolls one day at a time and never
-/// reaches into the past. Sits above the full [`super::Calendar`] on the
-/// dashboard. The visible day count lives in [`api::Config::schedule_range_days`].
+/// left that tracks the hovered entry. Scrolls one day at a time. Sits above the
+/// full [`super::Calendar`] on the dashboard. The visible day count lives in
+/// [`api::Config::schedule_range_days`].
 pub(crate) struct ScheduleRange {
     channel: ws::Channel,
     schedule: Vec<api::ScheduledDay>,
@@ -124,10 +124,15 @@ impl Component for ScheduleRange {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let today = api::Date::today();
-        let offset = ctx.props().day_offset.max(0);
+        let offset = ctx.props().day_offset;
         let days_count = self.config.schedule_range_days.max(1) as usize;
 
-        let start = today.checked_add_days(offset as u32).unwrap_or(today);
+        let start = if offset >= 0 {
+            today.checked_add_days(offset as u32)
+        } else {
+            today.checked_sub_days(offset.unsigned_abs())
+        }
+        .unwrap_or(today);
         let days: Vec<api::Date> = (0..days_count)
             .map(|i| start.checked_add_days(i as u32).unwrap_or(start))
             .collect();
@@ -163,17 +168,17 @@ impl Component for ScheduleRange {
                     <Button icon="chevron-right" title="Next day" onclick={on_next} />
                 </div>
 
-                <div class={classes!("schedule-range-grid", (offset > 0).then_some("has-reset"))} style={format!("--range-days: {days_count}")}>
+                <div class={classes!("schedule-range-grid", (offset != 0).then_some("has-reset"))} style={format!("--range-days: {days_count}")}>
                     <div class="schedule-range-poster">
                         <Image src={poster.clone()} />
                     </div>
 
-                    if offset > 0 {
+                    if offset != 0 {
                         <div class="schedule-range-reset clickable" title="Back to today" onclick={on_reset}>
                             <span class="item-inline-lg">
-                                <span class="icon chevron-double-left" />
+                                <span class={classes!("icon", if offset > 0 { "chevron-double-left" } else { "chevron-double-right" })} />
                             </span>
-                            <span>{offset}</span>
+                            <span>{offset.abs()}</span>
                         </div>
                     }
 
@@ -323,12 +328,14 @@ impl ScheduleRange {
     ) -> Html {
         let link = ctx.link();
 
+        let is_yesterday = day == today.checked_sub_days(1).unwrap_or(day);
         let is_today = day == today;
         let is_tomorrow = day == today.checked_add_days(1).unwrap_or(day);
-        let shows = lookup.get(&day).map(|d| d.shows.as_slice()).unwrap_or(&[]);
-        let movies = lookup.get(&day).map(|d| d.movies.as_slice()).unwrap_or(&[]);
+        let items = lookup.get(&day).map(|d| d.items()).unwrap_or_default();
 
-        let label = if is_today {
+        let label = if is_yesterday {
+            "Yesterday"
+        } else if is_today {
             "Today"
         } else if is_tomorrow {
             "Tomorrow"
@@ -349,72 +356,73 @@ impl ScheduleRange {
                     <div class="calendar-items">
                         <Skeleton />
                     </div>
-                } else if !shows.is_empty() || !movies.is_empty() {
+                } else if !items.is_empty() {
                     <div class="calendar-items">
-                        { for shows.iter().enumerate().map(|(index, entry)| {
-                            let show_id = entry.show_id;
-                            let episode = entry.episodes.last().map(|ep| ep.code());
-                            let onclick = link.callback(move |_| {
-                                let season = episode.map(|e| e.season).unwrap_or_default();
-                                Msg::Navigate(Route::ShowDetail(show_id, ShowDetailQuery { season, episode, orphaned: false }))
-                            });
+                        { for items.iter().map(|item| match item {
+                            api::ScheduleItem::Show(entry) => {
+                                let show_id = entry.show_id;
+                                let episode = entry.episodes.last().map(|ep| ep.code());
+                                let onclick = link.callback(move |_| {
+                                    let season = episode.map(|e| e.season).unwrap_or_default();
+                                    Msg::Navigate(Route::ShowDetail(show_id, ShowDetailQuery { season, episode, orphaned: false }))
+                                });
 
-                            let hover_poster = entry.poster.clone();
-                            let hover_bg = entry.backdrop.as_ref().map(|i| i.proxy_url());
-                            let onmouseover = link.callback(move |_| Msg::Hover(hover_poster.clone(), hover_bg.clone()));
+                                let hover_poster = entry.poster.clone();
+                                let hover_bg = entry.backdrop.as_ref().map(|i| i.proxy_url());
+                                let onmouseover = link.callback(move |_| Msg::Hover(hover_poster.clone(), hover_bg.clone()));
 
-                            html! {
-                                <div key={format!("show-{index}")} class="calendar-item" title={format!("Open {}", entry.show_title)} {onmouseover}>
-                                    <div class="calendar-item-title clickable" {onclick}>
-                                        <span class="item-inline">
-                                            <span class="icon tv" />
-                                        </span>
+                                html! {
+                                    <div key={format!("show-{show_id}")} class="calendar-item" title={format!("Open {}", entry.show_title)} {onmouseover}>
+                                        <div class="calendar-item-title clickable" {onclick}>
+                                            <span class="item-inline">
+                                                <span class="icon tv" />
+                                            </span>
 
-                                        {&entry.show_title}
+                                            {&entry.show_title}
+                                        </div>
+
+                                        { for entry.episodes.iter().enumerate().map(|(index, ep)| {
+                                            let episode = ep.code();
+                                            let onclick = link.callback(move |_|
+                                                Msg::Navigate(Route::ShowDetail(show_id, ShowDetailQuery { season: episode.season, episode: Some(episode), orphaned: false }))
+                                            );
+
+                                            html! {
+                                                <div key={format!("episode-{index}")} class="calendar-item-code clickable" onclick={onclick} title={format!("Open {} {}", entry.show_title, ep.code())}>
+                                                    <span>{ep.aired.time_of_day(self.time.clone())}</span>
+                                                    <span>{ep.code().to_string()}</span>
+                                                </div>
+                                            }
+                                        }) }
                                     </div>
-
-                                    { for entry.episodes.iter().enumerate().map(|(index, ep)| {
-                                        let episode = ep.code();
-                                        let onclick = link.callback(move |_|
-                                            Msg::Navigate(Route::ShowDetail(show_id, ShowDetailQuery { season: episode.season, episode: Some(episode), orphaned: false }))
-                                        );
-
-                                        html! {
-                                            <div key={format!("episode-{index}")} class="calendar-item-code clickable" onclick={onclick} title={format!("Open {} {}", entry.show_title, ep.code())}>
-                                                <span>{ep.aired.time_of_day(self.time.clone())}</span>
-                                                <span>{ep.code().to_string()}</span>
-                                            </div>
-                                        }
-                                    }) }
-                                </div>
+                                }
                             }
-                        }) }
+                            api::ScheduleItem::Movie(movie) => {
+                                let movie_id = movie.movie_id;
 
-                        { for movies.iter().enumerate().map(|(index, movie)| {
-                            let movie_id = movie.movie_id;
+                                let on_click = link.callback(move |_|
+                                    Msg::Navigate(Route::MovieDetail(movie_id))
+                                );
 
-                            let on_click = link.callback(move |_|
-                                Msg::Navigate(Route::MovieDetail(movie_id))
-                            );
+                                let hover_poster = movie.poster.clone();
+                                let hover_bg = movie.backdrop.as_ref().map(|i| i.proxy_url());
+                                let onmouseover = link.callback(move |_| Msg::Hover(hover_poster.clone(), hover_bg.clone()));
 
-                            let hover_poster = movie.poster.clone();
-                            let hover_bg = movie.backdrop.as_ref().map(|i| i.proxy_url());
-                            let onmouseover = link.callback(move |_| Msg::Hover(hover_poster.clone(), hover_bg.clone()));
+                                html! {
+                                    <div key={format!("movie-{movie_id}")} class="calendar-item clickable" onclick={on_click} title={movie.title.clone()} {onmouseover}>
+                                        <div class="calendar-item-title">
+                                            <span class="item-inline">
+                                                <span class="icon film" />
+                                            </span>
 
-                            html! {
-                                <div key={format!("movie-{index}")} class="calendar-item clickable" onclick={on_click} title={movie.title.clone()} {onmouseover}>
-                                    <div class="calendar-item-title">
-                                        <span class="item-inline">
-                                            <span class="icon film" />
-                                        </span>
+                                            {&movie.title}
+                                        </div>
 
-                                        {&movie.title}
+                                        <div class="calendar-item-code">
+                                            {movie.released.time_of_day(self.time.clone())}
+                                        </div>
                                     </div>
-
-                                    <div class="calendar-item-code">
-                                        {movie.released.time_of_day(self.time.clone())}
-                                    </div>
-                                </div>
+                                }
                             }
                         }) }
                     </div>
@@ -431,7 +439,7 @@ impl ScheduleRange {
             .request()
             .body(api::ListScheduleRequest {
                 tz: self.time.tz().iana_name(),
-                start_offset_days: ctx.props().day_offset.max(0),
+                start_offset_days: ctx.props().day_offset,
                 days: self.config.schedule_range_days.max(1),
             })
             .on_packet(ctx.link().callback(Msg::ScheduleLoaded))

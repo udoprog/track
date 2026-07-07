@@ -1821,6 +1821,40 @@ pub struct ScheduledDay {
     pub movies: Vec<ScheduleMovie>,
 }
 
+/// A single block in a day's schedule timeline: either a show (with its grouped
+/// episodes) or a movie.
+pub enum ScheduleItem<'a> {
+    Show(&'a ScheduledEntry),
+    Movie(&'a ScheduleMovie),
+}
+
+impl ScheduleItem<'_> {
+    /// Sort key: a show sorts by its earliest episode's air time, a movie by
+    /// its release time. Show entries always have episodes; an empty one sorts
+    /// last so it never masks a real time.
+    fn timestamp(&self) -> Option<Timestamp> {
+        match self {
+            ScheduleItem::Show(e) => e.episodes.iter().map(|ep| ep.aired).min(),
+            ScheduleItem::Movie(m) => Some(m.released),
+        }
+    }
+}
+
+impl ScheduledDay {
+    /// Shows and movies interleaved and ordered by air/release time.
+    pub fn items(&self) -> Vec<ScheduleItem<'_>> {
+        let mut items: Vec<ScheduleItem<'_>> = self
+            .shows
+            .iter()
+            .map(ScheduleItem::Show)
+            .chain(self.movies.iter().map(ScheduleItem::Movie))
+            .collect();
+        // None (episode-less entries) sorts last via the (is_none, ts) key.
+        items.sort_by_key(|i| (i.timestamp().is_none(), i.timestamp()));
+        items
+    }
+}
+
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct Config {

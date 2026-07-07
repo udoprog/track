@@ -209,11 +209,11 @@ impl Component for Calendar {
 
                             <div key={format!("calendar-week-{index}")} class="calendar-week">
                                 { for days.iter().enumerate().map(|(index, &day)| {
+                                    let is_yesterday = day == today.checked_sub_days(1).unwrap_or(day);
                                     let is_today = day == today;
                                     let is_tomorrow = day == today.checked_add_days(1).unwrap_or(day);
                                     let is_past  = day < today;
-                                    let shows = schedule_lookup.get(&day).map(|d| d.shows.as_slice()).unwrap_or(&[]);
-                                    let movies = schedule_lookup.get(&day).map(|d| d.movies.as_slice()).unwrap_or(&[]);
+                                    let items = schedule_lookup.get(&day).map(|d| d.items()).unwrap_or_default();
 
                                     html! {
                                         <div key={index} class={classes!(
@@ -221,12 +221,18 @@ impl Component for Calendar {
                                             is_today.then_some("today"),
                                             is_past.then_some("past"),
                                             (is_past && !show_past).then_some("desktop-only"),
-                                            (!loading && shows.is_empty() && movies.is_empty()).then_some("desktop-only"),
+                                            (!loading && items.is_empty()).then_some("desktop-only"),
                                         )}>
                                             <div class="calendar-day-number">
                                                 <span class="bullet">{day.day()}</span>
 
-                                                if is_today {
+                                                if is_yesterday {
+                                                    <div class="day-of-week">
+                                                        <span>{"Yesterday"}</span>
+                                                        <span class="mobile-only">{DOT}</span>
+                                                        <span class="mobile-only">{day.weekday().long_name()}</span>
+                                                    </div>
+                                                } else if is_today {
                                                     <div class="day-of-week">
                                                         <span>{"Today"}</span>
                                                         <span class="mobile-only">{DOT}</span>
@@ -247,64 +253,65 @@ impl Component for Calendar {
                                                 <div class="calendar-items">
                                                     <Skeleton />
                                                 </div>
-                                            } else if !shows.is_empty() || !movies.is_empty() {
+                                            } else if !items.is_empty() {
                                                 <div class="calendar-items">
-                                                    { for shows.iter().enumerate().map(|(index, entry)| {
-                                                        let show_id = entry.show_id;
-                                                        let episode = entry.episodes.last().map(|ep| ep.code());
-                                                        let onclick = link.callback(move |_| {
-                                                            let season = episode.map(|e| e.season).unwrap_or_default();
-                                                            Msg::Navigate(Route::ShowDetail(show_id, ShowDetailQuery { season, episode, orphaned: false }))
-                                                        });
+                                                    { for items.iter().map(|item| match item {
+                                                        api::ScheduleItem::Show(entry) => {
+                                                            let show_id = entry.show_id;
+                                                            let episode = entry.episodes.last().map(|ep| ep.code());
+                                                            let onclick = link.callback(move |_| {
+                                                                let season = episode.map(|e| e.season).unwrap_or_default();
+                                                                Msg::Navigate(Route::ShowDetail(show_id, ShowDetailQuery { season, episode, orphaned: false }))
+                                                            });
 
-                                                        html! {
-                                                            <div key={format!("show-{index}")} class="calendar-item" title={format!("Open {}", entry.show_title)}>
-                                                                <div class="calendar-item-title clickable" {onclick}>
-                                                                    <span class="item-inline">
-                                                                        <span class="icon tv" />
-                                                                    </span>
+                                                            html! {
+                                                                <div key={format!("show-{show_id}")} class="calendar-item" title={format!("Open {}", entry.show_title)}>
+                                                                    <div class="calendar-item-title clickable" {onclick}>
+                                                                        <span class="item-inline">
+                                                                            <span class="icon tv" />
+                                                                        </span>
 
-                                                                    {&entry.show_title}
+                                                                        {&entry.show_title}
+                                                                    </div>
+
+                                                                    {for entry.episodes.iter().enumerate().map(|(index, ep)| {
+                                                                        let episode = ep.code();
+                                                                        let onclick = link.callback(move |_|
+                                                                            Msg::Navigate(Route::ShowDetail(show_id, ShowDetailQuery { season: episode.season, episode: Some(episode), orphaned: false }))
+                                                                        );
+
+                                                                        html! {
+                                                                            <div key={format!("episode-{index}")} class="calendar-item-code clickable" onclick={onclick} title={format!("Open {} {}", entry.show_title, ep.code())}>
+                                                                                <span>{ep.aired.time_of_day(self.time.clone())}</span>
+                                                                                <span>{ep.code().to_string()}</span>
+                                                                            </div>
+                                                                        }
+                                                                    })}
                                                                 </div>
-
-                                                                {for entry.episodes.iter().enumerate().map(|(index, ep)| {
-                                                                    let episode = ep.code();
-                                                                    let onclick = link.callback(move |_|
-                                                                        Msg::Navigate(Route::ShowDetail(show_id, ShowDetailQuery { season: episode.season, episode: Some(episode), orphaned: false }))
-                                                                    );
-
-                                                                    html! {
-                                                                        <div key={format!("episode-{index}")} class="calendar-item-code clickable" onclick={onclick} title={format!("Open {} {}", entry.show_title, ep.code())}>
-                                                                            <span>{ep.aired.time_of_day(self.time.clone())}</span>
-                                                                            <span>{ep.code().to_string()}</span>
-                                                                        </div>
-                                                                    }
-                                                                })}
-                                                            </div>
+                                                            }
                                                         }
-                                                    }) }
+                                                        api::ScheduleItem::Movie(movie) => {
+                                                            let movie_id = movie.movie_id;
 
-                                                    { for movies.iter().enumerate().map(|(index, movie)| {
-                                                        let movie_id = movie.movie_id;
+                                                            let on_click = link.callback(move |_|
+                                                                Msg::Navigate(Route::MovieDetail(movie_id))
+                                                            );
 
-                                                        let on_click = link.callback(move |_|
-                                                            Msg::Navigate(Route::MovieDetail(movie_id))
-                                                        );
+                                                            html! {
+                                                                <div key={format!("movie-{movie_id}")} class="calendar-item clickable" onclick={on_click} title={movie.title.clone()}>
+                                                                    <div class="calendar-item-title">
+                                                                        <span class="item-inline">
+                                                                            <span class="icon film" />
+                                                                        </span>
 
-                                                        html! {
-                                                            <div key={format!("movie-{index}")} class="calendar-item clickable" onclick={on_click} title={movie.title.clone()}>
-                                                                <div class="calendar-item-title">
-                                                                    <span class="item-inline">
-                                                                        <span class="icon film" />
-                                                                    </span>
+                                                                        {&movie.title}
+                                                                    </div>
 
-                                                                    {&movie.title}
+                                                                    <div class="calendar-item-code">
+                                                                        {movie.released.time_of_day(self.time.clone())}
+                                                                    </div>
                                                                 </div>
-
-                                                                <div class="calendar-item-code">
-                                                                    {movie.released.time_of_day(self.time.clone())}
-                                                                </div>
-                                                            </div>
+                                                            }
                                                         }
                                                     }) }
                                                 </div>
