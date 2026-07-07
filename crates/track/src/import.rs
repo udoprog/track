@@ -372,6 +372,7 @@ pub async fn import() -> Result<()> {
             schedule_range_days: 3,
             auto_sync_enabled: false,
             auto_sync_interval_hours: 24,
+            page_title: String::new(),
             timezone: String::new(),
             language: api::Locale::DEFAULT,
             include_specials: false,

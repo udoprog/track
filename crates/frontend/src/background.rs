@@ -14,6 +14,10 @@ pub(super) struct BackgroundState {
     document: Option<Document>,
     storage: Option<Storage>,
     value: Option<String>,
+    /// Fallback tab title used when no page sets its own. Driven by config.
+    default_title: String,
+    /// The title set by the current page, if any.
+    current_title: Option<String>,
 }
 
 impl BackgroundState {
@@ -30,6 +34,8 @@ impl BackgroundState {
             document,
             storage,
             value,
+            default_title: "Track".to_owned(),
+            current_title: None,
         }
     }
 
@@ -50,16 +56,24 @@ impl BackgroundState {
         Ok(true)
     }
 
-    pub(super) fn set_title(&self, title: Option<String>) {
+    pub(super) fn set_title(&mut self, title: Option<String>) {
+        self.current_title = title;
+        self.apply();
+    }
+
+    /// Set the fallback tab title used when no page sets its own. Expects an
+    /// already-normalized value (see `App::title_from_config`).
+    pub(super) fn set_default_title(&mut self, title: &str) {
+        self.default_title = title.to_owned();
+        self.apply();
+    }
+
+    fn apply(&self) {
         let Some(ref document) = self.document else {
             return;
         };
 
-        if let Some(title) = title {
-            document.set_title(&title);
-        } else {
-            document.set_title("Track");
-        }
+        document.set_title(self.current_title.as_deref().unwrap_or(&self.default_title));
     }
 
     /// The current background image URL, if any.

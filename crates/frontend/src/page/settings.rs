@@ -31,6 +31,7 @@ pub(crate) enum Msg {
     TvdbKeyChanged(String),
     TvdbPinChanged(String),
     TmdbKeyChanged(String),
+    PageTitleChanged(String),
     TimezoneChanged(String),
     LanguageChanged(api::Locale),
     SyncLanguagesChanged(Vec<api::Locale>),
@@ -113,6 +114,11 @@ impl Component for Settings {
             Msg::DashboardPageChanged(input.value())
         });
 
+        let on_page_title = link.callback(|e: Event| {
+            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+            Msg::PageTitleChanged(input.value())
+        });
+
         let on_timezone = link.callback(|e: Event| {
             let input: web_sys::HtmlInputElement = e.target_unchecked_into();
             Msg::TimezoneChanged(input.value())
@@ -140,6 +146,11 @@ impl Component for Settings {
                                 <option value="dark" selected={self.config.theme == api::ThemeType::Dark}>{"Dark"}</option>
                                 <option value="light" selected={self.config.theme == api::ThemeType::Light}>{"Light"}</option>
                             </select>
+                        </div>
+
+                        <div class="field">
+                            <label>{"Page title"}</label>
+                            <input class="input-text" type="text" placeholder="Track" value={self.config.page_title.clone()} onchange={on_page_title} autocomplete="off" />
                         </div>
 
                         <div class={classes!("field", (!tz_is_valid(&self.config.timezone)).then_some("error"))}>
@@ -361,6 +372,11 @@ impl Settings {
             }
             Msg::TmdbKeyChanged(value) => {
                 self.config.tmdb_api_key = value;
+                self.persist(ctx);
+                Ok(true)
+            }
+            Msg::PageTitleChanged(title) => {
+                self.config.page_title = title;
                 self.persist(ctx);
                 Ok(true)
             }

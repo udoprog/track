@@ -19,6 +19,9 @@ pub(super) struct App {
     channel: ws::Channel,
     ws: ws::Service,
     time: TimeInfo,
+    /// Normalized site title (config `page_title`, defaulting to `"Track"`).
+    /// Drives both the toolbar and the tab-title fallback.
+    site_title: AttrValue,
     top_languages: TopLanguages,
     error: Option<RcError>,
     /// Scroll container the outline reflects and drives; passed to [`Outline`].
@@ -105,6 +108,7 @@ impl Component for App {
             channel: ws::Channel::default(),
             ws,
             time: TimeInfo::new(TimeZone::system(), Timestamp::now()),
+            site_title: AttrValue::from("Track"),
             top_languages: TopLanguages::default(),
             error: None,
             page: NodeRef::default(),
@@ -160,7 +164,7 @@ impl Component for App {
                             </div>
                         }
 
-                        <Toolbar />
+                        <Toolbar site_title={self.site_title.clone()} />
 
                         <div id="content">
                             <div id="page" ref={self.page.clone()}>
@@ -215,12 +219,15 @@ impl App {
 
                 match event.kind {
                     api::AppEventKind::ConfigChanged { config } => {
-                        let tz = Self::tz_from_config(&config);
+                        let mut render = self.apply_config_title(&config);
 
+                        let tz = Self::tz_from_config(&config);
                         if *self.time.tz() != tz {
                             self.time = TimeInfo::new(tz, self.time.now());
-                            return Ok(true);
+                            render = true;
                         }
+
+                        return Ok(render);
                     }
                     api::AppEventKind::TopLanguagesChanged { top_languages } => {
                         let next = TopLanguages(top_languages);
@@ -265,14 +272,15 @@ impl App {
                     .context(Message::LoadingConfig)?
                     .config;
 
-                let new_tz = Self::tz_from_config(&config);
+                let mut render = self.apply_config_title(&config);
 
+                let new_tz = Self::tz_from_config(&config);
                 if *self.time.tz() != new_tz {
                     self.time = TimeInfo::new(new_tz, self.time.now());
-                    return Ok(true);
+                    render = true;
                 }
 
-                Ok(false)
+                Ok(render)
             }
             Msg::WsError(e) => Err(e.into()),
             Msg::Navigate(route) => {
@@ -318,6 +326,32 @@ impl App {
         }
     }
 
+    /// Apply the config's title to the tab-title fallback and the toolbar.
+    /// Returns whether the toolbar title changed (and a re-render is needed).
+    fn apply_config_title(&mut self, config: &api::Config) -> bool {
+        let title = Self::title_from_config(config);
+        self.background_state.set_default_title(&title);
+
+        if self.site_title != title {
+            self.site_title = title.into();
+            return true;
+        }
+
+        false
+    }
+
+    /// The effective site title: the configured `page_title`, or `"Track"` when
+    /// it is empty/whitespace-only.
+    fn title_from_config(config: &api::Config) -> String {
+        let title = config.page_title.trim();
+
+        if title.is_empty() {
+            "Track".to_owned()
+        } else {
+            title.to_owned()
+        }
+    }
+
     fn tz_from_config(config: &api::Config) -> TimeZone {
         if !config.timezone.is_empty()
             && let Some(tz) = TimeZone::get(&config.timezone)
@@ -355,8 +389,13 @@ impl App {
     }
 }
 
+#[derive(Properties, PartialEq)]
+struct ToolbarProps {
+    site_title: AttrValue,
+}
+
 #[function_component]
-fn Toolbar() -> Html {
+fn Toolbar(props: &ToolbarProps) -> Html {
     let menu_open = use_state(|| false);
 
     let router = use_context::<Router>().expect("Expected router in context");
@@ -381,7 +420,7 @@ fn Toolbar() -> Html {
     html! {
         <div class="toolbar toolbar-padding">
             <div class="row text-gap">
-                <span class="site-title clickable" onclick={on_nav(Route::Dashboard(DashboardQuery::default()))}>{"Track"}</span>
+                <span class="site-title clickable" onclick={on_nav(Route::Dashboard(DashboardQuery::default()))}>{ props.site_title.clone() }</span>
             </div>
 
             <div class="toolbar-toggle" onclick={on_menu_toggle} title="Navigation">

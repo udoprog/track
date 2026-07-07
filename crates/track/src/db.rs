@@ -5279,6 +5279,8 @@ impl Database {
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(24);
 
+            let page_title = s.get_config("page_title")?.unwrap_or_default().to_owned();
+
             let timezone = s.get_config("timezone")?.unwrap_or_default().to_owned();
 
             let language = s
@@ -5331,6 +5333,7 @@ impl Database {
                 schedule_range_days,
                 auto_sync_enabled,
                 auto_sync_interval_hours,
+                page_title,
                 timezone,
                 language,
                 include_specials,
@@ -5386,6 +5389,7 @@ impl Database {
                 config.auto_sync_interval_hours.to_string(),
             )?;
 
+            s.set_config("page_title", &config.page_title)?;
             s.set_config("timezone", &config.timezone)?;
             s.set_config("language", config.language.to_string())?;
             s.set_config(

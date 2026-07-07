@@ -10,8 +10,8 @@ use crate::error::{CustomContext, Error, Message};
 /// [`DashboardView::Upcoming`] is the default and is omitted from the query.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum DashboardView {
-    WatchNext,
     #[default]
+    WatchNext,
     Upcoming,
     Schedule,
 }
@@ -19,7 +19,7 @@ pub(super) enum DashboardView {
 impl DashboardView {
     fn as_str(self) -> &'static str {
         match self {
-            DashboardView::WatchNext => "watch_next",
+            DashboardView::WatchNext => "next",
             DashboardView::Upcoming => "upcoming",
             DashboardView::Schedule => "schedule",
         }
@@ -27,7 +27,7 @@ impl DashboardView {
 
     fn from_param(s: &str) -> Option<Self> {
         match s {
-            "watch_next" => Some(DashboardView::WatchNext),
+            "next" => Some(DashboardView::WatchNext),
             "upcoming" => Some(DashboardView::Upcoming),
             "schedule" => Some(DashboardView::Schedule),
             _ => None,
@@ -68,7 +68,7 @@ impl DashboardQuery {
             s.append_pair("range", &self.range.to_string());
         }
 
-        if self.view != DashboardView::Upcoming {
+        if self.view != DashboardView::default() {
             s.append_pair("view", self.view.as_str());
         }
 

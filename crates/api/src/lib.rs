@@ -1870,6 +1870,9 @@ pub struct Config {
     pub schedule_range_days: u32,
     pub auto_sync_enabled: bool,
     pub auto_sync_interval_hours: u32,
+    /// The site/page title. Empty (or whitespace-only) means the default
+    /// `"Track"` is used.
+    pub page_title: String,
     pub timezone: String,
     /// The default display locale. [`Locale::DEFAULT`] means "use each
     /// show's/movie's own original language".
@@ -1900,6 +1903,7 @@ impl Default for Config {
             schedule_range_days: 3,
             auto_sync_enabled: false,
             auto_sync_interval_hours: 24,
+            page_title: String::new(),
             timezone: String::new(),
             language: Locale::DEFAULT,
             include_specials: false,
