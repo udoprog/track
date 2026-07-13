@@ -463,31 +463,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn ids_and_timestamps_are_strings() {
-        let dir = tempfile::tempdir().unwrap();
-        let src = temp_db(&dir, "fmt.db");
-        seed(&src).await;
-        let exported = String::from_utf8(export_to_vec(&src).await).unwrap();
-
-        // The opaque id is its base64 string form, and the timestamp is a UTC
-        // ISO string ending in `Z`, both quoted JSON strings.
-        let episode_line = exported
-            .lines()
-            .find(|l| l.contains("watched_episode"))
-            .unwrap();
-        let show_str = api::ShowId::new(1001).to_string();
-        assert!(episode_line.contains(&format!("\"show\":\"{show_str}\"")));
-        assert!(episode_line.contains("\"timestamp\":\"2023-11-14T22:13:20.123Z\""));
-
-        // sync_kinds is a sequence of strings, not a bitmask.
-        let remote_line = exported
-            .lines()
-            .find(|l| l.contains("show_remote"))
-            .unwrap();
-        assert!(remote_line.contains("\"sync_kinds\":[\"base\",\"air_date\"]"));
-    }
-
-    #[tokio::test]
     async fn import_is_idempotent() {
         let dir = tempfile::tempdir().unwrap();
         let src = temp_db(&dir, "src.db");

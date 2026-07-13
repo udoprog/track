@@ -171,18 +171,17 @@ impl Component for WatchNext {
                 }
 
                 <div class="column mobile-only">
-                    <div class="row-split">
-                        <div class="input-group">
-                            <Button icon="minus" title="Show fewer" onclick={link.callback(|_| Msg::AdjustPageSize(-1))} />
+                    <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
 
-                            <Button icon="plus" title="Show more" onclick={link.callback(|_| Msg::AdjustPageSize(1))} />
-                        </div>
+                    <div class="input-group fill">
+                        <span class="input-label has-text fill" title="How many items are shown per page">{"Items"}</span>
 
-                        <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
+                        <Button icon="minus" title="Show fewer" onclick={link.callback(|_| Msg::AdjustPageSize(-1))} />
+                        <Button icon="plus" title="Show more" onclick={link.callback(|_| Msg::AdjustPageSize(1))} />
                     </div>
 
-                    <div class="input-group">
-                        <span class="input-label has-text" title="How far into the future pending items are shown">{"Lookahead"}</span>
+                    <div class="input-group fill">
+                        <span class="input-label has-text fill" title="How far into the future pending items are shown">{"Lookahead"}</span>
 
                         <DurationInput value={self.config.dashboard_lookahead} on_change={link.callback(Msg::LookaheadChanged)} />
                     </div>

@@ -48,7 +48,7 @@ pub(crate) fn PaginationButtons(props: &Props) -> Html {
 
     html! {
         <pagination>
-            <button class={classes!(prev.is_none().then_some("disabled"))} onclick={on_back}>
+            <button class={classes!("desktop-only", prev.is_none().then_some("disabled"))} onclick={on_back}>
                 <span class="icon chevron-left" />
             </button>
 
@@ -66,7 +66,7 @@ pub(crate) fn PaginationButtons(props: &Props) -> Html {
                 })}
             </pages>
 
-            <button class={classes!(next.is_none().then_some("disabled"))} onclick={on_next}>
+            <button class={classes!("desktop-only", next.is_none().then_some("disabled"))} onclick={on_next}>
                 <span class="icon chevron-right" />
             </button>
         </pagination>
