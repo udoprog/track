@@ -811,15 +811,19 @@ impl ShowDetail {
             }
             Msg::MarkWatched(show, episode, mark_time) => {
                 self.episode_actions_expanded.remove(&episode);
-                self._mark_req = self
-                    .channel
-                    .request()
-                    .body(api::MarkWatchedRequest {
-                        kind: api::WatchedKind::Episode { show, episode },
-                        mark_time,
-                    })
-                    .on_packet(ctx.link().callback(Msg::MarkWatchedDone))
-                    .send();
+
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._mark_req = self
+                        .channel
+                        .request()
+                        .body(api::MarkWatchedRequest {
+                            kind: api::WatchedKind::Episode { show, episode },
+                            mark_time,
+                        })
+                        .on_packet(ctx.link().callback(Msg::MarkWatchedDone))
+                        .send();
+                }
+
                 Ok(true)
             }
             Msg::MarkWatchedDone(result) => {
@@ -855,12 +859,14 @@ impl ShowDetail {
                     ));
                 }
 
-                self._remove_watch_req = self
-                    .channel
-                    .request()
-                    .body(api::RemoveWatchedRequest { id, kind })
-                    .on_packet(ctx.link().callback(Msg::RemoveWatchedDone))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._remove_watch_req = self
+                        .channel
+                        .request()
+                        .body(api::RemoveWatchedRequest { id, kind })
+                        .on_packet(ctx.link().callback(Msg::RemoveWatchedDone))
+                        .send();
+                }
 
                 Ok(false)
             }
@@ -886,16 +892,19 @@ impl ShowDetail {
             Msg::WatchRemaining(season, mark_time) => {
                 let show_id = props.show_id;
 
-                self._watch_remaining_reqs = self
-                    .channel
-                    .request()
-                    .body(api::MarkWatchedRemainingRequest {
-                        show_id,
-                        season,
-                        mark_time,
-                    })
-                    .on_packet(ctx.link().callback(Msg::WatchRemainingDone))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._watch_remaining_reqs = self
+                        .channel
+                        .request()
+                        .body(api::MarkWatchedRemainingRequest {
+                            show_id,
+                            season,
+                            mark_time,
+                        })
+                        .on_packet(ctx.link().callback(Msg::WatchRemainingDone))
+                        .send();
+                }
+
                 Ok(false)
             }
             Msg::WatchRemainingDone(result) => {
@@ -913,15 +922,17 @@ impl ShowDetail {
 
                 let id = props.show_id;
 
-                self._untrack_req = self
-                    .channel
-                    .request()
-                    .body(api::UntrackShowRequest { id, tracked })
-                    .on_packet(
-                        ctx.link()
-                            .callback(move |r| Msg::SetTrackedDone(tracked, r)),
-                    )
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._untrack_req = self
+                        .channel
+                        .request()
+                        .body(api::UntrackShowRequest { id, tracked })
+                        .on_packet(
+                            ctx.link()
+                                .callback(move |r| Msg::SetTrackedDone(tracked, r)),
+                        )
+                        .send();
+                }
 
                 Ok(false)
             }
@@ -942,12 +953,16 @@ impl ShowDetail {
             }
             Msg::RemoveShow => {
                 let id = props.show_id;
-                self._remove_req = self
-                    .channel
-                    .request()
-                    .body(api::RemoveShowRequest { id })
-                    .on_packet(ctx.link().callback(Msg::RemoveDone))
-                    .send();
+
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._remove_req = self
+                        .channel
+                        .request()
+                        .body(api::RemoveShowRequest { id })
+                        .on_packet(ctx.link().callback(Msg::RemoveDone))
+                        .send();
+                }
+
                 Ok(false)
             }
             Msg::RemoveDone(result) => {
@@ -958,12 +973,14 @@ impl ShowDetail {
             Msg::SyncShow => {
                 let id = props.show_id;
 
-                self._sync_req = self
-                    .channel
-                    .request()
-                    .body(api::SyncShowRequest { id })
-                    .on_packet(ctx.link().callback(Msg::SyncDone))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._sync_req = self
+                        .channel
+                        .request()
+                        .body(api::SyncShowRequest { id })
+                        .on_packet(ctx.link().callback(Msg::SyncDone))
+                        .send();
+                }
 
                 Ok(true)
             }
@@ -1010,18 +1027,20 @@ impl ShowDetail {
 
                 let show_id = props.show_id;
 
-                self._set_next_req = self
-                    .channel
-                    .request()
-                    .body(api::AddPendingRequest {
-                        kind: api::PendingKind::Episode {
-                            show: show_id,
-                            episode: episode_id,
-                        },
-                        mark_time,
-                    })
-                    .on_packet(ctx.link().callback(Msg::AddPendingDone))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._set_next_req = self
+                        .channel
+                        .request()
+                        .body(api::AddPendingRequest {
+                            kind: api::PendingKind::Episode {
+                                show: show_id,
+                                episode: episode_id,
+                            },
+                            mark_time,
+                        })
+                        .on_packet(ctx.link().callback(Msg::AddPendingDone))
+                        .send();
+                }
 
                 Ok(true)
             }
@@ -1038,17 +1057,19 @@ impl ShowDetail {
                 self.episode_actions_expanded.remove(&episode_id);
                 let show_id = props.show_id;
 
-                self._set_next_req = self
-                    .channel
-                    .request()
-                    .body(api::RemovePendingRequest {
-                        kind: api::PendingKind::Episode {
-                            show: show_id,
-                            episode: episode_id,
-                        },
-                    })
-                    .on_packet(ctx.link().callback(Msg::RemovePendingDone))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._set_next_req = self
+                        .channel
+                        .request()
+                        .body(api::RemovePendingRequest {
+                            kind: api::PendingKind::Episode {
+                                show: show_id,
+                                episode: episode_id,
+                            },
+                        })
+                        .on_packet(ctx.link().callback(Msg::RemovePendingDone))
+                        .send();
+                }
 
                 Ok(false)
             }
@@ -1067,12 +1088,14 @@ impl ShowDetail {
                     }
                 }
 
-                self._select_image_req = self
-                    .channel
-                    .request()
-                    .body(api::SelectImageRequest { id })
-                    .on_packet(ctx.link().callback(Msg::SelectImageDone))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._select_image_req = self
+                        .channel
+                        .request()
+                        .body(api::SelectImageRequest { id })
+                        .on_packet(ctx.link().callback(Msg::SelectImageDone))
+                        .send();
+                }
 
                 Ok(true)
             }
@@ -1083,15 +1106,17 @@ impl ShowDetail {
                     }
                 }
 
-                self._clear_image_req = self
-                    .channel
-                    .request()
-                    .body(api::ClearSelectedImageRequest {
-                        owner: api::ImageOwner::Show(props.show_id),
-                        kind,
-                    })
-                    .on_packet(ctx.link().callback(Msg::ClearSelectedImageDone))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._clear_image_req = self
+                        .channel
+                        .request()
+                        .body(api::ClearSelectedImageRequest {
+                            owner: api::ImageOwner::Show(props.show_id),
+                            kind,
+                        })
+                        .on_packet(ctx.link().callback(Msg::ClearSelectedImageDone))
+                        .send();
+                }
 
                 Ok(false)
             }
@@ -1107,28 +1132,32 @@ impl ShowDetail {
                 Ok(true)
             }
             Msg::PickBestImage(kind) => {
-                self._pick_best_image_req = self
-                    .channel
-                    .request()
-                    .body(api::PickBestImagesRequest {
-                        owner: api::ImageOwner::Show(props.show_id),
-                        kind,
-                    })
-                    .on_packet(ctx.link().callback(Msg::PickBestImageDone))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._pick_best_image_req = self
+                        .channel
+                        .request()
+                        .body(api::PickBestImagesRequest {
+                            owner: api::ImageOwner::Show(props.show_id),
+                            kind,
+                        })
+                        .on_packet(ctx.link().callback(Msg::PickBestImageDone))
+                        .send();
+                }
 
                 Ok(false)
             }
             Msg::ResetImageSelection(kind) => {
-                self._reset_image_req = self
-                    .channel
-                    .request()
-                    .body(api::ResetImageSelectionRequest {
-                        owner: api::ImageOwner::Show(props.show_id),
-                        kind,
-                    })
-                    .on_packet(ctx.link().callback(Msg::ResetImageSelectionDone))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._reset_image_req = self
+                        .channel
+                        .request()
+                        .body(api::ResetImageSelectionRequest {
+                            owner: api::ImageOwner::Show(props.show_id),
+                            kind,
+                        })
+                        .on_packet(ctx.link().callback(Msg::ResetImageSelectionDone))
+                        .send();
+                }
 
                 Ok(false)
             }
@@ -1158,16 +1187,18 @@ impl ShowDetail {
 
                 let id = props.show_id;
 
-                self._set_remote_enabled_req = self
-                    .channel
-                    .request()
-                    .body(api::SetShowRemoteEnabledRequest {
-                        id,
-                        remote_id,
-                        enabled,
-                    })
-                    .on_packet(ctx.link().callback(Msg::SetRemoteEnabledDone))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._set_remote_enabled_req = self
+                        .channel
+                        .request()
+                        .body(api::SetShowRemoteEnabledRequest {
+                            id,
+                            remote_id,
+                            enabled,
+                        })
+                        .on_packet(ctx.link().callback(Msg::SetRemoteEnabledDone))
+                        .send();
+                }
 
                 Ok(true)
             }
@@ -1184,16 +1215,18 @@ impl ShowDetail {
 
                 let id = props.show_id;
 
-                self._set_remote_sync_kinds_req = self
-                    .channel
-                    .request()
-                    .body(api::SetShowRemoteSyncKindsRequest {
-                        id,
-                        remote_id,
-                        sync_kinds,
-                    })
-                    .on_packet(ctx.link().callback(Msg::SetRemoteSyncKindsDone))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._set_remote_sync_kinds_req = self
+                        .channel
+                        .request()
+                        .body(api::SetShowRemoteSyncKindsRequest {
+                            id,
+                            remote_id,
+                            sync_kinds,
+                        })
+                        .on_packet(ctx.link().callback(Msg::SetRemoteSyncKindsDone))
+                        .send();
+                }
 
                 Ok(true)
             }
@@ -1218,12 +1251,14 @@ impl ShowDetail {
 
                 let id = props.show_id;
 
-                self._reorder_remotes_req = self
-                    .channel
-                    .request()
-                    .body(api::ReorderShowRemotesRequest { id, remote_ids })
-                    .on_packet(ctx.link().callback(Msg::ReorderRemotesDone))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._reorder_remotes_req = self
+                        .channel
+                        .request()
+                        .body(api::ReorderShowRemotesRequest { id, remote_ids })
+                        .on_packet(ctx.link().callback(Msg::ReorderRemotesDone))
+                        .send();
+                }
 
                 Ok(true)
             }
@@ -1288,12 +1323,14 @@ impl ShowDetail {
                     }
                 }
 
-                self._select_season_image_req = self
-                    .channel
-                    .request()
-                    .body(api::SelectImageRequest { id })
-                    .on_packet(ctx.link().callback(Msg::SelectSeasonImageDone))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._select_season_image_req = self
+                        .channel
+                        .request()
+                        .body(api::SelectImageRequest { id })
+                        .on_packet(ctx.link().callback(Msg::SelectSeasonImageDone))
+                        .send();
+                }
 
                 Ok(true)
             }
@@ -1308,7 +1345,9 @@ impl ShowDetail {
                     }
                 }
 
-                if let Some(season) = self.selected() {
+                if let Some(season) = self.selected()
+                    && self.channel.id() != ws::ChannelId::NONE
+                {
                     self._clear_season_image_req = self
                         .channel
                         .request()
@@ -1381,69 +1420,77 @@ impl ShowDetail {
             Msg::AddRemote(slug, remote) => {
                 let id = props.show_id;
 
-                self._remote_req = self
-                    .channel
-                    .request()
-                    .body(api::AddShowRemoteRequest { id, slug, remote })
-                    .on_packet(ctx.link().callback(
-                        |r: Result<ws::Packet<api::AddShowRemote>, ws::Error>| {
-                            Msg::RemoteDone(r.map(|_| ()))
-                        },
-                    ))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._remote_req = self
+                        .channel
+                        .request()
+                        .body(api::AddShowRemoteRequest { id, slug, remote })
+                        .on_packet(ctx.link().callback(
+                            |r: Result<ws::Packet<api::AddShowRemote>, ws::Error>| {
+                                Msg::RemoteDone(r.map(|_| ()))
+                            },
+                        ))
+                        .send();
+                }
 
                 Ok(false)
             }
             Msg::EditRemote(remote_id, slug, remote) => {
                 let id = props.show_id;
 
-                self._remote_req = self
-                    .channel
-                    .request()
-                    .body(api::UpdateShowRemoteRequest {
-                        id,
-                        remote_id,
-                        slug,
-                        remote,
-                    })
-                    .on_packet(ctx.link().callback(
-                        |r: Result<ws::Packet<api::UpdateShowRemote>, ws::Error>| {
-                            Msg::RemoteDone(r.map(|_| ()))
-                        },
-                    ))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._remote_req = self
+                        .channel
+                        .request()
+                        .body(api::UpdateShowRemoteRequest {
+                            id,
+                            remote_id,
+                            slug,
+                            remote,
+                        })
+                        .on_packet(ctx.link().callback(
+                            |r: Result<ws::Packet<api::UpdateShowRemote>, ws::Error>| {
+                                Msg::RemoteDone(r.map(|_| ()))
+                            },
+                        ))
+                        .send();
+                }
 
                 Ok(false)
             }
             Msg::RemoveRemote(remote_id) => {
                 let id = props.show_id;
 
-                self._remote_req = self
-                    .channel
-                    .request()
-                    .body(api::RemoveShowRemoteRequest { id, remote_id })
-                    .on_packet(ctx.link().callback(
-                        |r: Result<ws::Packet<api::RemoveShowRemote>, ws::Error>| {
-                            Msg::RemoteDone(r.map(|_| ()))
-                        },
-                    ))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._remote_req = self
+                        .channel
+                        .request()
+                        .body(api::RemoveShowRemoteRequest { id, remote_id })
+                        .on_packet(ctx.link().callback(
+                            |r: Result<ws::Packet<api::RemoveShowRemote>, ws::Error>| {
+                                Msg::RemoteDone(r.map(|_| ()))
+                            },
+                        ))
+                        .send();
+                }
 
                 Ok(false)
             }
             Msg::PurgeRemoteCache(remote_id) => {
                 let id = props.show_id;
 
-                self._remote_req = self
-                    .channel
-                    .request()
-                    .body(api::PurgeShowRemoteCacheRequest { id, remote_id })
-                    .on_packet(ctx.link().callback(
-                        |r: Result<ws::Packet<api::PurgeShowRemoteCache>, ws::Error>| {
-                            Msg::RemoteDone(r.map(|_| ()))
-                        },
-                    ))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._remote_req = self
+                        .channel
+                        .request()
+                        .body(api::PurgeShowRemoteCacheRequest { id, remote_id })
+                        .on_packet(ctx.link().callback(
+                            |r: Result<ws::Packet<api::PurgeShowRemoteCache>, ws::Error>| {
+                                Msg::RemoteDone(r.map(|_| ()))
+                            },
+                        ))
+                        .send();
+                }
 
                 Ok(false)
             }
@@ -1468,17 +1515,21 @@ impl ShowDetail {
             Msg::MoveWatched(id, season, episode) => {
                 self.fixing_watched = None;
                 let show_id = props.show_id;
-                self._move_req = self
-                    .channel
-                    .request()
-                    .body(api::MoveWatchedEpisodeRequest {
-                        id,
-                        show_id,
-                        season,
-                        episode,
-                    })
-                    .on_packet(ctx.link().callback(Msg::MoveWatchedDone))
-                    .send();
+
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._move_req = self
+                        .channel
+                        .request()
+                        .body(api::MoveWatchedEpisodeRequest {
+                            id,
+                            show_id,
+                            season,
+                            episode,
+                        })
+                        .on_packet(ctx.link().callback(Msg::MoveWatchedDone))
+                        .send();
+                }
+
                 Ok(false)
             }
             Msg::MoveWatchedDone(result) => {
@@ -1551,6 +1602,10 @@ impl ShowDetail {
     }
 
     fn load_show(&mut self, ctx: &Context<Self>) {
+        if self.channel.id() == ws::ChannelId::NONE {
+            return;
+        }
+
         let show_id = ctx.props().show_id;
 
         self._show_req = self
@@ -1582,6 +1637,10 @@ impl ShowDetail {
     }
 
     fn load_seasons(&mut self, ctx: &Context<Self>) {
+        if self.channel.id() == ws::ChannelId::NONE {
+            return;
+        }
+
         let show_id = ctx.props().show_id;
 
         self._seasons_req = self
@@ -1593,6 +1652,10 @@ impl ShowDetail {
     }
 
     fn load_season_images(&mut self, ctx: &Context<Self>, season_id: api::SeasonId) {
+        if self.channel.id() == ws::ChannelId::NONE {
+            return;
+        }
+
         self._season_images_req = self
             .channel
             .request()
@@ -1602,6 +1665,10 @@ impl ShowDetail {
     }
 
     fn load_episodes(&mut self, ctx: &Context<Self>) {
+        if self.channel.id() == ws::ChannelId::NONE {
+            return;
+        }
+
         let show_id = ctx.props().show_id;
         let season = ctx.props().season;
 
@@ -1644,6 +1711,10 @@ impl ShowDetail {
     }
 
     fn load_history(&mut self, ctx: &Context<Self>) {
+        if self.channel.id() == ws::ChannelId::NONE {
+            return;
+        }
+
         let show_id = ctx.props().show_id;
 
         self._watched_req = self
@@ -1655,6 +1726,10 @@ impl ShowDetail {
     }
 
     fn load_orphaned(&mut self, ctx: &Context<Self>) {
+        if self.channel.id() == ws::ChannelId::NONE {
+            return;
+        }
+
         let show_id = ctx.props().show_id;
 
         self._orphaned_req = self
@@ -1668,6 +1743,10 @@ impl ShowDetail {
     /// Load the global config for the per-source sync-kind defaults shown (as
     /// inherited values) in the remote editor.
     fn load_config(&mut self, ctx: &Context<Self>) {
+        if self.channel.id() == ws::ChannelId::NONE {
+            return;
+        }
+
         self._config_req = self
             .channel
             .request()

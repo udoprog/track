@@ -1,9 +1,10 @@
 @use 'grid' as g;
+@use 'vars' as v;
 
 .skeleton {
-    min-height: $input-height;
-    border: 1px solid $border-subtle-transparent;
-    background: $bg-dark-transparent;
+    min-height: v.$input-height;
+    border: 1px solid v.$border-subtle-transparent;
+    background: v.$bg-dark-transparent;
     // Rolling shine that sweeps across to signal a temporary placeholder.
     background-image: linear-gradient(
         100deg,
@@ -16,23 +17,23 @@
     animation: skeleton-shine 1.4s ease-in-out infinite;
 
     @include g.on-mobile {
-        min-height: $input-height-touch;
+        min-height: v.$input-height-touch;
     }
 
     // Text-line placeholder: shorter than an input, for standing in for a run of
     // text (titles, overview lines). Width is set by the caller.
     &.line {
-        min-height: $input-height-sm;
+        min-height: v.$input-height-sm;
 
         @include g.on-mobile {
-            min-height: $input-height-sm;
+            min-height: v.$input-height-sm;
         }
     }
 
     // Taller placeholder for multi-row controls (list editors) so the skeleton
     // roughly fills the space the real control will occupy.
     &.tall {
-        min-height: $input-height-xl * 2;
+        min-height: v.$input-height-xl * 2;
     }
 
     // Image-shaped placeholders mirror the `image` aspect ratios so a skeleton

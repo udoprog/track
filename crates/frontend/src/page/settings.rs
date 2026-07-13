@@ -517,6 +517,10 @@ impl Settings {
     /// Persist the current config to the server. Called on every edit so the
     /// settings page has no explicit save step.
     fn persist(&mut self, ctx: &Context<Self>) {
+        if self.channel.id() == ws::ChannelId::NONE {
+            return;
+        }
+
         self._save_req = self
             .channel
             .request()
@@ -528,6 +532,10 @@ impl Settings {
     }
 
     fn load(&mut self, ctx: &Context<Self>) {
+        if self.channel.id() == ws::ChannelId::NONE {
+            return;
+        }
+
         self._config_req = self
             .channel
             .request()

@@ -1503,7 +1503,9 @@ impl WsHandler {
                     .read::<api::SkipEpisodeRequest>()
                     .context("Expected a request payload")?;
 
-                self.db.skip_pending_episode(req.show, req.episode).await?;
+                self.db
+                    .skip_pending_episode(req.show, req.episode, api::Timestamp::now())
+                    .await?;
 
                 self.broadcast.emit(
                     incoming.channel(),

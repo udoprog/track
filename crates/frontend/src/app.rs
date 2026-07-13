@@ -18,6 +18,8 @@ use crate::ui::{ErrorBox, Outline, OutlineControl, OutlineEntry, TopLanguages};
 pub(super) struct App {
     channel: ws::Channel,
     ws: ws::Service,
+    /// Connection state of the websocket, surfaced in the toolbar.
+    ws_state: ws::State,
     time: TimeInfo,
     /// Normalized site title (config `page_title`, defaulting to `"Track"`).
     /// Drives both the toolbar and the tab-title fallback.
@@ -36,6 +38,7 @@ pub(super) struct App {
     background_state: BackgroundState,
     background: Background,
     _setup: SetupChannel,
+    _state_listener: ws::StateListener,
     _broadcast: ws::Listener,
     _config_req: ws::Request,
     _top_languages_req: ws::Request,
@@ -46,6 +49,7 @@ pub(super) struct App {
 
 pub(super) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
+    WsState(ws::State),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     TickTime,
     ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
@@ -75,6 +79,8 @@ impl Component for App {
             .build();
 
         let _setup = SetupChannel::new(ws.handle().clone(), link.callback(Msg::Channel));
+
+        let (ws_state, _state_listener) = ws.handle().on_state_change(link.callback(Msg::WsState));
 
         let _broadcast = ws
             .handle()
@@ -107,6 +113,7 @@ impl Component for App {
         Self {
             channel: ws::Channel::default(),
             ws,
+            ws_state,
             time: TimeInfo::new(TimeZone::system(), Timestamp::now()),
             site_title: AttrValue::from("Track"),
             top_languages: TopLanguages::default(),
@@ -120,6 +127,7 @@ impl Component for App {
             background_state,
             background,
             _setup,
+            _state_listener,
             _broadcast,
             _config_req: ws::Request::default(),
             _top_languages_req: ws::Request::default(),
@@ -164,7 +172,7 @@ impl Component for App {
                             </div>
                         }
 
-                        <Toolbar site_title={self.site_title.clone()} />
+                        <Toolbar site_title={self.site_title.clone()} connected={self.ws_state.is_open()} />
 
                         <div id="content">
                             <div id="page" ref={self.page.clone()}>
@@ -212,6 +220,14 @@ impl App {
                         .send();
                 }
 
+                Ok(true)
+            }
+            Msg::WsState(state) => {
+                if self.ws_state == state {
+                    return Ok(false);
+                }
+
+                self.ws_state = state;
                 Ok(true)
             }
             Msg::AppBroadcast(result) => {
@@ -392,6 +408,8 @@ impl App {
 #[derive(Properties, PartialEq)]
 struct ToolbarProps {
     site_title: AttrValue,
+    /// Whether the websocket is currently connected.
+    connected: bool,
 }
 
 #[function_component]
@@ -417,6 +435,12 @@ fn Toolbar(props: &ToolbarProps) -> Html {
         }
     };
 
+    let (connection_icon, connection_style, connection_title) = if props.connected {
+        ("signal", "success", "Connected")
+    } else {
+        ("signal-slash", "danger", "Disconnected")
+    };
+
     html! {
         <div class="toolbar toolbar-padding">
             <div class="row text-gap">
@@ -428,6 +452,11 @@ fn Toolbar(props: &ToolbarProps) -> Html {
             </div>
 
             <div class={classes!("toolbar-dropdown", (!*menu_open).then_some("desktop-only"))}>
+                <div class="toolbar-item mobile-has-text">
+                    <span class={classes!("icon", connection_style, connection_icon)} />
+                    <span class="mobile-only">{connection_title}</span>
+                </div>
+
                 <button class="toolbar-item has-text" onclick={on_nav(Route::Dashboard(DashboardQuery::default()))} title="Dashboard">
                     <span class="icon rectangle-stack" />
                     <span>{"Dashboard"}</span>

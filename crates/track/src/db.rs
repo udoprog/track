@@ -4258,21 +4258,23 @@ impl Database {
         &self,
         show_id: api::ShowId,
         episode_id: api::EpisodeId,
+        now: Timestamp,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            let next_id = s
-                .next_episode_after
-                .bind((show_id, episode_id))?
-                .first()?
-                .map(|r| r.0);
+            let next = s.next_episode_after.bind((show_id, episode_id))?.first()?;
 
-            match next_id {
-                Some(next) => {
-                    let ts = Timestamp::now();
-                    s.upsert_pending_episode
-                        .execute((PendingId::random(), ts, show_id, next))?;
+            match next {
+                Some((next_id, aired)) => {
+                    let ts = aired.unwrap_or(now).max(now);
+
+                    s.upsert_pending_episode.execute((
+                        PendingId::random(),
+                        ts,
+                        show_id,
+                        next_id,
+                    ))?;
                 }
                 None => {
                     s.delete_pending_episode.execute((show_id,))?;

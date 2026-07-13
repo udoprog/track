@@ -1,3 +1,22 @@
+@use 'sass:color';
+
+@use 'vars' as v;
+@use 'grid' as g;
+
+@mixin is-icon-only {
+    @include g.on-mobile {
+        &:not(.mobile-has-text, .has-text) {
+            @content;
+        }
+    }
+
+    @include g.on-desktop {
+        &:not(.desktop-has-text, .has-text) {
+            @content;
+        }
+    }
+}
+
 @mixin has-text {
     &.has-text {
         &>.icon:first-child, &>.mark:first-child {
@@ -6,12 +25,12 @@
     }
 
     &.has-text {
-        padding: $padding $padding * 2;
+        padding: v.$padding v.$padding * 2;
     }
 
     @include g.on-mobile {
         &.mobile-has-text {
-            padding: $padding $padding * 2;
+            padding: v.$padding v.$padding * 2;
 
             &>.icon:first-child, &>.mark:first-child {
                 margin-inline-start: -0.25em;
@@ -25,7 +44,7 @@
 
     @include g.on-desktop {
         &.desktop-has-text {
-            padding: $padding $padding * 2;
+            padding: v.$padding v.$padding * 2;
 
             &>.icon:first-child, &>.mark:first-child {
                 margin-inline-start: -0.25em;
@@ -39,7 +58,7 @@
 }
 
 @mixin button-color($color) {
-    background-color: color.adjust($color, $lightness: $adjust-bg);
+    background-color: color.adjust($color, $lightness: v.$adjust-bg);
 
     &.selected {
         background-color: $color;
@@ -49,42 +68,42 @@
 @mixin input-base($hover: true, $has-border: true, $editable: false) {
     display: flex;
     flex-direction: row;
-    gap: $text-gap;
+    gap: v.$text-gap;
     align-items: center;
 
-    background: $bg-surface;
-    color: $text-primary;
-    font-size: $font-sm;
-    font-family: $sans-serif-font;
+    background: v.$bg-surface;
+    color: v.$text-primary;
+    font-size: v.$font-sm;
+    font-family: v.$sans-serif-font;
 
-    height: $input-height;
+    height: v.$input-height;
     min-width: 0;
 
     @if $editable {
-        padding: $padding $padding * 2;
+        padding: v.$padding v.$padding * 2;
     }
 
     @if not $editable {
-        padding: $padding;
+        padding: v.$padding;
         @include has-text;
     }
 
     @include g.on-mobile {
-        height: $input-height-touch;
+        height: v.$input-height-touch;
     }
 
-    border-radius: $radius;
+    border-radius: v.$radius;
 
     @if $has-border {
         border-width: 1px;
         border-style: solid;
-        border-color: $border-input;
+        border-color: v.$border-input;
     }
 
     @if $hover {
         &:hover:not(.disabled):not(:disabled) {
             outline: none;
-            border-color: $color-primary;
+            border-color: v.$color-primary;
         }
     }
 
@@ -95,8 +114,8 @@ button,
 .button {
     @include input-base;
 
-    --icon-color: #{$text-color};
-    color: $text-color;
+    --icon-color: #{v.$text-color};
+    color: v.$text-color;
 
     border-style: solid;
     border-width: 1px;
@@ -106,18 +125,18 @@ button,
         cursor: pointer;
     }
 
-    @include button-color($color-secondary);
+    @include button-color(v.$color-secondary);
 
     &.primary {
-        @include button-color($color-primary);
+        @include button-color(v.$color-primary);
     }
 
     &.success {
-        @include button-color($color-success);
+        @include button-color(v.$color-success);
     }
 
     &.danger {
-        @include button-color($color-danger);
+        @include button-color(v.$color-danger);
     }
 
     &.fill {
@@ -130,25 +149,25 @@ button,
     }
 
     &.selected {
-        --icon-color: #{$text-color-selected};
-        color: $text-color-selected;
+        --icon-color: #{v.$text-color-selected};
+        color: v.$text-color-selected;
     }
 }
 
 .input-label {
     @include input-base($hover: false, $has-border: false);
 
-    background-color: color.adjust($color-secondary, $lightness: $adjust-bg);
+    background-color: color.adjust(v.$color-secondary, $lightness: v.$adjust-bg);
 }
 
 .input-text {
     @include input-base($editable: true);
 
     &.selected {
-        --icon-color: #{$text-color-selected};
-        color: $text-color-selected;
-        background-color: color.adjust($color-primary, $lightness: $adjust-bg);
-        border-color: color.adjust($color-primary, $lightness: $adjust-bg);
+        --icon-color: #{v.$text-color-selected};
+        color: v.$text-color-selected;
+        background-color: color.adjust(v.$color-primary, $lightness: v.$adjust-bg);
+        border-color: color.adjust(v.$color-primary, $lightness: v.$adjust-bg);
     }
 }
 
@@ -171,11 +190,11 @@ button,
 
     &.checked>.mark {
         mask-image: url('/static/icons/check.svg');
-        background-color: $text-primary;
+        background-color: v.$text-primary;
     }
 
     &:not(.checked)>.mark {
         mask-image: url('/static/icons/x-mark.svg');
-        background-color: $text-primary;
+        background-color: v.$text-primary;
     }
 }

@@ -1,13 +1,13 @@
-$mobile-limit: 768px;
+@use 'vars' as v;
 
 @mixin on-mobile {
-    @media (max-width: #{$mobile-limit - 1px}) {
+    @media (max-width: #{v.$mobile-limit - 1px}) {
         @content;
     }
 }
 
 @mixin on-desktop {
-    @media (min-width: $mobile-limit) {
+    @media (min-width: v.$mobile-limit) {
         @content;
     }
 }

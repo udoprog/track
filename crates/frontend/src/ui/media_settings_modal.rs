@@ -224,6 +224,12 @@ impl MediaSettingsModal {
                 Ok(true)
             }
             Msg::SetLanguage(language) => {
+                // Skip the optimistic update too: it mirrors server state, so it
+                // must not be applied when it cannot be persisted.
+                if self.channel.id() == ws::ChannelId::NONE {
+                    return Ok(false);
+                }
+
                 match ctx.props().target {
                     SettingsTarget::Movie(id) => {
                         if let Some(Loaded::Movie(m)) = &mut self.data {
@@ -258,6 +264,10 @@ impl MediaSettingsModal {
                 Ok(true)
             }
             Msg::SetAutoSync(auto_sync) => {
+                if self.channel.id() == ws::ChannelId::NONE {
+                    return Ok(false);
+                }
+
                 match ctx.props().target {
                     SettingsTarget::Movie(id) => {
                         if let Some(Loaded::Movie(m)) = &mut self.data {
@@ -291,6 +301,10 @@ impl MediaSettingsModal {
                 Ok(true)
             }
             Msg::SetIncludeSpecials(include_specials) => {
+                if self.channel.id() == ws::ChannelId::NONE {
+                    return Ok(false);
+                }
+
                 if let SettingsTarget::Show(id) = ctx.props().target {
                     if let Some(Loaded::Show(s)) = &mut self.data {
                         s.include_specials = include_specials;
@@ -310,6 +324,10 @@ impl MediaSettingsModal {
                 Ok(true)
             }
             Msg::SetReleaseFilters(release_filters) => {
+                if self.channel.id() == ws::ChannelId::NONE {
+                    return Ok(false);
+                }
+
                 if let SettingsTarget::Movie(id) = ctx.props().target {
                     if let Some(Loaded::Movie(m)) = &mut self.data {
                         m.release_filters = release_filters.clone();
@@ -327,6 +345,10 @@ impl MediaSettingsModal {
                 Ok(true)
             }
             Msg::SetAirDateFilters(air_date_filters) => {
+                if self.channel.id() == ws::ChannelId::NONE {
+                    return Ok(false);
+                }
+
                 if let SettingsTarget::Show(id) = ctx.props().target {
                     if let Some(Loaded::Show(s)) = &mut self.data {
                         s.air_date_filters = air_date_filters.clone();
@@ -344,6 +366,10 @@ impl MediaSettingsModal {
                 Ok(true)
             }
             Msg::Sync => {
+                if self.channel.id() == ws::ChannelId::NONE {
+                    return Ok(false);
+                }
+
                 // Show the spinner immediately; the task broadcasts then keep it in
                 // sync (and clear it on completion).
                 self.syncing = true;
@@ -434,6 +460,10 @@ impl MediaSettingsModal {
     }
 
     fn load_config(&mut self, ctx: &Context<Self>) {
+        if self.channel.id() == ws::ChannelId::NONE {
+            return;
+        }
+
         self._config_req = self
             .channel
             .request()

@@ -264,6 +264,10 @@ impl ReleaseModal {
     /// Request the global config (default filters, plus the full config resent on
     /// a global edit).
     fn load_config(&mut self, ctx: &Context<Self>) {
+        if self.channel.id() == ws::ChannelId::NONE {
+            return;
+        }
+
         self._config_req = self
             .channel
             .request()
@@ -283,6 +287,10 @@ impl ReleaseModal {
 
     /// Persist the per-media override (`None` reverts to the global default).
     fn send_override(&mut self, ctx: &Context<Self>, filters: Option<api::FilterRules>) {
+        if self.channel.id() == ws::ChannelId::NONE {
+            return;
+        }
+
         match ctx.props().target {
             ReleaseTarget::Movie(id) => {
                 self._mutate_req = self
@@ -314,6 +322,10 @@ impl ReleaseModal {
 
     /// Persist the global config after a global-default edit.
     fn send_global(&mut self, ctx: &Context<Self>) {
+        if self.channel.id() == ws::ChannelId::NONE {
+            return;
+        }
+
         let Some(config) = self.config.clone() else {
             return;
         };

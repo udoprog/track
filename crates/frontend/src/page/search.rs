@@ -258,21 +258,27 @@ impl Search {
                 Ok(true)
             }
             Msg::TrackShow(slug, remote) => {
-                self._track_req = self
-                    .channel
-                    .request()
-                    .body(api::TrackShowRequest { slug, remote })
-                    .on_packet(ctx.link().callback(Msg::TrackShowDone))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._track_req = self
+                        .channel
+                        .request()
+                        .body(api::TrackShowRequest { slug, remote })
+                        .on_packet(ctx.link().callback(Msg::TrackShowDone))
+                        .send();
+                }
+
                 Ok(false)
             }
             Msg::TrackMovie(slug, remote) => {
-                self._track_req = self
-                    .channel
-                    .request()
-                    .body(api::TrackMovieRequest { slug, remote })
-                    .on_packet(ctx.link().callback(Msg::TrackMovieDone))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._track_req = self
+                        .channel
+                        .request()
+                        .body(api::TrackMovieRequest { slug, remote })
+                        .on_packet(ctx.link().callback(Msg::TrackMovieDone))
+                        .send();
+                }
+
                 Ok(false)
             }
             Msg::TrackShowDone(result) => {

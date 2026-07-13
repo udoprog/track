@@ -1,3 +1,6 @@
+@use 'sass:color';
+@use 'vars' as v;
+
 #outline {
     display: none;
     min-height: 0;
@@ -16,22 +19,22 @@
         grid-area: 1 / 1;
         align-self: start;
         position: relative;
-        background-color: rgba($color-primary, 0.2);
-        border-radius: $radius;
-        border: 1px solid color.change(rgba($color-primary, 0.2), $lightness: 50%);
+        background-color: rgba(v.$color-primary, 0.2);
+        border-radius: v.$radius;
+        border: 1px solid color.change(rgba(v.$color-primary, 0.2), $lightness: 50%);
         top: var(--outline-top, 0);
         height: var(--outline-height, 0);
     }
 }
 
 .outline-sample {
-    padding: $gap-xs;
+    padding: v.$gap-xs;
     grid-area: 1 / 1;
     align-self: start;
     position: relative;
     font-size: 0.8em;
     text-align: center;
-    color: rgba($text-primary, 0.8);
+    color: rgba(v.$text-primary, 0.8);
     user-select: none;
 
     &.hidden {
@@ -39,12 +42,12 @@
     }
 
     &.seen {
-        color: $color-success;
-        font-weight: $bold-weight;
+        color: v.$color-success;
+        font-weight: v.$bold-weight;
     }
 
     &.pending {
-        color: $color-primary;
-        font-weight: $bold-weight;
+        color: v.$color-primary;
+        font-weight: v.$bold-weight;
     }
 }

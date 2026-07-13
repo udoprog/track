@@ -290,12 +290,15 @@ impl WatchNext {
                 Ok(false)
             }
             Msg::MarkWatched(kind, mark_time) => {
-                self._mark_req = self
-                    .channel
-                    .request()
-                    .body(api::MarkWatchedRequest { kind, mark_time })
-                    .on_packet(ctx.link().callback(Msg::MarkWatchedDone))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._mark_req = self
+                        .channel
+                        .request()
+                        .body(api::MarkWatchedRequest { kind, mark_time })
+                        .on_packet(ctx.link().callback(Msg::MarkWatchedDone))
+                        .send();
+                }
+
                 Ok(true)
             }
             Msg::MarkWatchedDone(result) => {
@@ -317,12 +320,16 @@ impl WatchNext {
             }
             Msg::SkipEpisode(show, episode) => {
                 self.confirming_skip = None;
-                self._skip_req = self
-                    .channel
-                    .request()
-                    .body(api::SkipEpisodeRequest { show, episode })
-                    .on_packet(ctx.link().callback(Msg::SkipEpisodeDone))
-                    .send();
+
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._skip_req = self
+                        .channel
+                        .request()
+                        .body(api::SkipEpisodeRequest { show, episode })
+                        .on_packet(ctx.link().callback(Msg::SkipEpisodeDone))
+                        .send();
+                }
+
                 Ok(true)
             }
             Msg::SkipEpisodeDone(result) => {
@@ -335,12 +342,15 @@ impl WatchNext {
                 Ok(false)
             }
             Msg::MarkPending(kind, mark_time) => {
-                self._add_pending_req = self
-                    .channel
-                    .request()
-                    .body(api::AddPendingRequest { kind, mark_time })
-                    .on_packet(ctx.link().callback(Msg::MarkPendingDone))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._add_pending_req = self
+                        .channel
+                        .request()
+                        .body(api::AddPendingRequest { kind, mark_time })
+                        .on_packet(ctx.link().callback(Msg::MarkPendingDone))
+                        .send();
+                }
+
                 Ok(true)
             }
             Msg::MarkPendingDone(result) => {
@@ -368,14 +378,17 @@ impl WatchNext {
                 self.config.dashboard_page = new_size;
                 self.clamp_page(ctx);
 
-                self._set_config_req = self
-                    .channel
-                    .request()
-                    .body(api::SetConfigRequest {
-                        config: self.config.clone(),
-                    })
-                    .on_packet(ctx.link().callback(Msg::SetConfigDone))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._set_config_req = self
+                        .channel
+                        .request()
+                        .body(api::SetConfigRequest {
+                            config: self.config.clone(),
+                        })
+                        .on_packet(ctx.link().callback(Msg::SetConfigDone))
+                        .send();
+                }
+
                 Ok(true)
             }
             Msg::LookaheadChanged(lookahead) => {
@@ -435,6 +448,10 @@ impl WatchNext {
     }
 
     fn load_pending(&mut self, ctx: &Context<Self>) {
+        if self.channel.id() == ws::ChannelId::NONE {
+            return;
+        }
+
         self._pending_req = self
             .channel
             .request()
@@ -470,6 +487,10 @@ impl WatchNext {
     }
 
     fn load_config(&mut self, ctx: &Context<Self>) {
+        if self.channel.id() == ws::ChannelId::NONE {
+            return;
+        }
+
         self._config_req = self
             .channel
             .request()

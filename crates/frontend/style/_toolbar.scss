@@ -1,35 +1,37 @@
-@use "grid" as g;
+@use 'grid' as g;
+@use 'input' as i;
+@use 'vars' as v;
 
 .toolbar {
     display: grid;
     grid-template-columns: 1fr auto;
-    gap: $gap;
+    gap: v.$gap;
 
     &.toolbar-padding {
-        padding: $gap;
+        padding: v.$gap;
     }
 }
 
 .toolbar-brand {
-    font-size: $font-lg;
+    font-size: v.$font-lg;
     display: flex;
     flex-direction: row;
     flex: 1;
     align-items: center;
-    gap: $text-gap;
+    gap: v.$text-gap;
     cursor: pointer;
 
-    height: $input-height * 1.5;
+    height: v.$input-height * 1.5;
 
     @include g.on-mobile {
-        height: $input-height-touch;
+        height: v.$input-height-touch;
     }
 }
 
 .toolbar-dropdown {
     display: flex;
     flex-direction: row;
-    gap: $gap;
+    gap: v.$gap;
 
     @include g.on-mobile {
         flex-direction: column;
@@ -40,10 +42,10 @@
 .toolbar-toggle {
     display: flex;
     align-items: center;
-    gap: $gap-xs;
+    gap: v.$gap-xs;
     cursor: pointer;
 
-    height: $input-height-touch;
+    height: v.$input-height-touch;
 
     @include g.on-desktop {
         display: none;
@@ -51,20 +53,25 @@
 }
 
 .toolbar-item {
-    height: $input-height-touch;
-    min-width: $input-height-touch;
+    display: flex;
+    align-items: center;
 
-    color: $text-primary;
-    background-color: $bg-dark-transparent;
-    border-radius: $radius;
+    height: v.$input-height-touch;
+    min-width: v.$input-height-touch;
+
+    color: v.$text-primary;
+    background-color: v.$bg-dark-transparent;
+    border-radius: v.$radius;
     border: none;
 
+    @include i.has-text;
+
     &:hover {
-        background: $bg-dark;
+        background: v.$bg-dark;
     }
 
     &.active {
-        background: $bg-highlight;
-        color: $color-primary;
+        background: v.$bg-highlight;
+        color: v.$color-primary;
     }
 }

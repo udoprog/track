@@ -665,10 +665,7 @@ fn duration_split() {
         Duration::from_millis(90_000).split(),
         (1.5, DurationUnit::Minute),
     );
-    assert_eq!(
-        Duration::ZERO.split(),
-        (0.0, DurationUnit::Millisecond),
-    );
+    assert_eq!(Duration::ZERO.split(), (0.0, DurationUnit::Millisecond),);
 }
 
 #[test]

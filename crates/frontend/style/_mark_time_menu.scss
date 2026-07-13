@@ -1,9 +1,10 @@
 @use 'grid' as g;
+@use 'vars' as v;
 
 .mark-time-body {
     display: flex;
     flex-direction: row;
-    gap: $gap;
+    gap: v.$gap;
 
     @include g.on-mobile {
         flex-direction: column;
@@ -15,15 +16,15 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: $gap-sm;
+    gap: v.$gap-sm;
 }
 
 .mark-time-dial {
     position: relative;
-    width: min(240px, calc(100vw - #{$gap-xs * 2}));
+    width: min(240px, calc(100vw - #{v.$gap-xs * 2}));
     aspect-ratio: 1;
     border-radius: 50%;
-    background: $bg-surface;
+    background: v.$bg-surface;
     // Let pointer drag rotate the hand without the page scrolling on touch.
     touch-action: none;
     user-select: none;
@@ -35,16 +36,16 @@
     bottom: 50%;
     width: 4px;
     margin-left: -1px;
-    background: $color-primary;
+    background: v.$color-primary;
     transform-origin: bottom center;
     pointer-events: none;
 }
 
 .mark-time-number {
-    font-size: $font-sm;
-    font-weight: $bold-weight;
-    font-family: $monospace-font;
-    height: $input-height;
+    font-size: v.$font-sm;
+    font-weight: v.$bold-weight;
+    font-family: v.$monospace-font;
+    height: v.$input-height;
     aspect-ratio: 1;
     position: absolute;
     transform: translate(-50%, -50%);
@@ -55,13 +56,13 @@
     cursor: pointer;
 
     &.selected {
-        background: $color-primary;
+        background: v.$color-primary;
         color: #fff;
     }
 
     @include g.on-mobile {
-        font-size: $font-lg;
-        height: $input-height-touch;
+        font-size: v.$font-lg;
+        height: v.$input-height-touch;
     }
 }
 
@@ -72,26 +73,26 @@
 }
 
 .mark-time-weekday {
-    font-size: $font-sm;
+    font-size: v.$font-sm;
 }
 
 .mark-time-day {
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: $radius-sm;
+    border-radius: v.$radius-sm;
     cursor: pointer;
-    width: $input-height;
-    height: $input-height;
+    width: v.$input-height;
+    height: v.$input-height;
 
     &.selected {
-        background: $color-primary;
+        background: v.$color-primary;
         color: #fff;
     }
 
     @include g.on-mobile {
-        font-size: $font-lg;
-        width: $input-height-touch;
-        height: $input-height-touch;
+        font-size: v.$font-lg;
+        width: v.$input-height-touch;
+        height: v.$input-height-touch;
     }
 }

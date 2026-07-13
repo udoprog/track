@@ -346,17 +346,20 @@ impl MediaList {
                 Ok(false)
             }
             Msg::MarkWatched(id, mark_time) => {
-                self._mark_req = self
-                    .channel
-                    .request()
-                    .body(api::MarkWatchedRequest {
-                        kind: api::WatchedKind::Movie {
-                            movie: api::MovieId::new(id),
-                        },
-                        mark_time,
-                    })
-                    .on_packet(ctx.link().callback(Msg::MarkWatchedDone))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._mark_req = self
+                        .channel
+                        .request()
+                        .body(api::MarkWatchedRequest {
+                            kind: api::WatchedKind::Movie {
+                                movie: api::MovieId::new(id),
+                            },
+                            mark_time,
+                        })
+                        .on_packet(ctx.link().callback(Msg::MarkWatchedDone))
+                        .send();
+                }
+
                 Ok(true)
             }
             Msg::MarkWatchedDone(result) => {
@@ -369,34 +372,36 @@ impl MediaList {
                 Ok(false)
             }
             Msg::SetTracked(kind, id, tracked) => {
-                self._track_req = match kind {
-                    api::MediaKind::Shows => self
-                        .channel
-                        .request()
-                        .body(api::UntrackShowRequest {
-                            id: api::ShowId::new(id),
-                            tracked,
-                        })
-                        .on_packet(ctx.link().callback(
-                            |r: Result<ws::Packet<api::UntrackShow>, ws::Error>| {
-                                Msg::SetTrackedDone(r.map(drop))
-                            },
-                        ))
-                        .send(),
-                    api::MediaKind::Movies => self
-                        .channel
-                        .request()
-                        .body(api::UntrackMovieRequest {
-                            id: api::MovieId::new(id),
-                            tracked,
-                        })
-                        .on_packet(ctx.link().callback(
-                            |r: Result<ws::Packet<api::UntrackMovie>, ws::Error>| {
-                                Msg::SetTrackedDone(r.map(drop))
-                            },
-                        ))
-                        .send(),
-                };
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._track_req = match kind {
+                        api::MediaKind::Shows => self
+                            .channel
+                            .request()
+                            .body(api::UntrackShowRequest {
+                                id: api::ShowId::new(id),
+                                tracked,
+                            })
+                            .on_packet(ctx.link().callback(
+                                |r: Result<ws::Packet<api::UntrackShow>, ws::Error>| {
+                                    Msg::SetTrackedDone(r.map(drop))
+                                },
+                            ))
+                            .send(),
+                        api::MediaKind::Movies => self
+                            .channel
+                            .request()
+                            .body(api::UntrackMovieRequest {
+                                id: api::MovieId::new(id),
+                                tracked,
+                            })
+                            .on_packet(ctx.link().callback(
+                                |r: Result<ws::Packet<api::UntrackMovie>, ws::Error>| {
+                                    Msg::SetTrackedDone(r.map(drop))
+                                },
+                            ))
+                            .send(),
+                    };
+                }
 
                 Ok(false)
             }
@@ -536,6 +541,10 @@ impl MediaList {
     }
 
     fn load(&mut self, ctx: &Context<Self>) {
+        if self.channel.id() == ws::ChannelId::NONE {
+            return;
+        }
+
         self.list_req = self
             .channel
             .request()

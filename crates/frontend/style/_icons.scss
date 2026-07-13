@@ -1,4 +1,5 @@
 @use 'icons_generated' as icons;
+@use 'vars' as v;
 
 @mixin icon($name) {
     &.#{$name} {
@@ -29,11 +30,19 @@
     aspect-ratio: 1;
 
     &.primary {
-        --icon-color: #{$color-primary};
+        --icon-color: #{v.$color-primary};
     }
 
     &.secondary {
-        --icon-color: #{$color-secondary};
+        --icon-color: #{v.$color-secondary};
+    }
+
+    &.success {
+        --icon-color: #{v.$color-success};
+    }
+
+    &.danger {
+        --icon-color: #{v.$color-danger};
     }
 
     &.sm {

@@ -236,6 +236,10 @@ impl EpisodePicker {
     }
 
     fn load_best_match(&mut self, ctx: &Context<Self>, timestamp: api::Timestamp) {
+        if self.channel.id() == ws::ChannelId::NONE {
+            return;
+        }
+
         self._best_match_req = self
             .channel
             .request()
@@ -248,6 +252,10 @@ impl EpisodePicker {
     }
 
     fn load_seasons(&mut self, ctx: &Context<Self>) {
+        if self.channel.id() == ws::ChannelId::NONE {
+            return;
+        }
+
         self._seasons_req = self
             .channel
             .request()
@@ -259,6 +267,10 @@ impl EpisodePicker {
     }
 
     fn load_episodes(&mut self, ctx: &Context<Self>, season: api::SeasonNumber) {
+        if self.channel.id() == ws::ChannelId::NONE {
+            return;
+        }
+
         self._episodes_req = self
             .channel
             .request()

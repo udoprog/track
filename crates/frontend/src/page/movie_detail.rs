@@ -376,15 +376,19 @@ impl MovieDetail {
             }
             Msg::MarkWatched(mark_time) => {
                 let movie = ctx.props().movie_id;
-                self._mark_req = self
-                    .channel
-                    .request()
-                    .body(api::MarkWatchedRequest {
-                        kind: api::WatchedKind::Movie { movie },
-                        mark_time,
-                    })
-                    .on_packet(ctx.link().callback(Msg::MarkWatchedDone))
-                    .send();
+
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._mark_req = self
+                        .channel
+                        .request()
+                        .body(api::MarkWatchedRequest {
+                            kind: api::WatchedKind::Movie { movie },
+                            mark_time,
+                        })
+                        .on_packet(ctx.link().callback(Msg::MarkWatchedDone))
+                        .send();
+                }
+
                 Ok(true)
             }
             Msg::MarkWatchedDone(result) => {
@@ -394,12 +398,15 @@ impl MovieDetail {
                 Ok(false)
             }
             Msg::RemoveWatched(id, kind) => {
-                self._remove_watch_req = self
-                    .channel
-                    .request()
-                    .body(api::RemoveWatchedRequest { id, kind })
-                    .on_packet(ctx.link().callback(Msg::RemoveWatchedDone))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._remove_watch_req = self
+                        .channel
+                        .request()
+                        .body(api::RemoveWatchedRequest { id, kind })
+                        .on_packet(ctx.link().callback(Msg::RemoveWatchedDone))
+                        .send();
+                }
+
                 Ok(false)
             }
             Msg::RemoveWatchedDone(result) => {
@@ -427,12 +434,16 @@ impl MovieDetail {
             }
             Msg::RemoveMovie => {
                 let id = ctx.props().movie_id;
-                self._remove_req = self
-                    .channel
-                    .request()
-                    .body(api::RemoveMovieRequest { id })
-                    .on_packet(ctx.link().callback(Msg::RemoveDone))
-                    .send();
+
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._remove_req = self
+                        .channel
+                        .request()
+                        .body(api::RemoveMovieRequest { id })
+                        .on_packet(ctx.link().callback(Msg::RemoveDone))
+                        .send();
+                }
+
                 Ok(false)
             }
             Msg::RemoveDone(result) => {
@@ -443,12 +454,14 @@ impl MovieDetail {
             Msg::SyncMovie => {
                 let id = ctx.props().movie_id;
 
-                self._sync_req = self
-                    .channel
-                    .request()
-                    .body(api::SyncMovieRequest { id })
-                    .on_packet(ctx.link().callback(Msg::SyncDone))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._sync_req = self
+                        .channel
+                        .request()
+                        .body(api::SyncMovieRequest { id })
+                        .on_packet(ctx.link().callback(Msg::SyncDone))
+                        .send();
+                }
 
                 Ok(true)
             }
@@ -464,16 +477,20 @@ impl MovieDetail {
                 }
 
                 let id = ctx.props().movie_id;
-                self._set_remote_enabled_req = self
-                    .channel
-                    .request()
-                    .body(api::SetMovieRemoteEnabledRequest {
-                        id,
-                        remote_id,
-                        enabled,
-                    })
-                    .on_packet(ctx.link().callback(Msg::SetRemoteEnabledDone))
-                    .send();
+
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._set_remote_enabled_req = self
+                        .channel
+                        .request()
+                        .body(api::SetMovieRemoteEnabledRequest {
+                            id,
+                            remote_id,
+                            enabled,
+                        })
+                        .on_packet(ctx.link().callback(Msg::SetRemoteEnabledDone))
+                        .send();
+                }
+
                 Ok(true)
             }
             Msg::SetRemoteEnabledDone(result) => {
@@ -488,16 +505,20 @@ impl MovieDetail {
                 }
 
                 let id = ctx.props().movie_id;
-                self._set_remote_sync_kinds_req = self
-                    .channel
-                    .request()
-                    .body(api::SetMovieRemoteSyncKindsRequest {
-                        id,
-                        remote_id,
-                        sync_kinds,
-                    })
-                    .on_packet(ctx.link().callback(Msg::SetRemoteSyncKindsDone))
-                    .send();
+
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._set_remote_sync_kinds_req = self
+                        .channel
+                        .request()
+                        .body(api::SetMovieRemoteSyncKindsRequest {
+                            id,
+                            remote_id,
+                            sync_kinds,
+                        })
+                        .on_packet(ctx.link().callback(Msg::SetRemoteSyncKindsDone))
+                        .send();
+                }
+
                 Ok(true)
             }
             Msg::SetRemoteSyncKindsDone(result) => {
@@ -513,12 +534,14 @@ impl MovieDetail {
 
                 let id = ctx.props().movie_id;
 
-                self._reorder_remotes_req = self
-                    .channel
-                    .request()
-                    .body(api::ReorderMovieRemotesRequest { id, remote_ids })
-                    .on_packet(ctx.link().callback(Msg::ReorderRemotesDone))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._reorder_remotes_req = self
+                        .channel
+                        .request()
+                        .body(api::ReorderMovieRemotesRequest { id, remote_ids })
+                        .on_packet(ctx.link().callback(Msg::ReorderRemotesDone))
+                        .send();
+                }
 
                 Ok(true)
             }
@@ -541,15 +564,17 @@ impl MovieDetail {
 
                 let id = ctx.props().movie_id;
 
-                self._untrack_req = self
-                    .channel
-                    .request()
-                    .body(api::UntrackMovieRequest { id, tracked })
-                    .on_packet(
-                        ctx.link()
-                            .callback(move |r| Msg::SetTrackedDone(tracked, r)),
-                    )
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._untrack_req = self
+                        .channel
+                        .request()
+                        .body(api::UntrackMovieRequest { id, tracked })
+                        .on_packet(
+                            ctx.link()
+                                .callback(move |r| Msg::SetTrackedDone(tracked, r)),
+                        )
+                        .send();
+                }
 
                 Ok(false)
             }
@@ -564,15 +589,19 @@ impl MovieDetail {
             }
             Msg::OnWatchNext(mark_time) => {
                 let movie = ctx.props().movie_id;
-                self._pending_req = self
-                    .channel
-                    .request()
-                    .body(api::AddPendingRequest {
-                        kind: api::PendingKind::Movie { movie },
-                        mark_time,
-                    })
-                    .on_packet(ctx.link().callback(Msg::AddPendingDone))
-                    .send();
+
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._pending_req = self
+                        .channel
+                        .request()
+                        .body(api::AddPendingRequest {
+                            kind: api::PendingKind::Movie { movie },
+                            mark_time,
+                        })
+                        .on_packet(ctx.link().callback(Msg::AddPendingDone))
+                        .send();
+                }
+
                 Ok(true)
             }
             Msg::AddPendingDone(result) => {
@@ -589,14 +618,18 @@ impl MovieDetail {
             }
             Msg::OnRemoveNext => {
                 let movie = ctx.props().movie_id;
-                self._pending_req = self
-                    .channel
-                    .request()
-                    .body(api::RemovePendingRequest {
-                        kind: api::PendingKind::Movie { movie },
-                    })
-                    .on_packet(ctx.link().callback(Msg::RemovePendingDone))
-                    .send();
+
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._pending_req = self
+                        .channel
+                        .request()
+                        .body(api::RemovePendingRequest {
+                            kind: api::PendingKind::Movie { movie },
+                        })
+                        .on_packet(ctx.link().callback(Msg::RemovePendingDone))
+                        .send();
+                }
+
                 Ok(false)
             }
             Msg::RemovePendingDone(result) => {
@@ -618,12 +651,14 @@ impl MovieDetail {
                     }
                 }
 
-                self._select_image_req = self
-                    .channel
-                    .request()
-                    .body(api::SelectImageRequest { id })
-                    .on_packet(ctx.link().callback(Msg::SelectImageDone))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._select_image_req = self
+                        .channel
+                        .request()
+                        .body(api::SelectImageRequest { id })
+                        .on_packet(ctx.link().callback(Msg::SelectImageDone))
+                        .send();
+                }
 
                 Ok(true)
             }
@@ -634,15 +669,17 @@ impl MovieDetail {
                     }
                 }
 
-                self._clear_image_req = self
-                    .channel
-                    .request()
-                    .body(api::ClearSelectedImageRequest {
-                        owner: api::ImageOwner::Movie(ctx.props().movie_id),
-                        kind,
-                    })
-                    .on_packet(ctx.link().callback(Msg::ClearSelectedImageDone))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._clear_image_req = self
+                        .channel
+                        .request()
+                        .body(api::ClearSelectedImageRequest {
+                            owner: api::ImageOwner::Movie(ctx.props().movie_id),
+                            kind,
+                        })
+                        .on_packet(ctx.link().callback(Msg::ClearSelectedImageDone))
+                        .send();
+                }
 
                 Ok(false)
             }
@@ -658,28 +695,32 @@ impl MovieDetail {
                 Ok(true)
             }
             Msg::PickBestImage(kind) => {
-                self._pick_best_image_req = self
-                    .channel
-                    .request()
-                    .body(api::PickBestImagesRequest {
-                        owner: api::ImageOwner::Movie(ctx.props().movie_id),
-                        kind,
-                    })
-                    .on_packet(ctx.link().callback(Msg::PickBestImageDone))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._pick_best_image_req = self
+                        .channel
+                        .request()
+                        .body(api::PickBestImagesRequest {
+                            owner: api::ImageOwner::Movie(ctx.props().movie_id),
+                            kind,
+                        })
+                        .on_packet(ctx.link().callback(Msg::PickBestImageDone))
+                        .send();
+                }
 
                 Ok(false)
             }
             Msg::ResetImageSelection(kind) => {
-                self._reset_image_req = self
-                    .channel
-                    .request()
-                    .body(api::ResetImageSelectionRequest {
-                        owner: api::ImageOwner::Movie(ctx.props().movie_id),
-                        kind,
-                    })
-                    .on_packet(ctx.link().callback(Msg::ResetImageSelectionDone))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._reset_image_req = self
+                        .channel
+                        .request()
+                        .body(api::ResetImageSelectionRequest {
+                            owner: api::ImageOwner::Movie(ctx.props().movie_id),
+                            kind,
+                        })
+                        .on_packet(ctx.link().callback(Msg::ResetImageSelectionDone))
+                        .send();
+                }
 
                 Ok(false)
             }
@@ -740,69 +781,77 @@ impl MovieDetail {
             Msg::AddRemote(slug, remote) => {
                 let id = ctx.props().movie_id;
 
-                self._remote_req = self
-                    .channel
-                    .request()
-                    .body(api::AddMovieRemoteRequest { id, slug, remote })
-                    .on_packet(ctx.link().callback(
-                        |r: Result<ws::Packet<api::AddMovieRemote>, ws::Error>| {
-                            Msg::RemoteDone(r.map(|_| ()))
-                        },
-                    ))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._remote_req = self
+                        .channel
+                        .request()
+                        .body(api::AddMovieRemoteRequest { id, slug, remote })
+                        .on_packet(ctx.link().callback(
+                            |r: Result<ws::Packet<api::AddMovieRemote>, ws::Error>| {
+                                Msg::RemoteDone(r.map(|_| ()))
+                            },
+                        ))
+                        .send();
+                }
 
                 Ok(false)
             }
             Msg::EditRemote(remote_id, slug, remote) => {
                 let id = ctx.props().movie_id;
 
-                self._remote_req = self
-                    .channel
-                    .request()
-                    .body(api::UpdateMovieRemoteRequest {
-                        id,
-                        remote_id,
-                        slug,
-                        remote,
-                    })
-                    .on_packet(ctx.link().callback(
-                        |r: Result<ws::Packet<api::UpdateMovieRemote>, ws::Error>| {
-                            Msg::RemoteDone(r.map(|_| ()))
-                        },
-                    ))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._remote_req = self
+                        .channel
+                        .request()
+                        .body(api::UpdateMovieRemoteRequest {
+                            id,
+                            remote_id,
+                            slug,
+                            remote,
+                        })
+                        .on_packet(ctx.link().callback(
+                            |r: Result<ws::Packet<api::UpdateMovieRemote>, ws::Error>| {
+                                Msg::RemoteDone(r.map(|_| ()))
+                            },
+                        ))
+                        .send();
+                }
 
                 Ok(false)
             }
             Msg::RemoveRemote(remote_id) => {
                 let id = ctx.props().movie_id;
 
-                self._remote_req = self
-                    .channel
-                    .request()
-                    .body(api::RemoveMovieRemoteRequest { id, remote_id })
-                    .on_packet(ctx.link().callback(
-                        |r: Result<ws::Packet<api::RemoveMovieRemote>, ws::Error>| {
-                            Msg::RemoteDone(r.map(|_| ()))
-                        },
-                    ))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._remote_req = self
+                        .channel
+                        .request()
+                        .body(api::RemoveMovieRemoteRequest { id, remote_id })
+                        .on_packet(ctx.link().callback(
+                            |r: Result<ws::Packet<api::RemoveMovieRemote>, ws::Error>| {
+                                Msg::RemoteDone(r.map(|_| ()))
+                            },
+                        ))
+                        .send();
+                }
 
                 Ok(false)
             }
             Msg::PurgeRemoteCache(remote_id) => {
                 let id = ctx.props().movie_id;
 
-                self._remote_req = self
-                    .channel
-                    .request()
-                    .body(api::PurgeMovieRemoteCacheRequest { id, remote_id })
-                    .on_packet(ctx.link().callback(
-                        |r: Result<ws::Packet<api::PurgeMovieRemoteCache>, ws::Error>| {
-                            Msg::RemoteDone(r.map(|_| ()))
-                        },
-                    ))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._remote_req = self
+                        .channel
+                        .request()
+                        .body(api::PurgeMovieRemoteCacheRequest { id, remote_id })
+                        .on_packet(ctx.link().callback(
+                            |r: Result<ws::Packet<api::PurgeMovieRemoteCache>, ws::Error>| {
+                                Msg::RemoteDone(r.map(|_| ()))
+                            },
+                        ))
+                        .send();
+                }
 
                 Ok(false)
             }
@@ -864,6 +913,10 @@ impl MovieDetail {
     }
 
     fn load_movie(&mut self, ctx: &Context<Self>) {
+        if self.channel.id() == ws::ChannelId::NONE {
+            return;
+        }
+
         self._movie_req = self
             .channel
             .request()
@@ -875,6 +928,10 @@ impl MovieDetail {
     }
 
     fn load_watched(&mut self, ctx: &Context<Self>) {
+        if self.channel.id() == ws::ChannelId::NONE {
+            return;
+        }
+
         let movie = ctx.props().movie_id;
         self._watched_req = self
             .channel
@@ -887,6 +944,10 @@ impl MovieDetail {
     }
 
     fn load_config(&mut self, ctx: &Context<Self>) {
+        if self.channel.id() == ws::ChannelId::NONE {
+            return;
+        }
+
         self._config_req = self
             .channel
             .request()

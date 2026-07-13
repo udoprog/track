@@ -1,78 +1,17 @@
+@use 'icons';
+@use 'logos';
+@use 'flags';
+@use 'calendar';
+@use 'skeleton';
+@use 'toolbar';
+@use 'context_menu';
+@use 'mark_time_menu';
+@use 'outline';
+
 @use 'sass:color';
-
-$monospace-font: 'SF Mono', Consolas, 'SF Mono Regular', monospace;
-$sans-serif-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-
-$page-width: 1200px;
-
-$transparency: 0.75;
-
-$bg-dark: #222;
-$bg-site: #525252;
-$bg-dark-transparent: rgba(16, 16, 16, $transparency);
-$bg-panel: #2a2a2a;
-$bg-highlight: #2e2e2e;
-$bg-surface: #252525;
-$bg-item: #2e2e2e;
-$text-primary: #eee;
-$text-muted: #aaa;
-$border-subtle: #252525;
-$border-subtle-transparent: rgba(8, 8, 8, $transparency);
-$border-input: #555;
-$color-primary: #708dc0;
-$color-secondary: #999;
-$color-danger: #a56868;
-$color-success: #5ca05c;
-$color-title: $color-primary;
-$link-color: rgb(87, 127, 195);
-$text-color: #ddd;
-$text-color-selected: #fff;
-$adjust-bg: -20%;
-
-$font-title: 24px;
-$font-xl: 20px;
-$font-lg: 18px;
-$font-base: 16px;
-$font-sm: 14px;
-$font-xs: 12px;
-$radius-sm: 3px;
-$radius: 4px;
-$padding: 4px;
-$padding-md: 6px;
-$padding-lg: 8px;
-$gap-xs: 8px;
-$gap-sm: 12px;
-$gap: 16px;
-$text-gap: 0.25em;
-$input-height: 32px;
-$input-height-xs: 14px;
-$input-height-sm: 24px;
-$input-height-lg: 44px;
-$input-height-xl: 56px;
-$input-height-touch: 44px;
-$input-height-touch-xs: 14px;
-$input-height-touch-sm: 24px;
-$input-height-touch-lg: 44px;
-$input-height-touch-xl: 56px;
-$icon-padding: 8px;
-$item-inline-padding: 4px;
-
-$sidebar-width: 240px;
-$bold-weight: 500;
-$input-icon-height: 100%;
-
 @use 'grid' as g;
-
-@import 'icons';
-@import 'logos';
-@import 'flags';
-@import 'calendar';
-@import 'skeleton';
-@import 'toolbar';
-@import 'context_menu';
-@import 'mark_time_menu';
-@import 'outline';
-@import 'input';
+@use 'input' as i;
+@use 'vars' as v;
 
 *,
 *::before,
@@ -86,16 +25,16 @@ body {
     inset: 0;
     margin: 0;
     padding: 0;
-    background: $bg-site;
-    color: $text-primary;
-    font-family: $sans-serif-font;
-    font-size: $font-base;
-    --icon-color: #{$text-primary};
-    --icon-color-invert: #{$bg-dark};
+    background: v.$bg-site;
+    color: v.$text-primary;
+    font-family: v.$sans-serif-font;
+    font-size: v.$font-base;
+    --icon-color: #{v.$text-primary};
+    --icon-color-invert: #{v.$bg-dark};
 }
 
 a {
-    color: $color-title;
+    color: v.$color-title;
     text-decoration: none;
 }
 
@@ -115,23 +54,23 @@ p {
     display: flex;
     flex-direction: column;
     justify-items: stretch;
-    background: $bg-dark-transparent;
-    max-width: $page-width;
+    background: v.$bg-dark-transparent;
+    max-width: v.$page-width;
     margin: 0 auto;
 }
 
 #error {
     display: flex;
     flex-direction: row;
-    gap: $gap;
-    padding: $gap;
+    gap: v.$gap;
+    padding: v.$gap;
     align-items: start;
 
-    background: color.adjust($color-danger, $lightness: $adjust-bg);
+    background: color.adjust(v.$color-danger, $lightness: v.$adjust-bg);
     border-style: solid;
     border-width: 0;
-    border-color: $color-danger;
-    color: $text-primary;
+    border-color: v.$color-danger;
+    color: v.$text-primary;
 }
 
 #content {
@@ -144,8 +83,8 @@ p {
 #page {
     display: flex;
     flex-direction: column;
-    padding: $gap;
-    gap: $gap;
+    padding: v.$gap;
+    gap: v.$gap;
     overflow-y: auto;
     min-height: 0;
     // Positioning context so episode `offsetTop` is measured against the page.
@@ -157,10 +96,10 @@ p {
     flex-direction: row;
     justify-items: stretch;
     align-items: center;
-    gap: $gap;
+    gap: v.$gap;
 
     &.text-gap {
-        gap: $text-gap;
+        gap: v.$text-gap;
     }
 
     &.center {
@@ -212,7 +151,7 @@ p {
     display: flex;
     flex-direction: column;
     justify-items: stretch;
-    gap: $gap-sm;
+    gap: v.$gap-sm;
 
     &.center {
         align-items: center;
@@ -333,23 +272,23 @@ p {
     }
 
     &.primary {
-        color: $color-primary;
-        --icon-color: #{$color-primary};
+        color: v.$color-primary;
+        --icon-color: #{v.$color-primary};
     }
 
     &.success {
-        color: $color-success;
-        --icon-color: #{$color-success};
+        color: v.$color-success;
+        --icon-color: #{v.$color-success};
     }
 
     &.danger {
-        color: $color-danger;
-        --icon-color: #{$color-danger};
+        color: v.$color-danger;
+        --icon-color: #{v.$color-danger};
     }
 }
 
 .item-inline {
-    @include item-inline-base($input-height, $input-height-touch);
+    @include item-inline-base(v.$input-height, v.$input-height-touch);
 }
 
 .item-logo {
@@ -361,35 +300,35 @@ p {
 
 .item-inline-xs {
     display: inline-flex;
-    height: $input-height-xs;
+    height: v.$input-height-xs;
 
     @include g.on-mobile {
-        height: $input-height-touch-xs;
+        height: v.$input-height-touch-xs;
     }
 }
 
 .item-inline-lg {
-    @include item-inline-base($input-height-lg, $input-height-touch-lg);
+    @include item-inline-base(v.$input-height-lg, v.$input-height-touch-lg);
 }
 
 .item-inline-more {
     display: inline-flex;
     align-items: center;
-    height: $input-height-xl;
-    font-size: $font-xl;
+    height: v.$input-height-xl;
+    font-size: v.$font-xl;
 
     @include g.on-mobile {
-        height: $input-height-touch-xl;
+        height: v.$input-height-touch-xl;
     }
 }
 
 .item-inline-source {
     display: inline-flex;
     align-items: center;
-    height: $input-height;
+    height: v.$input-height;
 
     @include g.on-mobile {
-        height: $input-height-touch;
+        height: v.$input-height-touch;
     }
 }
 
@@ -408,7 +347,7 @@ p {
 .form {
     display: flex;
     flex-direction: column;
-    gap: $gap;
+    gap: v.$gap;
     align-items: stretch;
 }
 
@@ -416,37 +355,37 @@ p {
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    gap: $gap-sm;
+    gap: v.$gap-sm;
 
     label {
         display: flex;
         align-items: center;
         flex-direction: row;
-        font-size: $font-sm;
-        color: $text-muted;
+        font-size: v.$font-sm;
+        color: v.$text-muted;
         text-transform: uppercase;
         letter-spacing: 0.5px;
     }
 
     &.error {
-        color: $color-danger;
+        color: v.$color-danger;
     }
 }
 
 .hint {
-    color: $text-muted;
-    font-size: $font-xs;
+    color: v.$text-muted;
+    font-size: v.$font-xs;
 }
 
 .pending-title {
     display: flex;
     align-items: center;
 
-    color: $color-title;
-    font-size: $font-lg;
-    color: $text-primary;
+    color: v.$color-title;
+    font-size: v.$font-lg;
+    color: v.$text-primary;
     white-space: wrap;
-    min-height: $input-height;
+    min-height: v.$input-height;
 
     @include g.on-desktop {
         white-space: nowrap;
@@ -456,76 +395,76 @@ p {
 }
 
 .item-title {
-    color: $color-title;
-    font-size: $font-lg;
+    color: v.$color-title;
+    font-size: v.$font-lg;
 }
 
 .site-title {
-    color: $color-title;
-    font-size: $font-title;
-    font-weight: $bold-weight;
+    color: v.$color-title;
+    font-size: v.$font-title;
+    font-weight: v.$bold-weight;
 }
 
 .page-sub-title {
-    color: $color-title;
-    font-size: $font-lg;
+    color: v.$color-title;
+    font-size: v.$font-lg;
 }
 
 @mixin header-base($font-size) {
     display: flex;
     align-items: center;
-    gap: $gap-sm;
+    gap: v.$gap-sm;
 
-    color: $color-title;
+    color: v.$color-title;
     margin: 0;
     padding: 0;
     font-size: $font-size;
-    font-weight: $bold-weight;
+    font-weight: v.$bold-weight;
 
     &.center {
         justify-content: center;
     }
 
-    min-height: $input-height;
+    min-height: v.$input-height;
 
     @include g.on-mobile {
-        min-height: $input-height-touch;
+        min-height: v.$input-height-touch;
     }
 }
 
 h1 {
-    @include header-base($font-title);
+    @include header-base(v.$font-title);
 }
 
 h2 {
-    @include header-base($font-xl);
+    @include header-base(v.$font-xl);
 }
 
 h3 {
-    @include header-base($font-lg);
+    @include header-base(v.$font-lg);
 }
 
 h4 {
-    @include header-base($font-base);
+    @include header-base(v.$font-base);
 }
 
 h5 {
-    @include header-base($font-base);
+    @include header-base(v.$font-base);
 }
 
 h6 {
-    @include header-base($font-base);
+    @include header-base(v.$font-base);
 }
 
 .text-muted {
-    color: $text-muted;
-    font-size: $font-sm;
+    color: v.$text-muted;
+    font-size: v.$font-sm;
 }
 
 .pending-grid {
     display: grid;
     grid-template-columns: repeat(var(--pending-columns, 4), 1fr);
-    gap: $gap;
+    gap: v.$gap;
 
     @include g.on-mobile {
         grid-template-columns: 1fr;
@@ -535,11 +474,11 @@ h6 {
 .pending-item {
     display: flex;
     flex-direction: column;
-    gap: $gap-sm;
-    padding: $gap-sm;
-    background: $bg-dark-transparent;
-    border: 1px solid $border-subtle-transparent;
-    border-radius: $radius;
+    gap: v.$gap-sm;
+    padding: v.$gap-sm;
+    background: v.$bg-dark-transparent;
+    border: 1px solid v.$border-subtle-transparent;
+    border-radius: v.$radius;
     min-width: 0;
     position: relative;
     overflow: hidden;
@@ -611,15 +550,15 @@ image {
     }
 
     .icon {
-        height: $input-height-touch;
-        width: $input-height-touch;
+        height: v.$input-height-touch;
+        width: v.$input-height-touch;
     }
 }
 
 .pending-info {
     display: flex;
     flex-direction: column;
-    gap: $gap-sm;
+    gap: v.$gap-sm;
     flex: 1;
     min-width: 0;
 }
@@ -627,20 +566,20 @@ image {
 .pending-content {
     display: flex;
     flex-direction: column;
-    gap: $gap-sm;
+    gap: v.$gap-sm;
     flex: 1;
 }
 
 .pending-actions {
     display: flex;
-    gap: $gap-sm;
+    gap: v.$gap-sm;
     justify-content: flex-end;
 }
 
 .pending-label {
-    font-size: $font-sm;
-    font-weight: $bold-weight;
-    color: $text-primary;
+    font-size: v.$font-sm;
+    font-weight: v.$bold-weight;
+    color: v.$text-primary;
     white-space: wrap;
 
     @include g.on-desktop {
@@ -652,12 +591,12 @@ image {
 
 .pending-date {
     font-size: 12px;
-    color: $text-muted;
+    color: v.$text-muted;
 }
 
 .percentage-container {
     display: block;
-    background: $bg-surface;
+    background: v.$bg-surface;
     width: 100%;
     height: 4px;
     overflow: hidden;
@@ -665,31 +604,31 @@ image {
 
 .percentage-fill {
     display: block;
-    background: $color-primary;
+    background: v.$color-primary;
     height: 100%;
 }
 
 .schedule-day {
-    margin-bottom: $gap;
+    margin-bottom: v.$gap;
 }
 
 .schedule-date {
-    margin: 0 0 $gap-sm;
-    font-size: $font-base;
-    color: $text-muted;
+    margin: 0 0 v.$gap-sm;
+    font-size: v.$font-base;
+    color: v.$text-muted;
     font-weight: normal;
 }
 
 .schedule-entry {
     display: flex;
     align-items: baseline;
-    gap: $gap-sm;
-    padding: $padding 0;
-    border-bottom: 1px solid $border-subtle;
+    gap: v.$gap-sm;
+    padding: v.$padding 0;
+    border-bottom: 1px solid v.$border-subtle;
 }
 
 .schedule-show {
-    font-weight: $bold-weight;
+    font-weight: v.$bold-weight;
     min-width: 180px;
 
     @include g.on-mobile {
@@ -700,9 +639,9 @@ image {
 .schedule-episodes {
     display: flex;
     flex-wrap: wrap;
-    gap: $gap-sm;
-    color: $text-muted;
-    font-size: $font-sm;
+    gap: v.$gap-sm;
+    color: v.$text-muted;
+    font-size: v.$font-sm;
 }
 
 .schedule-ep {
@@ -742,35 +681,35 @@ image {
 }
 
 .title {
-    font-size: $font-lg;
-    font-weight: $bold-weight;
-    color: $text-primary;
+    font-size: v.$font-lg;
+    font-weight: v.$bold-weight;
+    color: v.$text-primary;
 }
 
 .status {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: $color-secondary;
-    color: color.adjust($color-secondary, $lightness: -50%);
-    border: 1px solid $border-subtle-transparent;
-    border-radius: $radius;
-    padding: 0 $padding;
+    background: v.$color-secondary;
+    color: color.adjust(v.$color-secondary, $lightness: -50%);
+    border: 1px solid v.$border-subtle-transparent;
+    border-radius: v.$radius;
+    padding: 0 v.$padding;
     white-space: nowrap;
 
-    height: $input-height;
-    min-width: $input-height;
+    height: v.$input-height;
+    min-width: v.$input-height;
 
     @include g.on-mobile {
-        height: $input-height-touch;
-        min-width: $input-height-touch;
+        height: v.$input-height-touch;
+        min-width: v.$input-height-touch;
     }
 }
 
 .detail-layout {
     display: grid;
-    grid-template-columns: $sidebar-width 1fr;
-    gap: $gap;
+    grid-template-columns: v.$sidebar-width 1fr;
+    gap: v.$gap;
 
     @include g.on-mobile {
         display: flex;
@@ -781,11 +720,11 @@ image {
 .detail-sidebar {
     display: flex;
     flex-direction: column;
-    gap: $gap;
+    gap: v.$gap;
     overflow-y: auto;
 
     @include g.on-desktop {
-        width: $sidebar-width;
+        width: v.$sidebar-width;
         height: 100%;
     }
 }
@@ -793,7 +732,7 @@ image {
 .detail-content {
     display: flex;
     flex-direction: column;
-    gap: $gap;
+    gap: v.$gap;
     min-width: 0;
 }
 
@@ -804,17 +743,17 @@ image {
     >.episode {
         display: flex;
         flex-direction: column;
-        gap: $gap-sm;
+        gap: v.$gap-sm;
 
-        padding-top: $gap-sm;
-        padding-bottom: $gap-sm;
+        padding-top: v.$gap-sm;
+        padding-bottom: v.$gap-sm;
 
         &:first-child {
-            border-top: 1px solid $border-subtle;
+            border-top: 1px solid v.$border-subtle;
         }
 
         &:not(:last-child) {
-            border-bottom: 1px solid $border-subtle;
+            border-bottom: 1px solid v.$border-subtle;
         }
 
         @include g.on-desktop {
@@ -826,7 +765,7 @@ image {
 }
 
 .overview {
-    font-size: $font-base;
+    font-size: v.$font-base;
     line-height: 1.5em;
     text-align: justify;
 }
@@ -835,34 +774,34 @@ image {
     display: inline-flex;
     flex-direction: row;
     align-items: center;
-    gap: $text-gap;
-    font-family: $monospace-font;
-    font-size: $font-lg;
+    gap: v.$text-gap;
+    font-family: v.$monospace-font;
+    font-size: v.$font-lg;
     text-decoration: none;
-    min-height: $input-height;
+    min-height: v.$input-height;
 
     @include g.on-mobile {
-        min-height: $input-height-touch;
+        min-height: v.$input-height-touch;
     }
 }
 
 .box {
     display: flex;
     flex-direction: row;
-    gap: $gap;
-    border-radius: $radius;
-    padding: $gap;
+    gap: v.$gap;
+    border-radius: v.$radius;
+    padding: v.$gap;
     align-items: center;
     width: 100%;
     margin: 0 auto;
 
     &.info {
-        background: $bg-dark-transparent;
-        border: 1px solid $border-subtle;
+        background: v.$bg-dark-transparent;
+        border: 1px solid v.$border-subtle;
     }
 
     p {
-        margin: 0 0 $gap-sm;
+        margin: 0 0 v.$gap-sm;
     }
 }
 
@@ -870,7 +809,7 @@ image {
     position: fixed;
     inset: 0;
     isolation: isolate;
-    background: $bg-dark;
+    background: v.$bg-dark;
     overflow: hidden;
 }
 
@@ -912,15 +851,15 @@ image {
         border-radius: 0 !important;
 
         &:first-child {
-            border-radius: $radius-sm 0 0 $radius-sm !important;
+            border-radius: v.$radius-sm 0 0 v.$radius-sm !important;
         }
 
         &:last-child {
-            border-radius: 0 $radius-sm $radius-sm 0 !important;
+            border-radius: 0 v.$radius-sm v.$radius-sm 0 !important;
         }
 
         &:only-child {
-            border-radius: $radius-sm !important;
+            border-radius: v.$radius-sm !important;
         }
     }
 
@@ -948,11 +887,11 @@ image {
 rule {
     display: flex;
     flex-direction: column;
-    gap: $gap;
-    padding: $gap;
+    gap: v.$gap;
+    padding: v.$gap;
 
-    background: $bg-dark-transparent;
-    border: 1px solid $border-subtle-transparent;
+    background: v.$bg-dark-transparent;
+    border: 1px solid v.$border-subtle-transparent;
 }
 
 rule-add {
@@ -960,22 +899,22 @@ rule-add {
     flex-direction: row;
     align-items: center;
     justify-content: center;
-    gap: $gap;
+    gap: v.$gap;
 
-    background: $bg-dark-transparent;
-    border: 1px solid $border-subtle-transparent;
+    background: v.$bg-dark-transparent;
+    border: 1px solid v.$border-subtle-transparent;
 
     cursor: pointer;
 
     &:hover {
-        background: rgba($color-secondary, $transparency);
+        background: rgba(v.$color-secondary, v.$transparency);
     }
 }
 
 input-label-controls {
     display: grid;
     grid-template-columns: auto 1fr;
-    gap: $gap;
+    gap: v.$gap;
     align-items: start;
 
     @include g.on-mobile {
@@ -985,7 +924,7 @@ input-label-controls {
     >controls {
         display: flex;
         flex-direction: row;
-        gap: $gap;
+        gap: v.$gap;
         flex-wrap: wrap;
 
         @include g.on-mobile {
@@ -998,13 +937,13 @@ input-label-controls {
 input-controls {
     display: grid;
     grid-template-columns: 1fr auto;
-    gap: $gap;
+    gap: v.$gap;
     align-items: center;
 
     >controls {
         display: flex;
         flex-direction: row;
-        gap: $gap;
+        gap: v.$gap;
         justify-content: flex-end;
         flex-wrap: wrap;
 
@@ -1024,33 +963,33 @@ input-controls {
 .table {
     display: flex;
     flex-direction: column;
-    font-size: $font-sm;
-    gap: $gap-xs;
+    font-size: v.$font-sm;
+    gap: v.$gap-xs;
 
     >table-separator {
         height: 1px;
-        background: $border-subtle-transparent;
-        margin: $gap-xs 0;
+        background: v.$border-subtle-transparent;
+        margin: v.$gap-xs 0;
     }
 
     >:not(table-separator) {
-        padding: $gap-sm;
+        padding: v.$gap-sm;
         border-style: solid;
-        border-color: $border-subtle-transparent;
-        background: $bg-dark-transparent;
+        border-color: v.$border-subtle-transparent;
+        background: v.$bg-dark-transparent;
         border-width: 1px;
 
         &.clickable:hover {
-            background: rgba($color-secondary, $transparency);
+            background: rgba(v.$color-secondary, v.$transparency);
         }
     }
 }
 
 .image-gallery {
     display: grid;
-    gap: $gap;
-    background: $bg-surface;
-    padding: $gap;
+    gap: v.$gap;
+    background: v.$bg-surface;
+    padding: v.$gap;
 
     grid-template-columns: repeat(2, 1fr);
 
@@ -1093,7 +1032,7 @@ input-controls {
     }
 
     image.selected {
-        outline: 2px solid $color-primary;
+        outline: 2px solid v.$color-primary;
     }
 
     .gallery-meta {
@@ -1119,16 +1058,16 @@ input-controls {
 }
 
 .remote-id {
-    font-family: $monospace-font;
+    font-family: v.$monospace-font;
 }
 
 .modal {
     display: flex;
     flex-direction: column;
-    background: $bg-panel;
-    border: 1px solid $border-subtle;
-    border-radius: $radius;
-    width: min(600px, calc(100vw - #{$gap-sm * 2}));
+    background: v.$bg-panel;
+    border: 1px solid v.$border-subtle;
+    border-radius: v.$radius;
+    width: min(600px, calc(100vw - #{v.$gap-sm * 2}));
     z-index: 401;
 
     @include g.on-mobile {
@@ -1136,7 +1075,7 @@ input-controls {
         border-radius: 0;
 
         &-header {
-            padding: $gap;
+            padding: v.$gap;
         }
     }
 
@@ -1144,7 +1083,7 @@ input-controls {
         position: fixed;
         inset: 0;
         background: rgba(0, 0, 0, 0.6);
-        z-index: $bold-weight;
+        z-index: v.$bold-weight;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -1156,25 +1095,25 @@ input-controls {
         flex-wrap: wrap;
         justify-content: space-between;
         align-items: center;
-        gap: $gap-sm;
-        background: $bg-highlight;
-        padding: $gap-xs;
+        gap: v.$gap-sm;
+        background: v.$bg-highlight;
+        padding: v.$gap-xs;
     }
 
     &-content {
         display: flex;
         flex-direction: column;
-        gap: $gap;
+        gap: v.$gap;
         overflow-y: auto;
         max-height: 80vh;
-        padding: $gap;
+        padding: v.$gap;
     }
 }
 
 indicator {
     display: grid;
     grid-template-columns: auto 1fr;
-    gap: $text-gap;
+    gap: v.$text-gap;
     align-items: center;
 
     >content {
@@ -1182,7 +1121,7 @@ indicator {
         flex-direction: row;
         flex-wrap: wrap;
         align-items: center;
-        gap: $text-gap;
+        gap: v.$text-gap;
     }
 }
 
@@ -1191,13 +1130,13 @@ datetime {
     flex-direction: row;
     flex-wrap: wrap;
     align-items: center;
-    gap: $text-gap;
+    gap: v.$text-gap;
 
     >span {
         white-space: nowrap;
 
         &.special {
-            color: $color-primary;
+            color: v.$color-primary;
         }
     }
 }
@@ -1205,13 +1144,13 @@ datetime {
 time {
     display: inline;
     white-space: nowrap;
-    color: $color-primary;
+    color: v.$color-primary;
 }
 
 date {
     display: inline;
     white-space: nowrap;
-    color: $color-primary;
+    color: v.$color-primary;
 }
 
 pagination {
@@ -1230,12 +1169,12 @@ pagination {
 
     >pages {
         display: flex;
-        font-size: $font-base;
-        font-family: $monospace-font;
+        font-size: v.$font-base;
+        font-family: v.$monospace-font;
         justify-content: center;
         flex: 1;
 
-        background-color: $bg-surface;
+        background-color: v.$bg-surface;
 
         >ellipsis {
             display: inline-flex;
@@ -1243,10 +1182,10 @@ pagination {
             justify-content: center;
 
             min-width: 3ch;
-            height: $input-height;
+            height: v.$input-height;
 
             @include g.on-mobile {
-                height: $input-height-touch;
+                height: v.$input-height-touch;
             }
         }
 
@@ -1257,21 +1196,21 @@ pagination {
             align-items: center;
             justify-content: center;
 
-            width: $input-height;
-            height: $input-height;
+            width: v.$input-height;
+            height: v.$input-height;
 
             @include g.on-mobile {
-                width: $input-height-touch;
-                height: $input-height-touch;
+                width: v.$input-height-touch;
+                height: v.$input-height-touch;
             }
 
             &.current {
-                font-weight: $bold-weight;
-                background-color: $color-primary;
+                font-weight: v.$bold-weight;
+                background-color: v.$color-primary;
             }
 
             &:hover {
-                background-color: $color-primary;
+                background-color: v.$color-primary;
             }
         }
     }

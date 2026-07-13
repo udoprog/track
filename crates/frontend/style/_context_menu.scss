@@ -1,4 +1,5 @@
 @use 'grid' as g;
+@use 'vars' as v;
 
 // Reusable anchored popover shell (ContextMenu). The catcher captures outside
 // clicks; the menu box is positioned by the component into the `--cm-*`
@@ -16,7 +17,7 @@
 .context-menu-header {
     display: flex;
     flex-wrap: wrap;
-    gap: $text-gap;
+    gap: v.$text-gap;
     align-items: center;
 
     > span {
@@ -25,7 +26,7 @@
     }
 
     .focus {
-        font-weight: $bold-weight;
+        font-weight: v.$bold-weight;
     }
 }
 
@@ -40,16 +41,16 @@
     display: flex;
     flex-direction: column;
     width: fit-content;
-    max-height: calc(100vh - #{$gap-xs * 2});
+    max-height: calc(100vh - #{v.$gap-xs * 2});
     overflow-y: auto;
-    background: $bg-panel;
-    border: 1px solid $border-input;
+    background: v.$bg-panel;
+    border: 1px solid v.$border-input;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
 
-    gap: $gap;
-    padding: $gap;
+    gap: v.$gap;
+    padding: v.$gap;
 
     @include g.on-mobile {
-        max-width: calc(100vw - #{$gap-xs * 2});
+        max-width: calc(100vw - #{v.$gap-xs * 2});
     }
 }

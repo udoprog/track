@@ -271,16 +271,17 @@ impl ScheduleRange {
                 // Reload directly: our own SetConfig broadcast is filtered out.
                 if self.channel.id() != ws::ChannelId::NONE {
                     self.load_schedule(ctx, true);
+
+                    self._set_config_req = self
+                        .channel
+                        .request()
+                        .body(api::SetConfigRequest {
+                            config: self.config.clone(),
+                        })
+                        .on_packet(ctx.link().callback(Msg::SetConfigDone))
+                        .send();
                 }
 
-                self._set_config_req = self
-                    .channel
-                    .request()
-                    .body(api::SetConfigRequest {
-                        config: self.config.clone(),
-                    })
-                    .on_packet(ctx.link().callback(Msg::SetConfigDone))
-                    .send();
                 Ok(true)
             }
             Msg::SetConfigDone(result) => {
@@ -434,6 +435,10 @@ impl ScheduleRange {
     }
 
     fn load_schedule(&mut self, ctx: &Context<Self>, show_loading: bool) {
+        if self.channel.id() == ws::ChannelId::NONE {
+            return;
+        }
+
         self.loading = show_loading;
 
         self._schedule_req = self
@@ -449,6 +454,10 @@ impl ScheduleRange {
     }
 
     fn load_config(&mut self, ctx: &Context<Self>) {
+        if self.channel.id() == ws::ChannelId::NONE {
+            return;
+        }
+
         self._config_req = self
             .channel
             .request()

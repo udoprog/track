@@ -1,19 +1,20 @@
 @use 'grid' as g;
+@use 'vars' as v;
 
 @mixin row-base {
     display: flex;
-    min-height: $input-height;
+    min-height: v.$input-height;
     align-items: center;
 
     @include g.on-mobile {
-        min-height: $input-height-touch;
+        min-height: v.$input-height-touch;
     }
 }
 
 @mixin column-base {
     display: flex;
     flex-direction: column;
-    gap: $gap;
+    gap: v.$gap;
 }
 
 .calendar-grid {
@@ -23,21 +24,21 @@
 .calendar-weekdays {
     display: grid;
     grid-template-columns: repeat(7, minmax(0, 1fr));
-    gap: $gap;
+    gap: v.$gap;
 }
 
 .calendar-weekday {
     @include row-base;
 
     text-align: center;
-    color: $text-muted;
+    color: v.$text-muted;
 }
 
 .calendar-month {
     @include row-base;
 
-    font-size: $font-lg;
-    color: $color-primary;
+    font-size: v.$font-lg;
+    color: v.$color-primary;
 }
 
 .calendar-week {
@@ -62,7 +63,7 @@
 
     @include g.on-desktop {
         display: grid;
-        gap: $gap;
+        gap: v.$gap;
         // Top-align so a tall poster doesn't stretch the day cells.
         align-items: start;
         // Poster column + one column per day, all equal width.
@@ -89,31 +90,31 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: $text-gap;
-    padding: 0 $gap-sm;
-    color: $color-primary;
-    font-size: $font-lg;
+    gap: v.$text-gap;
+    padding: 0 v.$gap-sm;
+    color: v.$color-primary;
+    font-size: v.$font-lg;
 
     @include g.on-desktop {
         align-self: stretch;
     }
 
     &:hover {
-        background: $bg-dark-transparent;
+        background: v.$bg-dark-transparent;
     }
 }
 
 .calendar-cell {
     @include column-base;
 
-    min-height: $input-height * 2;
+    min-height: v.$input-height * 2;
 
     @include g.on-mobile {
-        min-height: $input-height-touch * 2;
+        min-height: v.$input-height-touch * 2;
     }
 
     &.today {
-        background: rgba($color-primary, 0.25);
+        background: rgba(v.$color-primary, 0.25);
 
         .calendar-day-number>.bullet {
             background: none;
@@ -121,28 +122,28 @@
     }
 
     .calendar-day-number>.bullet {
-        height: $input-height;
+        height: v.$input-height;
         aspect-ratio: 1;
         display: inline-flex;
-        background: rgba($color-secondary, 0.25);
-        padding: $padding;
+        background: rgba(v.$color-secondary, 0.25);
+        padding: v.$padding;
         color: #fff;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-weight: $bold-weight;
+        font-weight: v.$bold-weight;
 
         @include g.on-mobile {
-            height: $input-height-touch;
+            height: v.$input-height-touch;
         }
     }
 }
 
 .calendar-day-number {
     @include row-base;
-    gap: $text-gap;
-    font-size: $font-lg;
-    color: $text-muted;
+    gap: v.$text-gap;
+    font-size: v.$font-lg;
+    color: v.$text-muted;
 }
 
 .calendar-items {
@@ -152,18 +153,18 @@
 .calendar-item {
     display: flex;
     flex-direction: column;
-    border: 1px solid $border-subtle-transparent;
+    border: 1px solid v.$border-subtle-transparent;
 
-    background: $bg-dark-transparent;
-    color: $text-primary;
-    min-height: $input-height;
+    background: v.$bg-dark-transparent;
+    color: v.$text-primary;
+    min-height: v.$input-height;
 
     @include g.on-mobile {
-        min-height: $input-height-touch;
+        min-height: v.$input-height-touch;
     }
 
     &.clickable:hover {
-        background: $color-primary;
+        background: v.$color-primary;
         color: #fff;
 
         .calendar-item-code {
@@ -174,8 +175,8 @@
 
 .calendar-item-title {
     @include row-base;
-    gap: $text-gap;
-    padding: $gap-sm;
+    gap: v.$text-gap;
+    padding: v.$gap-sm;
 
     @include g.on-mobile {
         text-overflow: ellipsis;
@@ -184,7 +185,7 @@
     }
 
     @include g.on-desktop {
-        font-size: $font-xs;
+        font-size: v.$font-xs;
     }
 
     .item-inline {
@@ -192,7 +193,7 @@
     }
 
     &.clickable:hover {
-        background: $color-primary;
+        background: v.$color-primary;
         color: #fff;
 
         .calendar-item-code {
@@ -206,20 +207,20 @@
     flex-direction: row;
     justify-content: space-between;
     align-items: center;
-    gap: $text-gap;
-    padding: 0 $gap-sm;
+    gap: v.$text-gap;
+    padding: 0 v.$gap-sm;
 
-    color: $text-muted;
+    color: v.$text-muted;
     font-family: monospace;
-    height: $input-height-touch;
+    height: v.$input-height-touch;
 
     @include g.on-desktop {
-        font-size: $font-xs;
-        height: $input-height;
+        font-size: v.$font-xs;
+        height: v.$input-height;
     }
 
     &.clickable:hover {
-        background: $color-primary;
+        background: v.$color-primary;
         color: #fff;
 
         .calendar-item-code {
@@ -231,5 +232,5 @@
 .day-of-week {
     display: flex;
     align-items: center;
-    gap: $text-gap;
+    gap: v.$text-gap;
 }

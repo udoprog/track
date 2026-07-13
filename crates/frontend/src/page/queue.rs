@@ -199,12 +199,15 @@ impl Queue {
                 Ok(true)
             }
             Msg::SyncAll => {
-                self._sync_req = self
-                    .channel
-                    .request()
-                    .body(api::SyncAllRequest)
-                    .on_packet(ctx.link().callback(Msg::SyncAllDone))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._sync_req = self
+                        .channel
+                        .request()
+                        .body(api::SyncAllRequest)
+                        .on_packet(ctx.link().callback(Msg::SyncAllDone))
+                        .send();
+                }
+
                 Ok(false)
             }
             Msg::SyncAllDone(result) => {
@@ -212,12 +215,15 @@ impl Queue {
                 Ok(false)
             }
             Msg::Remove(id) => {
-                self._remove_req = self
-                    .channel
-                    .request()
-                    .body(api::RemoveTaskRequest { id })
-                    .on_packet(ctx.link().callback(Msg::RemoveDone))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._remove_req = self
+                        .channel
+                        .request()
+                        .body(api::RemoveTaskRequest { id })
+                        .on_packet(ctx.link().callback(Msg::RemoveDone))
+                        .send();
+                }
+
                 Ok(false)
             }
             Msg::RemoveDone(result) => {
@@ -225,12 +231,15 @@ impl Queue {
                 Ok(false)
             }
             Msg::Bump(id) => {
-                self._bump_req = self
-                    .channel
-                    .request()
-                    .body(api::BumpTaskRequest { id })
-                    .on_packet(ctx.link().callback(Msg::BumpDone))
-                    .send();
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._bump_req = self
+                        .channel
+                        .request()
+                        .body(api::BumpTaskRequest { id })
+                        .on_packet(ctx.link().callback(Msg::BumpDone))
+                        .send();
+                }
+
                 Ok(false)
             }
             Msg::BumpDone(result) => {
@@ -261,6 +270,10 @@ impl Queue {
     }
 
     fn load(&mut self, ctx: &Context<Self>) {
+        if self.channel.id() == ws::ChannelId::NONE {
+            return;
+        }
+
         self._list_req = self
             .channel
             .request()
