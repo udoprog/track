@@ -133,6 +133,13 @@ impl WsHandler {
             .await;
     }
 
+    /// The cutoff pending items are listed up to: now shifted forward by the
+    /// configured dashboard lookahead, so items surface before they air.
+    async fn pending_cutoff(&self) -> Result<api::Timestamp> {
+        let config = self.db.load_config().await?;
+        Ok(api::Timestamp::now().saturating_add(config.dashboard_lookahead))
+    }
+
     async fn handle_inner(
         &self,
         id: api::Request,
@@ -543,7 +550,7 @@ impl WsHandler {
                     .read::<api::ListPendingRequest>()
                     .context("Expected a request payload")?;
 
-                let now = api::Timestamp::now();
+                let now = self.pending_cutoff().await?;
                 let pending = self.db.pending(now).await.context("Loading pending")?;
                 outgoing.write(api::ListPendingResponse { pending });
             }
@@ -566,7 +573,7 @@ impl WsHandler {
                     .read::<api::ListWatchNextRequest>()
                     .context("Expected a request payload")?;
 
-                let now = api::Timestamp::now();
+                let now = self.pending_cutoff().await?;
                 let pending = self.db.pending(now).await.context("Loading watch next")?;
                 outgoing.write(api::ListWatchNextResponse { pending });
             }

@@ -112,6 +112,19 @@ impl Timestamp {
         Duration::from_millis(ms.unsigned_abs())
     }
 
+    /// This timestamp shifted forward by `duration`, saturating at the
+    /// representable range.
+    #[inline]
+    pub fn saturating_add(self, duration: crate::Duration) -> Timestamp {
+        let ms = self.0.as_millisecond().saturating_add(duration.millis());
+
+        Self(JiffTimestamp::from_millisecond(ms).unwrap_or(if ms < 0 {
+            JiffTimestamp::MIN
+        } else {
+            JiffTimestamp::MAX
+        }))
+    }
+
     #[inline]
     pub fn from_jiff(ts: JiffTimestamp) -> Self {
         Self(ts)

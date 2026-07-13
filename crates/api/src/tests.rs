@@ -635,3 +635,59 @@ fn lang_bytes(language: Language) -> [u8; 4] {
     }
     bytes
 }
+
+#[test]
+fn human_duration() {
+    let cases = [
+        (0, "0 milliseconds"),
+        (500, "500 milliseconds"),
+        (1_000, "1 second"),
+        (90_000, "1.5 minutes"),
+        (1_800_000, "30 minutes"),
+        (3_600_000, "1 hour"),
+        (5_400_000, "1.5 hours"),
+        (86_400_000, "1 day"),
+        (129_600_000, "1.5 days"),
+        (604_800_000, "1 week"),
+        (1_209_600_000, "2 weeks"),
+    ];
+
+    for (millis, expected) in cases {
+        assert_eq!(Duration::from_millis(millis).human().to_string(), expected);
+    }
+}
+
+#[test]
+fn duration_split() {
+    assert_eq!(Duration::from_hours(24).split(), (1.0, DurationUnit::Day));
+    assert_eq!(Duration::from_hours(12).split(), (12.0, DurationUnit::Hour));
+    assert_eq!(
+        Duration::from_millis(90_000).split(),
+        (1.5, DurationUnit::Minute),
+    );
+    assert_eq!(
+        Duration::ZERO.split(),
+        (0.0, DurationUnit::Millisecond),
+    );
+}
+
+#[test]
+fn duration_round_trips_through_string() {
+    let duration = Duration::from_millis(5_400_000);
+    assert_eq!(duration.to_string(), "5400000");
+    assert_eq!("5400000".parse::<Duration>().unwrap(), duration);
+}
+
+#[test]
+fn timestamp_saturating_add_duration() {
+    let now = Timestamp::from_jiff(jiff::Timestamp::from_second(1_700_000_000).unwrap());
+    let later = now.saturating_add(Duration::from_hours(24));
+
+    assert_eq!(
+        later.inner().as_millisecond() - now.inner().as_millisecond(),
+        86_400_000
+    );
+
+    // Shifting past the representable range clamps instead of panicking.
+    assert!(now.saturating_add(Duration::from_millis(i64::MAX)) > now);
+}

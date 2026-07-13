@@ -8,6 +8,8 @@ mod confirm_danger;
 mod context_menu;
 mod country_picker;
 mod detail_skeleton;
+mod duration_input;
+mod duration_label;
 mod episode_picker;
 mod error_box;
 mod filters_editor;
@@ -36,6 +38,8 @@ pub(crate) use self::confirm_danger::ConfirmDanger;
 pub(crate) use self::context_menu::ContextMenu;
 pub(crate) use self::country_picker::CountryPicker;
 pub(crate) use self::detail_skeleton::DetailSkeleton;
+pub(crate) use self::duration_input::DurationInput;
+pub(crate) use self::duration_label::DurationLabel;
 pub(crate) use self::episode_picker::EpisodePicker;
 pub(crate) use self::error_box::ErrorBox;
 pub(crate) use self::filters_editor::{

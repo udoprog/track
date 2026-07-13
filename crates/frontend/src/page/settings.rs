@@ -5,8 +5,8 @@ use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::ui::{
-    AIR_DATE_KINDS, AIR_DATE_SOURCES, FiltersEditor, LanguagePicker, RELEASE_KINDS,
-    RELEASE_SOURCES, SecretInput, Skeleton, SyncKindsEditor, SyncLanguagesEditor,
+    AIR_DATE_KINDS, AIR_DATE_SOURCES, DurationInput, DurationLabel, FiltersEditor, LanguagePicker,
+    RELEASE_KINDS, RELEASE_SOURCES, SecretInput, Skeleton, SyncKindsEditor, SyncLanguagesEditor,
 };
 
 fn tz_is_valid(name: &str) -> bool {
@@ -39,6 +39,7 @@ pub(crate) enum Msg {
     LanguageChanged(api::Locale),
     SyncLanguagesChanged(Vec<api::Locale>),
     DashboardPageChanged(String),
+    DashboardLookaheadChanged(api::Duration),
     AutoSyncEnabledToggle,
     AutoSyncIntervalChanged(String),
     IncludeSpecialsToggle,
@@ -194,6 +195,25 @@ impl Component for Settings {
                                     value={self.config.dashboard_page.to_string()}
                                     onchange={on_dashboard_page}
                                 />
+                            }) }
+                        </div>
+
+                        <div class="field fill">
+                            <label>{"Pending lookahead"}</label>
+
+                            <span class="hint">
+                                {"How far into the future pending items are shown on the dashboard, currently "}
+                                <DurationLabel value={self.config.dashboard_lookahead} />
+                                {"."}
+                            </span>
+
+                            { self.field_slot("", html! {
+                                <div class="input-group fill">
+                                    <DurationInput
+                                        value={self.config.dashboard_lookahead}
+                                        on_change={link.callback(Msg::DashboardLookaheadChanged)}
+                                    />
+                                </div>
                             }) }
                         </div>
                     </div>
@@ -449,6 +469,11 @@ impl Settings {
                     self.persist(ctx);
                 }
                 Ok(false)
+            }
+            Msg::DashboardLookaheadChanged(lookahead) => {
+                self.config.dashboard_lookahead = lookahead;
+                self.persist(ctx);
+                Ok(true)
             }
             Msg::AutoSyncEnabledToggle => {
                 self.config.auto_sync_enabled = !self.config.auto_sync_enabled;

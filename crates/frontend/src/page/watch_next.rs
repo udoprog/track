@@ -10,8 +10,8 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{Route, Router, ShowDetailQuery};
 use crate::ui::{
-    Button, ConfirmDanger, ContextMenu, Image, MarkTimeMenu, PaginationButtons, Skeleton,
-    TimePreset, Variant,
+    Button, ConfirmDanger, ContextMenu, DurationInput, Image, MarkTimeMenu, PaginationButtons,
+    Skeleton, TimePreset, Variant,
 };
 
 struct PendingState {
@@ -55,6 +55,8 @@ pub(crate) enum Msg {
     MarkPending(api::PendingKind, api::MarkTime),
     MarkPendingDone(Result<ws::Packet<api::AddPending>, ws::Error>),
     AdjustPageSize(i32),
+    LookaheadChanged(api::Duration),
+    LookaheadSaved(Result<ws::Packet<api::SetConfig>, ws::Error>),
     SetConfigDone(Result<ws::Packet<api::SetConfig>, ws::Error>),
     SetPage(usize),
     Navigate(Route),
@@ -142,6 +144,12 @@ impl Component for WatchNext {
             <div class="column">
                 <div class="row desktop-align-end">
                     <div class="input-group desktop-only">
+                        <span class="input-label has-text" title="How far into the future pending items are shown">{"Lookahead"}</span>
+
+                        <DurationInput value={self.config.dashboard_lookahead} on_change={link.callback(Msg::LookaheadChanged)} />
+                    </div>
+
+                    <div class="input-group desktop-only">
                         <Button icon="minus" title="Show fewer" onclick={link.callback(|_| Msg::AdjustPageSize(-1))} />
 
                         <Button icon="plus" title="Show more" onclick={link.callback(|_| Msg::AdjustPageSize(1))} />
@@ -162,14 +170,22 @@ impl Component for WatchNext {
                     </div>
                 }
 
-                <div class="row-split mobile-only">
-                    <div class="input-group">
-                        <Button icon="minus" title="Show fewer" onclick={link.callback(|_| Msg::AdjustPageSize(-1))} />
+                <div class="column mobile-only">
+                    <div class="row-split">
+                        <div class="input-group">
+                            <Button icon="minus" title="Show fewer" onclick={link.callback(|_| Msg::AdjustPageSize(-1))} />
 
-                        <Button icon="plus" title="Show more" onclick={link.callback(|_| Msg::AdjustPageSize(1))} />
+                            <Button icon="plus" title="Show more" onclick={link.callback(|_| Msg::AdjustPageSize(1))} />
+                        </div>
+
+                        <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
                     </div>
 
-                    <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
+                    <div class="input-group">
+                        <span class="input-label has-text" title="How far into the future pending items are shown">{"Lookahead"}</span>
+
+                        <DurationInput value={self.config.dashboard_lookahead} on_change={link.callback(Msg::LookaheadChanged)} />
+                    </div>
                 </div>
             </div>
         }
@@ -205,7 +221,17 @@ impl WatchNext {
 
                 match event.kind {
                     api::AppEventKind::ConfigChanged { config } => {
+                        // A changed lookahead moves the server-side cutoff, so
+                        // the list has to be reloaded to match it.
+                        let lookahead_changed =
+                            config.dashboard_lookahead != self.config.dashboard_lookahead;
+
                         self.config = config;
+
+                        if lookahead_changed {
+                            self.load_pending(ctx);
+                        }
+
                         self.clamp_page(ctx);
                         Ok(true)
                     }
@@ -353,6 +379,27 @@ impl WatchNext {
                     .send();
                 Ok(true)
             }
+            Msg::LookaheadChanged(lookahead) => {
+                self.config.dashboard_lookahead = lookahead;
+
+                self._set_config_req = self
+                    .channel
+                    .request()
+                    .body(api::SetConfigRequest {
+                        config: self.config.clone(),
+                    })
+                    .on_packet(ctx.link().callback(Msg::LookaheadSaved))
+                    .send();
+                Ok(true)
+            }
+            Msg::LookaheadSaved(result) => {
+                result.context(Message::SavingConfig)?;
+
+                // The cutoff is applied server-side against the stored config, so
+                // the list can only be reloaded once the new lookahead is saved.
+                self.load_pending(ctx);
+                Ok(false)
+            }
             Msg::SetConfigDone(result) => {
                 result.context(Message::SavingConfig)?;
                 Ok(false)
@@ -399,12 +446,18 @@ impl WatchNext {
 
     /// Insert or replace a single pending row, keeping the list ordered by its
     /// pending timestamp (most recent first), matching the server's ordering. An
-    /// entry dated in the future falls outside the "next" view and is dropped.
+    /// entry dated beyond the configured lookahead falls outside the "next" view
+    /// and is dropped, mirroring the server's cutoff.
     fn upsert_pending(&mut self, ctx: &Context<Self>, pending: api::Pending) {
         self.pending
             .retain(|state| state.pending.info.kind() != pending.info.kind());
 
-        if pending.timestamp <= self.time.now() {
+        let cutoff = self
+            .time
+            .now()
+            .saturating_add(self.config.dashboard_lookahead);
+
+        if pending.timestamp <= cutoff {
             self.pending.push(PendingState {
                 pending,
                 anchor: NodeRef::default(),

@@ -38,6 +38,9 @@ pub use self::time::{
     Date, HumanDate, HumanDateTime, TimeInfo, TimeOfDay, TimeZone, Timestamp, Weekday,
 };
 
+mod duration;
+pub use self::duration::{Duration, DurationUnit, HumanDuration, ParseDurationUnitErr};
+
 macros::define_id!(ShowId);
 macros::define_id!(SeasonId);
 macros::define_id!(EpisodeId);
@@ -1863,6 +1866,9 @@ pub struct Config {
     pub tvdb_pin: Option<String>,
     pub tmdb_api_key: String,
     pub dashboard_page: u32,
+    /// How far into the future pending items surface on the dashboard. A
+    /// pending item is shown once its timestamp falls within this window.
+    pub dashboard_lookahead: Duration,
     /// Number of weeks shown in the dashboard schedule (always at least 1).
     pub schedule_weeks: u32,
     /// Number of days shown in the dashboard's upcoming-days strip (always at
@@ -1899,6 +1905,7 @@ impl Default for Config {
             tvdb_pin: None,
             tmdb_api_key: String::new(),
             dashboard_page: 5,
+            dashboard_lookahead: Duration::from_hours(24),
             schedule_weeks: 4,
             schedule_range_days: 3,
             auto_sync_enabled: false,

@@ -368,6 +368,7 @@ pub async fn import() -> Result<()> {
             tvdb_pin: config.tvdb_pin,
             tmdb_api_key: config.tmdb_api_key,
             dashboard_page: config.dashboard_page,
+            dashboard_lookahead: api::Duration::from_hours(24),
             schedule_weeks: 4,
             schedule_range_days: 3,
             auto_sync_enabled: false,

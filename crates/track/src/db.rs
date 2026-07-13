@@ -4306,7 +4306,8 @@ impl Database {
     /// flow for pending; otherwise any qualifying release date (past or future) creates/updates the
     /// pending entry, and the absence of a qualifying release (e.g. filters changed so nothing
     /// matches) removes it. Future-dated pending rows stay dormant on the dashboard until their
-    /// timestamp passes (`list_pending_before` filters `timestamp <= now`).
+    /// timestamp falls within the configured dashboard lookahead (`list_pending_before` filters
+    /// `timestamp <= cutoff`).
     ///
     /// `default_filters` are the global release filters used when the movie has no override.
     #[tracing::instrument(skip(self, default_filters), ret(level = "trace"))]
@@ -5259,6 +5260,11 @@ impl Database {
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(5);
 
+            let dashboard_lookahead = s
+                .get_config("dashboard_lookahead")?
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(api::Duration::from_hours(24));
+
             let schedule_weeks = s
                 .get_config("schedule_weeks")?
                 .and_then(|v| v.parse().ok())
@@ -5329,6 +5335,7 @@ impl Database {
                 tvdb_pin,
                 tmdb_api_key,
                 dashboard_page,
+                dashboard_lookahead,
                 schedule_weeks,
                 schedule_range_days,
                 auto_sync_enabled,
@@ -5367,6 +5374,11 @@ impl Database {
             s.set_config("tmdb_api_key", config.tmdb_api_key)?;
 
             s.set_config("dashboard_page", config.dashboard_page.to_string())?;
+
+            s.set_config(
+                "dashboard_lookahead",
+                config.dashboard_lookahead.to_string(),
+            )?;
 
             s.set_config("schedule_weeks", config.schedule_weeks.to_string())?;
 
