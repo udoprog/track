@@ -391,10 +391,7 @@ impl Client {
         let selected_banner = best_image(&banner, None);
         let selected_fanart = best_image(&fanart, None);
 
-        let last_updated = v.last_updated.as_ref().map(|value| match value {
-            serde_json::Value::String(s) => s.clone(),
-            other => other.to_string(),
-        });
+        let last_updated = normalize_last_updated(v.last_updated.as_ref());
 
         Ok(SeriesInfo {
             original_language,
@@ -513,45 +510,6 @@ impl Client {
     }
 
     pub(crate) async fn fetch_episodes(&self, show_id: u32) -> Result<Vec<EpisodeInfo>> {
-        #[derive(Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct Row {
-            id: u32,
-            #[serde(default)]
-            season_number: Option<u32>,
-            #[serde(default)]
-            number: u32,
-            #[serde(default)]
-            absolute_number: Option<u32>,
-            #[serde(default)]
-            image: Option<String>,
-            #[serde(default)]
-            aired: Option<String>,
-            #[serde(default)]
-            overview_translations: Vec<String>,
-            #[serde(default)]
-            name_translations: Vec<String>,
-        }
-
-        #[derive(Deserialize)]
-        struct Data {
-            #[serde(default)]
-            episodes: Vec<serde_json::Value>,
-        }
-
-        #[derive(Deserialize)]
-        struct Links {
-            #[serde(default)]
-            next: Option<String>,
-        }
-
-        #[derive(Deserialize)]
-        struct Resp {
-            data: Data,
-            #[serde(default)]
-            links: Option<Links>,
-        }
-
         let path = format!("series/{show_id}/episodes/default");
 
         let mut output = Vec::new();
@@ -568,26 +526,11 @@ impl Client {
                 .bytes()
                 .await?;
 
-            let resp: Resp = serde_json::from_slice(&bytes)?;
+            let resp: EpisodesResponse = serde_json::from_slice(&bytes)?;
 
             for row in resp.data.episodes {
-                let row: Row = serde_json::from_value(row)?;
-
-                output.push(EpisodeInfo {
-                    id: row.id,
-                    season: match row.season_number {
-                        Some(n) => api::SeasonNumber::from_ordinal(n),
-                        _ => api::SeasonNumber::Specials,
-                    },
-                    number: row.number,
-                    absolute_number: row.absolute_number,
-                    aired: opt_date(row.aired.as_deref())
-                        .map(|d| d.to_timestamp_at_midnight_utc())
-                        .transpose()?,
-                    image: opt_image(row.image.as_deref()),
-                    name_translations: row.name_translations,
-                    overview_translations: row.overview_translations,
-                });
+                let row: EpisodeRow = serde_json::from_value(row)?;
+                output.push(row.into_info()?);
             }
 
             // Pagination: `links.next` is a full URL when there are more pages.
@@ -599,6 +542,111 @@ impl Client {
 
         Ok(output)
     }
+
+    /// Fetch a single episode by its season and number. TVDB's episode records are
+    /// only addressable by their own id, but the series' episode listing accepts
+    /// `season`/`episodeNumber` filters - so one episode is reachable from the
+    /// show's remote id alone, and the record it returns carries the episode id
+    /// needed to fetch its translations.
+    pub(crate) async fn fetch_episode(
+        &self,
+        show_id: u32,
+        season: SeasonNumber,
+        number: u32,
+    ) -> Result<Option<EpisodeInfo>> {
+        let bytes = self
+            .request(Method::GET, format!("series/{show_id}/episodes/default"))
+            .await?
+            .query(&[
+                ("season", season.ordinal().to_string()),
+                ("episodeNumber", number.to_string()),
+            ])
+            .send()
+            .await?
+            .error_for_status()?
+            .bytes()
+            .await?;
+
+        let resp: EpisodesResponse = serde_json::from_slice(&bytes)?;
+
+        let Some(row) = resp.data.episodes.into_iter().next() else {
+            return Ok(None);
+        };
+
+        let row: EpisodeRow = serde_json::from_value(row)?;
+        Ok(Some(row.into_info()?))
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EpisodeRow {
+    id: u32,
+    #[serde(default)]
+    season_number: Option<u32>,
+    #[serde(default)]
+    number: u32,
+    #[serde(default)]
+    absolute_number: Option<u32>,
+    #[serde(default)]
+    image: Option<String>,
+    #[serde(default)]
+    aired: Option<String>,
+    #[serde(default)]
+    last_updated: Option<serde_json::Value>,
+    #[serde(default)]
+    overview_translations: Vec<String>,
+    #[serde(default)]
+    name_translations: Vec<String>,
+}
+
+impl EpisodeRow {
+    fn into_info(self) -> Result<EpisodeInfo> {
+        Ok(EpisodeInfo {
+            id: self.id,
+            season: match self.season_number {
+                Some(n) => SeasonNumber::from_ordinal(n),
+                _ => SeasonNumber::Specials,
+            },
+            number: self.number,
+            absolute_number: self.absolute_number,
+            aired: opt_date(self.aired.as_deref())
+                .map(|d| d.to_timestamp_at_midnight_utc())
+                .transpose()?,
+            image: opt_image(self.image.as_deref()),
+            last_updated: normalize_last_updated(self.last_updated.as_ref()),
+            name_translations: self.name_translations,
+            overview_translations: self.overview_translations,
+        })
+    }
+}
+
+#[derive(Deserialize)]
+struct EpisodesData {
+    #[serde(default)]
+    episodes: Vec<serde_json::Value>,
+}
+
+#[derive(Deserialize)]
+struct EpisodesLinks {
+    #[serde(default)]
+    next: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct EpisodesResponse {
+    data: EpisodesData,
+    #[serde(default)]
+    links: Option<EpisodesLinks>,
+}
+
+/// TVDB reports `lastUpdated` inconsistently (a string on some records, a number on
+/// others). Normalize to a string so equality across syncs is meaningful.
+fn normalize_last_updated(value: Option<&serde_json::Value>) -> Option<String> {
+    value.map(|value| match value {
+        serde_json::Value::String(s) => s.clone(),
+        other => other.to_string(),
+    })
 }
 
 fn supported(
@@ -677,6 +725,9 @@ pub(crate) struct EpisodeInfo {
     pub absolute_number: Option<u32>,
     pub aired: Option<Timestamp>,
     pub image: Option<(ImageSource, String)>,
+    /// TVDB record-level `lastUpdated` for this episode, normalized to a string;
+    /// equal across syncs means the episode is unchanged. `None` if absent.
+    pub last_updated: Option<String>,
     pub name_translations: Vec<String>,
     pub overview_translations: Vec<String>,
 }

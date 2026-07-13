@@ -173,6 +173,15 @@ struct EpisodeRow {
     watched_count: u32,
 }
 
+/// An episode due a per-episode sync, with the identity the task kind needs.
+#[derive(Row)]
+struct EpisodeAirSyncRow {
+    id: EpisodeId,
+    show_id: ShowId,
+    season: SeasonNumber,
+    episode: u32,
+}
+
 #[derive(Row)]
 struct EpisodeIdRow {
     id: EpisodeId,
@@ -669,6 +678,10 @@ struct InnerRead {
     #[sql = "WHERE ei.kind = ? AND ei.episode_id IN (SELECT id FROM episodes WHERE show_id = ? AND season = ?)"]
     list_season_episode_screenshots:
         TypedStatement<(ImageKind, ShowId, SeasonNumber), EpisodeScreenshotRow>,
+    #[sql = "SELECT ei.episode_id, i.source, i.path, i.width, i.height"]
+    #[sql = "FROM episode_images ei JOIN images i ON i.id = ei.image_id"]
+    #[sql = "WHERE ei.kind = ? AND ei.episode_id = ?"]
+    episode_screenshot: TypedStatement<(ImageKind, EpisodeId), EpisodeScreenshotRow>,
     #[sql = "SELECT id, kind, source, path, score FROM images"]
     #[sql = "WHERE movie_id = ? ORDER BY kind, rank, id"]
     list_movie_images: TypedStatement<(MovieId,), ImageRow>,
@@ -728,6 +741,12 @@ struct InnerRead {
     #[sql = "WHERE e.show_id = ? AND e.season = ?"]
     #[sql = "ORDER BY e.episode"]
     list_episodes: TypedStatement<(ShowId, SeasonNumber), EpisodeRow>,
+    #[sql = "SELECT e.id, e.show_id, e.season, e.episode, e.absolute_number, e.aired, p.timestamp AS pending,"]
+    #[sql = "    (SELECT COUNT(*) FROM watched_episodes we WHERE we.show_id = e.show_id AND we.season = e.season AND we.episode = e.episode) AS watched_count"]
+    #[sql = "FROM episodes e"]
+    #[sql = "LEFT JOIN pending p ON p.episode_id = e.id"]
+    #[sql = "WHERE e.id = ?"]
+    episode_by_id: TypedStatement<(EpisodeId,), EpisodeRow>,
     #[sql = "SELECT es.episode_id, es.language, es.kind, es.text FROM episode_strings es"]
     #[sql = "JOIN episodes e ON e.id = es.episode_id"]
     #[sql = "WHERE e.show_id = ? AND e.season = ? ORDER BY es.episode_id"]
@@ -935,6 +954,20 @@ struct InnerRead {
     #[sql = "    AND (m.last_synced_at IS NULL OR m.last_synced_at < ?)"]
     #[sql = "ORDER BY m.last_synced_at IS NOT NULL, m.last_synced_at"]
     movies_needing_sync: TypedStatement<(Timestamp,), MovieRow>,
+    // Episodes inside the window around their air date, due another hourly sync.
+    // Bound as (window start, window end, sync cutoff).
+    #[sql = "SELECT e.id, e.show_id, e.season, e.episode"]
+    #[sql = "FROM episodes e JOIN shows s ON s.id = e.show_id"]
+    #[sql = "WHERE s.auto_sync = 1 AND s.tracked = 1"]
+    #[sql = "    AND e.aired IS NOT NULL"]
+    #[sql = "    AND e.aired BETWEEN ? AND ?"]
+    #[sql = "    AND (e.last_synced_at IS NULL OR e.last_synced_at < ?)"]
+    #[sql = "ORDER BY e.last_synced_at IS NOT NULL, e.last_synced_at"]
+    episodes_needing_air_sync: TypedStatement<(Timestamp, Timestamp, Timestamp), EpisodeAirSyncRow>,
+
+    // per-episode conditional-request state
+    #[sql = "SELECT source, cache FROM episode_cache WHERE episode_id = ?"]
+    episode_cache: TypedStatement<(EpisodeId,), (RemoteSource, String)>,
 
     // movie releases
     #[sql = "SELECT source, country, release_type, timestamp"]
@@ -1051,6 +1084,8 @@ struct InnerWrite {
         TypedStatement<(ImageId, EpisodeId, ImageKind, ImageSource, String, u32, u32), ()>,
     #[sql = "DELETE FROM images WHERE episode_id IN (SELECT id FROM episodes WHERE show_id = ?)"]
     delete_episode_images_for_show: TypedStatement<(ShowId,), ()>,
+    #[sql = "DELETE FROM images WHERE episode_id = ?"]
+    delete_images_for_episode: TypedStatement<(EpisodeId,), ()>,
     #[sql = "DELETE FROM images WHERE movie_id = ?"]
     delete_movie_images: TypedStatement<(MovieId,), ()>,
     #[sql = "INSERT INTO images (id, movie_id, kind, source, path, width, height, rank, score) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"]
@@ -1166,6 +1201,18 @@ struct InnerWrite {
     #[sql = "DELETE FROM episode_releases"]
     #[sql = "WHERE episode_id = ? AND source = ? AND country = ? AND network = ?"]
     delete_episode_release: TypedStatement<(EpisodeId, RemoteSource, Country, String), ()>,
+    #[sql = "UPDATE episodes SET last_synced_at = ? WHERE id = ?"]
+    set_episode_synced_at: TypedStatement<(Timestamp, EpisodeId), ()>,
+
+    // per-episode conditional-request state
+    #[sql = "INSERT INTO episode_cache (episode_id, source, cache) VALUES (?, ?, ?)"]
+    #[sql = "ON CONFLICT(episode_id, source) DO UPDATE SET cache = excluded.cache"]
+    set_episode_cache: TypedStatement<(EpisodeId, RemoteSource, String), ()>,
+    #[sql = "DELETE FROM episode_cache WHERE episode_id = ? AND source = ?"]
+    delete_episode_cache: TypedStatement<(EpisodeId, RemoteSource), ()>,
+    #[sql = "DELETE FROM episode_cache"]
+    #[sql = "WHERE source = ? AND episode_id IN (SELECT id FROM episodes WHERE show_id = ?)"]
+    delete_episode_cache_for_show_source: TypedStatement<(RemoteSource, ShowId), ()>,
 
     // movies
     #[sql = "INSERT INTO movies (id, release_date, tracked)"]
@@ -2145,6 +2192,168 @@ impl Database {
         result.await?
     }
 
+    /// Load a single episode, the way [`Self::episodes`] loads a season's worth.
+    pub(crate) async fn episode_by_id(&self, id: EpisodeId) -> Result<Option<api::Episode>> {
+        let mut s = self.inner.clone().shared().await?;
+
+        let result = spawn_blocking(move || {
+            let s = &mut *s;
+
+            let Some(r) = s.episode_by_id.bind((id,))?.first()? else {
+                return Ok(None);
+            };
+
+            let config = s.config_language()?;
+
+            let (language, default) = s
+                .translations
+                .show_locales
+                .bind((r.show_id,))?
+                .first()?
+                .map(|r| (r.language, r.default_language))
+                .unwrap_or_default();
+
+            let strings = s.translations.episode(id, language, default, config)?;
+            let mut episode = episode_from_row(r, strings);
+
+            if let Some(i) = s
+                .episode_screenshot
+                .bind((ImageKind::Screenshot, id))?
+                .first()?
+            {
+                episode.screenshot =
+                    Some(Image::new_with_dims(i.source, &i.path, i.width, i.height));
+            }
+
+            Ok(Some(episode))
+        });
+
+        result.await?
+    }
+
+    /// The per-source conditional-request state stored for one episode. Sources with
+    /// no validator (or an unparsable one) are simply absent.
+    pub(crate) async fn episode_cache(
+        &self,
+        id: EpisodeId,
+    ) -> Result<HashMap<RemoteSource, api::RemoteCache>> {
+        let mut s = self.inner.clone().shared().await?;
+
+        let result = spawn_blocking(move || {
+            let mut out = HashMap::new();
+            let mut stmt = s.episode_cache.bind((id,))?;
+
+            while let Some((source, cache)) = stmt.next()? {
+                if let Some(cache) = parse_remote_cache(Some(cache)) {
+                    out.insert(source, cache);
+                }
+            }
+
+            stmt.reset()?;
+            Ok(out)
+        });
+
+        result.await?
+    }
+
+    /// Store (or, with `None`, drop) a source's conditional-request state for one
+    /// episode.
+    pub(crate) async fn set_episode_cache(
+        &self,
+        id: EpisodeId,
+        source: RemoteSource,
+        cache: Option<String>,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            match cache {
+                Some(cache) => s.set_episode_cache.execute((id, source, cache))?,
+                None => s.delete_episode_cache.execute((id, source))?,
+            };
+
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    /// Drop every episode-level validator a source holds for one show. Called when
+    /// that show's remote cache is purged, so a forced resync really does start from
+    /// scratch rather than leaving the per-episode ETags behind.
+    pub(crate) async fn clear_episode_cache_for_show_source(
+        &self,
+        show_id: ShowId,
+        source: RemoteSource,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.delete_episode_cache_for_show_source
+                .execute((source, show_id))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    pub(crate) async fn set_episode_synced_at(&self, id: EpisodeId, at: Timestamp) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.set_episode_synced_at.execute((at, id))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    /// Episodes whose air date falls within `window_hours` either side of now and
+    /// that haven't been episode-synced in `interval_hours`. Honors the per-show
+    /// `auto_sync` flag, and puts never-synced episodes first - mirroring
+    /// [`Self::shows_needing_sync`].
+    pub(crate) async fn episodes_needing_air_sync(
+        &self,
+        window_hours: u32,
+        interval_hours: u32,
+    ) -> Result<Vec<(ShowId, EpisodeId, api::Code)>> {
+        let hours = i64::from(window_hours);
+        let now = Timestamp::now();
+        let start = now.saturating_add(api::Duration::from_hours(-hours));
+        let end = now.saturating_add(api::Duration::from_hours(hours));
+        let cutoff = cutoff_timestamp(interval_hours);
+
+        let mut s = self.inner.clone().shared().await?;
+
+        let result = spawn_blocking(move || {
+            let mut out = Vec::new();
+            let mut stmt = s.episodes_needing_air_sync.bind((start, end, cutoff))?;
+
+            while let Some(r) = stmt.next()? {
+                out.push((r.show_id, r.id, api::Code::new(r.season, r.episode)));
+            }
+
+            stmt.reset()?;
+            Ok(out)
+        });
+
+        result.await?
+    }
+
+    /// Drop every image attached to a single episode. The show-scoped
+    /// [`Self::clear_episode_images`] would wipe every *other* episode's screenshot
+    /// too, which a single-episode sync must not do.
+    pub(crate) async fn clear_images_for_episode(&self, id: EpisodeId) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.delete_images_for_episode.execute((id,))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn mark_watched_remaining(
         &self,
@@ -2291,6 +2500,64 @@ impl Database {
             stmt.reset()?;
 
             for (episode_id, source, country, network) in to_delete {
+                s.delete_episode_release
+                    .execute((episode_id, source, country, network))?;
+            }
+
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    /// The single-episode counterpart of [`Self::prune_episode_releases`], with the
+    /// same eligibility rule. Scoping matters: the show-wide version walks every
+    /// episode of the show, so using it after a single-episode sync would delete
+    /// every *other* episode's releases from the sources that just ran.
+    pub(crate) async fn prune_episode_releases_for_episode(
+        &self,
+        show_id: ShowId,
+        episode_id: EpisodeId,
+        kept: &HashSet<(RemoteSource, Country, String)>,
+        ran: &HashSet<RemoteSource>,
+    ) -> Result<()> {
+        let Some(show) = self.show_by_id(show_id).await? else {
+            return Ok(());
+        };
+
+        let config = self.load_config().await?;
+        let eligible: HashSet<RemoteSource> =
+            api::air_date_sources_by_priority(&show.remotes, &config)
+                .into_iter()
+                .collect();
+
+        let kept = kept.clone();
+        let ran = ran.clone();
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            let mut to_delete = Vec::new();
+
+            let mut stmt = s.list_episode_releases.bind((episode_id,))?;
+
+            while let Some((source, country, network, _)) = stmt.next()? {
+                // An eligible source that didn't run keeps its releases (a transient
+                // fetch failure); every other source is pruned down to what it just
+                // reported.
+                if eligible.contains(&source) && !ran.contains(&source) {
+                    continue;
+                }
+
+                let key = (source, country, network);
+
+                if !kept.contains(&key) {
+                    to_delete.push(key);
+                }
+            }
+
+            stmt.reset()?;
+
+            for (source, country, network) in to_delete {
                 s.delete_episode_release
                     .execute((episode_id, source, country, network))?;
             }

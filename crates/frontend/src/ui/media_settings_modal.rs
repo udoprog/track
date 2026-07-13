@@ -6,6 +6,7 @@ use yew::prelude::*;
 use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
+use crate::ui::Button;
 
 use super::{
     AIR_DATE_KINDS, AIR_DATE_SOURCES, FiltersEditor, LanguagePicker, Modal, RELEASE_KINDS,
@@ -586,9 +587,7 @@ impl MediaSettingsModal {
                     }
 
                     if has_remotes {
-                        <button onclick={on_sync} title="Sync now">
-                            <span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} />
-                        </button>
+                        <Button icon="arrow-path" spin={self.syncing} onclick={on_sync} title="Sync now" text="Sync" />
                     }
                 </div>
 

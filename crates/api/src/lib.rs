@@ -1515,7 +1515,8 @@ impl Episode {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Encode, Decode)]
+#[musli(crate = musli_core)]
 pub struct Code {
     pub season: SeasonNumber,
     pub episode: u32,
@@ -2014,6 +2015,14 @@ pub enum TaskKind {
         movie_id: MovieId,
         title: Option<String>,
     },
+    /// Sync a single episode, scheduled hourly around its air date (when
+    /// remotes tend to correct episode metadata) and triggerable by hand.
+    SyncEpisode {
+        show_id: ShowId,
+        episode_id: EpisodeId,
+        code: Code,
+        title: Option<String>,
+    },
     /// Recompute the most-used custom languages across shows and movies.
     RefreshTopLanguages,
 }
@@ -2022,9 +2031,9 @@ impl TaskKind {
     #[inline]
     pub fn title(&self) -> Option<&str> {
         match self {
-            TaskKind::SyncShow { title, .. } | TaskKind::SyncMovie { title, .. } => {
-                title.as_deref()
-            }
+            TaskKind::SyncShow { title, .. }
+            | TaskKind::SyncMovie { title, .. }
+            | TaskKind::SyncEpisode { title, .. } => title.as_deref(),
             TaskKind::RefreshTopLanguages => None,
         }
     }
@@ -2433,6 +2442,13 @@ pub struct SyncShowRequest {
 #[musli(crate = musli_core)]
 pub struct SyncMovieRequest {
     pub id: MovieId,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct SyncEpisodeRequest {
+    pub show_id: ShowId,
+    pub episode_id: EpisodeId,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -3057,6 +3073,12 @@ api::define! {
     pub type SyncMovie;
     impl Endpoint for SyncMovie {
         impl Request for SyncMovieRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type SyncEpisode;
+    impl Endpoint for SyncEpisode {
+        impl Request for SyncEpisodeRequest;
         type Response<'de> = Empty;
     }
 

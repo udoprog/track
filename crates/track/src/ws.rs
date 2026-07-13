@@ -133,6 +133,28 @@ impl WsHandler {
             .await;
     }
 
+    async fn enqueue_episode_sync(
+        &self,
+        show_id: api::ShowId,
+        episode_id: api::EpisodeId,
+        code: api::Code,
+        title: Option<String>,
+        immediate: bool,
+    ) {
+        self.queue
+            .push(
+                api::TaskKind::SyncEpisode {
+                    show_id,
+                    episode_id,
+                    code,
+                    title,
+                },
+                immediate,
+                &self.broadcast,
+            )
+            .await;
+    }
+
     /// The cutoff pending items are listed up to: now shifted forward by the
     /// configured dashboard lookahead, so items surface before they air.
     async fn pending_cutoff(&self) -> Result<api::Timestamp> {
@@ -662,6 +684,34 @@ impl WsHandler {
 
                 outgoing.write(api::Empty);
             }
+            api::Request::SyncEpisode => {
+                let req = incoming
+                    .read::<api::SyncEpisodeRequest>()
+                    .context("Expected a request payload")?;
+
+                let show = self
+                    .db
+                    .show_by_id(req.show_id)
+                    .await?
+                    .context("Expected show to exist")?;
+
+                let episode = self
+                    .db
+                    .episode_by_id(req.episode_id)
+                    .await?
+                    .context("Expected episode to exist")?;
+
+                self.enqueue_episode_sync(
+                    show.id,
+                    episode.id,
+                    episode.code(),
+                    show.strings.title().map(str::to_owned),
+                    true,
+                )
+                .await;
+
+                outgoing.write(api::Empty);
+            }
             api::Request::SyncMovie => {
                 let req = incoming
                     .read::<api::SyncMovieRequest>()
@@ -984,6 +1034,15 @@ impl WsHandler {
                     .context("Expected show to exist")?;
 
                 self.db.set_show_remote_cache(req.remote_id, None).await?;
+
+                // The same remote also holds a validator on each of the show's
+                // episodes; leaving those behind would let a "force resync" still be
+                // answered from cache at the episode level.
+                if let Some(entry) = show.remotes.iter().find(|e| e.id == req.remote_id) {
+                    self.db
+                        .clear_episode_cache_for_show_source(show.id, *entry.remote.source())
+                        .await?;
+                }
 
                 // Force a fresh sync now that the cached validator is gone.
                 self.enqueue_show_sync(show.id, show.strings.title().map(str::to_owned), true)

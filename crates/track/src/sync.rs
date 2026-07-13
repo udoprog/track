@@ -420,12 +420,13 @@ struct DraftRelease {
 struct ShowDraft {
     provided: SyncKindSet,
     /// A Base-providing layer reported its remote unchanged (cache hit), so the
-    /// existing seasons/episodes/strings are kept rather than rebuilt; only other
-    /// sources' air dates are persisted. See the persist decision in `sync_show`.
+    /// existing seasons/episodes/strings are kept rather than rebuilt; only
+    /// other sources' air dates are persisted. See the persist decision in
+    /// `sync_show`.
     base_unchanged: bool,
-    /// Cache validators (ETag/`lastUpdated`) captured by Updated layers, keyed by
-    /// remote id, flushed to `*_remotes.cache` only after a successful persist so
-    /// a failed persist never records a validator without its data.
+    /// Cache validators (ETag/`lastUpdated`) captured by Updated layers, keyed
+    /// by remote id, flushed to `*_remotes.cache` only after a successful
+    /// persist so a failed persist never records a validator without its data.
     cache_writes: Vec<(api::RemoteId, Option<String>)>,
     original_name: Option<String>,
     first_air_date: Option<api::Timestamp>,
@@ -1433,6 +1434,540 @@ async fn persist_air_dates_only(
     }
 
     db.prune_episode_releases(show_id, &kept_releases, &draft.air_date_sources)
+        .await?;
+
+    Ok(())
+}
+
+/// The shared model the single-episode sync layers contribute to: the episode-scoped
+/// analog of [`ShowDraft`]. Contributions are governed by the same rules - `provided`
+/// makes the exclusive Base kind the property of the highest-priority source, while
+/// Dates accumulate from every source.
+#[derive(Default)]
+struct EpisodeDraftModel {
+    provided: SyncKindSet,
+    /// The Base layer reported its episode unchanged (ETag 304 / equal
+    /// `lastUpdated`), so the stored row, strings and screenshot are kept and
+    /// only other sources' air dates are persisted.
+    base_unchanged: bool,
+    /// Validators captured by Updated layers, keyed by source, flushed to
+    /// `episode_cache` only after a successful persist - so a stored validator
+    /// always has its data behind it.
+    cache_writes: Vec<(RemoteSource, Option<String>)>,
+    absolute_number: Option<u32>,
+    aired: Option<api::Timestamp>,
+    screenshot: Option<Image>,
+    strings: StringRows,
+    releases: Vec<api::EpisodeRelease>,
+    /// Sources whose air-date layer ran this sync; scopes release pruning
+    /// exactly as [`ShowDraft::air_date_sources`] does.
+    air_date_sources: HashSet<RemoteSource>,
+}
+
+impl EpisodeDraftModel {
+    fn needs(&self, kind: SyncKind) -> bool {
+        !kind.is_exclusive() || !self.provided.contains(kind)
+    }
+}
+
+/// Sync a single episode. Every remote is addressed through the show's own remote id
+/// plus the episode's `(season, number)` - an episode stores no remote id of its own.
+///
+/// Scheduled hourly around an episode's air date (see [`crate::background`]), because
+/// remotes tend to correct episode metadata right around broadcast, and a full show
+/// sync is far too expensive to run that often.
+pub(crate) async fn sync_episode(
+    show_id: api::ShowId,
+    episode_id: EpisodeId,
+    db: &Database,
+    remote: &RemoteClients,
+    broadcast: &Broadcaster,
+    pending: &crate::pending::PendingSystem,
+    shutdown: &Shutdown,
+) -> Result<()> {
+    let show = db
+        .show_by_id(show_id)
+        .await?
+        .context("Expected show to exist")?;
+
+    let episode = db
+        .episode_by_id(episode_id)
+        .await?
+        .context("Expected episode to exist")?;
+
+    let config = db.load_config().await?;
+    let cache = db.episode_cache(episode_id).await?;
+
+    let season = episode.season;
+    let number = episode.episode;
+
+    tracing::info!(show_id = %show_id, code = %episode.code(), "Syncing episode");
+
+    // Visit enabled remotes in priority order, one layer per source - the same
+    // layering `sync_show` uses, so a re-prioritized remote takes over Base here too.
+    let mut entries = show
+        .remotes
+        .iter()
+        .filter(|e| e.enabled)
+        .collect::<Vec<_>>();
+
+    entries.sort_by_key(|e| e.priority);
+
+    let mut draft = EpisodeDraftModel::default();
+    let mut seen = HashSet::new();
+
+    for entry in entries {
+        if shutdown.is_cancelled() {
+            break;
+        }
+
+        let source = *entry.remote.source();
+
+        if !seen.insert(source) {
+            continue;
+        }
+
+        let configured = api::effective_remote_sync_kinds(entry, &config);
+        let kinds: SyncKindSet = configured.iter().filter(|k| draft.needs(*k)).collect();
+
+        // Unlike a show sync there are no per-source graphics to accumulate: an
+        // episode's only image comes from its Base provider. So a source that owes
+        // nothing has nothing to do.
+        if kinds.is_empty() {
+            continue;
+        }
+
+        let do_base = kinds.contains(SyncKind::Base);
+        let do_air_date = kinds.contains(SyncKind::Dates);
+
+        let allow_skip = do_base || draft.base_unchanged;
+        let cache = cache.get(&source);
+
+        let result = match source {
+            RemoteSource::Tmdb => match entry.remote.value().as_u32() {
+                Some(tmdb_id) => {
+                    tmdb_episode_layer(
+                        &mut draft,
+                        &config,
+                        &show,
+                        tmdb_id,
+                        season,
+                        number,
+                        do_base,
+                        do_air_date,
+                        remote,
+                        cache,
+                        allow_skip,
+                    )
+                    .await
+                }
+                None => continue,
+            },
+            RemoteSource::Tvdb => match entry.remote.value().as_u32() {
+                Some(tvdb_id) => {
+                    tvdb_episode_layer(
+                        &mut draft,
+                        &config,
+                        &show,
+                        tvdb_id,
+                        season,
+                        number,
+                        do_base,
+                        do_air_date,
+                        remote,
+                        cache,
+                        allow_skip,
+                        shutdown,
+                    )
+                    .await
+                }
+                None => continue,
+            },
+            RemoteSource::Tvmaze if do_air_date => match entry.remote.value().as_u32() {
+                Some(tvmaze_id) => {
+                    tvmaze_episode_layer(&mut draft, tvmaze_id, season, number, remote)
+                        .await
+                        .map(|()| LayerOutcome::Updated)
+                }
+                None => continue,
+            },
+            _ => continue,
+        };
+
+        // A failing layer must not abort the sync: what other layers collected still
+        // persists, and the kind stays unclaimed so a lower-priority layer can fill it.
+        let outcome = match result {
+            Ok(outcome) => outcome,
+            Err(e) => {
+                tracing::warn!(?source, "Sync layer failed for episode {episode_id}: {e:#}");
+                continue;
+            }
+        };
+
+        match outcome {
+            LayerOutcome::Unchanged => {
+                if do_base {
+                    draft.base_unchanged = true;
+                }
+            }
+            LayerOutcome::Updated => {
+                if do_air_date {
+                    draft.air_date_sources.insert(source);
+                }
+            }
+        }
+
+        for k in kinds {
+            draft.provided.insert(k);
+        }
+    }
+
+    if shutdown.is_cancelled() {
+        anyhow::bail!("Sync aborted: service is shutting down");
+    }
+
+    let eligible = api::eligible_sync_kinds(&show.remotes, &config);
+
+    if draft.provided.contains(SyncKind::Base) && !draft.base_unchanged {
+        persist_episode_draft(show_id, episode_id, season, number, &draft, db).await?;
+    } else if !draft.base_unchanged && eligible.contains(SyncKind::Base) {
+        // A configured Base source failed this run. Unlike `sync_show` there is
+        // nothing to clear when Base is simply not eligible - the show sync owns
+        // creating and removing episodes, so a single-episode sync just persists
+        // whatever air dates it did collect.
+        anyhow::bail!("Episode has no syncable Base remote available");
+    }
+
+    persist_episode_releases(show_id, episode_id, &draft, db).await?;
+
+    for (source, cache) in &draft.cache_writes {
+        db.set_episode_cache(episode_id, *source, cache.clone())
+            .await?;
+    }
+
+    // Merge every source's air dates into the effective `aired` by priority. This is
+    // a DB-local recompute over the show's stored releases, so scoping it to the one
+    // episode would buy nothing.
+    db.recompute_episode_aired_for_show(show_id, config.air_date_filters.clone())
+        .await?;
+
+    let now = api::Timestamp::now();
+    let include_specials = show.effective_include_specials(config.include_specials);
+    pending
+        .fill_for_show(show_id, include_specials, now)
+        .await?;
+    db.set_episode_synced_at(episode_id, now).await?;
+
+    if let Some(episode) = db.episode_by_id(episode_id).await? {
+        broadcast.broadcast_event(api::AppEventKind::EpisodeChanged { episode });
+    }
+
+    broadcast.broadcast_event(api::AppEventKind::EpisodesChanged { show_id, season });
+    broadcast.broadcast_event(api::AppEventKind::PendingChanged);
+
+    tracing::info!(show_id = %show_id, code = %episode.code(), "Episode sync complete");
+    Ok(())
+}
+
+/// The target locales an episode's strings are collected for: the show's effective
+/// locale (its own override, else the global config, else the show's default),
+/// expanded by the configured sync languages.
+fn episode_string_targets(show: &api::Show, config: &api::Config) -> BTreeSet<api::Locale> {
+    api::expand_sync_languages(&config.sync_languages, show.strings.locale())
+}
+
+#[tracing::instrument(skip_all, fields(tmdb_id, ?season, number, do_base, do_air_date))]
+#[allow(clippy::too_many_arguments)]
+async fn tmdb_episode_layer(
+    draft: &mut EpisodeDraftModel,
+    config: &api::Config,
+    show: &api::Show,
+    tmdb_id: u32,
+    season: SeasonNumber,
+    number: u32,
+    do_base: bool,
+    do_air_date: bool,
+    remote: &RemoteClients,
+    cache: Option<&api::RemoteCache>,
+    allow_skip: bool,
+) -> Result<LayerOutcome> {
+    let needed = needed_kinds(do_base, do_air_date);
+
+    // Only replay the ETag when the cached validator already covers what we owe: a
+    // 304 has no body, so an uncovered kind must force a full response.
+    let etag = cache
+        .filter(|&c| usable_cache(c, needed, allow_skip))
+        .and_then(|c| c.etag.as_deref());
+
+    let (fresh_etag, info) = match remote
+        .fetch_tmdb_episode(tmdb_id, season, number, etag)
+        .await?
+    {
+        tmdb::Conditional::NotModified => {
+            tracing::info!(tmdb_id, "Episode unchanged (ETag 304)");
+            return Ok(LayerOutcome::Unchanged);
+        }
+        tmdb::Conditional::Modified { etag, value } => (etag, value),
+    };
+
+    if do_base {
+        draft.aired = info.aired;
+        draft.screenshot = info.filename.clone().map(Image::from);
+
+        let targets = episode_string_targets(show, config);
+
+        let translations = remote
+            .fetch_tmdb_episode_translations(tmdb_id, season, number)
+            .await?;
+
+        for translation in translations {
+            if locale_matches_targets(translation.locale, &targets).is_none() {
+                continue;
+            }
+
+            push_string(
+                &mut draft.strings,
+                translation.locale,
+                api::StringKind::Title,
+                translation.name.or_else(|| info.original_name.clone()),
+            );
+
+            push_string(
+                &mut draft.strings,
+                translation.locale,
+                api::StringKind::Overview,
+                translation.overview,
+            );
+        }
+    }
+
+    if do_air_date && let Some(aired) = info.aired {
+        draft.releases.push(api::EpisodeRelease {
+            source: RemoteSource::Tmdb,
+            country: api::Country::DEFAULT,
+            network: String::new(),
+            timestamp: aired,
+        });
+    }
+
+    // Only now that every fetch this layer owed has succeeded: recording the
+    // validator earlier would let a translation failure (which aborts the layer)
+    // still leave an ETag behind, and a later 304 would then report this source
+    // unchanged even though its data was never persisted.
+    draft.cache_writes.push((
+        RemoteSource::Tmdb,
+        cache_json(&api::RemoteCache {
+            etag: fresh_etag,
+            last_updated: None,
+            kinds: needed,
+        }),
+    ));
+
+    Ok(LayerOutcome::Updated)
+}
+
+#[tracing::instrument(skip_all, fields(tvdb_id, ?season, number, do_base, do_air_date))]
+#[allow(clippy::too_many_arguments)]
+async fn tvdb_episode_layer(
+    draft: &mut EpisodeDraftModel,
+    config: &api::Config,
+    show: &api::Show,
+    tvdb_id: u32,
+    season: SeasonNumber,
+    number: u32,
+    do_base: bool,
+    do_air_date: bool,
+    remote: &RemoteClients,
+    cache: Option<&api::RemoteCache>,
+    allow_skip: bool,
+    shutdown: &Shutdown,
+) -> Result<LayerOutcome> {
+    let needed = needed_kinds(do_base, do_air_date);
+
+    let Some(info) = remote.fetch_tvdb_episode(tvdb_id, season, number).await? else {
+        let code = api::Code::new(season, number);
+        anyhow::bail!("TVDB has no {code} for series {tvdb_id}");
+    };
+
+    // TVDB has no ETag; the record-level `lastUpdated` marker detects an unchanged
+    // episode. Unlike TMDB's 304 the response body is already paid for, but an equal
+    // marker still saves the per-language translation fetches.
+    if let Some(cache) = cache
+        && usable_cache(cache, needed, allow_skip)
+        && let Some(cached) = cache.last_updated.as_deref()
+        && let Some(current) = info.last_updated.as_deref()
+        && cached == current
+    {
+        tracing::info!(tvdb_id, "Episode unchanged (lastUpdated)");
+        return Ok(LayerOutcome::Unchanged);
+    }
+
+    if do_base {
+        draft.aired = info.aired;
+        draft.absolute_number = info.absolute_number;
+        draft.screenshot = info
+            .image
+            .as_ref()
+            .map(|(source, path)| Image::new(*source, path));
+
+        let available = info
+            .name_translations
+            .iter()
+            .chain(info.overview_translations.iter())
+            .map(|n| n.to_lowercase())
+            .collect::<HashSet<_>>();
+
+        // TVDB has no country dimension, so collapse each target to its language.
+        let targets: BTreeSet<api::Locale> = episode_string_targets(show, config)
+            .into_iter()
+            .map(|l| api::Locale::new(l.language(), api::Country::DEFAULT))
+            .collect();
+
+        for language in targets {
+            if shutdown.is_cancelled() {
+                anyhow::bail!("Sync aborted: service is shutting down");
+            }
+
+            // Remotes key on ISO 639-1; skip any locale with no 2-letter form.
+            if language.language().to_part1().is_none() {
+                continue;
+            }
+
+            if let Some(translation) = remote
+                .fetch_tvdb_episode_translation(info.id, language, &available)
+                .await?
+            {
+                push_string(
+                    &mut draft.strings,
+                    language,
+                    api::StringKind::Title,
+                    translation.name,
+                );
+
+                push_string(
+                    &mut draft.strings,
+                    language,
+                    api::StringKind::Overview,
+                    translation.overview,
+                );
+            }
+        }
+    }
+
+    if do_air_date && let Some(aired) = info.aired {
+        draft.releases.push(api::EpisodeRelease {
+            source: RemoteSource::Tvdb,
+            country: api::Country::DEFAULT,
+            network: String::new(),
+            timestamp: aired,
+        });
+    }
+
+    // Recorded only after every translation fetch succeeded - see the note in
+    // `tmdb_episode_layer`.
+    draft.cache_writes.push((
+        RemoteSource::Tvdb,
+        cache_json(&api::RemoteCache {
+            etag: None,
+            last_updated: info.last_updated.clone(),
+            kinds: needed,
+        }),
+    ));
+
+    Ok(LayerOutcome::Updated)
+}
+
+/// TVmaze contributes air dates only, accumulated with the show's network/country.
+#[tracing::instrument(skip_all, fields(tvmaze_id, ?season, number))]
+async fn tvmaze_episode_layer(
+    draft: &mut EpisodeDraftModel,
+    tvmaze_id: u32,
+    season: SeasonNumber,
+    number: u32,
+    remote: &RemoteClients,
+) -> Result<()> {
+    let Some(info) = remote
+        .fetch_tvmaze_episode(tvmaze_id, season, number)
+        .await?
+    else {
+        return Ok(());
+    };
+
+    let network = match remote.fetch_tvmaze_show_network(tvmaze_id).await {
+        Ok(network) => network,
+        Err(e) => {
+            tracing::warn!("TVmaze network lookup failed for show {tvmaze_id}: {e:#}");
+            Default::default()
+        }
+    };
+
+    draft.releases.push(api::EpisodeRelease {
+        source: RemoteSource::Tvmaze,
+        country: network.country,
+        network: network.network,
+        timestamp: info.aired_at,
+    });
+
+    Ok(())
+}
+
+/// Write the Base layer's contribution: the episode row, its strings, and its
+/// screenshot. Releases are persisted separately, since they are written on the
+/// base-unchanged path too.
+async fn persist_episode_draft(
+    show_id: api::ShowId,
+    episode_id: EpisodeId,
+    season: SeasonNumber,
+    number: u32,
+    draft: &EpisodeDraftModel,
+    db: &Database,
+) -> Result<()> {
+    db.upsert_episode(
+        episode_id,
+        show_id,
+        season,
+        number,
+        draft.absolute_number,
+        draft.aired,
+    )
+    .await?;
+
+    db.replace_episode_strings(episode_id, draft.strings.clone())
+        .await?;
+
+    // Scoped to this episode: the show-wide image clear would drop every other
+    // episode's screenshot.
+    db.clear_images_for_episode(episode_id).await?;
+
+    if let Some(screenshot) = &draft.screenshot {
+        let image_id = ImageId::random();
+        db.upsert_episode_image(image_id, episode_id, ImageKind::Screenshot, screenshot)
+            .await?;
+        db.set_episode_image_selection(episode_id, ImageKind::Screenshot, image_id)
+            .await?;
+    }
+
+    Ok(())
+}
+
+/// Upsert the draft's air dates and prune the stale ones, scoped to this episode and
+/// to the sources whose layer actually ran.
+async fn persist_episode_releases(
+    show_id: api::ShowId,
+    episode_id: EpisodeId,
+    draft: &EpisodeDraftModel,
+    db: &Database,
+) -> Result<()> {
+    let mut kept = HashSet::new();
+
+    for r in &draft.releases {
+        db.upsert_episode_release(episode_id, r.source, r.country, &r.network, r.timestamp)
+            .await?;
+
+        kept.insert((r.source, r.country, r.network.clone()));
+    }
+
+    db.prune_episode_releases_for_episode(show_id, episode_id, &kept, &draft.air_date_sources)
         .await?;
 
     Ok(())

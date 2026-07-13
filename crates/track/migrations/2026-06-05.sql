@@ -30,12 +30,32 @@ CREATE TABLE
         episode INTEGER NOT NULL,
         absolute_number INTEGER,
         aired INTEGER,
+        last_synced_at INTEGER,
         UNIQUE (show_id, season, episode)
     );
 
 CREATE INDEX idx_episodes_aired ON episodes (aired)
 WHERE
     aired IS NOT NULL;
+
+-- Supports the air-window query that schedules hourly per-episode syncs.
+CREATE INDEX idx_episodes_air_sync ON episodes (aired, last_synced_at)
+WHERE
+    aired IS NOT NULL;
+
+-- Conditional-request state for a single episode, per source. Unlike
+-- show_remotes/movie_remotes this is NOT a remote identifier: an episode is
+-- addressed through its show's remote id plus (season, episode), so there is no
+-- value/priority/enabled here. A row exists only for a source that actually hands
+-- out a validator (TMDB ETag, TVDB lastUpdated), letting the next per-episode call
+-- to that source be deduplicated. `cache` holds api::RemoteCache as JSON.
+CREATE TABLE
+    episode_cache (
+        episode_id INTEGER NOT NULL REFERENCES episodes (id) ON DELETE CASCADE,
+        source INTEGER NOT NULL,
+        cache TEXT NOT NULL,
+        PRIMARY KEY (episode_id, source)
+    );
 
 CREATE TABLE
     movies (

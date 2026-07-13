@@ -57,6 +57,8 @@ pub(crate) struct Props {
     pub(crate) disabled: bool,
     #[prop_or_default]
     pub(crate) onclick: Callback<MouseEvent>,
+    #[prop_or_default]
+    pub(crate) spin: bool,
 }
 
 /// A standard action button: a required icon, a required `title` tooltip, and
@@ -71,7 +73,7 @@ pub(crate) fn Button(props: &Props) -> Html {
 
     html! {
         <button ref={props.node_ref.clone()} {class} title={props.title.clone()} disabled={props.disabled} onclick={props.onclick.clone()}>
-            <span class={classes!("icon", props.icon.clone())} />
+            <span class={classes!("icon", props.icon.clone(), props.spin.then_some("spin"))} />
 
             if let Some(text) = &props.text {
                 <span class="mobile-only">{text}</span>

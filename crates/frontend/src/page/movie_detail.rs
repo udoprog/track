@@ -1004,10 +1004,7 @@ impl MovieDetail {
                             <Tracked tracked={movie.tracked} ontoggle={link.callback(Msg::SetTracked)} />
 
                             if !movie.remotes.is_empty() {
-                                <button class="mobile-has-text" onclick={link.callback(|_| Msg::SyncMovie)} title="Sync now">
-                                    <span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} />
-                                    <span class="mobile-only">{"Sync"}</span>
-                                </button>
+                                <Button icon="arrow-path" spin={self.syncing} onclick={link.callback(|_| Msg::SyncMovie)} title="Sync now" text="Sync" />
                             }
 
                             <Button icon="language" title="Translations" text="Translations" onclick={link.callback(|_| Msg::OpenTranslations)} />

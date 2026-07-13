@@ -61,6 +61,9 @@ pub(crate) struct ShowDetail {
     confirm_remove: bool,
     remove_anchor: NodeRef,
     syncing: bool,
+    /// Episodes with a queued or running `SyncEpisode` task, so their sync button
+    /// spins. Driven entirely by the task broadcasts, like [`Self::syncing`].
+    syncing_episodes: HashSet<api::EpisodeId>,
     actions_expanded: bool,
     episode_actions_expanded: HashSet<api::EpisodeId>,
     season_actions_expanded: HashSet<api::SeasonNumber>,
@@ -103,6 +106,7 @@ pub(crate) struct ShowDetail {
     _untrack_req: ws::Request,
     _remove_req: ws::Request,
     _sync_req: ws::Request,
+    _sync_episode_req: ws::Request,
     _watch_remaining_reqs: ws::Request,
     _watched_req: ws::Request,
     _set_next_req: ws::Request,
@@ -146,6 +150,8 @@ pub(crate) enum Msg {
     RemoveDone(Result<ws::Packet<api::RemoveShow>, ws::Error>),
     SyncShow,
     SyncDone(Result<ws::Packet<api::SyncShow>, ws::Error>),
+    SyncEpisode(api::EpisodeId),
+    SyncEpisodeDone(Result<ws::Packet<api::SyncEpisode>, ws::Error>),
     ToggleHistory(api::EpisodeId),
     WatchedLoaded(Result<ws::Packet<api::ListEpisodesWatched>, ws::Error>),
     OnWatchNext(api::EpisodeId, api::MarkTime),
@@ -265,6 +271,7 @@ impl Component for ShowDetail {
             confirm_remove: false,
             remove_anchor: NodeRef::default(),
             syncing: false,
+            syncing_episodes: HashSet::new(),
             actions_expanded: false,
             episode_actions_expanded: HashSet::new(),
             season_actions_expanded: HashSet::new(),
@@ -299,6 +306,7 @@ impl Component for ShowDetail {
             _untrack_req: ws::Request::default(),
             _remove_req: ws::Request::default(),
             _sync_req: ws::Request::default(),
+            _sync_episode_req: ws::Request::default(),
             _watch_remaining_reqs: ws::Request::default(),
             _watched_req: ws::Request::default(),
             _set_next_req: ws::Request::default(),
@@ -407,10 +415,7 @@ impl Component for ShowDetail {
                         <Tracked tracked={show.tracked} ontoggle={link.callback(Msg::SetTracked)} />
 
                         if !show.remotes.is_empty() {
-                            <button class="mobile-has-text" onclick={link.callback(|_| Msg::SyncShow)} title="Sync now">
-                                <span class={classes!("icon", "arrow-path", self.syncing.then_some("spin"))} />
-                                <span class="mobile-only">{"Sync"}</span>
-                            </button>
+                            <Button icon="arrow-path" spin={self.syncing} onclick={link.callback(|_| Msg::SyncShow)} title="Sync now" text="Sync" />
                         }
 
                         <Button icon="language" title="Translations" text="Translations" onclick={link.callback(|_| Msg::OpenShowTranslations)} />
@@ -645,6 +650,18 @@ impl ShowDetail {
                             self.syncing = true;
                             return Ok(true);
                         }
+
+                        if let api::TaskKind::SyncEpisode {
+                            show_id,
+                            episode_id,
+                            ..
+                        } = &task.kind
+                            && *show_id == props.show_id
+                        {
+                            self.syncing_episodes.insert(*episode_id);
+                            return Ok(true);
+                        }
+
                         Ok(false)
                     }
                     api::AppEventKind::TaskCompleted { task } => {
@@ -657,6 +674,20 @@ impl ShowDetail {
                             self.load_orphaned(ctx);
                             return Ok(true);
                         }
+
+                        // The episode itself arrives via EpisodesChanged; this just
+                        // stops the button spinning.
+                        if let api::TaskKind::SyncEpisode {
+                            show_id,
+                            episode_id,
+                            ..
+                        } = &task.kind
+                            && *show_id == props.show_id
+                        {
+                            self.syncing_episodes.remove(episode_id);
+                            return Ok(true);
+                        }
+
                         Ok(false)
                     }
                     api::AppEventKind::WatchedChanged { event: kind } => {
@@ -986,6 +1017,27 @@ impl ShowDetail {
             }
             Msg::SyncDone(result) => {
                 result.context(Message::SyncingShow)?;
+                Ok(false)
+            }
+            Msg::SyncEpisode(episode_id) => {
+                let show_id = props.show_id;
+
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._sync_episode_req = self
+                        .channel
+                        .request()
+                        .body(api::SyncEpisodeRequest {
+                            show_id,
+                            episode_id,
+                        })
+                        .on_packet(ctx.link().callback(Msg::SyncEpisodeDone))
+                        .send();
+                }
+
+                Ok(true)
+            }
+            Msg::SyncEpisodeDone(result) => {
+                result.context(Message::SyncingEpisode)?;
                 Ok(false)
             }
             Msg::ToggleHistory(id) => {
@@ -2018,6 +2070,7 @@ impl ShowDetail {
             (!watched.is_empty()).then(|| link.callback(move |_| Msg::ToggleHistory(episode_id)));
 
         let actions_expanded = self.episode_actions_expanded.contains(&episode_id);
+        let syncing = self.syncing_episodes.contains(&episode_id);
 
         let on_remove_next = link.callback(move |_| Msg::OnRemoveNext(episode_id));
         let on_next_episode =
@@ -2070,6 +2123,8 @@ impl ShowDetail {
                                     <span class="mobile-only">{"Set as next episode"}</span>
                                 </MarkTimeMenu>
                             }
+
+                            <Button icon="arrow-path" spin={syncing} title="Sync episode" text="Sync episode" onclick={link.callback(move |_| Msg::SyncEpisode(episode_id))} />
 
                             <Button icon="language" title="Translations" text="Translations" onclick={link.callback(move |_| Msg::OpenEpisodeTranslations(episode_id))} />
 

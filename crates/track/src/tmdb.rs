@@ -453,6 +453,55 @@ impl Client {
         Ok(updates)
     }
 
+    /// Fetch a single episode, conditionally: `etag` is replayed as `If-None-Match`,
+    /// so an unchanged episode costs a bodyless `304`. Addressed by the show's remote
+    /// id plus `(season, number)` - no episode id needed.
+    pub(crate) async fn fetch_episode(
+        &self,
+        show_id: u32,
+        season: api::SeasonNumber,
+        number: u32,
+        etag: Option<&str>,
+    ) -> Result<Conditional<EpisodeInfo>> {
+        #[derive(Deserialize)]
+        struct EpisodeResponse {
+            #[serde(default)]
+            name: Option<String>,
+            #[serde(default)]
+            air_date: Option<String>,
+            #[serde(default)]
+            still_path: Option<String>,
+        }
+
+        let (etag, e): (Option<String>, EpisodeResponse) = match self
+            .get_json_conditional(
+                format!("tv/{show_id}/season/{}/episode/{number}", season.ordinal()),
+                etag,
+            )
+            .await?
+        {
+            Conditional::NotModified => return Ok(Conditional::NotModified),
+            Conditional::Modified { etag, value } => (etag, value),
+        };
+
+        Ok(Conditional::Modified {
+            etag,
+            value: EpisodeInfo {
+                original_name: e
+                    .name
+                    .as_ref()
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty()),
+                season,
+                number,
+                aired: opt_date(e.air_date.as_deref())
+                    .map(|d| d.to_timestamp_at_midnight_utc())
+                    .transpose()?,
+                filename: e.still_path.as_deref().map(ImageKey::tmdb),
+            },
+        })
+    }
+
     pub(crate) async fn fetch_show_translations(&self, id: u32) -> Result<Vec<Translation>> {
         let resp: TmdbTranslationsResponse = self
             .try_get_json(format!("tv/{id}/translations"))

@@ -16,6 +16,84 @@ fn ms(millis: i64) -> Timestamp {
     Timestamp::from_jiff(jiff::Timestamp::from_millisecond(millis).unwrap())
 }
 
+/// The air-window query drives the hourly per-episode sync: an episode qualifies
+/// only while it sits inside the window around its air date, and only once its own
+/// `last_synced_at` has aged past the interval. It is scoped by the same per-show
+/// flags the show-level stale query honors.
+#[tokio::test]
+async fn episodes_needing_air_sync_respects_window_and_interval() {
+    const WINDOW_HOURS: u32 = 24;
+    const INTERVAL_HOURS: u32 = 1;
+
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(dir.path().join("test.db"), OpenMode::Bulk, 1).unwrap();
+
+    let now = Timestamp::now();
+    let hours = |h: i64| now.saturating_add(api::Duration::from_hours(h));
+
+    let show = api::ShowId::new(1);
+    db.create_show(show, "", None, "").await.unwrap();
+
+    let season = api::SeasonNumber::from_ordinal(1);
+
+    // Just aired, and about to air: both inside the +/-24h window.
+    let recent = api::EpisodeId::new(1);
+    let upcoming = api::EpisodeId::new(2);
+    // Long past, far future, and undated: all outside it.
+    let old = api::EpisodeId::new(3);
+    let distant = api::EpisodeId::new(4);
+    let undated = api::EpisodeId::new(5);
+
+    for (id, number, aired) in [
+        (recent, 1, Some(hours(-2))),
+        (upcoming, 2, Some(hours(5))),
+        (old, 3, Some(hours(-100))),
+        (distant, 4, Some(hours(100))),
+        (undated, 5, None),
+    ] {
+        db.upsert_episode(id, show, season, number, None, aired)
+            .await
+            .unwrap();
+    }
+
+    let due = |db: Database| async move {
+        db.episodes_needing_air_sync(WINDOW_HOURS, INTERVAL_HOURS)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|(_, episode_id, _)| episode_id)
+            .collect::<HashSet<_>>()
+    };
+
+    // Never-synced episodes inside the window are due immediately.
+    assert_eq!(
+        due(db.clone()).await,
+        HashSet::from([recent, upcoming]),
+        "only episodes inside the air window are due"
+    );
+
+    // A sync just now puts an episode back under the interval, so it stops being due
+    // until an hour has passed - this is what makes the cadence hourly despite the
+    // poll running every 15 minutes.
+    db.set_episode_synced_at(recent, now).await.unwrap();
+    assert_eq!(due(db.clone()).await, HashSet::from([upcoming]));
+
+    // An hour and change later it comes due again.
+    db.set_episode_synced_at(recent, hours(-2)).await.unwrap();
+    assert_eq!(due(db.clone()).await, HashSet::from([recent, upcoming]));
+
+    // A show excluded from auto-sync contributes no episodes at all.
+    db.set_show_auto_sync(show, false).await.unwrap();
+    assert!(due(db.clone()).await.is_empty());
+
+    db.set_show_auto_sync(show, true).await.unwrap();
+    db.update_show(show, None, false).await.unwrap();
+    assert!(
+        due(db.clone()).await.is_empty(),
+        "an untracked show contributes no episodes"
+    );
+}
+
 /// Skipping an episode must stamp the pending row with the *next* episode's air
 /// date, so an unaired successor stays dormant until it falls inside the
 /// dashboard cutoff - the same rule the mark-watched path follows.

@@ -39,6 +39,7 @@ struct Inner {
     completed: VecDeque<api::CompletedTask>,
     show_pending: HashMap<api::ShowId, api::TaskId>,
     movie_pending: HashMap<api::MovieId, api::TaskId>,
+    episode_pending: HashMap<api::EpisodeId, api::TaskId>,
 }
 
 #[derive(Clone)]
@@ -57,6 +58,7 @@ impl TaskQueue {
                 completed: VecDeque::new(),
                 show_pending: HashMap::new(),
                 movie_pending: HashMap::new(),
+                episode_pending: HashMap::new(),
             })),
             notify: Arc::new(Notify::new()),
             next_id: Arc::new(AtomicU64::new(1)),
@@ -90,6 +92,13 @@ impl TaskQueue {
                         .as_ref()
                         .is_some_and(|t| matches!(&t.kind, api::TaskKind::SyncMovie { movie_id: id, .. } if id == movie_id))
             }
+            api::TaskKind::SyncEpisode { episode_id, .. } => {
+                inner.episode_pending.contains_key(episode_id)
+                    || inner
+                        .running
+                        .as_ref()
+                        .is_some_and(|t| matches!(&t.kind, api::TaskKind::SyncEpisode { episode_id: id, .. } if id == episode_id))
+            }
             // Singleton task: at most one queued or running at a time.
             api::TaskKind::RefreshTopLanguages => {
                 inner
@@ -120,6 +129,10 @@ impl TaskQueue {
                         (
                             api::TaskKind::SyncMovie { movie_id: a, .. },
                             api::TaskKind::SyncMovie { movie_id: b, .. },
+                        ) => a == b,
+                        (
+                            api::TaskKind::SyncEpisode { episode_id: a, .. },
+                            api::TaskKind::SyncEpisode { episode_id: b, .. },
                         ) => a == b,
                         _ => false,
                     });
@@ -152,6 +165,9 @@ impl TaskQueue {
             }
             api::TaskKind::SyncMovie { movie_id, .. } => {
                 inner.movie_pending.insert(*movie_id, id);
+            }
+            api::TaskKind::SyncEpisode { episode_id, .. } => {
+                inner.episode_pending.insert(*episode_id, id);
             }
             // Deduped by scanning pending/running, not via an id map.
             api::TaskKind::RefreshTopLanguages => {}
@@ -198,6 +214,9 @@ impl TaskQueue {
             }
             api::TaskKind::SyncMovie { movie_id, .. } => {
                 inner.movie_pending.remove(movie_id);
+            }
+            api::TaskKind::SyncEpisode { episode_id, .. } => {
+                inner.episode_pending.remove(episode_id);
             }
             api::TaskKind::RefreshTopLanguages => {}
         }
@@ -346,8 +365,9 @@ impl TaskQueue {
                                 "task queue pending changed",
                             );
                         }
-                        // `execute` already broadcasts TopLanguagesChanged.
-                        api::TaskKind::RefreshTopLanguages => {}
+                        // `execute` already broadcasts EpisodeChanged / EpisodesChanged /
+                        // PendingChanged, and TopLanguagesChanged, respectively.
+                        api::TaskKind::SyncEpisode { .. } | api::TaskKind::RefreshTopLanguages => {}
                     }
                 }
                 Err(e) => {
@@ -370,6 +390,9 @@ impl TaskQueue {
                     }
                     api::TaskKind::SyncMovie { movie_id, .. } => {
                         inner.movie_pending.remove(movie_id);
+                    }
+                    api::TaskKind::SyncEpisode { episode_id, .. } => {
+                        inner.episode_pending.remove(episode_id);
                     }
                     api::TaskKind::RefreshTopLanguages => {}
                 }
@@ -403,6 +426,22 @@ async fn execute(
         }
         api::TaskKind::SyncMovie { movie_id, .. } => {
             sync::sync_movie(*movie_id, db, remote, broadcast, shutdown).await
+        }
+        api::TaskKind::SyncEpisode {
+            show_id,
+            episode_id,
+            ..
+        } => {
+            sync::sync_episode(
+                *show_id,
+                *episode_id,
+                db,
+                remote,
+                broadcast,
+                pending,
+                shutdown,
+            )
+            .await
         }
         api::TaskKind::RefreshTopLanguages => {
             crate::background::refresh_top_languages(db, broadcast).await

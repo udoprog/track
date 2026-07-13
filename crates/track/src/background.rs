@@ -13,6 +13,17 @@ use crate::task_queue::TaskQueue;
 
 const POLL: Duration = Duration::from_secs(15 * 60);
 
+/// An episode is re-synced hourly while now is within this many hours either side of
+/// its air date: remotes most often correct an episode's title, still and exact air
+/// time right around broadcast, and a full show sync is far too expensive to run at
+/// that cadence.
+const EPISODE_AIR_WINDOW_HOURS: u32 = 24;
+
+/// How often an episode inside its air window is re-synced. The poll runs more often
+/// than this, so the cadence comes from the per-episode `last_synced_at` check rather
+/// than from any timer.
+const EPISODE_SYNC_INTERVAL_HOURS: u32 = 1;
+
 /// Number of most-used custom languages surfaced in the LanguagePicker.
 const TOP_LANGUAGES: usize = 3;
 
@@ -151,6 +162,34 @@ pub(crate) async fn run(
                     api::TaskKind::SyncMovie {
                         movie_id: m.id,
                         title: m.strings.title().map(str::to_owned),
+                    },
+                    false,
+                    &broadcast,
+                )
+                .await;
+        }
+
+        // Episodes around their air date, synced far more often than their show.
+        let airing = db
+            .episodes_needing_air_sync(EPISODE_AIR_WINDOW_HOURS, EPISODE_SYNC_INTERVAL_HOURS)
+            .await
+            .context("Listing episodes needing an air-window sync")?;
+
+        info!(episodes = airing.len(), "Episode air-window sync poll");
+
+        for (show_id, episode_id, code) in airing {
+            let title = db
+                .show_by_id(show_id)
+                .await?
+                .and_then(|s| s.strings.title().map(str::to_owned));
+
+            queue
+                .push(
+                    api::TaskKind::SyncEpisode {
+                        show_id,
+                        episode_id,
+                        code,
+                        title,
                     },
                     false,
                     &broadcast,

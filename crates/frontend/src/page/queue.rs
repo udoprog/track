@@ -441,6 +441,15 @@ impl Queue {
                 Some(Route::ShowDetail(*show_id, ShowDetailQuery::default()))
             }
             api::TaskKind::SyncMovie { movie_id, .. } => Some(Route::MovieDetail(*movie_id)),
+            // Land on the episode itself: its season, and its code as the fragment.
+            api::TaskKind::SyncEpisode { show_id, code, .. } => Some(Route::ShowDetail(
+                *show_id,
+                ShowDetailQuery {
+                    season: code.season,
+                    episode: Some(*code),
+                    ..ShowDetailQuery::default()
+                },
+            )),
             api::TaskKind::RefreshTopLanguages => None,
         };
 
@@ -473,6 +482,7 @@ impl Queue {
         let verb = match &task.kind {
             api::TaskKind::SyncShow { .. } => "Updating show",
             api::TaskKind::SyncMovie { .. } => "Updating movie",
+            api::TaskKind::SyncEpisode { .. } => "Updating episode",
             api::TaskKind::RefreshTopLanguages => "Refreshing top languages",
         };
 
@@ -486,11 +496,15 @@ impl Queue {
                 if has_target {
                     <span>{MDASH}</span>
 
-                    <span class={classes!(on_navigate.is_some().then_some("clickable"))} onclick={on_navigate}>
+                    <span class={classes!("row", on_navigate.is_some().then_some("clickable"))} onclick={on_navigate}>
                         if let Some(ref title) = task.kind.title() {
                             {title}
                         } else {
                             <span class="text-muted">{"Untitled"}</span>
+                        }
+
+                        if let Some(code) = task_code(&task.kind) {
+                            <span class="text-muted">{code}</span>
                         }
                     </span>
                 }
@@ -540,6 +554,15 @@ impl Queue {
                 Some(Route::ShowDetail(*show_id, ShowDetailQuery::default()))
             }
             api::TaskKind::SyncMovie { movie_id, .. } => Some(Route::MovieDetail(*movie_id)),
+            // Land on the episode itself: its season, and its code as the fragment.
+            api::TaskKind::SyncEpisode { show_id, code, .. } => Some(Route::ShowDetail(
+                *show_id,
+                ShowDetailQuery {
+                    season: code.season,
+                    episode: Some(*code),
+                    ..ShowDetailQuery::default()
+                },
+            )),
             api::TaskKind::RefreshTopLanguages => None,
         };
 
@@ -566,6 +589,7 @@ impl Queue {
         let verb = match &task.kind {
             api::TaskKind::SyncShow { .. } => "Updated show",
             api::TaskKind::SyncMovie { .. } => "Updated movie",
+            api::TaskKind::SyncEpisode { .. } => "Updated episode",
             api::TaskKind::RefreshTopLanguages => "Refreshed top languages",
         };
 
@@ -579,16 +603,29 @@ impl Queue {
                 if has_target {
                     <span>{MDASH}</span>
 
-                    <span class="clickable" onclick={on_navigate}>
+                    <span class="row clickable" onclick={on_navigate}>
                         if let Some(ref title) = task.kind.title() {
                             {title}
                         } else {
                             <span class="text-muted">{"Untitled"}</span>
                         }
+
+                        if let Some(code) = task_code(&task.kind) {
+                            <span class="text-muted">{code}</span>
+                        }
                     </span>
                 }
             </>
         }
+    }
+}
+
+/// The episode code a task targets, when it targets one. `title` alone would render
+/// two episodes of the same show identically.
+fn task_code(kind: &api::TaskKind) -> Option<api::Code> {
+    match kind {
+        api::TaskKind::SyncEpisode { code, .. } => Some(*code),
+        _ => None,
     }
 }
 

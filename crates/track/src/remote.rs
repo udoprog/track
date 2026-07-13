@@ -250,6 +250,20 @@ impl RemoteClients {
             .await
     }
 
+    pub(crate) async fn fetch_tmdb_episode(
+        &self,
+        show_id: u32,
+        season: api::SeasonNumber,
+        number: u32,
+        etag: Option<&str>,
+    ) -> Result<tmdb::Conditional<tmdb::EpisodeInfo>> {
+        self.tmdb()
+            .await
+            .context("Expected a configured TMDB client")?
+            .fetch_episode(show_id, season, number, etag)
+            .await
+    }
+
     pub(crate) async fn fetch_tmdb_movie(
         &self,
         id: u32,
@@ -336,6 +350,19 @@ impl RemoteClients {
             .await
     }
 
+    pub(crate) async fn fetch_tvdb_episode(
+        &self,
+        tvdb_id: u32,
+        season: api::SeasonNumber,
+        number: u32,
+    ) -> Result<Option<tvdb::EpisodeInfo>> {
+        self.tvdb()
+            .await
+            .context("Expected a configured TVDB client")?
+            .fetch_episode(tvdb_id, season, number)
+            .await
+    }
+
     pub(crate) async fn fetch_tvdb_show_translation(
         &self,
         tvdb_id: u32,
@@ -396,6 +423,18 @@ impl RemoteClients {
         self.tvmaze()
             .context("Expected a configured TVmaze client")?
             .fetch_episodes(tvmaze_id)
+            .await
+    }
+
+    pub(crate) async fn fetch_tvmaze_episode(
+        &self,
+        tvmaze_id: u32,
+        season: api::SeasonNumber,
+        number: u32,
+    ) -> Result<Option<crate::tvmaze::EpisodeInfo>> {
+        self.tvmaze()
+            .context("Expected a configured TVmaze client")?
+            .fetch_episode(tvmaze_id, season, number)
             .await
     }
 

@@ -105,6 +105,8 @@ pub(crate) enum Message {
     RemovingShow,
     #[display("Syncing show")]
     SyncingShow,
+    #[display("Syncing episode")]
+    SyncingEpisode,
     #[display("Syncing movie")]
     SyncingMovie,
     #[display("Syncing all media")]

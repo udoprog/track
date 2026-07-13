@@ -141,6 +141,53 @@ impl Client {
             })
             .collect())
     }
+
+    /// Fetch a single episode by season and number. TVmaze offers no conditional
+    /// request, so this always costs one call.
+    pub(crate) async fn fetch_episode(
+        &self,
+        id: u32,
+        season: SeasonNumber,
+        number: u32,
+    ) -> Result<Option<EpisodeInfo>> {
+        #[derive(Deserialize)]
+        struct Row {
+            #[serde(default)]
+            airstamp: Option<String>,
+        }
+
+        let res = self
+            .http
+            .get(format!("{BASE}/shows/{id}/episodebynumber"))
+            .query(&[
+                ("season", season.ordinal().to_string()),
+                ("number", number.to_string()),
+            ])
+            .send()
+            .await?;
+
+        if res.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+
+        let bytes = res.error_for_status()?.bytes().await?;
+        let row: Row = serde_json::from_slice(&bytes)?;
+
+        let Some(aired_at) = row
+            .airstamp
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .and_then(|s| s.parse::<Timestamp>().ok())
+        else {
+            return Ok(None);
+        };
+
+        Ok(Some(EpisodeInfo {
+            season,
+            number,
+            aired_at,
+        }))
+    }
 }
 
 pub(crate) struct EpisodeInfo {
