@@ -401,6 +401,89 @@ pub struct RemoteCache {
     /// rows written before this field existed, forcing a one-time re-fetch.
     #[serde(default, skip_serializing_if = "SyncKindSet::is_empty")]
     pub kinds: SyncKindSet,
+    /// Sub-requests that failed on the last sync, so they are not retried on every
+    /// run. A remote that 404s (an episode a source simply doesn't carry) would
+    /// otherwise cost one wasted call per sync forever.
+    ///
+    /// An entry suppresses its sub-request until it ages past
+    /// [`RemoteErrorKind::ttl`], then it is retried. Empty for rows written before
+    /// this field existed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub errors: Vec<RemoteError>,
+}
+
+impl RemoteCache {
+    /// The recorded failure for `key`, if any.
+    pub fn error(&self, key: &str) -> Option<&RemoteError> {
+        self.errors.iter().find(|e| e.key == key)
+    }
+
+    /// Whether any recorded failure is old enough to be retried. Such a cache must
+    /// not short-circuit the layer (see `usable_cache`), or the sub-request that
+    /// failed would never get another chance.
+    pub fn has_expired_errors(&self, now: Timestamp) -> bool {
+        self.errors.iter().any(|e| !e.is_live(now))
+    }
+}
+
+/// Why a sub-request failed, which decides how long the failure is trusted.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize,
+)]
+#[musli(crate = musli_core)]
+#[serde(rename_all = "snake_case")]
+pub enum RemoteErrorKind {
+    /// The remote does not carry this entity (a `404`). A stable fact, so it is
+    /// trusted for a long time rather than re-probed every sync.
+    Missing,
+    /// A transient failure - a `5xx`, a timeout, a malformed body. Trusted only
+    /// briefly, so a blip does not freeze an entity's metadata for a day.
+    Transient,
+}
+
+impl RemoteErrorKind {
+    /// How long a failure of this kind suppresses its retry.
+    pub fn ttl(&self) -> Duration {
+        match self {
+            Self::Missing => Duration::from_hours(24),
+            Self::Transient => Duration::from_hours(1),
+        }
+    }
+
+    pub fn as_label(&self) -> &'static str {
+        match self {
+            Self::Missing => "Missing",
+            Self::Transient => "Transient",
+        }
+    }
+}
+
+/// A sub-request that failed during a sync, recorded on the owning remote's cache so
+/// it can be suppressed until it expires - and shown to the user, so a silently
+/// half-synced entity is visible rather than mysterious.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize)]
+#[musli(crate = musli_core)]
+pub struct RemoteError {
+    /// Stable identifier for the sub-request, so the next sync can tell whether
+    /// *this* call failed before (e.g. `"season/3/episodes"`, `"episode/S02E05"`).
+    pub key: String,
+    /// The failure, rendered for display.
+    pub message: String,
+    pub kind: RemoteErrorKind,
+    /// When it was recorded. Retried once `now` passes `at + kind.ttl()`.
+    pub at: Timestamp,
+}
+
+impl RemoteError {
+    /// Whether this failure is still trusted, i.e. its sub-request stays suppressed.
+    pub fn is_live(&self, now: Timestamp) -> bool {
+        now < self.at.saturating_add(self.kind.ttl())
+    }
+
+    /// When this failure stops being trusted and its sub-request is retried.
+    pub fn expires_at(&self) -> Timestamp {
+        self.at.saturating_add(self.kind.ttl())
+    }
 }
 
 /// The kinds a remote actually contributes during a sync: its per-remote override

@@ -57,7 +57,7 @@ fn sync_kind_set_serde() {
 
     // Serializes as a sequence of snake_case strings.
     let json = serde_json::to_string(&set).unwrap();
-    assert_eq!(json, r#"["base","air_date"]"#);
+    assert_eq!(json, r#"["base","dates"]"#);
     assert_eq!(serde_json::from_str::<SyncKindSet>(&json).unwrap(), set);
 
     // Deserialization also accepts the legacy integer bitmask.
@@ -687,4 +687,73 @@ fn timestamp_saturating_add_duration() {
 
     // Shifting past the representable range clamps instead of panicking.
     assert!(now.saturating_add(Duration::from_millis(i64::MAX)) > now);
+}
+
+/// Every `cache` row already in the database was written before `errors` existed, so it
+/// must still deserialize - otherwise `parse_remote_cache` silently drops it and every
+/// remote does one needless full re-fetch. These are verbatim values from a live DB.
+#[test]
+fn remote_cache_without_errors_still_parses() {
+    let etag: RemoteCache = serde_json::from_str(
+        r#"{"etag":"W/\"41f3fb73dcc8c1b681dcc60ac18f4e53\"","kinds":["base","dates"]}"#,
+    )
+    .expect("legacy ETag row should parse");
+
+    assert_eq!(
+        etag.etag.as_deref(),
+        Some("W/\"41f3fb73dcc8c1b681dcc60ac18f4e53\"")
+    );
+    assert!(etag.kinds.contains(SyncKind::Base));
+    assert!(etag.errors.is_empty());
+
+    let tvdb: RemoteCache =
+        serde_json::from_str(r#"{"last_updated":"2025-12-10 22:25:33","kinds":["dates"]}"#)
+            .expect("legacy lastUpdated row should parse");
+
+    assert_eq!(tvdb.last_updated.as_deref(), Some("2025-12-10 22:25:33"));
+    assert!(tvdb.errors.is_empty());
+}
+
+/// A recorded failure suppresses its sub-request until it expires, and expiry is what
+/// forces the next full fetch. Both halves matter: without the first we re-probe a
+/// missing entity every sync, without the second we would never retry it at all.
+#[test]
+fn remote_error_expires_by_kind() {
+    let at = Timestamp::from_jiff(jiff::Timestamp::from_second(1_700_000_000).unwrap());
+
+    let error = |kind| RemoteError {
+        key: "episode/S02E05".to_owned(),
+        message: "TVDB has no S02E05".to_owned(),
+        kind,
+        at,
+    };
+
+    let missing = error(RemoteErrorKind::Missing);
+    let transient = error(RemoteErrorKind::Transient);
+
+    let after = |hours: i64| at.saturating_add(Duration::from_hours(hours));
+
+    // A transient blip is retried within the hour; a genuine absence is trusted for a day.
+    assert!(transient.is_live(after(0)));
+    assert!(!transient.is_live(after(2)));
+    assert!(missing.is_live(after(2)));
+    assert!(!missing.is_live(after(25)));
+
+    let cache = RemoteCache {
+        etag: None,
+        last_updated: None,
+        kinds: SyncKindSet::empty(),
+        errors: vec![missing],
+    };
+
+    assert_eq!(
+        cache.error("episode/S02E05").map(|e| e.kind),
+        Some(RemoteErrorKind::Missing)
+    );
+    assert!(cache.error("episode/S01E01").is_none());
+
+    // While live, the cache may still short-circuit (that IS the saved API call); once
+    // expired it must not, or the failed sub-request would never run again.
+    assert!(!cache.has_expired_errors(after(2)));
+    assert!(cache.has_expired_errors(after(25)));
 }

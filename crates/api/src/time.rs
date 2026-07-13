@@ -249,6 +249,33 @@ where
     }
 }
 
+/// Serialized as UTC milliseconds, matching how a `Timestamp` binds to a SQL column
+/// (and how the backup format writes one), so a value round-trips through JSON and
+/// through storage identically.
+impl serde::Serialize for Timestamp {
+    #[inline]
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_i64(self.0.as_millisecond())
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Timestamp {
+    #[inline]
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let ms = i64::deserialize(deserializer)?;
+
+        JiffTimestamp::from_millisecond(ms)
+            .map(Timestamp)
+            .map_err(serde::de::Error::custom)
+    }
+}
+
 #[cfg(feature = "sqll")]
 impl ::sqll::FromColumn<'_> for Timestamp {
     type Type = ::sqll::ty::Integer;

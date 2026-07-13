@@ -15,20 +15,204 @@ use crate::tmdb;
 
 /// Whether a sync layer fetched fresh data or detected (via ETag/`lastUpdated`)
 /// that its remote is unchanged and skipped the expensive re-fetch.
+///
+/// The validator a layer earns is not carried here - it is handed to [`CacheState`] via
+/// [`CacheState::earn`] as the layer's last act, so that a layer which aborts partway
+/// leaves no marker behind while its recorded errors still survive.
 enum LayerOutcome {
     Updated,
     Unchanged,
+    /// The remote does not carry this entity, or the fetch for it failed and was
+    /// recorded. Either way the layer contributed nothing, so it claims no kinds -
+    /// crucially not the exclusive `Base`, which a lower-priority source must still be
+    /// free to provide.
+    Absent,
 }
 
 /// Serialize a remote's cache validators for the `*_remotes.cache` column,
 /// yielding `None` (stored as `NULL`) when there's nothing worth caching so the
 /// editor shows no stale "cached" state and the next sync sends no validator.
 fn cache_json(cache: &api::RemoteCache) -> Option<String> {
-    if cache.etag.is_none() && cache.last_updated.is_none() {
+    if cache.etag.is_none() && cache.last_updated.is_none() && cache.errors.is_empty() {
         return None;
     }
 
     serde_json::to_string(cache).ok()
+}
+
+/// Stable [`api::RemoteError`] keys. A key must identify the *sub-request*, not the
+/// attempt, so the next sync can recognise that this same call failed before.
+fn season_episodes_key(season: SeasonNumber) -> String {
+    format!("season/{}/episodes", season.ordinal())
+}
+
+fn episode_key(season: SeasonNumber, number: u32) -> String {
+    format!("episode/{}", api::Code::new(season, number))
+}
+
+fn translations_key() -> &'static str {
+    "translations"
+}
+
+fn episode_translations_key(season: SeasonNumber, number: u32) -> String {
+    format!("episode/{}/translations", api::Code::new(season, number))
+}
+
+/// Classify a failed sub-request. A `404` means the remote genuinely does not carry
+/// the entity, which is a stable fact worth trusting for a while; anything else is
+/// treated as transient and re-probed soon.
+fn classify_error(error: &anyhow::Error) -> api::RemoteErrorKind {
+    for cause in error.chain() {
+        if let Some(e) = cause.downcast_ref::<reqwest::Error>()
+            && e.status() == Some(reqwest::StatusCode::NOT_FOUND)
+        {
+            return api::RemoteErrorKind::Missing;
+        }
+    }
+
+    api::RemoteErrorKind::Transient
+}
+
+/// What a layer learned about one remote: the sub-requests that failed, and - only if
+/// it completed everything it owed - the validator it earned.
+///
+/// The driver owns this and reads it back whether the layer returned `Ok` or `Err`, so
+/// a failure is recorded (and therefore suppressed on the next run) even when the layer
+/// aborts partway. The validator is the opposite: it is only ever set by [`Self::earn`]
+/// as a layer's last act, so a marker can never outlive the data it stands for.
+struct CacheState {
+    /// The previous sync's cache, consulted to decide whether a sub-request that
+    /// failed before is still suppressed.
+    prior: Option<api::RemoteCache>,
+    now: api::Timestamp,
+    /// Failures this run: carried forward from `prior` while still live, or freshly
+    /// recorded. Starts empty each run, so a sub-request that succeeds simply stops
+    /// contributing an entry and its old error disappears.
+    errors: Vec<api::RemoteError>,
+    earned: Option<api::RemoteCache>,
+}
+
+impl CacheState {
+    fn new(prior: Option<&api::RemoteCache>, now: api::Timestamp) -> Self {
+        Self {
+            prior: prior.cloned(),
+            now,
+            errors: Vec::new(),
+            earned: None,
+        }
+    }
+
+    /// Whether `key` failed recently enough to skip entirely. The carried-forward
+    /// error keeps its original timestamp, so suppression expires when it was always
+    /// going to rather than being renewed by each skip.
+    fn suppressed(&mut self, key: &str) -> bool {
+        let Some(error) = self.prior.as_ref().and_then(|c| c.error(key)) else {
+            return false;
+        };
+
+        if !error.is_live(self.now) {
+            return false;
+        }
+
+        let error = error.clone();
+        tracing::debug!(key, "Skipping sub-request: recent failure still cached");
+        self.errors.push(error);
+        true
+    }
+
+    fn record(&mut self, key: &str, error: &anyhow::Error) {
+        let kind = classify_error(error);
+        tracing::warn!(key, ?kind, "Sub-request failed: {error:#}");
+
+        self.errors.push(api::RemoteError {
+            key: key.to_owned(),
+            message: format!("{error:#}"),
+            kind,
+            at: self.now,
+        });
+    }
+
+    /// Record a failure the client reported as a plain absence rather than an error
+    /// (an empty result where an entity was expected).
+    fn record_missing(&mut self, key: &str, message: impl Into<String>) {
+        let message = message.into();
+        tracing::info!(key, "{message}");
+
+        self.errors.push(api::RemoteError {
+            key: key.to_owned(),
+            message,
+            kind: api::RemoteErrorKind::Missing,
+            at: self.now,
+        });
+    }
+
+    /// Whether anything failed (or is still suppressed) this run. A layer in this state
+    /// produced an incomplete draft, so the persist must not treat absence as removal.
+    fn degraded(&self) -> bool {
+        !self.errors.is_empty()
+    }
+
+    /// Called by a layer only after every fetch it owed has succeeded.
+    fn earn(&mut self, cache: api::RemoteCache) {
+        self.earned = Some(cache);
+    }
+
+    /// The row to store, carrying every error seen this run.
+    ///
+    /// The validator it keeps depends on `persisted` - whether the data this layer
+    /// fetched actually landed in the database:
+    ///
+    /// - persisted: the freshly earned validator, or the prior one when the layer
+    ///   short-circuited (a `304` earns nothing, but the validator that *produced* the
+    ///   `304` is still valid and must not be dropped);
+    /// - not persisted: only the prior validator. A newly earned one would claim data
+    ///   that was never stored, and the next sync's `304` would then report the source
+    ///   unchanged while its data is absent.
+    ///
+    /// Either way the prior validator survives a failed layer, so a transient error
+    /// doesn't cost a full re-fetch on the next run.
+    fn finish(&self, persisted: bool) -> api::RemoteCache {
+        let validator = if persisted {
+            self.earned.clone().or_else(|| self.prior.clone())
+        } else {
+            self.prior.clone()
+        };
+
+        let mut cache = validator.unwrap_or(api::RemoteCache {
+            etag: None,
+            last_updated: None,
+            kinds: SyncKindSet::empty(),
+            errors: Vec::new(),
+        });
+
+        cache.errors = self.errors.clone();
+        cache
+    }
+}
+
+/// Run a sub-request, recovering from failure instead of aborting the layer: the error
+/// is recorded against `key` and the caller gets `None`, so the rest of the layer still
+/// contributes what it can.
+///
+/// A `key` that failed recently is not retried at all. That is the point: a remote which
+/// simply does not carry an entity (a `404`) would otherwise cost one wasted call on
+/// every single sync, forever.
+async fn recover<T>(
+    state: &mut CacheState,
+    key: &str,
+    f: impl Future<Output = Result<T>>,
+) -> Option<T> {
+    if state.suppressed(key) {
+        return None;
+    }
+
+    match f.await {
+        Ok(value) => Some(value),
+        Err(error) => {
+            state.record(key, &error);
+            None
+        }
+    }
 }
 
 /// The kinds a layer is about to fetch and persist this run, used both to tag a
@@ -58,21 +242,33 @@ fn needed_kinds(do_base: bool, do_air_date: bool) -> SyncKindSet {
 }
 
 /// Whether a layer may use this cached validator to short-circuit: skipping must be
-/// rebuild-safe (`allow_skip`) and the cache must already cover every kind this run
+/// rebuild-safe (`allow_skip`), the cache must already cover every kind this run
 /// needs - so an air-date-only validator never short-circuits a Base fetch after a
-/// re-prioritization.
-fn usable_cache(cache: &api::RemoteCache, needed: SyncKindSet, allow_skip: bool) -> bool {
-    allow_skip && cache.kinds.contains_all(needed)
+/// re-prioritization - and no recorded failure may be due for a retry.
+///
+/// That last clause is what lets a failed sub-request ever run again: short-circuiting
+/// returns before any sub-request is reached, so a cache holding an expired error must
+/// force the full fetch. While its errors are still live we *do* short-circuit, which is
+/// exactly the API call we are trying to save.
+fn usable_cache(
+    cache: &api::RemoteCache,
+    needed: SyncKindSet,
+    allow_skip: bool,
+    now: api::Timestamp,
+) -> bool {
+    allow_skip && cache.kinds.contains_all(needed) && !cache.has_expired_errors(now)
 }
 
-/// Flush the cache validators collected by Updated show layers. Called only after
-/// the matching data has been persisted, so a stored marker always has its data.
+/// Flush what the show layers learned. `persisted` says whether the data they fetched
+/// actually landed; see [`CacheState::finish`] for what that changes.
 async fn flush_show_cache_writes(
-    writes: &[(api::RemoteId, Option<String>)],
+    writes: &[(api::RemoteId, CacheState)],
     db: &Database,
+    persisted: bool,
 ) -> Result<()> {
-    for (remote_id, cache) in writes {
-        db.set_show_remote_cache(*remote_id, cache.clone()).await?;
+    for (remote_id, state) in writes {
+        db.set_show_remote_cache(*remote_id, cache_json(&state.finish(persisted)))
+            .await?;
     }
 
     Ok(())
@@ -109,6 +305,10 @@ pub(crate) async fn sync_show(
         .context("Expected show to exist")?;
 
     tracing::info!(show_id = %show_id, title = show.strings.title(), "Syncing show");
+
+    // One clock for the whole sync, so every error recorded this run shares a timestamp
+    // and expires together.
+    let now = api::Timestamp::now();
 
     // Visit enabled remotes in priority order, one layer per source (the
     // highest-priority entry of each source wins). Each layer contributes the
@@ -154,13 +354,15 @@ pub(crate) async fn sync_show(
         // the Base provider already reported unchanged. Otherwise a fresh Base
         // elsewhere triggers a full rebuild that would wipe a skipped layer's data.
         let allow_skip = do_base || draft.base_unchanged;
-        let cache = entry.cache.as_ref();
+
+        let mut state = CacheState::new(entry.cache.as_ref(), now);
 
         let result = match source {
             RemoteSource::Tmdb => match entry.remote.value().as_u32() {
                 Some(tmdb_id) => {
                     tmdb_show_layer(
                         &mut draft,
+                        &mut state,
                         &config,
                         &show,
                         tmdb_id,
@@ -168,9 +370,7 @@ pub(crate) async fn sync_show(
                         do_air_date,
                         remote,
                         shutdown,
-                        cache,
                         allow_skip,
-                        entry.id,
                     )
                     .await
                 }
@@ -180,28 +380,39 @@ pub(crate) async fn sync_show(
                 Some(tvdb_id) => {
                     tvdb_show_layer(
                         &mut draft,
+                        &mut state,
                         &config,
                         tvdb_id,
                         do_base,
                         do_air_date,
                         remote,
                         shutdown,
-                        cache,
                         allow_skip,
-                        entry.id,
                     )
                     .await
                 }
                 None => continue,
             },
             RemoteSource::Tvmaze => match entry.remote.value().as_u32() {
-                Some(tvmaze_id) => tvmaze_layer(&mut draft, show_id, tvmaze_id, remote)
+                // TVmaze offers no conditional request, so it never earns a validator.
+                Some(tvmaze_id) => tvmaze_layer(&mut draft, &mut state, show_id, tvmaze_id, remote)
                     .await
                     .map(|()| LayerOutcome::Updated),
                 None => continue,
             },
             _ => continue,
         };
+
+        // Whatever the layer learned about this remote is recorded either way: a
+        // validator only if it earned one, but its errors even when it aborted - that
+        // is what stops a dead sub-request being re-probed on every single sync.
+        let degraded = state.degraded();
+
+        if degraded {
+            draft.degraded_sources.insert(source);
+        }
+
+        draft.cache_writes.push((entry.id, state));
 
         // A failing layer shouldn't abort the sync: lower-priority layers and the
         // data already collected still persist, and the kind stays unclaimed so a
@@ -215,6 +426,9 @@ pub(crate) async fn sync_show(
         };
 
         match outcome {
+            // Contributed nothing, so claims nothing - a lower-priority source may
+            // still provide the kinds this one owed.
+            LayerOutcome::Absent => continue,
             // Cache hit: claim the kinds so lower-priority layers skip the
             // exclusive Base kind (this source stays the owner), but keep the
             // existing data - don't record an air-date source (its stored
@@ -225,7 +439,9 @@ pub(crate) async fn sync_show(
                 }
             }
             LayerOutcome::Updated => {
-                if do_air_date {
+                // A degraded layer didn't report everything it has, so its stored air
+                // dates must not be pruned against this run's partial view.
+                if do_air_date && !degraded {
                     draft.air_date_sources.insert(source);
                 }
 
@@ -263,13 +479,13 @@ pub(crate) async fn sync_show(
     //                           seasons/episodes are orphaned and get cleared.
     if draft.provided.contains(SyncKind::Base) && !draft.base_unchanged {
         persist_show_draft(show_id, &show, &draft, db, broadcast).await?;
-        flush_show_cache_writes(&draft.cache_writes, db).await?;
+        flush_show_cache_writes(&draft.cache_writes, db, true).await?;
     } else if draft.base_unchanged {
         // The Base source was unchanged (cache hit): keep the stored
         // seasons/episodes/strings and only persist air dates other sources
         // produced this run.
         persist_air_dates_only(show_id, &draft, db).await?;
-        flush_show_cache_writes(&draft.cache_writes, db).await?;
+        flush_show_cache_writes(&draft.cache_writes, db, true).await?;
 
         // A non-base source may have merged fresh graphics (or a slug); push the
         // refreshed show so clients update without a manual reload.
@@ -279,8 +495,24 @@ pub(crate) async fn sync_show(
             broadcast.broadcast_event(api::AppEventKind::ShowChanged { show });
         }
     } else if eligible.contains(SyncKind::Base) {
-        anyhow::bail!("Show has no syncable Base remote available");
+        // Nothing persisted, so no validator may be stored - but the failures that got
+        // us here must be, or we'd re-probe a dead remote on every sync.
+        flush_show_cache_writes(&draft.cache_writes, db, false).await?;
+
+        // A Base source that reported *why* it produced nothing (the remote 404s, its
+        // episode list is unreachable) is an ordinary fact about the remote, already
+        // recorded and cached. Only an unexplained absence is a fault worth failing on.
+        if draft.degraded_sources.is_empty() {
+            anyhow::bail!("Show has no syncable Base remote available");
+        }
+
+        tracing::warn!(
+            sources = ?draft.degraded_sources,
+            "No Base source produced data; keeping the stored show"
+        );
     } else {
+        flush_show_cache_writes(&draft.cache_writes, db, false).await?;
+
         db.prune_seasons(show_id, &HashSet::new()).await?;
 
         let show = db
@@ -427,7 +659,7 @@ struct ShowDraft {
     /// Cache validators (ETag/`lastUpdated`) captured by Updated layers, keyed
     /// by remote id, flushed to `*_remotes.cache` only after a successful
     /// persist so a failed persist never records a validator without its data.
-    cache_writes: Vec<(api::RemoteId, Option<String>)>,
+    cache_writes: Vec<(api::RemoteId, CacheState)>,
     original_name: Option<String>,
     first_air_date: Option<api::Timestamp>,
     /// The show's own original language, discovered from the Base layer.
@@ -444,6 +676,10 @@ struct ShowDraft {
     /// reports none. A source whose layer failed is absent, so its stored releases
     /// survive a transient fetch error.
     air_date_sources: HashSet<RemoteSource>,
+    /// Sources that recovered from at least one failed sub-request this run, so their
+    /// contribution to the draft is incomplete. Absence from an incomplete draft is not
+    /// evidence of removal, so the persist must not prune against it.
+    degraded_sources: HashSet<RemoteSource>,
     images: Vec<DraftImage>,
     /// Sources whose graphics layer ran (returned Updated) this sync, so their
     /// `images` in the draft are authoritative. Scopes the per-source graphics
@@ -543,6 +779,7 @@ impl ShowDraft {
 #[allow(clippy::too_many_arguments)]
 async fn tmdb_show_layer(
     draft: &mut ShowDraft,
+    state: &mut CacheState,
     config: &api::Config,
     show: &api::Show,
     tmdb_id: u32,
@@ -550,9 +787,7 @@ async fn tmdb_show_layer(
     do_air_date: bool,
     remote: &RemoteClients,
     shutdown: &Shutdown,
-    cache: Option<&api::RemoteCache>,
     allow_skip: bool,
-    remote_id: api::RemoteId,
 ) -> Result<LayerOutcome> {
     tracing::info!(tmdb_id, do_base, do_air_date, "Show");
 
@@ -560,29 +795,27 @@ async fn tmdb_show_layer(
 
     // Only replay the ETag when the cache already covers what we owe; a 304 has no
     // body, so we must force a full response when an uncovered kind is needed.
-    let etag = cache
-        .filter(|&c| usable_cache(c, needed, allow_skip))
-        .and_then(|c| c.etag.as_deref());
+    let etag = state
+        .prior
+        .as_ref()
+        .filter(|c| usable_cache(c, needed, allow_skip, state.now))
+        .and_then(|c| c.etag.clone());
 
-    let info = match remote.fetch_tmdb_show(tmdb_id, etag).await? {
+    let (fresh_etag, info) = match remote.fetch_tmdb_show(tmdb_id, etag.as_deref()).await? {
         tmdb::Conditional::NotModified => {
             tracing::info!(tmdb_id, "Show unchanged (ETag 304)");
             return Ok(LayerOutcome::Unchanged);
         }
-        tmdb::Conditional::Modified { etag, value } => {
-            if !needed.is_empty() {
-                draft.cache_writes.push((
-                    remote_id,
-                    cache_json(&api::RemoteCache {
-                        etag,
-                        last_updated: None,
-                        kinds: needed,
-                    }),
-                ));
-            }
-            value
-        }
+        tmdb::Conditional::Modified { etag, value } => (etag, value),
     };
+
+    // Built here, handed to `state` only on the success path below.
+    let earned = (!needed.is_empty()).then_some(api::RemoteCache {
+        etag: fresh_etag,
+        last_updated: None,
+        kinds: needed,
+        errors: Vec::new(),
+    });
 
     draft.original_name = info.original_name.or(draft.original_name.clone());
 
@@ -601,6 +834,7 @@ async fn tmdb_show_layer(
         draft.add_image(ImageKind::Backdrop, backdrop.clone(), *score, selected);
     }
 
+    // Graphics-only run: nothing was owed, so nothing to earn.
     if !do_base && !do_air_date {
         return Ok(LayerOutcome::Updated);
     }
@@ -624,10 +858,21 @@ async fn tmdb_show_layer(
 
         tracing::info!(tmdb_id, ?season.number, "Season episodes");
 
-        for e in remote
-            .fetch_tmdb_season_episodes(tmdb_id, season.number)
-            .await?
-        {
+        // A season whose episodes we can't fetch must not sink the whole show: record
+        // it, keep the other seasons, and let the persist skip pruning.
+        let key = season_episodes_key(season.number);
+
+        let Some(episodes) = recover(
+            state,
+            &key,
+            remote.fetch_tmdb_season_episodes(tmdb_id, season.number),
+        )
+        .await
+        else {
+            continue;
+        };
+
+        for e in episodes {
             if do_base {
                 draft.episodes.insert(
                     (e.season, e.number),
@@ -658,11 +903,19 @@ async fn tmdb_show_layer(
     if do_base {
         tracing::info!("Collecting strings");
 
-        if let Err(error) =
-            collect_tmdb_show_strings(draft, tmdb_id, show, config, remote, shutdown).await
-        {
-            tracing::warn!("String collection failed: {error:#}");
-        }
+        recover(
+            state,
+            translations_key(),
+            collect_tmdb_show_strings(draft, tmdb_id, show, config, remote, shutdown),
+        )
+        .await;
+    }
+
+    // Earned: every fetch this layer owed either succeeded or was recovered into
+    // `state.errors`, which travel with the validator so the failed calls are retried
+    // once they expire.
+    if let Some(earned) = earned {
+        state.earn(earned);
     }
 
     Ok(LayerOutcome::Updated)
@@ -672,15 +925,14 @@ async fn tmdb_show_layer(
 #[allow(clippy::too_many_arguments)]
 async fn tvdb_show_layer(
     draft: &mut ShowDraft,
+    state: &mut CacheState,
     config: &api::Config,
     tvdb_id: u32,
     do_base: bool,
     do_air_date: bool,
     remote: &RemoteClients,
     shutdown: &Shutdown,
-    cache: Option<&api::RemoteCache>,
     allow_skip: bool,
-    remote_id: api::RemoteId,
 ) -> Result<LayerOutcome> {
     tracing::info!(tvdb_id, do_base, do_air_date, "Show");
 
@@ -699,8 +951,8 @@ async fn tvdb_show_layer(
     // series. An equal marker on a cache that already covers what we owe means the
     // whole entity (incl. episodes and air dates) is unchanged, so skip the episode
     // + translation fetches and keep the stored data.
-    if let Some(cache) = cache
-        && usable_cache(cache, needed, allow_skip)
+    if let Some(cache) = state.prior.as_ref()
+        && usable_cache(cache, needed, allow_skip, state.now)
         && let Some(cached) = cache.last_updated.as_deref()
         && let Some(current) = info.last_updated.as_deref()
         && cached == current
@@ -709,17 +961,14 @@ async fn tvdb_show_layer(
         return Ok(LayerOutcome::Unchanged);
     }
 
-    // Record the fresh marker so the next sync can compare (flushed post-persist).
-    if !needed.is_empty() {
-        draft.cache_writes.push((
-            remote_id,
-            cache_json(&api::RemoteCache {
-                etag: None,
-                last_updated: info.last_updated.clone(),
-                kinds: needed,
-            }),
-        ));
-    }
+    // The fresh marker the next sync compares against. Built here, handed to `state`
+    // only on the success path below.
+    let earned = (!needed.is_empty()).then(|| api::RemoteCache {
+        etag: None,
+        last_updated: info.last_updated.clone(),
+        kinds: needed,
+        errors: Vec::new(),
+    });
 
     for (score, poster) in &info.poster {
         let selected = info.selected_poster.as_ref() == Some(poster.key());
@@ -769,7 +1018,12 @@ async fn tvdb_show_layer(
 
     tracing::info!(tvdb_id, "Episodes");
 
-    let episodes = remote.fetch_tvdb_episodes(tvdb_id).await?;
+    // TVDB serves the whole series' episodes in one paginated call, so a failure here
+    // costs every episode. Recovering keeps the show's graphics/strings and leaves the
+    // stored episodes alone (the persist won't prune against an incomplete draft).
+    let episodes = recover(state, "episodes", remote.fetch_tvdb_episodes(tvdb_id))
+        .await
+        .unwrap_or_default();
 
     tracing::info!(count = episodes.len(), "Got episodes from TVDB");
 
@@ -848,12 +1102,19 @@ async fn tvdb_show_layer(
                 continue;
             }
 
-            if let Err(error) =
-                collect_tvdb_strings(draft, tvdb_id, language, remote, shutdown).await
-            {
-                tracing::warn!("String collection failed: {error:#}");
-            }
+            let key = format!("translations/{language}");
+
+            recover(
+                state,
+                &key,
+                collect_tvdb_strings(draft, tvdb_id, language, remote, shutdown),
+            )
+            .await;
         }
+    }
+
+    if let Some(earned) = earned {
+        state.earn(earned);
     }
 
     Ok(LayerOutcome::Updated)
@@ -862,21 +1123,27 @@ async fn tvdb_show_layer(
 #[tracing::instrument(skip_all, fields(show_id))]
 async fn tvmaze_layer(
     draft: &mut ShowDraft,
+    state: &mut CacheState,
     show_id: api::ShowId,
     tvmaze_id: u32,
     remote: &RemoteClients,
 ) -> Result<()> {
-    let network = match remote.fetch_tvmaze_show_network(tvmaze_id).await {
-        Ok(network) => network,
-        Err(e) => {
-            tracing::warn!("TVmaze network lookup failed for show {show_id}: {e:#}");
-            Default::default()
-        }
-    };
+    tracing::info!(show_id = %show_id, tvmaze_id, "TVmaze");
+
+    let network = recover(
+        state,
+        "network",
+        remote.fetch_tvmaze_show_network(tvmaze_id),
+    )
+    .await
+    .unwrap_or_default();
 
     tracing::info!(tvmaze_id, "Episodes");
 
-    let episodes = remote.fetch_tvmaze_episodes(tvmaze_id).await?;
+    let episodes = recover(state, "episodes", remote.fetch_tvmaze_episodes(tvmaze_id))
+        .await
+        .unwrap_or_default();
+
     let count = episodes.len();
 
     for ep in episodes {
@@ -1300,11 +1567,24 @@ async fn persist_show_draft(
         synced_seasons.insert(*number);
     }
 
-    for (season, kept) in &season_episode_numbers {
-        db.prune_season_episodes(show_id, *season, kept).await?;
-    }
+    // Pruning treats absence from the draft as evidence of removal upstream. That only
+    // holds if every layer reported everything it has: when one recovered from a failed
+    // sub-request (a season whose episodes 5xx'd, say), those episodes are missing from
+    // the draft because we never fetched them, not because they are gone. Pruning then
+    // would delete real data over a transient blip, so a degraded run prunes nothing and
+    // waits for a clean one.
+    if draft.degraded_sources.is_empty() {
+        for (season, kept) in &season_episode_numbers {
+            db.prune_season_episodes(show_id, *season, kept).await?;
+        }
 
-    db.prune_seasons(show_id, &synced_seasons).await?;
+        db.prune_seasons(show_id, &synced_seasons).await?;
+    } else {
+        tracing::warn!(
+            sources = ?draft.degraded_sources,
+            "Skipping prune: a sync layer recovered from a failed sub-request, so the draft is incomplete"
+        );
+    }
 
     // Air-date releases, attributed per source; skip episodes we didn't persist.
     // Track what we wrote so stale releases can be pruned afterwards, scoped to the
@@ -1453,7 +1733,7 @@ struct EpisodeDraftModel {
     /// Validators captured by Updated layers, keyed by source, flushed to
     /// `episode_cache` only after a successful persist - so a stored validator
     /// always has its data behind it.
-    cache_writes: Vec<(RemoteSource, Option<String>)>,
+    cache_writes: Vec<(RemoteSource, CacheState)>,
     absolute_number: Option<u32>,
     aired: Option<api::Timestamp>,
     screenshot: Option<Image>,
@@ -1462,6 +1742,9 @@ struct EpisodeDraftModel {
     /// Sources whose air-date layer ran this sync; scopes release pruning
     /// exactly as [`ShowDraft::air_date_sources`] does.
     air_date_sources: HashSet<RemoteSource>,
+    /// Sources that recovered from a failed sub-request, mirroring
+    /// [`ShowDraft::degraded_sources`].
+    degraded_sources: HashSet<RemoteSource>,
 }
 
 impl EpisodeDraftModel {
@@ -1497,6 +1780,9 @@ pub(crate) async fn sync_episode(
 
     let config = db.load_config().await?;
     let cache = db.episode_cache(episode_id).await?;
+
+    // One clock for the whole sync, so every error recorded this run expires together.
+    let now = api::Timestamp::now();
 
     let season = episode.season;
     let number = episode.episode;
@@ -1541,13 +1827,15 @@ pub(crate) async fn sync_episode(
         let do_air_date = kinds.contains(SyncKind::Dates);
 
         let allow_skip = do_base || draft.base_unchanged;
-        let cache = cache.get(&source);
+
+        let mut state = CacheState::new(cache.get(&source), now);
 
         let result = match source {
             RemoteSource::Tmdb => match entry.remote.value().as_u32() {
                 Some(tmdb_id) => {
                     tmdb_episode_layer(
                         &mut draft,
+                        &mut state,
                         &config,
                         &show,
                         tmdb_id,
@@ -1556,7 +1844,6 @@ pub(crate) async fn sync_episode(
                         do_base,
                         do_air_date,
                         remote,
-                        cache,
                         allow_skip,
                     )
                     .await
@@ -1567,6 +1854,7 @@ pub(crate) async fn sync_episode(
                 Some(tvdb_id) => {
                     tvdb_episode_layer(
                         &mut draft,
+                        &mut state,
                         &config,
                         &show,
                         tvdb_id,
@@ -1575,7 +1863,6 @@ pub(crate) async fn sync_episode(
                         do_base,
                         do_air_date,
                         remote,
-                        cache,
                         allow_skip,
                         shutdown,
                     )
@@ -1584,8 +1871,9 @@ pub(crate) async fn sync_episode(
                 None => continue,
             },
             RemoteSource::Tvmaze if do_air_date => match entry.remote.value().as_u32() {
+                // TVmaze offers no conditional request, so it never earns a validator.
                 Some(tvmaze_id) => {
-                    tvmaze_episode_layer(&mut draft, tvmaze_id, season, number, remote)
+                    tvmaze_episode_layer(&mut draft, &mut state, tvmaze_id, season, number, remote)
                         .await
                         .map(|()| LayerOutcome::Updated)
                 }
@@ -1593,6 +1881,17 @@ pub(crate) async fn sync_episode(
             },
             _ => continue,
         };
+
+        // Recorded whether the layer succeeded or not: a validator only if it earned
+        // one, but its errors either way - so an episode a source simply doesn't carry
+        // stops costing a call on every sync.
+        let degraded = state.degraded();
+
+        if degraded {
+            draft.degraded_sources.insert(source);
+        }
+
+        draft.cache_writes.push((source, state));
 
         // A failing layer must not abort the sync: what other layers collected still
         // persists, and the kind stays unclaimed so a lower-priority layer can fill it.
@@ -1605,13 +1904,17 @@ pub(crate) async fn sync_episode(
         };
 
         match outcome {
+            // This source doesn't carry the episode. It claims nothing, so a
+            // lower-priority source still gets to provide it - and the miss is now
+            // cached, so we stop asking every sync.
+            LayerOutcome::Absent => continue,
             LayerOutcome::Unchanged => {
                 if do_base {
                     draft.base_unchanged = true;
                 }
             }
             LayerOutcome::Updated => {
-                if do_air_date {
+                if do_air_date && !degraded {
                     draft.air_date_sources.insert(source);
                 }
             }
@@ -1628,20 +1931,33 @@ pub(crate) async fn sync_episode(
 
     let eligible = api::eligible_sync_kinds(&show.remotes, &config);
 
-    if draft.provided.contains(SyncKind::Base) && !draft.base_unchanged {
+    let persisted = draft.provided.contains(SyncKind::Base) && !draft.base_unchanged;
+
+    if persisted {
         persist_episode_draft(show_id, episode_id, season, number, &draft, db).await?;
-    } else if !draft.base_unchanged && eligible.contains(SyncKind::Base) {
-        // A configured Base source failed this run. Unlike `sync_show` there is
-        // nothing to clear when Base is simply not eligible - the show sync owns
-        // creating and removing episodes, so a single-episode sync just persists
-        // whatever air dates it did collect.
+    } else if !draft.base_unchanged
+        && eligible.contains(SyncKind::Base)
+        && draft.degraded_sources.is_empty()
+    {
+        // No Base source produced anything, and none of them reported *why* - so this
+        // is a real fault (a misconfigured remote, an unreachable API) rather than the
+        // remotes simply not carrying this episode. That distinction matters: an
+        // episode a source doesn't have is an ordinary fact, recorded and cached, and
+        // must not fail the task.
         anyhow::bail!("Episode has no syncable Base remote available");
+    } else if !draft.degraded_sources.is_empty() {
+        tracing::info!(
+            sources = ?draft.degraded_sources,
+            "No Base source carries this episode; keeping stored data"
+        );
     }
 
     persist_episode_releases(show_id, episode_id, &draft, db).await?;
 
-    for (source, cache) in &draft.cache_writes {
-        db.set_episode_cache(episode_id, *source, cache.clone())
+    // Written even when nothing above persisted: these carry the recorded failures, and
+    // caching those is exactly what stops a missing episode being re-probed every sync.
+    for (source, state) in &draft.cache_writes {
+        db.set_episode_cache(episode_id, *source, cache_json(&state.finish(persisted)))
             .await?;
     }
 
@@ -1651,7 +1967,6 @@ pub(crate) async fn sync_episode(
     db.recompute_episode_aired_for_show(show_id, config.air_date_filters.clone())
         .await?;
 
-    let now = api::Timestamp::now();
     let include_specials = show.effective_include_specials(config.include_specials);
     pending
         .fill_for_show(show_id, include_specials, now)
@@ -1680,6 +1995,7 @@ fn episode_string_targets(show: &api::Show, config: &api::Config) -> BTreeSet<ap
 #[allow(clippy::too_many_arguments)]
 async fn tmdb_episode_layer(
     draft: &mut EpisodeDraftModel,
+    state: &mut CacheState,
     config: &api::Config,
     show: &api::Show,
     tmdb_id: u32,
@@ -1688,21 +2004,34 @@ async fn tmdb_episode_layer(
     do_base: bool,
     do_air_date: bool,
     remote: &RemoteClients,
-    cache: Option<&api::RemoteCache>,
     allow_skip: bool,
 ) -> Result<LayerOutcome> {
     let needed = needed_kinds(do_base, do_air_date);
 
     // Only replay the ETag when the cached validator already covers what we owe: a
     // 304 has no body, so an uncovered kind must force a full response.
-    let etag = cache
-        .filter(|&c| usable_cache(c, needed, allow_skip))
-        .and_then(|c| c.etag.as_deref());
+    let etag = state
+        .prior
+        .as_ref()
+        .filter(|c| usable_cache(c, needed, allow_skip, state.now))
+        .and_then(|c| c.etag.clone());
 
-    let (fresh_etag, info) = match remote
-        .fetch_tmdb_episode(tmdb_id, season, number, etag)
-        .await?
-    {
+    // The episode itself: a source that simply doesn't carry it answers `404`. That is
+    // an ordinary fact about the remote, not a sync failure - record it (so it isn't
+    // re-probed every run) and let a lower-priority source provide the episode instead.
+    let key = episode_key(season, number);
+
+    let Some(conditional) = recover(
+        state,
+        &key,
+        remote.fetch_tmdb_episode(tmdb_id, season, number, etag.as_deref()),
+    )
+    .await
+    else {
+        return Ok(LayerOutcome::Absent);
+    };
+
+    let (fresh_etag, info) = match conditional {
         tmdb::Conditional::NotModified => {
             tracing::info!(tmdb_id, "Episode unchanged (ETag 304)");
             return Ok(LayerOutcome::Unchanged);
@@ -1716,9 +2045,13 @@ async fn tmdb_episode_layer(
 
         let targets = episode_string_targets(show, config);
 
-        let translations = remote
-            .fetch_tmdb_episode_translations(tmdb_id, season, number)
-            .await?;
+        let translations = recover(
+            state,
+            &episode_translations_key(season, number),
+            remote.fetch_tmdb_episode_translations(tmdb_id, season, number),
+        )
+        .await
+        .unwrap_or_default();
 
         for translation in translations {
             if locale_matches_targets(translation.locale, &targets).is_none() {
@@ -1750,18 +2083,14 @@ async fn tmdb_episode_layer(
         });
     }
 
-    // Only now that every fetch this layer owed has succeeded: recording the
-    // validator earlier would let a translation failure (which aborts the layer)
-    // still leave an ETag behind, and a later 304 would then report this source
-    // unchanged even though its data was never persisted.
-    draft.cache_writes.push((
-        RemoteSource::Tmdb,
-        cache_json(&api::RemoteCache {
-            etag: fresh_etag,
-            last_updated: None,
-            kinds: needed,
-        }),
-    ));
+    if let Some(earned) = (!needed.is_empty()).then_some(api::RemoteCache {
+        etag: fresh_etag,
+        last_updated: None,
+        kinds: needed,
+        errors: Vec::new(),
+    }) {
+        state.earn(earned);
+    }
 
     Ok(LayerOutcome::Updated)
 }
@@ -1770,6 +2099,7 @@ async fn tmdb_episode_layer(
 #[allow(clippy::too_many_arguments)]
 async fn tvdb_episode_layer(
     draft: &mut EpisodeDraftModel,
+    state: &mut CacheState,
     config: &api::Config,
     show: &api::Show,
     tvdb_id: u32,
@@ -1778,22 +2108,36 @@ async fn tvdb_episode_layer(
     do_base: bool,
     do_air_date: bool,
     remote: &RemoteClients,
-    cache: Option<&api::RemoteCache>,
     allow_skip: bool,
     shutdown: &Shutdown,
 ) -> Result<LayerOutcome> {
     let needed = needed_kinds(do_base, do_air_date);
 
-    let Some(info) = remote.fetch_tvdb_episode(tvdb_id, season, number).await? else {
+    let key = episode_key(season, number);
+
+    let Some(found) = recover(
+        state,
+        &key,
+        remote.fetch_tvdb_episode(tvdb_id, season, number),
+    )
+    .await
+    else {
+        return Ok(LayerOutcome::Absent);
+    };
+
+    // TVDB reports an episode it doesn't carry as an empty result rather than a `404`.
+    // Same fact, so record it the same way: the miss is cached and not re-probed.
+    let Some(info) = found else {
         let code = api::Code::new(season, number);
-        anyhow::bail!("TVDB has no {code} for series {tvdb_id}");
+        state.record_missing(&key, format!("TVDB has no {code} for series {tvdb_id}"));
+        return Ok(LayerOutcome::Absent);
     };
 
     // TVDB has no ETag; the record-level `lastUpdated` marker detects an unchanged
     // episode. Unlike TMDB's 304 the response body is already paid for, but an equal
     // marker still saves the per-language translation fetches.
-    if let Some(cache) = cache
-        && usable_cache(cache, needed, allow_skip)
+    if let Some(cache) = state.prior.as_ref()
+        && usable_cache(cache, needed, allow_skip, state.now)
         && let Some(cached) = cache.last_updated.as_deref()
         && let Some(current) = info.last_updated.as_deref()
         && cached == current
@@ -1833,10 +2177,18 @@ async fn tvdb_episode_layer(
                 continue;
             }
 
-            if let Some(translation) = remote
-                .fetch_tvdb_episode_translation(info.id, language, &available)
-                .await?
-            {
+            let translation = recover(
+                state,
+                &format!(
+                    "episode/{}/translations/{language}",
+                    api::Code::new(season, number)
+                ),
+                remote.fetch_tvdb_episode_translation(info.id, language, &available),
+            )
+            .await
+            .flatten();
+
+            if let Some(translation) = translation {
                 push_string(
                     &mut draft.strings,
                     language,
@@ -1863,16 +2215,14 @@ async fn tvdb_episode_layer(
         });
     }
 
-    // Recorded only after every translation fetch succeeded - see the note in
-    // `tmdb_episode_layer`.
-    draft.cache_writes.push((
-        RemoteSource::Tvdb,
-        cache_json(&api::RemoteCache {
-            etag: None,
-            last_updated: info.last_updated.clone(),
-            kinds: needed,
-        }),
-    ));
+    if let Some(earned) = (!needed.is_empty()).then(|| api::RemoteCache {
+        etag: None,
+        last_updated: info.last_updated.clone(),
+        kinds: needed,
+        errors: Vec::new(),
+    }) {
+        state.earn(earned);
+    }
 
     Ok(LayerOutcome::Updated)
 }
@@ -1881,25 +2231,37 @@ async fn tvdb_episode_layer(
 #[tracing::instrument(skip_all, fields(tvmaze_id, ?season, number))]
 async fn tvmaze_episode_layer(
     draft: &mut EpisodeDraftModel,
+    state: &mut CacheState,
     tvmaze_id: u32,
     season: SeasonNumber,
     number: u32,
     remote: &RemoteClients,
 ) -> Result<()> {
-    let Some(info) = remote
-        .fetch_tvmaze_episode(tvmaze_id, season, number)
-        .await?
+    let key = episode_key(season, number);
+
+    let Some(found) = recover(
+        state,
+        &key,
+        remote.fetch_tvmaze_episode(tvmaze_id, season, number),
+    )
+    .await
     else {
         return Ok(());
     };
 
-    let network = match remote.fetch_tvmaze_show_network(tvmaze_id).await {
-        Ok(network) => network,
-        Err(e) => {
-            tracing::warn!("TVmaze network lookup failed for show {tvmaze_id}: {e:#}");
-            Default::default()
-        }
+    let Some(info) = found else {
+        let code = api::Code::new(season, number);
+        state.record_missing(&key, format!("TVmaze has no {code} for show {tvmaze_id}"));
+        return Ok(());
     };
+
+    let network = recover(
+        state,
+        "network",
+        remote.fetch_tvmaze_show_network(tvmaze_id),
+    )
+    .await
+    .unwrap_or_default();
 
     draft.releases.push(api::EpisodeRelease {
         source: RemoteSource::Tvmaze,
@@ -1993,7 +2355,7 @@ struct MovieDraft {
     base_unchanged: bool,
     /// Validators captured by Updated layers, flushed only after a successful
     /// persist (see [`flush_movie_cache_writes`]).
-    cache_writes: Vec<(api::RemoteId, Option<String>)>,
+    cache_writes: Vec<(api::RemoteId, CacheState)>,
     original_language: api::Locale,
     original_title: Option<String>,
     original_overview: Option<String>,
@@ -2004,6 +2366,9 @@ struct MovieDraft {
     /// Sources whose release layer ran successfully this sync; scopes release
     /// pruning (mirrors [`ShowDraft::air_date_sources`]).
     release_sources: HashSet<RemoteSource>,
+    /// Sources that recovered from a failed sub-request, mirroring
+    /// [`ShowDraft::degraded_sources`].
+    degraded_sources: HashSet<RemoteSource>,
     strings: StringRows,
 }
 
@@ -2043,6 +2408,9 @@ pub(crate) async fn sync_movie(
 
     tracing::info!(movie_id = %movie_id, title = movie.strings.title(), "Syncing movie");
 
+    // One clock for the whole sync, so every error recorded this run expires together.
+    let now = api::Timestamp::now();
+
     // Visit enabled remotes in priority order, one layer per source - mirroring
     // `sync_show`. For movies the AirDate kind carries release dates.
     let mut entries = movie
@@ -2078,14 +2446,15 @@ pub(crate) async fn sync_movie(
         let do_release = kinds.contains(SyncKind::Dates);
 
         let allow_skip = do_base || draft.base_unchanged;
-        let cache = entry.cache.as_ref();
+
+        let mut state = CacheState::new(entry.cache.as_ref(), now);
 
         let result = match source {
             RemoteSource::Tmdb => match entry.remote.value().as_u32() {
                 Some(tmdb_id) => {
                     tmdb_movie_layer(
-                        &mut draft, &config, &movie, tmdb_id, do_base, do_release, remote,
-                        shutdown, cache, allow_skip, entry.id,
+                        &mut draft, &mut state, &config, &movie, tmdb_id, do_base, do_release,
+                        remote, shutdown, allow_skip,
                     )
                     .await
                 }
@@ -2099,6 +2468,14 @@ pub(crate) async fn sync_movie(
             _ => continue,
         };
 
+        let degraded = state.degraded();
+
+        if degraded {
+            draft.degraded_sources.insert(source);
+        }
+
+        draft.cache_writes.push((entry.id, state));
+
         let outcome = match result {
             Ok(outcome) => outcome,
             Err(e) => {
@@ -2108,13 +2485,16 @@ pub(crate) async fn sync_movie(
         };
 
         match outcome {
+            // Contributed nothing, so claims nothing - a lower-priority source may
+            // still provide the kinds this one owed.
+            LayerOutcome::Absent => continue,
             LayerOutcome::Unchanged => {
                 if kinds.contains(SyncKind::Base) {
                     draft.base_unchanged = true;
                 }
             }
             LayerOutcome::Updated => {
-                if do_release {
+                if do_release && !degraded {
                     draft.release_sources.insert(source);
                 }
             }
@@ -2133,15 +2513,28 @@ pub(crate) async fn sync_movie(
 
     if draft.provided.contains(SyncKind::Base) && !draft.base_unchanged {
         persist_movie_draft(movie_id, &draft, db).await?;
-        flush_movie_cache_writes(&draft.cache_writes, db).await?;
+        flush_movie_cache_writes(&draft.cache_writes, db, true).await?;
     } else if draft.base_unchanged {
         // Base source unchanged (cache hit): keep stored metadata/strings/images,
         // persist only other sources' fresh releases.
         persist_movie_releases_only(movie_id, &draft, db).await?;
-        flush_movie_cache_writes(&draft.cache_writes, db).await?;
+        flush_movie_cache_writes(&draft.cache_writes, db, true).await?;
     } else if eligible.contains(SyncKind::Base) {
-        anyhow::bail!("Movie has no syncable Base remote available");
+        flush_movie_cache_writes(&draft.cache_writes, db, false).await?;
+
+        // As in `sync_show`: a remote that explained itself (a `404`, an unreachable
+        // endpoint) has had that recorded and cached, and must not fail the task.
+        if draft.degraded_sources.is_empty() {
+            anyhow::bail!("Movie has no syncable Base remote available");
+        }
+
+        tracing::warn!(
+            sources = ?draft.degraded_sources,
+            "No Base source produced data; keeping the stored movie"
+        );
     } else {
+        flush_movie_cache_writes(&draft.cache_writes, db, false).await?;
+
         // No enabled remote contributes Base: the movie's derived metadata is
         // orphaned, so clear it (mirrors the show clear branch).
         db.replace_movie_strings(movie_id, Vec::new()).await?;
@@ -2172,13 +2565,15 @@ pub(crate) async fn sync_movie(
     Ok(())
 }
 
-/// Flush the cache validators collected by Updated movie layers, after persist.
+/// Flush what the movie layers learned. See [`flush_show_cache_writes`].
 async fn flush_movie_cache_writes(
-    writes: &[(api::RemoteId, Option<String>)],
+    writes: &[(api::RemoteId, CacheState)],
     db: &Database,
+    persisted: bool,
 ) -> Result<()> {
-    for (remote_id, cache) in writes {
-        db.set_movie_remote_cache(*remote_id, cache.clone()).await?;
+    for (remote_id, state) in writes {
+        db.set_movie_remote_cache(*remote_id, cache_json(&state.finish(persisted)))
+            .await?;
     }
 
     Ok(())
@@ -2191,6 +2586,7 @@ async fn flush_movie_cache_writes(
 #[allow(clippy::too_many_arguments)]
 async fn tmdb_movie_layer(
     draft: &mut MovieDraft,
+    state: &mut CacheState,
     config: &api::Config,
     movie: &api::Movie,
     tmdb_id: u32,
@@ -2198,37 +2594,45 @@ async fn tmdb_movie_layer(
     do_release: bool,
     remote: &RemoteClients,
     shutdown: &Shutdown,
-    cache: Option<&api::RemoteCache>,
     allow_skip: bool,
-    remote_id: api::RemoteId,
 ) -> Result<LayerOutcome> {
     tracing::info!(tmdb_id, do_base, do_release, "Movie");
 
     let needed = needed_kinds(do_base, do_release);
 
-    let etag = cache
-        .filter(|&c| usable_cache(c, needed, allow_skip))
-        .and_then(|c| c.etag.as_deref());
+    let etag = state
+        .prior
+        .as_ref()
+        .filter(|c| usable_cache(c, needed, allow_skip, state.now))
+        .and_then(|c| c.etag.clone());
 
-    let info = match remote.fetch_tmdb_movie(tmdb_id, etag).await? {
+    // A movie the remote no longer carries answers `404`; record it rather than
+    // retrying on every sync.
+    let Some(conditional) = recover(
+        state,
+        "movie",
+        remote.fetch_tmdb_movie(tmdb_id, etag.as_deref()),
+    )
+    .await
+    else {
+        return Ok(LayerOutcome::Absent);
+    };
+
+    let (fresh_etag, info) = match conditional {
         tmdb::Conditional::NotModified => {
             tracing::info!(tmdb_id, "Movie unchanged (ETag 304)");
             return Ok(LayerOutcome::Unchanged);
         }
-        tmdb::Conditional::Modified { etag, value } => {
-            if !needed.is_empty() {
-                draft.cache_writes.push((
-                    remote_id,
-                    cache_json(&api::RemoteCache {
-                        etag,
-                        last_updated: None,
-                        kinds: needed,
-                    }),
-                ));
-            }
-            value
-        }
+        tmdb::Conditional::Modified { etag, value } => (etag, value),
     };
+
+    // Built here, handed to `state` only on the success path below.
+    let earned = (!needed.is_empty()).then_some(api::RemoteCache {
+        etag: fresh_etag,
+        last_updated: None,
+        kinds: needed,
+        errors: Vec::new(),
+    });
 
     // Graphics accumulate from every source.
     for (score, poster) in &info.posters {
@@ -2253,28 +2657,35 @@ async fn tmdb_movie_layer(
             .clone()
             .or(draft.original_overview.take());
 
-        match collect_tmdb_movie_strings(tmdb_id, &info, movie, config, remote, shutdown).await {
-            Ok(rows) => draft.strings = rows,
-            Err(error) => tracing::warn!("String collection failed: {error:#}"),
+        if let Some(rows) = recover(
+            state,
+            translations_key(),
+            collect_tmdb_movie_strings(tmdb_id, &info, movie, config, remote, shutdown),
+        )
+        .await
+        {
+            draft.strings = rows;
         }
     }
 
-    if do_release {
-        match remote.fetch_tmdb_movie_releases(tmdb_id).await {
-            Ok(releases) => {
-                tracing::info!(count = releases.len(), "Fetched TMDB movie releases");
+    if do_release
+        && let Some(releases) =
+            recover(state, "releases", remote.fetch_tmdb_movie_releases(tmdb_id)).await
+    {
+        tracing::info!(count = releases.len(), "Fetched TMDB movie releases");
 
-                for r in releases {
-                    draft.releases.push(MovieDraftRelease {
-                        source: RemoteSource::Tmdb,
-                        country: r.country,
-                        release_type: r.release_type,
-                        timestamp: r.release_date,
-                    });
-                }
-            }
-            Err(e) => tracing::warn!("Movie release dates skipped: {e:#}"),
+        for r in releases {
+            draft.releases.push(MovieDraftRelease {
+                source: RemoteSource::Tmdb,
+                country: r.country,
+                release_type: r.release_type,
+                timestamp: r.release_date,
+            });
         }
+    }
+
+    if let Some(earned) = earned {
+        state.earn(earned);
     }
 
     Ok(LayerOutcome::Updated)

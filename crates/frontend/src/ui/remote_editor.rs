@@ -485,6 +485,25 @@ impl Component for RemoteEditor {
                                                     {for cache.kinds.iter().map(|k| html!(<span class="input-text has-text">{k.as_label()}</span>))}
                                                 }
                                             </div>
+
+                                            // Sub-requests that failed on the last sync. They are
+                                            // suppressed (not retried) until "Retries", so a source
+                                            // that simply doesn't carry an entity stops costing a
+                                            // call every sync - at the price of a silently partial
+                                            // entity, which is why they are surfaced here.
+                                            if !cache.errors.is_empty() {
+                                                <h4>{"Errors"}</h4>
+
+                                                { for cache.errors.iter().map(|e| html! {
+                                                    <div class="input-group">
+                                                        <span class="input-label has-text">{e.kind.as_label()}</span>
+                                                        <span class="input-text has-text">{&e.key}</span>
+                                                        <span class="input-text has-text fill">{&e.message}</span>
+                                                        <span class="input-label has-text">{"Retries"}</span>
+                                                        <span class="input-text has-text">{e.expires_at().to_string()}</span>
+                                                    </div>
+                                                }) }
+                                            }
                                         </div>
                                     }
                                 </div>
