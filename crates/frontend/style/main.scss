@@ -541,20 +541,36 @@ h6 {
     border: 1px solid $border-subtle-transparent;
     border-radius: $radius;
     min-width: 0;
+    position: relative;
+    overflow: hidden;
+
     // Replays whenever the element mounts, i.e. when a row swaps to its next
     // episode after being marked watched (the element is keyed on its content).
-    animation: pending-swap-in 0.35s ease-out;
+    &::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background-image: linear-gradient(
+            100deg,
+            transparent 30%,
+            rgba(255, 255, 255, 0.10) 50%,
+            transparent 70%
+        );
+        background-size: 200% 100%;
+        background-repeat: no-repeat;
+        background-position: -200% 0;
+        animation: pending-swap-in 0.6s ease-out;
+    }
 }
 
 @keyframes pending-swap-in {
     from {
-        opacity: 0;
-        transform: translateY(-0.5rem) scale(0.98);
+        background-position: 200% 0;
     }
 
     to {
-        opacity: 1;
-        transform: none;
+        background-position: -200% 0;
     }
 }
 
