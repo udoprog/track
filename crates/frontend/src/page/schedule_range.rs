@@ -7,7 +7,7 @@ use yew::prelude::*;
 use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{Route, Router, ShowDetailQuery};
+use crate::router::{MediaSelection, Route, Router, ShowDetailQuery};
 use crate::ui::{Button, Image, Skeleton};
 
 #[derive(Properties, PartialEq)]
@@ -17,6 +17,8 @@ pub(crate) struct Props {
     pub(crate) day_offset: i32,
     /// Navigate to a new day offset (the parent persists it in the URL).
     pub(crate) on_set_range: Callback<i32>,
+    /// Which media kinds are shown (owned by the parent's URL query).
+    pub(crate) selection: MediaSelection,
 }
 
 /// A compact upcoming-days strip: a configurable number of consecutive days
@@ -141,7 +143,7 @@ impl Component for ScheduleRange {
         let poster = self
             .hovered_poster
             .clone()
-            .or_else(|| self.default_poster());
+            .or_else(|| self.default_poster(ctx.props().selection));
 
         let schedule_lookup: HashMap<api::Date, &api::ScheduledDay> =
             self.schedule.iter().map(|d| (d.date, d)).collect();
@@ -312,13 +314,21 @@ impl ScheduleRange {
     }
 
     /// Poster shown in the rail when nothing is hovered: the first show of the
-    /// soonest loaded day (falling back to the first movie).
-    fn default_poster(&self) -> Option<api::Image> {
+    /// soonest loaded day (falling back to the first movie), restricted to the
+    /// kinds the filter shows.
+    fn default_poster(&self, selection: MediaSelection) -> Option<api::Image> {
         self.schedule.iter().find_map(|d| {
-            d.shows
-                .iter()
-                .find_map(|s| s.poster.clone())
-                .or_else(|| d.movies.iter().find_map(|m| m.poster.clone()))
+            let show = selection
+                .contains(api::MediaKind::Shows)
+                .then(|| d.shows.iter().find_map(|s| s.poster.clone()))
+                .flatten();
+
+            show.or_else(|| {
+                selection
+                    .contains(api::MediaKind::Movies)
+                    .then(|| d.movies.iter().find_map(|m| m.poster.clone()))
+                    .flatten()
+            })
         })
     }
 
@@ -334,7 +344,10 @@ impl ScheduleRange {
         let is_yesterday = day == today.checked_sub_days(1).unwrap_or(day);
         let is_today = day == today;
         let is_tomorrow = day == today.checked_add_days(1).unwrap_or(day);
-        let items = lookup.get(&day).map(|d| d.items()).unwrap_or_default();
+        let selection = ctx.props().selection;
+
+        let mut items = lookup.get(&day).map(|d| d.items()).unwrap_or_default();
+        items.retain(|i| selection.contains(i.kind()));
 
         let label = if is_yesterday {
             "Yesterday"

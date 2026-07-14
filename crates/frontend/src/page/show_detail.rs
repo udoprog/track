@@ -10,10 +10,10 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaQuery, Route, Router, ShowDetailQuery};
 use crate::ui::{
-    Button, ConfirmDanger, ContextMenu, DetailSkeleton, EpisodePicker, GraphicsSourceFilter, Image,
-    ImageGallery, ImageItem, MarkTimeMenu, MediaSettingsModal, Modal, OutlineControl, OutlineEntry,
-    OutlineHandle, ReleaseModal, ReleaseTarget, RemoteEditor, RemoteSourceKind, SettingsTarget,
-    TimePreset, Tracked, TranslationsModal, Variant,
+    Button, ConfirmDanger, ContextMenu, DetailSkeleton, EpisodeCacheModal, EpisodePicker,
+    GraphicsSourceFilter, Image, ImageGallery, ImageItem, MarkTimeMenu, MediaSettingsModal, Modal,
+    OutlineControl, OutlineEntry, OutlineHandle, ReleaseModal, ReleaseTarget, RemoteEditor,
+    RemoteSourceKind, SettingsTarget, TimePreset, Tracked, TranslationsModal, Variant,
 };
 
 const ORPHAN_HINT: &str = r#"
@@ -82,6 +82,9 @@ pub(crate) struct ShowDetail {
     /// The episode whose air-date releases modal is open. The modal ([`ReleaseModal`])
     /// fetches and renders the releases itself.
     episode_releases_modal: Option<api::EpisodeId>,
+    /// The episode whose cache modal is open. The modal ([`EpisodeCacheModal`]) fetches
+    /// and clears the entries itself.
+    episode_cache_modal: Option<api::EpisodeId>,
     global_sync_kinds: Vec<api::SourceSyncKinds>,
     background: Background,
     router: Router,
@@ -193,6 +196,8 @@ pub(crate) enum Msg {
     CloseEpisodeTranslations,
     OpenEpisodeReleases(api::EpisodeId),
     CloseEpisodeReleases,
+    OpenEpisodeCache(api::EpisodeId),
+    CloseEpisodeCache,
     OpenRemoteEditor,
     CloseRemoteEditor,
     AddRemote(Option<String>, api::Remote),
@@ -288,6 +293,7 @@ impl Component for ShowDetail {
             season_translations_modal: false,
             episode_translations: None,
             episode_releases_modal: None,
+            episode_cache_modal: None,
             global_sync_kinds: Vec::new(),
             background,
             router,
@@ -1460,6 +1466,14 @@ impl ShowDetail {
                 self.episode_releases_modal = None;
                 Ok(true)
             }
+            Msg::OpenEpisodeCache(episode_id) => {
+                self.episode_cache_modal = Some(episode_id);
+                Ok(true)
+            }
+            Msg::CloseEpisodeCache => {
+                self.episode_cache_modal = None;
+                Ok(true)
+            }
             Msg::OpenRemoteEditor => {
                 self.remote_editor = true;
                 self.settings_modal = false;
@@ -2130,6 +2144,8 @@ impl ShowDetail {
 
                             <Button icon="calendar" title="Air dates" text="Air dates" onclick={link.callback(move |_| Msg::OpenEpisodeReleases(episode_id))} />
 
+                            <Button icon="circle-stack" title="Cache" text="Cache" onclick={link.callback(move |_| Msg::OpenEpisodeCache(episode_id))} />
+
                             if let Some(on_toggle) = on_toggle_history {
                                 <Button icon="clock" title="Watch history" text="Watch history" onclick={on_toggle} />
                             }
@@ -2255,6 +2271,14 @@ impl ShowDetail {
                         target={ReleaseTarget::Episode(episode_id)}
                         title={format!("Air dates for {}", episode.code())}
                         on_close={link.callback(|_| Msg::CloseEpisodeReleases)}
+                    />
+                }
+
+                if self.episode_cache_modal == Some(episode_id) {
+                    <EpisodeCacheModal
+                        episode_id={episode_id}
+                        title={format!("Cache for {}", episode.code())}
+                        on_close={link.callback(|_| Msg::CloseEpisodeCache)}
                     />
                 }
             </div>

@@ -9,7 +9,7 @@ use yew::prelude::*;
 use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{Route, Router, ShowDetailQuery};
+use crate::router::{MediaSelection, Route, Router, ShowDetailQuery};
 use crate::ui::{Button, DOT, Skeleton};
 
 #[derive(Properties, PartialEq)]
@@ -28,6 +28,8 @@ pub(crate) struct Props {
     /// Reset the visible window back to the current week (parent clears the
     /// offset and week-start reveal in the URL).
     pub(crate) on_reset: Callback<()>,
+    /// Which media kinds are shown (owned by the parent's URL query).
+    pub(crate) selection: MediaSelection,
 }
 
 pub(crate) struct Calendar {
@@ -130,6 +132,7 @@ impl Component for Calendar {
         let week_count = self.config.schedule_weeks.max(1);
         let week_offset = ctx.props().week_offset;
         let week_start = ctx.props().week_start;
+        let selection = ctx.props().selection;
         let window_start = window_start(today, week_offset);
         let weeks = build_weeks(window_start, week_count);
 
@@ -213,7 +216,8 @@ impl Component for Calendar {
                                     let is_today = day == today;
                                     let is_tomorrow = day == today.checked_add_days(1).unwrap_or(day);
                                     let is_past  = day < today;
-                                    let items = schedule_lookup.get(&day).map(|d| d.items()).unwrap_or_default();
+                                    let mut items = schedule_lookup.get(&day).map(|d| d.items()).unwrap_or_default();
+                                    items.retain(|i| selection.contains(i.kind()));
 
                                     html! {
                                         <div key={index} class={classes!(

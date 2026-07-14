@@ -177,6 +177,10 @@ button,
 
 .input-number {
     @include input-base($editable: true);
+
+    @include g.on-desktop {
+        width: 96px;
+    }
 }
 
 .input-checkbox {

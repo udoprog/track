@@ -46,6 +46,8 @@ pub(super) struct DashboardQuery {
     pub(super) range: i32,
     /// Which tabbed view is shown.
     pub(super) view: DashboardView,
+    /// Which media kinds the tabs show.
+    pub(super) selection: MediaSelection,
 }
 
 impl DashboardQuery {
@@ -72,6 +74,15 @@ impl DashboardQuery {
             s.append_pair("view", self.view.as_str());
         }
 
+        // Exclusionary: default is both shown, so only serialize deselected kinds.
+        if !self.selection.shows {
+            s.append_pair("hide", "shows");
+        }
+
+        if !self.selection.movies {
+            s.append_pair("hide", "movies");
+        }
+
         s.finish()
     }
 
@@ -95,6 +106,11 @@ impl DashboardQuery {
                 "view" => {
                     this.view = DashboardView::from_param(&value).unwrap_or_default();
                 }
+                "hide" => match value.as_ref() {
+                    "shows" => this.selection.shows = false,
+                    "movies" => this.selection.movies = false,
+                    _ => {}
+                },
                 _ => continue,
             }
         }

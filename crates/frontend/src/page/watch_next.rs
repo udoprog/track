@@ -8,7 +8,7 @@ use api::{TimeInfo, Timed};
 use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{Route, Router, ShowDetailQuery};
+use crate::router::{MediaSelection, Route, Router, ShowDetailQuery};
 use crate::ui::{
     Button, ConfirmDanger, ContextMenu, DurationInput, Image, MarkTimeMenu, PaginationButtons,
     Skeleton, TimePreset, Variant,
@@ -72,6 +72,8 @@ pub(crate) struct Props {
     /// Correct the page in the URL without leaving a back-button target (used
     /// when the list shrinks below the current page).
     pub(crate) on_clamp_page: Callback<usize>,
+    /// Which media kinds are shown (owned by the parent's URL query).
+    pub(crate) selection: MediaSelection,
 }
 
 impl Component for WatchNext {
@@ -135,8 +137,8 @@ impl Component for WatchNext {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let page_size = self.page_size();
-        let total = self.pending.len();
-        let total_pages = total.div_ceil(page_size).max(1);
+        let pending = self.filtered(ctx);
+        let total_pages = pending.len().div_ceil(page_size).max(1);
         let page = ctx.props().page.min(total_pages - 1);
         let link = ctx.link();
 
@@ -162,11 +164,11 @@ impl Component for WatchNext {
                     <div class="pending-grid" style={format!("--pending-columns: {}", page_size)}>
                         { for (0..page_size).map(|_| Self::view_pending_skeleton()) }
                     </div>
-                } else if self.pending.is_empty() {
+                } else if pending.is_empty() {
                     <p class="text-muted">{"Nothing pending."}</p>
                 } else {
                     <div class="pending-grid" style={format!("--pending-columns: {}", page_size)}>
-                        { for self.pending.iter().skip(page * page_size).take(page_size).map(|p| self.view_pending_item(ctx, p)) }
+                        { for pending.iter().skip(page * page_size).take(page_size).map(|p| self.view_pending_item(ctx, p)) }
                     </div>
                 }
 
@@ -431,6 +433,17 @@ impl WatchNext {
         }
     }
 
+    /// The pending items the media filter shows, which is what pages are counted
+    /// over.
+    fn filtered(&self, ctx: &Context<Self>) -> Vec<&PendingState> {
+        let selection = ctx.props().selection;
+
+        self.pending
+            .iter()
+            .filter(|p| selection.contains(p.pending.info.media_kind()))
+            .collect()
+    }
+
     fn clamp_page(&self, ctx: &Context<Self>) {
         // Don't correct the page until the pending list has actually loaded,
         // otherwise an early config response would clamp against an empty list
@@ -439,7 +452,7 @@ impl WatchNext {
             return;
         }
 
-        let total_pages = self.pending.len().div_ceil(self.page_size()).max(1);
+        let total_pages = self.filtered(ctx).len().div_ceil(self.page_size()).max(1);
         let page = ctx.props().page.min(total_pages - 1);
 
         if page != ctx.props().page {

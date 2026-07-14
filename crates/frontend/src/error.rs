@@ -79,6 +79,10 @@ pub(crate) enum Message {
     LoadingReleases,
     #[display("Loading translations")]
     LoadingTranslations,
+    #[display("Loading episode cache")]
+    LoadingEpisodeCache,
+    #[display("Clearing episode cache")]
+    PurgingEpisodeCache,
     #[display("Loading season images")]
     LoadingSeasonImages,
     #[display("Marking watched")]

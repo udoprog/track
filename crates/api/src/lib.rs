@@ -1798,6 +1798,14 @@ impl PendingInfo {
             PendingInfo::Movie { movie, .. } => PendingKind::Movie { movie: *movie },
         }
     }
+
+    /// Which media kind this entry is, for media-kind filtering.
+    pub fn media_kind(&self) -> MediaKind {
+        match self {
+            PendingInfo::Episode { .. } => MediaKind::Shows,
+            PendingInfo::Movie { .. } => MediaKind::Movies,
+        }
+    }
 }
 
 /// Denormalized pending item for dashboard/queue rendering.
@@ -1916,6 +1924,14 @@ pub enum ScheduleItem<'a> {
 }
 
 impl ScheduleItem<'_> {
+    /// Which media kind this item is, for media-kind filtering.
+    pub fn kind(&self) -> MediaKind {
+        match self {
+            ScheduleItem::Show(..) => MediaKind::Shows,
+            ScheduleItem::Movie(..) => MediaKind::Movies,
+        }
+    }
+
     /// Sort key: a show sorts by its earliest episode's air time, a movie by
     /// its release time. Show entries always have episodes; an empty one sorts
     /// last so it never masks a real time.
@@ -2270,6 +2286,35 @@ pub struct GetEpisodeReleasesResponse {
     pub show_id: ShowId,
     /// The show's air-date override, or `None` when the global default is in use.
     pub filters: Option<FilterRules>,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct GetEpisodeCacheRequest {
+    pub episode_id: EpisodeId,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct GetEpisodeCacheResponse {
+    pub entries: Vec<EpisodeCacheEntry>,
+}
+
+/// One source's conditional-request state for an episode, as stored in the
+/// `episode_cache` table. Unlike shows and movies, an episode is not addressed by a
+/// remote id, so the entry is keyed by source alone.
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct EpisodeCacheEntry {
+    pub source: RemoteSource,
+    pub cache: RemoteCache,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct PurgeEpisodeCacheRequest {
+    pub episode_id: EpisodeId,
+    pub source: RemoteSource,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -3049,6 +3094,18 @@ api::define! {
     impl Endpoint for GetEpisodeReleases {
         impl Request for GetEpisodeReleasesRequest;
         type Response<'de> = GetEpisodeReleasesResponse;
+    }
+
+    pub type GetEpisodeCache;
+    impl Endpoint for GetEpisodeCache {
+        impl Request for GetEpisodeCacheRequest;
+        type Response<'de> = GetEpisodeCacheResponse;
+    }
+
+    pub type PurgeEpisodeCache;
+    impl Endpoint for PurgeEpisodeCache {
+        impl Request for PurgeEpisodeCacheRequest;
+        type Response<'de> = Empty;
     }
 
     pub type GetMovieReleases;

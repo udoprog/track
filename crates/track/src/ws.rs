@@ -323,6 +323,32 @@ impl WsHandler {
                     filters,
                 });
             }
+            api::Request::GetEpisodeCache => {
+                let req = incoming
+                    .read::<api::GetEpisodeCacheRequest>()
+                    .context("Expected a request payload")?;
+
+                let cache = self.db.episode_cache(req.episode_id).await?;
+
+                let mut entries = cache
+                    .into_iter()
+                    .map(|(source, cache)| api::EpisodeCacheEntry { source, cache })
+                    .collect::<Vec<_>>();
+
+                entries.sort_by_key(|e| e.source.as_id());
+                outgoing.write(api::GetEpisodeCacheResponse { entries });
+            }
+            api::Request::PurgeEpisodeCache => {
+                let req = incoming
+                    .read::<api::PurgeEpisodeCacheRequest>()
+                    .context("Expected a request payload")?;
+
+                self.db
+                    .set_episode_cache(req.episode_id, req.source, None)
+                    .await?;
+
+                outgoing.write(api::Empty);
+            }
             api::Request::GetMovieReleases => {
                 let req = incoming
                     .read::<api::GetMovieReleasesRequest>()
