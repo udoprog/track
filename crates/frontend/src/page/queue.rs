@@ -450,8 +450,9 @@ impl Queue {
                     ..ShowDetailQuery::default()
                 },
             )),
-            // No person page yet, so the row shows the name without a link.
-            api::TaskKind::SyncPerson { .. } => None,
+            api::TaskKind::SyncPerson { person_id, .. } => {
+                Some(Route::PersonDetail(*person_id))
+            }
             api::TaskKind::RefreshTopLanguages => None,
         };
 
@@ -460,21 +461,25 @@ impl Queue {
         let id = task.id;
 
         html! {
-            <div class="row">
-                <span class="item-inline">
-                    <span class={if spinning { "icon arrow-path" } else { "icon clock" }} />
-                </span>
-
+            <div class="row mobile-column mobile-align-top">
                 <span class="row fill">
-                    { self.view_task_label(task, on_navigate) }
+                    <span class="item-inline">
+                        <span class={if spinning { "icon arrow-path" } else { "icon clock" }} />
+                    </span>
+
+                    <span class="row fill">
+                        { self.view_task_label(task, on_navigate) }
+                    </span>
                 </span>
 
                 if !spinning {
-                    <span class="text-muted">{ eta_label(task.run_at, self.time.now()) }</span>
+                    <span class="row">
+                        <span class="text-muted">{ eta_label(task.run_at, self.time.now()) }</span>
 
-                    <Button icon="forward" title="Run now" onclick={ctx.link().callback(move |_| Msg::Bump(id))} />
+                        <Button icon="forward" title="Run now" onclick={ctx.link().callback(move |_| Msg::Bump(id))} />
 
-                    <Button icon="trash" variant={Variant::Danger} title="Remove from queue" onclick={ctx.link().callback(move |_| Msg::Remove(id))} />
+                        <Button icon="trash" variant={Variant::Danger} title="Remove from queue" onclick={ctx.link().callback(move |_| Msg::Remove(id))} />
+                    </span>
                 }
             </div>
         }
@@ -566,19 +571,22 @@ impl Queue {
                     ..ShowDetailQuery::default()
                 },
             )),
-            // No person page yet, so the row shows the name without a link.
-            api::TaskKind::SyncPerson { .. } => None,
+            api::TaskKind::SyncPerson { person_id, .. } => {
+                Some(Route::PersonDetail(*person_id))
+            }
             api::TaskKind::RefreshTopLanguages => None,
         };
 
         let on_navigate = route.map(|r| ctx.link().callback(move |_| Msg::Navigate(r.clone())));
 
         html! {
-            <div class="row">
-                <span class="item-inline"><span class="icon check" /></span>
-
+            <div class="row mobile-column mobile-align-top">
                 <span class="row fill">
-                    { self.view_completed_label(task, on_navigate) }
+                    <span class="item-inline"><span class="icon check" /></span>
+
+                    <span class="row fill">
+                        { self.view_completed_label(task, on_navigate) }
+                    </span>
                 </span>
 
                 <span class="text-muted">{ ago_label(task.completed_at, self.time.now()) }</span>
