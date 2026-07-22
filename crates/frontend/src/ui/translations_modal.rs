@@ -151,18 +151,16 @@ impl TranslationsModal {
         html! {
             <div class="column">
                 { for FIELDS.iter().filter_map(|&(kind, label)| {
-                    let rows: Vec<&api::Translation> =
-                        translations.iter().filter(|t| t.kind == kind).collect();
+                    let mut rows = translations.iter().filter(|t| t.kind == kind).peekable();
 
-                    if rows.is_empty() {
-                        return None;
-                    }
+                    // Skip fields with no translations without materializing the rows.
+                    rows.peek()?;
 
                     Some(html! {
                         <div class="column">
                             <h3>{label}</h3>
 
-                            { for rows.into_iter().map(view_row) }
+                            { for rows.map(view_row) }
                         </div>
                     })
                 }) }

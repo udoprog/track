@@ -27,6 +27,10 @@ fn detail_route(kind: api::MediaKind, id: u64) -> Route {
 pub(crate) struct MediaList {
     channel: ws::Channel,
     items: Vec<api::MediaItem>,
+    /// Indices into `items` for the current filter/selection in the active sort
+    /// order. Maintained on every input change so `view` neither reallocates nor
+    /// re-sorts per render.
+    order: Vec<usize>,
     filter: String,
     page: usize,
     sort: SortField,
@@ -110,6 +114,7 @@ impl Component for MediaList {
         Self {
             channel: ws::Channel::default(),
             items: Vec::new(),
+            order: Vec::new(),
             filter: ctx.props().filter.clone(),
             page: ctx.props().page,
             sort: ctx.props().sort,
@@ -141,7 +146,7 @@ impl Component for MediaList {
         }
     }
 
-    fn changed(&mut self, ctx: &Context<Self>, _old_props: &Self::Properties) -> bool {
+    fn changed(&mut self, ctx: &Context<Self>, old_props: &Self::Properties) -> bool {
         let props = ctx.props();
 
         self.page = props.page;
@@ -150,6 +155,17 @@ impl Component for MediaList {
         self.desc = props.desc;
         self.tracked = props.tracked;
         self.selection = props.selection;
+
+        // Only the order-affecting inputs warrant a rebuild; a bare page change
+        // (e.g. from pagination) leaves the order untouched.
+        if old_props.filter != props.filter
+            || old_props.sort != props.sort
+            || old_props.desc != props.desc
+            || old_props.tracked != props.tracked
+            || old_props.selection != props.selection
+        {
+            self.rebuild_order();
+        }
 
         true
     }
@@ -177,13 +193,11 @@ impl Component for MediaList {
     fn view(&self, ctx: &Context<Self>) -> Html {
         let link = ctx.link();
 
-        let filtered = self.filtered_sorted();
-
-        let total = filtered.len();
+        let total = self.order.len();
         let total_pages = total.div_ceil(PAGE_SIZE).max(1);
         let page = self.page.min(total_pages - 1);
 
-        let items = filtered.into_iter().skip(page * PAGE_SIZE).take(PAGE_SIZE);
+        let items = self.ordered().skip(page * PAGE_SIZE).take(PAGE_SIZE);
 
         let on_filter = link.callback(|e: InputEvent| {
             let input: web_sys::HtmlInputElement = e.target_unchecked_into();
@@ -300,6 +314,7 @@ impl MediaList {
                     self.load(ctx);
                 } else {
                     self.items.clear();
+                    self.rebuild_order();
                 }
 
                 Ok(true)
@@ -334,6 +349,7 @@ impl MediaList {
                     .decode()
                     .context(Message::LoadingMovies)?
                     .items;
+                self.rebuild_order();
                 Ok(true)
             }
             Msg::HoverBackdrop(url) => {
@@ -417,30 +433,35 @@ impl MediaList {
             Msg::Filter(s) => {
                 self.filter = s;
                 self.page = 0;
+                self.rebuild_order();
                 self.emit_navigate();
                 Ok(true)
             }
             Msg::SetSort(sort) => {
                 self.sort = sort;
                 self.page = 0;
+                self.rebuild_order();
                 self.emit_navigate();
                 Ok(true)
             }
             Msg::ToggleDir => {
                 self.desc = !self.desc;
                 self.page = 0;
+                self.rebuild_order();
                 self.emit_navigate();
                 Ok(true)
             }
             Msg::CycleTracked => {
                 self.tracked = self.tracked.next();
                 self.page = 0;
+                self.rebuild_order();
                 self.emit_navigate();
                 Ok(true)
             }
             Msg::SetSelection(selection) => {
                 self.selection = selection;
                 self.page = 0;
+                self.rebuild_order();
                 self.emit_navigate();
                 Ok(true)
             }
@@ -460,48 +481,56 @@ impl MediaList {
         }
     }
 
-    /// Items matching the current filter/selection, ordered by the active sort.
-    fn filtered_sorted(&self) -> Vec<&api::MediaItem> {
+    /// Rebuild `order` for the current filter/selection and active sort. Called
+    /// whenever `items` or any ordering input changes.
+    fn rebuild_order(&mut self) {
         let filter = self.filter.to_lowercase();
 
-        let mut filtered: Vec<&api::MediaItem> = self
-            .items
-            .iter()
-            .filter(|m| self.selection.contains(m.kind))
-            .filter(|m| match self.tracked {
-                TrackedFilter::All => true,
-                TrackedFilter::Tracked => m.tracked,
-                TrackedFilter::Untracked => !m.tracked,
-            })
-            .filter(|m| {
-                filter.is_empty()
-                    || m.strings
-                        .texts(api::StringKind::Title)
-                        .any(|t| t.to_lowercase().contains(&filter))
-            })
-            .collect();
+        self.order.clear();
+        self.order.extend(
+            self.items
+                .iter()
+                .enumerate()
+                .filter(|(_, m)| self.selection.contains(m.kind))
+                .filter(|(_, m)| match self.tracked {
+                    TrackedFilter::All => true,
+                    TrackedFilter::Tracked => m.tracked,
+                    TrackedFilter::Untracked => !m.tracked,
+                })
+                .filter(|(_, m)| {
+                    filter.is_empty()
+                        || m.strings
+                            .texts(api::StringKind::Title)
+                            .any(|t| t.to_lowercase().contains(&filter))
+                })
+                .map(|(i, _)| i),
+        );
 
         match self.sort {
-            SortField::Title => filtered.sort_by_key(|m| m.strings.title().map(str::to_lowercase)),
-            SortField::Release => filtered.sort_by_key(|m| m.date),
-            SortField::Watched => filtered.sort_by_key(|m| m.last_watched_at),
+            SortField::Title => self
+                .order
+                .sort_by_key(|&i| self.items[i].strings.title().map(str::to_lowercase)),
+            SortField::Release => self.order.sort_by_key(|&i| self.items[i].date),
+            SortField::Watched => self.order.sort_by_key(|&i| self.items[i].last_watched_at),
         }
 
         if self.desc {
-            filtered.reverse();
+            self.order.reverse();
         }
+    }
 
-        filtered
+    /// Items matching the current filter/selection, ordered by the active sort,
+    /// as maintained in `order`.
+    fn ordered(&self) -> impl ExactSizeIterator<Item = &api::MediaItem> {
+        self.order.iter().map(|&i| &self.items[i])
     }
 
     /// First backdrop set on the current page, used as the page background.
     fn current_backdrop(&self) -> Option<String> {
-        let filtered = self.filtered_sorted();
-        let total_pages = filtered.len().div_ceil(PAGE_SIZE).max(1);
+        let total_pages = self.order.len().div_ceil(PAGE_SIZE).max(1);
         let page = self.page.min(total_pages - 1);
 
-        filtered
-            .into_iter()
+        self.ordered()
             .skip(page * PAGE_SIZE)
             .take(PAGE_SIZE)
             .find_map(|m| m.backdrop.as_ref().map(|i| i.proxy_url()))

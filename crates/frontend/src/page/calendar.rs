@@ -35,6 +35,9 @@ pub(crate) struct Props {
 pub(crate) struct Calendar {
     channel: ws::Channel,
     schedule: Vec<api::ScheduledDay>,
+    /// `schedule` indices keyed by date, maintained when `schedule` changes so
+    /// `view` can look days up without building a map every render.
+    schedule_index: HashMap<api::Date, usize>,
     config: api::Config,
     loading: bool,
     time: TimeInfo,
@@ -90,6 +93,7 @@ impl Component for Calendar {
         Self {
             channel: ws::Channel::default(),
             schedule: Vec::new(),
+            schedule_index: HashMap::new(),
             config: api::Config::default(),
             loading: false,
             time,
@@ -144,9 +148,6 @@ impl Component for Calendar {
         let can_reveal_week_start = week_offset == 0 && today.weekday() != api::Weekday::Monday;
 
         let loading = self.loading;
-
-        let schedule_lookup: HashMap<api::Date, &api::ScheduledDay> =
-            self.schedule.iter().map(|d| (d.date, d)).collect();
 
         let link = ctx.link();
 
@@ -216,7 +217,7 @@ impl Component for Calendar {
                                     let is_today = day == today;
                                     let is_tomorrow = day == today.checked_add_days(1).unwrap_or(day);
                                     let is_past  = day < today;
-                                    let mut items = schedule_lookup.get(&day).map(|d| d.items()).unwrap_or_default();
+                                    let mut items = self.schedule_index.get(&day).map(|&i| self.schedule[i].items()).unwrap_or_default();
                                     items.retain(|i| selection.contains(i.kind()));
 
                                     html! {
@@ -334,6 +335,13 @@ impl Component for Calendar {
 }
 
 impl Calendar {
+    /// Rebuild the date→index lookup after `schedule` changes.
+    fn rebuild_schedule_index(&mut self) {
+        self.schedule_index.clear();
+        self.schedule_index
+            .extend(self.schedule.iter().enumerate().map(|(i, d)| (d.date, i)));
+    }
+
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
             Msg::Channel(result) => {
@@ -343,6 +351,7 @@ impl Calendar {
                     self.load_config(ctx);
                 } else {
                     self.schedule.clear();
+                    self.rebuild_schedule_index();
                 }
                 Ok(true)
             }
@@ -386,6 +395,7 @@ impl Calendar {
                     .decode()
                     .context(Message::LoadingSchedule)?
                     .days;
+                self.rebuild_schedule_index();
                 Ok(true)
             }
             Msg::ConfigLoaded(result) => {

@@ -12,6 +12,10 @@ const PAGE_SIZE: usize = 24;
 pub(crate) struct PersonList {
     channel: ws::Channel,
     persons: Vec<api::PersonItem>,
+    /// Indices into `persons` for the current filter in the active sort order.
+    /// Maintained on every input change so `view` neither reallocates nor
+    /// re-sorts per render.
+    order: Vec<usize>,
     filter: String,
     page: usize,
     sort: PersonSort,
@@ -68,6 +72,7 @@ impl Component for PersonList {
         Self {
             channel: ws::Channel::default(),
             persons: Vec::new(),
+            order: Vec::new(),
             filter: ctx.props().filter.clone(),
             page: ctx.props().page,
             sort: ctx.props().sort,
@@ -90,13 +95,22 @@ impl Component for PersonList {
         }
     }
 
-    fn changed(&mut self, ctx: &Context<Self>, _old_props: &Self::Properties) -> bool {
+    fn changed(&mut self, ctx: &Context<Self>, old_props: &Self::Properties) -> bool {
         let props = ctx.props();
 
         self.page = props.page;
         self.filter = props.filter.clone();
         self.sort = props.sort;
         self.desc = props.desc;
+
+        // Only the order-affecting inputs warrant a rebuild; a bare page change
+        // (e.g. from pagination) leaves the order untouched.
+        if old_props.filter != props.filter
+            || old_props.sort != props.sort
+            || old_props.desc != props.desc
+        {
+            self.rebuild_order();
+        }
 
         true
     }
@@ -114,13 +128,11 @@ impl Component for PersonList {
     fn view(&self, ctx: &Context<Self>) -> Html {
         let link = ctx.link();
 
-        let filtered = self.filtered_sorted();
-
-        let total = filtered.len();
+        let total = self.order.len();
         let total_pages = total.div_ceil(PAGE_SIZE).max(1);
         let page = self.page.min(total_pages - 1);
 
-        let persons = filtered.into_iter().skip(page * PAGE_SIZE).take(PAGE_SIZE);
+        let persons = self.ordered().skip(page * PAGE_SIZE).take(PAGE_SIZE);
 
         let on_filter = link.callback(|e: InputEvent| {
             let input: web_sys::HtmlInputElement = e.target_unchecked_into();
@@ -210,6 +222,7 @@ impl PersonList {
                     self.load(ctx);
                 } else {
                     self.persons.clear();
+                    self.rebuild_order();
                 }
 
                 Ok(true)
@@ -241,21 +254,25 @@ impl PersonList {
                     .decode()
                     .context(Message::LoadingPersons)?
                     .persons;
+                self.rebuild_order();
                 Ok(true)
             }
             Msg::Filter(filter) => {
                 self.filter = filter;
                 self.page = 0;
+                self.rebuild_order();
                 self.emit_navigate();
                 Ok(true)
             }
             Msg::SetSort(sort) => {
                 self.sort = sort;
+                self.rebuild_order();
                 self.emit_navigate();
                 Ok(true)
             }
             Msg::ToggleDir => {
                 self.desc = !self.desc;
+                self.rebuild_order();
                 self.emit_navigate();
                 Ok(true)
             }
@@ -271,31 +288,41 @@ impl PersonList {
         }
     }
 
-    /// People matching the current filter, ordered by the active sort.
-    fn filtered_sorted(&self) -> Vec<&api::PersonItem> {
+    /// Rebuild `order` for the current filter and active sort. Called whenever
+    /// `persons` or any ordering input changes.
+    fn rebuild_order(&mut self) {
         let filter = self.filter.to_lowercase();
 
-        let mut filtered: Vec<&api::PersonItem> = self
-            .persons
-            .iter()
-            .filter(|p| {
-                filter.is_empty()
-                    || p.name
-                        .texts(api::StringKind::Title)
-                        .any(|t| t.to_lowercase().contains(&filter))
-            })
-            .collect();
+        self.order.clear();
+        self.order.extend(
+            self.persons
+                .iter()
+                .enumerate()
+                .filter(|(_, p)| {
+                    filter.is_empty()
+                        || p.name
+                            .texts(api::StringKind::Title)
+                            .any(|t| t.to_lowercase().contains(&filter))
+                })
+                .map(|(i, _)| i),
+        );
 
         match self.sort {
-            PersonSort::Name => filtered.sort_by_key(|p| p.name.title().map(str::to_lowercase)),
-            PersonSort::Credits => filtered.sort_by_key(|p| p.credit_count),
+            PersonSort::Name => self
+                .order
+                .sort_by_key(|&i| self.persons[i].name.title().map(str::to_lowercase)),
+            PersonSort::Credits => self.order.sort_by_key(|&i| self.persons[i].credit_count),
         }
 
         if self.desc {
-            filtered.reverse();
+            self.order.reverse();
         }
+    }
 
-        filtered
+    /// People matching the current filter, ordered by the active sort, as
+    /// maintained in `order`.
+    fn ordered(&self) -> impl ExactSizeIterator<Item = &api::PersonItem> {
+        self.order.iter().map(|&i| &self.persons[i])
     }
 
     fn emit_navigate(&self) {

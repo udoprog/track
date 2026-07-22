@@ -29,6 +29,9 @@ pub(crate) struct Props {
 pub(crate) struct ScheduleRange {
     channel: ws::Channel,
     schedule: Vec<api::ScheduledDay>,
+    /// `schedule` indices keyed by date, maintained when `schedule` changes so
+    /// `view_day` can look days up without building a map every render.
+    schedule_index: HashMap<api::Date, usize>,
     config: api::Config,
     loading: bool,
     /// Poster of the hovered entry; falls back to the first upcoming show.
@@ -89,6 +92,7 @@ impl Component for ScheduleRange {
         Self {
             channel: ws::Channel::default(),
             schedule: Vec::new(),
+            schedule_index: HashMap::new(),
             config: api::Config::default(),
             loading: false,
             hovered_poster: None,
@@ -145,9 +149,6 @@ impl Component for ScheduleRange {
             .clone()
             .or_else(|| self.default_poster(ctx.props().selection));
 
-        let schedule_lookup: HashMap<api::Date, &api::ScheduledDay> =
-            self.schedule.iter().map(|d| (d.date, d)).collect();
-
         let link = ctx.link();
 
         let on_prev = ctx.props().on_set_range.reform(move |_| offset - 1);
@@ -186,7 +187,7 @@ impl Component for ScheduleRange {
                         </div>
                     }
 
-                    { for days.iter().map(|&day| self.view_day(ctx, day, today, &schedule_lookup)) }
+                    { for days.iter().map(|&day| self.view_day(ctx, day, today)) }
                 </div>
             </div>
         }
@@ -194,6 +195,13 @@ impl Component for ScheduleRange {
 }
 
 impl ScheduleRange {
+    /// Rebuild the date→index lookup after `schedule` changes.
+    fn rebuild_schedule_index(&mut self) {
+        self.schedule_index.clear();
+        self.schedule_index
+            .extend(self.schedule.iter().enumerate().map(|(i, d)| (d.date, i)));
+    }
+
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
             Msg::Channel(result) => {
@@ -203,6 +211,7 @@ impl ScheduleRange {
                     self.load_config(ctx);
                 } else {
                     self.schedule.clear();
+                    self.rebuild_schedule_index();
                 }
                 Ok(true)
             }
@@ -247,6 +256,7 @@ impl ScheduleRange {
                     .decode()
                     .context(Message::LoadingSchedule)?
                     .days;
+                self.rebuild_schedule_index();
                 Ok(true)
             }
             Msg::ConfigLoaded(result) => {
@@ -332,13 +342,7 @@ impl ScheduleRange {
         })
     }
 
-    fn view_day(
-        &self,
-        ctx: &Context<Self>,
-        day: api::Date,
-        today: api::Date,
-        lookup: &HashMap<api::Date, &api::ScheduledDay>,
-    ) -> Html {
+    fn view_day(&self, ctx: &Context<Self>, day: api::Date, today: api::Date) -> Html {
         let link = ctx.link();
 
         let is_yesterday = day == today.checked_sub_days(1).unwrap_or(day);
@@ -346,7 +350,11 @@ impl ScheduleRange {
         let is_tomorrow = day == today.checked_add_days(1).unwrap_or(day);
         let selection = ctx.props().selection;
 
-        let mut items = lookup.get(&day).map(|d| d.items()).unwrap_or_default();
+        let mut items = self
+            .schedule_index
+            .get(&day)
+            .map(|&i| self.schedule[i].items())
+            .unwrap_or_default();
         items.retain(|i| selection.contains(i.kind()));
 
         let label = if is_yesterday {

@@ -22,6 +22,10 @@ struct PendingState {
 pub(crate) struct WatchNext {
     channel: ws::Channel,
     pending: Vec<PendingState>,
+    /// Indices into `pending` kept by the media-kind selection. Maintained when
+    /// `pending` or the selection changes so `view` and `clamp_page` neither
+    /// reallocate nor re-filter per render.
+    order: Vec<usize>,
     pending_loaded: bool,
     config: api::Config,
     time: TimeInfo,
@@ -107,6 +111,7 @@ impl Component for WatchNext {
         Self {
             channel: ws::Channel::default(),
             pending: Vec::new(),
+            order: Vec::new(),
             pending_loaded: false,
             config: api::Config::default(),
             time,
@@ -135,10 +140,20 @@ impl Component for WatchNext {
         }
     }
 
+    fn changed(&mut self, ctx: &Context<Self>, old_props: &Self::Properties) -> bool {
+        // The media-kind selection lives in props; rebuild the filtered order
+        // when it changes. A bare page change leaves the order untouched.
+        if old_props.selection != ctx.props().selection {
+            self.rebuild_order(ctx);
+        }
+
+        true
+    }
+
     fn view(&self, ctx: &Context<Self>) -> Html {
         let page_size = self.page_size();
-        let pending = self.filtered(ctx);
-        let total_pages = pending.len().div_ceil(page_size).max(1);
+        let total = self.order.len();
+        let total_pages = total.div_ceil(page_size).max(1);
         let page = ctx.props().page.min(total_pages - 1);
         let link = ctx.link();
 
@@ -164,11 +179,11 @@ impl Component for WatchNext {
                     <div class="pending-grid" style={format!("--pending-columns: {}", page_size)}>
                         { for (0..page_size).map(|_| Self::view_pending_skeleton()) }
                     </div>
-                } else if pending.is_empty() {
+                } else if total == 0 {
                     <p class="text-muted">{"Nothing pending."}</p>
                 } else {
                     <div class="pending-grid" style={format!("--pending-columns: {}", page_size)}>
-                        { for pending.iter().skip(page * page_size).take(page_size).map(|p| self.view_pending_item(ctx, p)) }
+                        { for self.ordered().skip(page * page_size).take(page_size).map(|p| self.view_pending_item(ctx, p)) }
                     </div>
                 }
 
@@ -209,6 +224,7 @@ impl WatchNext {
                 } else {
                     self.pending.clear();
                     self.pending_loaded = false;
+                    self.rebuild_order(ctx);
                 }
 
                 Ok(true)
@@ -272,6 +288,7 @@ impl WatchNext {
                 }
 
                 self.pending_loaded = true;
+                self.rebuild_order(ctx);
                 self.clamp_page(ctx);
                 Ok(true)
             }
@@ -433,15 +450,26 @@ impl WatchNext {
         }
     }
 
-    /// The pending items the media filter shows, which is what pages are counted
-    /// over.
-    fn filtered(&self, ctx: &Context<Self>) -> Vec<&PendingState> {
+    /// Rebuild `order` from the current media-kind selection. Called whenever
+    /// `pending` or the selection changes. The pending items it indexes are what
+    /// pages are counted over.
+    fn rebuild_order(&mut self, ctx: &Context<Self>) {
         let selection = ctx.props().selection;
 
-        self.pending
-            .iter()
-            .filter(|p| selection.contains(p.pending.info.media_kind()))
-            .collect()
+        self.order.clear();
+        self.order.extend(
+            self.pending
+                .iter()
+                .enumerate()
+                .filter(|(_, p)| selection.contains(p.pending.info.media_kind()))
+                .map(|(i, _)| i),
+        );
+    }
+
+    /// The pending items the media filter shows, in order, as maintained in
+    /// `order`.
+    fn ordered(&self) -> impl ExactSizeIterator<Item = &PendingState> {
+        self.order.iter().map(|&i| &self.pending[i])
     }
 
     fn clamp_page(&self, ctx: &Context<Self>) {
@@ -452,7 +480,7 @@ impl WatchNext {
             return;
         }
 
-        let total_pages = self.filtered(ctx).len().div_ceil(self.page_size()).max(1);
+        let total_pages = self.order.len().div_ceil(self.page_size()).max(1);
         let page = ctx.props().page.min(total_pages - 1);
 
         if page != ctx.props().page {
@@ -496,6 +524,7 @@ impl WatchNext {
                 .sort_by_key(|state| Reverse(state.pending.timestamp));
         }
 
+        self.rebuild_order(ctx);
         self.clamp_page(ctx);
     }
 

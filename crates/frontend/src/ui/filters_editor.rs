@@ -340,13 +340,11 @@ impl FiltersEditor {
             })
         };
 
-        let present: Vec<api::PredicateKind> = rule.predicates.iter().map(|p| p.kind()).collect();
-
         let available: Vec<api::PredicateKind> = props
             .kinds
             .iter()
             .copied()
-            .filter(|k| !present.contains(k))
+            .filter(|k| !rule.predicates.iter().any(|p| p.kind() == *k))
             .collect();
 
         html! {

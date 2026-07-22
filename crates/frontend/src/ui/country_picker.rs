@@ -27,18 +27,69 @@ pub(crate) struct CountryPicker {
     open: bool,
     filter: String,
     page: usize,
+    /// Selected countries pinned at the top, filtered by the search term. Held in
+    /// the component and rebuilt on open, filter changes and selection changes
+    /// rather than reallocated on every render.
+    selected_list: Vec<(&'static iso3166::Country, api::Country)>,
+    /// The full browse list (filtered, excluding the selection). Rebuilt
+    /// alongside `selected_list`.
+    browse: Vec<(&'static iso3166::Country, api::Country)>,
+}
+
+impl CountryPicker {
+    /// Recompute `selected_list` and `browse` from the current filter and
+    /// selection into the reused buffers.
+    fn rebuild(&mut self, ctx: &Context<Self>) {
+        let current = &ctx.props().current;
+        let needle = self.filter.to_lowercase();
+
+        let matches = |country: &iso3166::Country| {
+            needle.is_empty()
+                || country.name.to_lowercase().contains(&needle)
+                || country.alpha2.contains(&needle)
+        };
+
+        // Selected countries are pinned at the top (filtered by the search term)
+        // so they stay easy to deselect while still browsing the full list below.
+        self.selected_list.clear();
+        self.selected_list.extend(current.iter().filter_map(|code| {
+            let iso = code.to_iso()?;
+            matches(iso).then_some((iso, *code))
+        }));
+
+        // The full, paginated browse list (filtered), excluding what's selected.
+        self.browse.clear();
+        self.browse.extend(
+            iso3166::iter()
+                .filter(|country| matches(country))
+                .flat_map(|country| Some((country, api::Country::from_iso(country.alpha2)?)))
+                .filter(|(_, code)| !current.contains(code)),
+        );
+    }
 }
 
 impl Component for CountryPicker {
     type Message = Msg;
     type Properties = Props;
 
-    fn create(_ctx: &Context<Self>) -> Self {
-        Self {
+    fn create(ctx: &Context<Self>) -> Self {
+        let mut this = Self {
             open: false,
             filter: String::new(),
             page: 0,
-        }
+            selected_list: Vec::new(),
+            browse: Vec::new(),
+        };
+
+        this.rebuild(ctx);
+        this
+    }
+
+    fn changed(&mut self, ctx: &Context<Self>, _old: &Props) -> bool {
+        // The selection lives in props, so rebuild the derived lists when it
+        // changes (e.g. after toggling a country while the picker is open).
+        self.rebuild(ctx);
+        true
     }
 
     fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
@@ -47,6 +98,7 @@ impl Component for CountryPicker {
                 self.open = true;
                 self.filter.clear();
                 self.page = 0;
+                self.rebuild(ctx);
             }
             Msg::Close => {
                 self.open = false;
@@ -54,6 +106,7 @@ impl Component for CountryPicker {
             Msg::Filter(s) => {
                 self.filter = s;
                 self.page = 0;
+                self.rebuild(ctx);
             }
             Msg::Page(p) => {
                 self.page = p;
@@ -103,30 +156,8 @@ impl Component for CountryPicker {
             return trigger;
         }
 
-        let needle = self.filter.to_lowercase();
-
-        let matches = |country: &iso3166::Country| {
-            needle.is_empty()
-                || country.name.to_lowercase().contains(&needle)
-                || country.alpha2.contains(&needle)
-        };
-
-        // Selected countries are pinned at the top (filtered by the search term)
-        // so they stay easy to deselect while still browsing the full list below.
-        let selected_list: Vec<(&'static iso3166::Country, api::Country)> = current
-            .iter()
-            .filter_map(|code| {
-                let iso = code.to_iso()?;
-                matches(iso).then_some((iso, *code))
-            })
-            .collect();
-
-        // The full, paginated browse list (filtered), excluding what's selected.
-        let browse: Vec<(&'static iso3166::Country, api::Country)> = iso3166::iter()
-            .filter(|country| matches(country))
-            .flat_map(|country| Some((country, api::Country::from_iso(country.alpha2)?)))
-            .filter(|(_, code)| !current.contains(code))
-            .collect();
+        let selected_list = &self.selected_list;
+        let browse = &self.browse;
 
         let total_pages = browse.len().div_ceil(COUNTRY_PAGE_SIZE).max(1);
         let page = self.page.min(total_pages.saturating_sub(1));
