@@ -136,9 +136,13 @@ WHERE
 CREATE TABLE
     config (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 
+-- Candidate image pools, one per owner. Each holds every stored graphic for an
+-- owner (ranked, optionally scored); the paired `*_images` selection table below
+-- picks the active candidate per kind.
 CREATE TABLE
-    images (
+    show_image_candidates (
         id INTEGER PRIMARY KEY,
+        show_id INTEGER NOT NULL REFERENCES shows (id) ON DELETE CASCADE,
         kind INTEGER NOT NULL,
         source INTEGER NOT NULL,
         path TEXT NOT NULL,
@@ -146,51 +150,62 @@ CREATE TABLE
         height INTEGER NOT NULL,
         rank INTEGER NOT NULL DEFAULT 0,
         score REAL,
-        show_id INTEGER REFERENCES shows (id) ON DELETE CASCADE,
-        movie_id INTEGER REFERENCES movies (id) ON DELETE CASCADE,
-        episode_id INTEGER REFERENCES episodes (id) ON DELETE CASCADE,
-        season_id INTEGER REFERENCES seasons (id) ON DELETE CASCADE,
-        CHECK (
-            (show_id IS NOT NULL)
-            OR (movie_id IS NOT NULL)
-            OR (episode_id IS NOT NULL)
-            OR (season_id IS NOT NULL)
-        )
+        UNIQUE (show_id, kind, path)
     );
 
-CREATE UNIQUE INDEX idx_images_show ON images (show_id, kind, path)
-WHERE
-    show_id IS NOT NULL;
+CREATE INDEX idx_show_image_candidates_rank ON show_image_candidates (show_id, kind, rank);
 
-CREATE UNIQUE INDEX idx_images_movie ON images (movie_id, kind, path)
-WHERE
-    movie_id IS NOT NULL;
+CREATE TABLE
+    movie_image_candidates (
+        id INTEGER PRIMARY KEY,
+        movie_id INTEGER NOT NULL REFERENCES movies (id) ON DELETE CASCADE,
+        kind INTEGER NOT NULL,
+        source INTEGER NOT NULL,
+        path TEXT NOT NULL,
+        width INTEGER NOT NULL,
+        height INTEGER NOT NULL,
+        rank INTEGER NOT NULL DEFAULT 0,
+        score REAL,
+        UNIQUE (movie_id, kind, path)
+    );
 
-CREATE UNIQUE INDEX idx_images_episode ON images (episode_id, kind, path)
-WHERE
-    episode_id IS NOT NULL;
+CREATE INDEX idx_movie_image_candidates_rank ON movie_image_candidates (movie_id, kind, rank);
 
-CREATE UNIQUE INDEX idx_images_season ON images (season_id, kind, path)
-WHERE
-    season_id IS NOT NULL;
+CREATE TABLE
+    episode_image_candidates (
+        id INTEGER PRIMARY KEY,
+        episode_id INTEGER NOT NULL REFERENCES episodes (id) ON DELETE CASCADE,
+        kind INTEGER NOT NULL,
+        source INTEGER NOT NULL,
+        path TEXT NOT NULL,
+        width INTEGER NOT NULL,
+        height INTEGER NOT NULL,
+        rank INTEGER NOT NULL DEFAULT 0,
+        score REAL,
+        UNIQUE (episode_id, kind, path)
+    );
 
-CREATE INDEX idx_images_show_rank ON images (show_id, kind, rank)
-WHERE
-    show_id IS NOT NULL;
+CREATE TABLE
+    season_image_candidates (
+        id INTEGER PRIMARY KEY,
+        season_id INTEGER NOT NULL REFERENCES seasons (id) ON DELETE CASCADE,
+        kind INTEGER NOT NULL,
+        source INTEGER NOT NULL,
+        path TEXT NOT NULL,
+        width INTEGER NOT NULL,
+        height INTEGER NOT NULL,
+        rank INTEGER NOT NULL DEFAULT 0,
+        score REAL,
+        UNIQUE (season_id, kind, path)
+    );
 
-CREATE INDEX idx_images_movie_rank ON images (movie_id, kind, rank)
-WHERE
-    movie_id IS NOT NULL;
-
-CREATE INDEX idx_images_season_rank ON images (season_id, kind, rank)
-WHERE
-    season_id IS NOT NULL;
+CREATE INDEX idx_season_image_candidates_rank ON season_image_candidates (season_id, kind, rank);
 
 CREATE TABLE
     show_images (
         show_id INTEGER NOT NULL REFERENCES shows (id) ON DELETE CASCADE,
         kind INTEGER NOT NULL,
-        image_id INTEGER NOT NULL REFERENCES images (id) ON DELETE CASCADE,
+        image_id INTEGER NOT NULL REFERENCES show_image_candidates (id) ON DELETE CASCADE,
         user_selected INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (show_id, kind)
     );
@@ -199,7 +214,7 @@ CREATE TABLE
     movie_images (
         movie_id INTEGER NOT NULL REFERENCES movies (id) ON DELETE CASCADE,
         kind INTEGER NOT NULL,
-        image_id INTEGER NOT NULL REFERENCES images (id) ON DELETE CASCADE,
+        image_id INTEGER NOT NULL REFERENCES movie_image_candidates (id) ON DELETE CASCADE,
         user_selected INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (movie_id, kind)
     );
@@ -208,7 +223,7 @@ CREATE TABLE
     episode_images (
         episode_id INTEGER NOT NULL REFERENCES episodes (id) ON DELETE CASCADE,
         kind INTEGER NOT NULL,
-        image_id INTEGER NOT NULL REFERENCES images (id) ON DELETE CASCADE,
+        image_id INTEGER NOT NULL REFERENCES episode_image_candidates (id) ON DELETE CASCADE,
         PRIMARY KEY (episode_id, kind)
     );
 
@@ -216,7 +231,7 @@ CREATE TABLE
     season_images (
         season_id INTEGER NOT NULL REFERENCES seasons (id) ON DELETE CASCADE,
         kind INTEGER NOT NULL,
-        image_id INTEGER NOT NULL REFERENCES images (id) ON DELETE CASCADE,
+        image_id INTEGER NOT NULL REFERENCES season_image_candidates (id) ON DELETE CASCADE,
         PRIMARY KEY (season_id, kind)
     );
 

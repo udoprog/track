@@ -81,14 +81,6 @@ struct KindRankRow {
 }
 
 #[derive(Row)]
-struct ImageMetaRow {
-    kind: ImageKind,
-    show_id: Option<ShowId>,
-    movie_id: Option<MovieId>,
-    season_id: Option<SeasonId>,
-}
-
-#[derive(Row)]
 struct ShowImageRow {
     id: ImageId,
     kind: ImageKind,
@@ -556,17 +548,17 @@ impl InnerTranslations {
 #[sql(read_only)]
 struct InnerImage {
     #[sql = "SELECT i.source, i.path"]
-    #[sql = "FROM show_images si JOIN images i ON i.id = si.image_id"]
+    #[sql = "FROM show_images si JOIN show_image_candidates i ON i.id = si.image_id"]
     #[sql = "WHERE si.show_id = ? AND si.kind = ?"]
     image_for_show: TypedStatement<(ShowId, ImageKind), PendingImageRow>,
     #[sql = "SELECT i.source, i.path"]
-    #[sql = "FROM movie_images mi JOIN images i ON i.id = mi.image_id"]
+    #[sql = "FROM movie_images mi JOIN movie_image_candidates i ON i.id = mi.image_id"]
     #[sql = "WHERE mi.movie_id = ? AND mi.kind = ?"]
     image_for_movie: TypedStatement<(MovieId, ImageKind), PendingImageRow>,
     #[sql = "SELECT i.source, i.path"]
     #[sql = "FROM season_images si"]
     #[sql = "JOIN seasons se ON se.id = si.season_id"]
-    #[sql = "JOIN images i ON i.id = si.image_id"]
+    #[sql = "JOIN season_image_candidates i ON i.id = si.image_id"]
     #[sql = "WHERE se.show_id = ? AND se.season = ? AND si.kind = ?"]
     image_for_season: TypedStatement<(ShowId, SeasonNumber, ImageKind), PendingImageRow>,
 }
@@ -667,30 +659,36 @@ struct InnerRead {
     show_id_by_remote: TypedStatement<(RemoteSource, RemoteValue), ShowId>,
 
     // images (shows and movies share one table)
-    #[sql = "SELECT id, kind, source, path, score FROM images"]
+    #[sql = "SELECT id, kind, source, path, score FROM show_image_candidates"]
     #[sql = "WHERE show_id = ? ORDER BY kind, rank, id"]
     list_show_images: TypedStatement<(ShowId,), ImageRow>,
-    #[sql = "SELECT id, kind, source, path, score, show_id FROM images"]
-    #[sql = "WHERE show_id IS NOT NULL ORDER BY show_id, kind, rank, id"]
+    #[sql = "SELECT id, kind, source, path, score, show_id FROM show_image_candidates"]
+    #[sql = "ORDER BY show_id, kind, rank, id"]
     list_all_show_images: TypedStatement<(), ShowImageRow>,
     #[sql = "SELECT ei.episode_id, i.source, i.path, i.width, i.height"]
-    #[sql = "FROM episode_images ei JOIN images i ON i.id = ei.image_id"]
+    #[sql = "FROM episode_images ei JOIN episode_image_candidates i ON i.id = ei.image_id"]
     #[sql = "WHERE ei.kind = ? AND ei.episode_id IN (SELECT id FROM episodes WHERE show_id = ? AND season = ?)"]
     list_season_episode_screenshots:
         TypedStatement<(ImageKind, ShowId, SeasonNumber), EpisodeScreenshotRow>,
     #[sql = "SELECT ei.episode_id, i.source, i.path, i.width, i.height"]
-    #[sql = "FROM episode_images ei JOIN images i ON i.id = ei.image_id"]
+    #[sql = "FROM episode_images ei JOIN episode_image_candidates i ON i.id = ei.image_id"]
     #[sql = "WHERE ei.kind = ? AND ei.episode_id = ?"]
     episode_screenshot: TypedStatement<(ImageKind, EpisodeId), EpisodeScreenshotRow>,
-    #[sql = "SELECT id, kind, source, path, score FROM images"]
+    #[sql = "SELECT id, kind, source, path, score FROM movie_image_candidates"]
     #[sql = "WHERE movie_id = ? ORDER BY kind, rank, id"]
     list_movie_images: TypedStatement<(MovieId,), ImageRow>,
-    #[sql = "SELECT id, kind, source, path, score, movie_id FROM images"]
-    #[sql = "WHERE movie_id IS NOT NULL ORDER BY movie_id, kind, rank, id"]
+    #[sql = "SELECT id, kind, source, path, score, movie_id FROM movie_image_candidates"]
+    #[sql = "ORDER BY movie_id, kind, rank, id"]
     list_all_movie_images: TypedStatement<(), MovieImageRow>,
-    #[sql = "SELECT kind, show_id, movie_id, season_id FROM images WHERE id = ?"]
-    image_by_id: TypedStatement<(ImageId,), ImageMetaRow>,
-    #[sql = "SELECT id, kind, source, path, score FROM images"]
+    // Resolve the owner of a selected image id by probing each candidate table;
+    // ids are globally unique, so at most one table matches.
+    #[sql = "SELECT show_id, kind FROM show_image_candidates WHERE id = ?"]
+    show_image_owner_by_id: TypedStatement<(ImageId,), (ShowId, ImageKind)>,
+    #[sql = "SELECT movie_id, kind FROM movie_image_candidates WHERE id = ?"]
+    movie_image_owner_by_id: TypedStatement<(ImageId,), (MovieId, ImageKind)>,
+    #[sql = "SELECT season_id, kind FROM season_image_candidates WHERE id = ?"]
+    season_image_owner_by_id: TypedStatement<(ImageId,), (SeasonId, ImageKind)>,
+    #[sql = "SELECT id, kind, source, path, score FROM season_image_candidates"]
     #[sql = "WHERE season_id = ? ORDER BY kind, rank, id"]
     list_season_images: TypedStatement<(SeasonId,), ImageRow>,
     #[sql = "SELECT show_id FROM seasons WHERE id = ?"]
@@ -698,18 +696,18 @@ struct InnerRead {
 
     // selection tables
     #[sql = "SELECT si.kind, i.source, i.path, i.width, i.height, si.user_selected"]
-    #[sql = "FROM show_images si JOIN images i ON i.id = si.image_id"]
+    #[sql = "FROM show_images si JOIN show_image_candidates i ON i.id = si.image_id"]
     #[sql = "WHERE si.show_id = ?"]
     list_show_image_selections: TypedStatement<(ShowId,), ImageSelectionRow>,
     #[sql = "SELECT si.show_id, si.kind, i.source, i.path, i.width, i.height, si.user_selected"]
-    #[sql = "FROM show_images si JOIN images i ON i.id = si.image_id"]
+    #[sql = "FROM show_images si JOIN show_image_candidates i ON i.id = si.image_id"]
     list_all_show_image_selections: TypedStatement<(), AllShowImageSelectionRow>,
     #[sql = "SELECT mi.kind, i.source, i.path, i.width, i.height, mi.user_selected"]
-    #[sql = "FROM movie_images mi JOIN images i ON i.id = mi.image_id"]
+    #[sql = "FROM movie_images mi JOIN movie_image_candidates i ON i.id = mi.image_id"]
     #[sql = "WHERE mi.movie_id = ?"]
     list_movie_image_selections: TypedStatement<(MovieId,), ImageSelectionRow>,
     #[sql = "SELECT mi.movie_id, mi.kind, i.source, i.path, i.width, i.height, mi.user_selected"]
-    #[sql = "FROM movie_images mi JOIN images i ON i.id = mi.image_id"]
+    #[sql = "FROM movie_images mi JOIN movie_image_candidates i ON i.id = mi.image_id"]
     list_all_movie_image_selections: TypedStatement<(), AllMovieImageSelectionRow>,
 
     // seasons
@@ -719,7 +717,7 @@ struct InnerRead {
     #[sql = "    (SELECT COUNT(*) FROM episodes e WHERE e.show_id = s.show_id AND e.season = s.season) AS total_count"]
     #[sql = "FROM seasons s"]
     #[sql = "LEFT JOIN season_images si ON si.season_id = s.id AND si.kind = 1"]
-    #[sql = "LEFT JOIN images i ON i.id = si.image_id"]
+    #[sql = "LEFT JOIN season_image_candidates i ON i.id = si.image_id"]
     #[sql = "WHERE s.show_id = ? ORDER BY s.season"]
     list_seasons: TypedStatement<(ShowId,), SeasonRow>,
     #[sql = "SELECT ss.season_id, ss.language, ss.kind, ss.text FROM season_strings ss"]
@@ -1054,15 +1052,15 @@ struct InnerWrite {
     set_show_remote_cache: TypedStatement<(Option<String>, RemoteId), ()>,
 
     // images (shows and movies share one table)
-    #[sql = "DELETE FROM images WHERE show_id = ?"]
+    #[sql = "DELETE FROM show_image_candidates WHERE show_id = ?"]
     delete_show_images: TypedStatement<(ShowId,), ()>,
-    #[sql = "DELETE FROM images WHERE show_id = ? AND source = ?"]
+    #[sql = "DELETE FROM show_image_candidates WHERE show_id = ? AND source = ?"]
     delete_show_images_for_source: TypedStatement<(ShowId, ImageSource), ()>,
-    #[sql = "SELECT kind, MAX(rank) AS rank FROM images WHERE show_id = ? GROUP BY kind"]
+    #[sql = "SELECT kind, MAX(rank) AS rank FROM show_image_candidates WHERE show_id = ? GROUP BY kind"]
     show_image_max_ranks: TypedStatement<(ShowId,), KindRankRow>,
     #[sql = "SELECT kind FROM show_images WHERE show_id = ?"]
     show_selected_image_kinds: TypedStatement<(ShowId,), ImageKind>,
-    #[sql = "INSERT INTO images (id, show_id, kind, source, path, width, height, rank, score) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"]
+    #[sql = "INSERT INTO show_image_candidates (id, show_id, kind, source, path, width, height, rank, score) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"]
     #[sql = "ON CONFLICT(show_id, kind, path) WHERE show_id IS NOT NULL DO NOTHING"]
     insert_show_image: TypedStatement<
         (
@@ -1078,17 +1076,17 @@ struct InnerWrite {
         ),
         (),
     >,
-    #[sql = "INSERT INTO images (id, episode_id, kind, source, path, width, height) VALUES (?, ?, ?, ?, ?, ?, ?)"]
+    #[sql = "INSERT INTO episode_image_candidates (id, episode_id, kind, source, path, width, height) VALUES (?, ?, ?, ?, ?, ?, ?)"]
     #[sql = "ON CONFLICT(episode_id, kind, path) WHERE episode_id IS NOT NULL DO NOTHING"]
     insert_episode_image:
         TypedStatement<(ImageId, EpisodeId, ImageKind, ImageSource, String, u32, u32), ()>,
-    #[sql = "DELETE FROM images WHERE episode_id IN (SELECT id FROM episodes WHERE show_id = ?)"]
+    #[sql = "DELETE FROM episode_image_candidates WHERE episode_id IN (SELECT id FROM episodes WHERE show_id = ?)"]
     delete_episode_images_for_show: TypedStatement<(ShowId,), ()>,
-    #[sql = "DELETE FROM images WHERE episode_id = ?"]
+    #[sql = "DELETE FROM episode_image_candidates WHERE episode_id = ?"]
     delete_images_for_episode: TypedStatement<(EpisodeId,), ()>,
-    #[sql = "DELETE FROM images WHERE movie_id = ?"]
+    #[sql = "DELETE FROM movie_image_candidates WHERE movie_id = ?"]
     delete_movie_images: TypedStatement<(MovieId,), ()>,
-    #[sql = "INSERT INTO images (id, movie_id, kind, source, path, width, height, rank, score) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"]
+    #[sql = "INSERT INTO movie_image_candidates (id, movie_id, kind, source, path, width, height, rank, score) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"]
     #[sql = "ON CONFLICT(movie_id, kind, path) WHERE movie_id IS NOT NULL DO NOTHING"]
     insert_movie_image: TypedStatement<
         (
@@ -1115,32 +1113,32 @@ struct InnerWrite {
     // Kind + (source, path) of the show's user-chosen selections, for preserving
     // them across a sync that clears and re-inserts image rows.
     #[sql = "SELECT si.kind, i.source, i.path FROM show_images si"]
-    #[sql = "JOIN images i ON i.id = si.image_id"]
+    #[sql = "JOIN show_image_candidates i ON i.id = si.image_id"]
     #[sql = "WHERE si.show_id = ? AND si.user_selected = 1"]
     user_selected_show_images: TypedStatement<(ShowId,), UserSelectedRow>,
     // Lowest-rank (highest-priority remote, top score) image id for a kind.
-    #[sql = "SELECT id FROM images WHERE show_id = ? AND kind = ? ORDER BY rank ASC LIMIT 1"]
+    #[sql = "SELECT id FROM show_image_candidates WHERE show_id = ? AND kind = ? ORDER BY rank ASC LIMIT 1"]
     best_show_image: TypedStatement<(ShowId, ImageKind), ImageId>,
     // Distinct kinds with at least one stored image for a show.
-    #[sql = "SELECT DISTINCT kind FROM images WHERE show_id = ?"]
+    #[sql = "SELECT DISTINCT kind FROM show_image_candidates WHERE show_id = ?"]
     show_image_kinds: TypedStatement<(ShowId,), ImageKind>,
     #[sql = "INSERT OR REPLACE INTO movie_images (movie_id, kind, image_id, user_selected) VALUES (?, ?, ?, ?)"]
     set_movie_image_selection: TypedStatement<(MovieId, ImageKind, ImageId, bool), ()>,
     #[sql = "DELETE FROM movie_images WHERE movie_id = ? AND kind = ?"]
     delete_movie_image_selection: TypedStatement<(MovieId, ImageKind), ()>,
     #[sql = "SELECT si.kind, i.source, i.path FROM movie_images si"]
-    #[sql = "JOIN images i ON i.id = si.image_id"]
+    #[sql = "JOIN movie_image_candidates i ON i.id = si.image_id"]
     #[sql = "WHERE si.movie_id = ? AND si.user_selected = 1"]
     user_selected_movie_images: TypedStatement<(MovieId,), UserSelectedRow>,
-    #[sql = "SELECT id FROM images WHERE movie_id = ? AND kind = ? ORDER BY rank ASC LIMIT 1"]
+    #[sql = "SELECT id FROM movie_image_candidates WHERE movie_id = ? AND kind = ? ORDER BY rank ASC LIMIT 1"]
     best_movie_image: TypedStatement<(MovieId, ImageKind), ImageId>,
-    #[sql = "SELECT DISTINCT kind FROM images WHERE movie_id = ?"]
+    #[sql = "SELECT DISTINCT kind FROM movie_image_candidates WHERE movie_id = ?"]
     movie_image_kinds: TypedStatement<(MovieId,), ImageKind>,
     #[sql = "INSERT OR REPLACE INTO episode_images (episode_id, kind, image_id) VALUES (?, ?, ?)"]
     set_episode_image_selection: TypedStatement<(EpisodeId, ImageKind, ImageId), ()>,
-    #[sql = "DELETE FROM images WHERE season_id = ?"]
+    #[sql = "DELETE FROM season_image_candidates WHERE season_id = ?"]
     delete_season_images: TypedStatement<(SeasonId,), ()>,
-    #[sql = "INSERT INTO images (id, season_id, kind, source, path, width, height, rank) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"]
+    #[sql = "INSERT INTO season_image_candidates (id, season_id, kind, source, path, width, height, rank) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"]
     #[sql = "ON CONFLICT(season_id, kind, path) WHERE season_id IS NOT NULL DO NOTHING"]
     insert_season_image: TypedStatement<
         (
@@ -3833,35 +3831,30 @@ impl Database {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            let row = s
-                .image_by_id
-                .bind((id,))?
-                .first()?
-                .context("Expected image to exist")?;
+            // Ids are globally unique, so at most one candidate table owns this id.
+            let show = s.show_image_owner_by_id.bind((id,))?.first()?;
+            if let Some((show_id, kind)) = show {
+                // A manual pick is a user selection: protect it from sync.
+                s.set_show_image_selection
+                    .execute((show_id, kind, id, true))?;
+                return Ok(api::ImageOwner::Show(show_id));
+            }
 
-            let kind = row.kind;
+            let movie = s.movie_image_owner_by_id.bind((id,))?.first()?;
+            if let Some((movie_id, kind)) = movie {
+                s.set_movie_image_selection
+                    .execute((movie_id, kind, id, true))?;
+                return Ok(api::ImageOwner::Movie(movie_id));
+            }
 
-            let owner = match (row.show_id, row.movie_id, row.season_id) {
-                (Some(show_id), _, _) => {
-                    // A manual pick is a user selection: protect it from sync.
-                    s.set_show_image_selection
-                        .execute((show_id, kind, id, true))?;
-                    api::ImageOwner::Show(show_id)
-                }
-                (_, Some(movie_id), _) => {
-                    s.set_movie_image_selection
-                        .execute((movie_id, kind, id, true))?;
-                    api::ImageOwner::Movie(movie_id)
-                }
-                (_, _, Some(season_id)) => {
-                    s.set_season_image_selection
-                        .execute((season_id, kind, id))?;
-                    api::ImageOwner::Season(season_id)
-                }
-                _ => anyhow::bail!("Image has no owner"),
-            };
+            let season = s.season_image_owner_by_id.bind((id,))?.first()?;
+            if let Some((season_id, kind)) = season {
+                s.set_season_image_selection
+                    .execute((season_id, kind, id))?;
+                return Ok(api::ImageOwner::Season(season_id));
+            }
 
-            Ok(owner)
+            anyhow::bail!("Expected image to exist")
         });
 
         result.await?
