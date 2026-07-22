@@ -13,6 +13,8 @@ use crate::ui::{
     RemoteSourceKind, SettingsTarget, TimePreset, Tracked, TranslationsModal, Variant,
 };
 
+const CAP: usize = 8;
+
 struct WatchedState {
     remove_watch_anchor: NodeRef,
     watched: api::Watched,
@@ -986,51 +988,31 @@ impl MovieDetail {
 
     /// Cast grid plus a compact key-crew line. Cast is capped until expanded.
     fn view_credits(&self, ctx: &Context<Self>) -> Html {
-        let cast: Vec<&api::Credit> = self
-            .credits
-            .iter()
-            .filter(|c| c.kind == api::CreditKind::Cast)
-            .collect();
-
-        let crew: Vec<&api::Credit> = self
-            .credits
-            .iter()
-            .filter(|c| c.kind == api::CreditKind::Crew)
-            .collect();
-
-        if cast.is_empty() && crew.is_empty() {
+        if self.credits.is_empty() {
             return html! {};
         }
 
-        let preferred_crew = Self::preferred_crew(&crew);
-
-        const CAP: usize = 18;
-        let show_all = self.credits_expanded || cast.len() <= CAP;
-        let shown = if show_all {
-            cast.as_slice()
+        let shown = if self.credits_expanded {
+            self.credits.as_slice()
         } else {
-            &cast[..CAP]
+            self.credits
+                .get(..CAP.min(self.credits.len()))
+                .unwrap_or_default()
         };
 
         html! {
             <section class="credits">
                 <h2>{"Cast & crew"}</h2>
 
-                if !preferred_crew.is_empty() {
-                    <div class="cast-grid">
-                        { for preferred_crew.iter().map(|c| self.view_credit_card(c, c.job.as_deref())) }
-                    </div>
-                }
-
                 if !shown.is_empty() {
                     <div class="cast-grid">
-                        { for shown.iter().map(|c| self.view_credit_card(c, c.character.character())) }
+                        { for shown.iter().map(|c| self.view_credit_card(c, c.character.character().or(c.job.as_deref()))) }
                     </div>
                 }
 
-                if cast.len() > CAP {
+                if self.credits.len() > CAP {
                     <button class="credits-toggle" onclick={ctx.link().callback(|_| Msg::ToggleCreditsExpanded)}>
-                        { if show_all { "Show fewer" } else { "Show all cast" } }
+                        { if self.credits_expanded { "Show fewer" } else { "Show all cast" } }
                     </button>
                 }
             </section>
@@ -1060,39 +1042,6 @@ impl MovieDetail {
                 </div>
             </div>
         }
-    }
-
-    /// The most relevant crew, in preferred-job order and deduplicated by person,
-    /// capped at 4 - rendered as cards alongside the cast.
-    fn preferred_crew<'a>(crew: &[&'a api::Credit]) -> Vec<&'a api::Credit> {
-        const PREFERRED: &[&str] = &[
-            "Director",
-            "Screenplay",
-            "Writer",
-            "Creator",
-            "Executive Producer",
-            "Producer",
-        ];
-
-        let mut picks: Vec<&api::Credit> = Vec::new();
-
-        for job in PREFERRED {
-            for c in crew {
-                if c.job.as_deref() == Some(*job)
-                    && c.name.title().is_some_and(|n| !n.is_empty())
-                    && !picks.iter().any(|p| p.person_id == c.person_id)
-                {
-                    picks.push(c);
-                }
-            }
-
-            if picks.len() >= 4 {
-                break;
-            }
-        }
-
-        picks.truncate(4);
-        picks
     }
 
     fn load_watched(&mut self, ctx: &Context<Self>) {
