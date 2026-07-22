@@ -11,9 +11,10 @@ use anyhow::{Context as _, Result, anyhow};
 use std::collections::{HashMap, HashSet};
 
 use api::{
-    Config, Country, Date, EpisodeId, Image, ImageId, ImageKey, ImageKind, ImageSource,
-    IncludeSpecials, MarkTime, MovieId, PendingId, ReleaseType, Remote, RemoteId, RemoteSource,
-    RemoteValue, SeasonId, SeasonNumber, ShowId, ThemeType, Timestamp, WatchedId, WatchedKind,
+    Config, Country, Credit, CreditId, CreditKind, Date, EpisodeId, Image, ImageId, ImageKey,
+    ImageKind, ImageSource, IncludeSpecials, MarkTime, MovieId, PendingId, PersonId, ReleaseType,
+    Remote, RemoteId, RemoteSource, RemoteValue, SeasonId, SeasonNumber, ShowId, ThemeType,
+    Timestamp, WatchedId, WatchedKind,
 };
 use rust_embed::RustEmbed;
 use sqll::{OpenOptions, Pool, PoolBuilder, Row, Statements, TypedStatement};
@@ -98,6 +99,37 @@ struct MovieImageRow {
     path: String,
     score: Option<f64>,
     movie_id: MovieId,
+}
+
+/// A credit row plus its person's best-ranked profile image. Person names and
+/// character names are folded in separately from the `*_strings` tables.
+#[derive(Row)]
+struct CreditRow {
+    id: CreditId,
+    person_id: PersonId,
+    credit_type: CreditKind,
+    department: Option<String>,
+    job: Option<String>,
+    sort_order: Option<u32>,
+    episode_count: Option<u32>,
+    profile_source: Option<ImageSource>,
+    profile_path: Option<String>,
+}
+
+/// A person needing a sync, with a best-effort display name for the task label.
+#[derive(Row)]
+struct PersonSyncRow {
+    id: PersonId,
+    name: Option<String>,
+}
+
+/// A person's sync identity: its source, remote id and stored conditional-request
+/// validator (ETag), joined from `person_cache`.
+#[derive(Row)]
+struct PersonSyncInfoRow {
+    source: RemoteSource,
+    remote_id: u32,
+    cache: Option<String>,
 }
 
 #[derive(Row)]
@@ -694,6 +726,50 @@ struct InnerRead {
     #[sql = "SELECT show_id FROM seasons WHERE id = ?"]
     show_id_for_season: TypedStatement<(SeasonId,), ShowId>,
 
+    // credits (cast & crew; person + character names folded in from *_strings).
+    // The person's best-ranked profile is pulled via correlated subqueries.
+    #[sql = "SELECT c.id, c.person_id, c.credit_type, c.department, c.job, c.sort_order, c.episode_count,"]
+    #[sql = "  (SELECT source FROM person_image_candidates WHERE person_id = c.person_id AND kind = 5 ORDER BY rank, id LIMIT 1) AS profile_source,"]
+    #[sql = "  (SELECT path FROM person_image_candidates WHERE person_id = c.person_id AND kind = 5 ORDER BY rank, id LIMIT 1) AS profile_path"]
+    #[sql = "FROM show_credits c"]
+    #[sql = "WHERE c.show_id = ? ORDER BY c.credit_type, c.episode_count DESC, c.sort_order, c.id"]
+    list_show_credits: TypedStatement<(ShowId,), CreditRow>,
+    #[sql = "SELECT cs.credit_id, cs.language, cs.text FROM show_credit_strings cs"]
+    #[sql = "JOIN show_credits c ON c.id = cs.credit_id"]
+    #[sql = "WHERE c.show_id = ? ORDER BY cs.credit_id"]
+    list_show_credit_strings: TypedStatement<(ShowId,), (CreditId, api::Locale, String)>,
+    // Person names (kind=Title) for a show's credits, keyed by credit id.
+    #[sql = "SELECT c.id, ps.language, ps.text FROM show_credits c"]
+    #[sql = "JOIN person_strings ps ON ps.person_id = c.person_id AND ps.kind = 1"]
+    #[sql = "WHERE c.show_id = ? ORDER BY c.id"]
+    list_show_credit_names: TypedStatement<(ShowId,), (CreditId, api::Locale, String)>,
+    #[sql = "SELECT c.id, c.person_id, c.credit_type, c.department, c.job, c.sort_order, c.episode_count,"]
+    #[sql = "  (SELECT source FROM person_image_candidates WHERE person_id = c.person_id AND kind = 5 ORDER BY rank, id LIMIT 1) AS profile_source,"]
+    #[sql = "  (SELECT path FROM person_image_candidates WHERE person_id = c.person_id AND kind = 5 ORDER BY rank, id LIMIT 1) AS profile_path"]
+    #[sql = "FROM movie_credits c"]
+    #[sql = "WHERE c.movie_id = ? ORDER BY c.credit_type, c.episode_count DESC, c.sort_order, c.id"]
+    list_movie_credits: TypedStatement<(MovieId,), CreditRow>,
+    #[sql = "SELECT cs.credit_id, cs.language, cs.text FROM movie_credit_strings cs"]
+    #[sql = "JOIN movie_credits c ON c.id = cs.credit_id"]
+    #[sql = "WHERE c.movie_id = ? ORDER BY cs.credit_id"]
+    list_movie_credit_strings: TypedStatement<(MovieId,), (CreditId, api::Locale, String)>,
+    #[sql = "SELECT c.id, ps.language, ps.text FROM movie_credits c"]
+    #[sql = "JOIN person_strings ps ON ps.person_id = c.person_id AND ps.kind = 1"]
+    #[sql = "WHERE c.movie_id = ? ORDER BY c.id"]
+    list_movie_credit_names: TypedStatement<(MovieId,), (CreditId, api::Locale, String)>,
+    // person sync
+    #[sql = "SELECT p.source, p.remote_id, pc.cache FROM people p"]
+    #[sql = "LEFT JOIN person_cache pc ON pc.person_id = p.id AND pc.source = p.source"]
+    #[sql = "WHERE p.id = ?"]
+    person_sync_info: TypedStatement<(PersonId,), PersonSyncInfoRow>,
+    // Never-synced first, then stalest; a best-effort name for the task label.
+    // Batch capped at 50 (PERSON_SYNC_BATCH) so a big cast drains gradually.
+    #[sql = "SELECT p.id, (SELECT text FROM person_strings WHERE person_id = p.id AND kind = 1 LIMIT 1) AS name"]
+    #[sql = "FROM people p"]
+    #[sql = "WHERE p.last_synced_at IS NULL OR p.last_synced_at < ?"]
+    #[sql = "ORDER BY p.last_synced_at IS NOT NULL, p.last_synced_at LIMIT 50"]
+    people_needing_sync: TypedStatement<(Timestamp,), PersonSyncRow>,
+
     // selection tables
     #[sql = "SELECT si.kind, i.source, i.path, i.width, i.height, si.user_selected"]
     #[sql = "FROM show_images si JOIN show_image_candidates i ON i.id = si.image_id"]
@@ -1155,6 +1231,78 @@ struct InnerWrite {
     >,
     #[sql = "INSERT OR REPLACE INTO season_images (season_id, kind, image_id) VALUES (?, ?, ?)"]
     set_season_image_selection: TypedStatement<(SeasonId, ImageKind, ImageId), ()>,
+
+    // people & credits
+    #[sql = "SELECT id, last_synced_at FROM people WHERE source = ? AND remote_id = ?"]
+    person_id_by_remote: TypedStatement<(RemoteSource, u32), (PersonId, Option<Timestamp>)>,
+    #[sql = "INSERT INTO people (id, source, remote_id) VALUES (?, ?, ?)"]
+    insert_person: TypedStatement<(PersonId, RemoteSource, u32), ()>,
+    #[sql = "UPDATE people SET department = ?, imdb_id = ? WHERE id = ?"]
+    update_person: TypedStatement<(Option<String>, Option<String>, PersonId), ()>,
+    #[sql = "UPDATE people SET last_synced_at = ? WHERE id = ?"]
+    mark_person_synced: TypedStatement<(Timestamp, PersonId), ()>,
+    #[sql = "INSERT OR REPLACE INTO person_cache (person_id, source, cache) VALUES (?, ?, ?)"]
+    set_person_cache: TypedStatement<(PersonId, RemoteSource, String), ()>,
+    #[sql = "DELETE FROM person_strings WHERE person_id = ?"]
+    clear_person_strings: TypedStatement<(PersonId,), ()>,
+    #[sql = "INSERT OR IGNORE INTO person_strings (person_id, language, kind, text) VALUES (?, ?, ?, ?)"]
+    insert_person_string: TypedStatement<(PersonId, api::Locale, api::StringKind, String), ()>,
+    #[sql = "DELETE FROM person_image_candidates WHERE person_id = ?"]
+    clear_person_images: TypedStatement<(PersonId,), ()>,
+    #[sql = "INSERT INTO person_image_candidates (id, person_id, kind, source, path, width, height, rank, score) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"]
+    #[sql = "ON CONFLICT(person_id, kind, path) DO NOTHING"]
+    insert_person_image: TypedStatement<
+        (
+            ImageId,
+            PersonId,
+            ImageKind,
+            ImageSource,
+            String,
+            u32,
+            u32,
+            u32,
+            Option<f64>,
+        ),
+        (),
+    >,
+    #[sql = "DELETE FROM show_credits WHERE show_id = ?"]
+    clear_show_credits: TypedStatement<(ShowId,), ()>,
+    #[sql = "INSERT INTO show_credits (id, show_id, person_id, credit_type, department, job, sort_order, episode_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"]
+    insert_show_credit: TypedStatement<
+        (
+            CreditId,
+            ShowId,
+            PersonId,
+            CreditKind,
+            Option<String>,
+            Option<String>,
+            Option<u32>,
+            Option<u32>,
+        ),
+        (),
+    >,
+    #[sql = "INSERT OR IGNORE INTO show_credit_strings (credit_id, language, kind, text) VALUES (?, ?, ?, ?)"]
+    insert_show_credit_string: TypedStatement<(CreditId, api::Locale, api::StringKind, String), ()>,
+    #[sql = "DELETE FROM movie_credits WHERE movie_id = ?"]
+    clear_movie_credits: TypedStatement<(MovieId,), ()>,
+    #[sql = "INSERT INTO movie_credits (id, movie_id, person_id, credit_type, department, job, sort_order, episode_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"]
+    insert_movie_credit: TypedStatement<
+        (
+            CreditId,
+            MovieId,
+            PersonId,
+            CreditKind,
+            Option<String>,
+            Option<String>,
+            Option<u32>,
+            Option<u32>,
+        ),
+        (),
+    >,
+    #[sql = "INSERT OR IGNORE INTO movie_credit_strings (credit_id, language, kind, text) VALUES (?, ?, ?, ?)"]
+    insert_movie_credit_string: TypedStatement<(CreditId, api::Locale, api::StringKind, String), ()>,
+    #[sql = "DELETE FROM people WHERE id NOT IN (SELECT person_id FROM show_credits UNION SELECT person_id FROM movie_credits)"]
+    prune_orphan_people: TypedStatement<(), ()>,
 
     // seasons
     #[sql = "INSERT INTO seasons (id, show_id, season, air_date)"]
@@ -3467,6 +3615,429 @@ impl Database {
                     .execute((movie_id, language, kind, text))?;
             }
             Ok(())
+        });
+
+        result.await?
+    }
+
+    /// Find-or-create the bare person for a `(source, remote_id)`, returning the
+    /// stable [`PersonId`] and its `last_synced_at` (`None` when never synced, so
+    /// the caller can seed placeholder data). The person's own data is filled in
+    /// by [`sync_person`](crate::sync::sync_person).
+    pub(crate) async fn upsert_person(
+        &self,
+        source: RemoteSource,
+        remote_id: u32,
+    ) -> Result<(PersonId, Option<Timestamp>)> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            let existing = s.person_id_by_remote.bind((source, remote_id))?.first()?;
+
+            if let Some((id, last_synced)) = existing {
+                Ok((id, last_synced))
+            } else {
+                let id = PersonId::random();
+                s.insert_person.execute((id, source, remote_id))?;
+                Ok((id, None))
+            }
+        });
+
+        result.await?
+    }
+
+    /// Seed a placeholder person string (name) without overwriting an existing
+    /// one - used from the credit sync so the cast grid is populated before the
+    /// person's own sync runs.
+    pub(crate) async fn seed_person_string(
+        &self,
+        person_id: PersonId,
+        language: api::Locale,
+        kind: api::StringKind,
+        text: &str,
+    ) -> Result<()> {
+        let text = text.to_owned();
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.insert_person_string
+                .execute((person_id, language, kind, text))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    /// Seed a placeholder profile image (rank 0), ignored if the person already
+    /// has that image. Cleared and replaced by the person's own sync.
+    pub(crate) async fn seed_person_image(
+        &self,
+        person_id: PersonId,
+        kind: ImageKind,
+        image: &Image,
+    ) -> Result<()> {
+        let image = image.clone();
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.insert_person_image.execute((
+                ImageId::random(),
+                person_id,
+                kind,
+                image.key().source(),
+                image.key().path(),
+                image.width(),
+                image.height(),
+                0,
+                None::<f64>,
+            ))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    /// A person's sync identity: `(source, remote_id, stored ETag)`.
+    pub(crate) async fn person_sync_info(
+        &self,
+        person_id: PersonId,
+    ) -> Result<Option<(RemoteSource, u32, Option<String>)>> {
+        let mut s = self.inner.clone().shared().await?;
+
+        let result = spawn_blocking(move || {
+            let row = s.person_sync_info.bind((person_id,))?.first()?;
+            Ok(row.map(|r| (r.source, r.remote_id, r.cache)))
+        });
+
+        result.await?
+    }
+
+    /// People that have never been synced (first) or are older than `interval`,
+    /// with a best-effort display name, capped at `limit`.
+    pub(crate) async fn people_needing_sync(
+        &self,
+        interval_hours: u32,
+    ) -> Result<Vec<(PersonId, Option<String>)>> {
+        let cutoff = cutoff_timestamp(interval_hours);
+        let mut s = self.inner.clone().shared().await?;
+
+        let result = spawn_blocking(move || {
+            let mut out = Vec::new();
+            let mut stmt = s.people_needing_sync.bind((cutoff,))?;
+
+            while let Some(r) = stmt.next()? {
+                out.push((r.id, r.name));
+            }
+
+            stmt.reset()?;
+            Ok(out)
+        });
+
+        result.await?
+    }
+
+    /// Replace a person's own data from its sync: department/imdb, per-language
+    /// name+biography, ranked profile images, then mark synced and store the ETag.
+    pub(crate) async fn persist_person_sync(
+        &self,
+        person_id: PersonId,
+        source: RemoteSource,
+        department: Option<String>,
+        imdb_id: Option<String>,
+        strings: Vec<(api::Locale, api::StringKind, String)>,
+        images: Vec<(f64, Image)>,
+        cache: Option<String>,
+        now: Timestamp,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.update_person.execute((department, imdb_id, person_id))?;
+
+            s.clear_person_strings.execute((person_id,))?;
+            for (language, kind, text) in strings {
+                s.insert_person_string
+                    .execute((person_id, language, kind, text))?;
+            }
+
+            s.clear_person_images.execute((person_id,))?;
+            for (rank, (score, image)) in images.into_iter().enumerate() {
+                s.insert_person_image.execute((
+                    ImageId::random(),
+                    person_id,
+                    ImageKind::Profile,
+                    image.key().source(),
+                    image.key().path(),
+                    image.width(),
+                    image.height(),
+                    rank as u32,
+                    Some(score),
+                ))?;
+            }
+
+            if let Some(cache) = cache {
+                s.set_person_cache.execute((person_id, source, cache))?;
+            }
+
+            s.mark_person_synced.execute((now, person_id))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    /// Mark a person synced without changing its data (unchanged / skipped path).
+    pub(crate) async fn mark_person_synced(
+        &self,
+        person_id: PersonId,
+        now: Timestamp,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.mark_person_synced.execute((now, person_id))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    pub(crate) async fn clear_show_credits(&self, show_id: ShowId) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.clear_show_credits.execute((show_id,))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    pub(crate) async fn insert_show_credit(
+        &self,
+        credit_id: CreditId,
+        show_id: ShowId,
+        person_id: PersonId,
+        kind: CreditKind,
+        department: Option<&str>,
+        job: Option<&str>,
+        order: Option<u32>,
+        episode_count: Option<u32>,
+    ) -> Result<()> {
+        let department = department.map(str::to_owned);
+        let job = job.map(str::to_owned);
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.insert_show_credit.execute((
+                credit_id,
+                show_id,
+                person_id,
+                kind,
+                department,
+                job,
+                order,
+                episode_count,
+            ))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    pub(crate) async fn insert_show_credit_string(
+        &self,
+        credit_id: CreditId,
+        language: api::Locale,
+        kind: api::StringKind,
+        text: &str,
+    ) -> Result<()> {
+        let text = text.to_owned();
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.insert_show_credit_string
+                .execute((credit_id, language, kind, text))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    pub(crate) async fn clear_movie_credits(&self, movie_id: MovieId) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.clear_movie_credits.execute((movie_id,))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    pub(crate) async fn insert_movie_credit(
+        &self,
+        credit_id: CreditId,
+        movie_id: MovieId,
+        person_id: PersonId,
+        kind: CreditKind,
+        department: Option<&str>,
+        job: Option<&str>,
+        order: Option<u32>,
+        episode_count: Option<u32>,
+    ) -> Result<()> {
+        let department = department.map(str::to_owned);
+        let job = job.map(str::to_owned);
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.insert_movie_credit.execute((
+                credit_id,
+                movie_id,
+                person_id,
+                kind,
+                department,
+                job,
+                order,
+                episode_count,
+            ))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    pub(crate) async fn insert_movie_credit_string(
+        &self,
+        credit_id: CreditId,
+        language: api::Locale,
+        kind: api::StringKind,
+        text: &str,
+    ) -> Result<()> {
+        let text = text.to_owned();
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.insert_movie_credit_string
+                .execute((credit_id, language, kind, text))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    /// Delete people no longer referenced by any credit (their profile images
+    /// cascade). Run after rewriting an owner's credits.
+    pub(crate) async fn prune_orphan_people(&self) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.prune_orphan_people.execute(())?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    pub(crate) async fn list_show_credits(&self, show_id: ShowId) -> Result<Vec<Credit>> {
+        let mut s = self.inner.clone().shared().await?;
+
+        let result = spawn_blocking(move || {
+            let config = s.config_language()?;
+            let (language, default) = s
+                .translations
+                .show_locales
+                .bind((show_id,))?
+                .first()?
+                .map(|r| (r.language, r.default_language))
+                .unwrap_or_default();
+            let locale = language.or(config).or(default);
+
+            let mut names: HashMap<CreditId, api::Translations> = HashMap::new();
+            let mut stmt = s.list_show_credit_names.bind((show_id,))?;
+
+            while let Some((credit_id, string_locale, text)) = stmt.next()? {
+                names
+                    .entry(credit_id)
+                    .or_insert_with(|| api::Translations::new(locale))
+                    .insert(api::StringKind::Title, string_locale, &text);
+            }
+
+            stmt.reset()?;
+
+            let mut characters: HashMap<CreditId, api::Translations> = HashMap::new();
+            let mut stmt = s.list_show_credit_strings.bind((show_id,))?;
+
+            while let Some((credit_id, string_locale, text)) = stmt.next()? {
+                characters
+                    .entry(credit_id)
+                    .or_insert_with(|| api::Translations::new(locale))
+                    .insert(api::StringKind::Character, string_locale, &text);
+            }
+
+            stmt.reset()?;
+
+            let mut out = Vec::new();
+            let mut stmt = s.list_show_credits.bind((show_id,))?;
+
+            while let Some(r) = stmt.next()? {
+                out.push(credit_from_row(r, &mut names, &mut characters, locale));
+            }
+
+            stmt.reset()?;
+            Ok(out)
+        });
+
+        result.await?
+    }
+
+    pub(crate) async fn list_movie_credits(&self, movie_id: MovieId) -> Result<Vec<Credit>> {
+        let mut s = self.inner.clone().shared().await?;
+
+        let result = spawn_blocking(move || {
+            let config = s.config_language()?;
+            let (language, default) = s
+                .translations
+                .movie_locales
+                .bind((movie_id,))?
+                .first()?
+                .map(|r| (r.language, r.default_language))
+                .unwrap_or_default();
+            let locale = language.or(config).or(default);
+
+            let mut names: HashMap<CreditId, api::Translations> = HashMap::new();
+            let mut stmt = s.list_movie_credit_names.bind((movie_id,))?;
+
+            while let Some((credit_id, string_locale, text)) = stmt.next()? {
+                names
+                    .entry(credit_id)
+                    .or_insert_with(|| api::Translations::new(locale))
+                    .insert(api::StringKind::Title, string_locale, &text);
+            }
+
+            stmt.reset()?;
+
+            let mut characters: HashMap<CreditId, api::Translations> = HashMap::new();
+            let mut stmt = s.list_movie_credit_strings.bind((movie_id,))?;
+
+            while let Some((credit_id, string_locale, text)) = stmt.next()? {
+                characters
+                    .entry(credit_id)
+                    .or_insert_with(|| api::Translations::new(locale))
+                    .insert(api::StringKind::Character, string_locale, &text);
+            }
+
+            stmt.reset()?;
+
+            let mut out = Vec::new();
+            let mut stmt = s.list_movie_credits.bind((movie_id,))?;
+
+            while let Some(r) = stmt.next()? {
+                out.push(credit_from_row(r, &mut names, &mut characters, locale));
+            }
+
+            stmt.reset()?;
+            Ok(out)
         });
 
         result.await?
@@ -5848,6 +6419,37 @@ fn movie_image_from_row(r: MovieImageRow) -> api::MediaImage {
         source: r.source,
         image: Image::new(r.source, &r.path),
         score: r.score,
+    }
+}
+
+/// Assemble an [`api::Credit`], taking the person-name and character
+/// [`Translations`] out of their maps (empty sets resolved to `locale` when
+/// absent - e.g. a person not yet synced, or crew with no character).
+fn credit_from_row(
+    r: CreditRow,
+    names: &mut HashMap<CreditId, api::Translations>,
+    characters: &mut HashMap<CreditId, api::Translations>,
+    locale: api::Locale,
+) -> Credit {
+    let profile = match (r.profile_source, r.profile_path) {
+        (Some(source), Some(path)) => Some(Image::new(source, &path)),
+        _ => None,
+    };
+
+    Credit {
+        person_id: r.person_id,
+        name: names
+            .remove(&r.id)
+            .unwrap_or_else(|| api::Translations::new(locale)),
+        profile,
+        kind: r.credit_type,
+        character: characters
+            .remove(&r.id)
+            .unwrap_or_else(|| api::Translations::new(locale)),
+        department: r.department,
+        job: r.job,
+        episode_count: r.episode_count,
+        order: r.sort_order,
     }
 }
 

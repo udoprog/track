@@ -210,9 +210,12 @@ fn effective_remote_sync_kinds_override_beats_global() {
 fn sync_kinds_capabilities() {
     use RemoteSource::*;
 
-    // TMDB/TVDB are full base + air-date sources; TVmaze is air-dates only;
-    // IMDb contributes nothing and no graphics.
-    assert_eq!(Tmdb.sync_kinds(), &[SyncKind::Base, SyncKind::Dates]);
+    // TMDB is the full base + air-date + credits source; TVDB is base + air-dates;
+    // TVmaze is air-dates only; IMDb contributes nothing and no graphics.
+    assert_eq!(
+        Tmdb.sync_kinds(),
+        &[SyncKind::Base, SyncKind::Dates, SyncKind::Credits]
+    );
     assert_eq!(Tvdb.sync_kinds(), &[SyncKind::Base, SyncKind::Dates]);
     assert_eq!(Tvmaze.sync_kinds(), &[SyncKind::Dates]);
     assert_eq!(Imdb.sync_kinds(), &[]);
@@ -222,9 +225,10 @@ fn sync_kinds_capabilities() {
     assert!(!Tvmaze.has_graphics());
     assert!(!Imdb.has_graphics());
 
-    // Base is exclusive (first source wins); air dates accumulate.
+    // Base and Credits are exclusive (first source wins); air dates accumulate.
     assert!(SyncKind::Base.is_exclusive());
     assert!(!SyncKind::Dates.is_exclusive());
+    assert!(SyncKind::Credits.is_exclusive());
 }
 
 #[test]

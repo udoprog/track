@@ -326,3 +326,110 @@ CREATE TABLE
         text TEXT NOT NULL,
         UNIQUE (season_id, language, kind)
     );
+
+-- People are shared across shows and movies and synced independently (their own
+-- `last_synced_at` + `person_cache` conditional-request state). Identity is a
+-- random PersonId; the source-specific person id lives in a normalized
+-- (source, remote_id) pair so the model is not tied to any single remote. The
+-- localized name and biography live in `person_strings`.
+CREATE TABLE
+    people (
+        id INTEGER PRIMARY KEY,
+        source INTEGER NOT NULL,
+        remote_id INTEGER NOT NULL,
+        imdb_id TEXT,
+        department TEXT,
+        last_synced_at INTEGER,
+        UNIQUE (source, remote_id)
+    );
+
+CREATE INDEX idx_people_sync ON people (last_synced_at);
+
+-- Conditional-request state for a person, per source (TMDB ETag). Mirrors
+-- episode_cache. A row exists only for a source that hands out a validator.
+CREATE TABLE
+    person_cache (
+        person_id INTEGER NOT NULL REFERENCES people (id) ON DELETE CASCADE,
+        source INTEGER NOT NULL,
+        cache TEXT NOT NULL,
+        PRIMARY KEY (person_id, source)
+    );
+
+-- Per-language name (kind=Title) and biography (kind=Overview) for a person.
+CREATE TABLE
+    person_strings (
+        id INTEGER PRIMARY KEY,
+        person_id INTEGER NOT NULL REFERENCES people (id) ON DELETE CASCADE,
+        language INTEGER NOT NULL,
+        kind INTEGER NOT NULL,
+        text TEXT NOT NULL,
+        UNIQUE (person_id, language, kind)
+    );
+
+-- Profile photos reuse the per-owner candidate pattern (ImageKind::Profile),
+-- ranked/scored like other artwork.
+CREATE TABLE
+    person_image_candidates (
+        id INTEGER PRIMARY KEY,
+        person_id INTEGER NOT NULL REFERENCES people (id) ON DELETE CASCADE,
+        kind INTEGER NOT NULL,
+        source INTEGER NOT NULL,
+        path TEXT NOT NULL,
+        width INTEGER NOT NULL,
+        height INTEGER NOT NULL,
+        rank INTEGER NOT NULL DEFAULT 0,
+        score REAL,
+        UNIQUE (person_id, kind, path)
+    );
+
+CREATE INDEX idx_person_image_candidates_rank ON person_image_candidates (person_id, kind, rank);
+
+-- A credit links a person to a show/movie in one cast role or crew job. One row
+-- per role/job; the character name is translated (see show_credit_strings).
+CREATE TABLE
+    show_credits (
+        id INTEGER PRIMARY KEY,
+        show_id INTEGER NOT NULL REFERENCES shows (id) ON DELETE CASCADE,
+        person_id INTEGER NOT NULL REFERENCES people (id) ON DELETE CASCADE,
+        credit_type INTEGER NOT NULL,
+        department TEXT,
+        job TEXT,
+        sort_order INTEGER,
+        episode_count INTEGER
+    );
+
+CREATE INDEX idx_show_credits_show ON show_credits (show_id);
+
+CREATE TABLE
+    movie_credits (
+        id INTEGER PRIMARY KEY,
+        movie_id INTEGER NOT NULL REFERENCES movies (id) ON DELETE CASCADE,
+        person_id INTEGER NOT NULL REFERENCES people (id) ON DELETE CASCADE,
+        credit_type INTEGER NOT NULL,
+        department TEXT,
+        job TEXT,
+        sort_order INTEGER,
+        episode_count INTEGER
+    );
+
+CREATE INDEX idx_movie_credits_movie ON movie_credits (movie_id);
+
+CREATE TABLE
+    show_credit_strings (
+        id INTEGER PRIMARY KEY,
+        credit_id INTEGER NOT NULL REFERENCES show_credits (id) ON DELETE CASCADE,
+        language INTEGER NOT NULL,
+        kind INTEGER NOT NULL,
+        text TEXT NOT NULL,
+        UNIQUE (credit_id, language, kind)
+    );
+
+CREATE TABLE
+    movie_credit_strings (
+        id INTEGER PRIMARY KEY,
+        credit_id INTEGER NOT NULL REFERENCES movie_credits (id) ON DELETE CASCADE,
+        language INTEGER NOT NULL,
+        kind INTEGER NOT NULL,
+        text TEXT NOT NULL,
+        UNIQUE (credit_id, language, kind)
+    );

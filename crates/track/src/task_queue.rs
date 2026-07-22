@@ -40,6 +40,7 @@ struct Inner {
     show_pending: HashMap<api::ShowId, api::TaskId>,
     movie_pending: HashMap<api::MovieId, api::TaskId>,
     episode_pending: HashMap<api::EpisodeId, api::TaskId>,
+    person_pending: HashMap<api::PersonId, api::TaskId>,
 }
 
 #[derive(Clone)]
@@ -59,6 +60,7 @@ impl TaskQueue {
                 show_pending: HashMap::new(),
                 movie_pending: HashMap::new(),
                 episode_pending: HashMap::new(),
+                person_pending: HashMap::new(),
             })),
             notify: Arc::new(Notify::new()),
             next_id: Arc::new(AtomicU64::new(1)),
@@ -99,6 +101,13 @@ impl TaskQueue {
                         .as_ref()
                         .is_some_and(|t| matches!(&t.kind, api::TaskKind::SyncEpisode { episode_id: id, .. } if id == episode_id))
             }
+            api::TaskKind::SyncPerson { person_id, .. } => {
+                inner.person_pending.contains_key(person_id)
+                    || inner
+                        .running
+                        .as_ref()
+                        .is_some_and(|t| matches!(&t.kind, api::TaskKind::SyncPerson { person_id: id, .. } if id == person_id))
+            }
             // Singleton task: at most one queued or running at a time.
             api::TaskKind::RefreshTopLanguages => {
                 inner
@@ -134,6 +143,10 @@ impl TaskQueue {
                             api::TaskKind::SyncEpisode { episode_id: a, .. },
                             api::TaskKind::SyncEpisode { episode_id: b, .. },
                         ) => a == b,
+                        (
+                            api::TaskKind::SyncPerson { person_id: a, .. },
+                            api::TaskKind::SyncPerson { person_id: b, .. },
+                        ) => a == b,
                         _ => false,
                     });
 
@@ -168,6 +181,9 @@ impl TaskQueue {
             }
             api::TaskKind::SyncEpisode { episode_id, .. } => {
                 inner.episode_pending.insert(*episode_id, id);
+            }
+            api::TaskKind::SyncPerson { person_id, .. } => {
+                inner.person_pending.insert(*person_id, id);
             }
             // Deduped by scanning pending/running, not via an id map.
             api::TaskKind::RefreshTopLanguages => {}
@@ -217,6 +233,9 @@ impl TaskQueue {
             }
             api::TaskKind::SyncEpisode { episode_id, .. } => {
                 inner.episode_pending.remove(episode_id);
+            }
+            api::TaskKind::SyncPerson { person_id, .. } => {
+                inner.person_pending.remove(person_id);
             }
             api::TaskKind::RefreshTopLanguages => {}
         }
@@ -366,8 +385,10 @@ impl TaskQueue {
                             );
                         }
                         // `execute` already broadcasts EpisodeChanged / EpisodesChanged /
-                        // PendingChanged, and TopLanguagesChanged, respectively.
-                        api::TaskKind::SyncEpisode { .. } | api::TaskKind::RefreshTopLanguages => {}
+                        // PendingChanged, PersonChanged, and TopLanguagesChanged, respectively.
+                        api::TaskKind::SyncEpisode { .. }
+                        | api::TaskKind::SyncPerson { .. }
+                        | api::TaskKind::RefreshTopLanguages => {}
                     }
                 }
                 Err(e) => {
@@ -393,6 +414,9 @@ impl TaskQueue {
                     }
                     api::TaskKind::SyncEpisode { episode_id, .. } => {
                         inner.episode_pending.remove(episode_id);
+                    }
+                    api::TaskKind::SyncPerson { person_id, .. } => {
+                        inner.person_pending.remove(person_id);
                     }
                     api::TaskKind::RefreshTopLanguages => {}
                 }
@@ -442,6 +466,9 @@ async fn execute(
                 shutdown,
             )
             .await
+        }
+        api::TaskKind::SyncPerson { person_id, .. } => {
+            sync::sync_person(*person_id, db, remote, broadcast, shutdown).await
         }
         api::TaskKind::RefreshTopLanguages => {
             crate::background::refresh_top_languages(db, broadcast).await

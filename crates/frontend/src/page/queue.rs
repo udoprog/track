@@ -450,6 +450,8 @@ impl Queue {
                     ..ShowDetailQuery::default()
                 },
             )),
+            // No person page yet, so the row shows the name without a link.
+            api::TaskKind::SyncPerson { .. } => None,
             api::TaskKind::RefreshTopLanguages => None,
         };
 
@@ -483,6 +485,7 @@ impl Queue {
             api::TaskKind::SyncShow { .. } => "Updating show",
             api::TaskKind::SyncMovie { .. } => "Updating movie",
             api::TaskKind::SyncEpisode { .. } => "Updating episode",
+            api::TaskKind::SyncPerson { .. } => "Updating person",
             api::TaskKind::RefreshTopLanguages => "Refreshing top languages",
         };
 
@@ -563,6 +566,8 @@ impl Queue {
                     ..ShowDetailQuery::default()
                 },
             )),
+            // No person page yet, so the row shows the name without a link.
+            api::TaskKind::SyncPerson { .. } => None,
             api::TaskKind::RefreshTopLanguages => None,
         };
 
@@ -590,6 +595,7 @@ impl Queue {
             api::TaskKind::SyncShow { .. } => "Updated show",
             api::TaskKind::SyncMovie { .. } => "Updated movie",
             api::TaskKind::SyncEpisode { .. } => "Updated episode",
+            api::TaskKind::SyncPerson { .. } => "Updated person",
             api::TaskKind::RefreshTopLanguages => "Refreshed top languages",
         };
 

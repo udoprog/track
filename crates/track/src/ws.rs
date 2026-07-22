@@ -206,6 +206,18 @@ impl WsHandler {
                 let seasons = self.db.seasons(req.show_id).await?;
                 outgoing.write(api::ListSeasonsResponse { seasons });
             }
+            api::Request::ListCredits => {
+                let req = incoming
+                    .read::<api::ListCreditsRequest>()
+                    .context("Expected a request payload")?;
+
+                let credits = match req.owner {
+                    api::CreditOwner::Show(id) => self.db.list_show_credits(id).await?,
+                    api::CreditOwner::Movie(id) => self.db.list_movie_credits(id).await?,
+                };
+
+                outgoing.write(api::ListCreditsResponse { credits });
+            }
             api::Request::GetSeasonImages => {
                 let req = incoming
                     .read::<api::GetSeasonImagesRequest>()

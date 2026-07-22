@@ -54,6 +54,10 @@ fn translations_key() -> &'static str {
     "translations"
 }
 
+fn credits_key() -> &'static str {
+    "credits"
+}
+
 fn episode_translations_key(season: SeasonNumber, number: u32) -> String {
     format!("episode/{}/translations", api::Code::new(season, number))
 }
@@ -348,6 +352,7 @@ pub(crate) async fn sync_show(
 
         let do_base = kinds.contains(SyncKind::Base);
         let do_air_date = kinds.contains(SyncKind::Dates);
+        let do_credits = kinds.contains(SyncKind::Credits);
 
         // A short-circuit is only rebuild-safe when this layer is the Base
         // provider (skipping it routes to `persist_air_dates_only`, no rebuild) or
@@ -368,6 +373,7 @@ pub(crate) async fn sync_show(
                         tmdb_id,
                         do_base,
                         do_air_date,
+                        do_credits,
                         remote,
                         shutdown,
                         allow_skip,
@@ -610,6 +616,27 @@ struct DraftImage {
     score: f64,
 }
 
+/// A cast/crew credit accumulated during sync: the person's identity and role,
+/// plus the person's name and the character name in each synced language. Merged
+/// across the per-language credit fetches by the remote's stable credit id. The
+/// person's name is only a placeholder seed here - the authoritative localized
+/// name comes from the independent person sync.
+struct CreditDraft {
+    source: RemoteSource,
+    remote_person_id: u32,
+    profile: Option<Image>,
+    kind: api::CreditKind,
+    department: Option<String>,
+    job: Option<String>,
+    order: Option<u32>,
+    episode_count: Option<u32>,
+    /// `(locale, name)` seed for the person, one per synced language.
+    names: Vec<(api::Locale, String)>,
+    /// `(locale, character)`, one entry per synced language that returned a
+    /// character name.
+    characters: Vec<(api::Locale, String)>,
+}
+
 /// A season's metadata contributed by the base layer.
 #[derive(Default)]
 struct SeasonDraft {
@@ -694,6 +721,8 @@ struct ShowDraft {
     /// This is set by tvdb to indicate that languages which are available for
     /// names.
     translations: HashSet<String>,
+    /// Cast & crew, provided by the TMDB Credits layer.
+    credits: Vec<CreditDraft>,
 }
 
 /// A batch of `(locale, kind, text)` rows destined for a `*_strings` table.
@@ -785,11 +814,12 @@ async fn tmdb_show_layer(
     tmdb_id: u32,
     do_base: bool,
     do_air_date: bool,
+    do_credits: bool,
     remote: &RemoteClients,
     shutdown: &Shutdown,
     allow_skip: bool,
 ) -> Result<LayerOutcome> {
-    tracing::info!(tmdb_id, do_base, do_air_date, "Show");
+    tracing::info!(tmdb_id, do_base, do_air_date, do_credits, "Show");
 
     let needed = needed_kinds(do_base, do_air_date);
 
@@ -835,7 +865,7 @@ async fn tmdb_show_layer(
     }
 
     // Graphics-only run: nothing was owed, so nothing to earn.
-    if !do_base && !do_air_date {
+    if !do_base && !do_air_date && !do_credits {
         return Ok(LayerOutcome::Updated);
     }
 
@@ -907,6 +937,17 @@ async fn tmdb_show_layer(
             state,
             translations_key(),
             collect_tmdb_show_strings(draft, tmdb_id, show, config, remote, shutdown),
+        )
+        .await;
+    }
+
+    if do_credits {
+        tracing::info!("Collecting credits");
+
+        recover(
+            state,
+            credits_key(),
+            collect_tmdb_show_credits(draft, tmdb_id, show, config, remote, shutdown),
         )
         .await;
     }
@@ -1420,6 +1461,258 @@ async fn collect_tvdb_strings(
 /// Write the accumulated [`ShowDraft`] to the database in one pass: base
 /// metadata, accumulated graphics, seasons, episodes (with stable ids), and
 /// per-source air-date releases; prune anything no longer present.
+/// Merge one language's fetched credits into `merged`, keyed by the remote's
+/// stable credit id. Person and role fields are set from the first language that
+/// returns each credit; the character name is appended per language.
+fn merge_credits(
+    merged: &mut BTreeMap<String, CreditDraft>,
+    credits: Vec<tmdb::CreditInfo>,
+    locale: api::Locale,
+) {
+    for c in credits {
+        let tmdb::CreditInfo {
+            tmdb_credit_id,
+            tmdb_person_id,
+            name,
+            profile_path,
+            kind,
+            character,
+            department,
+            job,
+            order,
+            episode_count,
+        } = c;
+
+        // No stable key means we can't dedupe this credit across languages.
+        if tmdb_credit_id.is_empty() {
+            continue;
+        }
+
+        let entry = merged.entry(tmdb_credit_id).or_insert_with(|| CreditDraft {
+            source: RemoteSource::Tmdb,
+            remote_person_id: tmdb_person_id,
+            profile: profile_path.as_deref().map(Image::tmdb),
+            kind,
+            department,
+            job,
+            order,
+            episode_count,
+            names: Vec::new(),
+            characters: Vec::new(),
+        });
+
+        if !name.trim().is_empty() {
+            entry.names.push((locale, name));
+        }
+
+        if let Some(character) = character
+            && !character.trim().is_empty()
+        {
+            entry.characters.push((locale, character));
+        }
+    }
+}
+
+/// Fetch cast & crew for a show once per synced language (TMDB's only way to get
+/// translated character names) and accumulate them into the draft.
+#[tracing::instrument(skip_all, fields(tmdb_id))]
+async fn collect_tmdb_show_credits(
+    draft: &mut ShowDraft,
+    tmdb_id: u32,
+    show: &api::Show,
+    config: &api::Config,
+    remote: &RemoteClients,
+    shutdown: &Shutdown,
+) -> Result<()> {
+    let language = show
+        .language
+        .or(config.language)
+        .or(draft.original_language);
+
+    let targets = api::expand_sync_languages(&config.sync_languages, language);
+
+    let mut merged: BTreeMap<String, CreditDraft> = BTreeMap::new();
+
+    for locale in &targets {
+        if shutdown.is_cancelled() {
+            anyhow::bail!("Sync aborted: service is shutting down");
+        }
+
+        let credits = remote
+            .fetch_tmdb_show_credits(tmdb_id, &locale.to_string())
+            .await?;
+
+        merge_credits(&mut merged, credits, *locale);
+    }
+
+    draft.credits = merged.into_values().collect();
+    Ok(())
+}
+
+/// Sync a single person's own data: localized name + biography and ranked profile
+/// images, with a conditional (ETag) request so an unchanged person is cheap.
+/// Runs independently of shows/movies, scheduled by the background poller.
+#[tracing::instrument(skip_all, fields(%person_id))]
+pub(crate) async fn sync_person(
+    person_id: api::PersonId,
+    db: &Database,
+    remote: &RemoteClients,
+    broadcast: &Broadcaster,
+    shutdown: &Shutdown,
+) -> Result<()> {
+    let Some((source, remote_id, etag)) = db.person_sync_info(person_id).await? else {
+        return Ok(());
+    };
+
+    let now = api::Timestamp::now();
+
+    // Only TMDB supplies person data; other sources are external references only.
+    if source != RemoteSource::Tmdb {
+        db.mark_person_synced(person_id, now).await?;
+        return Ok(());
+    }
+
+    let (new_etag, info) = match remote.fetch_tmdb_person(remote_id, etag.as_deref()).await? {
+        tmdb::Conditional::NotModified => {
+            tracing::info!("Person unchanged (ETag 304)");
+            db.mark_person_synced(person_id, now).await?;
+            return Ok(());
+        }
+        tmdb::Conditional::Modified { etag, value } => (etag, value),
+    };
+
+    if shutdown.is_cancelled() {
+        anyhow::bail!("Sync aborted: service is shutting down");
+    }
+
+    let config = db.load_config().await?;
+
+    let translations = remote.fetch_tmdb_person_translations(remote_id).await?;
+    let images = remote.fetch_tmdb_person_images(remote_id).await?;
+
+    // Resolve sync targets against the person's canonical (primary) language.
+    let primary = translations
+        .iter()
+        .find(|t| t.primary)
+        .map(|t| t.locale)
+        .unwrap_or(config.language);
+
+    let targets = api::expand_sync_languages(&config.sync_languages, primary);
+    let mut remaining = targets.clone();
+
+    let mut strings: StringRows = Vec::new();
+
+    for t in &translations {
+        let Some(target) = locale_matches_targets(t.locale, &targets) else {
+            continue;
+        };
+
+        remaining.remove(&target);
+
+        push_string(
+            &mut strings,
+            t.locale,
+            api::StringKind::Title,
+            t.name.clone().or_else(|| info.name.clone()),
+        );
+        push_string(
+            &mut strings,
+            t.locale,
+            api::StringKind::Overview,
+            t.biography.clone().or_else(|| info.biography.clone()),
+        );
+    }
+
+    // Targets with no translation fall back to the detail (default-language) data.
+    for locale in remaining {
+        push_string(&mut strings, locale, api::StringKind::Title, info.name.clone());
+        push_string(
+            &mut strings,
+            locale,
+            api::StringKind::Overview,
+            info.biography.clone(),
+        );
+    }
+
+    db.persist_person_sync(
+        person_id,
+        source,
+        info.department.clone(),
+        info.imdb_id.clone(),
+        strings,
+        images,
+        new_etag,
+        now,
+    )
+    .await?;
+
+    broadcast.broadcast_event(api::AppEventKind::PersonChanged { person_id });
+    Ok(())
+}
+
+/// Ensure the person behind a credit exists, seeding a placeholder name and
+/// profile from the credit response only while the person has never been synced
+/// (so the cast grid is populated before the person's own sync runs). Returns the
+/// stable [`api::PersonId`].
+async fn seed_person(db: &Database, credit: &CreditDraft) -> Result<api::PersonId> {
+    let (person_id, last_synced) = db
+        .upsert_person(credit.source, credit.remote_person_id)
+        .await?;
+
+    if last_synced.is_none() {
+        for (locale, name) in &credit.names {
+            db.seed_person_string(person_id, *locale, api::StringKind::Title, name)
+                .await?;
+        }
+
+        if let Some(profile) = &credit.profile {
+            db.seed_person_image(person_id, ImageKind::Profile, profile)
+                .await?;
+        }
+    }
+
+    Ok(person_id)
+}
+
+/// Clear and rebuild a show's credits from the draft, then prune orphaned people.
+async fn persist_show_credits(
+    db: &Database,
+    show_id: api::ShowId,
+    credits: &[CreditDraft],
+) -> Result<()> {
+    db.clear_show_credits(show_id).await?;
+
+    for credit in credits {
+        let person_id = seed_person(db, credit).await?;
+        let credit_id = api::CreditId::random();
+
+        db.insert_show_credit(
+            credit_id,
+            show_id,
+            person_id,
+            credit.kind,
+            credit.department.as_deref(),
+            credit.job.as_deref(),
+            credit.order,
+            credit.episode_count,
+        )
+        .await?;
+
+        for (locale, character) in &credit.characters {
+            db.insert_show_credit_string(
+                credit_id,
+                *locale,
+                api::StringKind::Character,
+                character,
+            )
+            .await?;
+        }
+    }
+
+    db.prune_orphan_people().await?;
+    Ok(())
+}
+
 async fn persist_show_draft(
     show_id: api::ShowId,
     show: &api::Show,
@@ -1605,6 +1898,12 @@ async fn persist_show_draft(
     db.prune_episode_releases(show_id, &kept_releases, &draft.air_date_sources)
         .await?;
 
+    // Credits: rebuild from the draft. Skip on a degraded run so a transient
+    // credit-fetch failure doesn't wipe stored credits.
+    if draft.degraded_sources.is_empty() {
+        persist_show_credits(db, show_id, &draft.credits).await?;
+    }
+
     let updated = db
         .show_by_id(show_id)
         .await?
@@ -1615,6 +1914,10 @@ async fn persist_show_draft(
     broadcast.broadcast_event(api::AppEventKind::SeasonsChanged { show_id, seasons });
 
     broadcast.broadcast_event(api::AppEventKind::TranslationsChanged {
+        target: api::TranslationTarget::Show(show_id),
+    });
+
+    broadcast.broadcast_event(api::AppEventKind::CreditsChanged {
         target: api::TranslationTarget::Show(show_id),
     });
 
@@ -2370,6 +2673,8 @@ struct MovieDraft {
     /// [`ShowDraft::degraded_sources`].
     degraded_sources: HashSet<RemoteSource>,
     strings: StringRows,
+    /// Cast & crew, provided by the TMDB Credits layer.
+    credits: Vec<CreditDraft>,
 }
 
 impl MovieDraft {
@@ -2444,6 +2749,7 @@ pub(crate) async fn sync_movie(
 
         let do_base = kinds.contains(SyncKind::Base);
         let do_release = kinds.contains(SyncKind::Dates);
+        let do_credits = kinds.contains(SyncKind::Credits);
 
         let allow_skip = do_base || draft.base_unchanged;
 
@@ -2454,7 +2760,7 @@ pub(crate) async fn sync_movie(
                 Some(tmdb_id) => {
                     tmdb_movie_layer(
                         &mut draft, &mut state, &config, &movie, tmdb_id, do_base, do_release,
-                        remote, shutdown, allow_skip,
+                        do_credits, remote, shutdown, allow_skip,
                     )
                     .await
                 }
@@ -2558,6 +2864,10 @@ pub(crate) async fn sync_movie(
         target: api::TranslationTarget::Movie(movie_id),
     });
 
+    broadcast.broadcast_event(api::AppEventKind::CreditsChanged {
+        target: api::TranslationTarget::Movie(movie_id),
+    });
+
     db.set_movie_synced_at(movie_id, api::Timestamp::now())
         .await?;
     broadcast.broadcast_event(api::AppEventKind::PendingChanged);
@@ -2592,11 +2902,12 @@ async fn tmdb_movie_layer(
     tmdb_id: u32,
     do_base: bool,
     do_release: bool,
+    do_credits: bool,
     remote: &RemoteClients,
     shutdown: &Shutdown,
     allow_skip: bool,
 ) -> Result<LayerOutcome> {
-    tracing::info!(tmdb_id, do_base, do_release, "Movie");
+    tracing::info!(tmdb_id, do_base, do_release, do_credits, "Movie");
 
     let needed = needed_kinds(do_base, do_release);
 
@@ -2666,6 +2977,24 @@ async fn tmdb_movie_layer(
         {
             draft.strings = rows;
         }
+    }
+
+    if do_credits
+        && let Some(credits) = recover(
+            state,
+            credits_key(),
+            collect_tmdb_movie_credits(
+                tmdb_id,
+                movie,
+                config,
+                info.original_language,
+                remote,
+                shutdown,
+            ),
+        )
+        .await
+    {
+        draft.credits = credits;
     }
 
     if do_release
@@ -2774,6 +3103,81 @@ async fn persist_movie_draft(
 
     persist_movie_releases(movie_id, draft, db).await?;
 
+    // Credits: rebuild from the draft. Skip on a degraded run so a transient
+    // credit-fetch failure doesn't wipe stored credits.
+    if draft.degraded_sources.is_empty() {
+        persist_movie_credits(db, movie_id, &draft.credits).await?;
+    }
+
+    Ok(())
+}
+
+/// Fetch cast & crew for a movie once per synced language and merge them.
+#[tracing::instrument(skip_all, fields(tmdb_id))]
+async fn collect_tmdb_movie_credits(
+    tmdb_id: u32,
+    movie: &api::Movie,
+    config: &api::Config,
+    original_language: api::Locale,
+    remote: &RemoteClients,
+    shutdown: &Shutdown,
+) -> Result<Vec<CreditDraft>> {
+    let language = movie.language.or(config.language).or(original_language);
+    let targets = api::expand_sync_languages(&config.sync_languages, language);
+
+    let mut merged: BTreeMap<String, CreditDraft> = BTreeMap::new();
+
+    for locale in &targets {
+        if shutdown.is_cancelled() {
+            anyhow::bail!("Sync aborted: service is shutting down");
+        }
+
+        let credits = remote
+            .fetch_tmdb_movie_credits(tmdb_id, &locale.to_string())
+            .await?;
+
+        merge_credits(&mut merged, credits, *locale);
+    }
+
+    Ok(merged.into_values().collect())
+}
+
+/// Clear and rebuild a movie's credits from the draft, then prune orphaned people.
+async fn persist_movie_credits(
+    db: &Database,
+    movie_id: api::MovieId,
+    credits: &[CreditDraft],
+) -> Result<()> {
+    db.clear_movie_credits(movie_id).await?;
+
+    for credit in credits {
+        let person_id = seed_person(db, credit).await?;
+        let credit_id = api::CreditId::random();
+
+        db.insert_movie_credit(
+            credit_id,
+            movie_id,
+            person_id,
+            credit.kind,
+            credit.department.as_deref(),
+            credit.job.as_deref(),
+            credit.order,
+            credit.episode_count,
+        )
+        .await?;
+
+        for (locale, character) in &credit.characters {
+            db.insert_movie_credit_string(
+                credit_id,
+                *locale,
+                api::StringKind::Character,
+                character,
+            )
+            .await?;
+        }
+    }
+
+    db.prune_orphan_people().await?;
     Ok(())
 }
 

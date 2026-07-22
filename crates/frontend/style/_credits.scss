@@ -1,0 +1,70 @@
+@use 'vars' as v;
+
+.credits {
+    margin-top: v.$gap;
+
+    h2 {
+        font-size: v.$font-xl;
+        margin: 0 0 v.$gap-sm;
+        color: v.$text-primary;
+    }
+}
+
+.credit-crew {
+    display: flex;
+    flex-wrap: wrap;
+    gap: v.$gap-xs v.$gap;
+    margin-bottom: v.$gap-sm;
+    color: v.$text-color;
+    font-size: v.$font-sm;
+
+    .credit-crew-job {
+        color: v.$text-muted;
+    }
+}
+
+.cast-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: v.$gap-sm;
+}
+
+.cast-card {
+    display: flex;
+    flex-direction: column;
+    background: v.$bg-item;
+    border-radius: v.$radius;
+    overflow: hidden;
+
+    .cast-photo {
+        aspect-ratio: 2 / 3;
+        background: v.$bg-surface;
+    }
+
+    .cast-name {
+        font-weight: v.$bold-weight;
+        font-size: v.$font-sm;
+        padding: v.$padding-md v.$padding-lg 0;
+        color: v.$text-primary;
+    }
+
+    .cast-character {
+        font-size: v.$font-xs;
+        color: v.$text-muted;
+        padding: 0 v.$padding-lg v.$padding-md;
+    }
+}
+
+.credits-toggle {
+    margin-top: v.$gap-sm;
+    background: none;
+    border: none;
+    color: v.$link-color;
+    cursor: pointer;
+    font-size: v.$font-sm;
+    padding: v.$padding-md 0;
+
+    &:hover {
+        text-decoration: underline;
+    }
+}

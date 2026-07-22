@@ -100,6 +100,12 @@ impl Translations {
         self.get(StringKind::Overview)
     }
 
+    /// The resolved character name, equivalent to `get(StringKind::Character)`.
+    #[inline]
+    pub fn character(&self) -> Option<&str> {
+        self.get(StringKind::Character)
+    }
+
     /// Resolve a string of `kind` using the configured display locale. See
     /// [`Translations::get_with`].
     #[inline]

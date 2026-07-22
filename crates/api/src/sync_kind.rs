@@ -20,16 +20,18 @@ pub enum SyncKind {
     Base,
     /// Movie or episode dates.
     Dates,
+    /// Cast & crew credits (with per-language character names).
+    Credits,
 }
 
 impl SyncKind {
     /// All sync kinds, in a stable order.
-    pub const ALL: &[Self] = &[Self::Base, Self::Dates];
+    pub const ALL: &[Self] = &[Self::Base, Self::Dates, Self::Credits];
 
     /// Whether only the first (highest-priority) source providing this kind
     /// contributes it. Non-exclusive kinds accumulate from every source.
     pub fn is_exclusive(&self) -> bool {
-        matches!(self, Self::Base)
+        matches!(self, Self::Base | Self::Credits)
     }
 
     /// Human-readable label.
@@ -37,6 +39,7 @@ impl SyncKind {
         match self {
             Self::Base => "Base",
             Self::Dates => "Dates",
+            Self::Credits => "Credits",
         }
     }
 
@@ -45,6 +48,7 @@ impl SyncKind {
         match self {
             Self::Base => 1 << 0,
             Self::Dates => 1 << 1,
+            Self::Credits => 1 << 2,
         }
     }
 }
@@ -150,6 +154,7 @@ impl Iterator for SyncKindSetIter {
         match bit {
             0 => Some(SyncKind::Base),
             1 => Some(SyncKind::Dates),
+            2 => Some(SyncKind::Credits),
             _ => None,
         }
     }

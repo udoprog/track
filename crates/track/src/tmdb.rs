@@ -552,6 +552,302 @@ impl Client {
         Ok(parse_translations(resp))
     }
 
+    /// Cast & crew for a show, aggregated across seasons (`aggregate_credits`).
+    /// `language` is a TMDB language tag (e.g. `en-US`) selecting the translated
+    /// character names. One [`CreditInfo`] per cast role / crew job.
+    pub(crate) async fn fetch_show_credits(
+        &self,
+        id: u32,
+        language: &str,
+    ) -> Result<Vec<CreditInfo>> {
+        #[derive(Deserialize)]
+        struct Role {
+            #[serde(default)]
+            credit_id: Option<String>,
+            #[serde(default)]
+            character: Option<String>,
+            #[serde(default)]
+            episode_count: Option<u32>,
+        }
+
+        #[derive(Deserialize)]
+        struct Job {
+            #[serde(default)]
+            credit_id: Option<String>,
+            #[serde(default)]
+            job: Option<String>,
+            #[serde(default)]
+            episode_count: Option<u32>,
+        }
+
+        #[derive(Deserialize)]
+        struct Cast {
+            id: u32,
+            #[serde(default)]
+            name: Option<String>,
+            #[serde(default)]
+            profile_path: Option<String>,
+            #[serde(default)]
+            order: Option<u32>,
+            #[serde(default)]
+            roles: Vec<Role>,
+        }
+
+        #[derive(Deserialize)]
+        struct Crew {
+            id: u32,
+            #[serde(default)]
+            name: Option<String>,
+            #[serde(default)]
+            profile_path: Option<String>,
+            #[serde(default)]
+            department: Option<String>,
+            #[serde(default)]
+            jobs: Vec<Job>,
+        }
+
+        #[derive(Deserialize, Default)]
+        struct Resp {
+            #[serde(default)]
+            cast: Vec<Cast>,
+            #[serde(default)]
+            crew: Vec<Crew>,
+        }
+
+        let resp: Resp = self
+            .get_json(format!("tv/{id}/aggregate_credits?language={language}"))
+            .await?;
+
+        let mut out = Vec::new();
+
+        for c in resp.cast {
+            let name = c.name.unwrap_or_default();
+
+            for role in c.roles {
+                out.push(CreditInfo {
+                    tmdb_credit_id: role.credit_id.unwrap_or_default(),
+                    tmdb_person_id: c.id,
+                    name: name.clone(),
+                    profile_path: c.profile_path.clone(),
+                    kind: api::CreditKind::Cast,
+                    character: role.character,
+                    department: None,
+                    job: None,
+                    order: c.order,
+                    episode_count: role.episode_count,
+                });
+            }
+        }
+
+        for c in resp.crew {
+            let name = c.name.unwrap_or_default();
+
+            for job in c.jobs {
+                out.push(CreditInfo {
+                    tmdb_credit_id: job.credit_id.unwrap_or_default(),
+                    tmdb_person_id: c.id,
+                    name: name.clone(),
+                    profile_path: c.profile_path.clone(),
+                    kind: api::CreditKind::Crew,
+                    character: None,
+                    department: c.department.clone(),
+                    job: job.job,
+                    order: None,
+                    episode_count: job.episode_count,
+                });
+            }
+        }
+
+        Ok(out)
+    }
+
+    /// Cast & crew for a movie. `language` selects translated character names.
+    pub(crate) async fn fetch_movie_credits(
+        &self,
+        id: u32,
+        language: &str,
+    ) -> Result<Vec<CreditInfo>> {
+        #[derive(Deserialize)]
+        struct Cast {
+            id: u32,
+            #[serde(default)]
+            name: Option<String>,
+            #[serde(default)]
+            profile_path: Option<String>,
+            #[serde(default)]
+            character: Option<String>,
+            #[serde(default)]
+            order: Option<u32>,
+            #[serde(default)]
+            credit_id: Option<String>,
+        }
+
+        #[derive(Deserialize)]
+        struct Crew {
+            id: u32,
+            #[serde(default)]
+            name: Option<String>,
+            #[serde(default)]
+            profile_path: Option<String>,
+            #[serde(default)]
+            department: Option<String>,
+            #[serde(default)]
+            job: Option<String>,
+            #[serde(default)]
+            credit_id: Option<String>,
+        }
+
+        #[derive(Deserialize, Default)]
+        struct Resp {
+            #[serde(default)]
+            cast: Vec<Cast>,
+            #[serde(default)]
+            crew: Vec<Crew>,
+        }
+
+        let resp: Resp = self
+            .get_json(format!("movie/{id}/credits?language={language}"))
+            .await?;
+
+        let mut out = Vec::new();
+
+        for c in resp.cast {
+            out.push(CreditInfo {
+                tmdb_credit_id: c.credit_id.unwrap_or_default(),
+                tmdb_person_id: c.id,
+                name: c.name.unwrap_or_default(),
+                profile_path: c.profile_path,
+                kind: api::CreditKind::Cast,
+                character: c.character,
+                department: None,
+                job: None,
+                order: c.order,
+                episode_count: None,
+            });
+        }
+
+        for c in resp.crew {
+            out.push(CreditInfo {
+                tmdb_credit_id: c.credit_id.unwrap_or_default(),
+                tmdb_person_id: c.id,
+                name: c.name.unwrap_or_default(),
+                profile_path: c.profile_path,
+                kind: api::CreditKind::Crew,
+                character: None,
+                department: c.department,
+                job: c.job,
+                order: None,
+                episode_count: None,
+            });
+        }
+
+        Ok(out)
+    }
+
+    /// A person's own detail (localized name/biography in the default language,
+    /// department, imdb id, primary profile), conditional on `etag`.
+    pub(crate) async fn fetch_person(
+        &self,
+        id: u32,
+        etag: Option<&str>,
+    ) -> Result<Conditional<PersonInfo>> {
+        #[derive(Deserialize)]
+        struct Details {
+            #[serde(default)]
+            name: Option<String>,
+            #[serde(default)]
+            biography: Option<String>,
+            #[serde(default)]
+            known_for_department: Option<String>,
+            #[serde(default)]
+            imdb_id: Option<String>,
+        }
+
+        let (etag, d): (Option<String>, Details) =
+            match self.get_json_conditional(format!("person/{id}"), etag).await? {
+                Conditional::NotModified => return Ok(Conditional::NotModified),
+                Conditional::Modified { etag, value } => (etag, value),
+            };
+
+        Ok(Conditional::Modified {
+            etag,
+            value: PersonInfo {
+                name: d.name.filter(|s| !s.trim().is_empty()),
+                biography: d.biography.filter(|s| !s.trim().is_empty()),
+                department: d.known_for_department.filter(|s| !s.trim().is_empty()),
+                imdb_id: d.imdb_id.filter(|s| !s.trim().is_empty()),
+            },
+        })
+    }
+
+    /// Per-language name + biography for a person (all languages in one call).
+    pub(crate) async fn fetch_person_translations(
+        &self,
+        id: u32,
+    ) -> Result<Vec<PersonTranslation>> {
+        #[derive(Deserialize, Default)]
+        struct Data {
+            #[serde(default)]
+            name: Option<String>,
+            #[serde(default)]
+            biography: Option<String>,
+            #[serde(default)]
+            primary: bool,
+        }
+
+        #[derive(Deserialize)]
+        struct Entry {
+            iso_639_1: String,
+            iso_3166_1: String,
+            #[serde(default)]
+            data: Data,
+        }
+
+        #[derive(Deserialize, Default)]
+        struct Resp {
+            #[serde(default)]
+            translations: Vec<Entry>,
+        }
+
+        let resp: Resp = self
+            .try_get_json(format!("person/{id}/translations"))
+            .await?
+            .unwrap_or_default();
+
+        let mut out = Vec::new();
+
+        for e in resp.translations {
+            let Some(locale) = locale_from_tmdb(&e.iso_639_1, &e.iso_3166_1) else {
+                continue;
+            };
+
+            out.push(PersonTranslation {
+                locale,
+                name: e.data.name.filter(|s| !s.trim().is_empty()),
+                biography: e.data.biography.filter(|s| !s.trim().is_empty()),
+                primary: e.data.primary,
+            });
+        }
+
+        Ok(out)
+    }
+
+    /// A person's profile images, ranked best-first (vote-weighted).
+    pub(crate) async fn fetch_person_images(&self, id: u32) -> Result<Vec<(f64, Image)>> {
+        #[derive(Deserialize, Default)]
+        struct Resp {
+            #[serde(default)]
+            profiles: Vec<ImageResponse>,
+        }
+
+        let resp: Resp = self
+            .try_get_json(format!("person/{id}/images"))
+            .await?
+            .unwrap_or_default();
+
+        Ok(to_images(resp.profiles))
+    }
+
     pub(crate) async fn fetch_movie_releases(&self, id: u32) -> Result<Vec<MovieReleaseInfo>> {
         pub fn release_type_from_tmdb(n: u8) -> ReleaseType {
             match n {
@@ -759,6 +1055,43 @@ pub(crate) struct MovieReleaseInfo {
     pub country: api::Country,
     pub release_type: ReleaseType,
     pub release_date: Timestamp,
+}
+
+/// A person's own detail from TMDB (default-language name/biography, plus
+/// language-agnostic department/imdb/profile). Per-language name and biography
+/// come from [`PersonTranslation`].
+pub(crate) struct PersonInfo {
+    pub name: Option<String>,
+    pub biography: Option<String>,
+    pub department: Option<String>,
+    pub imdb_id: Option<String>,
+}
+
+/// A person's name + biography in one language, from `/person/{id}/translations`.
+/// `primary` marks the person's canonical (original-language) translation.
+pub(crate) struct PersonTranslation {
+    pub locale: api::Locale,
+    pub name: Option<String>,
+    pub biography: Option<String>,
+    pub primary: bool,
+}
+
+/// A single parsed cast/crew credit from TMDB, source-specific (raw TMDB person
+/// id and profile path). Sync maps it onto the source-agnostic people/credits
+/// model. One per cast role / crew job.
+pub(crate) struct CreditInfo {
+    /// Stable TMDB credit id, unique per role/job and identical across languages.
+    /// Used only to merge the per-language fetches during sync; never persisted.
+    pub tmdb_credit_id: String,
+    pub tmdb_person_id: u32,
+    pub name: String,
+    pub profile_path: Option<String>,
+    pub kind: api::CreditKind,
+    pub character: Option<String>,
+    pub department: Option<String>,
+    pub job: Option<String>,
+    pub order: Option<u32>,
+    pub episode_count: Option<u32>,
 }
 
 fn opt_date(s: Option<&str>) -> Option<Date> {

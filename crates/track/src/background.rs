@@ -24,6 +24,11 @@ const EPISODE_AIR_WINDOW_HOURS: u32 = 24;
 /// than from any timer.
 const EPISODE_SYNC_INTERVAL_HOURS: u32 = 1;
 
+/// People change rarely, so their own data is refreshed far less often than a
+/// show or movie. Never-synced people (freshly discovered via credits) are always
+/// picked up regardless of this interval.
+const PERSON_SYNC_INTERVAL_HOURS: u32 = 24 * 30;
+
 /// Number of most-used custom languages surfaced in the LanguagePicker.
 const TOP_LANGUAGES: usize = 3;
 
@@ -191,6 +196,25 @@ pub(crate) async fn run(
                         code,
                         title,
                     },
+                    false,
+                    &broadcast,
+                )
+                .await;
+        }
+
+        // People (localized name/biography, profile images), synced independently
+        // of the media they appear in - never-synced first, then the stalest.
+        let stale_people = db
+            .people_needing_sync(PERSON_SYNC_INTERVAL_HOURS)
+            .await
+            .context("Listing people needing sync")?;
+
+        info!(people = stale_people.len(), "Person sync poll");
+
+        for (person_id, title) in stale_people {
+            queue
+                .push(
+                    api::TaskKind::SyncPerson { person_id, title },
                     false,
                     &broadcast,
                 )

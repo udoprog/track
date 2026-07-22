@@ -50,6 +50,8 @@ macros::define_id!(TaskId);
 macros::define_id!(ImageId);
 macros::define_id!(PendingId);
 macros::define_id!(RemoteId);
+macros::define_id!(PersonId);
+macros::define_id!(CreditId);
 
 /// The source of a remote identifier.
 #[derive(
@@ -108,7 +110,8 @@ impl RemoteSource {
     /// [`SyncKind`] for how a layered sync uses these.
     pub fn sync_kinds(&self) -> &'static [SyncKind] {
         match self {
-            Self::Tmdb | Self::Tvdb => &[SyncKind::Base, SyncKind::Dates],
+            Self::Tmdb => &[SyncKind::Base, SyncKind::Dates, SyncKind::Credits],
+            Self::Tvdb => &[SyncKind::Base, SyncKind::Dates],
             Self::Tvmaze => &[SyncKind::Dates],
             Self::Imdb | Self::Unknown => &[],
         }
@@ -819,6 +822,7 @@ pub enum ImageKind {
     Banner,
     Backdrop,
     Screenshot,
+    Profile,
     Unknown,
 }
 
@@ -829,6 +833,7 @@ impl ImageKind {
             ImageKind::Banner => "Banner",
             ImageKind::Backdrop => "Backdrop",
             ImageKind::Screenshot => "Screenshot",
+            ImageKind::Profile => "Profile",
             ImageKind::Unknown => "Unknown",
         }
     }
@@ -839,6 +844,7 @@ impl ImageKind {
             ImageKind::Banner => "banner",
             ImageKind::Backdrop => "backdrop",
             ImageKind::Screenshot => "screenshot",
+            ImageKind::Profile => "profile",
             ImageKind::Unknown => "unknown",
         }
     }
@@ -860,6 +866,7 @@ impl ::sqll::FromColumn<'_> for ImageKind {
             2 => Ok(ImageKind::Banner),
             3 => Ok(ImageKind::Backdrop),
             4 => Ok(ImageKind::Screenshot),
+            5 => Ok(ImageKind::Profile),
             _ => Ok(ImageKind::Unknown),
         }
     }
@@ -873,6 +880,7 @@ impl ::sqll::BindValue for ImageKind {
             ImageKind::Banner => 2,
             ImageKind::Backdrop => 3,
             ImageKind::Screenshot => 4,
+            ImageKind::Profile => 5,
             ImageKind::Unknown => 0,
         };
 
@@ -902,6 +910,7 @@ impl ::sqll::BindValue for ImageKind {
 pub enum StringKind {
     Title,
     Overview,
+    Character,
     Unknown,
 }
 
@@ -910,6 +919,7 @@ impl StringKind {
         match self {
             StringKind::Title => "title",
             StringKind::Overview => "overview",
+            StringKind::Character => "character",
             StringKind::Unknown => "unknown",
         }
     }
@@ -929,6 +939,7 @@ impl ::sqll::FromColumn<'_> for StringKind {
         match u32::from_column(stmt, index)? {
             1 => Ok(StringKind::Title),
             2 => Ok(StringKind::Overview),
+            3 => Ok(StringKind::Character),
             _ => Ok(StringKind::Unknown),
         }
     }
@@ -940,7 +951,43 @@ impl ::sqll::BindValue for StringKind {
         let n: u32 = match self {
             StringKind::Title => 1,
             StringKind::Overview => 2,
+            StringKind::Character => 3,
             StringKind::Unknown => 0,
+        };
+
+        n.bind_value(stmt, index)
+    }
+}
+
+/// Whether a [`Credit`] is a cast (acting) or a crew role.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Encode, Decode, serde::Serialize, serde::Deserialize,
+)]
+#[musli(crate = musli_core)]
+#[serde(rename_all = "lowercase")]
+pub enum CreditKind {
+    Cast,
+    Crew,
+}
+
+#[cfg(feature = "sqll")]
+impl ::sqll::FromColumn<'_> for CreditKind {
+    type Type = ::sqll::ty::Integer;
+
+    fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Integer) -> ::sqll::Result<Self> {
+        match u32::from_column(stmt, index)? {
+            2 => Ok(CreditKind::Crew),
+            _ => Ok(CreditKind::Cast),
+        }
+    }
+}
+
+#[cfg(feature = "sqll")]
+impl ::sqll::BindValue for CreditKind {
+    fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
+        let n: u32 = match self {
+            CreditKind::Cast => 1,
+            CreditKind::Crew => 2,
         };
 
         n.bind_value(stmt, index)
@@ -1474,6 +1521,24 @@ pub struct MediaImage {
     /// are not comparable across remotes and are absent for owners we don't
     /// score (seasons/episodes).
     pub score: Option<f64>,
+}
+
+/// A single cast or crew credit on a show or movie. `character` carries the
+/// per-language character name (cast only, resolved via the display locale);
+/// `department`/`job` are the English crew role (crew only).
+#[derive(Debug, Clone, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct Credit {
+    pub person_id: PersonId,
+    /// The person's localized name, resolved via the display locale.
+    pub name: Translations,
+    pub profile: Option<Image>,
+    pub kind: CreditKind,
+    pub character: Translations,
+    pub department: Option<String>,
+    pub job: Option<String>,
+    pub episode_count: Option<u32>,
+    pub order: Option<u32>,
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
@@ -2122,6 +2187,12 @@ pub enum TaskKind {
         code: Code,
         title: Option<String>,
     },
+    /// Sync a single person's own data (localized name/biography, profile images),
+    /// scheduled by the background poller independently of shows and movies.
+    SyncPerson {
+        person_id: PersonId,
+        title: Option<String>,
+    },
     /// Recompute the most-used custom languages across shows and movies.
     RefreshTopLanguages,
 }
@@ -2132,7 +2203,8 @@ impl TaskKind {
         match self {
             TaskKind::SyncShow { title, .. }
             | TaskKind::SyncMovie { title, .. }
-            | TaskKind::SyncEpisode { title, .. } => title.as_deref(),
+            | TaskKind::SyncEpisode { title, .. }
+            | TaskKind::SyncPerson { title, .. } => title.as_deref(),
             TaskKind::RefreshTopLanguages => None,
         }
     }
@@ -2192,6 +2264,14 @@ pub enum TranslationTarget {
     Movie(MovieId),
 }
 
+/// The owner a set of [`Credit`]s belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub enum CreditOwner {
+    Show(ShowId),
+    Movie(MovieId),
+}
+
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct GetTranslationsRequest {
@@ -2223,6 +2303,18 @@ pub struct ListSeasonsRequest {
 #[musli(crate = musli_core)]
 pub struct ListSeasonsResponse {
     pub seasons: Vec<Season>,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct ListCreditsRequest {
+    pub owner: CreditOwner,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct ListCreditsResponse {
+    pub credits: Vec<Credit>,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -2997,6 +3089,16 @@ pub enum AppEventKind {
     TranslationsChanged {
         target: TranslationTarget,
     },
+    /// The cast & crew credits under a show or movie were rewritten (during
+    /// sync), so an open credits view for that entity can refresh itself.
+    CreditsChanged {
+        target: TranslationTarget,
+    },
+    /// A person's own data (name, biography, images) was re-synced, so any
+    /// credit view showing that person can refresh.
+    PersonChanged {
+        person_id: PersonId,
+    },
     WatchedChanged {
         event: WatchedEvent,
     },
@@ -3052,6 +3154,12 @@ api::define! {
     impl Endpoint for ListSeasons {
         impl Request for ListSeasonsRequest;
         type Response<'de> = ListSeasonsResponse;
+    }
+
+    pub type ListCredits;
+    impl Endpoint for ListCredits {
+        impl Request for ListCreditsRequest;
+        type Response<'de> = ListCreditsResponse;
     }
 
     pub type GetSeasonImages;

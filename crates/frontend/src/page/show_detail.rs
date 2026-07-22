@@ -53,6 +53,9 @@ pub(crate) struct ShowDetail {
     graphics_hidden_sources: HashSet<api::ImageSource>,
     season_graphics: BTreeMap<api::ImageKind, Vec<ImageItem>>,
     seasons: Vec<api::Season>,
+    credits: Vec<api::Credit>,
+    /// Whether the full cast list is expanded past the initial cap.
+    credits_expanded: bool,
     selected: Option<usize>,
     expanded_seasons: bool,
     episodes: Vec<api::Episode>,
@@ -103,6 +106,7 @@ pub(crate) struct ShowDetail {
     _broadcast: ws::Listener,
     _show_req: ws::Request,
     _seasons_req: ws::Request,
+    _credits_req: ws::Request,
     _episodes_req: ws::Request,
     _mark_req: ws::Request,
     _remove_watch_req: ws::Request,
@@ -134,6 +138,8 @@ pub(crate) enum Msg {
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     ShowLoaded(Result<ws::Packet<api::GetShow>, ws::Error>),
     SeasonsLoaded(Result<ws::Packet<api::ListSeasons>, ws::Error>),
+    CreditsLoaded(Result<ws::Packet<api::ListCredits>, ws::Error>),
+    ToggleCreditsExpanded,
     SelectSeason(api::SeasonNumber),
     ToggleExpandSeasons,
     EpisodesLoaded(Result<ws::Packet<api::ListEpisodes>, ws::Error>),
@@ -268,6 +274,8 @@ impl Component for ShowDetail {
             graphics_hidden_sources: HashSet::new(),
             season_graphics: BTreeMap::new(),
             seasons: Vec::new(),
+            credits: Vec::new(),
+            credits_expanded: false,
             selected: None,
             expanded_seasons: false,
             episodes: Vec::new(),
@@ -306,6 +314,7 @@ impl Component for ShowDetail {
             _broadcast,
             _show_req: ws::Request::default(),
             _seasons_req: ws::Request::default(),
+            _credits_req: ws::Request::default(),
             _episodes_req: ws::Request::default(),
             _mark_req: ws::Request::default(),
             _remove_watch_req: ws::Request::default(),
@@ -551,6 +560,7 @@ impl Component for ShowDetail {
             if self.channel.id() != ws::ChannelId::NONE {
                 self.load_show(ctx);
                 self.load_seasons(ctx);
+                self.load_credits(ctx);
                 self.load_history(ctx);
             }
 
@@ -595,6 +605,7 @@ impl ShowDetail {
                 if self.channel.id() != ws::ChannelId::NONE {
                     self.load_show(ctx);
                     self.load_seasons(ctx);
+                    self.load_credits(ctx);
                     self.load_orphaned(ctx);
                     self.load_config(ctx);
                 } else {
@@ -629,6 +640,24 @@ impl ShowDetail {
                     {
                         if self.channel.id() != ws::ChannelId::NONE {
                             self.load_seasons(ctx);
+                        }
+
+                        Ok(false)
+                    }
+                    api::AppEventKind::CreditsChanged {
+                        target: api::TranslationTarget::Show(show_id),
+                    } if *show_id == props.show_id => {
+                        if self.channel.id() != ws::ChannelId::NONE {
+                            self.load_credits(ctx);
+                        }
+
+                        Ok(false)
+                    }
+                    api::AppEventKind::PersonChanged { person_id }
+                        if self.credits.iter().any(|c| c.person_id == *person_id) =>
+                    {
+                        if self.channel.id() != ws::ChannelId::NONE {
+                            self.load_credits(ctx);
                         }
 
                         Ok(false)
@@ -769,6 +798,19 @@ impl ShowDetail {
                     self.load_orphaned(ctx);
                 }
 
+                Ok(true)
+            }
+            Msg::CreditsLoaded(result) => {
+                self.credits = result
+                    .context(Message::LoadingCredits)?
+                    .decode()
+                    .context(Message::LoadingCredits)?
+                    .credits;
+
+                Ok(true)
+            }
+            Msg::ToggleCreditsExpanded => {
+                self.credits_expanded = !self.credits_expanded;
                 Ok(true)
             }
             Msg::SelectSeason(season) => {
@@ -1682,6 +1724,109 @@ impl ShowDetail {
             .send();
     }
 
+    /// Cast grid plus a compact key-crew line. Cast is capped until expanded.
+    fn view_credits(&self, ctx: &Context<Self>) -> Html {
+        let cast: Vec<&api::Credit> = self
+            .credits
+            .iter()
+            .filter(|c| c.kind == api::CreditKind::Cast)
+            .collect();
+
+        let crew: Vec<&api::Credit> = self
+            .credits
+            .iter()
+            .filter(|c| c.kind == api::CreditKind::Crew)
+            .collect();
+
+        if cast.is_empty() && crew.is_empty() {
+            return html! {};
+        }
+
+        const CAP: usize = 18;
+        let show_all = self.credits_expanded || cast.len() <= CAP;
+        let shown = if show_all { cast.as_slice() } else { &cast[..CAP] };
+
+        html! {
+            <section class="credits">
+                <h2>{"Cast & crew"}</h2>
+
+                { Self::view_key_crew(&crew) }
+
+                <div class="cast-grid">
+                    { for shown.iter().map(|c| Self::view_cast_card(c)) }
+                </div>
+
+                if cast.len() > CAP {
+                    <button class="credits-toggle" onclick={ctx.link().callback(|_| Msg::ToggleCreditsExpanded)}>
+                        { if show_all { "Show fewer" } else { "Show all cast" } }
+                    </button>
+                }
+            </section>
+        }
+    }
+
+    fn view_cast_card(credit: &api::Credit) -> Html {
+        let name = credit.name.title().unwrap_or("Unknown").to_owned();
+
+        html! {
+            <div class="cast-card">
+                <Image class="cast-photo" placeholder={true} src={credit.profile.clone()} alt={name.clone()} />
+                <div class="cast-name">{ name }</div>
+                if let Some(character) = credit.character.character() {
+                    <div class="cast-character">{ character.to_owned() }</div>
+                }
+            </div>
+        }
+    }
+
+    /// A short "Job: Name" line for the most relevant crew roles.
+    fn view_key_crew(crew: &[&api::Credit]) -> Html {
+        const PREFERRED: &[&str] = &[
+            "Director",
+            "Screenplay",
+            "Writer",
+            "Creator",
+            "Executive Producer",
+            "Producer",
+        ];
+
+        let mut picks: Vec<(&str, String)> = Vec::new();
+
+        for job in PREFERRED {
+            for c in crew {
+                let name = c.name.title().unwrap_or_default();
+
+                if c.job.as_deref() == Some(*job)
+                    && !name.is_empty()
+                    && !picks.iter().any(|(_, n)| n == name)
+                {
+                    picks.push((job, name.to_owned()));
+                }
+            }
+
+            if picks.len() >= 4 {
+                break;
+            }
+        }
+
+        picks.truncate(4);
+
+        if picks.is_empty() {
+            return html! {};
+        }
+
+        html! {
+            <div class="credit-crew">
+                { for picks.into_iter().map(|(job, name)| html! {
+                    <span class="credit-crew-item">
+                        <span class="credit-crew-job">{ job }{": "}</span>
+                        { name }
+                    </span>
+                }) }
+            </div>
+        }
+    }
+
     fn update_graphics(&mut self) {
         self.graphics.clear();
         self.present.clear();
@@ -1714,6 +1859,23 @@ impl ShowDetail {
             .request()
             .body(api::ListSeasonsRequest { show_id })
             .on_packet(ctx.link().callback(Msg::SeasonsLoaded))
+            .send();
+    }
+
+    fn load_credits(&mut self, ctx: &Context<Self>) {
+        if self.channel.id() == ws::ChannelId::NONE {
+            return;
+        }
+
+        let show_id = ctx.props().show_id;
+
+        self._credits_req = self
+            .channel
+            .request()
+            .body(api::ListCreditsRequest {
+                owner: api::CreditOwner::Show(show_id),
+            })
+            .on_packet(ctx.link().callback(Msg::CreditsLoaded))
             .send();
     }
 
@@ -1994,6 +2156,8 @@ impl ShowDetail {
 
         html! {
             <div class="detail-content">
+                { self.view_credits(ctx) }
+
                 <div class="column">
                     <div class="toolbar">
                         <h2>

@@ -35,6 +35,9 @@ pub(crate) struct MovieDetail {
     graphics: BTreeMap<api::ImageKind, Vec<ImageItem>>,
     present: BTreeSet<api::ImageSource>,
     graphics_hidden_sources: HashSet<api::ImageSource>,
+    credits: Vec<api::Credit>,
+    /// Whether the full cast list is expanded past the initial cap.
+    credits_expanded: bool,
     watched: Vec<WatchedState>,
     confirm_remove: bool,
     remove_anchor: NodeRef,
@@ -57,6 +60,7 @@ pub(crate) struct MovieDetail {
     _setup: SetupChannel,
     _broadcast: ws::Listener,
     _movie_req: ws::Request,
+    _credits_req: ws::Request,
     _watched_req: ws::Request,
     _mark_req: ws::Request,
     _remove_watch_req: ws::Request,
@@ -79,6 +83,8 @@ pub(crate) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     MovieLoaded(Result<ws::Packet<api::GetMovie>, ws::Error>),
+    CreditsLoaded(Result<ws::Packet<api::ListCredits>, ws::Error>),
+    ToggleCreditsExpanded,
     WatchedLoaded(Result<ws::Packet<api::ListWatched>, ws::Error>),
     MarkWatched(api::MarkTime),
     MarkWatchedDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
@@ -173,6 +179,8 @@ impl Component for MovieDetail {
             graphics: BTreeMap::new(),
             present: BTreeSet::new(),
             graphics_hidden_sources: HashSet::new(),
+            credits: Vec::new(),
+            credits_expanded: false,
             watched: Vec::new(),
             confirm_remove: false,
             remove_anchor: NodeRef::default(),
@@ -195,6 +203,7 @@ impl Component for MovieDetail {
             _setup,
             _broadcast,
             _movie_req: ws::Request::default(),
+            _credits_req: ws::Request::default(),
             _watched_req: ws::Request::default(),
             _mark_req: ws::Request::default(),
             _remove_watch_req: ws::Request::default(),
@@ -260,6 +269,7 @@ impl Component for MovieDetail {
 
             if self.channel.id() != ws::ChannelId::NONE {
                 self.load_movie(ctx);
+                self.load_credits(ctx);
                 self.load_watched(ctx);
             }
         }
@@ -275,6 +285,7 @@ impl MovieDetail {
                 self.channel = result?;
                 if self.channel.id() != ws::ChannelId::NONE {
                     self.load_movie(ctx);
+                    self.load_credits(ctx);
                     self.load_watched(ctx);
                     self.load_config(ctx);
                 } else {
@@ -302,6 +313,24 @@ impl MovieDetail {
                         if *movie_id == ctx.props().movie_id =>
                     {
                         self.router.push(Route::Media(MediaQuery::default()));
+                        Ok(false)
+                    }
+                    api::AppEventKind::CreditsChanged {
+                        target: api::TranslationTarget::Movie(movie_id),
+                    } if *movie_id == ctx.props().movie_id => {
+                        if self.channel.id() != ws::ChannelId::NONE {
+                            self.load_credits(ctx);
+                        }
+
+                        Ok(false)
+                    }
+                    api::AppEventKind::PersonChanged { person_id }
+                        if self.credits.iter().any(|c| c.person_id == *person_id) =>
+                    {
+                        if self.channel.id() != ws::ChannelId::NONE {
+                            self.load_credits(ctx);
+                        }
+
                         Ok(false)
                     }
                     api::AppEventKind::WatchedChanged { event: kind } => {
@@ -354,6 +383,19 @@ impl MovieDetail {
                     }
                 }
 
+                Ok(true)
+            }
+            Msg::CreditsLoaded(result) => {
+                self.credits = result
+                    .context(Message::LoadingCredits)?
+                    .decode()
+                    .context(Message::LoadingCredits)?
+                    .credits;
+
+                Ok(true)
+            }
+            Msg::ToggleCreditsExpanded => {
+                self.credits_expanded = !self.credits_expanded;
                 Ok(true)
             }
             Msg::WatchedLoaded(result) => {
@@ -927,6 +969,124 @@ impl MovieDetail {
             .send();
     }
 
+    fn load_credits(&mut self, ctx: &Context<Self>) {
+        if self.channel.id() == ws::ChannelId::NONE {
+            return;
+        }
+
+        self._credits_req = self
+            .channel
+            .request()
+            .body(api::ListCreditsRequest {
+                owner: api::CreditOwner::Movie(ctx.props().movie_id),
+            })
+            .on_packet(ctx.link().callback(Msg::CreditsLoaded))
+            .send();
+    }
+
+    /// Cast grid plus a compact key-crew line. Cast is capped until expanded.
+    fn view_credits(&self, ctx: &Context<Self>) -> Html {
+        let cast: Vec<&api::Credit> = self
+            .credits
+            .iter()
+            .filter(|c| c.kind == api::CreditKind::Cast)
+            .collect();
+
+        let crew: Vec<&api::Credit> = self
+            .credits
+            .iter()
+            .filter(|c| c.kind == api::CreditKind::Crew)
+            .collect();
+
+        if cast.is_empty() && crew.is_empty() {
+            return html! {};
+        }
+
+        const CAP: usize = 18;
+        let show_all = self.credits_expanded || cast.len() <= CAP;
+        let shown = if show_all { cast.as_slice() } else { &cast[..CAP] };
+
+        html! {
+            <section class="credits">
+                <h2>{"Cast & crew"}</h2>
+
+                { Self::view_key_crew(&crew) }
+
+                <div class="cast-grid">
+                    { for shown.iter().map(|c| Self::view_cast_card(c)) }
+                </div>
+
+                if cast.len() > CAP {
+                    <button class="credits-toggle" onclick={ctx.link().callback(|_| Msg::ToggleCreditsExpanded)}>
+                        { if show_all { "Show fewer" } else { "Show all cast" } }
+                    </button>
+                }
+            </section>
+        }
+    }
+
+    fn view_cast_card(credit: &api::Credit) -> Html {
+        let name = credit.name.title().unwrap_or("Unknown").to_owned();
+
+        html! {
+            <div class="cast-card">
+                <Image class="cast-photo" placeholder={true} src={credit.profile.clone()} alt={name.clone()} />
+                <div class="cast-name">{ name }</div>
+                if let Some(character) = credit.character.character() {
+                    <div class="cast-character">{ character.to_owned() }</div>
+                }
+            </div>
+        }
+    }
+
+    /// A short "Job: Name" line for the most relevant crew roles.
+    fn view_key_crew(crew: &[&api::Credit]) -> Html {
+        const PREFERRED: &[&str] = &[
+            "Director",
+            "Screenplay",
+            "Writer",
+            "Creator",
+            "Executive Producer",
+            "Producer",
+        ];
+
+        let mut picks: Vec<(&str, String)> = Vec::new();
+
+        for job in PREFERRED {
+            for c in crew {
+                let name = c.name.title().unwrap_or_default();
+
+                if c.job.as_deref() == Some(*job)
+                    && !name.is_empty()
+                    && !picks.iter().any(|(_, n)| n == name)
+                {
+                    picks.push((job, name.to_owned()));
+                }
+            }
+
+            if picks.len() >= 4 {
+                break;
+            }
+        }
+
+        picks.truncate(4);
+
+        if picks.is_empty() {
+            return html! {};
+        }
+
+        html! {
+            <div class="credit-crew">
+                { for picks.into_iter().map(|(job, name)| html! {
+                    <span class="credit-crew-item">
+                        <span class="credit-crew-job">{ job }{": "}</span>
+                        { name }
+                    </span>
+                }) }
+            </div>
+        }
+    }
+
     fn load_watched(&mut self, ctx: &Context<Self>) {
         if self.channel.id() == ws::ChannelId::NONE {
             return;
@@ -1170,6 +1330,8 @@ impl MovieDetail {
                     }
                 </div>
             </div>
+
+            { self.view_credits(ctx) }
 
             if self.image_modal {
                 { self.view_image_modal(ctx) }

@@ -298,6 +298,61 @@ impl RemoteClients {
             .await
     }
 
+    pub(crate) async fn fetch_tmdb_person(
+        &self,
+        id: u32,
+        etag: Option<&str>,
+    ) -> Result<tmdb::Conditional<tmdb::PersonInfo>> {
+        self.tmdb()
+            .await
+            .context("Expected a configured TMDB client")?
+            .fetch_person(id, etag)
+            .await
+    }
+
+    pub(crate) async fn fetch_tmdb_person_translations(
+        &self,
+        id: u32,
+    ) -> Result<Vec<tmdb::PersonTranslation>> {
+        self.tmdb()
+            .await
+            .context("Expected a configured TMDB client")?
+            .fetch_person_translations(id)
+            .await
+    }
+
+    pub(crate) async fn fetch_tmdb_person_images(&self, id: u32) -> Result<Vec<(f64, api::Image)>> {
+        self.tmdb()
+            .await
+            .context("Expected a configured TMDB client")?
+            .fetch_person_images(id)
+            .await
+    }
+
+    pub(crate) async fn fetch_tmdb_show_credits(
+        &self,
+        id: u32,
+        language: &str,
+    ) -> Result<Vec<tmdb::CreditInfo>> {
+        self.tmdb()
+            .await
+            .context("Expected a configured TMDB client")?
+            .fetch_show_credits(id, language)
+            .await
+    }
+
+    pub(crate) async fn fetch_tmdb_movie_credits(
+        &self,
+        id: u32,
+        language: &str,
+    ) -> Result<Vec<tmdb::CreditInfo>> {
+        self.tmdb()
+            .await
+            .context("Expected a configured TMDB client")?
+            .fetch_movie_credits(id, language)
+            .await
+    }
+
     pub(crate) async fn fetch_tmdb_season_translations(
         &self,
         show_id: u32,
