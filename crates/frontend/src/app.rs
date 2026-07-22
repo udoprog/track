@@ -8,9 +8,12 @@ use yew::prelude::*;
 
 use crate::background::{Background, BackgroundState};
 use crate::error::{CustomContext, Error, Message, RcError};
-use crate::page::{Dashboard, MediaList, MovieDetail, Queue, Search, Settings, ShowDetail};
+use crate::page::{
+    Dashboard, MediaList, MovieDetail, PersonDetail, PersonList, Queue, Search, Settings,
+    ShowDetail,
+};
 use crate::router::{
-    DashboardQuery, MediaQuery, QueueQuery, Route, Router, RouterState, SearchQuery,
+    DashboardQuery, MediaQuery, PersonQuery, QueueQuery, Route, Router, RouterState, SearchQuery,
 };
 use crate::setup_channel::SetupChannel;
 use crate::ui::{ErrorBox, Outline, OutlineControl, OutlineEntry, TopLanguages};
@@ -397,6 +400,12 @@ impl App {
             Route::MovieDetail(movie_id) => {
                 html! { <MovieDetail {movie_id} /> }
             }
+            Route::People(ref q) => html! {
+                <PersonList page={q.page} filter={q.filter.clone()} sort={q.sort} desc={q.desc} />
+            },
+            Route::PersonDetail(person_id) => {
+                html! { <PersonDetail {person_id} /> }
+            }
             Route::Search(ref q) => html! {
                 <Search selection={q.selection} filter={q.filter.clone()} />
             },
@@ -465,6 +474,11 @@ fn Toolbar(props: &ToolbarProps) -> Html {
                 <button class="toolbar-item has-text" onclick={on_nav(Route::Media(MediaQuery::default()))} title="Media">
                     <span class="icon film" />
                     <span>{"Media"}</span>
+                </button>
+
+                <button class="toolbar-item has-text" onclick={on_nav(Route::People(PersonQuery::default()))} title="People">
+                    <span class="icon users" />
+                    <span>{"People"}</span>
                 </button>
 
                 <button class="toolbar-item mobile-has-text" onclick={on_nav(Route::Search(SearchQuery::default()))} title="Search Remotes">

@@ -763,11 +763,13 @@ impl Client {
             imdb_id: Option<String>,
         }
 
-        let (etag, d): (Option<String>, Details) =
-            match self.get_json_conditional(format!("person/{id}"), etag).await? {
-                Conditional::NotModified => return Ok(Conditional::NotModified),
-                Conditional::Modified { etag, value } => (etag, value),
-            };
+        let (etag, d): (Option<String>, Details) = match self
+            .get_json_conditional(format!("person/{id}"), etag)
+            .await?
+        {
+            Conditional::NotModified => return Ok(Conditional::NotModified),
+            Conditional::Modified { etag, value } => (etag, value),
+        };
 
         Ok(Conditional::Modified {
             etag,

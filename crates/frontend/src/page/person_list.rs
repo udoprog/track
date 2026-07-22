@@ -1,0 +1,346 @@
+use musli_web::web03::prelude::*;
+use yew::prelude::*;
+
+use crate::SetupChannel;
+use crate::background::Background;
+use crate::error::{CustomContext, Error, Message};
+use crate::router::{PersonQuery, PersonSort, Route, Router};
+use crate::ui::{Button, Image, PaginationButtons};
+
+const PAGE_SIZE: usize = 24;
+
+pub(crate) struct PersonList {
+    channel: ws::Channel,
+    persons: Vec<api::PersonItem>,
+    filter: String,
+    page: usize,
+    sort: PersonSort,
+    desc: bool,
+    background: Background,
+    router: Router,
+    _setup: SetupChannel,
+    _broadcast: ws::Listener,
+    list_req: ws::Request,
+}
+
+pub(crate) enum Msg {
+    Channel(Result<ws::Channel, ws::Error>),
+    AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
+    Loaded(Result<ws::Packet<api::ListPersons>, ws::Error>),
+    Filter(String),
+    SetSort(PersonSort),
+    ToggleDir,
+    SetPage(usize),
+    Navigate(Route),
+}
+
+#[derive(Properties, PartialEq)]
+pub(crate) struct Props {
+    pub(crate) page: usize,
+    pub(crate) filter: String,
+    pub(crate) sort: PersonSort,
+    pub(crate) desc: bool,
+}
+
+impl Component for PersonList {
+    type Message = Msg;
+    type Properties = Props;
+
+    fn create(ctx: &Context<Self>) -> Self {
+        let (ws, _) = ctx
+            .link()
+            .context::<ws::Handle>(Callback::noop())
+            .expect("Expected ws::Handle in context");
+
+        let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
+        let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
+
+        let (background, _) = ctx
+            .link()
+            .context::<Background>(Callback::noop())
+            .expect("Expected background handle in context");
+
+        let (router, _) = ctx
+            .link()
+            .context::<Router>(Callback::noop())
+            .expect("Expected router in context");
+
+        Self {
+            channel: ws::Channel::default(),
+            persons: Vec::new(),
+            filter: ctx.props().filter.clone(),
+            page: ctx.props().page,
+            sort: ctx.props().sort,
+            desc: ctx.props().desc,
+            background,
+            router,
+            _setup,
+            _broadcast,
+            list_req: ws::Request::default(),
+        }
+    }
+
+    fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
+        match self.try_update(ctx, msg) {
+            Ok(render) => render,
+            Err(e) => {
+                self.background.error(e);
+                false
+            }
+        }
+    }
+
+    fn changed(&mut self, ctx: &Context<Self>, _old_props: &Self::Properties) -> bool {
+        let props = ctx.props();
+
+        self.page = props.page;
+        self.filter = props.filter.clone();
+        self.sort = props.sort;
+        self.desc = props.desc;
+
+        true
+    }
+
+    fn rendered(&mut self, _ctx: &Context<Self>, first_render: bool) {
+        if first_render {
+            self.background.title(Some("People".to_string()));
+        }
+    }
+
+    fn destroy(&mut self, _ctx: &Context<Self>) {
+        self.background.title(None);
+    }
+
+    fn view(&self, ctx: &Context<Self>) -> Html {
+        let link = ctx.link();
+
+        let filtered = self.filtered_sorted();
+
+        let total = filtered.len();
+        let total_pages = total.div_ceil(PAGE_SIZE).max(1);
+        let page = self.page.min(total_pages - 1);
+
+        let persons = filtered.into_iter().skip(page * PAGE_SIZE).take(PAGE_SIZE);
+
+        let on_filter = link.callback(|e: InputEvent| {
+            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+            Msg::Filter(input.value())
+        });
+
+        let on_sort = link.callback(|e: Event| {
+            let select: web_sys::HtmlSelectElement = e.target_unchecked_into();
+            Msg::SetSort(match select.value().as_str() {
+                "credits" => PersonSort::Credits,
+                _ => PersonSort::Name,
+            })
+        });
+
+        let dir_icon = if self.desc {
+            "bars-arrow-down"
+        } else {
+            "bars-arrow-up"
+        };
+        let dir_title = if self.desc { "Descending" } else { "Ascending" };
+
+        html! {
+            <>
+                <div class="row-split">
+                    <h1>{"People"}</h1>
+                    <h4 class="text-muted">{total}</h4>
+                </div>
+
+                <input-controls>
+                    <div class="input-group">
+                        <input type="text" placeholder="Filter" value={self.filter.clone()} oninput={on_filter} class="input-text fill" />
+
+                        if !self.filter.is_empty() {
+                            <Button icon="backspace" title="Clear filter" onclick={link.callback(|_| Msg::Filter(String::new()))} />
+                        }
+                    </div>
+
+                    <controls>
+                        <div class="input-group fill">
+                            <div class="input-label has-text">{"Sort by:"}</div>
+
+                            <select class="input-select fill" onchange={on_sort}>
+                                <option value="name" selected={matches!(self.sort, PersonSort::Name)}>
+                                    {"Name"}
+                                </option>
+                                <option value="credits" selected={matches!(self.sort, PersonSort::Credits)}>
+                                    {"Credits"}
+                                </option>
+                            </select>
+
+                            <Button icon={dir_icon} title={dir_title} onclick={link.callback(|_| Msg::ToggleDir)} />
+                        </div>
+
+                        <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
+                    </controls>
+                </input-controls>
+
+                if self.list_req.is_pending() {
+                    <div class="row center">
+                        <span class="item-inline-more"><span class="icon arrow-path spin" /></span>
+                    </div>
+                } else if persons.len() == 0 {
+                    <div class="row center">
+                        <span class="item-inline-more">{"Nothing to show."}</span>
+                    </div>
+                } else {
+                    <div class="person-grid">
+                        { for persons.into_iter().map(|p| self.view_card(ctx, p)) }
+                    </div>
+
+                    <div class="row desktop-align-end">
+                        <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
+                    </div>
+                }
+            </>
+        }
+    }
+}
+
+impl PersonList {
+    fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
+        match msg {
+            Msg::Channel(result) => {
+                self.channel = result?;
+
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self.load(ctx);
+                } else {
+                    self.persons.clear();
+                }
+
+                Ok(true)
+            }
+            Msg::AppBroadcast(packet) => {
+                let event = packet?.decode_event()?;
+
+                if event.channel == self.channel.id() {
+                    return Ok(false);
+                }
+
+                // People are seeded/pruned by credit sync and updated by their own
+                // sync, so react to both.
+                let relevant = matches!(
+                    event.kind,
+                    api::AppEventKind::PersonChanged { .. }
+                        | api::AppEventKind::CreditsChanged { .. }
+                );
+
+                if relevant && self.channel.id() != ws::ChannelId::NONE {
+                    self.load(ctx);
+                }
+
+                Ok(false)
+            }
+            Msg::Loaded(result) => {
+                self.persons = result
+                    .context(Message::LoadingPersons)?
+                    .decode()
+                    .context(Message::LoadingPersons)?
+                    .persons;
+                Ok(true)
+            }
+            Msg::Filter(filter) => {
+                self.filter = filter;
+                self.page = 0;
+                self.emit_navigate();
+                Ok(true)
+            }
+            Msg::SetSort(sort) => {
+                self.sort = sort;
+                self.emit_navigate();
+                Ok(true)
+            }
+            Msg::ToggleDir => {
+                self.desc = !self.desc;
+                self.emit_navigate();
+                Ok(true)
+            }
+            Msg::SetPage(page) => {
+                self.page = page;
+                self.emit_navigate();
+                Ok(true)
+            }
+            Msg::Navigate(route) => {
+                self.router.push(route);
+                Ok(false)
+            }
+        }
+    }
+
+    /// People matching the current filter, ordered by the active sort.
+    fn filtered_sorted(&self) -> Vec<&api::PersonItem> {
+        let filter = self.filter.to_lowercase();
+
+        let mut filtered: Vec<&api::PersonItem> = self
+            .persons
+            .iter()
+            .filter(|p| {
+                filter.is_empty()
+                    || p.name
+                        .texts(api::StringKind::Title)
+                        .any(|t| t.to_lowercase().contains(&filter))
+            })
+            .collect();
+
+        match self.sort {
+            PersonSort::Name => filtered.sort_by_key(|p| p.name.title().map(str::to_lowercase)),
+            PersonSort::Credits => filtered.sort_by_key(|p| p.credit_count),
+        }
+
+        if self.desc {
+            filtered.reverse();
+        }
+
+        filtered
+    }
+
+    fn emit_navigate(&self) {
+        self.router.push(Route::People(PersonQuery {
+            page: self.page,
+            filter: self.filter.clone(),
+            sort: self.sort,
+            desc: self.desc,
+        }));
+    }
+
+    fn load(&mut self, ctx: &Context<Self>) {
+        if self.channel.id() == ws::ChannelId::NONE {
+            return;
+        }
+
+        self.list_req = self
+            .channel
+            .request()
+            .body(api::ListPersonsRequest)
+            .on_packet(ctx.link().callback(Msg::Loaded))
+            .send();
+    }
+
+    fn view_card(&self, ctx: &Context<Self>, p: &api::PersonItem) -> Html {
+        let name = p.name.title().unwrap_or("Unknown").to_owned();
+        let route = Route::PersonDetail(p.id);
+        let onclick = ctx.link().callback(move |_| Msg::Navigate(route.clone()));
+
+        html! {
+            <div class="person-card clickable" {onclick}>
+                <Image class="person-photo" placeholder={true} src={p.profile.clone()} alt={name.clone()} />
+
+                <div class="person-info">
+                    <div class="person-name">{ name }</div>
+
+                    if let Some(department) = &p.department {
+                        <div class="person-department text-muted">{ department.clone() }</div>
+                    }
+
+                    <div class="person-credits text-muted">
+                        { format!("{} credit{}", p.credit_count, if p.credit_count == 1 { "" } else { "s" }) }
+                    </div>
+                </div>
+            </div>
+        }
+    }
+}

@@ -248,7 +248,7 @@ CREATE TABLE
         id INTEGER PRIMARY KEY,
         show_id INTEGER NOT NULL,
         source INTEGER NOT NULL,
-        value,
+        value ANY NOT NULL,
         slug TEXT,
         enabled INTEGER NOT NULL DEFAULT 1,
         priority INTEGER NOT NULL DEFAULT 0,
@@ -262,7 +262,7 @@ CREATE TABLE
         id INTEGER PRIMARY KEY,
         movie_id INTEGER NOT NULL,
         source INTEGER NOT NULL,
-        value,
+        value ANY NOT NULL,
         slug TEXT,
         enabled INTEGER NOT NULL DEFAULT 1,
         priority INTEGER NOT NULL DEFAULT 0,
@@ -328,31 +328,37 @@ CREATE TABLE
     );
 
 -- People are shared across shows and movies and synced independently (their own
--- `last_synced_at` + `person_cache` conditional-request state). Identity is a
--- random PersonId; the source-specific person id lives in a normalized
--- (source, remote_id) pair so the model is not tied to any single remote. The
--- localized name and biography live in `person_strings`.
+-- `last_synced_at`). Identity is a random PersonId; the source-specific ids live
+-- in `person_remotes`, mirroring show_remotes/movie_remotes, and the person points
+-- back at its primary (selected) remote via remote_id. The localized name and
+-- biography live in `person_strings`.
 CREATE TABLE
     people (
         id INTEGER PRIMARY KEY,
-        source INTEGER NOT NULL,
-        remote_id INTEGER NOT NULL,
-        imdb_id TEXT,
         department TEXT,
+        default_language INTEGER NOT NULL DEFAULT 0,
         last_synced_at INTEGER,
-        UNIQUE (source, remote_id)
+        remote_id INTEGER REFERENCES person_remotes (id) ON DELETE SET NULL
     );
 
 CREATE INDEX idx_people_sync ON people (last_synced_at);
 
--- Conditional-request state for a person, per source (TMDB ETag). Mirrors
--- episode_cache. A row exists only for a source that hands out a validator.
+-- Per-person remotes, identical in shape to show_remotes/movie_remotes: the
+-- source-specific id, priority ordering, enable/disable, a per-remote sync-kind
+-- override, and the api::RemoteCache conditional-request state (JSON) in `cache`.
+-- No foreign key on the owner, for the same reason as show_remotes (see above).
 CREATE TABLE
-    person_cache (
-        person_id INTEGER NOT NULL REFERENCES people (id) ON DELETE CASCADE,
+    person_remotes (
+        id INTEGER PRIMARY KEY,
+        person_id INTEGER NOT NULL,
         source INTEGER NOT NULL,
-        cache TEXT NOT NULL,
-        PRIMARY KEY (person_id, source)
+        value ANY NOT NULL,
+        slug TEXT,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        priority INTEGER NOT NULL DEFAULT 0,
+        sync_kinds INTEGER,
+        cache TEXT,
+        UNIQUE (person_id, source, value)
     );
 
 -- Per-language name (kind=Title) and biography (kind=Overview) for a person.

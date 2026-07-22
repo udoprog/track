@@ -350,6 +350,83 @@ impl SearchQuery {
     }
 }
 
+/// How the people browse view is sorted.
+#[derive(Default, Debug, Clone, Copy, PartialEq)]
+pub(super) enum PersonSort {
+    #[default]
+    Name,
+    Credits,
+}
+
+impl PersonSort {
+    fn as_str(self) -> &'static str {
+        match self {
+            PersonSort::Name => "name",
+            PersonSort::Credits => "credits",
+        }
+    }
+
+    fn parse(s: &str) -> Option<Self> {
+        match s {
+            "name" => Some(PersonSort::Name),
+            "credits" => Some(PersonSort::Credits),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Default, Debug, Clone, PartialEq)]
+pub(super) struct PersonQuery {
+    pub(super) page: usize,
+    pub(super) filter: String,
+    pub(super) sort: PersonSort,
+    pub(super) desc: bool,
+}
+
+impl PersonQuery {
+    fn to_query_string(&self) -> String {
+        let mut s = form_urlencoded::Serializer::new(String::new());
+
+        if !self.filter.is_empty() {
+            s.append_pair("filter", &self.filter);
+        }
+
+        if self.sort != PersonSort::default() {
+            s.append_pair("sort", self.sort.as_str());
+        }
+
+        if self.desc {
+            s.append_pair("dir", "desc");
+        }
+
+        if self.page > 0 {
+            s.append_pair("page", &self.page.to_string());
+        }
+
+        s.finish()
+    }
+
+    fn from_search(search: &str) -> Self {
+        let mut this = Self::default();
+
+        for (key, value) in form_urlencoded::parse(search.as_bytes()) {
+            match key.as_ref() {
+                "filter" => this.filter = value.into_owned(),
+                "sort" => {
+                    if let Some(sort) = PersonSort::parse(value.as_ref()) {
+                        this.sort = sort;
+                    }
+                }
+                "dir" => this.desc = value.as_ref() == "desc",
+                "page" => this.page = value.parse::<usize>().unwrap_or(0),
+                _ => continue,
+            }
+        }
+
+        this
+    }
+}
+
 /// Which task list the queue overview is focused on.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) enum QueueFocus {
@@ -482,6 +559,8 @@ pub(super) enum Route {
     Media(MediaQuery),
     ShowDetail(api::ShowId, ShowDetailQuery),
     MovieDetail(api::MovieId),
+    People(PersonQuery),
+    PersonDetail(api::PersonId),
     Search(SearchQuery),
     Settings,
 }
@@ -539,6 +618,16 @@ impl fmt::Display for Route {
                 Ok(())
             }
             Route::MovieDetail(id) => write!(f, "/movies/{id}"),
+            Route::People(q) => {
+                let qs = q.to_query_string();
+
+                if qs.is_empty() {
+                    f.write_str("/people")
+                } else {
+                    write!(f, "/people?{qs}")
+                }
+            }
+            Route::PersonDetail(id) => write!(f, "/people/{id}"),
             Route::Search(q) => {
                 let qs = q.to_query_string();
 
@@ -582,6 +671,13 @@ impl Route {
                     selection: MediaSelection::only(api::MediaKind::Movies),
                     ..MediaQuery::from_search(search)
                 }),
+            },
+            Some("people") => match parts.next() {
+                Some(id) => id
+                    .parse()
+                    .map(Route::PersonDetail)
+                    .unwrap_or_else(|_| Route::People(PersonQuery::default())),
+                None => Route::People(PersonQuery::from_search(search)),
             },
             Some("search") => Route::Search(SearchQuery::from_search(search)),
             Some("settings") => Route::Settings,

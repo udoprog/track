@@ -58,6 +58,10 @@ fn credits_key() -> &'static str {
     "credits"
 }
 
+fn person_images_key() -> &'static str {
+    "images"
+}
+
 fn episode_translations_key(season: SeasonNumber, number: u32) -> String {
     format!("episode/{}/translations", api::Code::new(season, number))
 }
@@ -231,7 +235,7 @@ fn image_source(source: RemoteSource) -> api::ImageSource {
     }
 }
 
-fn needed_kinds(do_base: bool, do_air_date: bool) -> SyncKindSet {
+fn needed_kinds(do_base: bool, do_air_date: bool, do_credits: bool) -> SyncKindSet {
     let mut kinds = SyncKindSet::empty();
 
     if do_base {
@@ -240,6 +244,13 @@ fn needed_kinds(do_base: bool, do_air_date: bool) -> SyncKindSet {
 
     if do_air_date {
         kinds.insert(SyncKind::Dates);
+    }
+
+    // Credits come from a separate endpoint but share the base ETag; including the
+    // kind here forces a full fetch (rather than a 304 that skips the credits
+    // sub-request) whenever credits are owed but the cache doesn't yet cover them.
+    if do_credits {
+        kinds.insert(SyncKind::Credits);
     }
 
     kinds
@@ -821,7 +832,7 @@ async fn tmdb_show_layer(
 ) -> Result<LayerOutcome> {
     tracing::info!(tmdb_id, do_base, do_air_date, do_credits, "Show");
 
-    let needed = needed_kinds(do_base, do_air_date);
+    let needed = needed_kinds(do_base, do_air_date, do_credits);
 
     // Only replay the ETag when the cache already covers what we owe; a 304 has no
     // body, so we must force a full response when an uncovered kind is needed.
@@ -977,7 +988,7 @@ async fn tvdb_show_layer(
 ) -> Result<LayerOutcome> {
     tracing::info!(tvdb_id, do_base, do_air_date, "Show");
 
-    let needed = needed_kinds(do_base, do_air_date);
+    let needed = needed_kinds(do_base, do_air_date, false);
 
     let info = remote.fetch_tvdb_show(tvdb_id).await?;
 
@@ -1549,9 +1560,44 @@ async fn collect_tmdb_show_credits(
     Ok(())
 }
 
+/// Turn a name into a URL slug: lowercase ASCII-alphanumerics, other runs collapsed
+/// to single hyphens, no leading/trailing hyphen (e.g. `"Brad Pitt"` -> `"brad-pitt"`).
+fn slugify(name: &str) -> String {
+    let mut slug = String::new();
+
+    for c in name.chars() {
+        if c.is_alphanumeric() {
+            slug.extend(c.to_lowercase());
+        } else if !slug.ends_with('-') && !slug.is_empty() {
+            slug.push('-');
+        }
+    }
+
+    slug.trim_end_matches('-').to_owned()
+}
+
+/// The data a person layer accumulates before it is persisted in one pass.
+#[derive(Default)]
+struct PersonDraft {
+    department: Option<String>,
+    /// Remotes discovered from the source (e.g. an IMDb cross-reference), added to
+    /// `person_remotes` like shows/movies rather than kept as a scalar column.
+    remotes: Vec<(Option<String>, api::Remote)>,
+    /// The person's canonical (primary) language, used as the display fallback.
+    default_language: api::Locale,
+    strings: StringRows,
+    images: Vec<(f64, Image)>,
+    /// A layer fetched fresh data (200); its draft should be persisted.
+    updated: bool,
+    /// A layer short-circuited on a 304; the stored data is still current.
+    unchanged: bool,
+}
+
 /// Sync a single person's own data: localized name + biography and ranked profile
-/// images, with a conditional (ETag) request so an unchanged person is cheap.
-/// Runs independently of shows/movies, scheduled by the background poller.
+/// images. Visits the person's remotes in priority order (mirroring
+/// [`sync_movie`]); only TMDB supplies data, with a per-remote [`api::RemoteCache`]
+/// (conditional ETag + per-sub-request error suppression). Scheduled by the
+/// background poller independently of shows/movies.
 #[tracing::instrument(skip_all, fields(%person_id))]
 pub(crate) async fn sync_person(
     person_id: api::PersonId,
@@ -1560,23 +1606,138 @@ pub(crate) async fn sync_person(
     broadcast: &Broadcaster,
     shutdown: &Shutdown,
 ) -> Result<()> {
-    let Some((source, remote_id, etag)) = db.person_sync_info(person_id).await? else {
+    let Some(person) = db.person_by_id(person_id).await? else {
         return Ok(());
     };
 
+    let config = db.load_config().await?;
     let now = api::Timestamp::now();
 
-    // Only TMDB supplies person data; other sources are external references only.
-    if source != RemoteSource::Tmdb {
-        db.mark_person_synced(person_id, now).await?;
-        return Ok(());
+    let mut entries = person
+        .remotes
+        .iter()
+        .filter(|e| e.enabled)
+        .collect::<Vec<_>>();
+
+    entries.sort_by_key(|e| e.priority);
+
+    let mut draft = PersonDraft::default();
+    let mut cache_writes: Vec<(api::RemoteId, CacheState)> = Vec::new();
+    let mut seen = HashSet::new();
+    let mut errored = false;
+
+    for entry in entries {
+        if shutdown.is_cancelled() {
+            break;
+        }
+
+        let source = *entry.remote.source();
+
+        if !seen.insert(source) {
+            continue;
+        }
+
+        // A person is a single sync unit represented as Base; only a source
+        // configured for it, and only TMDB (the sole person-data provider),
+        // actually fetches. Others are reference-only links.
+        let configured = api::effective_remote_sync_kinds(entry, &config);
+
+        if !configured.contains(SyncKind::Base) || source != RemoteSource::Tmdb {
+            continue;
+        }
+
+        let Some(tmdb_id) = entry.remote.value().as_u32() else {
+            continue;
+        };
+
+        // Reuse a validator only until a higher-priority layer already produced data.
+        let allow_skip = !draft.updated;
+        let mut state = CacheState::new(entry.cache.as_ref(), now);
+
+        let result = tmdb_person_layer(
+            &mut draft, &mut state, &config, tmdb_id, remote, shutdown, allow_skip,
+        )
+        .await;
+
+        cache_writes.push((entry.id, state));
+
+        match result {
+            Ok(LayerOutcome::Updated) => draft.updated = true,
+            Ok(LayerOutcome::Unchanged) => draft.unchanged = true,
+            Ok(LayerOutcome::Absent) => {}
+            Err(e) => {
+                errored = true;
+                tracing::warn!(?source, "Sync layer failed for person {person_id}: {e:#}");
+            }
+        }
     }
 
-    let (new_etag, info) = match remote.fetch_tmdb_person(remote_id, etag.as_deref()).await? {
+    if shutdown.is_cancelled() {
+        anyhow::bail!("Sync aborted: service is shutting down");
+    }
+
+    // Persist fetched data only when a layer produced a fresh draft. A 304 keeps
+    // the stored data; a transient error leaves `last_synced_at` untouched so the
+    // poller retries next cycle rather than parking the person for the full interval.
+    let persisted = draft.updated;
+
+    if persisted {
+        db.persist_person_sync(
+            person_id,
+            draft.department,
+            draft.default_language,
+            draft.strings,
+            draft.images,
+            now,
+        )
+        .await?;
+
+        // Store remotes discovered from the source (e.g. IMDb). `add_person_remote`
+        // upserts, so re-running a sync is idempotent.
+        for (slug, remote) in &draft.remotes {
+            db.add_person_remote(person_id, slug.as_deref(), remote)
+                .await?;
+        }
+    } else if !errored {
+        db.mark_person_synced(person_id, now).await?;
+    }
+
+    for (remote_id, state) in &cache_writes {
+        db.set_person_remote_cache(*remote_id, cache_json(&state.finish(persisted)))
+            .await?;
+    }
+
+    broadcast.broadcast_event(api::AppEventKind::PersonChanged { person_id });
+    Ok(())
+}
+
+/// The TMDB person layer: fetch the person detail conditionally (ETag), then the
+/// translations and images sub-requests (each recovered independently), building a
+/// localized name/biography + ranked profiles into the draft. Returns
+/// [`LayerOutcome::Unchanged`] on a 304 (the person resource, and therefore its
+/// translations/images, are unchanged).
+#[tracing::instrument(skip_all, fields(tmdb_id))]
+async fn tmdb_person_layer(
+    draft: &mut PersonDraft,
+    state: &mut CacheState,
+    config: &api::Config,
+    tmdb_id: u32,
+    remote: &RemoteClients,
+    shutdown: &Shutdown,
+    allow_skip: bool,
+) -> Result<LayerOutcome> {
+    let needed = needed_kinds(true, false, false);
+
+    let etag = state
+        .prior
+        .as_ref()
+        .filter(|c| usable_cache(c, needed, allow_skip, state.now))
+        .and_then(|c| c.etag.clone());
+
+    let (fresh_etag, info) = match remote.fetch_tmdb_person(tmdb_id, etag.as_deref()).await? {
         tmdb::Conditional::NotModified => {
-            tracing::info!("Person unchanged (ETag 304)");
-            db.mark_person_synced(person_id, now).await?;
-            return Ok(());
+            tracing::info!(tmdb_id, "Person unchanged (ETag 304)");
+            return Ok(LayerOutcome::Unchanged);
         }
         tmdb::Conditional::Modified { etag, value } => (etag, value),
     };
@@ -1585,22 +1746,51 @@ pub(crate) async fn sync_person(
         anyhow::bail!("Sync aborted: service is shutting down");
     }
 
-    let config = db.load_config().await?;
+    draft.department = info.department.clone();
 
-    let translations = remote.fetch_tmdb_person_translations(remote_id).await?;
-    let images = remote.fetch_tmdb_person_images(remote_id).await?;
+    // Update the TMDB remote's slug from the person's name so external links resolve
+    // to the canonical `/person/{id}-{slug}` URL (TMDB doesn't return a slug).
+    let slug = info.name.as_deref().map(slugify).filter(|s| !s.is_empty());
+    draft.remotes.push((slug, api::Remote::tmdb(tmdb_id)));
 
-    // Resolve sync targets against the person's canonical (primary) language.
+    // TMDB hands back the person's IMDb id; carry it as a proper IMDb remote so it
+    // appears in the person's remotes list, mirroring show/movie remote discovery.
+    if let Some(imdb_id) = info.imdb_id.as_deref().filter(|s| !s.is_empty()) {
+        draft.remotes.push((None, api::Remote::imdb(imdb_id)));
+    }
+
+    // Translations (localized name/biography) and images are separate endpoints;
+    // recover each so one failing doesn't sink the layer, and it retries with a TTL.
+    let translations = recover(
+        state,
+        translations_key(),
+        remote.fetch_tmdb_person_translations(tmdb_id),
+    )
+    .await
+    .unwrap_or_default();
+
+    if let Some(images) = recover(
+        state,
+        person_images_key(),
+        remote.fetch_tmdb_person_images(tmdb_id),
+    )
+    .await
+    {
+        draft.images = images;
+    }
+
+    // Resolve sync targets against the person's canonical (primary) language,
+    // which also becomes the display fallback when no global language is set.
     let primary = translations
         .iter()
         .find(|t| t.primary)
         .map(|t| t.locale)
         .unwrap_or(config.language);
 
+    draft.default_language = primary;
+
     let targets = api::expand_sync_languages(&config.sync_languages, primary);
     let mut remaining = targets.clone();
-
-    let mut strings: StringRows = Vec::new();
 
     for t in &translations {
         let Some(target) = locale_matches_targets(t.locale, &targets) else {
@@ -1610,13 +1800,13 @@ pub(crate) async fn sync_person(
         remaining.remove(&target);
 
         push_string(
-            &mut strings,
+            &mut draft.strings,
             t.locale,
             api::StringKind::Title,
             t.name.clone().or_else(|| info.name.clone()),
         );
         push_string(
-            &mut strings,
+            &mut draft.strings,
             t.locale,
             api::StringKind::Overview,
             t.biography.clone().or_else(|| info.biography.clone()),
@@ -1625,29 +1815,28 @@ pub(crate) async fn sync_person(
 
     // Targets with no translation fall back to the detail (default-language) data.
     for locale in remaining {
-        push_string(&mut strings, locale, api::StringKind::Title, info.name.clone());
         push_string(
-            &mut strings,
+            &mut draft.strings,
+            locale,
+            api::StringKind::Title,
+            info.name.clone(),
+        );
+        push_string(
+            &mut draft.strings,
             locale,
             api::StringKind::Overview,
             info.biography.clone(),
         );
     }
 
-    db.persist_person_sync(
-        person_id,
-        source,
-        info.department.clone(),
-        info.imdb_id.clone(),
-        strings,
-        images,
-        new_etag,
-        now,
-    )
-    .await?;
+    state.earn(api::RemoteCache {
+        etag: fresh_etag,
+        last_updated: None,
+        kinds: needed,
+        errors: Vec::new(),
+    });
 
-    broadcast.broadcast_event(api::AppEventKind::PersonChanged { person_id });
-    Ok(())
+    Ok(LayerOutcome::Updated)
 }
 
 /// Ensure the person behind a credit exists, seeding a placeholder name and
@@ -1699,13 +1888,8 @@ async fn persist_show_credits(
         .await?;
 
         for (locale, character) in &credit.characters {
-            db.insert_show_credit_string(
-                credit_id,
-                *locale,
-                api::StringKind::Character,
-                character,
-            )
-            .await?;
+            db.insert_show_credit_string(credit_id, *locale, api::StringKind::Character, character)
+                .await?;
         }
     }
 
@@ -2309,7 +2493,7 @@ async fn tmdb_episode_layer(
     remote: &RemoteClients,
     allow_skip: bool,
 ) -> Result<LayerOutcome> {
-    let needed = needed_kinds(do_base, do_air_date);
+    let needed = needed_kinds(do_base, do_air_date, false);
 
     // Only replay the ETag when the cached validator already covers what we owe: a
     // 304 has no body, so an uncovered kind must force a full response.
@@ -2414,7 +2598,7 @@ async fn tvdb_episode_layer(
     allow_skip: bool,
     shutdown: &Shutdown,
 ) -> Result<LayerOutcome> {
-    let needed = needed_kinds(do_base, do_air_date);
+    let needed = needed_kinds(do_base, do_air_date, false);
 
     let key = episode_key(season, number);
 
@@ -2909,7 +3093,7 @@ async fn tmdb_movie_layer(
 ) -> Result<LayerOutcome> {
     tracing::info!(tmdb_id, do_base, do_release, do_credits, "Movie");
 
-    let needed = needed_kinds(do_base, do_release);
+    let needed = needed_kinds(do_base, do_release, do_credits);
 
     let etag = state
         .prior

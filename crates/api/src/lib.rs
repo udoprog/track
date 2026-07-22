@@ -342,6 +342,21 @@ impl Remote {
             _ => None,
         }
     }
+
+    pub fn person_url(&self, slug: Option<&str>) -> Option<String> {
+        match &self.source {
+            // TMDB's canonical person URL is `/person/{id}-{slug}`; the bare id also
+            // resolves, so the slug is only appended when known.
+            RemoteSource::Tmdb => Some(match slug {
+                Some(slug) if !slug.is_empty() => {
+                    format!("https://www.themoviedb.org/person/{}-{slug}", self.value)
+                }
+                _ => format!("https://www.themoviedb.org/person/{}", self.value),
+            }),
+            RemoteSource::Imdb => Some(format!("https://www.imdb.com/name/{}/", self.value)),
+            _ => None,
+        }
+    }
 }
 
 impl fmt::Display for Remote {
@@ -1541,6 +1556,66 @@ pub struct Credit {
     pub order: Option<u32>,
 }
 
+/// A fully-loaded person, mirroring [`Show`]/[`Movie`]: localized name and
+/// biography, the best profile image, and the person's own remotes (identity +
+/// per-remote [`RemoteCache`] state) for the remote editor.
+#[derive(Debug, Clone, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct Person {
+    pub id: PersonId,
+    /// Localized name (kind=Title); resolve with [`Translations::title`].
+    pub name: Translations,
+    /// Localized biography (kind=Overview); resolve with [`Translations::overview`].
+    pub biography: Translations,
+    pub profile: Option<Image>,
+    pub department: Option<String>,
+    pub remotes: Vec<RemoteEntry>,
+    pub last_synced_at: Option<Timestamp>,
+}
+
+impl Person {
+    pub fn remote_by_source(&self, source: RemoteSource) -> Option<&Remote> {
+        self.remotes
+            .iter()
+            .map(|e| &e.remote)
+            .find(|r| *r.source() == source)
+    }
+}
+
+/// A slim person row for the people list view - only what's needed to filter and
+/// render a list entry.
+#[derive(Debug, Clone, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct PersonItem {
+    pub id: PersonId,
+    /// Localized name strings; filter across locales with [`Translations::texts`].
+    pub name: Translations,
+    pub profile: Option<Image>,
+    pub department: Option<String>,
+    /// Number of show + movie credits, shown on the card.
+    pub credit_count: u32,
+}
+
+/// One work a person is credited on, for the person detail page. Points back at
+/// the owning show/movie via [`CreditOwner`] so the card can link to it.
+#[derive(Debug, Clone, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct PersonCredit {
+    pub owner: CreditOwner,
+    /// The owner's localized title.
+    pub title: Translations,
+    pub poster: Option<Image>,
+    pub kind: CreditKind,
+    /// The character played, when a cast credit.
+    pub character: Translations,
+    pub department: Option<String>,
+    pub job: Option<String>,
+    pub episode_count: Option<u32>,
+    pub order: Option<u32>,
+    /// The owner's release/first-air date, for sorting the filmography.
+    pub date: Option<Timestamp>,
+}
+
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct Show {
@@ -2319,6 +2394,96 @@ pub struct ListCreditsResponse {
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
+pub struct ListPersonsRequest;
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct ListPersonsResponse {
+    pub persons: Vec<PersonItem>,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct GetPersonRequest {
+    pub id: PersonId,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct ListPersonCreditsRequest {
+    pub id: PersonId,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct ListPersonCreditsResponse {
+    pub credits: Vec<PersonCredit>,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct AddPersonRemoteRequest {
+    pub id: PersonId,
+    pub slug: Option<String>,
+    pub remote: Remote,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct RemovePersonRemoteRequest {
+    pub id: PersonId,
+    pub remote_id: RemoteId,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct UpdatePersonRemoteRequest {
+    pub id: PersonId,
+    pub remote_id: RemoteId,
+    pub slug: Option<String>,
+    pub remote: Remote,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct SetPersonRemoteEnabledRequest {
+    pub id: PersonId,
+    pub remote_id: RemoteId,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct ReorderPersonRemotesRequest {
+    pub id: PersonId,
+    /// Remote ids in the desired priority order (first = highest priority).
+    pub remote_ids: Vec<RemoteId>,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct SetPersonRemoteSyncKindsRequest {
+    pub id: PersonId,
+    pub remote_id: RemoteId,
+    /// `None` clears the override so the remote inherits the global default.
+    pub sync_kinds: Option<SyncKindSet>,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct PurgePersonRemoteCacheRequest {
+    pub id: PersonId,
+    pub remote_id: RemoteId,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct DeletePersonRequest {
+    pub id: PersonId,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
 pub struct GetSeasonImagesRequest {
     pub season_id: SeasonId,
 }
@@ -2662,6 +2827,12 @@ pub struct SyncShowRequest {
 #[musli(crate = musli_core)]
 pub struct SyncMovieRequest {
     pub id: MovieId,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct SyncPersonRequest {
+    pub id: PersonId,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -3162,6 +3333,72 @@ api::define! {
         type Response<'de> = ListCreditsResponse;
     }
 
+    pub type ListPersons;
+    impl Endpoint for ListPersons {
+        impl Request for ListPersonsRequest;
+        type Response<'de> = ListPersonsResponse;
+    }
+
+    pub type GetPerson;
+    impl Endpoint for GetPerson {
+        impl Request for GetPersonRequest;
+        type Response<'de> = Option<Person>;
+    }
+
+    pub type ListPersonCredits;
+    impl Endpoint for ListPersonCredits {
+        impl Request for ListPersonCreditsRequest;
+        type Response<'de> = ListPersonCreditsResponse;
+    }
+
+    pub type AddPersonRemote;
+    impl Endpoint for AddPersonRemote {
+        impl Request for AddPersonRemoteRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type RemovePersonRemote;
+    impl Endpoint for RemovePersonRemote {
+        impl Request for RemovePersonRemoteRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type UpdatePersonRemote;
+    impl Endpoint for UpdatePersonRemote {
+        impl Request for UpdatePersonRemoteRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type SetPersonRemoteEnabled;
+    impl Endpoint for SetPersonRemoteEnabled {
+        impl Request for SetPersonRemoteEnabledRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type ReorderPersonRemotes;
+    impl Endpoint for ReorderPersonRemotes {
+        impl Request for ReorderPersonRemotesRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type SetPersonRemoteSyncKinds;
+    impl Endpoint for SetPersonRemoteSyncKinds {
+        impl Request for SetPersonRemoteSyncKindsRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type PurgePersonRemoteCache;
+    impl Endpoint for PurgePersonRemoteCache {
+        impl Request for PurgePersonRemoteCacheRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type DeletePerson;
+    impl Endpoint for DeletePerson {
+        impl Request for DeletePersonRequest;
+        type Response<'de> = Empty;
+    }
+
     pub type GetSeasonImages;
     impl Endpoint for GetSeasonImages {
         impl Request for GetSeasonImagesRequest;
@@ -3327,6 +3564,12 @@ api::define! {
     pub type SyncEpisode;
     impl Endpoint for SyncEpisode {
         impl Request for SyncEpisodeRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type SyncPerson;
+    impl Endpoint for SyncPerson {
+        impl Request for SyncPersonRequest;
         type Response<'de> = Empty;
     }
 

@@ -9,6 +9,7 @@ use super::{Button, ConfirmDanger, Modal, Variant};
 pub(crate) enum RemoteSourceKind {
     Show,
     Movie,
+    Person,
 }
 
 /// Validate a source/value pair and build the `Remote`, or return a
@@ -354,7 +355,12 @@ impl Component for RemoteEditor {
                             let enabled = r.remote.enabled;
 
                             let source = *r.remote.remote.source();
-                            let capability = source.default_sync_kinds();
+                            // A person is a single sync unit, so the per-kind override
+                            // toggles don't apply; suppress them for the person editor.
+                            let capability = match props.kind {
+                                RemoteSourceKind::Person => api::SyncKindSet::empty(),
+                                _ => source.default_sync_kinds(),
+                            };
 
                             let global_default = props
                                 .global_sync_kinds
@@ -390,6 +396,7 @@ impl Component for RemoteEditor {
                             let url = match props.kind {
                                 RemoteSourceKind::Show => r.remote.remote.show_url(r.remote.slug.as_deref()),
                                 RemoteSourceKind::Movie => r.remote.remote.movie_url(),
+                                RemoteSourceKind::Person => r.remote.remote.person_url(r.remote.slug.as_deref()),
                             };
 
                             let identifier = html! {

@@ -75,6 +75,12 @@ pub(crate) enum Message {
     LoadingSeasons,
     #[display("Loading credits")]
     LoadingCredits,
+    #[display("Loading people")]
+    LoadingPersons,
+    #[display("Loading person")]
+    LoadingPerson,
+    #[display("Loading person credits")]
+    LoadingPersonCredits,
     #[display("Loading episodes")]
     LoadingEpisodes,
     #[display("Loading releases")]
@@ -115,6 +121,10 @@ pub(crate) enum Message {
     SyncingEpisode,
     #[display("Syncing movie")]
     SyncingMovie,
+    #[display("Syncing person")]
+    SyncingPerson,
+    #[display("Deleting person")]
+    DeletingPerson,
     #[display("Syncing all media")]
     SyncingAll,
     #[display("Toggling remote source")]

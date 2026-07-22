@@ -1742,19 +1742,31 @@ impl ShowDetail {
             return html! {};
         }
 
+        let preferred_crew = Self::preferred_crew(&crew);
+
         const CAP: usize = 18;
         let show_all = self.credits_expanded || cast.len() <= CAP;
-        let shown = if show_all { cast.as_slice() } else { &cast[..CAP] };
+        let shown = if show_all {
+            cast.as_slice()
+        } else {
+            &cast[..CAP]
+        };
 
         html! {
             <section class="credits">
                 <h2>{"Cast & crew"}</h2>
 
-                { Self::view_key_crew(&crew) }
+                if !preferred_crew.is_empty() {
+                    <div class="cast-grid">
+                        { for preferred_crew.iter().map(|c| self.view_credit_card(c, c.job.as_deref())) }
+                    </div>
+                }
 
-                <div class="cast-grid">
-                    { for shown.iter().map(|c| Self::view_cast_card(c)) }
-                </div>
+                if !shown.is_empty() {
+                    <div class="cast-grid">
+                        { for shown.iter().map(|c| self.view_credit_card(c, c.character.character())) }
+                    </div>
+                }
 
                 if cast.len() > CAP {
                     <button class="credits-toggle" onclick={ctx.link().callback(|_| Msg::ToggleCreditsExpanded)}>
@@ -1765,22 +1777,34 @@ impl ShowDetail {
         }
     }
 
-    fn view_cast_card(credit: &api::Credit) -> Html {
+    /// A clickable credit card - photo, name and a subtitle (the character for cast,
+    /// the job for crew) - that navigates to the person's page.
+    fn view_credit_card(&self, credit: &api::Credit, subtitle: Option<&str>) -> Html {
         let name = credit.name.title().unwrap_or("Unknown").to_owned();
+        let subtitle = subtitle.map(str::to_owned);
+
+        let router = self.router.clone();
+        let person_id = credit.person_id;
+        let onclick = Callback::from(move |_| router.push(Route::PersonDetail(person_id)));
 
         html! {
-            <div class="cast-card">
+            <div class="cast-card clickable" {onclick}>
                 <Image class="cast-photo" placeholder={true} src={credit.profile.clone()} alt={name.clone()} />
-                <div class="cast-name">{ name }</div>
-                if let Some(character) = credit.character.character() {
-                    <div class="cast-character">{ character.to_owned() }</div>
-                }
+
+                <div class="cast-info">
+                    <div class="cast-name">{ name }</div>
+
+                    if let Some(subtitle) = subtitle {
+                        <div class="cast-character">{ subtitle }</div>
+                    }
+                </div>
             </div>
         }
     }
 
-    /// A short "Job: Name" line for the most relevant crew roles.
-    fn view_key_crew(crew: &[&api::Credit]) -> Html {
+    /// The most relevant crew, in preferred-job order and deduplicated by person,
+    /// capped at 4 - rendered as cards alongside the cast.
+    fn preferred_crew<'a>(crew: &[&'a api::Credit]) -> Vec<&'a api::Credit> {
         const PREFERRED: &[&str] = &[
             "Director",
             "Screenplay",
@@ -1790,17 +1814,15 @@ impl ShowDetail {
             "Producer",
         ];
 
-        let mut picks: Vec<(&str, String)> = Vec::new();
+        let mut picks: Vec<&api::Credit> = Vec::new();
 
         for job in PREFERRED {
             for c in crew {
-                let name = c.name.title().unwrap_or_default();
-
                 if c.job.as_deref() == Some(*job)
-                    && !name.is_empty()
-                    && !picks.iter().any(|(_, n)| n == name)
+                    && c.name.title().is_some_and(|n| !n.is_empty())
+                    && !picks.iter().any(|p| p.person_id == c.person_id)
                 {
-                    picks.push((job, name.to_owned()));
+                    picks.push(c);
                 }
             }
 
@@ -1810,21 +1832,7 @@ impl ShowDetail {
         }
 
         picks.truncate(4);
-
-        if picks.is_empty() {
-            return html! {};
-        }
-
-        html! {
-            <div class="credit-crew">
-                { for picks.into_iter().map(|(job, name)| html! {
-                    <span class="credit-crew-item">
-                        <span class="credit-crew-job">{ job }{": "}</span>
-                        { name }
-                    </span>
-                }) }
-            </div>
-        }
+        picks
     }
 
     fn update_graphics(&mut self) {

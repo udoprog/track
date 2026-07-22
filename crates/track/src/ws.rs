@@ -155,6 +155,69 @@ impl WsHandler {
             .await;
     }
 
+    async fn enqueue_person_sync(
+        &self,
+        person_id: api::PersonId,
+        title: Option<String>,
+        immediate: bool,
+    ) {
+        self.queue
+            .push(
+                api::TaskKind::SyncPerson { person_id, title },
+                immediate,
+                &self.broadcast,
+            )
+            .await;
+    }
+
+    /// Broadcast that a person changed, after a mutation that does not warrant a
+    /// resync (add/remove/update remote).
+    async fn broadcast_person_changed(
+        &self,
+        channel: musli_web::api::ChannelId,
+        person_id: api::PersonId,
+        reason: &'static str,
+    ) -> Result<()> {
+        self.db
+            .person_by_id(person_id)
+            .await?
+            .context("Expected person to exist")?;
+
+        self.broadcast.emit(
+            channel,
+            api::AppEventKind::PersonChanged { person_id },
+            reason,
+        );
+
+        Ok(())
+    }
+
+    /// Broadcast a person change and force a fresh sync (enable/reorder/sync-kinds/
+    /// purge), mirroring the show/movie remote handlers.
+    async fn resync_person(
+        &self,
+        channel: musli_web::api::ChannelId,
+        person_id: api::PersonId,
+        reason: &'static str,
+    ) -> Result<()> {
+        let person = self
+            .db
+            .person_by_id(person_id)
+            .await?
+            .context("Expected person to exist")?;
+
+        self.broadcast.emit(
+            channel,
+            api::AppEventKind::PersonChanged { person_id },
+            reason,
+        );
+
+        self.enqueue_person_sync(person_id, person.name.title().map(str::to_owned), true)
+            .await;
+
+        Ok(())
+    }
+
     /// The cutoff pending items are listed up to: now shifted forward by the
     /// configured dashboard lookahead, so items surface before they air.
     async fn pending_cutoff(&self) -> Result<api::Timestamp> {
@@ -217,6 +280,148 @@ impl WsHandler {
                 };
 
                 outgoing.write(api::ListCreditsResponse { credits });
+            }
+            api::Request::ListPersons => {
+                incoming
+                    .read::<api::ListPersonsRequest>()
+                    .context("Expected a request payload")?;
+                let persons = self.db.list_persons().await?;
+                outgoing.write(api::ListPersonsResponse { persons });
+            }
+            api::Request::GetPerson => {
+                let req = incoming
+                    .read::<api::GetPersonRequest>()
+                    .context("Expected a request payload")?;
+                let person = self.db.person_by_id(req.id).await?;
+                outgoing.write(person);
+            }
+            api::Request::ListPersonCredits => {
+                let req = incoming
+                    .read::<api::ListPersonCreditsRequest>()
+                    .context("Expected a request payload")?;
+                let credits = self.db.list_person_credits(req.id).await?;
+                outgoing.write(api::ListPersonCreditsResponse { credits });
+            }
+            api::Request::AddPersonRemote => {
+                let req = incoming
+                    .read::<api::AddPersonRemoteRequest>()
+                    .context("Expected a request payload")?;
+
+                self.db
+                    .add_person_remote(req.id, req.slug.as_deref(), &req.remote)
+                    .await?;
+
+                self.broadcast_person_changed(incoming.channel(), req.id, "ws add person remote")
+                    .await?;
+
+                outgoing.write(api::Empty);
+            }
+            api::Request::RemovePersonRemote => {
+                let req = incoming
+                    .read::<api::RemovePersonRemoteRequest>()
+                    .context("Expected a request payload")?;
+
+                self.db.remove_person_remote(req.remote_id).await?;
+
+                self.broadcast_person_changed(
+                    incoming.channel(),
+                    req.id,
+                    "ws remove person remote",
+                )
+                .await?;
+
+                outgoing.write(api::Empty);
+            }
+            api::Request::UpdatePersonRemote => {
+                let req = incoming
+                    .read::<api::UpdatePersonRemoteRequest>()
+                    .context("Expected a request payload")?;
+
+                self.db
+                    .update_person_remote(req.remote_id, req.slug.as_deref(), &req.remote)
+                    .await?;
+
+                self.broadcast_person_changed(
+                    incoming.channel(),
+                    req.id,
+                    "ws update person remote",
+                )
+                .await?;
+
+                outgoing.write(api::Empty);
+            }
+            api::Request::SetPersonRemoteEnabled => {
+                let req = incoming
+                    .read::<api::SetPersonRemoteEnabledRequest>()
+                    .context("Expected a request payload")?;
+
+                self.db
+                    .set_person_remote_enabled(req.remote_id, req.enabled)
+                    .await?;
+
+                self.resync_person(incoming.channel(), req.id, "ws set person remote enabled")
+                    .await?;
+
+                outgoing.write(api::Empty);
+            }
+            api::Request::ReorderPersonRemotes => {
+                let req = incoming
+                    .read::<api::ReorderPersonRemotesRequest>()
+                    .context("Expected a request payload")?;
+
+                self.db.reorder_person_remotes(req.remote_ids).await?;
+
+                self.resync_person(incoming.channel(), req.id, "ws reorder person remotes")
+                    .await?;
+
+                outgoing.write(api::Empty);
+            }
+            api::Request::SetPersonRemoteSyncKinds => {
+                let req = incoming
+                    .read::<api::SetPersonRemoteSyncKindsRequest>()
+                    .context("Expected a request payload")?;
+
+                self.db
+                    .set_person_remote_sync_kinds(req.remote_id, req.sync_kinds)
+                    .await?;
+
+                self.resync_person(
+                    incoming.channel(),
+                    req.id,
+                    "ws set person remote sync kinds",
+                )
+                .await?;
+
+                outgoing.write(api::Empty);
+            }
+            api::Request::PurgePersonRemoteCache => {
+                let req = incoming
+                    .read::<api::PurgePersonRemoteCacheRequest>()
+                    .context("Expected a request payload")?;
+
+                self.db.set_person_remote_cache(req.remote_id, None).await?;
+
+                self.resync_person(incoming.channel(), req.id, "ws purge person remote cache")
+                    .await?;
+
+                outgoing.write(api::Empty);
+            }
+            api::Request::DeletePerson => {
+                let req = incoming
+                    .read::<api::DeletePersonRequest>()
+                    .context("Expected a request payload")?;
+
+                self.db.delete_person(req.id).await?;
+
+                // The person is gone; a PersonChanged lets open detail pages resolve
+                // to "missing" and the people list drop it.
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::PersonChanged { person_id: req.id },
+                    "ws delete person",
+                );
+
+                outgoing.write(api::Empty);
             }
             api::Request::GetSeasonImages => {
                 let req = incoming
@@ -762,6 +967,22 @@ impl WsHandler {
                     .context("Expected movie to exist")?;
 
                 self.enqueue_movie_sync(movie.id, movie.strings.title().map(str::to_owned), true)
+                    .await;
+
+                outgoing.write(api::Empty);
+            }
+            api::Request::SyncPerson => {
+                let req = incoming
+                    .read::<api::SyncPersonRequest>()
+                    .context("Expected a request payload")?;
+
+                let person = self
+                    .db
+                    .person_by_id(req.id)
+                    .await?
+                    .context("Expected person to exist")?;
+
+                self.enqueue_person_sync(person.id, person.name.title().map(str::to_owned), true)
                     .await;
 
                 outgoing.write(api::Empty);

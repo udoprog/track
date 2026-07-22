@@ -123,13 +123,60 @@ struct PersonSyncRow {
     name: Option<String>,
 }
 
-/// A person's sync identity: its source, remote id and stored conditional-request
-/// validator (ETag), joined from `person_cache`.
+/// A person's own row; identity/remotes (incl. IMDb) live in `person_remotes`.
 #[derive(Row)]
-struct PersonSyncInfoRow {
-    source: RemoteSource,
-    remote_id: u32,
-    cache: Option<String>,
+struct PersonRow {
+    department: Option<String>,
+    default_language: api::Locale,
+    last_synced_at: Option<Timestamp>,
+}
+
+/// A slim person row for the people list view.
+#[derive(Row)]
+struct PersonListRow {
+    id: PersonId,
+    department: Option<String>,
+    default_language: api::Locale,
+}
+
+/// A person's best-ranked profile image, carrying the person id for bulk grouping.
+#[derive(Row)]
+struct PersonProfileRow {
+    person_id: PersonId,
+    source: ImageSource,
+    path: String,
+    width: u32,
+    height: u32,
+}
+
+/// A single person's best-ranked profile image (single-person lookup).
+#[derive(Row)]
+struct ProfileRow {
+    source: ImageSource,
+    path: String,
+    width: u32,
+    height: u32,
+}
+
+/// A person's credit on a show or movie, with the owner's date and best poster.
+/// Character names are folded in separately from `*_credit_strings`.
+#[derive(Row)]
+struct PersonCreditRow {
+    id: CreditId,
+    /// The owning show/movie id, stored bit-reinterpreted as a signed integer
+    /// (like every id column); recovered with `as u64` at the call site.
+    owner_id: i64,
+    /// The owner's original language, used to resolve its title when no configured
+    /// display language matches (mirrors show/movie title resolution).
+    owner_language: api::Locale,
+    credit_type: CreditKind,
+    department: Option<String>,
+    job: Option<String>,
+    sort_order: Option<u32>,
+    episode_count: Option<u32>,
+    date: Option<Timestamp>,
+    poster_source: Option<ImageSource>,
+    poster_path: Option<String>,
 }
 
 #[derive(Row)]
@@ -757,11 +804,52 @@ struct InnerRead {
     #[sql = "JOIN person_strings ps ON ps.person_id = c.person_id AND ps.kind = 1"]
     #[sql = "WHERE c.movie_id = ? ORDER BY c.id"]
     list_movie_credit_names: TypedStatement<(MovieId,), (CreditId, api::Locale, String)>,
-    // person sync
-    #[sql = "SELECT p.source, p.remote_id, pc.cache FROM people p"]
-    #[sql = "LEFT JOIN person_cache pc ON pc.person_id = p.id AND pc.source = p.source"]
-    #[sql = "WHERE p.id = ?"]
-    person_sync_info: TypedStatement<(PersonId,), PersonSyncInfoRow>,
+    // person reads
+    #[sql = "SELECT department, default_language, last_synced_at FROM people WHERE id = ?"]
+    person_row: TypedStatement<(PersonId,), PersonRow>,
+    #[sql = "SELECT language, kind, text FROM person_strings WHERE person_id = ?"]
+    list_person_strings: TypedStatement<(PersonId,), (api::Locale, api::StringKind, String)>,
+    #[sql = "SELECT source, path, width, height FROM person_image_candidates"]
+    #[sql = "WHERE person_id = ? AND kind = 5 ORDER BY rank, id LIMIT 1"]
+    person_profile: TypedStatement<(PersonId,), ProfileRow>,
+    #[sql = "SELECT id, slug, source, value, enabled, priority, sync_kinds, cache FROM person_remotes WHERE person_id = ? ORDER BY priority, id"]
+    list_person_remotes: TypedStatement<(PersonId,), RemoteRow>,
+    // people list (bulk, grouped in Rust like shows())
+    #[sql = "SELECT id, department, default_language FROM people"]
+    list_people: TypedStatement<(), PersonListRow>,
+    #[sql = "SELECT person_id, language, text FROM person_strings WHERE kind = 1 ORDER BY person_id"]
+    list_all_person_names: TypedStatement<(), (PersonId, api::Locale, String)>,
+    #[sql = "SELECT person_id, source, path, width, height FROM person_image_candidates"]
+    #[sql = "WHERE kind = 5 ORDER BY person_id, rank, id"]
+    list_all_person_profiles: TypedStatement<(), PersonProfileRow>,
+    #[sql = "SELECT person_id, COUNT(*) AS n FROM"]
+    #[sql = "  (SELECT person_id FROM show_credits UNION ALL SELECT person_id FROM movie_credits)"]
+    #[sql = "GROUP BY person_id"]
+    list_person_credit_counts: TypedStatement<(), (PersonId, u32)>,
+    // a person's filmography (shows + movies they are credited on)
+    #[sql = "SELECT c.id, c.show_id AS owner_id, s.default_language AS owner_language, c.credit_type, c.department, c.job, c.sort_order, c.episode_count, s.first_air AS date,"]
+    #[sql = "  (SELECT i.source FROM show_images si JOIN show_image_candidates i ON i.id = si.image_id WHERE si.show_id = c.show_id AND si.kind = 1) AS poster_source,"]
+    #[sql = "  (SELECT i.path FROM show_images si JOIN show_image_candidates i ON i.id = si.image_id WHERE si.show_id = c.show_id AND si.kind = 1) AS poster_path"]
+    #[sql = "FROM show_credits c JOIN shows s ON s.id = c.show_id WHERE c.person_id = ?"]
+    list_person_show_credits: TypedStatement<(PersonId,), PersonCreditRow>,
+    #[sql = "SELECT c.id, c.movie_id AS owner_id, m.default_language AS owner_language, c.credit_type, c.department, c.job, c.sort_order, c.episode_count, m.release_date AS date,"]
+    #[sql = "  (SELECT i.source FROM movie_images mi JOIN movie_image_candidates i ON i.id = mi.image_id WHERE mi.movie_id = c.movie_id AND mi.kind = 1) AS poster_source,"]
+    #[sql = "  (SELECT i.path FROM movie_images mi JOIN movie_image_candidates i ON i.id = mi.image_id WHERE mi.movie_id = c.movie_id AND mi.kind = 1) AS poster_path"]
+    #[sql = "FROM movie_credits c JOIN movies m ON m.id = c.movie_id WHERE c.person_id = ?"]
+    list_person_movie_credits: TypedStatement<(PersonId,), PersonCreditRow>,
+    // Owner titles (kind=Title) and character names (kind=Character) for a person's credits.
+    #[sql = "SELECT c.id, ss.language, ss.text FROM show_credits c"]
+    #[sql = "JOIN show_strings ss ON ss.show_id = c.show_id AND ss.kind = 1 WHERE c.person_id = ? ORDER BY c.id"]
+    list_person_show_titles: TypedStatement<(PersonId,), (CreditId, api::Locale, String)>,
+    #[sql = "SELECT c.id, ms.language, ms.text FROM movie_credits c"]
+    #[sql = "JOIN movie_strings ms ON ms.movie_id = c.movie_id AND ms.kind = 1 WHERE c.person_id = ? ORDER BY c.id"]
+    list_person_movie_titles: TypedStatement<(PersonId,), (CreditId, api::Locale, String)>,
+    #[sql = "SELECT cs.credit_id, cs.language, cs.text FROM show_credit_strings cs"]
+    #[sql = "JOIN show_credits c ON c.id = cs.credit_id WHERE c.person_id = ? ORDER BY cs.credit_id"]
+    list_person_show_credit_strings: TypedStatement<(PersonId,), (CreditId, api::Locale, String)>,
+    #[sql = "SELECT cs.credit_id, cs.language, cs.text FROM movie_credit_strings cs"]
+    #[sql = "JOIN movie_credits c ON c.id = cs.credit_id WHERE c.person_id = ? ORDER BY cs.credit_id"]
+    list_person_movie_credit_strings: TypedStatement<(PersonId,), (CreditId, api::Locale, String)>,
     // Never-synced first, then stalest; a best-effort name for the task label.
     // Batch capped at 50 (PERSON_SYNC_BATCH) so a big cast drains gradually.
     #[sql = "SELECT p.id, (SELECT text FROM person_strings WHERE person_id = p.id AND kind = 1 LIMIT 1) AS name"]
@@ -1233,16 +1321,49 @@ struct InnerWrite {
     set_season_image_selection: TypedStatement<(SeasonId, ImageKind, ImageId), ()>,
 
     // people & credits
-    #[sql = "SELECT id, last_synced_at FROM people WHERE source = ? AND remote_id = ?"]
-    person_id_by_remote: TypedStatement<(RemoteSource, u32), (PersonId, Option<Timestamp>)>,
-    #[sql = "INSERT INTO people (id, source, remote_id) VALUES (?, ?, ?)"]
-    insert_person: TypedStatement<(PersonId, RemoteSource, u32), ()>,
-    #[sql = "UPDATE people SET department = ?, imdb_id = ? WHERE id = ?"]
-    update_person: TypedStatement<(Option<String>, Option<String>, PersonId), ()>,
+    #[sql = "SELECT pr.person_id, p.last_synced_at FROM person_remotes pr"]
+    #[sql = "JOIN people p ON p.id = pr.person_id WHERE pr.source = ? AND pr.value = ?"]
+    person_by_remote: TypedStatement<(RemoteSource, RemoteValue), (PersonId, Option<Timestamp>)>,
+    #[sql = "INSERT INTO people (id) VALUES (?)"]
+    insert_person: TypedStatement<(PersonId,), ()>,
+    #[sql = "UPDATE people SET department = ?, default_language = ? WHERE id = ?"]
+    update_person: TypedStatement<(Option<String>, api::Locale, PersonId), ()>,
     #[sql = "UPDATE people SET last_synced_at = ? WHERE id = ?"]
     mark_person_synced: TypedStatement<(Timestamp, PersonId), ()>,
-    #[sql = "INSERT OR REPLACE INTO person_cache (person_id, source, cache) VALUES (?, ?, ?)"]
-    set_person_cache: TypedStatement<(PersonId, RemoteSource, String), ()>,
+    #[sql = "UPDATE people SET remote_id = ? WHERE id = ?"]
+    set_person_primary_remote: TypedStatement<(RemoteId, PersonId), ()>,
+    // person_remotes (identical shape to show_remotes/movie_remotes)
+    #[sql = "INSERT INTO person_remotes (id, slug, person_id, source, value, enabled, priority, sync_kinds) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"]
+    #[sql = "ON CONFLICT(person_id, source, value) DO UPDATE SET slug = COALESCE(excluded.slug, slug)"]
+    insert_person_remote: TypedStatement<
+        (
+            RemoteId,
+            Option<String>,
+            PersonId,
+            RemoteSource,
+            RemoteValue,
+            bool,
+            i32,
+            Option<api::SyncKindSet>,
+        ),
+        (),
+    >,
+    #[sql = "DELETE FROM person_remotes WHERE id = ?"]
+    delete_person_remote: TypedStatement<(RemoteId,), ()>,
+    #[sql = "UPDATE person_remotes SET slug = ?, source = ?, value = ? WHERE id = ?"]
+    update_person_remote: TypedStatement<(Option<String>, RemoteSource, RemoteValue, RemoteId), ()>,
+    #[sql = "UPDATE person_remotes SET enabled = ? WHERE id = ?"]
+    set_person_remote_enabled: TypedStatement<(bool, RemoteId), ()>,
+    #[sql = "UPDATE person_remotes SET priority = ? WHERE id = ?"]
+    set_person_remote_priority: TypedStatement<(i32, RemoteId), ()>,
+    #[sql = "UPDATE person_remotes SET sync_kinds = ? WHERE id = ?"]
+    set_person_remote_sync_kinds: TypedStatement<(Option<api::SyncKindSet>, RemoteId), ()>,
+    #[sql = "UPDATE person_remotes SET cache = ? WHERE id = ?"]
+    set_person_remote_cache: TypedStatement<(Option<String>, RemoteId), ()>,
+    #[sql = "DELETE FROM person_remotes WHERE person_id = ?"]
+    delete_person_remotes: TypedStatement<(PersonId,), ()>,
+    #[sql = "DELETE FROM people WHERE id = ?"]
+    delete_person: TypedStatement<(PersonId,), ()>,
     #[sql = "DELETE FROM person_strings WHERE person_id = ?"]
     clear_person_strings: TypedStatement<(PersonId,), ()>,
     #[sql = "INSERT OR IGNORE INTO person_strings (person_id, language, kind, text) VALUES (?, ?, ?, ?)"]
@@ -1300,7 +1421,8 @@ struct InnerWrite {
         (),
     >,
     #[sql = "INSERT OR IGNORE INTO movie_credit_strings (credit_id, language, kind, text) VALUES (?, ?, ?, ?)"]
-    insert_movie_credit_string: TypedStatement<(CreditId, api::Locale, api::StringKind, String), ()>,
+    insert_movie_credit_string:
+        TypedStatement<(CreditId, api::Locale, api::StringKind, String), ()>,
     #[sql = "DELETE FROM people WHERE id NOT IN (SELECT person_id FROM show_credits UNION SELECT person_id FROM movie_credits)"]
     prune_orphan_people: TypedStatement<(), ()>,
 
@@ -3629,16 +3751,32 @@ impl Database {
         source: RemoteSource,
         remote_id: u32,
     ) -> Result<(PersonId, Option<Timestamp>)> {
+        let value = RemoteValue::Int(remote_id);
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            let existing = s.person_id_by_remote.bind((source, remote_id))?.first()?;
+            let existing = s.person_by_remote.bind((source, value.clone()))?.first()?;
 
             if let Some((id, last_synced)) = existing {
                 Ok((id, last_synced))
             } else {
                 let id = PersonId::random();
-                s.insert_person.execute((id, source, remote_id))?;
+                s.insert_person.execute((id,))?;
+
+                // Seed the person's identity as its primary remote, mirroring how a
+                // show/movie's base remote is created.
+                let remote_id = RemoteId::random();
+                s.insert_person_remote.execute((
+                    remote_id,
+                    None::<String>,
+                    id,
+                    source,
+                    value,
+                    true,
+                    0i32,
+                    None::<api::SyncKindSet>,
+                ))?;
+                s.set_person_primary_remote.execute((remote_id, id))?;
                 Ok((id, None))
             }
         });
@@ -3697,16 +3835,64 @@ impl Database {
         result.await?
     }
 
-    /// A person's sync identity: `(source, remote_id, stored ETag)`.
-    pub(crate) async fn person_sync_info(
-        &self,
-        person_id: PersonId,
-    ) -> Result<Option<(RemoteSource, u32, Option<String>)>> {
+    /// Load a full person (localized name/biography, profile, and remotes with
+    /// their per-remote [`api::RemoteCache`]) for the detail page and for sync.
+    pub(crate) async fn person_by_id(&self, person_id: PersonId) -> Result<Option<api::Person>> {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
-            let row = s.person_sync_info.bind((person_id,))?.first()?;
-            Ok(row.map(|r| (r.source, r.remote_id, r.cache)))
+            let Some(row) = s.person_row.bind((person_id,))?.first()? else {
+                return Ok(None);
+            };
+
+            let config = s.config_language()?;
+            // Resolve strings against the configured display language, falling back
+            // to the person's original language so a name/biography still shows when
+            // no global language is set (mirrors show/movie title resolution).
+            let locale = config.or(row.default_language);
+            let mut name = api::Translations::new(locale);
+            let mut biography = api::Translations::new(locale);
+
+            let mut stmt = s.list_person_strings.bind((person_id,))?;
+            while let Some((language, kind, text)) = stmt.next()? {
+                match kind {
+                    api::StringKind::Overview => biography.insert(kind, language, &text),
+                    // Everything else (name) resolves against the name translations.
+                    _ => name.insert(kind, language, &text),
+                }
+            }
+            stmt.reset()?;
+
+            let profile = s
+                .person_profile
+                .bind((person_id,))?
+                .first()?
+                .map(|p| api::Image::new_with_dims(p.source, &p.path, p.width, p.height));
+
+            let mut remotes = Vec::new();
+            let mut stmt = s.list_person_remotes.bind((person_id,))?;
+            while let Some(r) = stmt.next()? {
+                remotes.push(api::RemoteEntry {
+                    id: r.id,
+                    slug: r.slug,
+                    remote: Remote::new(r.source, r.value),
+                    enabled: r.enabled,
+                    priority: r.priority,
+                    sync_kinds: r.sync_kinds,
+                    cache: parse_remote_cache(r.cache),
+                });
+            }
+            stmt.reset()?;
+
+            Ok(Some(api::Person {
+                id: person_id,
+                name,
+                biography,
+                profile,
+                department: row.department,
+                remotes,
+                last_synced_at: row.last_synced_at,
+            }))
         });
 
         result.await?
@@ -3738,21 +3924,23 @@ impl Database {
 
     /// Replace a person's own data from its sync: department/imdb, per-language
     /// name+biography, ranked profile images, then mark synced and store the ETag.
+    /// Replace a person's own data from its sync: department/imdb, per-language
+    /// name+biography, ranked profile images, then mark synced. The per-remote
+    /// [`api::RemoteCache`] is flushed separately via [`Self::set_person_remote_cache`].
     pub(crate) async fn persist_person_sync(
         &self,
         person_id: PersonId,
-        source: RemoteSource,
         department: Option<String>,
-        imdb_id: Option<String>,
+        default_language: api::Locale,
         strings: Vec<(api::Locale, api::StringKind, String)>,
         images: Vec<(f64, Image)>,
-        cache: Option<String>,
         now: Timestamp,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            s.update_person.execute((department, imdb_id, person_id))?;
+            s.update_person
+                .execute((department, default_language, person_id))?;
 
             s.clear_person_strings.execute((person_id,))?;
             for (language, kind, text) in strings {
@@ -3775,10 +3963,6 @@ impl Database {
                 ))?;
             }
 
-            if let Some(cache) = cache {
-                s.set_person_cache.execute((person_id, source, cache))?;
-            }
-
             s.mark_person_synced.execute((now, person_id))?;
             Ok(())
         });
@@ -3797,6 +3981,296 @@ impl Database {
         let result = spawn_blocking(move || {
             s.mark_person_synced.execute((now, person_id))?;
             Ok(())
+        });
+
+        result.await?
+    }
+
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn add_person_remote(
+        &self,
+        person_id: PersonId,
+        slug: Option<&str>,
+        remote: &Remote,
+    ) -> Result<()> {
+        let remote = remote.clone();
+        let slug = slug.map(str::to_owned);
+        let priority = default_remote_priority(*remote.source(), &self.load_config().await?);
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.insert_person_remote.execute((
+                RemoteId::random(),
+                slug,
+                person_id,
+                remote.source(),
+                remote.value(),
+                true,
+                priority,
+                None::<api::SyncKindSet>,
+            ))
+        });
+
+        result.await??;
+        Ok(())
+    }
+
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn remove_person_remote(&self, remote_id: RemoteId) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || s.delete_person_remote.execute((remote_id,)));
+
+        result.await??;
+        Ok(())
+    }
+
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn update_person_remote(
+        &self,
+        remote_id: RemoteId,
+        slug: Option<&str>,
+        remote: &Remote,
+    ) -> Result<()> {
+        let slug = slug.map(str::to_owned);
+        let remote = remote.clone();
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.update_person_remote.execute((
+                slug.as_deref(),
+                remote.source(),
+                remote.value(),
+                remote_id,
+            ))
+        });
+
+        result.await??;
+        Ok(())
+    }
+
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn set_person_remote_enabled(
+        &self,
+        remote_id: RemoteId,
+        enabled: bool,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.set_person_remote_enabled.execute((enabled, remote_id))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn set_person_remote_sync_kinds(
+        &self,
+        remote_id: RemoteId,
+        sync_kinds: Option<api::SyncKindSet>,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.set_person_remote_sync_kinds
+                .execute((sync_kinds, remote_id))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    /// Replace a person remote's cached conditional-request state (JSON), or clear
+    /// it with `None`.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn set_person_remote_cache(
+        &self,
+        remote_id: RemoteId,
+        cache: Option<String>,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.set_person_remote_cache.execute((cache, remote_id))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    /// Set person remote priority to match the given order (first = highest).
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn reorder_person_remotes(&self, remote_ids: Vec<RemoteId>) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            for (idx, id) in remote_ids.iter().enumerate() {
+                s.set_person_remote_priority.execute((idx as i32, *id))?;
+            }
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    /// Delete a person and everything derived from it: its remotes (no owner FK, so
+    /// removed explicitly) and, via `ON DELETE CASCADE`, its strings, profile images
+    /// and credits. The person re-seeds on the next credited show/movie sync.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn delete_person(&self, person_id: PersonId) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.delete_person_remotes.execute((person_id,))?;
+            s.delete_person.execute((person_id,))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    /// The people list view: name, profile, department and total credit count.
+    pub(crate) async fn list_persons(&self) -> Result<Vec<api::PersonItem>> {
+        let mut s = self.inner.clone().shared().await?;
+
+        let result = spawn_blocking(move || {
+            let config = s.config_language()?;
+            let mut out: Vec<api::PersonItem> = Vec::new();
+            let mut id_to_idx: HashMap<PersonId, usize> = HashMap::new();
+
+            let mut stmt = s.list_people.query()?;
+            while let Some(r) = stmt.next()? {
+                id_to_idx.insert(r.id, out.len());
+                out.push(api::PersonItem {
+                    id: r.id,
+                    name: api::Translations::new(config.or(r.default_language)),
+                    profile: None,
+                    department: r.department,
+                    credit_count: 0,
+                });
+            }
+            stmt.reset()?;
+
+            let mut stmt = s.list_all_person_names.query()?;
+            while let Some((person_id, language, text)) = stmt.next()? {
+                if let Some(&i) = id_to_idx.get(&person_id)
+                    && let Some(o) = out.get_mut(i)
+                {
+                    o.name.insert(api::StringKind::Title, language, &text);
+                }
+            }
+            stmt.reset()?;
+
+            // Rows are ordered by (person_id, rank, id): the first per person wins.
+            let mut stmt = s.list_all_person_profiles.query()?;
+            while let Some(r) = stmt.next()? {
+                if let Some(&i) = id_to_idx.get(&r.person_id)
+                    && let Some(o) = out.get_mut(i)
+                    && o.profile.is_none()
+                {
+                    o.profile = Some(api::Image::new_with_dims(
+                        r.source, &r.path, r.width, r.height,
+                    ));
+                }
+            }
+            stmt.reset()?;
+
+            let mut stmt = s.list_person_credit_counts.query()?;
+            while let Some((person_id, n)) = stmt.next()? {
+                if let Some(&i) = id_to_idx.get(&person_id)
+                    && let Some(o) = out.get_mut(i)
+                {
+                    o.credit_count = n;
+                }
+            }
+            stmt.reset()?;
+
+            Ok(out)
+        });
+
+        result.await?
+    }
+
+    /// The shows and movies a person is credited on, for the detail page.
+    pub(crate) async fn list_person_credits(
+        &self,
+        person_id: PersonId,
+    ) -> Result<Vec<api::PersonCredit>> {
+        let mut s = self.inner.clone().shared().await?;
+
+        let result = spawn_blocking(move || {
+            let config = s.config_language()?;
+
+            let mut out: Vec<api::PersonCredit> = Vec::new();
+
+            // Shows. Strings are collected raw (per credit) so each credit resolves
+            // its title/character against its own owner's display locale below.
+            let mut titles: HashMap<CreditId, Vec<(api::Locale, String)>> = HashMap::new();
+            let mut stmt = s.list_person_show_titles.bind((person_id,))?;
+            while let Some((credit_id, language, text)) = stmt.next()? {
+                titles.entry(credit_id).or_default().push((language, text));
+            }
+            stmt.reset()?;
+
+            let mut characters: HashMap<CreditId, Vec<(api::Locale, String)>> = HashMap::new();
+            let mut stmt = s.list_person_show_credit_strings.bind((person_id,))?;
+            while let Some((credit_id, language, text)) = stmt.next()? {
+                characters
+                    .entry(credit_id)
+                    .or_default()
+                    .push((language, text));
+            }
+            stmt.reset()?;
+
+            let mut stmt = s.list_person_show_credits.bind((person_id,))?;
+            while let Some(r) = stmt.next()? {
+                let owner = api::CreditOwner::Show(ShowId::new(r.owner_id as u64));
+                let locale = config.or(r.owner_language);
+                out.push(person_credit_from_row(
+                    r,
+                    owner,
+                    &mut titles,
+                    &mut characters,
+                    locale,
+                ));
+            }
+            stmt.reset()?;
+
+            // Movies.
+            let mut titles: HashMap<CreditId, Vec<(api::Locale, String)>> = HashMap::new();
+            let mut stmt = s.list_person_movie_titles.bind((person_id,))?;
+            while let Some((credit_id, language, text)) = stmt.next()? {
+                titles.entry(credit_id).or_default().push((language, text));
+            }
+            stmt.reset()?;
+
+            let mut characters: HashMap<CreditId, Vec<(api::Locale, String)>> = HashMap::new();
+            let mut stmt = s.list_person_movie_credit_strings.bind((person_id,))?;
+            while let Some((credit_id, language, text)) = stmt.next()? {
+                characters
+                    .entry(credit_id)
+                    .or_default()
+                    .push((language, text));
+            }
+            stmt.reset()?;
+
+            let mut stmt = s.list_person_movie_credits.bind((person_id,))?;
+            while let Some(r) = stmt.next()? {
+                let owner = api::CreditOwner::Movie(MovieId::new(r.owner_id as u64));
+                let locale = config.or(r.owner_language);
+                out.push(person_credit_from_row(
+                    r,
+                    owner,
+                    &mut titles,
+                    &mut characters,
+                    locale,
+                ));
+            }
+            stmt.reset()?;
+
+            Ok(out)
         });
 
         result.await?
@@ -6450,6 +6924,45 @@ fn credit_from_row(
         job: r.job,
         episode_count: r.episode_count,
         order: r.sort_order,
+    }
+}
+
+/// Assemble an [`api::PersonCredit`] for the person detail page, building the
+/// owner's title and (for cast) the character name from their raw per-locale
+/// strings, resolved against `locale` (the owner's display language).
+fn person_credit_from_row(
+    r: PersonCreditRow,
+    owner: api::CreditOwner,
+    titles: &mut HashMap<CreditId, Vec<(api::Locale, String)>>,
+    characters: &mut HashMap<CreditId, Vec<(api::Locale, String)>>,
+    locale: api::Locale,
+) -> api::PersonCredit {
+    let poster = match (r.poster_source, r.poster_path) {
+        (Some(source), Some(path)) => Some(Image::new(source, &path)),
+        _ => None,
+    };
+
+    let mut title = api::Translations::new(locale);
+    for (loc, text) in titles.remove(&r.id).unwrap_or_default() {
+        title.insert(api::StringKind::Title, loc, &text);
+    }
+
+    let mut character = api::Translations::new(locale);
+    for (loc, text) in characters.remove(&r.id).unwrap_or_default() {
+        character.insert(api::StringKind::Character, loc, &text);
+    }
+
+    api::PersonCredit {
+        owner,
+        title,
+        poster,
+        kind: r.credit_type,
+        character,
+        department: r.department,
+        job: r.job,
+        episode_count: r.episode_count,
+        order: r.sort_order,
+        date: r.date,
     }
 }
 

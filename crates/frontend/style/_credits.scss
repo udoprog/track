@@ -10,23 +10,15 @@
     }
 }
 
-.credit-crew {
-    display: flex;
-    flex-wrap: wrap;
-    gap: v.$gap-xs v.$gap;
-    margin-bottom: v.$gap-sm;
-    color: v.$text-color;
-    font-size: v.$font-sm;
-
-    .credit-crew-job {
-        color: v.$text-muted;
-    }
-}
-
 .cast-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
     gap: v.$gap-sm;
+
+    // Separate the preferred-crew grid from the cast grid that follows it.
+    & + .cast-grid {
+        margin-top: v.$gap;
+    }
 }
 
 .cast-card {
@@ -36,6 +28,13 @@
     border-radius: v.$radius;
     overflow: hidden;
 
+    .cast-info {
+        display: flex;
+        flex-direction: column;
+        padding: v.$padding-md;
+        gap: v.$padding-md;
+    }
+
     .cast-photo {
         aspect-ratio: 2 / 3;
         background: v.$bg-surface;
@@ -44,14 +43,12 @@
     .cast-name {
         font-weight: v.$bold-weight;
         font-size: v.$font-sm;
-        padding: v.$padding-md v.$padding-lg 0;
         color: v.$text-primary;
     }
 
     .cast-character {
         font-size: v.$font-xs;
         color: v.$text-muted;
-        padding: 0 v.$padding-lg v.$padding-md;
     }
 }
 
