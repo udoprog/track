@@ -1854,6 +1854,14 @@ async fn seed_person(db: &Database, credit: &CreditDraft) -> Result<api::PersonI
                 .await?;
         }
 
+        // Anchor the display language to a locale we actually seeded a name under,
+        // so the name resolves on the person page/list before the person's own sync
+        // runs. The person's original language isn't known from the credit response
+        // and may not even be among the fetched locales, so it can't be used here.
+        if let Some((locale, _)) = credit.names.first() {
+            db.seed_person_default_language(person_id, *locale).await?;
+        }
+
         if let Some(profile) = &credit.profile {
             db.seed_person_image(person_id, ImageKind::Profile, profile)
                 .await?;

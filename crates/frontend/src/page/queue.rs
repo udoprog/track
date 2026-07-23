@@ -450,9 +450,7 @@ impl Queue {
                     ..ShowDetailQuery::default()
                 },
             )),
-            api::TaskKind::SyncPerson { person_id, .. } => {
-                Some(Route::PersonDetail(*person_id))
-            }
+            api::TaskKind::SyncPerson { person_id, .. } => Some(Route::PersonDetail(*person_id)),
             api::TaskKind::RefreshTopLanguages => None,
         };
 
@@ -571,9 +569,7 @@ impl Queue {
                     ..ShowDetailQuery::default()
                 },
             )),
-            api::TaskKind::SyncPerson { person_id, .. } => {
-                Some(Route::PersonDetail(*person_id))
-            }
+            api::TaskKind::SyncPerson { person_id, .. } => Some(Route::PersonDetail(*person_id)),
             api::TaskKind::RefreshTopLanguages => None,
         };
 

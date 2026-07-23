@@ -1532,6 +1532,10 @@ struct InnerWrite {
     set_show_default_language: TypedStatement<(api::Locale, ShowId), ()>,
     #[sql = "UPDATE movies SET default_language = ? WHERE id = ?"]
     set_movie_default_language: TypedStatement<(api::Locale, MovieId), ()>,
+    // Seed a credit-created person's display language without clobbering a value
+    // already set by its own sync (0 is the unset default; see `seed_person_default_language`).
+    #[sql = "UPDATE people SET default_language = ? WHERE id = ? AND default_language = 0"]
+    seed_person_default_language: TypedStatement<(api::Locale, PersonId), ()>,
     #[sql = "DELETE FROM show_strings WHERE show_id = ?"]
     clear_show_strings: TypedStatement<(ShowId,), ()>,
     // `OR IGNORE`: the displayed (base) locale and the configured sync languages
@@ -3800,6 +3804,25 @@ impl Database {
         let result = spawn_blocking(move || {
             s.insert_person_string
                 .execute((person_id, language, kind, text))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    /// Seed a credit-created person's display language, used so the seeded name
+    /// resolves on the person page/list before the person's own sync sets the
+    /// authoritative value. A no-op once a real sync has set the language.
+    pub(crate) async fn seed_person_default_language(
+        &self,
+        person_id: PersonId,
+        language: api::Locale,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.seed_person_default_language
+                .execute((language, person_id))?;
             Ok(())
         });
 
