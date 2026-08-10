@@ -10,7 +10,8 @@ use crate::router::{MediaQuery, Route, Router};
 use crate::ui::{
     Button, ConfirmDanger, ContextMenu, DetailSkeleton, GraphicsSourceFilter, Image, ImageGallery,
     ImageItem, MarkTimeMenu, MediaSettingsModal, Modal, ReleaseModal, ReleaseTarget, RemoteEditor,
-    RemoteSourceKind, SettingsTarget, TimePreset, Tracked, TranslationsModal, Variant,
+    RemoteSourceKind, SettingsTarget, TimePreset, Tracked, TranslatedText, TranslationsModal,
+    Variant,
 };
 
 const CAP: usize = 8;
@@ -1183,9 +1184,7 @@ impl MovieDetail {
 
         html! {
             <>
-            if let Some(overview) = movie.strings.overview() {
-                <p class="overview">{overview}</p>
-            }
+            <TranslatedText strings={movie.strings.clone()} />
 
             <div class="detail-layout">
                 <div class="mobile-only">

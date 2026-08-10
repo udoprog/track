@@ -118,11 +118,24 @@ impl Translations {
     /// matches that language, so a missing translation is reported as missing
     /// rather than falling back to an unrelated locale.
     pub fn get_with(&self, kind: StringKind, locale: Locale) -> Option<&str> {
-        if let Some(string) = self.exact(kind, locale) {
-            return Some(string);
-        };
+        let idx = self.index(kind, locale)?;
+        Some(self.entries[idx].text.as_str())
+    }
 
-        self.by_language(kind, locale)
+    /// The locale of the entry that [`get`](Self::get) resolves for `kind`, if
+    /// any. Lets the UI indicate which language is actually displayed.
+    pub fn resolved_locale(&self, kind: StringKind) -> Option<Locale> {
+        let idx = self.index(kind, self.locale)?;
+        Some(self.entries[idx].locale)
+    }
+
+    /// The distinct locales that have a string of `kind`, in insertion order.
+    /// Used to offer alternate display languages.
+    pub fn locales(&self, kind: StringKind) -> impl Iterator<Item = Locale> + '_ {
+        self.entries
+            .iter()
+            .filter(move |e| e.kind == kind)
+            .map(|e| e.locale)
     }
 
     /// Every stored string of `kind`, across all locales. Used for cross-locale
@@ -134,20 +147,21 @@ impl Translations {
             .map(|e| e.text.as_str())
     }
 
-    fn exact(&self, kind: StringKind, locale: Locale) -> Option<&str> {
-        let &idx = self.by_locale.get(&(kind, locale))?;
-        Some(self.entries[idx].text.as_str())
-    }
+    /// The index of the entry [`get_with`](Self::get_with) resolves for `(kind,
+    /// locale)`: an exact locale match, falling back to the same language (any
+    /// country).
+    fn index(&self, kind: StringKind, locale: Locale) -> Option<usize> {
+        if let Some(&idx) = self.by_locale.get(&(kind, locale)) {
+            return Some(idx);
+        }
 
-    fn by_language(&self, kind: StringKind, locale: Locale) -> Option<&str> {
         let language = locale.language();
 
         if language.is_default() {
             return None;
         }
 
-        let &idx = self.by_language.get(&(kind, language))?;
-        Some(self.entries[idx].text.as_str())
+        self.by_language.get(&(kind, language)).copied()
     }
 }
 

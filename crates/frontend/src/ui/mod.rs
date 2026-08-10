@@ -32,6 +32,7 @@ mod skeleton;
 mod sync_kinds_editor;
 mod sync_languages_editor;
 mod tracked;
+mod translated_text;
 mod translations_modal;
 
 pub(crate) use self::button::{Button, Variant};
@@ -65,6 +66,7 @@ pub(crate) use self::skeleton::Skeleton;
 pub(crate) use self::sync_kinds_editor::SyncKindsEditor;
 pub(crate) use self::sync_languages_editor::SyncLanguagesEditor;
 pub(crate) use self::tracked::Tracked;
+pub(crate) use self::translated_text::TranslatedText;
 pub(crate) use self::translations_modal::TranslationsModal;
 
 pub(crate) const MDASH: &str = "—";

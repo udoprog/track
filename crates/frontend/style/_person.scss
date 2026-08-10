@@ -67,6 +67,9 @@
         color: v.$text-color;
         line-height: 1.5;
         white-space: pre-wrap;
+
+        // Contain the floated .language-toggle so it never overflows the section.
+        display: flow-root;
     }
 }
 

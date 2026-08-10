@@ -770,6 +770,50 @@ image {
     font-size: v.$font-base;
     line-height: 1.5em;
     text-align: justify;
+
+    // Contain the floated .language-toggle so it never overflows the section.
+    display: flow-root;
+}
+
+// The language picker trigger inside translated text sections: strips the
+// standard button chrome down to a bare flag, floated at the top right of the
+// text so the rows flow around it instead of it reserving a row of its own.
+.language-toggle {
+    float: right;
+
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    // Keep the standard minimum hit area for interactive elements; the flag
+    // and icon inside size like they would in an .item-inline.
+    height: v.$input-height;
+    min-width: v.$input-height;
+    padding: 0;
+    margin-inline-start: v.$text-gap;
+
+    background: none;
+    border: none;
+    border-radius: 0;
+
+    opacity: 0.7;
+
+    &:hover {
+        opacity: 1;
+    }
+
+    >.icon {
+        height: v.$input-height * 0.8;
+    }
+
+    @include g.on-mobile {
+        height: v.$input-height-touch;
+        min-width: v.$input-height-touch;
+
+        >.icon {
+            height: v.$input-height-touch * 0.8;
+        }
+    }
 }
 
 .episode-code {

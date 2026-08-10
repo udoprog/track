@@ -8,7 +8,7 @@ use crate::error::{CustomContext, Error, Message};
 use crate::router::{PersonQuery, Route, Router, ShowDetailQuery};
 use crate::ui::{
     Button, ConfirmDanger, ContextMenu, DetailSkeleton, Image, Modal, RemoteEditor,
-    RemoteSourceKind, Variant,
+    RemoteSourceKind, TranslatedText, Variant,
 };
 
 /// Load state for the person this page renders.
@@ -587,9 +587,7 @@ impl PersonDetail {
                         })}
                     </div>
 
-                    if let Some(biography) = person.biography.overview() {
-                        <p class="person-biography">{ biography.to_owned() }</p>
-                    }
+                    <TranslatedText strings={person.biography.clone()} class="person-biography" />
                 </div>
             </div>
         }

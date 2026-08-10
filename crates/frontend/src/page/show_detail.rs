@@ -13,7 +13,8 @@ use crate::ui::{
     Button, ConfirmDanger, ContextMenu, DetailSkeleton, EpisodeCacheModal, EpisodePicker,
     GraphicsSourceFilter, Image, ImageGallery, ImageItem, MarkTimeMenu, MediaSettingsModal, Modal,
     OutlineControl, OutlineEntry, OutlineHandle, ReleaseModal, ReleaseTarget, RemoteEditor,
-    RemoteSourceKind, SettingsTarget, TimePreset, Tracked, TranslationsModal, Variant,
+    RemoteSourceKind, SettingsTarget, TimePreset, Tracked, TranslatedText, TranslationsModal,
+    Variant,
 };
 
 const ORPHAN_HINT: &str = r#"
@@ -462,9 +463,7 @@ impl Component for ShowDetail {
                         { self.view_orphaned(ctx) }
                     </div>
                 } else {
-                    if let Some(overview) = show.strings.overview() {
-                        <p class="overview">{overview}</p>
-                    }
+                    <TranslatedText strings={show.strings.clone()} />
 
                     <div class="detail-layout">
                         <div class="mobile-only">
@@ -2167,9 +2166,7 @@ impl ShowDetail {
                         </div>
                     </div>
 
-                    if let Some(overview) = season.strings.overview() {
-                        <p class="overview">{overview}</p>
-                    }
+                    <TranslatedText strings={season.strings.clone()} />
 
                     if total > 0 {
                         <h4>{format!("{watched_count} / {total} watched")}</h4>
@@ -2332,9 +2329,7 @@ impl ShowDetail {
                     <Image class="screenshot" src={episode.screenshot.clone()} />
 
                     <div class="column desktop-fill">
-                        if let Some(overview) = episode.strings.overview() {
-                            <p class="overview">{overview}</p>
-                        }
+                        <TranslatedText strings={episode.strings.clone()} />
                     </div>
                 </div>
 
