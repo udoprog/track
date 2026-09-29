@@ -7117,26 +7117,44 @@ fn watched_from_row(r: WatchedRow) -> Result<api::Watched> {
     })
 }
 
+/// Whether the database holds no tables of its own yet.
+fn is_empty(c: &sqll::Connection) -> Result<bool> {
+    let mut q = c.prepare(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' LIMIT 1",
+    )?;
+    Ok(q.next::<i64>()?.is_none())
+}
+
+/// Bring the schema up to date. An empty database is built from the base
+/// schema (the first migration) alone, with every later migration recorded
+/// without running; any other database applies each unrecorded migration in
+/// order.
 fn do_migrations(c: &sqll::Connection) -> Result<()> {
-    c.execute(MIGRATIONS_INIT)?;
+    let empty = is_empty(c).context("Checking whether the database is empty")?;
 
-    // Whether the base schema already existed before this run, anchored on the
-    // `shows` table. Captured before the apply loop because the baseline runs
-    // earlier in the same sorted pass and would otherwise make `shows` appear
-    // mid-run. Drives oneshot handling below.
-    let base_exists = {
-        let mut q =
-            c.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'shows'")?;
-        q.next::<i64>()?.is_some()
-    };
-
-    let mut select = c.prepare("SELECT applied_at FROM migrations WHERE id = ?")?;
-    let mut insert = c.prepare("INSERT INTO migrations (id, applied_at) VALUES (?, ?)")?;
+    c.execute(MIGRATIONS_INIT)
+        .context("Creating migrations table")?;
 
     let mut ids: Vec<_> = Migrations::iter().collect();
     ids.sort();
 
-    for file in ids {
+    let Some((base, rest)) = ids.split_first() else {
+        return Ok(());
+    };
+
+    if empty {
+        apply(c, base.as_ref()).with_context(|| anyhow!("Migration {base}"))?;
+
+        for id in rest {
+            record(c, id.as_ref()).with_context(|| anyhow!("Recording migration {id}"))?;
+        }
+
+        return Ok(());
+    }
+
+    let mut select = c.prepare("SELECT applied_at FROM migrations WHERE id = ?")?;
+
+    for file in &ids {
         let id = file.as_ref();
 
         let result: Result<()> = (|| {
@@ -7148,37 +7166,40 @@ fn do_migrations(c: &sqll::Connection) -> Result<()> {
                 return Ok(());
             }
 
-            // Oneshots are a temporary dev aid: they evolve an *existing*
-            // database to match changes made directly to the baseline. On a
-            // fresh database the baseline is already in its evolved form, so a
-            // oneshot is recorded as applied without executing which also stops
-            // it from running on a later restart once `shows` exists.
-            let oneshot = id.contains("-oneshot-");
-
-            if oneshot && !base_exists {
-                tracing::debug!(id, "Skipping oneshot on fresh database");
-            } else {
-                let asset = Migrations::get(id)
-                    .with_context(|| anyhow!("Migration file not found: {id}"))?;
-
-                let sql = str::from_utf8(asset.data.as_ref())
-                    .with_context(|| anyhow!("Migration {id} is not valid UTF-8"))?;
-
-                c.execute(sql)
-                    .with_context(|| anyhow!("Executing migration {id}"))?;
-                tracing::info!(id, "Migration applied");
-            }
-
-            let now = Timestamp::now().to_string();
-            insert.reset()?;
-            insert
-                .execute((id, now.as_str()))
-                .with_context(|| anyhow!("Updating migrations table {id}"))?;
-            Ok(())
+            apply(c, id)
         })();
 
         result.with_context(|| anyhow!("Migration {id}"))?;
     }
+
+    Ok(())
+}
+
+/// Run one migration and record it.
+fn apply(c: &sqll::Connection, id: &str) -> Result<()> {
+    let asset = Migrations::get(id).with_context(|| anyhow!("Migration file not found: {id}"))?;
+
+    let sql = str::from_utf8(asset.data.as_ref())
+        .with_context(|| anyhow!("Migration {id} is not valid UTF-8"))?;
+
+    c.execute(sql)
+        .with_context(|| anyhow!("Executing migration {id}"))?;
+
+    record(c, id)?;
+
+    tracing::info!(id, "Migration applied");
+    Ok(())
+}
+
+/// Record a migration as applied without running it.
+fn record(c: &sqll::Connection, id: &str) -> Result<()> {
+    let now = Timestamp::now().to_string();
+
+    let mut insert = c.prepare("INSERT INTO migrations (id, applied_at) VALUES (?, ?)")?;
+
+    insert
+        .execute((id, now.as_str()))
+        .with_context(|| anyhow!("Updating migrations table {id}"))?;
 
     Ok(())
 }

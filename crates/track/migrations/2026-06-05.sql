@@ -1,3 +1,9 @@
+-- The schema track stores *now*, not what it stored at the start: an empty
+-- database is built by this alone and every dated migration is recorded without
+-- being run. A schema change is therefore two edits — this file, and a dated
+-- migration carrying the same change — which are never both applied to one
+-- database. See `db::do_migrations`.
+
 CREATE TABLE
     shows (
         id INTEGER PRIMARY KEY,

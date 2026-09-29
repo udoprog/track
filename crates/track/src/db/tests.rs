@@ -12,6 +12,34 @@ fn migrations_apply_on_fresh_db() {
 
     do_migrations(&c).expect("migrations should apply");
 }
+
+#[test]
+fn migrations_are_recorded_and_idempotent() -> Result<()> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("test.db");
+
+    let applied = || -> Result<Vec<String>> {
+        let c = OpenOptions::new().read_write().no_mutex().open(&path)?;
+        let mut q = c.prepare("SELECT id FROM migrations ORDER BY id")?;
+        let mut ids = Vec::new();
+        while let Some(id) = q.next::<String>()? {
+            ids.push(id);
+        }
+        Ok(ids)
+    };
+
+    let mut embedded: Vec<String> = Migrations::iter().map(|id| id.to_string()).collect();
+    embedded.sort();
+    assert!(!embedded.is_empty(), "there is at least one migration");
+
+    drop(Database::open(&path, OpenMode::Bulk, 1)?);
+    assert_eq!(applied()?, embedded);
+
+    drop(Database::open(&path, OpenMode::Bulk, 1)?);
+    assert_eq!(applied()?, embedded);
+
+    Ok(())
+}
 fn ms(millis: i64) -> Timestamp {
     Timestamp::from_jiff(jiff::Timestamp::from_millisecond(millis).unwrap())
 }
