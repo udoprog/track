@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  pull_request: {}
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: $-$
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: dtolnay/rust-toolchain@stable
+    - run: cargo test --workspace --all-targets
+    - run: cargo test --workspace --doc
+
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: dtolnay/rust-toolchain@1.56
+    - run: cargo build --workspace --all-targets
+
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: dtolnay/rust-toolchain@1.98.1
+      with:
+        components: clippy
+    - run: cargo clippy --workspace --all-features --all-targets -- -D warnings
+
+  rustfmt:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt
+    - run: cargo fmt --check --all
