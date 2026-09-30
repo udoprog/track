@@ -158,3 +158,21 @@ pub async fn schedule_names_its_days(driver: &mut TestDriver, _: &mut Track) -> 
 
     Ok(())
 }
+
+/// On a phone every What's Next card has a picture, even a show without a
+/// banner (the seeded show has no images at all).
+pub async fn mobile_cards_always_have_a_picture(
+    driver: &mut TestDriver,
+    _: &mut Track,
+) -> Result<()> {
+    driver.set_window_size(400, 850).await?;
+    driver.wait_texts(".pending-label", [FIRST]).await?;
+
+    let banner = driver.find_one_by(".pending-item image.banner").await?;
+    ensure!(banner.visible().await?, "the card has no picture");
+    ensure!(
+        banner.rect().await?.height > 0.0,
+        "the card's picture is empty"
+    );
+    Ok(())
+}

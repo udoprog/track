@@ -747,7 +747,9 @@ impl WatchNext {
         html! {
             <div {key} class="pending-item" {onmouseover}>
                 <Image class="poster clickable desktop-only" src={pending.season_poster.clone().or_else(|| pending.poster.clone())} onclick={on_navigate.clone()} />
-                <Image class="banner clickable mobile-only" src={pending.season_banner.clone().or_else(|| pending.banner.clone())} onclick={on_navigate.clone()} />
+                // A show without a banner still gets a picture on mobile, cropped from
+                // its backdrop or poster.
+                <Image class="banner clickable mobile-only" placeholder=true src={pending.season_banner.clone().or_else(|| pending.banner.clone()).or_else(|| pending.backdrop.clone()).or_else(|| pending.poster.clone())} onclick={on_navigate.clone()} />
 
                 <div class="pending-info">
                     <div class="pending-content">
