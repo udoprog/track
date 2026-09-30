@@ -446,7 +446,7 @@ impl Component for ShowDetail {
                             />
                         }
 
-                        <Tracked tracked={show.tracked} ontoggle={link.callback(Msg::SetTracked)} />
+                        <Tracked kind="show" tracked={show.tracked} ontoggle={link.callback(Msg::SetTracked)} />
 
                         if !show.remotes.is_empty() {
                             <Button icon="arrow-path" spin={self.syncing} onclick={link.callback(|_| Msg::SyncShow)} title="Sync now" text="Sync" />

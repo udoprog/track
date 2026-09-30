@@ -581,3 +581,13 @@ pub async fn watch_history_moves_and_removes(driver: &mut TestDriver, _: &mut Tr
     // With its only watch gone the history has nothing left to show.
     driver.wait_count(".modal .watch-row", 0).await
 }
+
+/// The show's tracking toggle is named for a show and says whether it is on.
+pub async fn tracking_toggle_names_the_show(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_show(driver).await?;
+
+    let toggle = driver.find_one_by("[title='Track show']").await?;
+    ensure!(toggle.attr("aria-pressed").await? == "true");
+    ensure!(driver.count("[title='Track movie']").await? == 0);
+    Ok(())
+}

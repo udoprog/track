@@ -1114,7 +1114,7 @@ impl MovieDetail {
 
                     <div class={classes!("toolbar-dropdown", (!self.actions_expanded).then_some("desktop-only"))}>
                         <div class="desktop-row mobile-column desktop-input-group">
-                            <Tracked tracked={movie.tracked} ontoggle={link.callback(Msg::SetTracked)} />
+                            <Tracked kind="movie" tracked={movie.tracked} ontoggle={link.callback(Msg::SetTracked)} />
 
                             if !movie.remotes.is_empty() {
                                 <Button icon="arrow-path" spin={self.syncing} onclick={link.callback(|_| Msg::SyncMovie)} title="Sync now" text="Sync" />

@@ -5,6 +5,8 @@ use crate::ui::Button;
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
     pub(crate) tracked: bool,
+    /// What is tracked, for the title: "show" or "movie".
+    pub(crate) kind: &'static str,
     pub(crate) ontoggle: Callback<bool>,
 }
 
@@ -15,7 +17,8 @@ pub(crate) fn Tracked(props: &Props) -> Html {
     html! {
         <Button
             icon={if tracked { "eye" } else { "eye-slash" }}
-            title="Track movie"
+            title={format!("Track {}", props.kind)}
+            pressed={Some(tracked)}
             text={if tracked { "Tracking" } else { "Not tracking" }}
             onclick={props.ontoggle.reform(move |_| !tracked)}
         />
