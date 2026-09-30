@@ -61,7 +61,7 @@ impl ContextMenu {
     /// Position the popover just below the trigger, clamped to the viewport so it
     /// stays on-screen without flipping to the far side. We measure the *actual*
     /// rendered menu rather than guessing its size, so wide layouts are placed
-    /// correctly. Mobile presents it full-page via CSS, which ignores these
+    /// correctly. Phones show it as a bottom sheet via CSS, which ignores these
     /// variables. The coordinates are written into CSS custom properties, and the
     /// menu is revealed only once positioned to avoid a first-frame flash in the
     /// top-left corner.

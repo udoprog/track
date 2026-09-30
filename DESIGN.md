@@ -128,7 +128,8 @@ side they opened on. Popovers and modals (`ui::Modal`) share one surface:
 `--surface-2` (the shade controls are drawn for), a soft border, `$radius-lg` and a `--shadow-strong` shadow.
 A modal's header is its title in text colour beside a *Close* button; the page
 behind it dims with `--scrim`. On phones a modal is a sheet along the bottom
-edge, rounded at the top. A list of actions in a popover is `.menu-list`. Reversible actions happen at once and offer undo
+edge, rounded at the top, and so is every popover: on phones a popover drops
+its anchor and opens as a full-width sheet over a dimmed page. A list of actions in a popover is `.menu-list`. Reversible actions happen at once and offer undo
 through `Background::offer_undo` and the toast, instead of asking first.
 Destructive ones confirm with `ConfirmDanger` in a popover.
 

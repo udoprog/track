@@ -8,6 +8,11 @@
     position: fixed;
     inset: 0;
     z-index: 400;
+
+    // A sheet dims the page like a modal does.
+    @include g.on-mobile {
+        background: v.$scrim;
+    }
 }
 
 // Date/time picker body (MarkTimeMenu) shown inside a `ContextMenu` popover.
@@ -75,7 +80,17 @@
     gap: v.$gap;
     padding: v.$gap;
 
+    // On phones every popover is a sheet along the bottom edge, like a modal:
+    // full width, its buttons always in reach, whatever opened it.
     @include g.on-mobile {
-        max-width: calc(100vw - #{v.$gap-xs * 2});
+        left: 0;
+        right: 0;
+        top: auto;
+        bottom: 0;
+        width: auto;
+        max-height: 85vh;
+        border-bottom: none;
+        border-radius: v.$radius-lg v.$radius-lg 0 0;
+        padding-bottom: calc(#{v.$gap} + env(safe-area-inset-bottom));
     }
 }

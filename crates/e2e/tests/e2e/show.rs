@@ -458,3 +458,29 @@ pub async fn phones_pick_seasons_from_chips(driver: &mut TestDriver, _: &mut Tra
         .wait_texts(".detail-content .toolbar h2", ["Specials"])
         .await
 }
+
+/// On a phone a popover is a sheet along the bottom of the screen, as wide as
+/// the screen, wherever the button that opened it is.
+pub async fn phone_popovers_are_sheets(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_show(driver).await?;
+    driver.set_window_size(400, 850).await?;
+
+    driver
+        .find_first("[title='More actions']")
+        .await?
+        .click()
+        .await?;
+
+    let menu = driver.find_one_by(".context-menu").await?.rect().await?;
+    let page = driver.find_one_by(".context-catcher").await?.rect().await?;
+
+    ensure!(
+        (page.y + page.height - (menu.y + menu.height)).abs() < 1.0,
+        "the menu does not sit on the bottom edge: {menu:?} in {page:?}"
+    );
+    ensure!(
+        menu.x.abs() < 1.0 && menu.width > page.width - 20.0,
+        "the menu is not as wide as the screen: {menu:?} in {page:?}"
+    );
+    Ok(())
+}
