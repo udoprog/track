@@ -237,6 +237,8 @@ impl FiltersEditor {
                             icon="trash"
                             variant={Variant::Danger}
                             title="Remove rule"
+                            expanded={Some(self.confirming_remove == Some(index))}
+                            haspopup="dialog"
                             onclick={link.callback(move |_| Msg::AskRemove(index))}
                         />
                     </div>

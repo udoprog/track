@@ -438,7 +438,7 @@ impl Component for RemoteEditor {
                                         <div ref={r.context_anchor.clone()} class={classes!("toolbar-dropdown", (!r.actions_expanded).then_some("desktop-only"))}>
                                             <div class="desktop-input-group mobile-column">
                                                 <Button icon="pencil-square" title="Edit identifier" text="Edit" onclick={link.callback(move |_| Msg::Edit(edit_entry.clone()))} />
-                                                <Button icon="trash" variant={Variant::Danger} title="Remove identifier" text="Remove" onclick={link.callback(move |_| Msg::AskRemove(id))} />
+                                                <Button icon="trash" variant={Variant::Danger} title="Remove identifier" text="Remove" expanded={Some(self.confirming_remove == Some(id))} haspopup="dialog" onclick={link.callback(move |_| Msg::AskRemove(id))} />
                                             </div>
 
                                             <span class={classes!("input-checkbox", "mobile-has-text", enabled.then_some("checked"))} onclick={link.callback(move |_| Msg::SetEnabled(id, !enabled))} title="Enable this remote">

@@ -4,12 +4,18 @@
 //! trigger and clamped to the viewport, revealed only once measured to avoid a
 //! first-frame flash. Used by [`MarkTimeMenu`](crate::ui::MarkTimeMenu) and the
 //! dashboard's skip-episode confirm.
+//!
+//! It holds keyboard focus while open like a modal does: focus moves to its
+//! first control, Tab stays inside, and Escape closes it and hands focus back.
+//! A body with a `role="menu"` list gets arrow-key movement between its
+//! `menuitem`s.
 
-use web_sys::{HtmlElement, MouseEvent};
+use web_sys::{HtmlElement, KeyboardEvent, MouseEvent};
 use yew::prelude::*;
 
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
+use crate::ui::focus;
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
@@ -45,6 +51,10 @@ pub(crate) struct ContextMenu {
     waited: u8,
     /// The background context, so we can report errors to the user.
     background: Background,
+    /// What had focus before the popover opened, to give it back on close.
+    opener: Option<HtmlElement>,
+    /// Whether focus has been moved into the popover yet.
+    focused: bool,
 }
 
 impl ContextMenu {
@@ -138,7 +148,13 @@ impl Component for ContextMenu {
             below: None,
             waited: 0,
             background,
+            opener: focus::active(),
+            focused: false,
         }
+    }
+
+    fn destroy(&mut self, _: &Context<Self>) {
+        focus::restore(self.opener.take());
     }
 
     fn rendered(&mut self, ctx: &Context<Self>, _first_render: bool) {
@@ -172,19 +188,51 @@ impl Component for ContextMenu {
         if let Err(e) = self.place(&anchor) {
             self.background.error(e);
         }
+
+        if !self.focused {
+            self.focused = true;
+            focus::focus_first(&menu, None);
+        }
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let props = ctx.props();
         let on_close = props.on_close.clone();
 
+        let onkeydown = {
+            let menu = self.menu.clone();
+            let on_close = props.on_close.clone();
+
+            Callback::from(move |e: KeyboardEvent| {
+                if e.key() == "Escape" {
+                    e.stop_propagation();
+                    on_close.emit(());
+                    return;
+                }
+
+                if let Some(menu) = menu.cast::<HtmlElement>()
+                    && !focus::move_in_menu(&e, &menu)
+                {
+                    focus::trap_tab(&e, &menu);
+                }
+            })
+        };
+
+        // A prompt makes the popover a small dialog named by it; a bare body
+        // (such as a menu) names itself.
+        let (role, aria_label) = match (&props.prompt, &props.label) {
+            (Some(prompt), Some(label)) => (Some("dialog"), Some(format!("{prompt} {label}"))),
+            (Some(prompt), None) => (Some("dialog"), Some(prompt.to_string())),
+            _ => (None, None),
+        };
+
         html! {
             <div class="context-catcher" onclick={Callback::from(move |_| on_close.emit(()))}>
-                <div class="context-menu" ref={self.menu.clone()} onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
+                <div class="context-menu" ref={self.menu.clone()} {role} aria-label={aria_label} tabindex="-1" {onkeydown} onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
                     if let Some(prompt) = &props.prompt {
                         <div class="context-menu-header">
                             if let Some(ref icon) = props.icon {
-                                <span class="item-inline">
+                                <span class="item-inline" aria-hidden="true">
                                     <span class={classes!("icon", icon)} />
                                 </span>
                             }

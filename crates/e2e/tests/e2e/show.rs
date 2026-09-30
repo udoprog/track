@@ -315,3 +315,45 @@ pub async fn modals_hold_keyboard_focus(driver: &mut TestDriver, _: &mut Track) 
     ensure!(back == "Settings", "focus went back to {back:?}");
     Ok(())
 }
+
+/// An episode's menu works from the keyboard: Enter opens it on its first
+/// item without choosing it, the arrows move between items, and Escape closes
+/// it with focus back on the button.
+pub async fn menus_work_from_the_keyboard(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_show(driver).await?;
+
+    let more = driver.find_first("[title='More actions']").await?;
+    more.focus().await?;
+    more.send_keys("\u{E007}").await?;
+
+    driver.find_one_by("[role='menu']").await?;
+
+    driver
+        .wait_until("the first item to take focus", async || {
+            Ok(focused_title(driver).await? == "Sync episode")
+        })
+        .await?;
+    ensure!(
+        driver.count(".modal").await? == 0,
+        "Enter also chose an item"
+    );
+
+    driver
+        .find_one_by("[role='menuitem'][title='Sync episode']")
+        .await?
+        .send_keys("\u{E015}")
+        .await?;
+    let next = focused_title(driver).await?;
+    ensure!(next == "Translations", "Down moved to {next:?}");
+
+    driver
+        .find_one_by("[role='menuitem'][title='Translations']")
+        .await?
+        .send_keys("\u{E00C}")
+        .await?;
+    driver.wait_count("[role='menu']", 0).await?;
+
+    let back = focused_title(driver).await?;
+    ensure!(back == "More actions", "focus went back to {back:?}");
+    Ok(())
+}

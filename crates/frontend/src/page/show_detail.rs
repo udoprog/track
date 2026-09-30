@@ -2256,14 +2256,14 @@ impl ShowDetail {
 
                         if menu_open {
                             <ContextMenu anchor={self.episode_menu_anchor.clone()} on_close={link.callback(move |()| Msg::ToggleEpisodeMenu(episode_id))}>
-                                <div class="menu-list">
-                                    <Button icon="arrow-path" spin={syncing} label="Sync episode" title="Sync episode" onclick={link.callback(move |_| Msg::SyncEpisode(episode_id))} />
-                                    <Button icon="language" label="Translations" title="Translations" onclick={link.callback(move |_| Msg::OpenEpisodeTranslations(episode_id))} />
-                                    <Button icon="calendar" label="Air dates" title="Air dates" onclick={link.callback(move |_| Msg::OpenEpisodeReleases(episode_id))} />
-                                    <Button icon="circle-stack" label="Cache" title="Cache" onclick={link.callback(move |_| Msg::OpenEpisodeCache(episode_id))} />
+                                <div class="menu-list" role="menu" aria-label="Episode actions">
+                                    <Button role="menuitem" icon="arrow-path" spin={syncing} label="Sync episode" title="Sync episode" onclick={link.callback(move |_| Msg::SyncEpisode(episode_id))} />
+                                    <Button role="menuitem" icon="language" label="Translations" title="Translations" onclick={link.callback(move |_| Msg::OpenEpisodeTranslations(episode_id))} />
+                                    <Button role="menuitem" icon="calendar" label="Air dates" title="Air dates" onclick={link.callback(move |_| Msg::OpenEpisodeReleases(episode_id))} />
+                                    <Button role="menuitem" icon="circle-stack" label="Cache" title="Cache" onclick={link.callback(move |_| Msg::OpenEpisodeCache(episode_id))} />
 
                                     if let Some(on_toggle) = on_toggle_history {
-                                        <Button icon="clock" label={if history_expanded { "Hide watch history" } else { "Watch history" }} title="Watch history" onclick={on_toggle} />
+                                        <Button role="menuitem" icon="clock" label={if history_expanded { "Hide watch history" } else { "Watch history" }} title="Watch history" onclick={on_toggle} />
                                     }
                                 </div>
                             </ContextMenu>
@@ -2342,7 +2342,7 @@ impl ShowDetail {
 
                                         <div class="row">
                                             <div class="input-group" ref={w.context_anchor.clone()}>
-                                                <Button icon="pencil-square" label="Move" title="Move to different episode" onclick={link.callback(move |_| Msg::FixWatched(wid))} />
+                                                <Button icon="pencil-square" label="Move" title="Move to different episode" expanded={Some(self.fixing_watched == Some(wid))} haspopup="dialog" onclick={link.callback(move |_| Msg::FixWatched(wid))} />
 
                                                 if self.fixing_watched == Some(wid) {
                                                     <ContextMenu prompt="Where do you want to move watch at" label={w.watched.timestamp.human_date_time(self.time.clone())} anchor={w.context_anchor.clone()} on_close={link.callback(|_| Msg::CancelFixWatched)}>
@@ -2356,7 +2356,7 @@ impl ShowDetail {
                                                     </ContextMenu>
                                                 }
 
-                                                <Button icon="trash" variant={Variant::Danger} title="Remove" text="Remove" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} />
+                                                <Button icon="trash" variant={Variant::Danger} title="Remove" text="Remove" expanded={Some(self.confirm_remove_watch == Some(wid))} haspopup="dialog" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} />
 
                                                 if self.confirm_remove_watch == Some(wid) {
                                                     <ContextMenu prompt="Remove watch at" label={w.watched.timestamp.human_date_time(self.time.clone())} anchor={w.context_anchor.clone()} on_close={link.callback(|_| Msg::CancelRemoveWatch)}>
@@ -2419,9 +2419,9 @@ impl ShowDetail {
                                 </div>
 
                                 <div ref={w.context_anchor.clone()} class="input-group">
-                                    <Button icon="pencil-square" title="Move to episode" onclick={link.callback(move |_| Msg::FixWatched(id))} />
+                                    <Button icon="pencil-square" title="Move to episode" expanded={Some(self.fixing_watched == Some(id))} haspopup="dialog" onclick={link.callback(move |_| Msg::FixWatched(id))} />
 
-                                    <Button icon="trash" variant={Variant::Danger} title="Remove" text="Remove" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(id))} />
+                                    <Button icon="trash" variant={Variant::Danger} title="Remove" text="Remove" expanded={Some(self.confirm_remove_watch == Some(id))} haspopup="dialog" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(id))} />
                                 </div>
 
                                 if self.fixing_watched == Some(id) {

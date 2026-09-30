@@ -57,6 +57,12 @@
     top: var(--cm-top);
     visibility: hidden;
     display: flex;
+
+    // Focused only as a fallback when it holds no control.
+    &:focus {
+        outline: none;
+    }
+
     flex-direction: column;
     width: fit-content;
     max-height: var(--cm-max-height, calc(100vh - #{v.$gap-xs * 2}));
