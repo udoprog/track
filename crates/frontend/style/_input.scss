@@ -186,9 +186,18 @@ button,
     @include input-base;
     cursor: pointer;
 
+    // Sized like the icons beside it, not to the height of the toggle.
     >.mark {
-        height: 100%;
+        height: v.$icon-size;
         aspect-ratio: 1;
+        flex-shrink: 0;
+        mask-size: contain;
+        mask-repeat: no-repeat;
+        mask-position: center;
+
+        @include g.on-mobile {
+            height: v.$icon-size-touch;
+        }
     }
 
     &.checked>.mark {
