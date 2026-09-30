@@ -16,7 +16,7 @@ use crate::router::{
     DashboardQuery, MediaQuery, PersonQuery, QueueQuery, Route, Router, RouterState, SearchQuery,
 };
 use crate::setup_channel::SetupChannel;
-use crate::ui::{ErrorBox, Outline, OutlineControl, OutlineEntry, TopLanguages};
+use crate::ui::{Button, ErrorBox, Outline, OutlineControl, OutlineEntry, TopLanguages};
 
 pub(super) struct App {
     channel: ws::Channel,
@@ -210,14 +210,8 @@ impl Component for App {
                                     api::WatchedKind::Movie { .. } => "Movie marked as watched",
                                 }}</span>
 
-                                <button class="has-text" data-test="undo" onclick={ctx.link().callback(|_| Msg::Undo)}>
-                                    <span class="icon arrow-uturn-left" />
-                                    <span>{"Undo"}</span>
-                                </button>
-
-                                <button class="toast-dismiss" title="Dismiss" onclick={ctx.link().callback(|_| Msg::DismissUndo)}>
-                                    <span class="icon x-mark" />
-                                </button>
+                                <Button icon="arrow-uturn-left" label="Undo" title="Undo" onclick={ctx.link().callback(|_| Msg::Undo)} />
+                                <Button icon="x-mark" class="toast-dismiss" title="Dismiss" onclick={ctx.link().callback(|_| Msg::DismissUndo)} />
                             </div>
                         }
                     </div>
@@ -552,9 +546,7 @@ fn Toolbar(props: &ToolbarProps) -> Html {
                 <span class="site-title clickable" onclick={on_nav(Route::Dashboard(DashboardQuery::default()))}>{ props.site_title.clone() }</span>
             </div>
 
-            <button class="toolbar-toggle" onclick={on_menu_toggle} title="Navigation" aria-expanded={menu_open.to_string()}>
-                <span class={classes!("icon", if *menu_open { "x-mark" } else { "bars-3" })} />
-            </button>
+            <Button class="toolbar-toggle" icon={if *menu_open { "x-mark" } else { "bars-3" }} title="Navigation" onclick={on_menu_toggle} />
 
             <div class={classes!("toolbar-dropdown", (!*menu_open).then_some("desktop-only"))}>
                 <div class="toolbar-item mobile-has-text" title={connection_title}>

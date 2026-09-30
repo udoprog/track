@@ -1254,10 +1254,7 @@ impl MovieDetail {
                                 </div>
 
                                 <div class={classes!("toolbar-dropdown", "desktop-input-group", (!self.detailed_expand).then_some("desktop-only"))}>
-                                    <MarkTimeMenu quick=true class="success has-text" icon="check" title="Mark watched" prompt="When did you watch the movie?" preset={watched_preset.clone()} on_confirm={link.callback(Msg::MarkWatched)}>
-                                        <span class="icon check" />
-                                        <span class="mobile-only">{"Mark watched"}</span>
-                                    </MarkTimeMenu>
+                                    <MarkTimeMenu quick=true class="success" icon="check" title="Mark watched" prompt="When did you watch the movie?" preset={watched_preset.clone()} on_confirm={link.callback(Msg::MarkWatched)} text="Mark watched" />
 
                                     if movie.pending.is_some() {
                                         <Button icon="bookmark" variant={Variant::Primary} title="Next movie" text="Next movie" onclick={on_remove_next} />

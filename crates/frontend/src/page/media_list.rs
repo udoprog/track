@@ -715,9 +715,7 @@ impl MediaList {
                         <div class="row">
                             <div class="row">
                                 if is_movie {
-                                    <MarkTimeMenu quick=true class="success" title="Mark watched" prompt={match primary_title { Some(title) => format!("When did you watch {}?", title), None => "When did you watch this movie?".to_string() }} {preset} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(id, mark_time))}>
-                                        <span class="icon check" />
-                                    </MarkTimeMenu>
+                                    <MarkTimeMenu quick=true class="success" icon="check" title="Mark watched" prompt={match primary_title { Some(title) => format!("When did you watch {}?", title), None => "When did you watch this movie?".to_string() }} {preset} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(id, mark_time))} />
                                 }
                             </div>
 

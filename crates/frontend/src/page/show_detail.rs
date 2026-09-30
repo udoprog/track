@@ -2243,9 +2243,7 @@ impl ShowDetail {
                         </div>
 
                         <div class="input-group">
-                            <MarkTimeMenu quick=true class="success" icon="check" title="Mark watched" prompt={format!("When did you watch {}?", episode.code())} preset={preset.clone()} on_confirm={on_mark_confirm}>
-                                <span class="icon check" />
-                            </MarkTimeMenu>
+                            <MarkTimeMenu quick=true class="success" icon="check" title="Mark watched" prompt={format!("When did you watch {}?", episode.code())} preset={preset.clone()} on_confirm={on_mark_confirm} />
 
                             if episode.pending.is_some() {
                                 <Button icon="bookmark" variant={Variant::Primary} title="Clear next episode" onclick={on_remove_next} />
@@ -2261,31 +2259,13 @@ impl ShowDetail {
                         if menu_open {
                             <ContextMenu anchor={self.episode_menu_anchor.clone()} on_close={link.callback(move |()| Msg::ToggleEpisodeMenu(episode_id))}>
                                 <div class="menu-list">
-                                    <button class="has-text" onclick={link.callback(move |_| Msg::SyncEpisode(episode_id))}>
-                                        <span class={classes!("icon", "arrow-path", syncing.then_some("spin"))} />
-                                        <span>{"Sync episode"}</span>
-                                    </button>
-
-                                    <button class="has-text" onclick={link.callback(move |_| Msg::OpenEpisodeTranslations(episode_id))}>
-                                        <span class="icon language" />
-                                        <span>{"Translations"}</span>
-                                    </button>
-
-                                    <button class="has-text" onclick={link.callback(move |_| Msg::OpenEpisodeReleases(episode_id))}>
-                                        <span class="icon calendar" />
-                                        <span>{"Air dates"}</span>
-                                    </button>
-
-                                    <button class="has-text" onclick={link.callback(move |_| Msg::OpenEpisodeCache(episode_id))}>
-                                        <span class="icon circle-stack" />
-                                        <span>{"Cache"}</span>
-                                    </button>
+                                    <Button icon="arrow-path" spin={syncing} label="Sync episode" title="Sync episode" onclick={link.callback(move |_| Msg::SyncEpisode(episode_id))} />
+                                    <Button icon="language" label="Translations" title="Translations" onclick={link.callback(move |_| Msg::OpenEpisodeTranslations(episode_id))} />
+                                    <Button icon="calendar" label="Air dates" title="Air dates" onclick={link.callback(move |_| Msg::OpenEpisodeReleases(episode_id))} />
+                                    <Button icon="circle-stack" label="Cache" title="Cache" onclick={link.callback(move |_| Msg::OpenEpisodeCache(episode_id))} />
 
                                     if let Some(on_toggle) = on_toggle_history {
-                                        <button class="has-text" onclick={on_toggle}>
-                                            <span class="icon clock" />
-                                            <span>{if history_expanded { "Hide watch history" } else { "Watch history" }}</span>
-                                        </button>
+                                        <Button icon="clock" label={if history_expanded { "Hide watch history" } else { "Watch history" }} title="Watch history" onclick={on_toggle} />
                                     }
                                 </div>
                             </ContextMenu>

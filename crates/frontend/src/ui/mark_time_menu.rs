@@ -8,7 +8,7 @@ use yew::prelude::*;
 
 use api::TimeInfo;
 
-use crate::ui::{Button, ContextMenu};
+use crate::ui::{Button, ContextMenu, Variant};
 
 /// Which ring of the clock is being edited.
 #[derive(Clone, Copy, PartialEq)]
@@ -186,7 +186,8 @@ impl TimePreset {
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
     /// Inner content of the trigger button (icons, labels). The component wraps
-    /// it in a `<button>` that opens the popover.
+    /// it in a `<button>` that opens the popover. Unused when `quick`.
+    #[prop_or_default]
     pub(crate) children: Children,
     /// Classes for the trigger button (e.g. `"success"`).
     #[prop_or_default]
@@ -204,6 +205,9 @@ pub(crate) struct Props {
     /// opens the popover for choosing another time.
     #[prop_or_default]
     pub(crate) quick: bool,
+    /// With `quick`, the trigger's label on mobile.
+    #[prop_or_default]
+    pub(crate) text: Option<AttrValue>,
     pub(crate) on_confirm: Callback<api::MarkTime>,
 }
 
@@ -479,13 +483,9 @@ impl Component for MarkTimeMenu {
         html! {
             <>
                 if props.quick {
-                    <button class={props.class.clone()} title={props.title.clone()} onclick={link.callback(|_| Msg::ConfirmNow)}>
-                        { for props.children.iter() }
-                    </button>
+                    <Button icon={props.icon.clone().unwrap_or(AttrValue::Static("check"))} class={props.class.clone()} title={props.title.clone()} text={props.text.clone()} onclick={link.callback(|_| Msg::ConfirmNow)} />
 
-                    <button ref={self.anchor.clone()} class={classes!(props.class.clone(), "mark-time-more", self.context_open.then_some("selected"))} title="Choose when" onclick={link.callback(|_| Msg::Open)}>
-                        <span class="icon sm chevron-down" />
-                    </button>
+                    <Button node_ref={self.anchor.clone()} icon="chevron-down" class={classes!(props.class.clone(), "mark-time-more", self.context_open.then_some("selected"))} title="Choose when" onclick={link.callback(|_| Msg::Open)} />
                 } else {
                     <button ref={self.anchor.clone()} class={props.class.clone()} title={props.title.clone()} onclick={link.callback(|_| Msg::Open)}>
                         { for props.children.iter() }
@@ -509,14 +509,9 @@ impl Component for MarkTimeMenu {
                         }
 
                         <div class="row end">
-                            <button class="has-text" onclick={link.callback(|_| Msg::Close)}>
-                                <span>{"Cancel"}</span>
-                            </button>
+                            <Button icon="x-mark" label="Cancel" title="Cancel" onclick={link.callback(|_| Msg::Close)} />
 
-                            <button class="primary selected has-text" data-test="confirm-time" onclick={link.callback(|_| Msg::Confirm)}>
-                                <span class="icon check" />
-                                <span>{"Confirm"}</span>
-                            </button>
+                            <Button icon="check" label="Confirm" title="Confirm" variant={Variant::Primary} class="selected" onclick={link.callback(|_| Msg::Confirm)} />
                         </div>
                     </ContextMenu>
                 }

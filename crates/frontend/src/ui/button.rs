@@ -45,6 +45,9 @@ pub(crate) struct Props {
     /// Optional label shown inside the button on mobile and hidden on desktop.
     #[prop_or_default]
     pub(crate) text: Option<AttrValue>,
+    /// Optional label shown inside the button at every width.
+    #[prop_or_default]
+    pub(crate) label: Option<AttrValue>,
     #[prop_or_default]
     pub(crate) variant: Variant,
     /// Extra classes for the button (e.g. `fill`, `selected`).
@@ -61,13 +64,15 @@ pub(crate) struct Props {
     pub(crate) spin: bool,
 }
 
-/// A standard action button: a required icon, a required `title` tooltip, and
-/// an optional `text` label that is shown on mobile and hidden on desktop.
+/// A standard action button: a required icon, a required `title` tooltip, an
+/// optional `text` label that is shown on mobile and hidden on desktop, and an
+/// optional `label` shown at every width.
 #[function_component]
 pub(crate) fn Button(props: &Props) -> Html {
     let class = classes!(
         props.variant.class(),
         props.text.is_some().then_some("mobile-has-text"),
+        props.label.is_some().then_some("has-text"),
         props.class.clone(),
     );
 
@@ -75,7 +80,9 @@ pub(crate) fn Button(props: &Props) -> Html {
         <button ref={props.node_ref.clone()} {class} title={props.title.clone()} disabled={props.disabled} onclick={props.onclick.clone()}>
             <span class={classes!("icon", props.icon.clone(), props.spin.then_some("spin"))} />
 
-            if let Some(text) = &props.text {
+            if let Some(label) = &props.label {
+                <span>{label}</span>
+            } else if let Some(text) = &props.text {
                 <span class="mobile-only">{text}</span>
             }
         </button>

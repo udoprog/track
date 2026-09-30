@@ -19,7 +19,7 @@ pub async fn marks_watched_in_one_click(driver: &mut TestDriver, _: &mut Track) 
 
     driver.wait_texts(".pending-label", [SECOND]).await?;
     driver
-        .find_one_by("[data-test=undo]")
+        .find_one_by(".toast [title=Undo]")
         .await?
         .click()
         .await?;
@@ -61,7 +61,7 @@ pub async fn marks_watched_at_a_chosen_time(driver: &mut TestDriver, _: &mut Tra
     );
 
     driver
-        .find_one_by("[data-test=confirm-time]")
+        .find_one_by(".context-menu [title=Confirm]")
         .await?
         .click()
         .await?;

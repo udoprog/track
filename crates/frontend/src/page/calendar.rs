@@ -191,10 +191,7 @@ impl Component for Calendar {
                         <Button icon="plus" title="More weeks" onclick={on_more} />
                     </div>
 
-                    <button class="has-text" title="Reset to current week" onclick={on_reset} disabled={week_offset == 0 && !week_start}>
-                        <span class="icon arrow-uturn-left" />
-                        <span>{"This week"}</span>
-                    </button>
+                    <Button icon="arrow-uturn-left" label="This week" title="Reset to current week" onclick={on_reset} disabled={week_offset == 0 && !week_start} />
                     <Button icon="chevron-right" title="Next week" onclick={on_next} />
                 </div>
 
