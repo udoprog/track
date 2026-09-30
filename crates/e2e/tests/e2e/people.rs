@@ -56,7 +56,7 @@ pub async fn shows_a_silhouette_without_a_photo(
     _: &mut Track,
 ) -> Result<()> {
     super::show::open_show(driver).await?;
-    driver.find_one_by(".cast-photo .icon.user").await?;
+    driver.find_first(".cast-photo .icon.user").await?;
 
     driver
         .find_one_by(".toolbar-item[title=People]")
@@ -120,4 +120,29 @@ pub async fn phone_person_page_keeps_the_photo_shape(
         page.width
     );
     Ok(())
+}
+
+/// A person with several parts in one show gets one card for it on their
+/// page, naming every part.
+pub async fn known_for_lists_each_title_once(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    driver
+        .find_one_by(".toolbar-item[title=People]")
+        .await?
+        .click()
+        .await?;
+
+    driver
+        .wait_texts(".person-name", ["Greta Garbo", "Ada Lovelace"])
+        .await?;
+    driver.find_nth(".person-card", 0).await?.click().await?;
+
+    driver
+        .wait_texts(".filmography .person-name", ["Seeded Show"])
+        .await?;
+    driver
+        .wait_texts(
+            ".filmography .person-department",
+            ["The Duchess, The Narrator"],
+        )
+        .await
 }

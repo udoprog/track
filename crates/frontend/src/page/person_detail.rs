@@ -636,18 +636,50 @@ impl PersonDetail {
             return html! {};
         }
 
+        // One card per show or movie, in order of first appearance, listing
+        // every role the person had in it.
+        let mut titles = Vec::<(&api::PersonCredit, Vec<String>)>::new();
+
+        for credit in &self.credits {
+            // Prefer the character (cast); fall back to the crew job.
+            let role = credit
+                .character
+                .character()
+                .map(str::to_owned)
+                .or_else(|| credit.job.clone());
+
+            let at = match titles.iter().position(|(c, _)| c.owner == credit.owner) {
+                Some(at) => at,
+                None => {
+                    titles.push((credit, Vec::new()));
+                    titles.len() - 1
+                }
+            };
+
+            if let Some(role) = role
+                && !titles[at].1.contains(&role)
+            {
+                titles[at].1.push(role);
+            }
+        }
+
         html! {
             <section class="filmography">
                 <h2>{"Known for"}</h2>
 
                 <div class="person-grid">
-                    { for self.credits.iter().map(|c| self.view_credit(ctx, c)) }
+                    { for titles.iter().map(|(c, roles)| self.view_credit(ctx, c, roles)) }
                 </div>
             </section>
         }
     }
 
-    fn view_credit(&self, ctx: &Context<Self>, credit: &api::PersonCredit) -> Html {
+    fn view_credit(
+        &self,
+        ctx: &Context<Self>,
+        credit: &api::PersonCredit,
+        roles: &[String],
+    ) -> Html {
         let title = credit.title.title().unwrap_or("Untitled").to_owned();
 
         let route = match credit.owner {
@@ -657,13 +689,6 @@ impl PersonDetail {
 
         let onclick = ctx.link().callback(move |_| Msg::Navigate(route.clone()));
 
-        // Prefer the character (cast); fall back to the crew job.
-        let role = credit
-            .character
-            .character()
-            .map(str::to_owned)
-            .or_else(|| credit.job.clone());
-
         html! {
             <div class="person-card clickable" {onclick}>
                 <Image class="person-photo" placeholder={true} src={credit.poster.clone()} alt={title.clone()} />
@@ -671,8 +696,8 @@ impl PersonDetail {
                 <div class="person-info">
                     <div class="person-name">{ title }</div>
 
-                    if let Some(role) = role {
-                        <div class="person-department text-muted">{ role }</div>
+                    if !roles.is_empty() {
+                        <div class="person-department person-roles text-muted" title={roles.join(", ")}>{ roles.join(", ") }</div>
                     }
                 </div>
             </div>

@@ -103,6 +103,15 @@
 .filmography {
     margin-top: v.$gap;
 
+    // Every part in a title, kept to two lines; the title attribute has them
+    // all.
+    .person-roles {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
     h2 {
         font-size: v.$font-xl;
         margin: 0 0 v.$gap-sm;
