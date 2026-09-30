@@ -266,6 +266,7 @@ impl PersonList {
             }
             Msg::SetSort(sort) => {
                 self.sort = sort;
+                self.desc = sort.default_desc();
                 self.rebuild_order();
                 self.emit_navigate();
                 Ok(true)

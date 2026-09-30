@@ -353,12 +353,18 @@ impl SearchQuery {
 /// How the people browse view is sorted.
 #[derive(Default, Debug, Clone, Copy, PartialEq)]
 pub(super) enum PersonSort {
-    #[default]
     Name,
+    #[default]
     Credits,
 }
 
 impl PersonSort {
+    /// Whether this sort runs descending unless asked otherwise: names A to
+    /// Z, credits most first.
+    pub(super) fn default_desc(self) -> bool {
+        matches!(self, PersonSort::Credits)
+    }
+
     fn as_str(self) -> &'static str {
         match self {
             PersonSort::Name => "name",
@@ -375,12 +381,23 @@ impl PersonSort {
     }
 }
 
-#[derive(Default, Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(super) struct PersonQuery {
     pub(super) page: usize,
     pub(super) filter: String,
     pub(super) sort: PersonSort,
     pub(super) desc: bool,
+}
+
+impl Default for PersonQuery {
+    fn default() -> Self {
+        Self {
+            page: 0,
+            filter: String::new(),
+            sort: PersonSort::default(),
+            desc: PersonSort::default().default_desc(),
+        }
+    }
 }
 
 impl PersonQuery {
@@ -395,8 +412,8 @@ impl PersonQuery {
             s.append_pair("sort", self.sort.as_str());
         }
 
-        if self.desc {
-            s.append_pair("dir", "desc");
+        if self.desc != self.sort.default_desc() {
+            s.append_pair("dir", if self.desc { "desc" } else { "asc" });
         }
 
         if self.page > 0 {
@@ -408,6 +425,7 @@ impl PersonQuery {
 
     fn from_search(search: &str) -> Self {
         let mut this = Self::default();
+        let mut desc = None;
 
         for (key, value) in form_urlencoded::parse(search.as_bytes()) {
             match key.as_ref() {
@@ -417,12 +435,13 @@ impl PersonQuery {
                         this.sort = sort;
                     }
                 }
-                "dir" => this.desc = value.as_ref() == "desc",
+                "dir" => desc = Some(value.as_ref() == "desc"),
                 "page" => this.page = value.parse::<usize>().unwrap_or(0),
                 _ => continue,
             }
         }
 
+        this.desc = desc.unwrap_or(this.sort.default_desc());
         this
     }
 }

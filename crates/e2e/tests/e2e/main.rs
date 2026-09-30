@@ -171,7 +171,7 @@ yew_e2e::harness! {
     dashboard::{fills_rows_with_relative_dates(seeded), labels_its_filters, mobile_cards_always_have_a_picture(seeded), schedule_names_its_days, upcoming_days_keep_their_width, marks_watched_in_one_click(seeded), marks_watched_at_a_chosen_time(seeded)},
     media::{shows_a_poster_grid(seeded)},
     navigation::{opens_every_page, page_scrolls_the_window, toolbar_icons_are_small, every_button_has_a_title(seeded)},
-    people::{lists_people_by_name(seeded)},
+    people::{lists_people_by_credits(seeded)},
     queue::{lists_tasks_in_columns, keeps_rows_in_place(seeded), follows_the_next_task(crowded), shows_failed_tasks(seeded)},
     search::{focuses_the_input},
     settings::{reorders_sync_sources, theme_applies_live, theme_is_remembered, adds_languages_and_rules},

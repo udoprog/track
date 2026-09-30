@@ -42,3 +42,7 @@ VALUES (5002, 'Acting', 0);
 
 INSERT INTO person_strings (person_id, language, kind, text)
 VALUES (5002, 1937204480, 1, 'Greta Garbo');
+
+-- Greta Garbo plays in the show, so she has more credits than Ada Lovelace.
+INSERT INTO show_credits (show_id, person_id, credit_type, department, sort_order)
+VALUES (1001, 5002, 0, 'Acting', 0);
