@@ -150,6 +150,19 @@ impl Fixture for Track {
 /// Start a server on a free port against the database in `dir`, and wait for
 /// it to listen.
 async fn spawn(server: &Path, dir: &Path) -> Result<(Child, u16)> {
+    // The free port is released before the server binds it, so a test starting
+    // alongside can take it first; try again on another.
+    for _ in 0..3 {
+        match spawn_on_free_port(server, dir).await {
+            Err(e) if e.to_string().contains("Address already in use") => continue,
+            result => return result,
+        }
+    }
+
+    spawn_on_free_port(server, dir).await
+}
+
+async fn spawn_on_free_port(server: &Path, dir: &Path) -> Result<(Child, u16)> {
     let port = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?
         .local_addr()?
         .port();
