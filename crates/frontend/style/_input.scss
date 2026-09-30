@@ -101,7 +101,6 @@
 
     @if $hover {
         &:hover:not(.disabled):not(:disabled) {
-            outline: none;
             border-color: v.$color-primary;
         }
     }

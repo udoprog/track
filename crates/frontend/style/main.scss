@@ -471,6 +471,16 @@ p {
     }
 }
 
+// The one ring for whatever the keyboard has reached.
+@mixin focus-ring {
+    outline: 2px solid v.$color-primary;
+    outline-offset: 2px;
+}
+
+:focus-visible {
+    @include focus-ring;
+}
+
 h1 {
     @include header-base(v.$font-title);
 }
@@ -1151,6 +1161,10 @@ input-label-controls {
         border-color: v.$color-primary;
     }
 
+    &:has(>input:focus-visible) {
+        @include focus-ring;
+    }
+
     >input {
         flex: 1;
         min-width: 0;
@@ -1189,6 +1203,10 @@ input-label-controls {
     &:hover,
     &:focus-within {
         border-color: v.$border-input;
+    }
+
+    &:has(>select:focus-visible) {
+        @include focus-ring;
     }
 
     >select {
@@ -1541,7 +1559,6 @@ pagination {
     &:focus-visible {
         --icon-color: #{v.$text-primary};
         background: color-mix(in srgb, v.$text-primary 8%, transparent);
-        outline: none;
     }
 
     @include g.on-mobile {

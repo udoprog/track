@@ -126,3 +126,33 @@ pub async fn every_button_has_a_title(driver: &mut TestDriver, _: &mut Track) ->
 
     Ok(())
 }
+
+/// Whatever Tab reaches wears the accent focus ring.
+pub async fn tab_shows_a_focus_ring(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    let first = driver.find_one_by("#toolbar [title='Dashboard']").await?;
+    first.focus().await?;
+    first.send_keys("\u{E004}").await?;
+
+    let ret = driver
+        .webdriver()
+        .execute(
+            "const s = getComputedStyle(document.activeElement);
+             const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+             const probe = document.createElement('i');
+             probe.style.color = accent;
+             document.body.append(probe);
+             const color = getComputedStyle(probe).color;
+             probe.remove();
+             return [document.activeElement.title, s.outlineStyle, s.outlineWidth, s.outlineColor === color];",
+            Vec::new(),
+        )
+        .await?;
+
+    let (title, style, width, accent) = ret.convert::<(String, String, String, bool)>()?;
+    ensure!(title == "Media", "Tab moved to {title:?}, not Media");
+    ensure!(
+        style == "solid" && width == "2px" && accent,
+        "the focused button's outline is {style} {width}, accent: {accent}"
+    );
+    Ok(())
+}

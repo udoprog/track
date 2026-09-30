@@ -73,6 +73,13 @@ lines (`clamp-lines(2)`) rather than being cut to one.
 - Breakpoint: `$mobile-limit` (768px), through the `g.on-mobile` and
   `g.on-desktop` mixins.
 
+### Focus
+
+Everything the keyboard reaches shows one ring on `:focus-visible`: a 2px
+`--accent` outline, 2px off the control (the `focus-ring` mixin). Never set
+`outline: none` on a focusable element; a wrapper around a bare input shows
+the ring itself with `:has(> input:focus-visible)`.
+
 ## Components
 
 ### Buttons
