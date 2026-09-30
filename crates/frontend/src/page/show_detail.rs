@@ -1945,7 +1945,7 @@ impl ShowDetail {
 
         html! {
             <div class="detail-sidebar">
-                <Image class="poster desktop-only" src={poster.cloned()} />
+                <Image class="poster desktop-only artwork" src={poster.cloned()} />
 
                 <nav class="season-list desktop-only" aria-label="Seasons">
                     { for self.seasons.iter().map(|s| self.view_season(ctx, s)) }

@@ -756,3 +756,16 @@ pub async fn graphics_say_what_they_do(driver: &mut TestDriver, _: &mut Track) -
     );
     Ok(())
 }
+
+/// The show's poster beside its seasons is rounded like every other poster.
+pub async fn detail_poster_is_rounded(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_show(driver).await?;
+
+    let radius = driver
+        .find_one_by(".detail-sidebar .poster")
+        .await?
+        .css("border-top-left-radius")
+        .await?;
+    ensure!(radius == "12px", "the poster's corners are {radius}");
+    Ok(())
+}

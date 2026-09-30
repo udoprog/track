@@ -1194,7 +1194,7 @@ impl MovieDetail {
                 </div>
 
                 <div class="detail-sidebar">
-                    <Image class="poster desktop-only" src={movie.poster.clone()} />
+                    <Image class="poster desktop-only artwork" src={movie.poster.clone()} />
                 </div>
 
                 <div class="detail-content">
