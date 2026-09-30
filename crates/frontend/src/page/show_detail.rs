@@ -2267,12 +2267,12 @@ impl ShowDetail {
                             if episode.pending.is_some() {
                                 <Button icon="bookmark" variant={Variant::Primary} title="Clear next episode" onclick={on_remove_next} />
                             } else {
-                                <MarkTimeMenu icon="bookmark" title="Mark next" prompt={format!("When do you want to queue {}?", episode.code())} preset={preset.clone()} on_confirm={on_next_episode}>
+                                <MarkTimeMenu class="ghost" icon="bookmark" title="Mark next" prompt={format!("When do you want to queue {}?", episode.code())} preset={preset.clone()} on_confirm={on_next_episode}>
                                     <span class="icon bookmark-slash" />
                                 </MarkTimeMenu>
                             }
 
-                            <Button node_ref={if menu_open { self.episode_menu_anchor.clone() } else { NodeRef::default() }} icon="ellipsis-horizontal" class={classes!(menu_open.then_some("selected"))} title="More actions" onclick={on_toggle_menu.clone()} />
+                            <Button node_ref={if menu_open { self.episode_menu_anchor.clone() } else { NodeRef::default() }} icon="ellipsis-horizontal" class={classes!("ghost", menu_open.then_some("selected"))} title="More actions" onclick={on_toggle_menu.clone()} />
                         </div>
 
                         if menu_open {

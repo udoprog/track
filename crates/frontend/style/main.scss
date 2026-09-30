@@ -855,19 +855,32 @@ button.ghost {
     }
 }
 
+// An episode's code, as a badge that also links to the episode.
 .episode-code {
     display: inline-flex;
+    flex: none;
     flex-direction: row;
     align-items: center;
     gap: v.$text-gap;
-    font-family: v.$monospace-font;
-    font-size: v.$font-lg;
+    align-self: center;
+    padding: 2px v.$padding-lg;
+    border-radius: v.$radius-sm;
+    background: var(--neutral-bg);
+    font-size: v.$font-sm;
+    font-weight: v.$bold-weight;
+    font-variant-numeric: tabular-nums;
+    color: v.$text-muted;
+    --icon-color: #{v.$text-muted};
     text-decoration: none;
-    min-height: v.$input-height;
 
-    @include g.on-mobile {
-        min-height: v.$input-height-touch;
+    &:hover {
+        color: v.$text-color;
+        --icon-color: #{v.$text-color};
     }
+}
+
+.episode h4 {
+    color: v.$text-color;
 }
 
 .box {
