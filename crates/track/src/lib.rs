@@ -36,7 +36,6 @@
 //! directory, so it has to be built first:
 //!
 //! ```text
-//! $ git submodule update --init
 //! $ trunk build --release
 //! $ cargo run --release
 //! ```

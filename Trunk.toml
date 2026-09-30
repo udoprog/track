@@ -9,8 +9,8 @@ ignore = [
     "crates/frontend/style/_icons_generated.scss",
 ]
 
-# Regenerate the flag/icon Sass name lists from the bundled SVGs before compiling
-# styles, so they stay in sync with the 3rdparty submodules without hand-maintenance.
+# Regenerate the flag/icon Sass name lists from the vendored SVGs before compiling
+# styles, so they stay in sync with `tools vendor` without hand-maintenance.
 [[hooks]]
 stage = "pre_build"
 command = "cargo"

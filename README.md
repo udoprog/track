@@ -43,7 +43,6 @@ The frontend is built with [trunk] into `dist/`. The server embeds that
 directory, so it has to be built first:
 
 ```text
-$ git submodule update --init
 $ trunk build --release
 $ cargo run --release
 ```

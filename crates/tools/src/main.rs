@@ -5,10 +5,11 @@ use anyhow::{Context, Result, anyhow, bail};
 use clap::{Parser, Subcommand};
 
 mod generate;
+mod vendor;
 
-// 3rdparty submodules and the path probed to confirm each is initialized.
-const FLAG_ICONS_DIR: &str = "3rdparty/flag-icons/flags/4x3";
-const HEROICONS_DIR: &str = "3rdparty/heroicons/optimized/24/solid";
+// Vendored SVG sets; see `vendor.rs`.
+const FLAG_ICONS_DIR: &str = "crates/frontend/flags";
+const HEROICONS_DIR: &str = "crates/frontend/icons";
 
 // Bundled ISO datasets (committed inputs).
 const ISO639_TAB: &str = "crates/iso639/data/iso-639-3.tab";
@@ -54,6 +55,19 @@ enum Command {
     DownloadLocales,
     /// Download every dataset into its bundled data file.
     DownloadAll,
+    /// Refresh the vendored icon and flag SVGs from their pinned revisions.
+    Vendor {
+        /// Fetch an upstream's pin from a local repository instead of its URL,
+        /// as `NAME=PATH` (e.g. `heroicons=../heroicons`).
+        #[arg(long, value_parser = parse_from)]
+        from: Vec<(String, String)>,
+    },
+}
+
+fn parse_from(value: &str) -> Result<(String, String)> {
+    let (name, path) = value.split_once('=').context("Expected NAME=PATH")?;
+
+    Ok((name.to_owned(), path.to_owned()))
 }
 
 fn main() -> Result<()> {
@@ -80,6 +94,7 @@ fn main() -> Result<()> {
             download_countries(&root)?;
             download_locales(&root)?;
         }
+        Some(Command::Vendor { from }) => vendor::sync(&root, from)?,
     }
 
     Ok(())
@@ -95,15 +110,14 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
-/// Confirm a 3rdparty submodule is initialized by probing a path that only exists once it
-/// has been checked out.
-fn ensure_submodule(root: &Path, probe: &str) -> Result<PathBuf> {
-    let path = root.join(probe);
+/// The directory of a vendored SVG set.
+fn ensure_vendored(root: &Path, dir: &str) -> Result<PathBuf> {
+    let path = root.join(dir);
 
     if !path.is_dir() {
         bail!(
-            "3rdparty submodule is not initialized (missing {}).\n\
-             Run: git submodule update --init --recursive",
+            "The vendored SVGs are missing ({}).\n\
+             Run: cargo run -p tools -- vendor",
             path.display()
         );
     }
@@ -112,8 +126,8 @@ fn ensure_submodule(root: &Path, probe: &str) -> Result<PathBuf> {
 }
 
 fn generate_scss(root: &Path) -> Result<()> {
-    let flags_dir = ensure_submodule(root, FLAG_ICONS_DIR)?;
-    let icons_dir = ensure_submodule(root, HEROICONS_DIR)?;
+    let flags_dir = ensure_vendored(root, FLAG_ICONS_DIR)?;
+    let icons_dir = ensure_vendored(root, HEROICONS_DIR)?;
 
     write_file(
         &root.join(FLAGS_SCSS),
@@ -129,7 +143,7 @@ fn generate_scss(root: &Path) -> Result<()> {
 }
 
 fn generate_iso639(root: &Path, mapping_path: Option<&Path>) -> Result<()> {
-    let flags_dir = ensure_submodule(root, FLAG_ICONS_DIR)?;
+    let flags_dir = ensure_vendored(root, FLAG_ICONS_DIR)?;
 
     let tab = read_input(root, ISO639_TAB)?;
     let to_3166 = read_input(root, ISO639_TO_3166)?;
@@ -150,7 +164,7 @@ fn generate_iso639(root: &Path, mapping_path: Option<&Path>) -> Result<()> {
 }
 
 fn generate_iso3166(root: &Path) -> Result<()> {
-    let flags_dir = ensure_submodule(root, FLAG_ICONS_DIR)?;
+    let flags_dir = ensure_vendored(root, FLAG_ICONS_DIR)?;
 
     let csv = read_input(root, ISO3166_CSV)?;
     write_file(
@@ -193,9 +207,13 @@ fn read_input(root: &Path, relative: &str) -> Result<String> {
 }
 
 fn write_file(output: &Path, body: &str) -> Result<()> {
+    write_bytes(output, body.as_bytes())
+}
+
+fn write_bytes(output: &Path, body: &[u8]) -> Result<()> {
     // Skip rewriting unchanged content so we don't bump the mtime (which would retrigger
     // Trunk's file watcher into a rebuild loop) or create needless git churn.
-    if fs::read_to_string(output).is_ok_and(|existing| existing == body) {
+    if fs::read(output).is_ok_and(|existing| existing == body) {
         return Ok(());
     }
 

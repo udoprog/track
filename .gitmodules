@@ -1,6 +1,0 @@
-[submodule "3rdparty/heroicons"]
-	path = 3rdparty/heroicons
-	url = https://github.com/tailwindlabs/heroicons
-[submodule "3rdparty/flag-icons"]
-	path = 3rdparty/flag-icons
-	url = https://github.com/lipis/flag-icons

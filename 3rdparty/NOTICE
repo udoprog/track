@@ -1,0 +1,15 @@
+track ships a copy of the SVG sets below. Each is taken at the revision
+named, and refreshed by `cargo run -p tools -- vendor`; this file is written
+by that command and not by hand.
+
+heroicons
+    Upstream   https://github.com/tailwindlabs/heroicons
+    Revision   616b7a4dbbf3d011760af8066262cd5c6b3868f3
+    Taken      optimized/24/solid -> crates/frontend/icons
+    Licence    MIT, in 3rdparty/heroicons/LICENSE
+
+flag-icons
+    Upstream   https://github.com/lipis/flag-icons
+    Revision   086f7e97d657358203916dbe84f61c2bccaa81eb
+    Taken      flags/4x3 -> crates/frontend/flags
+    Licence    MIT, in 3rdparty/flag-icons/LICENSE
