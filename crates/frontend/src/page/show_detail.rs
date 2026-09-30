@@ -78,8 +78,6 @@ pub(crate) struct ShowDetail {
     confirm_remove_watch: Option<api::WatchedId>,
     watched_by_episode: HashMap<api::EpisodeId, Vec<WatchedState>>,
     history_expanded: HashSet<api::EpisodeId>,
-    /// Watched episodes shown in full rather than as a compact row.
-    expanded_episodes: HashSet<api::EpisodeId>,
     orphaned: Vec<OrphanedWatchedState>,
     fixing_watched: Option<api::WatchedId>,
     image_modal: bool,
@@ -169,7 +167,6 @@ pub(crate) enum Msg {
     SyncEpisode(api::EpisodeId),
     SyncEpisodeDone(Result<ws::Packet<api::SyncEpisode>, ws::Error>),
     ToggleHistory(api::EpisodeId),
-    ToggleEpisodeDetails(api::EpisodeId),
     WatchedLoaded(Result<ws::Packet<api::ListEpisodesWatched>, ws::Error>),
     OnWatchNext(api::EpisodeId, api::MarkTime),
     AddPendingDone(Result<ws::Packet<api::AddPending>, ws::Error>),
@@ -300,7 +297,6 @@ impl Component for ShowDetail {
             confirm_remove_watch: None,
             watched_by_episode: HashMap::new(),
             history_expanded: HashSet::new(),
-            expanded_episodes: HashSet::new(),
             orphaned: Vec::new(),
             fixing_watched: None,
             image_modal: false,
@@ -1094,13 +1090,6 @@ impl ShowDetail {
             Msg::SyncEpisodeDone(result) => {
                 result.context(Message::SyncingEpisode)?;
                 Ok(false)
-            }
-            Msg::ToggleEpisodeDetails(id) => {
-                if !self.expanded_episodes.insert(id) {
-                    self.expanded_episodes.remove(&id);
-                }
-
-                Ok(true)
             }
             Msg::ToggleHistory(id) => {
                 self.episode_menu = None;
@@ -2186,7 +2175,7 @@ impl ShowDetail {
                     <TranslatedText strings={season.strings.clone()} />
 
                     if total > 0 {
-                        <h4>{format!("{watched_count} / {total} watched")}</h4>
+                        <span class="text-muted">{format!("{watched_count} of {total} watched")}</span>
                     }
                 </div>
 
@@ -2233,46 +2222,36 @@ impl ShowDetail {
             .aired
             .map(|timestamp| TimePreset::at("calendar", "Air date", timestamp));
 
-        // A watched episode that isn't up next is a compact row until expanded.
-        let collapsible = !watched.is_empty() && episode.pending.is_none();
-        let compact = collapsible && !self.expanded_episodes.contains(&episode_id);
-
         html! {
-            <div class={classes!("episode", (!watched.is_empty()).then_some("watched"), compact.then_some("compact"))} id={episode.code()}>
-                <div class="column">
-                    <div class="toolbar">
-                        <div class="column">
-                            <div class="row align-top">
-                                if collapsible {
-                                    <Button icon={if compact { "chevron-right" } else { "chevron-down" }} class="disclosure" title={if compact { "Show details" } else { "Hide details" }} onclick={link.callback(move |_| Msg::ToggleEpisodeDetails(episode_id))} />
-                                }
+            <div class={classes!("episode", (!watched.is_empty()).then_some("watched"))} id={episode.code()}>
+                <Image class="screenshot artwork" placeholder={true} placeholder_icon="photo" src={episode.screenshot.clone()} />
 
-                                <a class="episode-code" href={format!("#{}", episode.code())}>
-                                    <span class="item-inline-xs">
-                                        <span class="icon link" />
-                                    </span>
+                <div class="episode-body">
+                    <div class="episode-head">
+                        <div class="episode-heading">
+                            <a class="episode-code" href={format!("#{}", episode.code())} title="Link to this episode">{episode.code()}</a>
 
-                                    <span>{episode.code()}</span>
-                                </a>
-
-                                if let Some(name) = episode.strings.title() {
-                                    <h4>{name}</h4>
-                                }
-                            </div>
+                            if let Some(name) = episode.strings.title() {
+                                <h4>{name}</h4>
+                            }
                         </div>
 
-                        <div class="input-group">
-                            <MarkTimeMenu quick=true class="success" icon="check" title="Mark watched" prompt={format!("When did you watch {}?", episode.code())} preset={preset.clone()} on_confirm={on_mark_confirm} />
+                        <div class="row episode-actions">
+                            <div class="input-group">
+                                <MarkTimeMenu quick=true class="success" icon="check" title="Mark watched" prompt={format!("When did you watch {}?", episode.code())} preset={preset.clone()} on_confirm={on_mark_confirm} />
+                            </div>
 
-                            if episode.pending.is_some() {
-                                <Button icon="bookmark" variant={Variant::Primary} title="Clear next episode" onclick={on_remove_next} />
-                            } else {
-                                <MarkTimeMenu class="ghost" icon="bookmark" title="Mark next" prompt={format!("When do you want to queue {}?", episode.code())} preset={preset.clone()} on_confirm={on_next_episode}>
-                                    <span class="icon bookmark-slash" />
-                                </MarkTimeMenu>
-                            }
+                            <div class="input-group">
+                                if episode.pending.is_some() {
+                                    <Button icon="bookmark" variant={Variant::Primary} title="Clear next episode" onclick={on_remove_next} />
+                                } else {
+                                    <MarkTimeMenu icon="bookmark" title="Mark next" prompt={format!("When do you want to queue {}?", episode.code())} preset={preset.clone()} on_confirm={on_next_episode}>
+                                        <span class="icon bookmark" />
+                                    </MarkTimeMenu>
+                                }
 
-                            <Button node_ref={if menu_open { self.episode_menu_anchor.clone() } else { NodeRef::default() }} icon="ellipsis-horizontal" class={classes!("ghost", menu_open.then_some("selected"))} title="More actions" onclick={on_toggle_menu.clone()} />
+                                <Button node_ref={if menu_open { self.episode_menu_anchor.clone() } else { NodeRef::default() }} icon="ellipsis-horizontal" class={classes!(menu_open.then_some("selected"))} title="More actions" onclick={on_toggle_menu.clone()} />
+                            </div>
                         </div>
 
                         if menu_open {
@@ -2291,7 +2270,7 @@ impl ShowDetail {
                         }
                     </div>
 
-                    if !compact {
+                    <div class="episode-meta">
                         <indicator title="Air date">
                             <span class="item-inline">
                                 <span class={classes!("icon", if episode.aired().is_some() { "clock" } else { "exclamation-circle" })} />
@@ -2302,13 +2281,12 @@ impl ShowDetail {
                                     <span>{if aired.is_past() { "Aired" } else { "Airs" }}</span>
                                     {aired.lower().view()}
                                 } else {
-                                    <span class="text-muted">{"No air date"}</span>
+                                    <span>{"No air date"}</span>
                                 }
                             </content>
                         </indicator>
-                    }
 
-                    <indicator title="Watch status">
+                        <indicator title="Watch status">
                         if episode.pending.is_some() {
                             <span class="item-inline" title="Next episode">
                                 <span class="icon primary exclamation-circle" />
@@ -2346,17 +2324,10 @@ impl ShowDetail {
                             }
                         </content>
                     </indicator>
-                </div>
-
-                if !compact {
-                    <div class="desktop-row mobile-column align-top">
-                        <Image class="screenshot" src={episode.screenshot.clone()} />
-
-                        <div class="column desktop-fill">
-                            <TranslatedText strings={episode.strings.clone()} />
-                        </div>
                     </div>
-                }
+
+                    <TranslatedText strings={episode.strings.clone()} />
+                </div>
 
                 if history_expanded {
                     <Modal icon="clock" title={format!("Watch history for {}", episode.code())} on_close={link.callback(move |_| Msg::ToggleHistory(episode_id))}>

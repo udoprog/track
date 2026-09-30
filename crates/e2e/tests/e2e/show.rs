@@ -36,13 +36,12 @@ pub async fn episode_menu_holds_the_other_actions(
         .await
 }
 
-/// A watched episode collapses to a compact row, and its disclosure shows the
-/// details again.
-pub async fn watched_episodes_are_compact(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+/// Every episode shows its details at once, watched or not: nothing has to be
+/// expanded to read it.
+pub async fn episodes_show_their_details(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     open_show(driver).await?;
 
     let first = "[id='S01E01']";
-    driver.wait_count(&format!("{first}.compact"), 0).await?;
 
     driver
         .find_one_by(&format!("{first} [title='Mark watched']"))
@@ -50,15 +49,29 @@ pub async fn watched_episodes_are_compact(driver: &mut TestDriver, _: &mut Track
         .click()
         .await?;
 
-    driver.wait_count(&format!("{first}.compact"), 1).await?;
+    driver.wait_count(&format!("{first}.watched"), 1).await?;
 
     driver
-        .find_one_by(&format!("{first} [title='Show details']"))
-        .await?
-        .click()
+        .wait_until(
+            "the watched episode to say when it was watched",
+            async || {
+                let meta = driver
+                    .rendered_texts(&format!("{first} .episode-meta"))
+                    .await?;
+                Ok(meta.iter().any(|m| m.contains("Watched")))
+            },
+        )
         .await?;
 
-    driver.wait_count(&format!("{first}.compact"), 0).await
+    ensure!(
+        driver.count(".episode .screenshot").await? == driver.count(".episode").await?,
+        "an episode is missing its still"
+    );
+    ensure!(
+        driver.count("[title='Show details']").await? == 0,
+        "an episode hides its details"
+    );
+    Ok(())
 }
 
 /// The season list says how much of each season has been watched.

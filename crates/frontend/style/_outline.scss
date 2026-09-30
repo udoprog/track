@@ -22,13 +22,16 @@
         }
     }
 
+    // Where the viewport is: a thin bar along the edge, not a box that reads
+    // as a panel or a button.
     &-mark {
         grid-area: 1 / 1;
         align-self: start;
+        justify-self: start;
         position: relative;
-        background-color: color-mix(in srgb, v.$color-primary 20%, transparent);
-        border-radius: v.$radius;
-        border: 1px solid color-mix(in srgb, v.$color-primary 50%, transparent);
+        width: 3px;
+        background-color: v.$color-primary;
+        border-radius: 2px;
         top: var(--outline-top, 0);
         height: var(--outline-height, 0);
     }

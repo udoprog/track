@@ -557,14 +557,11 @@ image {
         aspect-ratio: 21 / 4;
     }
 
+    // A placeholder for a missing picture stays quiet.
     .icon {
         height: v.$input-height-touch;
         width: v.$input-height-touch;
-
-        // People without a photo: a quiet silhouette rather than a question.
-        &.user {
-            --icon-color: #{v.$text-muted};
-        }
+        --icon-color: #{v.$text-muted};
     }
 }
 
@@ -777,40 +774,80 @@ button.ghost {
     display: flex;
     flex-direction: column;
 
+    // An episode: its still beside its heading, actions, dates and
+    // overview, all shown at once. Phones put the still on top.
     >.episode {
-        display: flex;
-        flex-direction: column;
-        gap: v.$gap-sm;
-
-        padding-top: v.$gap-sm;
-        padding-bottom: v.$gap-sm;
-
-        &:first-child {
-            border-top: 1px solid v.$border-subtle;
-        }
+        display: grid;
+        grid-template-columns: 220px minmax(0, 1fr);
+        align-items: start;
+        gap: v.$gap;
+        padding-block: v.$gap;
 
         &:not(:last-child) {
             border-bottom: 1px solid v.$border-subtle;
         }
 
-        @include g.on-desktop {
-            .screenshot {
-                height: 180px;
-            }
+        >.screenshot {
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            background: v.$bg-surface;
         }
 
-        // Phones: the episode's actions get their own line, so its name keeps
-        // the width.
         @include g.on-mobile {
-            >.column>.toolbar {
-                grid-template-columns: minmax(0, 1fr);
-                gap: v.$gap-xs;
-
-                >.input-group {
-                    justify-self: end;
-                }
-            }
+            grid-template-columns: minmax(0, 1fr);
+            gap: v.$gap-sm;
         }
+    }
+}
+
+.episode-body {
+    display: flex;
+    flex-direction: column;
+    gap: v.$gap-xs;
+    min-width: 0;
+}
+
+// The code and name, with the actions at the end; the actions wrap under
+// the name when there is no room beside it.
+.episode-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: v.$gap-xs v.$gap-sm;
+
+    >.episode-actions {
+        margin-inline-start: auto;
+    }
+}
+
+.episode-heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 v.$gap-xs;
+    min-width: 0;
+
+    >h4 {
+        min-height: 0;
+        color: v.$text-color;
+    }
+}
+
+// Dates and watch state: quiet text, not links.
+.episode-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 v.$gap;
+    font-size: v.$font-sm;
+    color: v.$text-muted;
+    --icon-color: #{v.$text-muted};
+
+    datetime,
+    date,
+    time,
+    .special {
+        color: inherit;
     }
 }
 
@@ -855,32 +892,19 @@ button.ghost {
     }
 }
 
-// An episode's code, as a badge that also links to the episode.
+// An episode's code: quiet text that links to the episode.
 .episode-code {
-    display: inline-flex;
     flex: none;
-    flex-direction: row;
-    align-items: center;
-    gap: v.$text-gap;
-    align-self: center;
-    padding: 2px v.$padding-lg;
-    border-radius: v.$radius-sm;
-    background: var(--neutral-bg);
     font-size: v.$font-sm;
     font-weight: v.$bold-weight;
     font-variant-numeric: tabular-nums;
     color: v.$text-muted;
-    --icon-color: #{v.$text-muted};
     text-decoration: none;
 
     &:hover {
         color: v.$text-color;
-        --icon-color: #{v.$text-color};
+        text-decoration: underline;
     }
-}
-
-.episode h4 {
-    color: v.$text-color;
 }
 
 .box {
@@ -1543,11 +1567,6 @@ pagination {
             height: v.$input-height;
         }
     }
-}
-
-// Expands or collapses the row it starts, such as a watched episode.
-.disclosure {
-    background: transparent;
 }
 
 // The Media page's poster grid.
