@@ -217,3 +217,30 @@ pub async fn mobile_cards_always_have_a_picture(
     );
     Ok(())
 }
+
+/// Buttons say what state they are in: a popover trigger whether it is open,
+/// a filter chip whether it is on.
+pub async fn buttons_expose_their_state(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    let options = driver.find_one_by("[title='View options']").await?;
+
+    ensure!(options.attr("aria-haspopup").await? == "dialog");
+    ensure!(options.attr("aria-expanded").await? == "false");
+
+    options.click().await?;
+    driver.wait_count(".context-menu", 1).await?;
+
+    driver
+        .wait_until("View options to report itself open", async || {
+            Ok(driver
+                .find_one_by("[title='View options']")
+                .await?
+                .attr("aria-expanded")
+                .await?
+                == "true")
+        })
+        .await?;
+
+    let shows = driver.find_one_by("[title='Show series']").await?;
+    ensure!(shows.attr("aria-pressed").await? == "true");
+    Ok(())
+}

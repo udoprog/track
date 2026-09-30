@@ -111,7 +111,7 @@ impl Component for TranslatedText {
             displayed.filter(|locale| locale.language() != props.strings.locale().language());
 
         let toggle = html! {
-            <Button node_ref={self.anchor.clone()} class="language-toggle" title="Change displayed language" onclick={link.callback(|_| Msg::Open)}>
+            <Button node_ref={self.anchor.clone()} class="language-toggle" title="Change displayed language" expanded={Some(self.open)} haspopup="dialog" onclick={link.callback(|_| Msg::Open)}>
                 if let Some(locale) = foreign {
                     if let Some(flag) = locale.flag() {
                         <span class={classes!("flag", flag)} />

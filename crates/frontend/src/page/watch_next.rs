@@ -204,7 +204,7 @@ impl Component for WatchNext {
                             <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
                         }
 
-                        <Button node_ref={self.options_anchor.clone()} icon="adjustments-horizontal" title="View options" class={classes!("chip", self.options_open.then_some("selected"))} onclick={link.callback(|_| Msg::ToggleOptions)} />
+                        <Button node_ref={self.options_anchor.clone()} icon="adjustments-horizontal" title="View options" class={classes!("chip", self.options_open.then_some("selected"))} expanded={Some(self.options_open)} haspopup="dialog" onclick={link.callback(|_| Msg::ToggleOptions)} />
                     </div>
                 </div>
 
@@ -801,7 +801,7 @@ impl WatchNext {
                             </MarkTimeMenu>
 
                             if let Some((show, episode)) = skip_ids {
-                                <Button key="skip-button" node_ref={anchor.clone()} icon="forward" title="Skip episode" class="ghost" onclick={ctx.link().callback(move |_| Msg::AskSkipEpisode(show, episode))} />
+                                <Button key="skip-button" node_ref={anchor.clone()} icon="forward" title="Skip episode" class="ghost" expanded={Some(confirming)} haspopup="dialog" onclick={ctx.link().callback(move |_| Msg::AskSkipEpisode(show, episode))} />
 
                                 if confirming && let Some(code) = skip_code {
                                     <ContextMenu icon="forward" prompt="Skip episode" label={code} anchor={anchor.clone()} on_close={ctx.link().callback(|_| Msg::CancelSkipEpisode)}>

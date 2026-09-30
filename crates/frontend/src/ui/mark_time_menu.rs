@@ -485,9 +485,9 @@ impl Component for MarkTimeMenu {
                 if props.quick {
                     <Button icon={props.icon.clone().unwrap_or(AttrValue::Static("check"))} class={props.class.clone()} title={props.title.clone()} text={props.text.clone()} onclick={link.callback(|_| Msg::ConfirmNow)} />
 
-                    <Button node_ref={self.anchor.clone()} icon="chevron-down" class={classes!(props.class.clone(), "mark-time-more", self.context_open.then_some("selected"))} title="Choose when" onclick={link.callback(|_| Msg::Open)} />
+                    <Button node_ref={self.anchor.clone()} icon="chevron-down" class={classes!(props.class.clone(), "mark-time-more", self.context_open.then_some("selected"))} title="Choose when" expanded={Some(self.context_open)} haspopup="dialog" onclick={link.callback(|_| Msg::Open)} />
                 } else {
-                    <Button node_ref={self.anchor.clone()} class={props.class.clone()} title={props.title.clone()} onclick={link.callback(|_| Msg::Open)}>
+                    <Button node_ref={self.anchor.clone()} class={props.class.clone()} title={props.title.clone()} expanded={Some(self.context_open)} haspopup="dialog" onclick={link.callback(|_| Msg::Open)}>
                         { for props.children.iter() }
                     </Button>
                 }

@@ -546,7 +546,7 @@ fn Toolbar(props: &ToolbarProps) -> Html {
                 <span class="site-title clickable" onclick={on_nav(Route::Dashboard(DashboardQuery::default()))}>{ props.site_title.clone() }</span>
             </div>
 
-            <Button class="toolbar-toggle" icon={if *menu_open { "x-mark" } else { "bars-3" }} title="Navigation" onclick={on_menu_toggle} />
+            <Button class="toolbar-toggle" icon={if *menu_open { "x-mark" } else { "bars-3" }} title="Navigation" expanded={Some(*menu_open)} onclick={on_menu_toggle} />
 
             <div class={classes!("toolbar-dropdown", (!*menu_open).then_some("desktop-only"))}>
                 <div class="toolbar-item mobile-has-text" title={connection_title}>

@@ -1017,7 +1017,7 @@ impl MovieDetail {
                 }
 
                 if self.credits.len() > CAP {
-                    <Button icon={if self.credits_expanded { "chevron-up" } else { "chevron-down" }} label={if self.credits_expanded { "Show fewer" } else { "Show all cast" }} title={if self.credits_expanded { "Show fewer cast" } else { "Show all cast" }} class="credits-toggle" onclick={ctx.link().callback(|_| Msg::ToggleCreditsExpanded)} />
+                    <Button icon={if self.credits_expanded { "chevron-up" } else { "chevron-down" }} label={if self.credits_expanded { "Show fewer" } else { "Show all cast" }} title={if self.credits_expanded { "Show fewer cast" } else { "Show all cast" }} class="credits-toggle" expanded={Some(self.credits_expanded)} onclick={ctx.link().callback(|_| Msg::ToggleCreditsExpanded)} />
                 }
             </section>
         }
@@ -1113,7 +1113,7 @@ impl MovieDetail {
                     </div>
 
                     <div class="toolbar-toggle">
-                        <Button icon={if self.actions_expanded { "ellipsis-horizontal" } else { "bars-3" }} title="Actions" onclick={link.callback(|_| Msg::ToggleActionsExpanded)} />
+                        <Button icon={if self.actions_expanded { "ellipsis-horizontal" } else { "bars-3" }} title="Actions" expanded={Some(self.actions_expanded)} onclick={link.callback(|_| Msg::ToggleActionsExpanded)} />
                     </div>
 
                     <div class={classes!("toolbar-dropdown", (!self.actions_expanded).then_some("desktop-only"))}>
@@ -1128,7 +1128,7 @@ impl MovieDetail {
 
                             <Button icon="cog-6-tooth" title="Settings" text="Settings" onclick={link.callback(|_| Msg::OpenSettingsModal)} />
 
-                            <Button node_ref={self.remove_anchor.clone()} icon="trash" variant={Variant::Danger} class="detached" title="Remove movie" text="Remove" onclick={link.callback(|_| Msg::ConfirmRemove)} />
+                            <Button node_ref={self.remove_anchor.clone()} icon="trash" variant={Variant::Danger} class="detached" title="Remove movie" text="Remove" expanded={Some(self.confirm_remove)} haspopup="dialog" onclick={link.callback(|_| Msg::ConfirmRemove)} />
 
                             if self.confirm_remove {
                                 <ContextMenu prompt="Remove movie" label={movie.strings.title().map(str::to_owned)} anchor={self.remove_anchor.clone()} on_close={link.callback(|_| Msg::CancelRemove)}>
@@ -1338,7 +1338,7 @@ impl MovieDetail {
                                 {w.watched.timestamp.human_date_time(self.time.clone()).view()}
                             </div>
 
-                            <Button node_ref={w.remove_watch_anchor.clone()} icon="trash" variant={Variant::Danger} title="Remove" text="Remove" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} />
+                            <Button node_ref={w.remove_watch_anchor.clone()} icon="trash" variant={Variant::Danger} title="Remove" text="Remove" expanded={Some(self.confirm_remove_watch == Some(wid))} haspopup="dialog" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} />
 
                             if self.confirm_remove_watch == Some(wid) {
                                 <ContextMenu prompt="Remove watch at" label={w.watched.timestamp.human_date_time(self.time.clone())} anchor={w.remove_watch_anchor.clone()} on_close={link.callback(|_| Msg::CancelRemoveWatch)}>

@@ -177,7 +177,7 @@ async fn build_server() -> Result<PathBuf> {
 
 yew_e2e::harness! {
     Track;
-    dashboard::{fills_rows_with_relative_dates(seeded), labels_its_filters, keeps_view_options_in_a_menu, mobile_cards_always_have_a_picture(seeded), schedule_names_its_days, upcoming_is_an_agenda, marks_watched_in_one_click(seeded), marks_watched_at_a_chosen_time(seeded)},
+    dashboard::{fills_rows_with_relative_dates(seeded), labels_its_filters, keeps_view_options_in_a_menu, buttons_expose_their_state, mobile_cards_always_have_a_picture(seeded), schedule_names_its_days, upcoming_is_an_agenda, marks_watched_in_one_click(seeded), marks_watched_at_a_chosen_time(seeded)},
     media::{shows_a_poster_grid(seeded), toggle_marks_are_icon_sized, sort_stays_readable_at_tablet_width},
     movie::{puts_the_cast_beside_the_poster(movie), phone_release_line_stays_together(movie)},
     navigation::{opens_every_page, page_scrolls_the_window, toolbar_icons_are_small, every_button_has_a_title(seeded)},

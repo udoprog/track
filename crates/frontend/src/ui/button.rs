@@ -70,6 +70,15 @@ pub(crate) struct Props {
     /// Marks the button as the current page, for navigation items.
     #[prop_or_default]
     pub(crate) current: bool,
+    /// Whether a toggle button is on (`aria-pressed`).
+    #[prop_or_default]
+    pub(crate) pressed: Option<bool>,
+    /// Whether what the button opens is showing (`aria-expanded`).
+    #[prop_or_default]
+    pub(crate) expanded: Option<bool>,
+    /// What the button opens: `menu` or `dialog` (`aria-haspopup`).
+    #[prop_or_default]
+    pub(crate) haspopup: Option<AttrValue>,
     /// Extra content after the icon and label, e.g. a flag.
     #[prop_or_default]
     pub(crate) children: Children,
@@ -90,9 +99,9 @@ pub(crate) fn Button(props: &Props) -> Html {
     );
 
     html! {
-        <button ref={props.node_ref.clone()} {class} title={props.title.clone()} disabled={props.disabled} aria-current={props.current.then_some("page")} onclick={props.onclick.clone()}>
+        <button ref={props.node_ref.clone()} {class} title={props.title.clone()} disabled={props.disabled} aria-current={props.current.then_some("page")} aria-pressed={props.pressed.map(bool_attr)} aria-expanded={props.expanded.map(bool_attr)} aria-haspopup={props.haspopup.clone()} onclick={props.onclick.clone()}>
             if !props.icon.is_empty() {
-                <span class={classes!("icon", props.icon.clone(), props.spin.then_some("spin"))} />
+                <span class={classes!("icon", props.icon.clone(), props.spin.then_some("spin"))} aria-hidden="true" />
             }
 
             if let Some(label) = &props.label {
@@ -106,4 +115,8 @@ pub(crate) fn Button(props: &Props) -> Html {
             { for props.children.iter() }
         </button>
     }
+}
+
+fn bool_attr(value: bool) -> AttrValue {
+    AttrValue::Static(if value { "true" } else { "false" })
 }
