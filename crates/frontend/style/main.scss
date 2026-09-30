@@ -1148,7 +1148,8 @@ indicator {
     display: grid;
     grid-template-columns: auto 1fr;
     gap: v.$text-gap;
-    align-items: center;
+    // The icon stays by the first line when the content wraps.
+    align-items: start;
 
     >content {
         display: flex;
@@ -1156,6 +1157,15 @@ indicator {
         flex-wrap: wrap;
         align-items: center;
         gap: v.$text-gap;
+        min-height: v.$input-height;
+    }
+
+    // Not touch targets: keep phones at the desktop height so the icon, text
+    // and source logo share a compact line.
+    @include g.on-mobile {
+        .item-inline {
+            height: v.$input-height;
+        }
     }
 }
 

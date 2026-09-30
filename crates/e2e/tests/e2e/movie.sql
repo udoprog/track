@@ -8,3 +8,7 @@ VALUES (4001, 1701734144, 1, 'Seeded Movie');
 
 INSERT INTO movie_credits (movie_id, person_id, credit_type, department, sort_order)
 VALUES (4001, 5001, 0, 'Acting', 0);
+
+-- A digital release from TMDB (source 2, type 4), shown with its logo.
+INSERT INTO movie_releases (movie_id, source, country, release_type, timestamp)
+VALUES (4001, 2, 0, 4, 1700000000000);
