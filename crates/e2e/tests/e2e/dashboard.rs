@@ -5,11 +5,21 @@ use super::Track;
 const FIRST: &str = "S01E01 First Episode";
 const SECOND: &str = "S01E02 Second Episode";
 
+/// Wait for the one card to read `label`. The card is replaced when it moves
+/// to another episode, so read it in one snapshot rather than by handle.
+async fn wait_label(driver: &TestDriver, label: &str) -> Result<()> {
+    driver
+        .wait_until(format_args!("the card to read {label:?}"), async || {
+            Ok(driver.rendered_texts(".pending-label").await? == [label])
+        })
+        .await
+}
+
 /// The watched button marks the episode in one click and moves the show along,
 /// and the toast undoes it.
 pub async fn marks_watched_in_one_click(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     driver.wait_texts(".pending-title", ["Seeded Show"]).await?;
-    driver.wait_texts(".pending-label", [FIRST]).await?;
+    wait_label(driver, FIRST).await?;
 
     driver
         .find_one_by(".pending-item [title='Mark watched']")
@@ -17,13 +27,13 @@ pub async fn marks_watched_in_one_click(driver: &mut TestDriver, _: &mut Track) 
         .click()
         .await?;
 
-    driver.wait_texts(".pending-label", [SECOND]).await?;
+    wait_label(driver, SECOND).await?;
     driver
         .find_one_by(".toast [title=Undo]")
         .await?
         .click()
         .await?;
-    driver.wait_texts(".pending-label", [FIRST]).await?;
+    wait_label(driver, FIRST).await?;
     driver.wait_count(".toast", 0).await?;
     Ok(())
 }
@@ -31,7 +41,7 @@ pub async fn marks_watched_in_one_click(driver: &mut TestDriver, _: &mut Track) 
 /// The picker beside the watched button opens below it, stays there when the
 /// custom picker expands, and marks the episode on confirm.
 pub async fn marks_watched_at_a_chosen_time(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
-    driver.wait_texts(".pending-label", [FIRST]).await?;
+    wait_label(driver, FIRST).await?;
 
     let more = driver
         .find_one_by(".pending-item [title='Choose when']")
@@ -66,7 +76,7 @@ pub async fn marks_watched_at_a_chosen_time(driver: &mut TestDriver, _: &mut Tra
         .click()
         .await?;
 
-    driver.wait_texts(".pending-label", [SECOND]).await?;
+    wait_label(driver, SECOND).await?;
     Ok(())
 }
 
@@ -110,7 +120,7 @@ pub async fn keeps_view_options_in_a_menu(driver: &mut TestDriver, _: &mut Track
 /// long ago each became available, with the exact date on hover.
 pub async fn fills_rows_with_relative_dates(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     driver.set_window_size(1200, 900).await?;
-    driver.wait_texts(".pending-label", [FIRST]).await?;
+    wait_label(driver, FIRST).await?;
 
     let grid = driver.find_one_by(".pending-grid").await?;
 
@@ -195,7 +205,7 @@ pub async fn mobile_cards_always_have_a_picture(
     _: &mut Track,
 ) -> Result<()> {
     driver.set_window_size(400, 850).await?;
-    driver.wait_texts(".pending-label", [FIRST]).await?;
+    wait_label(driver, FIRST).await?;
 
     let banner = driver.find_one_by(".pending-item image.banner").await?;
     ensure!(banner.visible().await?, "the card has no picture");
