@@ -1784,8 +1784,10 @@ input-label-controls {
         border-color: v.$color-primary;
     }
 
+    // One ring, laid over the border rather than a second one outside it.
     &:has(>input:focus-visible) {
         @include focus-ring;
+        outline-offset: -1px;
     }
 
     >input {
@@ -1828,8 +1830,10 @@ input-label-controls {
         border-color: v.$border-input;
     }
 
+    // One ring, laid over the border rather than a second one outside it.
     &:has(>select:focus-visible) {
         @include focus-ring;
+        outline-offset: -1px;
     }
 
     >select {

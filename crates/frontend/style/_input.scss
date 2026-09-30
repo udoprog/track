@@ -199,6 +199,12 @@ button,
         border-color: v.$color-primary;
     }
 
+    // Fields already mark focus with their border: the ring goes over it
+    // instead of drawing a second ring outside.
+    &:focus-visible {
+        outline-offset: -1px;
+    }
+
     &:disabled {
         opacity: 0.5;
         cursor: not-allowed;

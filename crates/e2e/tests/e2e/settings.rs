@@ -64,6 +64,12 @@ pub async fn fields_follow_the_theme(driver: &mut TestDriver, _: &mut Track) -> 
         "the select has no chevron: {image}"
     );
 
+    // A focused field shows one ring over its border, not a second outside.
+    let title = driver.find_one_by("input[title='Page title']").await?;
+    title.focus().await?;
+    let offset = title.css("outline-offset").await?;
+    ensure!(offset == "-1px", "the focus ring sits {offset} out");
+
     let number = driver.find_first("input.input-number").await?;
     let appearance = number.css("appearance").await?;
     ensure!(
