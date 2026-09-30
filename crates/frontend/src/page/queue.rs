@@ -6,9 +6,11 @@ use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{QueueFocus, QueueQuery, Route, Router, ShowDetailQuery};
-use crate::ui::{Button, MDASH, PaginationButtons, Skeleton, Variant};
+use crate::ui::{Button, PaginationButtons, Skeleton, Variant};
 
 const PAGE_SIZE: usize = 20;
+/// How many pending and completed tasks the overview shows of each.
+const OVERVIEW_SIZE: usize = 10;
 
 pub(crate) struct Queue {
     channel: ws::Channel,
@@ -127,10 +129,7 @@ impl Component for Queue {
                 <div class="row-split">
                     <h1>{"Queue"}</h1>
 
-                    <button class="desktop-has-text" onclick={link.callback(|_| Msg::SyncAll)} title="Queue sync for all show and movies">
-                        <span class="icon arrow-path" />
-                        <span class="desktop-only">{"Sync All"}</span>
-                    </button>
+                    <Button icon="arrow-path" label="Sync all" title="Queue sync for all show and movies" onclick={link.callback(|_| Msg::SyncAll)} />
                 </div>
 
                 if let Some(focus) = ctx.props().focus {
@@ -292,62 +291,59 @@ impl Queue {
         }
     }
 
-    /// The overview: one clickable card per task list showing its count and the
-    /// current (first) task, without rendering the full, churning lists.
+    /// The overview: every running task, and the first few pending and
+    /// completed ones, each list offering the rest when there are more.
     fn view_overview(&self, ctx: &Context<Self>) -> Html {
         if !self.loaded {
             return Self::view_task_skeletons();
         }
 
-        let running_current = self.running.first().map(|t| self.view_task_label(t, None));
-
-        let pending_current = self.pending.first().map(|t| self.view_task_label(t, None));
-
-        let completed_current = self
-            .completed
-            .first()
-            .map(|t| self.view_completed_label(t, None));
-
         html! {
             <div class="column">
-                { self.view_overview_card(ctx, QueueFocus::Running, "arrow-path", self.running.len(), running_current) }
-                { self.view_overview_card(ctx, QueueFocus::Pending, "clock", self.pending.len(), pending_current) }
-                { self.view_overview_card(ctx, QueueFocus::Completed, "check", self.completed.len(), completed_current) }
+                { self.view_section(ctx, QueueFocus::Running, self.running.len(), self.running.len(), html! {
+                    { for self.running.iter().map(|t| self.view_task_row(ctx, t, true)) }
+                }) }
+
+                { self.view_section(ctx, QueueFocus::Pending, self.pending.len(), OVERVIEW_SIZE, html! {
+                    { for self.pending.iter().take(OVERVIEW_SIZE).map(|t| self.view_task_row(ctx, t, false)) }
+                }) }
+
+                { self.view_section(ctx, QueueFocus::Completed, self.completed.len(), OVERVIEW_SIZE, html! {
+                    { for self.completed.iter().take(OVERVIEW_SIZE).map(|t| self.view_completed_row(ctx, t)) }
+                }) }
             </div>
         }
     }
 
-    fn view_overview_card(
+    /// One task list in the overview: a heading with its count, the rows shown,
+    /// and a way to the whole list when `shown` is fewer than `count`.
+    fn view_section(
         &self,
         ctx: &Context<Self>,
         focus: QueueFocus,
-        icon: &'static str,
         count: usize,
-        current: Option<Html>,
+        shown: usize,
+        rows: Html,
     ) -> Html {
-        let onclick = (count > 0).then(|| ctx.link().callback(move |_| Msg::Focus(Some(focus))));
-        let clickable = onclick.is_some().then_some("clickable");
-
         html! {
-            <div class={classes!("row", clickable)} onclick={onclick}>
-                <div class="row-split fill">
-                    <span class="item-inline"><span class={classes!("icon", icon)} /></span>
+            <section class="task-section">
+                <div class="row-split">
+                    <h3 class="row text-gap">
+                        <span>{focus.title()}</span>
+                        <span class="status">{count}</span>
+                    </h3>
 
-                    <span class="row fill">
-                        <strong>{focus.title()}</strong>
-
-                        <span>{MDASH}</span>
-
-                        if let Some(current) = current {
-                            { current }
-                        } else {
-                            <span class="text-muted">{"None"}</span>
-                        }
-                    </span>
+                    if count > shown {
+                        <Button icon="chevron-right" label="Show all" title={format!("Show all {} tasks", focus.title().to_lowercase())} onclick={ctx.link().callback(move |_| Msg::Focus(Some(focus)))} />
+                    }
                 </div>
 
-                <span class="status">{count}</span>
-            </div>
+                if count == 0 {
+                    <p class="text-muted">{"None"}</p>
+                } else {
+                    <div class="task-grid">{rows}</div>
+                }
+            </section>
         }
     }
 
@@ -367,14 +363,9 @@ impl Queue {
                     <h3>{focus.title()}</h3>
 
                     <div class="row">
-                        <div class="input-group">
-                            <button class="desktop-has-text" onclick={link.callback(|_| Msg::Focus(None))} title="Back to overview">
-                                <span class="icon arrow-uturn-left" />
-                                <span class="desktop-only">{"Back"}</span>
-                            </button>
+                        {buttons}
 
-                            {buttons}
-                        </div>
+                        <Button icon="arrow-uturn-left" label="Back" title="Back to overview" onclick={link.callback(|_| Msg::Focus(None))} />
                     </div>
                 </div>
 
@@ -393,7 +384,7 @@ impl Queue {
         }
 
         html! {
-            <div class="column">
+            <div class="task-grid">
                 { for self.running.iter().map(|t| self.view_task_row(ctx, t, true)) }
             </div>
         }
@@ -427,94 +418,45 @@ impl Queue {
         });
 
         let body = html! {
-                <div class="column">
-                    { for page_pending.map(|t| self.view_task_row(ctx, t, false)) }
-                </div>
+            <div class="task-grid">
+                { for page_pending.map(|t| self.view_task_row(ctx, t, false)) }
+            </div>
         };
 
         (buttons, body)
     }
 
     fn view_task_row(&self, ctx: &Context<Self>, task: &api::Task, spinning: bool) -> Html {
-        let route = match &task.kind {
-            api::TaskKind::SyncShow { show_id, .. } => {
-                Some(Route::ShowDetail(*show_id, ShowDetailQuery::default()))
-            }
-            api::TaskKind::SyncMovie { movie_id, .. } => Some(Route::MovieDetail(*movie_id)),
-            // Land on the episode itself: its season, and its code as the fragment.
-            api::TaskKind::SyncEpisode { show_id, code, .. } => Some(Route::ShowDetail(
-                *show_id,
-                ShowDetailQuery {
-                    season: code.season,
-                    episode: Some(*code),
-                    ..ShowDetailQuery::default()
-                },
-            )),
-            api::TaskKind::SyncPerson { person_id, .. } => Some(Route::PersonDetail(*person_id)),
-            api::TaskKind::RefreshTopLanguages => None,
-        };
-
-        let on_navigate = route.map(|r| ctx.link().callback(move |_| Msg::Navigate(r.clone())));
+        let on_navigate =
+            task_route(&task.kind).map(|r| ctx.link().callback(move |_| Msg::Navigate(r.clone())));
 
         let id = task.id;
 
-        html! {
-            <div class="row mobile-column mobile-align-top">
-                <span class="row fill">
-                    <span class="item-inline">
-                        <span class={if spinning { "icon arrow-path" } else { "icon clock" }} />
-                    </span>
-
-                    <span class="row fill">
-                        { self.view_task_label(task, on_navigate) }
-                    </span>
-                </span>
-
-                if !spinning {
-                    <span class="row">
-                        <span class="text-muted">{ eta_label(task.run_at, self.time.now()) }</span>
-
-                        <Button icon="forward" title="Run now" onclick={ctx.link().callback(move |_| Msg::Bump(id))} />
-
-                        <Button icon="trash" variant={Variant::Danger} title="Remove from queue" onclick={ctx.link().callback(move |_| Msg::Remove(id))} />
-                    </span>
-                }
-            </div>
-        }
-    }
-
-    fn view_task_label(&self, task: &api::Task, on_navigate: Option<Callback<MouseEvent>>) -> Html {
-        let verb = match &task.kind {
-            api::TaskKind::SyncShow { .. } => "Updating show",
-            api::TaskKind::SyncMovie { .. } => "Updating movie",
-            api::TaskKind::SyncEpisode { .. } => "Updating episode",
-            api::TaskKind::SyncPerson { .. } => "Updating person",
-            api::TaskKind::RefreshTopLanguages => "Refreshing top languages",
+        let time = if spinning {
+            String::from("now")
+        } else {
+            eta_label(task.run_at, self.time.now())
         };
 
-        // Tasks without an associated show/movie show just the verb.
-        let has_target = !matches!(task.kind, api::TaskKind::RefreshTopLanguages);
-
         html! {
-            <>
-                <span class="text-muted">{verb}</span>
+            <div class="task-row">
+                <span class="task-icon">
+                    <span class={classes!("icon", if spinning { "arrow-path" } else { "clock" }, spinning.then_some("spin"))} />
+                </span>
 
-                if has_target {
-                    <span>{MDASH}</span>
+                { view_task_cells(&task.kind, on_navigate) }
 
-                    <span class={classes!("row", on_navigate.is_some().then_some("clickable"))} onclick={on_navigate}>
-                        if let Some(ref title) = task.kind.title() {
-                            {title}
-                        } else {
-                            <span class="text-muted">{"Untitled"}</span>
-                        }
+                <span class="task-time">{time}</span>
 
-                        if let Some(code) = task_code(&task.kind) {
-                            <span class="text-muted">{code}</span>
-                        }
-                    </span>
-                }
-            </>
+                <span class="task-actions">
+                    if !spinning {
+                        <div class="input-group">
+                            <Button icon="forward" title="Run now" onclick={ctx.link().callback(move |_| Msg::Bump(id))} />
+                            <Button icon="trash" variant={Variant::Danger} title="Remove from queue" onclick={ctx.link().callback(move |_| Msg::Remove(id))} />
+                        </div>
+                    }
+                </span>
+            </div>
         }
     }
 
@@ -546,7 +488,7 @@ impl Queue {
         });
 
         let body = html! {
-            <div class="column">
+            <div class="task-grid">
                 { for page_completed.map(|t| self.view_completed_row(ctx, t)) }
             </div>
         };
@@ -555,78 +497,72 @@ impl Queue {
     }
 
     fn view_completed_row(&self, ctx: &Context<Self>, task: &api::CompletedTask) -> Html {
-        let route = match &task.kind {
-            api::TaskKind::SyncShow { show_id, .. } => {
-                Some(Route::ShowDetail(*show_id, ShowDetailQuery::default()))
-            }
-            api::TaskKind::SyncMovie { movie_id, .. } => Some(Route::MovieDetail(*movie_id)),
-            // Land on the episode itself: its season, and its code as the fragment.
-            api::TaskKind::SyncEpisode { show_id, code, .. } => Some(Route::ShowDetail(
-                *show_id,
-                ShowDetailQuery {
-                    season: code.season,
-                    episode: Some(*code),
-                    ..ShowDetailQuery::default()
-                },
-            )),
-            api::TaskKind::SyncPerson { person_id, .. } => Some(Route::PersonDetail(*person_id)),
-            api::TaskKind::RefreshTopLanguages => None,
-        };
-
-        let on_navigate = route.map(|r| ctx.link().callback(move |_| Msg::Navigate(r.clone())));
+        let on_navigate =
+            task_route(&task.kind).map(|r| ctx.link().callback(move |_| Msg::Navigate(r.clone())));
 
         html! {
-            <div class="row mobile-column mobile-align-top">
-                <span class="row fill">
-                    <span class="item-inline"><span class="icon check" /></span>
+            <div class="task-row">
+                <span class="task-icon"><span class="icon check" /></span>
 
-                    <span class="row fill">
-                        { self.view_completed_label(task, on_navigate) }
-                    </span>
-                </span>
+                { view_task_cells(&task.kind, on_navigate) }
 
-                <span class="text-muted">{ ago_label(task.completed_at, self.time.now()) }</span>
+                <span class="task-time">{ ago_label(task.completed_at, self.time.now()) }</span>
+
+                <span class="task-actions" />
             </div>
         }
     }
+}
 
-    fn view_completed_label(
-        &self,
-        task: &api::CompletedTask,
-        on_navigate: Option<Callback<MouseEvent>>,
-    ) -> Html {
-        let verb = match &task.kind {
-            api::TaskKind::SyncShow { .. } => "Updated show",
-            api::TaskKind::SyncMovie { .. } => "Updated movie",
-            api::TaskKind::SyncEpisode { .. } => "Updated episode",
-            api::TaskKind::SyncPerson { .. } => "Updated person",
-            api::TaskKind::RefreshTopLanguages => "Refreshed top languages",
-        };
-
-        // Tasks without an associated show/movie show just the verb.
-        let has_target = !matches!(task.kind, api::TaskKind::RefreshTopLanguages);
-
-        html! {
-            <>
-                <span class="text-muted">{verb}</span>
-
-                if has_target {
-                    <span>{MDASH}</span>
-
-                    <span class="row clickable" onclick={on_navigate}>
-                        if let Some(ref title) = task.kind.title() {
-                            {title}
-                        } else {
-                            <span class="text-muted">{"Untitled"}</span>
-                        }
-
-                        if let Some(code) = task_code(&task.kind) {
-                            <span class="text-muted">{code}</span>
-                        }
-                    </span>
-                }
-            </>
+/// Where a task's subject is shown, if it has one.
+fn task_route(kind: &api::TaskKind) -> Option<Route> {
+    match kind {
+        api::TaskKind::SyncShow { show_id, .. } => {
+            Some(Route::ShowDetail(*show_id, ShowDetailQuery::default()))
         }
+        api::TaskKind::SyncMovie { movie_id, .. } => Some(Route::MovieDetail(*movie_id)),
+        // Land on the episode itself: its season, and its code as the fragment.
+        api::TaskKind::SyncEpisode { show_id, code, .. } => Some(Route::ShowDetail(
+            *show_id,
+            ShowDetailQuery {
+                season: code.season,
+                episode: Some(*code),
+                ..ShowDetailQuery::default()
+            },
+        )),
+        api::TaskKind::SyncPerson { person_id, .. } => Some(Route::PersonDetail(*person_id)),
+        api::TaskKind::RefreshTopLanguages => None,
+    }
+}
+
+/// The kind and subject cells of a task row.
+fn view_task_cells(kind: &api::TaskKind, on_navigate: Option<Callback<MouseEvent>>) -> Html {
+    let label = match kind {
+        api::TaskKind::SyncShow { .. } => "Show",
+        api::TaskKind::SyncMovie { .. } => "Movie",
+        api::TaskKind::SyncEpisode { .. } => "Episode",
+        api::TaskKind::SyncPerson { .. } => "Person",
+        api::TaskKind::RefreshTopLanguages => "Languages",
+    };
+
+    html! {
+        <>
+            <span class="task-kind">{label}</span>
+
+            <span class={classes!("task-title", on_navigate.is_some().then_some("clickable"))} onclick={on_navigate}>
+                if let api::TaskKind::RefreshTopLanguages = kind {
+                    <span class="text-muted">{"Top languages"}</span>
+                } else if let Some(title) = kind.title() {
+                    <span>{title}</span>
+                } else {
+                    <span class="text-muted">{"Untitled"}</span>
+                }
+
+                if let Some(code) = task_code(kind) {
+                    <span class="text-muted">{code}</span>
+                }
+            </span>
+        </>
     }
 }
 

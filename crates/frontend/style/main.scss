@@ -1486,3 +1486,89 @@ pagination {
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
+// Task lists on the Queue page: rows aligned in columns (status, kind,
+// subject, time, actions) on wide screens, stacking kind and time under the
+// subject on phones.
+.task-section {
+    display: flex;
+    flex-direction: column;
+    gap: v.$gap-xs;
+}
+
+.task-grid {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+    column-gap: v.$gap-sm;
+    font-size: v.$font-sm;
+
+    @include g.on-mobile {
+        grid-template-columns: auto minmax(0, 1fr) auto;
+    }
+}
+
+.task-row {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    align-items: center;
+    min-height: v.$input-height;
+    padding: 2px v.$gap-xs;
+    border-radius: v.$radius-sm;
+
+    &:nth-child(even) {
+        background: v.$bg-dark-transparent;
+    }
+
+    @include g.on-mobile {
+        grid-template-areas:
+            "icon title actions"
+            "icon meta actions";
+        padding: v.$gap-xs;
+
+        >.task-icon {
+            grid-area: icon;
+        }
+
+        >.task-title {
+            grid-area: title;
+        }
+
+        >.task-kind,
+        >.task-time {
+            grid-area: meta;
+        }
+
+        >.task-time {
+            justify-self: end;
+        }
+
+        >.task-actions {
+            grid-area: actions;
+        }
+    }
+}
+
+.task-icon {
+    display: flex;
+}
+
+.task-kind,
+.task-time {
+    color: v.$text-muted;
+    white-space: nowrap;
+}
+
+.task-title {
+    display: flex;
+    gap: v.$text-gap;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.task-actions {
+    display: flex;
+    justify-content: flex-end;
+}
