@@ -76,3 +76,38 @@ pub async fn labels_its_filters(driver: &mut TestDriver, _: &mut Track) -> Resul
         .wait_texts(".input-checkbox", ["Shows", "Movies"])
         .await
 }
+
+/// What's Next fits as many cards in a row as the width allows and says how
+/// long ago each became available, with the exact date on hover.
+pub async fn fills_rows_with_relative_dates(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    driver.set_window_size(1200, 900).await?;
+    driver.wait_texts(".pending-label", [FIRST]).await?;
+
+    let grid = driver.find_one_by(".pending-grid").await?;
+
+    driver
+        .wait_until("several cards to fit in a row", async || {
+            let style = grid.attr("style").await?;
+
+            let columns = style
+                .trim_start_matches("--pending-columns:")
+                .trim()
+                .parse::<usize>()
+                .unwrap_or(0);
+
+            Ok(columns >= 4)
+        })
+        .await?;
+
+    let date = driver.find_one_by(".pending-date").await?;
+    let text = date.text().await?;
+    ensure!(
+        text.ends_with(" ago"),
+        "expected a relative date, got {text:?}"
+    );
+    ensure!(
+        !date.attr("title").await?.is_empty(),
+        "the date has no exact form on hover"
+    );
+    Ok(())
+}

@@ -96,6 +96,35 @@ impl Timestamp {
         Self(JiffTimestamp::from_millisecond(ms).unwrap_or_else(|_| JiffTimestamp::now()))
     }
 
+    /// This timestamp relative to `now` in the largest whole unit, such as
+    /// `"in 3 hours"` or `"2 months ago"`.
+    pub fn relative_to(self, now: Timestamp) -> String {
+        const MINUTE: u64 = 60;
+        const HOUR: u64 = 60 * MINUTE;
+        const DAY: u64 = 24 * HOUR;
+
+        let ms = self.0.as_millisecond() - now.0.as_millisecond();
+        let secs = ms.unsigned_abs() / 1000;
+
+        let (n, unit) = match secs {
+            0..MINUTE => return String::from("just now"),
+            MINUTE..HOUR => (secs / MINUTE, "minute"),
+            HOUR..DAY => (secs / HOUR, "hour"),
+            _ if secs < 7 * DAY => (secs / DAY, "day"),
+            _ if secs < 30 * DAY => (secs / (7 * DAY), "week"),
+            _ if secs < 365 * DAY => (secs / (30 * DAY), "month"),
+            _ => (secs / (365 * DAY), "year"),
+        };
+
+        let plural = if n == 1 { "" } else { "s" };
+
+        if ms < 0 {
+            format!("{n} {unit}{plural} ago")
+        } else {
+            format!("in {n} {unit}{plural}")
+        }
+    }
+
     /// The duration from `earlier` until this timestamp, or `None` if this
     /// timestamp is not after `earlier`.
     #[inline]
@@ -830,5 +859,43 @@ impl IntoPropValue<VNode> for Date {
     #[inline]
     fn into_prop_value(self) -> VNode {
         self.to_string().into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn at(ms: i64) -> Timestamp {
+        Timestamp(JiffTimestamp::from_millisecond(ms).unwrap())
+    }
+
+    #[test]
+    fn relative_to() {
+        const DAY: i64 = 24 * 60 * 60 * 1000;
+
+        let now = at(1_700_000_000_000);
+        assert_eq!(at(1_700_000_000_000 - 30_000).relative_to(now), "just now");
+        assert_eq!(
+            at(1_700_000_000_000 + 60_000).relative_to(now),
+            "in 1 minute"
+        );
+        assert_eq!(
+            at(1_700_000_000_000 + 3 * 3_600_000).relative_to(now),
+            "in 3 hours"
+        );
+        assert_eq!(at(1_700_000_000_000 - DAY).relative_to(now), "1 day ago");
+        assert_eq!(
+            at(1_700_000_000_000 - 20 * DAY).relative_to(now),
+            "2 weeks ago"
+        );
+        assert_eq!(
+            at(1_700_000_000_000 - 70 * DAY).relative_to(now),
+            "2 months ago"
+        );
+        assert_eq!(
+            at(1_700_000_000_000 - 800 * DAY).relative_to(now),
+            "2 years ago"
+        );
     }
 }

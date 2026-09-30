@@ -1,5 +1,7 @@
 use core::cmp::Reverse;
 
+use gloo::events::EventListener;
+
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
@@ -41,7 +43,16 @@ pub(crate) struct WatchNext {
     _set_config_req: ws::Request,
     _add_pending_req: ws::Request,
     confirming_skip: Option<(api::ShowId, api::EpisodeId)>,
+    /// The grid, measured for how many cards fit in a row.
+    grid: NodeRef,
+    columns: usize,
+    _resize: EventListener,
 }
+
+/// The narrowest a card may get before the grid drops a column.
+const MIN_CARD_WIDTH: f64 = 200.0;
+/// The grid's gap, matching `$gap`.
+const GRID_GAP: f64 = 16.0;
 
 pub(crate) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
@@ -65,6 +76,7 @@ pub(crate) enum Msg {
     SetPage(usize),
     Navigate(Route),
     SetTime(TimeInfo),
+    Resized,
 }
 
 #[derive(Properties, PartialEq)]
@@ -127,6 +139,21 @@ impl Component for WatchNext {
             _set_config_req: ws::Request::default(),
             _add_pending_req: ws::Request::default(),
             confirming_skip: None,
+            grid: NodeRef::default(),
+            columns: 1,
+            _resize: {
+                let link = ctx.link().clone();
+                let window = web_sys::window().expect("Expected a window");
+                EventListener::new(&window, "resize", move |_| link.send_message(Msg::Resized))
+            },
+        }
+    }
+
+    fn rendered(&mut self, ctx: &Context<Self>, _: bool) {
+        // The column count depends on the rendered width, so a render that
+        // changes it (the first one, or new content) asks for another pass.
+        if self.measure_columns() {
+            ctx.link().send_message(Msg::Resized);
         }
     }
 
@@ -167,7 +194,7 @@ impl Component for WatchNext {
                     </div>
 
                     <div class="input-group desktop-only">
-                        <span class="input-label has-text" title="How many items are shown per page">{"Items"}</span>
+                        <span class="input-label has-text" title="How many rows are shown per page">{"Rows"}</span>
 
                         <Button icon="minus" title="Show fewer" onclick={link.callback(|_| Msg::AdjustPageSize(-1))} />
 
@@ -178,13 +205,13 @@ impl Component for WatchNext {
                 </div>
 
                 if !self.pending_loaded {
-                    <div class="pending-grid" style={format!("--pending-columns: {}", page_size)}>
+                    <div ref={self.grid.clone()} class="pending-grid" style={format!("--pending-columns: {}", self.columns)}>
                         { for (0..page_size).map(|_| Self::view_pending_skeleton()) }
                     </div>
                 } else if total == 0 {
                     <p class="text-muted">{"Nothing pending."}</p>
                 } else {
-                    <div class="pending-grid" style={format!("--pending-columns: {}", page_size)}>
+                    <div ref={self.grid.clone()} class="pending-grid" style={format!("--pending-columns: {}", self.columns)}>
                         { for self.ordered().skip(page * page_size).take(page_size).map(|p| self.view_pending_item(ctx, p)) }
                     </div>
                 }
@@ -211,8 +238,32 @@ impl Component for WatchNext {
 }
 
 impl WatchNext {
+    /// The configured page size rounded up to whole rows.
     fn page_size(&self) -> usize {
-        self.config.dashboard_page.max(1) as usize
+        let columns = self.columns.max(1);
+        (self.config.dashboard_page.max(1) as usize).div_ceil(columns) * columns
+    }
+
+    /// Measure how many cards fit in a row, returning whether it changed.
+    fn measure_columns(&mut self) -> bool {
+        let Some(grid) = self.grid.cast::<web_sys::Element>() else {
+            return false;
+        };
+
+        let width = grid.client_width() as f64;
+
+        if width <= 0.0 {
+            return false;
+        }
+
+        let columns = (((width + GRID_GAP) / (MIN_CARD_WIDTH + GRID_GAP)).floor() as usize).max(1);
+
+        if columns == self.columns {
+            return false;
+        }
+
+        self.columns = columns;
+        true
     }
 
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
@@ -395,12 +446,13 @@ impl WatchNext {
 
                 Ok(true)
             }
-            Msg::AdjustPageSize(delta) => {
-                let new_size = self
-                    .config
-                    .dashboard_page
-                    .saturating_add_signed(delta)
-                    .max(1);
+            Msg::AdjustPageSize(rows) => {
+                // Step a whole row at a time, from the rounded page size.
+                let columns = self.columns as u32;
+                let current = self.page_size() as u32;
+                let new_size = current
+                    .saturating_add_signed(rows * columns as i32)
+                    .max(columns);
                 self.config.dashboard_page = new_size;
                 self.clamp_page(ctx);
 
@@ -449,6 +501,11 @@ impl WatchNext {
             Msg::Navigate(route) => {
                 self.router.push(route);
                 Ok(false)
+            }
+            Msg::Resized => {
+                self.measure_columns();
+                self.clamp_page(ctx);
+                Ok(true)
             }
             Msg::SetTime(time) => {
                 self.time = time;
@@ -696,8 +753,10 @@ impl WatchNext {
                     <div class="pending-content">
                         {title}
 
-                        if let Some(s) = pending.human_date_time(self.time.clone()) {
-                            <span class="pending-date">{s}</span>
+                        if let Some(aired) = pending.aired() {
+                            <span class={classes!("pending-date", (aired > self.time.now()).then_some("upcoming"))} title={aired.human_date_time(self.time.clone()).to_string()}>
+                                {aired.relative_to(self.time.now())}
+                            </span>
                         }
                     </div>
 

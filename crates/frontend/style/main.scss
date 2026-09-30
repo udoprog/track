@@ -372,20 +372,13 @@ p {
 }
 
 .pending-title {
-    display: flex;
-    align-items: center;
-
-    color: v.$color-title;
+    display: block;
     font-size: v.$font-lg;
     color: v.$text-primary;
-    white-space: wrap;
-    min-height: v.$input-height;
-
-    @include g.on-desktop {
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
+    line-height: v.$input-height;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .item-title {
@@ -457,7 +450,7 @@ h6 {
 
 .pending-grid {
     display: grid;
-    grid-template-columns: repeat(var(--pending-columns, 4), 1fr);
+    grid-template-columns: repeat(var(--pending-columns, 4), minmax(0, 1fr));
     gap: v.$gap;
 
     @include g.on-mobile {
@@ -584,8 +577,12 @@ image {
 }
 
 .pending-date {
-    font-size: 12px;
+    font-size: v.$font-xs;
     color: v.$text-muted;
+
+    &.upcoming {
+        color: v.$color-primary;
+    }
 }
 
 .percentage-container {

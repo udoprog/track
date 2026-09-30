@@ -2148,7 +2148,7 @@ impl Default for Config {
             tvdb_api_key: String::new(),
             tvdb_pin: None,
             tmdb_api_key: String::new(),
-            dashboard_page: 5,
+            dashboard_page: 12,
             dashboard_lookahead: Duration::from_hours(24),
             schedule_weeks: 4,
             schedule_range_days: 3,
