@@ -1,101 +1,54 @@
 @use 'grid' as g;
 @use 'vars' as v;
 
-.mark-time-body {
-    display: flex;
-    flex-direction: row;
-    gap: v.$gap;
-
-    @include g.on-mobile {
-        flex-direction: column;
-        align-items: center;
-    }
-}
-
-.mark-time-clock {
+// The body of the watch-time popover (MarkTimeMenu): preset chips, then the
+// resolved time or the custom fields, then Cancel and Confirm.
+.mark-time {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: v.$gap-sm;
+    gap: v.$gap;
+    min-width: min(320px, 100%);
 }
 
-.mark-time-dial {
-    position: relative;
-    width: min(240px, calc(100vw - #{v.$gap-xs * 2}));
-    aspect-ratio: 1;
-    border-radius: 50%;
-    background: v.$bg-panel;
-    // Let pointer drag rotate the hand without the page scrolling on touch.
-    touch-action: none;
-    user-select: none;
-}
-
-.mark-time-hand {
-    position: absolute;
-    left: 50%;
-    bottom: 50%;
-    width: 4px;
-    margin-left: -1px;
-    background: v.$color-primary;
-    transform-origin: bottom center;
-    pointer-events: none;
-}
-
-.mark-time-number {
-    font-size: v.$font-sm;
-    font-weight: v.$bold-weight;
-    font-family: v.$monospace-font;
-    height: v.$input-height;
-    aspect-ratio: 1;
-    position: absolute;
-    transform: translate(-50%, -50%);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    cursor: pointer;
-
-    &.selected {
-        background: var(--accent-selected);
-        color: v.$text-on-accent;
-    }
-
-    @include g.on-mobile {
-        font-size: v.$font-lg;
-        height: v.$input-height-touch;
-    }
-}
-
-.mark-time-grid {
+// The custom date and time side by side, stacked on phones.
+.mark-time-fields {
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    text-align: center;
-}
-
-.mark-time-weekday {
-    font-size: v.$font-sm;
-}
-
-.mark-time-day {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: v.$radius-sm;
-    cursor: pointer;
-    width: v.$input-height;
-    height: v.$input-height;
-
-    &.selected {
-        background: var(--accent-selected);
-        color: v.$text-on-accent;
-    }
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: v.$gap-sm;
 
     @include g.on-mobile {
-        font-size: v.$font-lg;
-        width: v.$input-height-touch;
-        height: v.$input-height-touch;
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    >label {
+        display: flex;
+        flex-direction: column;
+        gap: v.$padding;
+        font-size: v.$font-sm;
+        color: v.$text-muted;
     }
 }
+
+// Kept in reach at the foot of the popover, even when its body scrolls.
+.mark-time-actions {
+    position: sticky;
+    bottom: -(v.$gap);
+    display: flex;
+    justify-content: flex-end;
+    gap: v.$gap-xs;
+    margin: 0 (-(v.$gap)) (-(v.$gap));
+    padding: v.$gap-sm v.$gap v.$gap;
+    background: v.$bg-surface;
+    border-top: 1px solid v.$border-subtle-transparent;
+
+    @include g.on-mobile {
+        >button {
+            flex: 1;
+            justify-content: center;
+        }
+    }
+}
+
 // The narrow trigger beside a quick mark button that opens the picker.
 .mark-time-more {
     // Set apart from the instant mark beside it, so they read as two targets.

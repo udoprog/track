@@ -2252,7 +2252,7 @@ impl ShowDetail {
 
         let preset = episode
             .aired
-            .map(|timestamp| TimePreset::at("calendar", "Air date", timestamp));
+            .map(|timestamp| TimePreset::at("calendar", "Aired", timestamp));
 
         html! {
             <div class={classes!("episode", (!watched.is_empty()).then_some("watched"))} id={episode.code()}>

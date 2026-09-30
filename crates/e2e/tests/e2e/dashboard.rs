@@ -58,7 +58,8 @@ pub async fn marks_watched_at_a_chosen_time(driver: &mut TestDriver, _: &mut Tra
         .click()
         .await?;
 
-    driver.find_one_by(".mark-time-dial").await?;
+    let date = driver.find_one_by(".context-menu input[type=date]").await?;
+    driver.find_one_by(".context-menu input[type=time]").await?;
 
     let trigger = more.rect().await?;
     let popover = menu.rect().await?;
@@ -70,6 +71,20 @@ pub async fn marks_watched_at_a_chosen_time(driver: &mut TestDriver, _: &mut Tra
         trigger.y + trigger.height
     );
 
+    // Pick a day and time as the browser's own fields would report them.
+    driver
+        .webdriver()
+        .execute(
+            "for (const [sel, value] of [['input[type=date]', '2024-01-02'], ['input[type=time]', '10:15']]) {
+                 const input = document.querySelector('.context-menu ' + sel);
+                 input.value = value;
+                 input.dispatchEvent(new Event('change', { bubbles: true }));
+             }",
+            Vec::new(),
+        )
+        .await?;
+    ensure!(date.value().await? == "2024-01-02");
+
     driver
         .find_one_by(".context-menu [title=Confirm]")
         .await?
@@ -77,7 +92,18 @@ pub async fn marks_watched_at_a_chosen_time(driver: &mut TestDriver, _: &mut Tra
         .await?;
 
     wait_label(driver, SECOND).await?;
-    Ok(())
+
+    // The episode was marked watched at the chosen time.
+    driver.find_one_by(".pending-title").await?.click().await?;
+    driver
+        .wait_until("the first episode to show the chosen time", async || {
+            let meta = driver.rendered_texts("[id='S01E01'] .episode-meta").await?;
+            Ok(meta.iter().any(|m| {
+                let words = m.split_whitespace().collect::<Vec<_>>().join(" ");
+                words.contains("Watched once 2nd of January, 2024 at 10:15")
+            }))
+        })
+        .await
 }
 
 /// The dashboard's filters say what they filter on wide screens too.

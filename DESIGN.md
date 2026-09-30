@@ -98,6 +98,9 @@ when it lacks something.
 - A quick action with a menu is a split button (`MarkTimeMenu quick`): the
   instant action and a `▾` that opens the choices, separated by a divider,
   both full targets.
+- The watch-time menu offers chips: *Now*, *Aired* (*Released* for movies)
+  and *Custom*, which shows the browser's own date and time fields. Cancel and
+  Confirm stay pinned at its foot.
 
 ### Tabs
 

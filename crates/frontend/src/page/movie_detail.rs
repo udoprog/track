@@ -1173,7 +1173,7 @@ impl MovieDetail {
             .filter(|&r| r <= self.time.now())
             .map(|ts| TimePreset::at("calendar", "Released", ts));
 
-        let release_preset = release_at.map(|ts| TimePreset::at("calendar", "When released", ts));
+        let release_preset = release_at.map(|ts| TimePreset::at("calendar", "Released", ts));
 
         let on_remove_next = link.callback(move |_| Msg::OnRemoveNext);
 

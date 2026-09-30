@@ -15,10 +15,7 @@
     }
 }
 
-// Date/time picker body (MarkTimeMenu) shown inside a `ContextMenu` popover.
-// The popover chrome and positioning live in `_context_menu.scss`; these
-// classes are the clock/calendar layout only clock-number and hand placement
-// come from inline transforms computed in Rust.
+// A popover's prompt, with the name it asks about in bold.
 .context-menu-header {
     display: flex;
     flex-wrap: wrap;
