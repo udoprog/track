@@ -2314,6 +2314,10 @@ pub struct CompletedTask {
     pub kind: TaskKind,
     /// Wall-clock time the task finished.
     pub completed_at: Timestamp,
+    /// How long the task ran.
+    pub duration: Duration,
+    /// Why the task failed, or `None` when it succeeded.
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Encode, Decode)]

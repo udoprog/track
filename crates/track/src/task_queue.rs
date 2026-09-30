@@ -15,6 +15,8 @@ use crate::remote::RemoteClients;
 use crate::sync;
 
 const TASK_DELAY: Duration = Duration::from_secs(5);
+/// Completed tasks kept for the queue page, newest first.
+const COMPLETED_HISTORY: usize = 500;
 
 struct ScheduledTask {
     run_at: Instant,
@@ -349,10 +351,11 @@ impl TaskQueue {
             info!(task_id = ?task.id, task_kind = ?task.kind, "Task started");
             let start = Instant::now();
             let result = execute(&task, &db, &remote, &broadcast, &pending, &shutdown).await;
+            let elapsed = start.elapsed();
 
-            match result {
+            let error = match result {
                 Ok(()) => {
-                    info!(?task.id, elapsed_ms = start.elapsed().as_millis(), "Task completed");
+                    info!(?task.id, elapsed_ms = elapsed.as_millis(), "Task completed");
 
                     match &task.kind {
                         api::TaskKind::SyncShow { show_id, .. } => {
@@ -390,16 +393,23 @@ impl TaskQueue {
                         | api::TaskKind::SyncPerson { .. }
                         | api::TaskKind::RefreshTopLanguages => {}
                     }
+
+                    None
                 }
                 Err(e) => {
                     error!(task_id = ?task.id, "Task failed: {e:#}");
+                    Some(format!("{e:#}"))
                 }
-            }
+            };
 
             let completed = api::CompletedTask {
                 id: task.id,
                 kind: task.kind.clone(),
                 completed_at: api::Timestamp::now(),
+                duration: api::Duration::from_millis(
+                    i64::try_from(elapsed.as_millis()).unwrap_or(i64::MAX),
+                ),
+                error,
             };
 
             {
@@ -421,6 +431,7 @@ impl TaskQueue {
                     api::TaskKind::RefreshTopLanguages => {}
                 }
                 inner.completed.push_front(completed.clone());
+                inner.completed.truncate(COMPLETED_HISTORY);
             }
 
             broadcast.emit(
@@ -473,5 +484,125 @@ async fn execute(
         api::TaskKind::RefreshTopLanguages => {
             crate::background::refresh_top_languages(db, broadcast).await
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use tokio::sync::broadcast;
+
+    use super::{COMPLETED_HISTORY, TaskQueue};
+    use crate::app_broadcast::Broadcaster;
+    use crate::db::{Database, OpenMode};
+    use crate::pending::PendingSystem;
+    use crate::remote::RemoteClients;
+    use crate::shutdown::Shutdown;
+
+    struct Running {
+        queue: TaskQueue,
+        broadcast: Broadcaster,
+        shutdown: Shutdown,
+        worker: tokio::task::JoinHandle<()>,
+        _dir: tempfile::TempDir,
+    }
+
+    impl Running {
+        fn start() -> Running {
+            let dir = tempfile::tempdir().unwrap();
+            let db = Database::open(dir.path().join("test.db"), OpenMode::Bulk, 1).unwrap();
+            let (tx, _) = broadcast::channel(4096);
+            let broadcast = Broadcaster::new(tx);
+            let queue = TaskQueue::new();
+            let shutdown = Shutdown::new();
+
+            let worker = tokio::spawn(queue.clone().run(
+                db.clone(),
+                RemoteClients::new(reqwest::Client::new()),
+                broadcast.clone(),
+                PendingSystem::new(db),
+                shutdown.clone(),
+            ));
+
+            Running {
+                queue,
+                broadcast,
+                shutdown,
+                worker,
+                _dir: dir,
+            }
+        }
+
+        /// Queue a sync of a show that does not exist, which fails without
+        /// touching the network.
+        async fn push_failing(&self) {
+            let kind = api::TaskKind::SyncShow {
+                show_id: api::ShowId::random(),
+                title: None,
+            };
+
+            assert!(self.queue.push(kind, true, &self.broadcast).await);
+        }
+
+        async fn stop(self) {
+            self.shutdown.cancel();
+            self.worker.await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn failed_task_reports_its_error() {
+        let running = Running::start();
+        let mut events = running.broadcast.subscribe();
+        running.push_failing().await;
+
+        let completed = tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                if let api::AppEventKind::TaskCompleted { task } = events.recv().await.unwrap().kind
+                {
+                    break task;
+                }
+            }
+        })
+        .await
+        .unwrap();
+
+        let error = completed.error.expect("the task failed");
+        assert!(error.contains("Expected show to exist"), "{error}");
+
+        let list = running.queue.list().await;
+        assert_eq!(list.completed.len(), 1);
+        assert!(list.completed[0].error.is_some());
+        running.stop().await;
+    }
+
+    #[tokio::test]
+    async fn completed_history_is_capped() {
+        let running = Running::start();
+
+        for _ in 0..COMPLETED_HISTORY + 5 {
+            running.push_failing().await;
+        }
+
+        tokio::time::timeout(Duration::from_secs(60), async {
+            loop {
+                let list = running.queue.list().await;
+
+                if list.pending.is_empty() && list.running.is_empty() {
+                    break;
+                }
+
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(
+            running.queue.list().await.completed.len(),
+            COMPLETED_HISTORY
+        );
+        running.stop().await;
     }
 }
