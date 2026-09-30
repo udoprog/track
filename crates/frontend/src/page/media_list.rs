@@ -269,8 +269,8 @@ impl Component for MediaList {
                             <Button icon={dir_icon} title={dir_title} onclick={link.callback(|_| Msg::ToggleDir)} />
                         </div>
 
-                        <div class="input-group">
-                            <Button icon={tracked_icon} title={format!("Showing: {tracked_label}")} text={tracked_label} onclick={link.callback(|_| Msg::CycleTracked)} />
+                        <div class="chips">
+                            <Button icon={tracked_icon} title={format!("Showing: {tracked_label}")} label={tracked_label} class={classes!("chip", (self.tracked != TrackedFilter::All).then_some("selected"))} onclick={link.callback(|_| Msg::CycleTracked)} />
 
                             <MediaKindToggle
                                 selection={self.selection}

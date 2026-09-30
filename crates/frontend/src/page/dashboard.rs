@@ -3,7 +3,7 @@ use yew::prelude::*;
 use crate::background::Background;
 use crate::error::Error;
 use crate::router::{DashboardQuery, DashboardView, MediaSelection, Route, Router};
-use crate::ui::MediaKindToggle;
+use crate::ui::{Button, MediaKindToggle};
 
 use super::{Calendar, ScheduleRange, WatchNext};
 
@@ -81,29 +81,23 @@ impl Component for Dashboard {
         let view = ctx.props().view;
         let selection = ctx.props().selection;
 
-        let tab = |v: DashboardView,
-                   icon: &'static str,
-                   label: &'static str,
-                   fill: Option<&'static str>| {
+        let tab = |v: DashboardView, icon: &'static str, label: &'static str| {
             let onclick = link.callback(move |_| Msg::SetView(v));
             html! {
-                <span class={classes!("input-text", "has-text", fill, (view == v).then_some("selected"))} {onclick}>
-                    <span class={classes!("icon", icon)} />
-                    {label}
-                </span>
+                <Button {icon} {label} title={label} class="tab" current={view == v} {onclick} />
             }
         };
 
         html! {
             <>
-                <div class="desktop-center desktop-row mobile-column">
-                    <div class="input-group">
-                        { tab(DashboardView::WatchNext, "forward", "What's Next", Some("mobile-fill")) }
-                        { tab(DashboardView::Upcoming, "calendar-days", "Upcoming", None) }
-                        { tab(DashboardView::Schedule, "calendar", "Schedule", None) }
-                    </div>
+                <div class="page-tabs">
+                    <nav class="tabs">
+                        { tab(DashboardView::WatchNext, "forward", "What's Next") }
+                        { tab(DashboardView::Upcoming, "calendar-days", "Upcoming") }
+                        { tab(DashboardView::Schedule, "calendar", "Schedule") }
+                    </nav>
 
-                    <div class="input-group">
+                    <div class="chips">
                         <MediaKindToggle selection={selection} on_change={link.callback(Msg::SetSelection)} />
                     </div>
                 </div>

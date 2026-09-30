@@ -164,7 +164,7 @@ impl Component for Search {
                     </div>
 
                     <controls>
-                        <div class="input-group">
+                        <div class="chips">
                             <MediaKindToggle
                                 selection={self.selection}
                                 on_change={link.callback(Msg::SelectionChanged)}

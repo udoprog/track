@@ -73,7 +73,36 @@ pub async fn marks_watched_at_a_chosen_time(driver: &mut TestDriver, _: &mut Tra
 /// The dashboard's filters say what they filter on wide screens too.
 pub async fn labels_its_filters(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     driver
-        .wait_texts(".input-checkbox", ["Shows", "Movies"])
+        .wait_texts(".tabs .tab", ["What's Next", "Upcoming", "Schedule"])
+        .await?;
+    driver
+        .wait_texts(".chips .chip.selected", ["Shows", "Movies"])
+        .await?;
+
+    driver
+        .find_one_by("[title='Show movies']")
+        .await?
+        .click()
+        .await?;
+    driver.wait_texts(".chips .chip.selected", ["Shows"]).await
+}
+
+/// The lookahead and page size wait behind a View options button instead of
+/// crowding the controls above the cards.
+pub async fn keeps_view_options_in_a_menu(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    driver.find_one_by("[title='View options']").await?;
+    ensure!(
+        driver.count("input[type=number]").await? == 0,
+        "the lookahead shows before View options is opened"
+    );
+
+    driver
+        .find_one_by("[title='View options']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .wait_texts(".context-menu label", ["LOOK AHEAD", "PER PAGE"])
         .await
 }
 

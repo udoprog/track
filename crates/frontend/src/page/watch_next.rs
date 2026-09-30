@@ -43,6 +43,9 @@ pub(crate) struct WatchNext {
     _set_config_req: ws::Request,
     _add_pending_req: ws::Request,
     confirming_skip: Option<(api::ShowId, api::EpisodeId)>,
+    /// Whether the view options popover (lookahead, page size) is open.
+    options_open: bool,
+    options_anchor: NodeRef,
     /// The grid, measured for how many cards fit in a row.
     grid: NodeRef,
     columns: usize,
@@ -77,6 +80,7 @@ pub(crate) enum Msg {
     Navigate(Route),
     SetTime(TimeInfo),
     Resized,
+    ToggleOptions,
 }
 
 #[derive(Properties, PartialEq)]
@@ -139,6 +143,8 @@ impl Component for WatchNext {
             _set_config_req: ws::Request::default(),
             _add_pending_req: ws::Request::default(),
             confirming_skip: None,
+            options_open: false,
+            options_anchor: NodeRef::default(),
             grid: NodeRef::default(),
             columns: 1,
             _resize: {
@@ -186,23 +192,46 @@ impl Component for WatchNext {
 
         html! {
             <div class="column">
-                <div class="row desktop-align-end">
-                    <div class="input-group desktop-only">
-                        <span class="input-label has-text" title="How far into the future pending items are shown">{"Lookahead"}</span>
+                <div class="page-controls">
+                    <span class="text-muted">
+                        if self.pending_loaded {
+                            { format!("{total} up next") }
+                        }
+                    </span>
 
-                        <DurationInput value={self.config.dashboard_lookahead} on_change={link.callback(Msg::LookaheadChanged)} />
+                    <div class="row">
+                        if total_pages > 1 {
+                            <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
+                        }
+
+                        <Button node_ref={self.options_anchor.clone()} icon="adjustments-horizontal" title="View options" class={classes!("chip", self.options_open.then_some("selected"))} onclick={link.callback(|_| Msg::ToggleOptions)} />
                     </div>
-
-                    <div class="input-group desktop-only">
-                        <span class="input-label has-text" title="How many rows are shown per page">{"Rows"}</span>
-
-                        <Button icon="minus" title="Show fewer" onclick={link.callback(|_| Msg::AdjustPageSize(-1))} />
-
-                        <Button icon="plus" title="Show more" onclick={link.callback(|_| Msg::AdjustPageSize(1))} />
-                    </div>
-
-                    <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
                 </div>
+
+                if self.options_open {
+                    <ContextMenu icon="adjustments-horizontal" prompt="View options" anchor={self.options_anchor.clone()} on_close={link.callback(|_| Msg::ToggleOptions)}>
+                        <div class="form">
+                            <div class="field">
+                                <label>{"Look ahead"}</label>
+                                <span class="hint">{"How far into the future upcoming episodes are included."}</span>
+
+                                <div class="input-group">
+                                    <DurationInput value={self.config.dashboard_lookahead} on_change={link.callback(Msg::LookaheadChanged)} />
+                                </div>
+                            </div>
+
+                            <div class="field">
+                                <label>{"Per page"}</label>
+
+                                <div class="row">
+                                    <Button icon="minus" title="Show a row fewer" onclick={link.callback(|_| Msg::AdjustPageSize(-1))} />
+                                    <span class="page-size">{page_size}</span>
+                                    <Button icon="plus" title="Show a row more" onclick={link.callback(|_| Msg::AdjustPageSize(1))} />
+                                </div>
+                            </div>
+                        </div>
+                    </ContextMenu>
+                }
 
                 if !self.pending_loaded {
                     <div ref={self.grid.clone()} class="pending-grid" style={format!("--pending-columns: {}", self.columns)}>
@@ -216,22 +245,11 @@ impl Component for WatchNext {
                     </div>
                 }
 
-                <div class="column mobile-only">
-                    <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
-
-                    <div class="input-group fill">
-                        <span class="input-label has-text fill" title="How many items are shown per page">{"Items"}</span>
-
-                        <Button icon="minus" title="Show fewer" onclick={link.callback(|_| Msg::AdjustPageSize(-1))} />
-                        <Button icon="plus" title="Show more" onclick={link.callback(|_| Msg::AdjustPageSize(1))} />
+                if total_pages > 1 {
+                    <div class="row center">
+                        <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
                     </div>
-
-                    <div class="input-group fill">
-                        <span class="input-label has-text fill" title="How far into the future pending items are shown">{"Lookahead"}</span>
-
-                        <DurationInput value={self.config.dashboard_lookahead} on_change={link.callback(Msg::LookaheadChanged)} />
-                    </div>
-                </div>
+                }
             </div>
         }
     }
@@ -505,6 +523,10 @@ impl WatchNext {
             Msg::Resized => {
                 self.measure_columns();
                 self.clamp_page(ctx);
+                Ok(true)
+            }
+            Msg::ToggleOptions => {
+                self.options_open = !self.options_open;
                 Ok(true)
             }
             Msg::SetTime(time) => {

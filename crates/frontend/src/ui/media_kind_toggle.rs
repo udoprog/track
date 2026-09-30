@@ -1,6 +1,7 @@
 use yew::prelude::*;
 
 use crate::router::MediaSelection;
+use crate::ui::Button;
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
@@ -8,9 +9,9 @@ pub(crate) struct Props {
     pub(crate) on_change: Callback<MediaSelection>,
 }
 
-/// The shows/movies checkbox pair shared by the media list and search. Renders
-/// as two `input-checkbox` spans (no wrapper) so it drops into an existing
-/// `input-group`.
+/// The shows/movies filter chips shared by the dashboard, the media list and
+/// search. Renders two chips (no wrapper) so it drops into an existing `.chips`
+/// row.
 #[function_component]
 pub(crate) fn MediaKindToggle(props: &Props) -> Html {
     let selection = props.selection;
@@ -27,17 +28,8 @@ pub(crate) fn MediaKindToggle(props: &Props) -> Html {
 
     html! {
         <>
-            <span class={classes!("input-checkbox", "has-text", "fill", selection.shows.then_some("checked"))} title="Show series" onclick={on_shows}>
-                <span class="mark" />
-                <span class="icon tv" />
-                <span>{"Shows"}</span>
-            </span>
-
-            <span class={classes!("input-checkbox", "has-text", "fill", selection.movies.then_some("checked"))} title="Show movies" onclick={on_movies}>
-                <span class="mark" />
-                <span class="icon film" />
-                <span>{"Movies"}</span>
-            </span>
+            <Button icon="tv" label="Shows" title="Show series" class={classes!("chip", selection.shows.then_some("selected"))} onclick={on_shows} />
+            <Button icon="film" label="Movies" title="Show movies" class={classes!("chip", selection.movies.then_some("selected"))} onclick={on_movies} />
         </>
     }
 }

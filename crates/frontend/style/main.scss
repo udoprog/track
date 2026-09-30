@@ -1197,30 +1197,29 @@ date {
     color: v.$color-primary;
 }
 
+// Compact page buttons: rounded, with the current page filled.
 pagination {
-    @include input-group-base;
+    display: flex;
     flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
     user-select: none;
 
-    @include g.on-desktop {
-        min-width: 32ch;
-    }
-
-    @include g.on-mobile {
-        min-width: 0;
-        flex: 1;
+    >button {
+        border-radius: 999px;
+        background: transparent;
     }
 
     >pages {
         display: flex;
-        font-size: v.$font-base;
-        font-family: v.$monospace-font;
+        gap: 2px;
+        font-size: v.$font-sm;
+        font-variant-numeric: tabular-nums;
         justify-content: center;
-        flex: 1;
-
-        background-color: v.$bg-surface;
 
         >ellipsis {
+            color: v.$text-muted;
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -1240,21 +1239,26 @@ pagination {
             align-items: center;
             justify-content: center;
 
-            width: v.$input-height;
+            min-width: v.$input-height;
             height: v.$input-height;
+            padding: 0 v.$padding-md;
+            border-radius: 999px;
+            color: v.$text-muted;
 
             @include g.on-mobile {
-                width: v.$input-height-touch;
+                min-width: v.$input-height-touch;
                 height: v.$input-height-touch;
+            }
+
+            &:hover {
+                background-color: var(--neutral-bg);
+                color: v.$text-color;
             }
 
             &.current {
                 font-weight: v.$bold-weight;
                 background-color: var(--accent-selected);
-            }
-
-            &:hover {
-                background-color: var(--accent-selected);
+                color: v.$text-color-selected;
             }
         }
     }
@@ -1678,4 +1682,108 @@ pagination {
 .task-actions {
     display: flex;
     justify-content: flex-end;
+}
+
+// The line above a list: its count on the left, paging and options on the right.
+.page-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: v.$gap-xs;
+    font-size: v.$font-sm;
+}
+
+.page-size {
+    min-width: 3ch;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+// Filter chips: rounded toggles, tinted while on.
+.chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: v.$gap-xs;
+}
+
+button.chip {
+    padding: 0 v.$padding-lg * 1.5;
+    border-radius: 999px;
+    border-color: v.$border-subtle;
+    background: transparent;
+    --icon-color: #{v.$text-muted};
+    color: v.$text-muted;
+
+    &:hover:not(.disabled):not(:disabled) {
+        border-color: v.$border-input;
+        color: v.$text-color;
+    }
+
+    &.selected {
+        background: color-mix(in srgb, v.$color-primary 18%, transparent);
+        border-color: color-mix(in srgb, v.$color-primary 45%, transparent);
+        --icon-color: #{v.$color-primary};
+        color: v.$text-color;
+    }
+}
+
+// A page's view tabs, underlined, with its filter chips on the same line.
+.page-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: v.$gap-xs v.$gap;
+    border-bottom: 1px solid v.$border-subtle;
+
+    >.chips {
+        padding-bottom: v.$padding-md;
+    }
+
+    @include g.on-mobile {
+        flex-direction: column;
+        align-items: stretch;
+        border-bottom: none;
+
+        >.tabs {
+            border-bottom: 1px solid v.$border-subtle;
+        }
+    }
+}
+
+.tabs {
+    display: flex;
+
+    >button.tab {
+        white-space: nowrap;
+        border: none;
+        border-radius: 0;
+        background: transparent;
+        padding: 0 v.$gap-sm;
+        font-weight: v.$bold-weight;
+        --icon-color: #{v.$text-muted};
+        color: v.$text-muted;
+        box-shadow: inset 0 -2px 0 transparent;
+
+        &:hover:not(.disabled):not(:disabled) {
+            color: v.$text-color;
+        }
+
+        &[aria-current] {
+            --icon-color: #{v.$color-primary};
+            color: v.$text-color;
+            box-shadow: inset 0 -2px 0 v.$color-primary;
+        }
+
+        @include g.on-mobile {
+            flex: 1;
+            justify-content: center;
+
+            >.icon {
+                display: none;
+            }
+        }
+    }
 }
