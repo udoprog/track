@@ -180,7 +180,7 @@ pub async fn shows_failed_tasks(driver: &mut TestDriver, _: &mut Track) -> Resul
         .await?;
 
     driver
-        .wait_texts("[title='Show failed tasks']", ["Failed 1"])
+        .wait_texts("[title='Show failed tasks'] .chip-count", ["1"])
         .await?;
     driver.wait_count(".task-row", 1).await?;
 

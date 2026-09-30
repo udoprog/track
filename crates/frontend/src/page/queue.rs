@@ -393,8 +393,8 @@ impl Queue {
         }
     }
 
-    /// The fixed strip above the timeline: what runs now (or next), the counts, and
-    /// Sync all. It never changes height.
+    /// The fixed card above the timeline: what runs now or next, and Sync all.
+    /// It never changes height.
     fn view_now(&self, ctx: &Context<Self>) -> Html {
         let running = self.entries.iter().find_map(|e| match e.state {
             State::Running { since } => Some((e, since)),
@@ -406,32 +406,40 @@ impl Queue {
             _ => None,
         });
 
-        let pending = self.entries.iter().filter(|e| e.is_pending()).count();
-        let failed = self.count(QueueFilter::Failed);
-        let done = self.count(QueueFilter::Done);
+        let (state, icon, caption, entry) = if let Some((entry, since)) = running {
+            (
+                "running",
+                "arrow-path spin",
+                running_label(since, self.now),
+                Some(entry),
+            )
+        } else if let Some((entry, run_at)) = next {
+            (
+                "waiting",
+                "clock",
+                format!("Up next {}", eta_label(run_at, self.now)),
+                Some(entry),
+            )
+        } else {
+            ("idle", "check", String::from("Idle"), None)
+        };
 
         html! {
-            <div class="queue-now" data-test="queue-now">
-                if let Some((entry, since)) = running {
-                    <span class="task-icon"><span class="icon arrow-path spin" /></span>
-                    { view_task_cells(&entry.kind, self.on_navigate(ctx, &entry.kind), None) }
-                    <span class="task-time">{ running_label(since, self.now) }</span>
-                } else if let Some((entry, run_at)) = next {
-                    <span class="task-icon"><span class="icon clock" /></span>
-                    { view_task_cells(&entry.kind, self.on_navigate(ctx, &entry.kind), None) }
-                    <span class="task-time">{ eta_label(run_at, self.now) }</span>
-                } else {
-                    <span class="task-icon"><span class="icon pause-circle" /></span>
-                    <span class="task-kind" />
-                    <span class="task-title text-muted">{"Idle"}</span>
-                    <span class="task-time" />
-                }
+            <div class={classes!("queue-now", state)} data-test="queue-now">
+                <span class="queue-now-badge"><span class={classes!("icon", icon)} /></span>
 
-                <span class="queue-counts">
-                    <span title="Pending"><span class="icon clock" />{pending}</span>
-                    <span title="Done"><span class="icon check" />{done}</span>
-                    <span class={classes!((failed > 0).then_some("failed"))} title="Failed"><span class="icon x-mark" />{failed}</span>
-                </span>
+                <div class="queue-now-text">
+                    <span class="queue-now-caption">{caption}</span>
+
+                    if let Some(entry) = entry {
+                        <span class="queue-now-title">
+                            <span class="badge">{kind_label(&entry.kind)}</span>
+                            { view_task_title(&entry.kind, self.on_navigate(ctx, &entry.kind), None) }
+                        </span>
+                    } else {
+                        <span class="queue-now-title">{"All caught up"}</span>
+                    }
+                </div>
 
                 <Button icon="arrow-path" label="Sync all" title="Queue sync for all show and movies" onclick={ctx.link().callback(|_| Msg::SyncAll)} />
             </div>
@@ -478,7 +486,9 @@ impl Queue {
             });
 
             html! {
-                <Button {icon} label={format!("{label} {}", self.count(f))} title={format!("Show {} tasks", label.to_lowercase())} variant={if filter == f { Variant::Primary } else { Variant::Secondary }} {onclick} />
+                <Button {icon} {label} title={format!("Show {} tasks", label.to_lowercase())} class={classes!("chip", (filter == f).then_some("selected"))} {onclick}>
+                    <span class="chip-count">{self.count(f)}</span>
+                </Button>
             }
         };
 
@@ -494,7 +504,7 @@ impl Queue {
         html! {
             <div class="column">
                 <div class="row-split queue-controls">
-                    <div class="input-group queue-filters">
+                    <div class="chips queue-filters">
                         { chip(QueueFilter::All, "queue-list", "All") }
                         { chip(QueueFilter::Upcoming, "clock", "Upcoming") }
                         { chip(QueueFilter::Done, "check", "Done") }
@@ -617,24 +627,38 @@ fn task_route(kind: &api::TaskKind) -> Option<Route> {
     }
 }
 
+/// What kind of task this is, in a word.
+fn kind_label(kind: &api::TaskKind) -> &'static str {
+    match kind {
+        api::TaskKind::SyncShow { .. } => "Show",
+        api::TaskKind::SyncMovie { .. } => "Movie",
+        api::TaskKind::SyncEpisode { .. } => "Episode",
+        api::TaskKind::SyncPerson { .. } => "Person",
+        api::TaskKind::RefreshTopLanguages => "Languages",
+    }
+}
+
 /// The kind and subject cells of a task row.
 fn view_task_cells(
     kind: &api::TaskKind,
     on_navigate: Option<Callback<MouseEvent>>,
     error: Option<&str>,
 ) -> Html {
-    let label = match kind {
-        api::TaskKind::SyncShow { .. } => "Show",
-        api::TaskKind::SyncMovie { .. } => "Movie",
-        api::TaskKind::SyncEpisode { .. } => "Episode",
-        api::TaskKind::SyncPerson { .. } => "Person",
-        api::TaskKind::RefreshTopLanguages => "Languages",
-    };
-
     html! {
         <>
-            <span class="task-kind">{label}</span>
+            <span class="task-kind">{kind_label(kind)}</span>
+            { view_task_title(kind, on_navigate, error) }
+        </>
+    }
+}
 
+/// A task's subject: its title, episode code and any error.
+fn view_task_title(
+    kind: &api::TaskKind,
+    on_navigate: Option<Callback<MouseEvent>>,
+    error: Option<&str>,
+) -> Html {
+    html! {
             <span class={classes!("task-title", on_navigate.is_some().then_some("clickable"))} onclick={on_navigate}>
                 if let api::TaskKind::RefreshTopLanguages = kind {
                     <span class="text-muted">{"Top languages"}</span>
@@ -652,7 +676,6 @@ fn view_task_cells(
                     <span class="task-error">{error}</span>
                 }
             </span>
-        </>
     }
 }
 
@@ -700,8 +723,8 @@ fn elapsed_label(since: api::Timestamp, now: api::Timestamp) -> Option<String> {
 /// What the Now strip says about the running task.
 fn running_label(since: Option<api::Timestamp>, now: api::Timestamp) -> String {
     match since.and_then(|since| elapsed_label(since, now)) {
-        Some(elapsed) => format!("running for {elapsed}"),
-        None => String::from("running"),
+        Some(elapsed) => format!("Running for {elapsed}"),
+        None => String::from("Running"),
     }
 }
 

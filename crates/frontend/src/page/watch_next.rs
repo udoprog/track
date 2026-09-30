@@ -748,7 +748,7 @@ impl WatchNext {
                         </span>
 
                         <span class="pending-label clickable" onclick={on_navigate_episode.clone()}>
-                            <span class="pending-code">{format!("{}E{number:02}", season.short())}</span>
+                            <span class="badge">{format!("{}E{number:02}", season.short())}</span>
                             {" "}
                             {episode.as_deref().unwrap_or("Untitled Episode")}
                         </span>

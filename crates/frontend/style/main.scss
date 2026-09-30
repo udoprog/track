@@ -606,8 +606,9 @@ image {
     @include clamp-lines(2);
 }
 
-// An episode code set as a small badge before the episode's name.
-.pending-code {
+// A short tag set before a name, such as an episode code or a task's kind.
+.badge {
+    flex: none;
     padding: 1px 6px;
     border-radius: v.$radius-sm;
     background: var(--neutral-bg);
@@ -1546,71 +1547,100 @@ pagination {
     text-overflow: ellipsis;
 }
 
-// The Queue page: a fixed strip for the running task, then one timeline of
-// fixed-height rows aligned in columns (status, kind, subject, duration, time,
-// actions) on wide screens, stacking kind and time under the subject on phones.
+// The Queue page: a fixed status card for the running or next task, then one
+// timeline of fixed-height rows aligned in columns (status, kind, subject,
+// duration, time, actions) on wide screens, stacking kind and time under the
+// subject on phones.
 .queue-now {
-    display: grid;
-    grid-template-columns: auto auto minmax(0, 1fr) auto auto auto;
-    align-items: center;
-    column-gap: v.$gap-sm;
-    height: v.$input-height + 2 * v.$padding-lg;
-    padding: 0 v.$padding-lg;
-    border: 1px solid v.$border-subtle;
-    border-radius: v.$radius;
-    background: v.$bg-surface;
-    font-size: v.$font-sm;
-
-    @include g.on-mobile {
-        grid-template-columns: auto auto minmax(0, 1fr) auto;
-        grid-template-areas:
-            "icon kind title time"
-            "counts counts counts sync";
-        height: 2 * v.$input-height-touch + 3 * v.$padding;
-        row-gap: v.$padding;
-        padding: v.$padding v.$padding-lg;
-
-        >.queue-counts {
-            grid-area: counts;
-        }
-
-        >button {
-            grid-area: sync;
-        }
-    }
-}
-
-.queue-counts {
     display: flex;
+    align-items: center;
     gap: v.$gap-sm;
-    color: v.$text-muted;
-    white-space: nowrap;
+    height: 64px;
+    padding: 0 v.$gap-sm;
+    border-radius: v.$radius-lg;
+    background: v.$bg-surface;
 
-    >span {
-        display: flex;
-        align-items: center;
-        gap: v.$text-gap;
-    }
-
-    .icon {
-        width: v.$icon-size-sm;
-        height: v.$icon-size-sm;
-    }
-
-    >.failed {
-        --icon-color: #{v.$color-danger};
-        color: v.$color-danger;
+    >button {
+        flex: none;
     }
 }
 
-.queue-filters>button {
-    white-space: nowrap;
+.queue-now-badge {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--neutral-bg);
+    --icon-color: #{v.$text-muted};
 
+    .queue-now.running & {
+        background: color-mix(in srgb, v.$color-primary 20%, transparent);
+        --icon-color: #{v.$color-primary};
+    }
+
+    .queue-now.idle & {
+        background: color-mix(in srgb, v.$color-success 18%, transparent);
+        --icon-color: #{v.$color-success};
+    }
+}
+
+.queue-now-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.queue-now-caption {
+    font-size: v.$font-xs;
+    color: v.$text-muted;
+
+    .queue-now.running & {
+        color: v.$color-primary;
+    }
+}
+
+.queue-now-title {
+    display: flex;
+    align-items: center;
+    gap: v.$padding-md;
+    min-width: 0;
+    font-weight: v.$bold-weight;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.queue-filters {
+    // Phones keep the chips on one line and scroll it rather than wrap.
     @include g.on-mobile {
-        >.icon {
-            display: none;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+
+    >button.chip {
+        white-space: nowrap;
+
+        @include g.on-mobile {
+            padding: 0 v.$padding-lg * 1.25;
+
+            >.icon {
+                display: none;
+            }
         }
     }
+}
+
+// A chip's count, quieter than its label.
+.chip-count {
+    font-variant-numeric: tabular-nums;
+    color: v.$text-muted;
+    font-weight: normal;
 }
 
 .task-grid {
