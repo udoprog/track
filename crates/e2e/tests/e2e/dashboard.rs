@@ -1,6 +1,6 @@
 use yew_e2e::prelude::*;
 
-use super::Track;
+use super::{Track, kept_marked, mark};
 
 const FIRST: &str = "S01E01 First Episode";
 const SECOND: &str = "S01E02 Second Episode";
@@ -365,6 +365,83 @@ pub async fn schedule_entries_sit_flush_left(driver: &mut TestDriver, _: &mut Tr
         title.x - entry.x <= 8.0,
         "the title is {}px in from the entry's edge",
         title.x - entry.x
+    );
+    Ok(())
+}
+
+/// Showing another day on Upcoming adds that day and keeps the days already
+/// shown, heading and entries alike, instead of rebuilding them.
+pub async fn upcoming_keeps_days_when_more_are_shown(
+    driver: &mut TestDriver,
+    _: &mut Track,
+) -> Result<()> {
+    const DAYS: &str = ".agenda-day";
+    const SHOWN: &str = ".agenda-day, .agenda-day *";
+
+    driver.set_window_size(1200, 900).await?;
+    driver.reopen_with("view=upcoming").await?;
+    driver.find_one_by(FUTURE).await?;
+
+    let days = driver.count(DAYS).await?;
+    let marked = mark(driver, SHOWN).await?;
+
+    driver
+        .find_one_by("[title='View options']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by("[title='More days']")
+        .await?
+        .click()
+        .await?;
+
+    driver.wait_count(DAYS, days + 1).await?;
+    driver.wait_count(".agenda-day .skeleton", 0).await?;
+
+    let kept = kept_marked(driver, SHOWN).await?;
+    ensure!(
+        kept == marked,
+        "only {kept} of the {marked} elements of the days shown were kept"
+    );
+    Ok(())
+}
+
+/// Showing another week on the Schedule adds that week and keeps the weeks
+/// already shown instead of rebuilding them.
+pub async fn schedule_keeps_weeks_when_more_are_shown(
+    driver: &mut TestDriver,
+    _: &mut Track,
+) -> Result<()> {
+    const WEEKS: &str = ".calendar-week";
+    const SHOWN: &str = ".calendar-week, .calendar-week *";
+
+    driver.set_window_size(1200, 900).await?;
+    driver.reopen_with("view=schedule").await?;
+    driver.find_first(".calendar-week").await?;
+    driver.wait_count(".calendar-week .skeleton", 0).await?;
+
+    let weeks = driver.count(WEEKS).await?;
+    let marked = mark(driver, SHOWN).await?;
+
+    driver
+        .find_one_by("[title='View options']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by("[title='More weeks']")
+        .await?
+        .click()
+        .await?;
+
+    driver.wait_count(WEEKS, weeks + 1).await?;
+    driver.wait_count(".calendar-week .skeleton", 0).await?;
+
+    let kept = kept_marked(driver, SHOWN).await?;
+    ensure!(
+        kept == marked,
+        "only {kept} of the {marked} elements of the weeks shown were kept"
     );
     Ok(())
 }

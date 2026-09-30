@@ -30,7 +30,7 @@ use tokio::task::JoinHandle;
 use tracing_subscriber::filter::{LevelFilter, Targets};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use yew_e2e::{Config, Fixture};
+use yew_e2e::{Config, Fixture, TestDriver};
 
 /// Media for the tests that ask for it with `(seeded)`.
 const SEED: &str = include_str!("seed.sql");
@@ -193,10 +193,38 @@ impl Server {
     }
 }
 
+/// Tag the elements `selector` matches with their text, returning how many
+/// there are, so [`kept_marked`] can tell later whether a render kept them or
+/// replaced or refilled them.
+async fn mark(driver: &TestDriver, selector: &str) -> Result<usize> {
+    let ret = driver
+        .webdriver()
+        .execute(
+            "const all = document.querySelectorAll(arguments[0]); \
+             for (const e of all) e.__marked = e.textContent; \
+             return all.length;",
+            vec![selector.into()],
+        )
+        .await?;
+    Ok(ret.convert()?)
+}
+
+/// How many elements [`mark`] tagged are still in the page with the same text.
+async fn kept_marked(driver: &TestDriver, selector: &str) -> Result<usize> {
+    let ret = driver
+        .webdriver()
+        .execute(
+            "return [...document.querySelectorAll(arguments[0])].filter(e => e.__marked === e.textContent).length;",
+            vec![selector.into()],
+        )
+        .await?;
+    Ok(ret.convert()?)
+}
+
 yew_e2e::harness! {
     Track;
-    dashboard::{fills_rows_with_relative_dates(seeded), labels_its_filters, keeps_view_options_in_a_menu, buttons_expose_their_state, secondary_actions_are_filled(seeded), mobile_cards_always_have_a_picture(seeded), schedule_names_its_days, upcoming_is_an_agenda, upcoming_times_open_their_episode(upcoming), schedule_entries_sit_flush_left(upcoming), marks_watched_in_one_click(seeded), marks_watched_at_a_chosen_time(seeded)},
-    media::{shows_a_poster_grid(seeded), partly_watched_shows_are_marked(seeded), toggle_marks_are_icon_sized, sort_stays_readable_at_tablet_width},
+    dashboard::{fills_rows_with_relative_dates(seeded), labels_its_filters, keeps_view_options_in_a_menu, buttons_expose_their_state, secondary_actions_are_filled(seeded), mobile_cards_always_have_a_picture(seeded), schedule_names_its_days, upcoming_is_an_agenda, upcoming_times_open_their_episode(upcoming), upcoming_keeps_days_when_more_are_shown(upcoming), schedule_keeps_weeks_when_more_are_shown(upcoming), schedule_entries_sit_flush_left(upcoming), marks_watched_in_one_click(seeded), marks_watched_at_a_chosen_time(seeded)},
+    media::{shows_a_poster_grid(seeded), partly_watched_shows_are_marked(seeded), toggle_marks_are_icon_sized, sort_stays_readable_at_tablet_width, reversing_keeps_the_cards(crowded)},
     movie::{puts_the_cast_beside_the_poster(movie), phone_release_line_stays_together(movie)},
     navigation::{opens_every_page, tab_shows_a_focus_ring, navigation_is_links(seeded), pages_have_landmarks_and_one_heading, page_scrolls_the_window, toolbar_icons_are_small, app_bar_items_have_room, errors_show_as_a_card, every_button_has_a_title(seeded)},
     people::{lists_people_by_credits(seeded), shows_no_count_while_loading(seeded), shows_a_silhouette_without_a_photo(seeded), phone_person_page_keeps_the_photo_shape(seeded), known_for_lists_each_title_once(seeded)},

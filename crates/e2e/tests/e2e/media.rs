@@ -1,6 +1,6 @@
 use yew_e2e::prelude::*;
 
-use super::Track;
+use super::{Track, kept_marked, mark};
 
 /// The Media page is a grid of posters saying what each item is and whether
 /// it has been watched.
@@ -115,5 +115,42 @@ pub async fn partly_watched_shows_are_marked(driver: &mut TestDriver, _: &mut Tr
     let badge = driver.find_one_by(".media-card .media-badge").await?;
     ensure!(badge.attr("class").await?.contains("partial"));
     ensure!(badge.attr("title").await? == "Partly watched: 2 episodes to go");
+    Ok(())
+}
+
+/// Reversing the order moves the cards instead of refilling each one with
+/// another title.
+pub async fn reversing_keeps_the_cards(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    const CARDS: &str = ".media-card";
+
+    driver
+        .find_one_by(".toolbar-item[title=Media]")
+        .await?
+        .click()
+        .await?;
+    driver.find_first(CARDS).await?;
+
+    let titles = driver.rendered_texts(".media-title").await?;
+    let marked = mark(driver, CARDS).await?;
+
+    driver
+        .find_one_by("[title='Ascending']")
+        .await?
+        .click()
+        .await?;
+
+    driver
+        .wait_until("the order to reverse", async || {
+            let mut now = driver.rendered_texts(".media-title").await?;
+            now.reverse();
+            Ok(now == titles)
+        })
+        .await?;
+
+    let kept = kept_marked(driver, CARDS).await?;
+    ensure!(
+        kept == marked,
+        "only {kept} of the {marked} cards were kept"
+    );
     Ok(())
 }

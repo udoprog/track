@@ -40,7 +40,11 @@ pub(crate) struct Calendar {
     /// `view` can look days up without building a map every render.
     schedule_index: HashMap<api::Date, usize>,
     config: api::Config,
-    loading: bool,
+    /// First and last day of the most recently requested window.
+    requested: Option<(api::Date, api::Date)>,
+    /// First and last day `schedule` covers. Days outside it show a skeleton
+    /// while their window loads; days inside keep their content.
+    loaded: Option<(api::Date, api::Date)>,
     time: TimeInfo,
     _time_handle: ContextHandle<TimeInfo>,
     background: Background,
@@ -95,7 +99,8 @@ impl Component for Calendar {
             schedule: Vec::new(),
             schedule_index: HashMap::new(),
             config: api::Config::default(),
-            loading: false,
+            requested: None,
+            loaded: None,
             time,
             _time_handle,
             background,
@@ -116,7 +121,7 @@ impl Component for Calendar {
         // every incidental prop/callback change. The week count lives in config
         // and is refetched via its own path.
         if props.week_offset != old.week_offset && self.channel.id() != ws::ChannelId::NONE {
-            self.load_schedule(ctx, true);
+            self.load_schedule(ctx);
         }
 
         true
@@ -147,8 +152,6 @@ impl Component for Calendar {
         // The reveal toggle only makes sense on the current week when there are
         // hidden past days (i.e. today is not the start of the week).
         let can_reveal_week_start = week_offset == 0 && today.weekday() != api::Weekday::Monday;
-
-        let loading = self.loading;
 
         let link = ctx.link();
 
@@ -215,25 +218,27 @@ impl Component for Calendar {
                 }
 
                 <div class="calendar-grid">
-                    { for weeks.iter().enumerate().map(|(index, (month_band, days))| {
-                        html! {
-                            <>
-                            if let Some(month_band) = month_band {
-                                <div key={format!("calendar-month-{index}")} class="calendar-month">
-                                    {month_band}
-                                </div>
-                            }
+                    { for weeks.iter().enumerate().flat_map(|(index, (month_band, days))| {
+                        let monday = days[0];
 
-                            if index == 0 {
-                                <div key="calendar-weekdays" class="calendar-weekdays desktop-only">
-                                    { for days.iter().map(|day| html! { <span>{day.weekday().short_name()}</span> }) }
-                                </div>
-                            }
+                        let band = month_band.as_ref().map(|month_band| html! {
+                            <div key={format!("calendar-month-{monday}")} class="calendar-month">
+                                {month_band}
+                            </div>
+                        });
 
-                            <div key={format!("calendar-week-{index}")} class="calendar-week">
+                        let weekdays = (index == 0).then(|| html! {
+                            <div key="calendar-weekdays" class="calendar-weekdays desktop-only">
+                                { for days.iter().map(|day| html! { <span>{day.weekday().short_name()}</span> }) }
+                            </div>
+                        });
+
+                        let week = html! {
+                            <div key={format!("calendar-week-{monday}")} class="calendar-week">
                                 { for days.iter().enumerate().map(|(index, &day)| {
                                     let is_today = day == today;
                                     let is_past  = day < today;
+                                    let known = self.loaded.is_some_and(|(first, last)| first <= day && day <= last);
                                     let mut items = self.schedule_index.get(&day).map(|&i| self.schedule[i].items()).unwrap_or_default();
                                     items.retain(|i| selection.contains(i.kind()));
 
@@ -243,7 +248,7 @@ impl Component for Calendar {
                                             is_today.then_some("today"),
                                             is_past.then_some("past"),
                                             (is_past && !show_past).then_some("desktop-only"),
-                                            (!loading && items.is_empty()).then_some("desktop-only"),
+                                            (known && items.is_empty()).then_some("desktop-only"),
                                         )}>
                                             <span class="calendar-day-number desktop-only">{day.day()}</span>
 
@@ -251,7 +256,7 @@ impl Component for Calendar {
                                                 { view_day_heading(day, today) }
                                             </div>
 
-                                            if loading {
+                                            if !known {
                                                 <Skeleton class="line" />
                                             } else if !items.is_empty() {
                                                 <div class="agenda-items">
@@ -262,8 +267,9 @@ impl Component for Calendar {
                                     }
                                 }) }
                             </div>
-                            </>
-                        }
+                        };
+
+                        band.into_iter().chain(weekdays).chain([week])
                     }) }
                 </div>
             </div>
@@ -284,7 +290,7 @@ impl Calendar {
             Msg::Channel(result) => {
                 self.channel = result?;
                 if self.channel.id() != ws::ChannelId::NONE {
-                    self.load_schedule(ctx, true);
+                    self.load_schedule(ctx);
                     self.load_config(ctx);
                 } else {
                     self.schedule.clear();
@@ -304,7 +310,7 @@ impl Calendar {
                         let weeks_changed = config.schedule_weeks != self.config.schedule_weeks;
                         self.config = config;
                         if weeks_changed && self.channel.id() != ws::ChannelId::NONE {
-                            self.load_schedule(ctx, false);
+                            self.load_schedule(ctx);
                         }
                         Ok(true)
                     }
@@ -318,7 +324,7 @@ impl Calendar {
                     | api::AppEventKind::WatchedChanged { .. }
                     | api::AppEventKind::TaskCompleted { .. } => {
                         if self.channel.id() != ws::ChannelId::NONE {
-                            self.load_schedule(ctx, false);
+                            self.load_schedule(ctx);
                         }
                         Ok(false)
                     }
@@ -326,7 +332,7 @@ impl Calendar {
                 }
             }
             Msg::ScheduleLoaded(result) => {
-                self.loading = false;
+                self.loaded = self.requested;
                 self.schedule = result
                     .context(Message::LoadingSchedule)?
                     .decode()
@@ -347,7 +353,7 @@ impl Calendar {
                 let weeks_changed = config.schedule_weeks != self.config.schedule_weeks;
                 self.config = config;
                 if weeks_changed && self.channel.id() != ws::ChannelId::NONE {
-                    self.load_schedule(ctx, false);
+                    self.load_schedule(ctx);
                 }
                 Ok(true)
             }
@@ -360,7 +366,7 @@ impl Calendar {
 
                 // Reload directly: our own SetConfig broadcast is filtered out.
                 if self.channel.id() != ws::ChannelId::NONE {
-                    self.load_schedule(ctx, true);
+                    self.load_schedule(ctx);
 
                     self._set_config_req = self
                         .channel
@@ -391,7 +397,7 @@ impl Calendar {
                 self.time = time;
 
                 if self.channel.id() != ws::ChannelId::NONE {
-                    self.load_schedule(ctx, false);
+                    self.load_schedule(ctx);
                 }
 
                 Ok(true)
@@ -399,14 +405,19 @@ impl Calendar {
         }
     }
 
-    fn load_schedule(&mut self, ctx: &Context<Self>, show_loading: bool) {
+    fn load_schedule(&mut self, ctx: &Context<Self>) {
         if self.channel.id() == ws::ChannelId::NONE {
             return;
         }
 
-        self.loading = show_loading;
         let weeks = self.config.schedule_weeks.max(1);
         let today = api::Date::today();
+
+        let first = window_start(today, ctx.props().week_offset);
+        self.requested = Some((
+            first,
+            first.checked_add_days(weeks * 7 - 1).unwrap_or(first),
+        ));
 
         // Start on the Monday of the visible window, then span whole weeks.
         let start_offset_days = ctx.props().week_offset * 7 - today.weekday().from_monday() as i32;

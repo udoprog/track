@@ -613,7 +613,7 @@ impl MediaList {
         let now = self.time.now();
 
         html! {
-            <div class="media-card lift" {onmouseover}>
+            <div key={format!("{kind:?}-{id}")} class="media-card lift" {onmouseover}>
                 <Link to={route.clone()} class="media-poster artwork" decorative=true>
                     <Image class="poster" placeholder=true src={m.poster.clone()} alt={title.to_owned()} />
 

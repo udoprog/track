@@ -368,7 +368,7 @@ impl PersonList {
         let route = Route::PersonDetail(p.id);
 
         html! {
-            <Link to={route} class="person-card lift">
+            <Link key={p.id.to_string()} to={route} class="person-card lift">
                 <Image class="person-photo artwork" placeholder={true} placeholder_icon="user" src={p.profile.clone()} alt={name.clone()} />
 
                 <div class="person-info">

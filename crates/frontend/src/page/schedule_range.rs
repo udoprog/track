@@ -34,7 +34,11 @@ pub(crate) struct ScheduleRange {
     /// `view_day` can look days up without building a map every render.
     schedule_index: HashMap<api::Date, usize>,
     config: api::Config,
-    loading: bool,
+    /// First and last day of the most recently requested window.
+    requested: Option<(api::Date, api::Date)>,
+    /// First and last day `schedule` covers. Days outside it show a skeleton
+    /// while their window loads; days inside keep their content.
+    loaded: Option<(api::Date, api::Date)>,
     time: TimeInfo,
     _time_handle: ContextHandle<TimeInfo>,
     background: Background,
@@ -89,7 +93,8 @@ impl Component for ScheduleRange {
             schedule: Vec::new(),
             schedule_index: HashMap::new(),
             config: api::Config::default(),
-            loading: false,
+            requested: None,
+            loaded: None,
             time,
             _time_handle,
             background,
@@ -107,7 +112,7 @@ impl Component for ScheduleRange {
         // Refetch only when the start offset actually changed. The day count
         // lives in config and is refetched via its own path.
         if ctx.props().day_offset != old.day_offset && self.channel.id() != ws::ChannelId::NONE {
-            self.load_schedule(ctx, true);
+            self.load_schedule(ctx);
         }
 
         true
@@ -128,12 +133,7 @@ impl Component for ScheduleRange {
         let offset = ctx.props().day_offset;
         let days_count = self.config.schedule_range_days.max(1) as usize;
 
-        let start = if offset >= 0 {
-            today.checked_add_days(offset as u32)
-        } else {
-            today.checked_sub_days(offset.unsigned_abs())
-        }
-        .unwrap_or(today);
+        let start = start_date(today, offset);
         let days: Vec<api::Date> = (0..days_count)
             .map(|i| start.checked_add_days(i as u32).unwrap_or(start))
             .collect();
@@ -199,7 +199,7 @@ impl ScheduleRange {
             Msg::Channel(result) => {
                 self.channel = result?;
                 if self.channel.id() != ws::ChannelId::NONE {
-                    self.load_schedule(ctx, true);
+                    self.load_schedule(ctx);
                     self.load_config(ctx);
                 } else {
                     self.schedule.clear();
@@ -220,7 +220,7 @@ impl ScheduleRange {
                             config.schedule_range_days != self.config.schedule_range_days;
                         self.config = config;
                         if days_changed && self.channel.id() != ws::ChannelId::NONE {
-                            self.load_schedule(ctx, false);
+                            self.load_schedule(ctx);
                         }
                         Ok(true)
                     }
@@ -234,7 +234,7 @@ impl ScheduleRange {
                     | api::AppEventKind::WatchedChanged { .. }
                     | api::AppEventKind::TaskCompleted { .. } => {
                         if self.channel.id() != ws::ChannelId::NONE {
-                            self.load_schedule(ctx, false);
+                            self.load_schedule(ctx);
                         }
                         Ok(false)
                     }
@@ -242,7 +242,7 @@ impl ScheduleRange {
                 }
             }
             Msg::ScheduleLoaded(result) => {
-                self.loading = false;
+                self.loaded = self.requested;
                 self.schedule = result
                     .context(Message::LoadingSchedule)?
                     .decode()
@@ -261,7 +261,7 @@ impl ScheduleRange {
                 let days_changed = config.schedule_range_days != self.config.schedule_range_days;
                 self.config = config;
                 if days_changed && self.channel.id() != ws::ChannelId::NONE {
-                    self.load_schedule(ctx, false);
+                    self.load_schedule(ctx);
                 }
                 Ok(true)
             }
@@ -274,7 +274,7 @@ impl ScheduleRange {
 
                 // Reload directly: our own SetConfig broadcast is filtered out.
                 if self.channel.id() != ws::ChannelId::NONE {
-                    self.load_schedule(ctx, true);
+                    self.load_schedule(ctx);
 
                     self._set_config_req = self
                         .channel
@@ -295,7 +295,7 @@ impl ScheduleRange {
             Msg::SetTime(time) => {
                 self.time = time;
                 if self.channel.id() != ws::ChannelId::NONE {
-                    self.load_schedule(ctx, false);
+                    self.load_schedule(ctx);
                 }
                 Ok(true)
             }
@@ -329,7 +329,7 @@ impl ScheduleRange {
             <section key={day.to_string()} class="agenda-day">
                 { view_day_heading(day, today) }
 
-                if self.loading {
+                if !self.loaded.is_some_and(|(first, last)| first <= day && day <= last) {
                     <Skeleton class="line" />
                 } else if items.is_empty() {
                     <p class="text-muted">{"Nothing airs"}</p>
@@ -342,12 +342,14 @@ impl ScheduleRange {
         }
     }
 
-    fn load_schedule(&mut self, ctx: &Context<Self>, show_loading: bool) {
+    fn load_schedule(&mut self, ctx: &Context<Self>) {
         if self.channel.id() == ws::ChannelId::NONE {
             return;
         }
 
-        self.loading = show_loading;
+        let days = self.config.schedule_range_days.max(1);
+        let first = start_date(api::Date::today(), ctx.props().day_offset);
+        self.requested = Some((first, first.checked_add_days(days - 1).unwrap_or(first)));
 
         self._schedule_req = self
             .channel
@@ -355,7 +357,7 @@ impl ScheduleRange {
             .body(api::ListScheduleRequest {
                 tz: self.time.tz().iana_name(),
                 start_offset_days: ctx.props().day_offset,
-                days: self.config.schedule_range_days.max(1),
+                days,
             })
             .on_packet(ctx.link().callback(Msg::ScheduleLoaded))
             .send();
@@ -373,4 +375,14 @@ impl ScheduleRange {
             .on_packet(ctx.link().callback(Msg::ConfigLoaded))
             .send();
     }
+}
+
+/// The first day shown, `offset` days from `today`.
+fn start_date(today: api::Date, offset: i32) -> api::Date {
+    if offset >= 0 {
+        today.checked_add_days(offset as u32)
+    } else {
+        today.checked_sub_days(offset.unsigned_abs())
+    }
+    .unwrap_or(today)
 }
