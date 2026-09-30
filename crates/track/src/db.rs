@@ -6575,6 +6575,7 @@ impl Database {
                 .and_then(|v| match v.as_str() {
                     "dark" => Some(ThemeType::Dark),
                     "light" => Some(ThemeType::Light),
+                    "system" => Some(ThemeType::System),
                     _ => None,
                 })
                 .unwrap_or_default();

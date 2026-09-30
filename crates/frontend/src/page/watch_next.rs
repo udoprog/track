@@ -697,19 +697,19 @@ impl WatchNext {
                     <div class="pending-actions">
                         <div class="input-group">
                             if aired_in_past {
-                                <MarkTimeMenu class="success" icon="check" title="Mark watched" prompt={format!("When did you watch this {}?", pending_kind.title())} preset={preset.clone()} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(kind, mark_time))}>
+                                <MarkTimeMenu class="primary" icon="check" title="Mark watched" prompt={format!("When did you watch this {}?", pending_kind.title())} preset={preset.clone()} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(kind, mark_time))}>
                                     <span class="icon check" />
                                 </MarkTimeMenu>
                             } else {
-                                <Button icon="check" variant={Variant::Success} title="Mark watched" onclick={ctx.link().callback(move |_| Msg::MarkWatched(kind, api::MarkTime::Now))} />
+                                <Button icon="check" variant={Variant::Primary} title="Mark watched" onclick={ctx.link().callback(move |_| Msg::MarkWatched(kind, api::MarkTime::Now))} />
                             }
 
-                            <MarkTimeMenu class="primary" title="Move pending" icon="bookmark" prompt={format!("When do you want to queue this {}?", pending_kind.title())} preset={preset.clone()} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkPending(pending_kind, mark_time))}>
+                            <MarkTimeMenu title="Move pending" icon="bookmark" prompt={format!("When do you want to queue this {}?", pending_kind.title())} preset={preset.clone()} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkPending(pending_kind, mark_time))}>
                                 <span class="icon bookmark" />
                             </MarkTimeMenu>
 
                             if let Some((show, episode)) = skip_ids {
-                                <Button key="skip-button" node_ref={anchor.clone()} icon="forward" variant={Variant::Danger} title="Skip episode" onclick={ctx.link().callback(move |_| Msg::AskSkipEpisode(show, episode))} />
+                                <Button key="skip-button" node_ref={anchor.clone()} icon="forward" title="Skip episode" onclick={ctx.link().callback(move |_| Msg::AskSkipEpisode(show, episode))} />
 
                                 if confirming && let Some(code) = skip_code {
                                     <ContextMenu icon="forward" prompt="Skip episode" label={code} anchor={anchor.clone()} on_close={ctx.link().callback(|_| Msg::CancelSkipEpisode)}>

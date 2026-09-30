@@ -71,7 +71,9 @@ pub(crate) struct ShowDetail {
     /// spins. Driven entirely by the task broadcasts, like [`Self::syncing`].
     syncing_episodes: HashSet<api::EpisodeId>,
     actions_expanded: bool,
-    episode_actions_expanded: HashSet<api::EpisodeId>,
+    /// The episode whose overflow menu is open, anchored to its trigger.
+    episode_menu: Option<api::EpisodeId>,
+    episode_menu_anchor: NodeRef,
     season_actions_expanded: HashSet<api::SeasonNumber>,
     confirm_remove_watch: Option<api::WatchedId>,
     watched_by_episode: HashMap<api::EpisodeId, Vec<WatchedState>>,
@@ -221,7 +223,7 @@ pub(crate) enum Msg {
     MoveWatchedDone(Result<ws::Packet<api::MoveWatchedEpisode>, ws::Error>),
     OrphanedLoaded(Result<ws::Packet<api::ListOrphanedWatched>, ws::Error>),
     ToggleActionsExpanded,
-    ToggleEpisodeActionsExpanded(api::EpisodeId),
+    ToggleEpisodeMenu(api::EpisodeId),
     ToggleSeasonActionsExpanded(api::SeasonNumber),
     ToggleOrphaned,
 }
@@ -289,7 +291,8 @@ impl Component for ShowDetail {
             syncing: false,
             syncing_episodes: HashSet::new(),
             actions_expanded: false,
-            episode_actions_expanded: HashSet::new(),
+            episode_menu: None,
+            episode_menu_anchor: NodeRef::default(),
             season_actions_expanded: HashSet::new(),
             confirm_remove_watch: None,
             watched_by_episode: HashMap::new(),
@@ -440,7 +443,7 @@ impl Component for ShowDetail {
 
                         <Button icon="cog-6-tooth" title="Settings" text="Settings" onclick={link.callback(|_| Msg::OpenSettingsModal)} />
 
-                        <Button node_ref={self.remove_anchor.clone()} icon="trash" variant={Variant::Danger} title="Remove show" text="Remove" onclick={link.callback(|_| Msg::ConfirmRemove)} />
+                        <Button node_ref={self.remove_anchor.clone()} icon="trash" variant={Variant::Danger} class="detached" title="Remove show" text="Remove" onclick={link.callback(|_| Msg::ConfirmRemove)} />
 
                         if self.confirm_remove {
                             <ContextMenu prompt="Remove show" label={show.strings.title().map(str::to_owned)} anchor={self.remove_anchor.clone()} on_close={ctx.link().callback(|_| Msg::CancelRemove)}>
@@ -890,7 +893,7 @@ impl ShowDetail {
                 Ok(true)
             }
             Msg::MarkWatched(show, episode, mark_time) => {
-                self.episode_actions_expanded.remove(&episode);
+                self.episode_menu = None;
 
                 if self.channel.id() != ws::ChannelId::NONE {
                     self._mark_req = self
@@ -924,8 +927,8 @@ impl ShowDetail {
 
                 self.actions_expanded = false;
 
-                if let api::WatchedKind::Episode { episode, .. } = kind {
-                    self.episode_actions_expanded.remove(&episode);
+                if let api::WatchedKind::Episode { .. } = kind {
+                    self.episode_menu = None;
                 }
 
                 if self.orphaned.is_empty() && props.orphaned {
@@ -1069,6 +1072,7 @@ impl ShowDetail {
                 Ok(false)
             }
             Msg::SyncEpisode(episode_id) => {
+                self.episode_menu = None;
                 let show_id = props.show_id;
 
                 if self.channel.id() != ws::ChannelId::NONE {
@@ -1090,6 +1094,7 @@ impl ShowDetail {
                 Ok(false)
             }
             Msg::ToggleHistory(id) => {
+                self.episode_menu = None;
                 if !self.history_expanded.insert(id) {
                     self.history_expanded.remove(&id);
                 }
@@ -1124,7 +1129,7 @@ impl ShowDetail {
                 Ok(true)
             }
             Msg::OnWatchNext(episode_id, mark_time) => {
-                self.episode_actions_expanded.remove(&episode_id);
+                self.episode_menu = None;
 
                 let show_id = props.show_id;
 
@@ -1155,7 +1160,7 @@ impl ShowDetail {
                 Ok(false)
             }
             Msg::OnRemoveNext(episode_id) => {
-                self.episode_actions_expanded.remove(&episode_id);
+                self.episode_menu = None;
                 let show_id = props.show_id;
 
                 if self.channel.id() != ws::ChannelId::NONE {
@@ -1494,6 +1499,7 @@ impl ShowDetail {
                 Ok(true)
             }
             Msg::OpenEpisodeTranslations(episode_id) => {
+                self.episode_menu = None;
                 self.episode_translations = Some(episode_id);
                 Ok(true)
             }
@@ -1502,6 +1508,7 @@ impl ShowDetail {
                 Ok(true)
             }
             Msg::OpenEpisodeReleases(episode_id) => {
+                self.episode_menu = None;
                 self.episode_releases_modal = Some(episode_id);
                 Ok(true)
             }
@@ -1510,6 +1517,7 @@ impl ShowDetail {
                 Ok(true)
             }
             Msg::OpenEpisodeCache(episode_id) => {
+                self.episode_menu = None;
                 self.episode_cache_modal = Some(episode_id);
                 Ok(true)
             }
@@ -1676,12 +1684,8 @@ impl ShowDetail {
                 self.actions_expanded = !self.actions_expanded;
                 Ok(true)
             }
-            Msg::ToggleEpisodeActionsExpanded(episode_id) => {
-                if !self.episode_actions_expanded.insert(episode_id) {
-                    self.episode_actions_expanded.remove(&episode_id);
-                    self.history_expanded.remove(&episode_id);
-                }
-
+            Msg::ToggleEpisodeMenu(episode_id) => {
+                self.episode_menu = (self.episode_menu != Some(episode_id)).then_some(episode_id);
                 Ok(true)
             }
             Msg::ToggleSeasonActionsExpanded(season) => {
@@ -2201,7 +2205,8 @@ impl ShowDetail {
         let on_toggle_history =
             (!watched.is_empty()).then(|| link.callback(move |_| Msg::ToggleHistory(episode_id)));
 
-        let actions_expanded = self.episode_actions_expanded.contains(&episode_id);
+        let menu_open = self.episode_menu == Some(episode_id);
+        let on_toggle_menu = link.callback(move |_: MouseEvent| Msg::ToggleEpisodeMenu(episode_id));
         let syncing = self.syncing_episodes.contains(&episode_id);
 
         let on_remove_next = link.callback(move |_| Msg::OnRemoveNext(episode_id));
@@ -2235,39 +2240,54 @@ impl ShowDetail {
                             </div>
                         </div>
 
-                        <div class="toolbar-toggle">
-                            <button onclick={link.callback(move |_| Msg::ToggleEpisodeActionsExpanded(episode_id))}>
-                                <span class={classes!("icon", if actions_expanded { "ellipsis-horizontal" } else { "bars-2" })} />
-                            </button>
-                        </div>
-
-                        <div class={classes!("toolbar-dropdown", "desktop-input-group", (!actions_expanded).then_some("desktop-only"))}>
-                            <MarkTimeMenu class="success has-text" icon="check" title="Mark watched" prompt={format!("When did you watch {}?", episode.code())} preset={preset.clone()} on_confirm={on_mark_confirm}>
+                        <div class="input-group">
+                            <MarkTimeMenu class="success" icon="check" title="Mark watched" prompt={format!("When did you watch {}?", episode.code())} preset={preset.clone()} on_confirm={on_mark_confirm}>
                                 <span class="icon check" />
-                                <span class="mobile-only">{"Mark watched"}</span>
                             </MarkTimeMenu>
 
                             if episode.pending.is_some() {
-                                <Button icon="bookmark" variant={Variant::Primary} title="Clear next episode" text="Clear next episode" onclick={on_remove_next} />
+                                <Button icon="bookmark" variant={Variant::Primary} title="Clear next episode" onclick={on_remove_next} />
                             } else {
-                                <MarkTimeMenu class="has-text" icon="bookmark" title="Mark next" prompt={format!("When do you want to queue {}?", episode.code())} preset={preset.clone()} on_confirm={on_next_episode}>
+                                <MarkTimeMenu icon="bookmark" title="Mark next" prompt={format!("When do you want to queue {}?", episode.code())} preset={preset.clone()} on_confirm={on_next_episode}>
                                     <span class="icon bookmark-slash" />
-                                    <span class="mobile-only">{"Set as next episode"}</span>
                                 </MarkTimeMenu>
                             }
 
-                            <Button icon="arrow-path" spin={syncing} title="Sync episode" text="Sync episode" onclick={link.callback(move |_| Msg::SyncEpisode(episode_id))} />
-
-                            <Button icon="language" title="Translations" text="Translations" onclick={link.callback(move |_| Msg::OpenEpisodeTranslations(episode_id))} />
-
-                            <Button icon="calendar" title="Air dates" text="Air dates" onclick={link.callback(move |_| Msg::OpenEpisodeReleases(episode_id))} />
-
-                            <Button icon="circle-stack" title="Cache" text="Cache" onclick={link.callback(move |_| Msg::OpenEpisodeCache(episode_id))} />
-
-                            if let Some(on_toggle) = on_toggle_history {
-                                <Button icon="clock" title="Watch history" text="Watch history" onclick={on_toggle} />
-                            }
+                            <Button node_ref={if menu_open { self.episode_menu_anchor.clone() } else { NodeRef::default() }} icon="ellipsis-horizontal" class={classes!(menu_open.then_some("selected"))} title="More actions" onclick={on_toggle_menu.clone()} />
                         </div>
+
+                        if menu_open {
+                            <ContextMenu anchor={self.episode_menu_anchor.clone()} on_close={link.callback(move |()| Msg::ToggleEpisodeMenu(episode_id))}>
+                                <div class="menu-list">
+                                    <button class="has-text" onclick={link.callback(move |_| Msg::SyncEpisode(episode_id))}>
+                                        <span class={classes!("icon", "arrow-path", syncing.then_some("spin"))} />
+                                        <span>{"Sync episode"}</span>
+                                    </button>
+
+                                    <button class="has-text" onclick={link.callback(move |_| Msg::OpenEpisodeTranslations(episode_id))}>
+                                        <span class="icon language" />
+                                        <span>{"Translations"}</span>
+                                    </button>
+
+                                    <button class="has-text" onclick={link.callback(move |_| Msg::OpenEpisodeReleases(episode_id))}>
+                                        <span class="icon calendar" />
+                                        <span>{"Air dates"}</span>
+                                    </button>
+
+                                    <button class="has-text" onclick={link.callback(move |_| Msg::OpenEpisodeCache(episode_id))}>
+                                        <span class="icon circle-stack" />
+                                        <span>{"Cache"}</span>
+                                    </button>
+
+                                    if let Some(on_toggle) = on_toggle_history {
+                                        <button class="has-text" onclick={on_toggle}>
+                                            <span class="icon clock" />
+                                            <span>{if history_expanded { "Hide watch history" } else { "Watch history" }}</span>
+                                        </button>
+                                    }
+                                </div>
+                            </ContextMenu>
+                        }
                     </div>
 
                     <indicator title="Air date">

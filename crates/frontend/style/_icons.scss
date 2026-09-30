@@ -1,5 +1,6 @@
 @use 'icons_generated' as icons;
 @use 'vars' as v;
+@use 'grid' as g;
 
 @mixin icon($name) {
     &.#{$name} {
@@ -26,8 +27,13 @@
     display: inline-block;
     vertical-align: middle;
 
-    height: 100%;
+    height: v.$icon-size;
     aspect-ratio: 1;
+    flex-shrink: 0;
+
+    @include g.on-mobile {
+        height: v.$icon-size-touch;
+    }
 
     &.primary {
         --icon-color: #{v.$color-primary};
@@ -46,7 +52,7 @@
     }
 
     &.sm {
-        height: 80%;
+        height: v.$icon-size-sm;
     }
 
     mask-size: contain;

@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link data-trunk rel="icon" href="favicon.png" />
     <title>Track</title>
+    <script>
+      try {
+        const theme = localStorage.getItem('theme');
+        if (theme === 'dark' || theme === 'light') document.documentElement.dataset.theme = theme;
+      } catch (e) {}
+    </script>
     <link data-trunk rel="scss" href="style/main.scss"/>
     <link data-trunk rel="copy-dir" href="../../3rdparty/heroicons/optimized/24/solid" data-target-path="static/icons" />
     <link data-trunk rel="copy-dir" href="../../3rdparty/flag-icons/flags/4x3" data-target-path="static/flags" />

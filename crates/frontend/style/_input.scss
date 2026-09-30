@@ -1,4 +1,3 @@
-@use 'sass:color';
 
 @use 'vars' as v;
 @use 'grid' as g;
@@ -57,11 +56,11 @@
     }
 }
 
-@mixin button-color($color) {
-    background-color: color.adjust($color, $lightness: v.$adjust-bg);
+@mixin button-color($name) {
+    background-color: var(--#{$name}-bg);
 
     &.selected {
-        background-color: $color;
+        background-color: var(--#{$name}-selected);
     }
 }
 
@@ -125,18 +124,18 @@ button,
         cursor: pointer;
     }
 
-    @include button-color(v.$color-secondary);
+    @include button-color(neutral);
 
     &.primary {
-        @include button-color(v.$color-primary);
+        @include button-color(accent);
     }
 
     &.success {
-        @include button-color(v.$color-success);
+        @include button-color(success);
     }
 
     &.danger {
-        @include button-color(v.$color-danger);
+        @include button-color(danger);
     }
 
     &.fill {
@@ -157,7 +156,7 @@ button,
 .input-label {
     @include input-base($hover: false, $has-border: false);
 
-    background-color: color.adjust(v.$color-secondary, $lightness: v.$adjust-bg);
+    background-color: var(--neutral-bg);
 }
 
 .input-text {
@@ -166,8 +165,8 @@ button,
     &.selected {
         --icon-color: #{v.$text-color-selected};
         color: v.$text-color-selected;
-        background-color: color.adjust(v.$color-primary, $lightness: v.$adjust-bg);
-        border-color: color.adjust(v.$color-primary, $lightness: v.$adjust-bg);
+        background-color: var(--accent-selected);
+        border-color: var(--accent-selected);
     }
 }
 

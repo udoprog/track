@@ -1129,7 +1129,7 @@ impl MovieDetail {
 
                             <Button icon="cog-6-tooth" title="Settings" text="Settings" onclick={link.callback(|_| Msg::OpenSettingsModal)} />
 
-                            <Button node_ref={self.remove_anchor.clone()} icon="trash" variant={Variant::Danger} title="Remove movie" text="Remove" onclick={link.callback(|_| Msg::ConfirmRemove)} />
+                            <Button node_ref={self.remove_anchor.clone()} icon="trash" variant={Variant::Danger} class="detached" title="Remove movie" text="Remove" onclick={link.callback(|_| Msg::ConfirmRemove)} />
 
                             if self.confirm_remove {
                                 <ContextMenu prompt="Remove movie" label={movie.strings.title().map(str::to_owned)} anchor={self.remove_anchor.clone()} on_close={link.callback(|_| Msg::CancelRemove)}>

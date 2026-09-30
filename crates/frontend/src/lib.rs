@@ -6,6 +6,7 @@ mod error;
 mod page;
 mod router;
 mod setup_channel;
+mod theme;
 mod ui;
 
 use self::app::App;

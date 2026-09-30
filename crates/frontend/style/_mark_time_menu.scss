@@ -56,8 +56,8 @@
     cursor: pointer;
 
     &.selected {
-        background: v.$color-primary;
-        color: #fff;
+        background: var(--accent-selected);
+        color: v.$text-on-accent;
     }
 
     @include g.on-mobile {
@@ -86,8 +86,8 @@
     height: v.$input-height;
 
     &.selected {
-        background: v.$color-primary;
-        color: #fff;
+        background: var(--accent-selected);
+        color: v.$text-on-accent;
     }
 
     @include g.on-mobile {

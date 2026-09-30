@@ -1092,6 +1092,8 @@ pub enum ThemeType {
     #[default]
     Dark,
     Light,
+    /// Follow the browser's `prefers-color-scheme`.
+    System,
 }
 
 impl ThemeType {
@@ -1099,6 +1101,7 @@ impl ThemeType {
         match self {
             ThemeType::Dark => "dark",
             ThemeType::Light => "light",
+            ThemeType::System => "system",
         }
     }
 }
@@ -1118,6 +1121,7 @@ impl ::sqll::FromColumn<'_> for ThemeType {
         match s.as_str() {
             "dark" => Ok(ThemeType::Dark),
             "light" => Ok(ThemeType::Light),
+            "system" => Ok(ThemeType::System),
             other => Err(::sqll::Error::custom(format!("unknown theme: {other}"))),
         }
     }

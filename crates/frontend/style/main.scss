@@ -1,3 +1,4 @@
+@use 'theme';
 @use 'icons';
 @use 'logos';
 @use 'flags';
@@ -10,7 +11,6 @@
 @use 'credits';
 @use 'person';
 
-@use 'sass:color';
 @use 'grid' as g;
 @use 'input' as i;
 @use 'vars' as v;
@@ -68,7 +68,7 @@ p {
     padding: v.$gap;
     align-items: start;
 
-    background: color.adjust(v.$color-danger, $lightness: v.$adjust-bg);
+    background: var(--danger-bg);
     border-style: solid;
     border-width: 0;
     border-color: v.$color-danger;
@@ -261,16 +261,8 @@ p {
     align-items: center;
     height: $input-height;
 
-    >.icon {
-        height: $input-height * 0.8;
-    }
-
     @include g.on-mobile {
         height: $input-height-touch;
-
-        >.icon {
-            height: $input-height-touch * 0.8;
-        }
     }
 
     &.primary {
@@ -495,7 +487,7 @@ h6 {
         background-image: linear-gradient(
             100deg,
             transparent 30%,
-            rgba(255, 255, 255, 0.10) 50%,
+            color-mix(in srgb, var(--text) 10%, transparent) 50%,
             transparent 70%
         );
         background-size: 200% 100%;
@@ -692,8 +684,8 @@ image {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: v.$color-secondary;
-    color: color.adjust(v.$color-secondary, $lightness: -50%);
+    background: var(--neutral-selected);
+    color: v.$text-primary;
     border: 1px solid v.$border-subtle-transparent;
     border-radius: v.$radius;
     padding: 0 v.$padding;
@@ -802,17 +794,9 @@ image {
         opacity: 1;
     }
 
-    >.icon {
-        height: v.$input-height * 0.8;
-    }
-
     @include g.on-mobile {
         height: v.$input-height-touch;
         min-width: v.$input-height-touch;
-
-        >.icon {
-            height: v.$input-height-touch * 0.8;
-        }
     }
 }
 
@@ -872,7 +856,7 @@ image {
     background-repeat: no-repeat;
     filter: blur(8px);
     transform: scale(1.08);
-    opacity: 0.35;
+    opacity: var(--backdrop-opacity);
     pointer-events: none;
     z-index: 0;
     // Each backdrop is a fresh, keyed element, so this replays on every switch.
@@ -885,7 +869,7 @@ image {
     }
 
     to {
-        opacity: 0.35;
+        opacity: var(--backdrop-opacity);
     }
 }
 
@@ -906,6 +890,17 @@ image {
 
         &:only-child {
             border-radius: v.$radius-sm !important;
+        }
+
+        // Set apart from the group, e.g. a destructive action.
+        &.detached {
+            margin-inline-start: v.$gap-sm;
+            border-radius: v.$radius-sm !important;
+        }
+
+        &:has(+ .detached) {
+            border-start-end-radius: v.$radius-sm !important;
+            border-end-end-radius: v.$radius-sm !important;
         }
     }
 
@@ -953,7 +948,7 @@ rule-add {
     cursor: pointer;
 
     &:hover {
-        background: rgba(v.$color-secondary, v.$transparency);
+        background: v.$bg-highlight;
     }
 }
 
@@ -1026,7 +1021,7 @@ input-controls {
         border-width: 1px;
 
         &.clickable:hover {
-            background: rgba(v.$color-secondary, v.$transparency);
+            background: v.$bg-highlight;
         }
     }
 }
@@ -1252,11 +1247,11 @@ pagination {
 
             &.current {
                 font-weight: v.$bold-weight;
-                background-color: v.$color-primary;
+                background-color: var(--accent-selected);
             }
 
             &:hover {
-                background-color: v.$color-primary;
+                background-color: var(--accent-selected);
             }
         }
     }

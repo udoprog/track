@@ -106,6 +106,7 @@ impl Component for Settings {
             let select: web_sys::HtmlSelectElement = e.target_unchecked_into();
             let theme = match select.value().as_str() {
                 "light" => api::ThemeType::Light,
+                "system" => api::ThemeType::System,
                 _ => api::ThemeType::Dark,
             };
             Msg::ThemeChanged(theme)
@@ -148,9 +149,10 @@ impl Component for Settings {
                         <div class="field">
                             <label>{"Theme"}</label>
                             { self.field_slot("", html! {
-                                <select class="input-select" onchange={on_theme} value={theme_val}>
+                                <select class="input-select" data-test="theme" onchange={on_theme} value={theme_val}>
                                     <option value="dark" selected={self.config.theme == api::ThemeType::Dark}>{"Dark"}</option>
                                     <option value="light" selected={self.config.theme == api::ThemeType::Light}>{"Light"}</option>
+                                    <option value="system" selected={self.config.theme == api::ThemeType::System}>{"System"}</option>
                                 </select>
                             }) }
                         </div>

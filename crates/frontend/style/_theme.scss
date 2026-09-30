@@ -1,0 +1,91 @@
+// Palette tokens, dark by default. `data-theme` on the root selects a theme;
+// without it (the System setting) `prefers-color-scheme` decides.
+//
+// Surfaces step up from the page (0) through cards (1) and controls (2) to
+// overlays and hover states (3). Status colors (success, danger) are for
+// state, not decoration; each has a `-bg` fill for buttons and a stronger
+// `-selected` fill for their selected state.
+:root {
+    color-scheme: dark;
+
+    --surface-0: #0f1115;
+    --surface-1: #16191e;
+    --surface-2: #1d2127;
+    --surface-3: #272c34;
+    --surface-glass: rgb(22 25 30 / 0.9);
+
+    --border: #2a3038;
+    --border-soft: rgb(255 255 255 / 0.06);
+    --border-strong: #3b424d;
+
+    --text: #e6e8eb;
+    --text-muted: #969eaa;
+
+    --accent: #7c9bdb;
+    --accent-bg: #33466b;
+    --accent-selected: #4d69a8;
+    --on-accent: #fff;
+    --on-selected: #fff;
+
+    --neutral: #969eaa;
+    --neutral-bg: #262b33;
+    --neutral-selected: #3b424d;
+
+    --success: #6cb88a;
+    --success-bg: #2b5139;
+    --success-selected: #3d7552;
+
+    --danger: #e07a7a;
+    --danger-bg: #5c2a2c;
+    --danger-selected: #8c3d40;
+
+    --backdrop-opacity: 0.18;
+    // Third-party logos are drawn for dark backgrounds.
+    --logo-plate: transparent;
+}
+
+@mixin light {
+    color-scheme: light;
+
+    --surface-0: #e8ebef;
+    --surface-1: #f6f7f9;
+    --surface-2: #fff;
+    --surface-3: #e1e5ea;
+    --surface-glass: rgb(246 247 249 / 0.92);
+
+    --border: #d3d9e0;
+    --border-soft: rgb(0 0 0 / 0.08);
+    --border-strong: #bac2cc;
+
+    --text: #1b2027;
+    --text-muted: #5b6470;
+
+    --accent: #3a62b5;
+    --accent-bg: #dbe4f6;
+    --accent-selected: #3a62b5;
+
+    --neutral: #5b6470;
+    --neutral-bg: #e1e5ea;
+    --neutral-selected: #5b6470;
+
+    --success: #2e8550;
+    --success-bg: #d5ede0;
+    --success-selected: #2e8550;
+
+    --danger: #bf4343;
+    --danger-bg: #f5dada;
+    --danger-selected: #bf4343;
+
+    --backdrop-opacity: 0.1;
+    --logo-plate: #1b2027;
+}
+
+:root[data-theme='light'] {
+    @include light;
+}
+
+@media (prefers-color-scheme: light) {
+    :root:not([data-theme]) {
+        @include light;
+    }
+}

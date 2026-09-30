@@ -1,3 +1,5 @@
+@use 'vars' as v;
+
 @mixin logo($name) {
     &.#{$name} {
         background-image: url('/static/logos/#{$name}.svg');
@@ -18,6 +20,10 @@
     background-size: contain;
     background-repeat: no-repeat;
     background-position: center;
+    background-origin: content-box;
+    background-color: var(--logo-plate);
+    border-radius: v.$radius;
+    padding: 2px;
 
     @include logo('imdb');
     @include logo('tmdb');

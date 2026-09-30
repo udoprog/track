@@ -42,10 +42,16 @@
 .toolbar-toggle {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: v.$gap-xs;
     cursor: pointer;
 
     height: v.$input-height-touch;
+    min-width: v.$input-height-touch;
+    padding: 0;
+    border: none;
+    border-radius: v.$radius;
+    background: transparent;
 
     @include g.on-desktop {
         display: none;
@@ -55,9 +61,15 @@
 .toolbar-item {
     display: flex;
     align-items: center;
+    gap: v.$text-gap;
 
-    height: v.$input-height-touch;
-    min-width: v.$input-height-touch;
+    height: v.$input-height;
+    min-width: v.$input-height;
+
+    @include g.on-mobile {
+        height: v.$input-height-touch;
+        min-width: v.$input-height-touch;
+    }
 
     color: v.$text-primary;
     background-color: v.$bg-dark-transparent;

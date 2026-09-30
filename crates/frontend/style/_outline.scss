@@ -1,4 +1,3 @@
-@use 'sass:color';
 @use 'vars' as v;
 
 #outline {
@@ -19,9 +18,9 @@
         grid-area: 1 / 1;
         align-self: start;
         position: relative;
-        background-color: rgba(v.$color-primary, 0.2);
+        background-color: color-mix(in srgb, v.$color-primary 20%, transparent);
         border-radius: v.$radius;
-        border: 1px solid color.change(rgba(v.$color-primary, 0.2), $lightness: 50%);
+        border: 1px solid color-mix(in srgb, v.$color-primary 50%, transparent);
         top: var(--outline-top, 0);
         height: var(--outline-height, 0);
     }
@@ -34,7 +33,7 @@
     position: relative;
     font-size: 0.8em;
     text-align: center;
-    color: rgba(v.$text-primary, 0.8);
+    color: v.$text-primary;
     user-select: none;
 
     &.hidden {
@@ -42,7 +41,7 @@
     }
 
     &.seen {
-        color: v.$color-success;
+        color: v.$text-muted;
         font-weight: v.$bold-weight;
     }
 

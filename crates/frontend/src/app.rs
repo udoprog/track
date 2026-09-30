@@ -175,7 +175,7 @@ impl Component for App {
                             </div>
                         }
 
-                        <Toolbar site_title={self.site_title.clone()} connected={self.ws_state.is_open()} />
+                        <Toolbar site_title={self.site_title.clone()} connected={self.ws_state.is_open()} section={Section::of(&self.router_state.route)} />
 
                         <div id="content">
                             <div id="page" ref={self.page.clone()}>
@@ -238,6 +238,7 @@ impl App {
 
                 match event.kind {
                     api::AppEventKind::ConfigChanged { config } => {
+                        crate::theme::apply(config.theme);
                         let mut render = self.apply_config_title(&config);
 
                         let tz = Self::tz_from_config(&config);
@@ -291,6 +292,7 @@ impl App {
                     .context(Message::LoadingConfig)?
                     .config;
 
+                crate::theme::apply(config.theme);
                 let mut render = self.apply_config_title(&config);
 
                 let new_tz = Self::tz_from_config(&config);
@@ -414,11 +416,36 @@ impl App {
     }
 }
 
+/// The toolbar entry a route belongs to, which is highlighted.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Section {
+    Dashboard,
+    Media,
+    People,
+    Search,
+    Queue,
+    Settings,
+}
+
+impl Section {
+    fn of(route: &Route) -> Self {
+        match route {
+            Route::Dashboard(..) => Section::Dashboard,
+            Route::Media(..) | Route::ShowDetail(..) | Route::MovieDetail(..) => Section::Media,
+            Route::People(..) | Route::PersonDetail(..) => Section::People,
+            Route::Search(..) => Section::Search,
+            Route::Queue(..) => Section::Queue,
+            Route::Settings => Section::Settings,
+        }
+    }
+}
+
 #[derive(Properties, PartialEq)]
 struct ToolbarProps {
     site_title: AttrValue,
     /// Whether the websocket is currently connected.
     connected: bool,
+    section: Section,
 }
 
 #[function_component]
@@ -456,44 +483,44 @@ fn Toolbar(props: &ToolbarProps) -> Html {
                 <span class="site-title clickable" onclick={on_nav(Route::Dashboard(DashboardQuery::default()))}>{ props.site_title.clone() }</span>
             </div>
 
-            <div class="toolbar-toggle" onclick={on_menu_toggle} title="Navigation">
-                <span class={classes!("icon", if *menu_open { "ellipsis-horizontal" } else { "bars-3" })} />
-            </div>
+            <button class="toolbar-toggle" onclick={on_menu_toggle} title="Navigation" aria-expanded={menu_open.to_string()}>
+                <span class={classes!("icon", if *menu_open { "x-mark" } else { "bars-3" })} />
+            </button>
 
             <div class={classes!("toolbar-dropdown", (!*menu_open).then_some("desktop-only"))}>
-                <div class="toolbar-item mobile-has-text">
+                <div class="toolbar-item mobile-has-text" title={connection_title}>
                     <span class={classes!("icon", connection_style, connection_icon)} />
                     <span class="mobile-only">{connection_title}</span>
                 </div>
 
-                <button class="toolbar-item has-text" onclick={on_nav(Route::Dashboard(DashboardQuery::default()))} title="Dashboard">
+                <button class={classes!("toolbar-item", "has-text", (props.section == Section::Dashboard).then_some("active"))} aria-current={(props.section == Section::Dashboard).then_some("page")} onclick={on_nav(Route::Dashboard(DashboardQuery::default()))} title="Dashboard">
                     <span class="icon rectangle-stack" />
                     <span>{"Dashboard"}</span>
                 </button>
 
-                <button class="toolbar-item has-text" onclick={on_nav(Route::Media(MediaQuery::default()))} title="Media">
+                <button class={classes!("toolbar-item", "has-text", (props.section == Section::Media).then_some("active"))} aria-current={(props.section == Section::Media).then_some("page")} onclick={on_nav(Route::Media(MediaQuery::default()))} title="Media">
                     <span class="icon film" />
                     <span>{"Media"}</span>
                 </button>
 
-                <button class="toolbar-item has-text" onclick={on_nav(Route::People(PersonQuery::default()))} title="People">
+                <button class={classes!("toolbar-item", "has-text", (props.section == Section::People).then_some("active"))} aria-current={(props.section == Section::People).then_some("page")} onclick={on_nav(Route::People(PersonQuery::default()))} title="People">
                     <span class="icon users" />
                     <span>{"People"}</span>
                 </button>
 
-                <button class="toolbar-item mobile-has-text" onclick={on_nav(Route::Search(SearchQuery::default()))} title="Search Remotes">
+                <button class={classes!("toolbar-item", "has-text", (props.section == Section::Search).then_some("active"))} aria-current={(props.section == Section::Search).then_some("page")} onclick={on_nav(Route::Search(SearchQuery::default()))} title="Search">
                     <span class="icon magnifying-glass" />
-                    <span class="mobile-only">{"Search Remotes"}</span>
+                    <span>{"Search"}</span>
                 </button>
 
-                <button class="toolbar-item mobile-has-text" onclick={on_nav(Route::Queue(QueueQuery::default()))} title="Queue">
+                <button class={classes!("toolbar-item", "has-text", (props.section == Section::Queue).then_some("active"))} aria-current={(props.section == Section::Queue).then_some("page")} onclick={on_nav(Route::Queue(QueueQuery::default()))} title="Queue">
                     <span class="icon queue-list" />
-                    <span class="mobile-only">{"Queue"}</span>
+                    <span>{"Queue"}</span>
                 </button>
 
-                <button class="toolbar-item mobile-has-text" onclick={on_nav(Route::Settings)} title="Settings">
+                <button class={classes!("toolbar-item", "has-text", (props.section == Section::Settings).then_some("active"))} aria-current={(props.section == Section::Settings).then_some("page")} onclick={on_nav(Route::Settings)} title="Settings">
                     <span class="icon cog-6-tooth" />
-                    <span class="mobile-only">{"Settings"}</span>
+                    <span>{"Settings"}</span>
                 </button>
             </div>
         </div>
