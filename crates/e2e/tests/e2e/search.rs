@@ -12,7 +12,7 @@ pub async fn focuses_the_input(driver: &mut TestDriver, _: &mut Track) -> Result
         .click()
         .await?;
 
-    driver.wait_texts("#page h1", ["Search"]).await?;
+    super::navigation::wait_heading(driver, "Search").await?;
 
     let ret = driver
         .webdriver()

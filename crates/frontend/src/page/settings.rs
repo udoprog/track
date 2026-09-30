@@ -164,7 +164,7 @@ impl Component for Settings {
 
         html! {
             <>
-                <h1>{"Settings"}</h1>
+                <h1 class="visually-hidden">{"Settings"}</h1>
 
                 <div class="settings">
                     <section>

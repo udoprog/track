@@ -153,7 +153,7 @@ impl Component for Search {
 
         html! {
             <>
-                <h1>{"Search"}</h1>
+                <h1 class="visually-hidden">{"Search"}</h1>
 
                 <div class="list-controls">
                     <div class="search-field">

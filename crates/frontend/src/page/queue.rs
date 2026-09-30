@@ -169,7 +169,7 @@ impl Component for Queue {
     fn view(&self, ctx: &Context<Self>) -> Html {
         html! {
             <>
-                <h1>{"Queue"}</h1>
+                <h1 class="visually-hidden">{"Queue"}</h1>
 
                 { self.view_now(ctx) }
 

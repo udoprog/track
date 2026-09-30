@@ -1751,6 +1751,19 @@ input-label-controls {
         flex: 1 1 240px;
     }
 
+    // What the list holds, pushed right beside its pages.
+    >.list-count {
+        margin-inline-start: auto;
+        color: v.$text-muted;
+        font-size: v.$font-sm;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+    }
+
+    >.list-count+pagination {
+        margin-inline-start: 0;
+    }
+
     >pagination {
         margin-inline-start: auto;
     }

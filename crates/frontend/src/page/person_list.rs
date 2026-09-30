@@ -161,12 +161,8 @@ impl Component for PersonList {
 
         html! {
             <>
-                <div class="row-split">
-                    <h1>{"People"}</h1>
-                    if self.loaded {
-                        <h4 class="text-muted">{total}</h4>
-                    }
-                </div>
+                // The app bar already says which page this is.
+                <h1 class="visually-hidden">{"People"}</h1>
 
                 <div class="list-controls">
                     <div class="search-field">
@@ -189,6 +185,8 @@ impl Component for PersonList {
                     </div>
 
                     if self.loaded {
+                        <span class="list-count">{if total == 1 { "1 person".to_owned() } else { format!("{total} people") }}</span>
+
                         <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
                     }
                 </div>

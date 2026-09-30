@@ -16,7 +16,7 @@ pub async fn opens_every_page(driver: &mut TestDriver, _: &mut Track) -> Result<
             .click()
             .await?;
 
-        driver.wait_texts("#page h1", [page]).await?;
+        wait_heading(driver, page).await?;
         driver.wait_texts(".toolbar-item.active", [page]).await?;
     }
 
@@ -225,6 +225,10 @@ pub async fn pages_have_landmarks_and_one_heading(
             driver.count("main").await? == 1,
             "{page} has no single main"
         );
+
+        // The app bar names the page, so its heading is only for assistive tech.
+        let heading = driver.find_one_by("h1").await?.rect().await?;
+        ensure!(heading.width <= 1.0, "{page} shows its heading");
         ensure!(
             driver.count("header#toolbar").await? == 1,
             "{page} has no header"
@@ -236,4 +240,18 @@ pub async fn pages_have_landmarks_and_one_heading(
     }
 
     Ok(())
+}
+
+/// Wait for the page's heading to read `text`. List pages hide it visually
+/// (the app bar names the page), so read its text rather than what shows.
+pub(crate) async fn wait_heading(driver: &TestDriver, text: &str) -> Result<()> {
+    driver
+        .wait_until(
+            format_args!("the page heading to read {text:?}"),
+            async || {
+                let heading = driver.find_one_by("#page h1").await?;
+                Ok(heading.prop("textContent").await? == text)
+            },
+        )
+        .await
 }

@@ -241,10 +241,8 @@ impl Component for MediaList {
 
         html! {
             <>
-                <div class="row-split">
-                    <h1>{"Media"}</h1>
-                    <h4 class="text-muted">{total}</h4>
-                </div>
+                // The app bar already says which page this is.
+                <h1 class="visually-hidden">{"Media"}</h1>
 
                 <div class="list-controls">
                     <div class="search-field">
@@ -272,6 +270,8 @@ impl Component for MediaList {
                             on_change={link.callback(Msg::SetSelection)}
                         />
                     </div>
+
+                    <span class="list-count">{format!("{total} titles")}</span>
 
                     <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
                 </div>
