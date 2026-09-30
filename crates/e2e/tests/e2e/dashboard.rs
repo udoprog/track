@@ -152,26 +152,32 @@ pub async fn fills_rows_with_relative_dates(driver: &mut TestDriver, _: &mut Tra
 }
 
 /// Upcoming gives every day a readable width, scrolling sideways instead of
-/// squeezing the days when they do not fit.
-pub async fn upcoming_days_keep_their_width(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+/// Upcoming is an agenda: a heading per day, starting today, and nothing to
+/// scroll sideways.
+pub async fn upcoming_is_an_agenda(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     driver.set_window_size(800, 900).await?;
     driver.reopen_with("view=upcoming").await?;
 
     driver
-        .wait_count(".schedule-range-grid .schedule-range-poster", 0)
+        .wait_until("the first day to be today", async || {
+            let days = driver.rendered_texts(".agenda-day-title").await?;
+            Ok(days.first().is_some_and(|d| d.starts_with("Today")))
+        })
         .await?;
 
-    let day = driver
-        .find_first(".schedule-range-grid > .calendar-cell")
+    let ret = driver
+        .webdriver()
+        .execute(
+            "const e = document.scrollingElement; return e.scrollWidth <= e.clientWidth;",
+            Vec::new(),
+        )
         .await?;
-
-    let width = day.rect().await?.width;
-    ensure!(width >= 160.0, "a day is only {width}px wide");
+    ensure!(ret.convert::<bool>()?, "the page scrolls sideways");
     Ok(())
 }
 
-/// The schedule names every day's weekday in its own cell, with no separate
-/// weekday header, under a heading naming the months shown.
+/// The schedule names the weekdays once above the grid, under a heading
+/// naming the months shown, and marks today.
 pub async fn schedule_names_its_days(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     driver.set_window_size(1200, 900).await?;
     driver.reopen_with("view=schedule").await?;
@@ -182,19 +188,15 @@ pub async fn schedule_names_its_days(driver: &mut TestDriver, _: &mut Track) -> 
         "the month heading has no year: {heading:?}"
     );
 
-    driver.wait_count(".calendar-weekdays", 0).await?;
-
-    let days = driver.find_all_texts(".calendar-cell .day-of-week").await?;
+    let weekdays = driver.rendered_texts(".calendar-weekdays > span").await?;
     ensure!(
-        days.len() >= 7,
-        "expected every day to be labelled, got {days:?}"
+        weekdays.len() == 7 && weekdays.iter().all(|d| !d.trim().is_empty()),
+        "expected seven weekday names, got {weekdays:?}"
     );
 
-    ensure!(
-        days.iter().all(|day| !day.trim().is_empty()),
-        "a day has no weekday: {days:?}"
-    );
-
+    driver
+        .find_one_by(".calendar-cell.today .calendar-day-number")
+        .await?;
     Ok(())
 }
 

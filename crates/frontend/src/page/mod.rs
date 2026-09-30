@@ -10,6 +10,7 @@ mod movie_detail;
 mod person_detail;
 mod person_list;
 mod queue;
+mod schedule_item;
 mod schedule_range;
 mod search;
 mod settings;

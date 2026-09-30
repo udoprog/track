@@ -74,4 +74,3 @@ pub(crate) use self::translated_text::TranslatedText;
 pub(crate) use self::translations_modal::TranslationsModal;
 
 pub(crate) const SEARCH: &str = "Search…";
-pub(crate) const DOT: &str = "•";

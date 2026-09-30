@@ -1,5 +1,4 @@
 use core::array;
-use core::fmt;
 use std::collections::HashMap;
 
 use api::TimeInfo;
@@ -9,8 +8,10 @@ use yew::prelude::*;
 use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{MediaSelection, Route, Router, ShowDetailQuery};
-use crate::ui::{Button, DOT, Skeleton};
+use crate::router::{MediaSelection, Route, Router};
+use crate::ui::{Button, ContextMenu, Skeleton};
+
+use super::schedule_item::{view_day_heading, view_schedule_item};
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
@@ -49,6 +50,9 @@ pub(crate) struct Calendar {
     _schedule_req: ws::Request,
     _config_req: ws::Request,
     _set_config_req: ws::Request,
+    /// Whether the view options popover (weeks shown) is open.
+    options_open: bool,
+    options_anchor: NodeRef,
 }
 
 pub(crate) enum Msg {
@@ -60,6 +64,9 @@ pub(crate) enum Msg {
     SetConfigDone(Result<ws::Packet<api::SetConfig>, ws::Error>),
     Navigate(Route),
     SetTime(TimeInfo),
+    /// Hover an entry: drive the page background from its backdrop.
+    Hover(Option<String>),
+    ToggleOptions,
 }
 
 impl Component for Calendar {
@@ -105,6 +112,8 @@ impl Component for Calendar {
             _schedule_req: ws::Request::default(),
             _config_req: ws::Request::default(),
             _set_config_req: ws::Request::default(),
+            options_open: false,
+            options_anchor: NodeRef::default(),
         }
     }
 
@@ -170,30 +179,49 @@ impl Component for Calendar {
             Callback::from(move |_| cb.emit(()))
         };
 
+        let on_navigate = link.callback(Msg::Navigate);
+        let on_hover = link.callback(Msg::Hover);
+
+        let first = weeks[0].1[0];
+        let last = weeks[weeks.len() - 1].1[6];
+
         html! {
             <div class="column">
-                <Button
-                    key="toggle-week-start"
-                    icon={if week_start { "chevron-double-down" } else { "chevron-double-right" }}
-                    class="mobile-only"
-                    disabled={!can_reveal_week_start}
-                    title="Show start of week"
-                    text={if week_start { "Hide week start" } else { "Show week start" }}
-                    onclick={on_toggle_week_start}
-                />
+                <div class="page-controls">
+                    <span class="text-muted">
+                        { format!("{} {} – {} {}", first.day(), first.month_name(), last.day(), last.month_name()) }
+                    </span>
 
-                <div class="row center">
-                    <Button icon="chevron-left" title="Previous week" onclick={on_prev} />
-
-                    <div class="input-group mobile-fill">
-                        <Button icon="minus" title="Fewer weeks" onclick={on_fewer} disabled={week_count <= 1} />
-                        <span class="input-text has-text fill">{week_count_display(week_count).to_string()}</span>
-                        <Button icon="plus" title="More weeks" onclick={on_more} />
+                    <div class="row">
+                        <Button icon="chevron-left" title="Previous week" class="ghost" onclick={on_prev} />
+                        <Button icon="calendar" label="This week" title="Back to this week" class="chip" disabled={week_offset == 0 && !week_start} onclick={on_reset} />
+                        <Button icon="chevron-right" title="Next week" class="ghost" onclick={on_next} />
+                        <Button node_ref={self.options_anchor.clone()} icon="adjustments-horizontal" title="View options" class={classes!("chip", self.options_open.then_some("selected"))} onclick={link.callback(|_| Msg::ToggleOptions)} />
                     </div>
-
-                    <Button icon="arrow-uturn-left" label="This week" title="Reset to current week" onclick={on_reset} disabled={week_offset == 0 && !week_start} />
-                    <Button icon="chevron-right" title="Next week" onclick={on_next} />
                 </div>
+
+                if self.options_open {
+                    <ContextMenu icon="adjustments-horizontal" prompt="View options" anchor={self.options_anchor.clone()} on_close={link.callback(|_| Msg::ToggleOptions)}>
+                        <div class="form">
+                            <div class="field">
+                                <label>{"Weeks shown"}</label>
+
+                                <div class="row">
+                                    <Button icon="minus" title="Fewer weeks" onclick={on_fewer} disabled={week_count <= 1} />
+                                    <span class="page-size">{week_count}</span>
+                                    <Button icon="plus" title="More weeks" onclick={on_more} />
+                                </div>
+                            </div>
+
+                            if can_reveal_week_start {
+                                <div class="field mobile-only">
+                                    <label>{"Earlier this week"}</label>
+                                    <Button icon={if week_start { "eye-slash" } else { "eye" }} label={if week_start { "Hide past days" } else { "Show past days" }} title="Show the days of this week before today" onclick={on_toggle_week_start} />
+                                </div>
+                            }
+                        </div>
+                    </ContextMenu>
+                }
 
                 <div class="calendar-grid">
                     { for weeks.iter().enumerate().map(|(index, (month_band, days))| {
@@ -205,11 +233,15 @@ impl Component for Calendar {
                                 </div>
                             }
 
+                            if index == 0 {
+                                <div key="calendar-weekdays" class="calendar-weekdays desktop-only">
+                                    { for days.iter().map(|day| html! { <span>{day.weekday().short_name()}</span> }) }
+                                </div>
+                            }
+
                             <div key={format!("calendar-week-{index}")} class="calendar-week">
                                 { for days.iter().enumerate().map(|(index, &day)| {
-                                    let is_yesterday = day == today.checked_sub_days(1).unwrap_or(day);
                                     let is_today = day == today;
-                                    let is_tomorrow = day == today.checked_add_days(1).unwrap_or(day);
                                     let is_past  = day < today;
                                     let mut items = self.schedule_index.get(&day).map(|&i| self.schedule[i].items()).unwrap_or_default();
                                     items.retain(|i| selection.contains(i.kind()));
@@ -222,93 +254,17 @@ impl Component for Calendar {
                                             (is_past && !show_past).then_some("desktop-only"),
                                             (!loading && items.is_empty()).then_some("desktop-only"),
                                         )}>
-                                            <div class="calendar-day-number">
-                                                <span class="bullet">{day.day()}</span>
+                                            <span class="calendar-day-number desktop-only">{day.day()}</span>
 
-                                                if is_yesterday {
-                                                    <div class="day-of-week">
-                                                        <span>{"Yesterday"}</span>
-                                                        <span>{DOT}</span>
-                                                        <span>{day.weekday().short_name()}</span>
-                                                    </div>
-                                                } else if is_today {
-                                                    <div class="day-of-week">
-                                                        <span>{"Today"}</span>
-                                                        <span>{DOT}</span>
-                                                        <span>{day.weekday().short_name()}</span>
-                                                    </div>
-                                                } else if is_tomorrow {
-                                                    <div class="day-of-week">
-                                                        <span>{"Tomorrow"}</span>
-                                                        <span>{DOT}</span>
-                                                        <span>{day.weekday().short_name()}</span>
-                                                    </div>
-                                                } else {
-                                                    <span class="day-of-week">{day.weekday().short_name()}</span>
-                                                }
+                                            <div class="mobile-only">
+                                                { view_day_heading(day, today) }
                                             </div>
 
                                             if loading {
-                                                <div class="calendar-items">
-                                                    <Skeleton />
-                                                </div>
+                                                <Skeleton class="line" />
                                             } else if !items.is_empty() {
-                                                <div class="calendar-items">
-                                                    { for items.iter().map(|item| match item {
-                                                        api::ScheduleItem::Show(entry) => {
-                                                            let show_id = entry.show_id;
-                                                            let episode = entry.episodes.last().map(|ep| ep.code());
-                                                            let onclick = link.callback(move |_| {
-                                                                let season = episode.map(|e| e.season).unwrap_or_default();
-                                                                Msg::Navigate(Route::ShowDetail(show_id, ShowDetailQuery { season, episode, orphaned: false }))
-                                                            });
-
-                                                            html! {
-                                                                <div key={format!("show-{show_id}")} class="calendar-item" title={format!("Open {}", entry.show_title)}>
-                                                                    <div class="calendar-item-title clickable" {onclick}>
-                                                                        {&entry.show_title}
-                                                                    </div>
-
-                                                                    {for entry.episodes.iter().enumerate().map(|(index, ep)| {
-                                                                        let episode = ep.code();
-                                                                        let onclick = link.callback(move |_|
-                                                                            Msg::Navigate(Route::ShowDetail(show_id, ShowDetailQuery { season: episode.season, episode: Some(episode), orphaned: false }))
-                                                                        );
-
-                                                                        html! {
-                                                                            <div key={format!("episode-{index}")} class="calendar-item-code clickable" onclick={onclick} title={format!("Open {} {}", entry.show_title, ep.code())}>
-                                                                                <span>{ep.aired.time_of_day(self.time.clone())}</span>
-                                                                                <span>{ep.code().to_string()}</span>
-                                                                            </div>
-                                                                        }
-                                                                    })}
-                                                                </div>
-                                                            }
-                                                        }
-                                                        api::ScheduleItem::Movie(movie) => {
-                                                            let movie_id = movie.movie_id;
-
-                                                            let on_click = link.callback(move |_|
-                                                                Msg::Navigate(Route::MovieDetail(movie_id))
-                                                            );
-
-                                                            html! {
-                                                                <div key={format!("movie-{movie_id}")} class="calendar-item clickable" onclick={on_click} title={movie.title.clone()}>
-                                                                    <div class="calendar-item-title">
-                                                                        <span class="item-inline">
-                                                                            <span class="icon film" />
-                                                                        </span>
-
-                                                                        {&movie.title}
-                                                                    </div>
-
-                                                                    <div class="calendar-item-code">
-                                                                        {movie.released.time_of_day(self.time.clone())}
-                                                                    </div>
-                                                                </div>
-                                                            }
-                                                        }
-                                                    }) }
+                                                <div class="agenda-items">
+                                                    { for items.iter().map(|item| view_schedule_item(item, &self.time, &on_navigate, &on_hover)) }
                                                 </div>
                                             }
                                         </div>
@@ -435,6 +391,15 @@ impl Calendar {
                 self.router.push(route);
                 Ok(false)
             }
+            Msg::Hover(backdrop) => {
+                // Keep the last hovered background (no revert on mouse-leave).
+                self.background.background(backdrop);
+                Ok(false)
+            }
+            Msg::ToggleOptions => {
+                self.options_open = !self.options_open;
+                Ok(true)
+            }
             Msg::SetTime(time) => {
                 self.time = time;
 
@@ -550,14 +515,4 @@ fn month_range(first: api::Date, last: api::Date) -> String {
             last.year()
         )
     }
-}
-
-fn week_count_display(week_count: u32) -> impl fmt::Display {
-    fmt::from_fn(move |f| {
-        if week_count == 1 {
-            write!(f, "1 week")
-        } else {
-            write!(f, "{week_count} weeks")
-        }
-    })
 }

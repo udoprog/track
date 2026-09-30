@@ -24,8 +24,9 @@
 .calendar-month {
     @include row-base;
 
-    font-size: v.$font-lg;
-    color: v.$color-primary;
+    font-size: v.$font-base;
+    font-weight: v.$bold-weight;
+    color: v.$text-color;
 }
 
 .calendar-week {
@@ -34,185 +35,181 @@
     @include g.on-desktop {
         display: grid;
         grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: v.$gap-xs;
     }
 }
 
-// Compact upcoming-days strip shown above the full schedule: a poster column
-// plus N equal day columns, with an optional fit-to-content reset column between
-// the poster and the first day. Reuses the `.calendar-*` cell and item styling.
-// The day count is passed in as the `--range-days` custom property.
-.schedule-range {
+// The Upcoming agenda, and the Schedule on phones: days in a column, each a
+// heading over what airs on it.
+.agenda {
     @include column-base;
 }
 
-.schedule-range-grid {
-    @include column-base;
-
-    @include g.on-desktop {
-        display: grid;
-        gap: v.$gap;
-        align-items: start;
-        // One column per day, all equal width, scrolling sideways rather than
-        // squeezing titles when many days are shown.
-        grid-template-columns: repeat(var(--range-days, 3), minmax(160px, 1fr));
-        overflow-x: auto;
-
-        // Insert a fit-to-content reset column before the first day when
-        // scrolled ahead of today.
-        &.has-reset {
-            grid-template-columns: auto repeat(var(--range-days, 3), minmax(160px, 1fr));
-        }
-    }
-}
-
-// Fit-to-content clickable area on the far left; clicking jumps back to today.
-// Stretches to the full height of the row so it reads as a big target.
-.schedule-range-reset {
+.agenda-day {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: v.$text-gap;
-    padding: 0 v.$gap-sm;
-    color: v.$color-primary;
-    font-size: v.$font-lg;
+    gap: v.$gap-xs;
+}
 
-    @include g.on-desktop {
-        align-self: stretch;
+.agenda-day-title {
+    gap: v.$gap-xs;
+    min-height: 0;
+    font-size: v.$font-base;
+    color: v.$text-color;
+
+    >.text-muted {
+        font-weight: normal;
     }
+
+    &.today>span:first-child {
+        color: v.$color-primary;
+    }
+}
+
+// Entries share columns: poster, title, and times ending on the right.
+.agenda-items {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    column-gap: v.$gap-sm;
+    row-gap: 2px;
+}
+
+.schedule-item {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    align-items: center;
+    padding: v.$padding-md v.$padding-lg;
+    border-radius: v.$radius;
 
     &:hover {
-        background: v.$bg-dark-transparent;
+        background: var(--neutral-bg);
     }
+}
+
+.schedule-poster {
+    width: 40px;
+    aspect-ratio: 2 / 3;
+    border-radius: v.$radius-sm;
+    overflow: hidden;
+    background: v.$bg-surface;
+}
+
+.schedule-title {
+    font-size: v.$font-sm;
+    font-weight: v.$bold-weight;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.schedule-times {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+}
+
+.schedule-time {
+    display: inline-flex;
+    align-items: center;
+    gap: v.$padding-md;
+    padding: 2px v.$padding;
+    border-radius: v.$radius-sm;
+    font-size: v.$font-xs;
+    font-variant-numeric: tabular-nums;
+    color: v.$text-muted;
+
+    &.clickable:hover {
+        background: v.$bg-highlight;
+        color: v.$text-color;
+    }
+}
+
+// The Schedule on wide screens: weekday names once, then a week per row of
+// soft day tiles holding compact entries. On phones it is the agenda.
+.calendar-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: v.$gap-xs;
+    padding: 0 v.$padding-lg;
+    font-size: v.$font-xs;
+    color: v.$text-muted;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
 }
 
 .calendar-cell {
-    @include column-base;
+    display: flex;
+    flex-direction: column;
+    gap: v.$gap-xs;
+    min-width: 0;
 
-    min-height: v.$input-height * 2;
+    @include g.on-desktop {
+        gap: v.$padding-md;
+        min-height: 120px;
+        padding: v.$padding-lg;
+        border-radius: v.$radius;
+        background: color-mix(in srgb, v.$bg-surface 55%, transparent);
 
-    @include g.on-mobile {
-        min-height: v.$input-height-touch * 2;
-    }
-
-    &.today {
-        background: color-mix(in srgb, v.$color-primary 25%, transparent);
-
-        .calendar-day-number>.bullet {
-            background: none;
+        &.past {
+            opacity: 0.6;
         }
-    }
 
-    .calendar-day-number>.bullet {
-        height: v.$input-height;
-        aspect-ratio: 1;
-        display: inline-flex;
-        background: color-mix(in srgb, v.$color-secondary 25%, transparent);
-        padding: v.$padding;
-        color: v.$text-on-accent;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: v.$bold-weight;
+        &.today {
+            background: color-mix(in srgb, v.$color-primary 12%, transparent);
+        }
 
-        @include g.on-mobile {
-            height: v.$input-height-touch;
+        // Entries stack in a narrow tile: title over times, no poster.
+        .agenda-items {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .schedule-item {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 2px;
+            padding: v.$padding v.$padding-md;
+            border-radius: v.$radius-sm;
+        }
+
+        .schedule-poster {
+            display: none;
+        }
+
+        .schedule-title {
+            font-size: v.$font-xs;
+        }
+
+        .schedule-times {
+            align-items: flex-start;
+        }
+
+        .schedule-time {
+            padding: 0;
         }
     }
 }
 
 .calendar-day-number {
-    @include row-base;
-    gap: v.$text-gap;
-    font-size: v.$font-lg;
-    color: v.$text-muted;
-}
-
-.calendar-items {
-    @include column-base;
-}
-
-.calendar-item {
-    display: flex;
-    flex-direction: column;
-    border: 1px solid v.$border-subtle-transparent;
-
-    background: v.$bg-dark-transparent;
-    color: v.$text-primary;
-    min-height: v.$input-height;
-
-    @include g.on-mobile {
-        min-height: v.$input-height-touch;
-    }
-
-    &.clickable:hover {
-        background: var(--accent-selected);
-        color: v.$text-on-accent;
-
-        .calendar-item-code {
-            color: inherit;
-        }
-    }
-}
-
-.calendar-item-title {
-    @include row-base;
-    gap: v.$text-gap;
-    padding: v.$gap-sm;
-
-    @include g.on-mobile {
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        overflow: hidden;
-    }
-
-    @include g.on-desktop {
-        font-size: v.$font-xs;
-    }
-
-    .item-inline {
-        align-self: flex-start;
-    }
-
-    &.clickable:hover {
-        background: var(--accent-selected);
-        color: v.$text-on-accent;
-
-        .calendar-item-code {
-            color: inherit;
-        }
-    }
-}
-
-.calendar-item-code {
-    display: flex;
-    flex-direction: row;
-    justify-content: space-between;
+    display: inline-flex;
     align-items: center;
-    gap: v.$text-gap;
-    padding: 0 v.$gap-sm;
-
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    font-size: v.$font-sm;
+    font-weight: v.$bold-weight;
+    font-variant-numeric: tabular-nums;
     color: v.$text-muted;
-    font-family: monospace;
-    height: v.$input-height-touch;
 
-    @include g.on-desktop {
-        font-size: v.$font-xs;
-        height: v.$input-height;
-    }
-
-    &.clickable:hover {
+    .calendar-cell.today & {
         background: var(--accent-selected);
-        color: v.$text-on-accent;
-
-        .calendar-item-code {
-            color: inherit;
-        }
+        color: v.$text-color-selected;
     }
-}
-
-.day-of-week {
-    display: flex;
-    align-items: center;
-    gap: v.$text-gap;
 }
