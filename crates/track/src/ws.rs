@@ -2051,8 +2051,17 @@ pub(super) async fn ws_handler(
         };
 
         let mut subscribe = state.broadcast.subscribe();
-        let mut server =
+
+        let connect =
             axum08::server(socket, handler).with_channel_allocator(state.channels.clone());
+
+        let mut server = match connect.connect().await {
+            Ok(server) => server,
+            Err(error) => {
+                tracing::error!("WebSocket negotiation failed: {error}");
+                return;
+            }
+        };
 
         loop {
             tokio::select! {
