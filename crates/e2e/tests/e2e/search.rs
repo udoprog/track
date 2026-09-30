@@ -12,7 +12,7 @@ pub async fn focuses_the_input(driver: &mut TestDriver, _: &mut Track) -> Result
         .click()
         .await?;
 
-    driver.wait_texts("#page h1", ["Search Remotes"]).await?;
+    driver.wait_texts("#page h1", ["Search"]).await?;
 
     let ret = driver
         .webdriver()
@@ -24,4 +24,20 @@ pub async fn focuses_the_input(driver: &mut TestDriver, _: &mut Track) -> Result
 
     ensure!(ret.convert::<bool>()?, "the search input is not focused");
     Ok(())
+}
+
+/// Before anything is searched for, the page says what it searches.
+pub async fn says_what_it_searches(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    driver
+        .find_one_by(".toolbar-item[title=Search]")
+        .await?
+        .click()
+        .await?;
+
+    driver
+        .wait_texts(
+            "#page p.text-muted",
+            ["Search TMDB and TVDB for shows and movies to track."],
+        )
+        .await
 }

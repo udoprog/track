@@ -552,6 +552,126 @@ p {
     gap: v.$gap;
 }
 
+// Search results: compact rows of a small poster, the title with its kind
+// and year, two lines of overview and the sources, with the action on the
+// right (under the text on phones).
+.search-results {
+    display: flex;
+    flex-direction: column;
+}
+
+.search-skeleton {
+    height: 96px;
+    margin-block: v.$gap-xs;
+    border-radius: v.$radius;
+}
+
+.search-result {
+    display: grid;
+    grid-template-columns: 56px minmax(0, 1fr) auto;
+    grid-template-areas: "poster body action";
+    align-items: start;
+    column-gap: v.$gap;
+    row-gap: v.$gap-xs;
+    padding-block: v.$gap-sm;
+
+    &+.search-result {
+        border-top: 1px solid v.$border-subtle-transparent;
+    }
+
+    @include g.on-mobile {
+        grid-template-columns: 48px minmax(0, 1fr);
+        grid-template-areas:
+            "poster body"
+            "poster action";
+    }
+}
+
+.search-poster {
+    grid-area: poster;
+    display: block;
+
+    image {
+        width: 100%;
+        aspect-ratio: 2 / 3;
+        border-radius: v.$radius-sm;
+    }
+}
+
+.search-body {
+    grid-area: body;
+    display: flex;
+    flex-direction: column;
+    gap: v.$padding;
+    min-width: 0;
+}
+
+.search-heading {
+    display: flex;
+    align-items: baseline;
+    gap: v.$padding-md;
+    --icon-color: #{v.$text-muted};
+
+    >.icon {
+        align-self: center;
+        flex: none;
+    }
+}
+
+.search-title {
+    font-weight: v.$bold-weight;
+    color: v.$text-color;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+a.search-title:hover {
+    text-decoration: underline;
+}
+
+.search-year {
+    flex: none;
+    color: v.$text-muted;
+    font-size: v.$font-sm;
+    font-variant-numeric: tabular-nums;
+}
+
+.search-overview {
+    color: v.$text-muted;
+    font-size: v.$font-sm;
+    // Two lines at most (the clamp-lines mixin is defined further down).
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.search-sources {
+    display: flex;
+    gap: v.$gap-xs;
+}
+
+.search-source {
+    display: inline-flex;
+    height: 18px;
+    opacity: 0.75;
+
+    &:hover {
+        opacity: 1;
+    }
+
+    >.logo {
+        height: 100%;
+        padding: 0;
+    }
+}
+
+.search-action {
+    grid-area: action;
+    justify-self: start;
+}
+
 // The settings page: sections of form rows in one readable column.
 .settings {
     display: flex;

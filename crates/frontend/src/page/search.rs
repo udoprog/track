@@ -6,7 +6,7 @@ use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaSelection, Route, Router, SearchQuery, ShowDetailQuery};
-use crate::ui::{Button, Image, Link, MediaKindToggle, SEARCH, Variant};
+use crate::ui::{Button, Image, Link, MediaKindToggle, SEARCH, Skeleton, Variant};
 
 pub(crate) struct Search {
     channel: ws::Channel,
@@ -41,7 +41,6 @@ pub(crate) enum Msg {
     TrackMovie(Option<String>, api::Remote),
     TrackShowDone(Result<ws::Packet<api::TrackShow>, ws::Error>),
     TrackMovieDone(Result<ws::Packet<api::TrackMovie>, ws::Error>),
-    Navigate(Route),
 }
 
 #[derive(Properties, PartialEq)]
@@ -104,7 +103,7 @@ impl Component for Search {
 
     fn rendered(&mut self, _ctx: &Context<Self>, first_render: bool) {
         if first_render {
-            self.background.title(Some("Search Remotes".to_string()));
+            self.background.title(Some("Search".to_string()));
 
             if let Some(input) = self.input.cast::<web_sys::HtmlElement>() {
                 _ = input.focus();
@@ -154,13 +153,13 @@ impl Component for Search {
 
         html! {
             <>
-                <h1>{"Search Remotes"}</h1>
+                <h1>{"Search"}</h1>
 
                 <div class="list-controls">
                     <div class="search-field">
                         <span class="icon magnifying-glass" aria-hidden="true" />
                         <input type="text" placeholder={SEARCH} aria-label="Search for shows and movies" ref={self.input.clone()} value={self.query.clone()} oninput={on_input} onkeydown={on_keydown} />
-                        <Button icon="arrow-right" title="Search remotes" variant={Variant::Primary} onclick={on_submit} />
+                        <Button icon="arrow-right" title="Search" variant={Variant::Primary} onclick={on_submit} />
                     </div>
 
                     <div class="chips">
@@ -299,10 +298,6 @@ impl Search {
                 self.router.push(Route::MovieDetail(movie.id));
                 Ok(false)
             }
-            Msg::Navigate(route) => {
-                self.router.push(route);
-                Ok(false)
-            }
         }
     }
 
@@ -332,29 +327,50 @@ impl Search {
     }
 
     fn view_results(&self, ctx: &Context<Self>) -> Html {
+        if self.query.is_empty() {
+            return html! {
+                <p class="text-muted">{"Search TMDB and TVDB for shows and movies to track."}</p>
+            };
+        }
+
+        if self.results.is_empty() {
+            return if self.loading {
+                html! {
+                    <div class="search-results" aria-busy="true">
+                        { for (0..3).map(|_| html! { <Skeleton class="search-skeleton" /> }) }
+                    </div>
+                }
+            } else {
+                html! {
+                    <p class="text-muted">{format!("No results for \u{201c}{}\u{201d}.", self.query)}</p>
+                }
+            };
+        }
+
         let on_more = ctx.link().callback(|e: MouseEvent| {
             e.prevent_default();
             Msg::LoadMore
         });
 
-        let loaded = self.results.len();
+        let rows = merge(&self.results);
 
         html! {
             <>
-                { for self.results.iter().map(|r| match r {
-                    api::SearchResult::Show(show) => self.view_show_result(ctx, show),
-                    api::SearchResult::Movie(movie) => self.view_movie_result(ctx, movie),
-                }) }
+                <div class="page-controls">
+                    <span class="text-muted">{results_count(self.total)}</span>
+                </div>
+
+                <div class="search-results">
+                    { for rows.iter().map(|row| self.view_row(ctx, row)) }
+                </div>
 
                 if self.loading {
                     <div class="row center">
                         <span class="item-inline-more"><span class="icon arrow-path spin" aria-hidden="true" /></span>
                     </div>
                 } else if self.end {
-                    <div class="row center">
-                        <span class="item-inline-more">{"No more results."}</span>
-                    </div>
-                } else if loaded < self.total {
+                    <p class="text-muted center">{"No more results."}</p>
+                } else if self.results.len() < self.total {
                     <div class="row center">
                         <Button icon="ellipsis-horizontal" title="Load more results" label="More results" onclick={on_more} />
                     </div>
@@ -363,138 +379,162 @@ impl Search {
         }
     }
 
-    fn view_show_result(&self, ctx: &Context<Self>, r: &api::SearchShow) -> Html {
-        let slug = r.slug.clone();
-        let remote = r.remote.clone();
-        let show_id = r.already_tracked;
+    /// One result: a small poster, its kind, title and year, two lines of
+    /// overview and the sources it came from, with Track or Tracked beside it.
+    fn view_row(&self, ctx: &Context<Self>, row: &Row<'_>) -> Html {
+        let (kind_icon, kind_label) = if row.movie {
+            ("film", "Movie")
+        } else {
+            ("tv", "Show")
+        };
 
-        let on_nav = show_id.map(|id| {
-            ctx.link()
-                .callback(move |_| Msg::Navigate(Route::ShowDetail(id, ShowDetailQuery::default())))
+        let title = row.title.unwrap_or(if row.movie {
+            "Untitled Movie"
+        } else {
+            "Untitled Show"
         });
 
-        let on_track = ctx
-            .link()
-            .callback(move |_| Msg::TrackShow(slug.clone(), remote.clone()));
+        let action = match (&row.tracked, &row.track) {
+            (Some(to), _) => html! {
+                <Link to={to.clone()} class="button has-text" title={format!("Open the tracked {}", kind_label.to_lowercase())}>
+                    <span class="icon check" aria-hidden="true" />
+                    <span>{"Tracked"}</span>
+                </Link>
+            },
+            (None, Some(track)) => {
+                let track = track.clone();
+                let onclick = ctx.link().callback(move |_| match track.clone() {
+                    Track::Show(slug, remote) => Msg::TrackShow(slug, remote),
+                    Track::Movie(remote) => Msg::TrackMovie(None, remote),
+                });
 
-        let heading = html! {
-            <>
-                <span class="item-inline" title="Show">
-                    <span class="icon tv" aria-hidden="true" />
-                </span>
-
-                <span class="item-title">{r.title.as_deref().unwrap_or("Untitled Show")}</span>
-            </>
+                html! {
+                    <Button icon="plus" label="Track" title={format!("Track {}", kind_label.to_lowercase())} {onclick} />
+                }
+            }
+            (None, None) => html! {},
         };
 
         html! {
-            <div key={r.remote.to_string()} class="desktop-row mobile-column align-top">
-                <Image class="poster poster-side top desktop-only" src={r.poster.clone()} placeholder=true />
-                <Image class="banner mobile-only" src={r.banner.clone()} placeholder=true />
+            <div key={row.key.clone()} class="search-result">
+                if let Some(to) = &row.tracked {
+                    <Link to={to.clone()} class="search-poster" decorative=true>
+                        <Image src={row.poster.cloned()} placeholder=true />
+                    </Link>
+                } else {
+                    <span class="search-poster">
+                        <Image src={row.poster.cloned()} placeholder=true />
+                    </span>
+                }
 
-                <div class="column top fill">
-                    <div class="row-split">
-                        <div class="row">
-                            <a class="item-inline-lg" href={r.remote.show_url(r.slug.as_deref())} target="_blank" rel="noopener noreferrer" title={format!("Open on {}", r.remote.source())}>
-                                <span class={classes!("logo", r.remote.source().as_id())} />
-                            </a>
+                <div class="search-body">
+                    <div class="search-heading">
+                        <span class={classes!("icon", "sm", kind_icon)} role="img" aria-label={kind_label} title={kind_label} />
 
-                            <h2>
-                                if let Some(id) = show_id {
-                                    <Link to={Route::ShowDetail(id, ShowDetailQuery::default())} class="row text-gap">{heading}</Link>
-                                } else {
-                                    {heading}
-                                }
-                            </h2>
-                        </div>
+                        if let Some(to) = &row.tracked {
+                            <Link to={to.clone()} class="search-title"><>{title}</></Link>
+                        } else {
+                            <span class="search-title">{title}</span>
+                        }
 
-                        <div class="row">
-                            if let Some(on_nav) = on_nav {
-                                <Button icon="check" desktop_text="Tracked" title="Already tracked" onclick={on_nav} />
-                            } else {
-                                <Button icon="plus" desktop_text="Track" title="Track show" onclick={on_track} />
-                            }
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        if let Some(date) = r.first_air_date {
-                            <span class="text-muted">{date.year().to_string()}</span>
+                        if let Some(year) = row.year {
+                            <span class="search-year">{year.to_string()}</span>
                         }
                     </div>
 
-                    if let Some(ref overview) = r.overview {
-                        <p class="overview text-muted">{overview}</p>
+                    if let Some(overview) = row.overview {
+                        <p class="search-overview">{overview}</p>
                     }
+
+                    <div class="search-sources">
+                        { for row.sources.iter().map(|(source, url)| html! {
+                            if let Some(url) = url {
+                                <a class="search-source" href={url.clone()} target="_blank" rel="noopener noreferrer" title={format!("Open on {source}")}>
+                                    <span class={classes!("logo", source.as_id())} aria-hidden="true" />
+                                </a>
+                            } else {
+                                <span class="search-source" title={source.to_string()}>
+                                    <span class={classes!("logo", source.as_id())} aria-hidden="true" />
+                                </span>
+                            }
+                        }) }
+                    </div>
                 </div>
+
+                <div class="search-action">{action}</div>
             </div>
         }
     }
+}
 
-    fn view_movie_result(&self, ctx: &Context<Self>, r: &api::SearchMovie) -> Html {
-        let remote = r.remote.clone();
-        let show_id = r.already_tracked;
+/// How to track a result that isn't tracked yet.
+#[derive(Clone)]
+enum Track {
+    Show(Option<String>, api::Remote),
+    Movie(api::Remote),
+}
 
-        let on_nav = show_id.map(|id| {
-            ctx.link()
-                .callback(move |_| Msg::Navigate(Route::MovieDetail(id)))
-        });
+/// A search result as shown: results from several sources that lead to the
+/// same tracked show or movie are one row carrying every source.
+struct Row<'a> {
+    key: String,
+    movie: bool,
+    title: Option<&'a str>,
+    poster: Option<&'a api::Image>,
+    year: Option<i16>,
+    overview: Option<&'a str>,
+    tracked: Option<Route>,
+    track: Option<Track>,
+    sources: Vec<(api::RemoteSource, Option<String>)>,
+}
 
-        let on_track = ctx
-            .link()
-            .callback(move |_| Msg::TrackMovie(None, remote.clone()));
+fn merge(results: &[api::SearchResult]) -> Vec<Row<'_>> {
+    let mut rows: Vec<Row<'_>> = Vec::new();
 
-        let heading = html! {
-            <>
-                <span class="item-inline" title="Movie">
-                    <span class="icon film" aria-hidden="true" />
-                </span>
-
-                <span class="item-title">{r.title.as_deref().unwrap_or("Untitled Movie")}</span>
-            </>
+    for result in results {
+        let row = match result {
+            api::SearchResult::Show(r) => Row {
+                key: r.remote.to_string(),
+                movie: false,
+                title: r.title.as_deref(),
+                poster: r.poster.as_ref(),
+                year: r.first_air_date.map(|d| d.year()),
+                overview: r.overview.as_deref(),
+                tracked: r
+                    .already_tracked
+                    .map(|id| Route::ShowDetail(id, ShowDetailQuery::default())),
+                track: Some(Track::Show(r.slug.clone(), r.remote.clone())),
+                sources: vec![(*r.remote.source(), r.remote.show_url(r.slug.as_deref()))],
+            },
+            api::SearchResult::Movie(r) => Row {
+                key: r.remote.to_string(),
+                movie: true,
+                title: r.title.as_deref(),
+                poster: r.poster.as_ref(),
+                year: r.release_date.map(|d| d.year()),
+                overview: r.overview.as_deref(),
+                tracked: r.already_tracked.map(Route::MovieDetail),
+                track: Some(Track::Movie(r.remote.clone())),
+                sources: vec![(*r.remote.source(), r.remote.movie_url())],
+            },
         };
 
-        html! {
-            <div key={r.remote.to_string()} class="desktop-row mobile-column align-top">
-                <Image class="poster poster-side top desktop-only" src={r.poster.clone()} placeholder=true />
-                <Image class="banner mobile-only" src={r.banner.clone()} placeholder=true />
-
-                <div class="column fill">
-                    <div class="row-split">
-                        <div class="row">
-                            <a class="item-inline-lg" href={r.remote.movie_url()} target="_blank" rel="noopener noreferrer" title={format!("Open on {}", r.remote.source())}>
-                                <span class={classes!("logo", r.remote.source().as_id())} />
-                            </a>
-
-                            <h2>
-                                if let Some(id) = show_id {
-                                    <Link to={Route::MovieDetail(id)} class="row text-gap">{heading}</Link>
-                                } else {
-                                    {heading}
-                                }
-                            </h2>
-                        </div>
-
-                        <div class="row">
-                            if let Some(on_nav) = on_nav {
-                                <Button icon="check" desktop_text="Tracked" title="Already tracked" onclick={on_nav} />
-                            } else {
-                                <Button icon="plus" desktop_text="Track" title="Track movie" onclick={on_track} />
-                            }
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        if let Some(date) = r.release_date {
-                            <span class="text-muted">{date.year().to_string()}</span>
-                        }
-                    </div>
-
-                    if let Some(ref overview) = r.overview {
-                        <p class="overview text-muted">{overview}</p>
-                    }
-                </div>
-            </div>
+        if let Some(to) = &row.tracked
+            && let Some(existing) = rows.iter_mut().find(|r| r.tracked.as_ref() == Some(to))
+        {
+            existing.sources.extend(row.sources);
+            continue;
         }
+
+        rows.push(row);
+    }
+
+    rows
+}
+
+fn results_count(total: usize) -> String {
+    match total {
+        1 => "1 result".to_owned(),
+        n => format!("{n} results"),
     }
 }

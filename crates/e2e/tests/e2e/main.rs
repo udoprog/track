@@ -191,7 +191,7 @@ yew_e2e::harness! {
     navigation::{opens_every_page, tab_shows_a_focus_ring, navigation_is_links(seeded), pages_have_landmarks_and_one_heading, page_scrolls_the_window, toolbar_icons_are_small, every_button_has_a_title(seeded)},
     people::{lists_people_by_credits(seeded), shows_no_count_while_loading(seeded), shows_a_silhouette_without_a_photo(seeded), phone_person_page_keeps_the_photo_shape(seeded), known_for_lists_each_title_once(seeded)},
     queue::{lists_tasks_in_columns, keeps_rows_in_place(seeded), follows_the_next_task(crowded), shows_failed_tasks(seeded)},
-    search::{focuses_the_input},
+    search::{focuses_the_input, says_what_it_searches},
     settings::{reorders_sync_sources, theme_applies_live, theme_is_remembered, adds_languages_and_rules, switches_work_from_the_keyboard, fields_follow_the_theme, settings_are_labelled_rows},
     show::{episode_menu_holds_the_other_actions(seeded), menus_close_on_an_outside_click(seeded), modals_close_from_button_and_backdrop(seeded), phone_modals_rise_from_the_bottom(seeded), settings_line_up_their_controls(seeded), modals_hold_keyboard_focus(seeded), menus_work_from_the_keyboard(seeded), mark_watched_is_one_colour(seeded), seasons_list_beside_the_episodes(seasons), phones_pick_seasons_from_chips(seasons), phone_popovers_are_sheets(seeded), watch_history_moves_and_removes(seeded), tracking_toggle_names_the_show(seeded), settings_pages_return_to_settings(seeded), translations_sit_beside_their_language(seeded), air_dates_explain_the_default_quietly(seeded), has_a_heading(seeded), phones_have_no_episode_rail(seeded), phones_do_not_scroll_sideways(seeded), seasons_count_watched_episodes(seeded), episodes_show_their_details(seeded)},
 }
