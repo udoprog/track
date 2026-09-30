@@ -15,6 +15,7 @@ mod episode_cache_modal;
 mod episode_picker;
 mod error_box;
 mod filters_editor;
+mod form_row;
 mod graphics_source_filter;
 mod image;
 mod image_gallery;
@@ -51,6 +52,7 @@ pub(crate) use self::error_box::ErrorBox;
 pub(crate) use self::filters_editor::{
     AIR_DATE_KINDS, AIR_DATE_SOURCES, FiltersEditor, RELEASE_KINDS, RELEASE_SOURCES,
 };
+pub(crate) use self::form_row::FormRow;
 pub(crate) use self::graphics_source_filter::GraphicsSourceFilter;
 pub(crate) use self::image::Image;
 pub(crate) use self::image_gallery::{ImageGallery, ImageItem};

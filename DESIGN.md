@@ -119,7 +119,7 @@ page filled; it hides when there is only one page.
 
 Popovers are `ui::ContextMenu`: anchored to their trigger and keeping the
 side they opened on. Popovers and modals (`ui::Modal`) share one surface:
-`--surface-3`, a soft border, `$radius-lg` and a `--shadow-strong` shadow.
+`--surface-2` (the shade controls are drawn for), a soft border, `$radius-lg` and a `--shadow-strong` shadow.
 A modal's header is its title in text colour beside a ghost *Close*; the page
 behind it dims with `--scrim`. On phones a modal is a sheet along the bottom
 edge, rounded at the top. A list of actions in a popover is `.menu-list`. Reversible actions happen at once and offer undo
@@ -155,6 +155,14 @@ on phones, not fields joined inline with separators. Rows that change state
 keep their place and their height. Reordering is drag and drop through
 `ui::Reorder` and `DragHandle` (pointer and touch, arrow keys on a focused
 handle), never up and down buttons.
+
+### Forms
+
+Settings are rows in a `.form-rows` grid, one `ui::FormRow` each: a
+sentence-case label beside its control, every control starting on the same
+line, with an optional muted hint under it. On phones the label sits above
+the control. Content that needs the whole width (a rule editor) goes in a
+`.form-wide` block after its row.
 
 ### Toggles
 

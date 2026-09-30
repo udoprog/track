@@ -214,3 +214,41 @@ pub async fn phone_modals_rise_from_the_bottom(
     );
     Ok(())
 }
+
+/// The show's settings are labelled rows whose controls start on one line.
+pub async fn settings_line_up_their_controls(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_show(driver).await?;
+
+    driver
+        .find_one_by("[title='Settings']:not(#toolbar *)")
+        .await?
+        .click()
+        .await?;
+
+    driver
+        .wait_texts(
+            ".modal .form-label",
+            [
+                "Language",
+                "Automatic sync",
+                "Specials",
+                "Air dates",
+                "Last synced",
+                "Graphics",
+                "Remotes",
+            ],
+        )
+        .await?;
+
+    let mut lefts = Vec::new();
+
+    for control in driver.find_all(By::Css(".modal .form-control")).await? {
+        lefts.push(control.rect().await?.x);
+    }
+
+    ensure!(
+        lefts.windows(2).all(|w| (w[0] - w[1]).abs() < 1.0),
+        "the controls start at different places: {lefts:?}"
+    );
+    Ok(())
+}

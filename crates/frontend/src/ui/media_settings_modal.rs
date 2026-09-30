@@ -6,7 +6,7 @@ use yew::prelude::*;
 use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::ui::Button;
+use crate::ui::{Button, FormRow};
 
 use super::{
     AIR_DATE_KINDS, AIR_DATE_SOURCES, FiltersEditor, LanguagePicker, Modal, RELEASE_KINDS,
@@ -514,18 +514,30 @@ impl MediaSettingsModal {
         // Specials and air-date filters are show-only; release filters are movie-only.
         let specials = match data {
             Loaded::Show(s) => {
-                let include_specials = s.include_specials;
-                let on_change = link.callback(move |_: MouseEvent| {
-                    Msg::SetIncludeSpecials(include_specials.cycle())
+                let current = s.include_specials;
+                let on_change = link.callback(|e: Event| {
+                    let select: web_sys::HtmlSelectElement = e.target_unchecked_into();
+                    Msg::SetIncludeSpecials(match select.value().as_str() {
+                        "include" => IncludeSpecials::Include,
+                        "skip" => IncludeSpecials::Skip,
+                        _ => IncludeSpecials::Default,
+                    })
                 });
 
+                let options = [
+                    ("default", IncludeSpecials::Default),
+                    ("include", IncludeSpecials::Include),
+                    ("skip", IncludeSpecials::Skip),
+                ];
+
                 Some(html! {
-                    <div class="input-group">
-                        <span class="input-label has-text">{"Include Specials"}</span>
-                        <div class="input-checkbox has-text fill" onclick={on_change}>
-                            {include_specials.as_label()}
-                        </div>
-                    </div>
+                    <FormRow label="Specials">
+                        <select class="input-select" title="Include specials" onchange={on_change}>
+                            for (value, option) in options {
+                                <option {value} selected={option == current}>{option.as_label()}</option>
+                            }
+                        </select>
+                    </FormRow>
                 })
             }
             Loaded::Movie(_) => None,
@@ -548,24 +560,21 @@ impl MediaSettingsModal {
         let on_edit_remotes = ctx.props().on_edit_remotes.reform(|_: MouseEvent| ());
 
         html! {
-            <div class="form">
-                <div class="field">
-                    <label>{"Language"}</label>
-
+            <div class="form-rows">
+                <FormRow label="Language">
                     <LanguagePicker
                         current={language}
                         placeholder="Default"
                         on_change={link.callback(Msg::SetLanguage)}
                     />
-                </div>
+                </FormRow>
 
-                <div class="input-group">
-                    <div class="input-label has-text">{"Automatic Sync"}</div>
-                    <div class={classes!("input-checkbox", "has-text", "fill", auto_sync.then_some("checked"))} id="auto-sync-enabled" onclick={on_auto_sync}>
+                <FormRow label="Automatic sync">
+                    <div class={classes!("input-checkbox", "has-text", auto_sync.then_some("checked"))} id="auto-sync-enabled" title="Sync automatically" onclick={on_auto_sync}>
                         <span class="mark" />
                         {if auto_sync { "Enabled" } else { "Disabled" }}
                     </div>
-                </div>
+                </FormRow>
 
                 {specials}
 
@@ -573,39 +582,31 @@ impl MediaSettingsModal {
 
                 {air_dates}
 
-                <div class="input-group">
-                    <span class="input-label has-text">{"Last Sync"}</span>
-
+                <FormRow label="Last synced">
                     if let Some(ts) = last_synced {
-                        <div class="input-text has-text fill" title="Last synced at">
-                            <span>{ts}</span>
-                        </div>
+                        <span title="Last synced at">{ts}</span>
                     } else {
-                        <div class="input-text has-text fill text-muted">
-                            <span>{"Never synced"}</span>
-                        </div>
+                        <span class="text-muted">{"Never"}</span>
                     }
 
                     if has_remotes {
-                        <Button icon="arrow-path" spin={self.syncing} onclick={on_sync} title="Sync now" text="Sync" />
+                        <Button icon="arrow-path" spin={self.syncing} onclick={on_sync} title="Sync now" label="Sync now" />
                     }
-                </div>
+                </FormRow>
 
-                <div class="field">
-                    if has_images {
-                        <Button icon="photo" label="Graphics" title="Edit graphics" onclick={on_edit_graphics} />
+                if has_images {
+                    <FormRow label="Graphics" hint="The poster, backdrop, banner and other artwork.">
+                        <Button icon="photo" label="Edit graphics" title="Edit graphics" onclick={on_edit_graphics} />
+                    </FormRow>
+                } else {
+                    <FormRow label="Graphics" hint="Sync to fetch artwork.">
+                        <span class="text-muted">{"None yet"}</span>
+                    </FormRow>
+                }
 
-                        <span class="hint">{"Choose the poster, backdrop, banner, and other artwork."}</span>
-                    } else {
-                        <span class="hint">{"No graphics available. Sync to fetch artwork."}</span>
-                    }
-                </div>
-
-                <div class="field">
-                    <Button icon="identification" label="Remotes" title="Edit remotes" onclick={on_edit_remotes} />
-
-                    <span class="hint">{"Edit the TMDB, TVDB, and other remote identifiers used to sync."}</span>
-                </div>
+                <FormRow label="Remotes" hint="The TMDB, TVDB and other identifiers used to sync.">
+                    <Button icon="identification" label="Edit remotes" title="Edit remotes" onclick={on_edit_remotes} />
+                </FormRow>
             </div>
         }
     }
@@ -633,16 +634,18 @@ impl MediaSettingsModal {
         });
 
         html! {
-            <div class="field">
-                <label>{"Release Date"}</label>
+            <>
+                <FormRow label="Release dates">
+                    <select class="input-select" title="Release date rules" onchange={on_mode}>
+                        <option value="default" selected={!is_custom}>{"Use global default"}</option>
+                        <option value="custom" selected={is_custom}>{"Custom"}</option>
+                    </select>
+                </FormRow>
 
-                <select class="input-select" onchange={on_mode}>
-                    <option value="default" selected={!is_custom}>{"Default"}</option>
-                    <option value="custom" selected={is_custom}>{"Customize"}</option>
-                </select>
-
-                {editor}
-            </div>
+                if let Some(editor) = editor {
+                    <div class="form-wide">{editor}</div>
+                }
+            </>
         }
     }
 
@@ -652,8 +655,9 @@ impl MediaSettingsModal {
 
         let on_mode = {
             let default = self.default_air_date_filters.clone();
-            link.callback(move |_: MouseEvent| {
-                Msg::SetAirDateFilters((!is_custom).then(|| default.clone()))
+            link.callback(move |e: Event| {
+                let select: web_sys::HtmlSelectElement = e.target_unchecked_into();
+                Msg::SetAirDateFilters((select.value() == "custom").then(|| default.clone()))
             })
         };
 
@@ -666,13 +670,16 @@ impl MediaSettingsModal {
 
         html! {
             <>
-                <div class="input-group">
-                    <span class="input-label has-text">{"Air Date"}</span>
+                <FormRow label="Air dates">
+                    <select class="input-select" title="Air date rules" onchange={on_mode}>
+                        <option value="default" selected={!is_custom}>{"Use global default"}</option>
+                        <option value="custom" selected={is_custom}>{"Custom"}</option>
+                    </select>
+                </FormRow>
 
-                    <Button label={if is_custom { "Custom" } else { "Use global default" }} title="Switch between a custom air date filter and the global default" class="input-checkbox fill" onclick={on_mode} />
-                </div>
-
-                {editor}
+                if let Some(editor) = editor {
+                    <div class="form-wide">{editor}</div>
+                }
             </>
         }
     }

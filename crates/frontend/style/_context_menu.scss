@@ -61,7 +61,7 @@
     width: fit-content;
     max-height: var(--cm-max-height, calc(100vh - #{v.$gap-xs * 2}));
     overflow-y: auto;
-    background: v.$bg-panel;
+    background: v.$bg-surface;
     border: 1px solid v.$border-subtle;
     border-radius: v.$radius-lg;
     box-shadow: 0 8px 32px v.$shadow-strong;

@@ -356,6 +356,62 @@ p {
     }
 }
 
+// Settings as rows (`ui::FormRow`): labels share one column beside their
+// controls, and stack above them on phones.
+.form-rows {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    column-gap: v.$gap;
+    row-gap: v.$gap-sm;
+
+    @include g.on-mobile {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.form-row {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    align-items: start;
+
+    @include g.on-mobile {
+        row-gap: v.$padding;
+    }
+}
+
+.form-label {
+    display: flex;
+    align-items: center;
+    min-height: v.$input-height;
+    font-size: v.$font-sm;
+
+    @include g.on-mobile {
+        min-height: 0;
+    }
+}
+
+.form-control {
+    display: flex;
+    flex-direction: column;
+    gap: v.$padding;
+    min-width: 0;
+}
+
+.form-inputs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: v.$gap-xs;
+    min-height: v.$input-height;
+}
+
+// Content under a row that needs the whole width, such as a rule editor.
+.form-wide {
+    grid-column: 1 / -1;
+    min-width: 0;
+}
+
 .hint {
     color: v.$text-muted;
     font-size: v.$font-xs;
@@ -1252,7 +1308,7 @@ input-label-controls {
 .modal {
     display: flex;
     flex-direction: column;
-    background: v.$bg-panel;
+    background: v.$bg-surface;
     border: 1px solid v.$border-subtle;
     border-radius: v.$radius-lg;
     box-shadow: 0 8px 32px v.$shadow-strong;
@@ -1776,7 +1832,7 @@ pagination {
 .task-row {
     display: grid;
     grid-column: 1 / -1;
-    grid-template-columns: subgrid;
+    grid-template-columns: max-content minmax(0, 1fr);
     align-items: center;
     height: var(--task-row-height);
     padding: 0 v.$gap-xs;

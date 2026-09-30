@@ -24,7 +24,7 @@
     width: min(240px, calc(100vw - #{v.$gap-xs * 2}));
     aspect-ratio: 1;
     border-radius: 50%;
-    background: v.$bg-surface;
+    background: v.$bg-panel;
     // Let pointer drag rotate the hand without the page scrolling on touch.
     touch-action: none;
     user-select: none;
