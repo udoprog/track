@@ -289,3 +289,82 @@ pub async fn secondary_actions_are_filled(driver: &mut TestDriver, _: &mut Track
 
     Ok(())
 }
+
+/// The schedule entry for the show airing tomorrow.
+const FUTURE: &str = ".schedule-item:has([title='Open Future Show'])";
+
+/// Upcoming lists what airs soon: each entry's times sit under its title, and
+/// a time opens that episode.
+pub async fn upcoming_times_open_their_episode(
+    driver: &mut TestDriver,
+    _: &mut Track,
+) -> Result<()> {
+    driver.set_window_size(1200, 900).await?;
+    driver.reopen_with("view=upcoming").await?;
+
+    driver.find_one_by(FUTURE).await?;
+    let title = driver
+        .find_one_by(&format!("{FUTURE} .schedule-title"))
+        .await?
+        .rect()
+        .await?;
+    let times = driver
+        .find_one_by(&format!("{FUTURE} .schedule-times"))
+        .await?
+        .rect()
+        .await?;
+    ensure!(
+        times.y >= title.y + title.height - 1.0,
+        "the times are not under the title: {title:?} {times:?}"
+    );
+    ensure!(
+        driver.count(&format!("{FUTURE} a.schedule-time")).await? == 2,
+        "expected both episodes' times"
+    );
+
+    driver
+        .find_one_by(&format!("{FUTURE} [title='Open S01E02']"))
+        .await?
+        .click()
+        .await?;
+
+    driver.wait_texts(".detail-title", ["Future Show"]).await?;
+    let url = driver.webdriver().current_url().await?;
+    ensure!(url.fragment() == Some("S01E02"), "the time opened {url}");
+    Ok(())
+}
+
+/// In the week schedule an entry sits flush left in its day.
+pub async fn schedule_entries_sit_flush_left(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    driver.set_window_size(1200, 900).await?;
+    driver.reopen_with("view=schedule").await?;
+    driver.find_first(".calendar-cell.today").await?;
+
+    // Weeks start on Monday, so on a Sunday tomorrow is in next week.
+    let sunday = driver
+        .webdriver()
+        .execute("return new Date().getDay() === 0;", Vec::new())
+        .await?
+        .convert::<bool>()?;
+
+    if sunday {
+        driver
+            .find_one_by("[title='Next week']")
+            .await?
+            .click()
+            .await?;
+    }
+
+    let entry = driver.find_one_by(FUTURE).await?.rect().await?;
+    let title = driver
+        .find_one_by(&format!("{FUTURE} .schedule-title"))
+        .await?
+        .rect()
+        .await?;
+    ensure!(
+        title.x - entry.x <= 8.0,
+        "the title is {}px in from the entry's edge",
+        title.x - entry.x
+    );
+    Ok(())
+}

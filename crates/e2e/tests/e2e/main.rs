@@ -46,6 +46,8 @@ const CROWDED: &str = include_str!("crowded.sql");
 const MOVIE: &str = include_str!("movie.sql");
 /// Specials and a second season for the seeded show, with `(seasons)`.
 const SEASONS: &str = include_str!("seasons.sql");
+/// A show airing tomorrow, with `(upcoming)`.
+const UPCOMING: &str = include_str!("upcoming.sql");
 
 /// What a test asks of its server.
 #[derive(Default)]
@@ -58,6 +60,8 @@ struct Setup {
     movie: bool,
     /// Start with `seed.sql` and the extra seasons in `seasons.sql`.
     seasons: bool,
+    /// Start with `seed.sql` and the show airing tomorrow in `upcoming.sql`.
+    upcoming: bool,
 }
 
 /// A track server for one test.
@@ -85,7 +89,7 @@ impl Fixture for Track {
         let sandbox = SANDBOX.get().context("the sandbox was not entered")?;
         let dir = TempDir::new_in(sandbox)?;
 
-        if setup.seeded || setup.crowded || setup.movie || setup.seasons {
+        if setup.seeded || setup.crowded || setup.movie || setup.seasons || setup.upcoming {
             // The server creates the schema; the seed goes in while it is down.
             let (mut child, _) = spawn(server, dir.path()).await?;
             child.kill().await?;
@@ -103,6 +107,10 @@ impl Fixture for Track {
 
             if setup.seasons {
                 c.execute(SEASONS).context("adding the seasons")?;
+            }
+
+            if setup.upcoming {
+                c.execute(UPCOMING).context("adding the upcoming show")?;
             }
         }
 
@@ -185,7 +193,7 @@ async fn build_server() -> Result<PathBuf> {
 
 yew_e2e::harness! {
     Track;
-    dashboard::{fills_rows_with_relative_dates(seeded), labels_its_filters, keeps_view_options_in_a_menu, buttons_expose_their_state, secondary_actions_are_filled(seeded), mobile_cards_always_have_a_picture(seeded), schedule_names_its_days, upcoming_is_an_agenda, marks_watched_in_one_click(seeded), marks_watched_at_a_chosen_time(seeded)},
+    dashboard::{fills_rows_with_relative_dates(seeded), labels_its_filters, keeps_view_options_in_a_menu, buttons_expose_their_state, secondary_actions_are_filled(seeded), mobile_cards_always_have_a_picture(seeded), schedule_names_its_days, upcoming_is_an_agenda, upcoming_times_open_their_episode(upcoming), schedule_entries_sit_flush_left(upcoming), marks_watched_in_one_click(seeded), marks_watched_at_a_chosen_time(seeded)},
     media::{shows_a_poster_grid(seeded), toggle_marks_are_icon_sized, sort_stays_readable_at_tablet_width},
     movie::{puts_the_cast_beside_the_poster(movie), phone_release_line_stays_together(movie)},
     navigation::{opens_every_page, tab_shows_a_focus_ring, navigation_is_links(seeded), pages_have_landmarks_and_one_heading, page_scrolls_the_window, toolbar_icons_are_small, every_button_has_a_title(seeded)},
