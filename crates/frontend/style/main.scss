@@ -476,13 +476,13 @@ h6 {
     >image.poster {
         border-radius: v.$radius-lg;
         overflow: hidden;
-        box-shadow: 0 4px 14px color-mix(in srgb, black 35%, transparent);
+        box-shadow: 0 4px 14px v.$shadow;
         transition: transform 0.15s ease-out, box-shadow 0.15s ease-out;
     }
 
     &:hover>image.poster {
         transform: translateY(-3px);
-        box-shadow: 0 10px 24px color-mix(in srgb, black 45%, transparent);
+        box-shadow: 0 10px 24px v.$shadow-strong;
     }
 
     >image.banner {

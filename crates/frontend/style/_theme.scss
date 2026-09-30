@@ -39,6 +39,9 @@
     --danger-bg: #5c2a2c;
     --danger-selected: #8c3d40;
 
+    --shadow: rgb(0 0 0 / 0.35);
+    --shadow-strong: rgb(0 0 0 / 0.5);
+
     --backdrop-opacity: 0.18;
     // Third-party logos are drawn for dark backgrounds.
     --logo-plate: transparent;
@@ -75,6 +78,9 @@
     --danger: #bf4343;
     --danger-bg: #f5dada;
     --danger-selected: #bf4343;
+
+    --shadow: rgb(20 30 45 / 0.14);
+    --shadow-strong: rgb(20 30 45 / 0.24);
 
     --backdrop-opacity: 0.1;
     --logo-plate: #1b2027;
