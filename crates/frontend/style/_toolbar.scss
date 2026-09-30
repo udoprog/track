@@ -4,7 +4,8 @@
 
 .toolbar {
     display: grid;
-    grid-template-columns: 1fr auto;
+    // The first column shrinks, so the actions never push past the edge.
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: v.$gap;
 
     &.toolbar-padding {

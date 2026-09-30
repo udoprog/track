@@ -23,7 +23,7 @@ INSERT INTO episode_strings (episode_id, language, kind, text)
 VALUES
     (3001, 1701734144, 1, 'First Episode'),
     (3002, 1701734144, 1, 'Second Episode'),
-    (3003, 1701734144, 1, 'Third Episode');
+    (3003, 1701734144, 1, 'Unbreakablyconcatenatedepisodename');
 
 -- The first episode is up next on the dashboard.
 INSERT INTO pending (timestamp, show_id, episode_id)

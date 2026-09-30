@@ -88,3 +88,26 @@ pub async fn phones_have_no_episode_rail(driver: &mut TestDriver, _: &mut Track)
         })
         .await
 }
+
+/// On a phone the show page fits the screen: an episode's actions never push
+/// past the edge.
+pub async fn phones_do_not_scroll_sideways(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_show(driver).await?;
+    driver.set_window_size(400, 850).await?;
+    driver.find_first(".episode [title='Mark watched']").await?;
+
+    let ret = driver
+        .webdriver()
+        .execute(
+            "const e = document.scrollingElement; return [e.scrollWidth, e.clientWidth];",
+            Vec::new(),
+        )
+        .await?;
+
+    let [scroll, client] = ret.convert::<[f64; 2]>()?;
+    ensure!(
+        scroll <= client,
+        "the page is {scroll}px wide on a {client}px screen"
+    );
+    Ok(())
+}

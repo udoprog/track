@@ -806,6 +806,19 @@ button.ghost {
                 height: 180px;
             }
         }
+
+        // Phones: the episode's actions get their own line, so its name keeps
+        // the width.
+        @include g.on-mobile {
+            >.column>.toolbar {
+                grid-template-columns: minmax(0, 1fr);
+                gap: v.$gap-xs;
+
+                >.input-group {
+                    justify-self: end;
+                }
+            }
+        }
     }
 }
 
