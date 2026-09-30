@@ -5,7 +5,10 @@ use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{PersonQuery, PersonSort, Route, Router};
-use crate::ui::{Button, Image, Link, PaginationButtons};
+use crate::ui::{Button, Image, Link, PaginationButtons, SortMenu};
+
+/// The fields the list can be sorted by, as `(value, label)`.
+const SORTS: &[(&str, &str)] = &[("name", "Name"), ("credits", "Credits")];
 
 const PAGE_SIZE: usize = 24;
 
@@ -142,9 +145,8 @@ impl Component for PersonList {
             Msg::Filter(input.value())
         });
 
-        let on_sort = link.callback(|e: Event| {
-            let select: web_sys::HtmlSelectElement = e.target_unchecked_into();
-            Msg::SetSort(match select.value().as_str() {
+        let on_sort = link.callback(|value: &'static str| {
+            Msg::SetSort(match value {
                 "credits" => PersonSort::Credits,
                 _ => PersonSort::Name,
             })
@@ -177,18 +179,11 @@ impl Component for PersonList {
                     </div>
 
                     <div class="chips">
-                        <label class="chip-select" title="Sort by">
-                            <span class="icon arrows-up-down" aria-hidden="true" />
-
-                            <select onchange={on_sort}>
-                                <option value="name" selected={matches!(self.sort, PersonSort::Name)}>
-                                    {"Name"}
-                                </option>
-                                <option value="credits" selected={matches!(self.sort, PersonSort::Credits)}>
-                                    {"Credits"}
-                                </option>
-                            </select>
-                        </label>
+                        <SortMenu
+                            options={SORTS}
+                            current={match self.sort { PersonSort::Name => "name", PersonSort::Credits => "credits" }}
+                            on_change={on_sort}
+                        />
 
                         <Button icon={dir_icon} title={dir_title} class="chip" onclick={link.callback(|_| Msg::ToggleDir)} />
                     </div>

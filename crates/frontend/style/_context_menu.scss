@@ -47,6 +47,12 @@
         &:hover:not(:disabled) {
             background: color-mix(in srgb, v.$text-primary 8%, transparent);
         }
+
+        // A choice that is not the current one keeps its check's room, so
+        // the labels line up.
+        &.unchecked>.icon {
+            visibility: hidden;
+        }
     }
 }
 

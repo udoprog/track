@@ -69,23 +69,19 @@ pub async fn sort_stays_readable_at_tablet_width(
         .click()
         .await?;
 
-    let sort = driver.find_one_by(".chip-select").await?.rect().await?;
-    let select = driver
-        .find_one_by(".chip-select select")
-        .await?
-        .rect()
-        .await?;
+    let chip = driver.find_one_by("[title='Sort by']").await?;
+    ensure!(
+        chip.text().await? == "Title",
+        "the sort chip reads {:?}",
+        chip.text().await?
+    );
+    let sort = chip.rect().await?;
     let filter = driver.find_one_by(".search-field").await?.rect().await?;
 
     ensure!(
         sort.height <= 40.0,
         "the sort chip wraps to {}px",
         sort.height
-    );
-    ensure!(
-        select.width >= 40.0,
-        "the sort select is {}px wide",
-        select.width
     );
     ensure!(
         filter.width >= 200.0,

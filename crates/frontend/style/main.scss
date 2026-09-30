@@ -1808,45 +1808,6 @@ input-label-controls {
     }
 }
 
-// A native select dressed as a chip, so phones keep their own picker.
-.chip-select {
-    display: inline-flex;
-    align-items: center;
-    gap: v.$padding-md;
-    height: v.$input-height;
-    padding: 0 v.$padding-lg * 1.5;
-    border: 1px solid v.$border-subtle;
-    border-radius: 999px;
-    font-size: v.$font-sm;
-    --icon-color: #{v.$text-muted};
-    cursor: pointer;
-
-    @include g.on-mobile {
-        height: v.$input-height-touch;
-    }
-
-    &:hover,
-    &:focus-within {
-        border-color: v.$border-input;
-    }
-
-    // One ring, laid over the border rather than a second one outside it.
-    &:has(>select:focus-visible) {
-        @include focus-ring;
-        outline-offset: -1px;
-    }
-
-    >select {
-        appearance: none;
-        border: none;
-        outline: none;
-        background: transparent;
-        color: v.$text-color;
-        font: inherit;
-        cursor: pointer;
-    }
-}
-
 .table {
     display: flex;
     flex-direction: column;

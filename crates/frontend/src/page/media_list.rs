@@ -11,8 +11,15 @@ use crate::router::{
     MediaQuery, MediaSelection, Route, Router, ShowDetailQuery, SortField, TrackedFilter,
 };
 use crate::ui::{
-    Button, Image, Link, MarkTimeMenu, MediaKindToggle, PaginationButtons, TimePreset,
+    Button, Image, Link, MarkTimeMenu, MediaKindToggle, PaginationButtons, SortMenu, TimePreset,
 };
+
+/// The fields the list can be sorted by, as `(value, label)`.
+const SORTS: &[(&str, &str)] = &[
+    ("title", "Title"),
+    ("release", "Release date"),
+    ("watched", "Last watched"),
+];
 
 const PAGE_SIZE: usize = 36;
 
@@ -205,9 +212,8 @@ impl Component for MediaList {
             Msg::Filter(input.value())
         });
 
-        let on_sort = link.callback(|e: Event| {
-            let select: web_sys::HtmlSelectElement = e.target_unchecked_into();
-            Msg::SetSort(match select.value().as_str() {
+        let on_sort = link.callback(|value: &'static str| {
+            Msg::SetSort(match value {
                 "release" => SortField::Release,
                 "watched" => SortField::Watched,
                 _ => SortField::Title,
@@ -251,21 +257,11 @@ impl Component for MediaList {
                     </div>
 
                     <div class="chips">
-                        <label class="chip-select" title="Sort by">
-                            <span class="icon arrows-up-down" aria-hidden="true" />
-
-                            <select onchange={on_sort} value={sort_value}>
-                                <option value="title" selected={matches!(self.sort, SortField::Title)}>
-                                    {"Title"}
-                                </option>
-                                <option value="release" selected={matches!(self.sort, SortField::Release)}>
-                                    {"Release date"}
-                                </option>
-                                <option value="watched" selected={matches!(self.sort, SortField::Watched)}>
-                                    {"Last watched"}
-                                </option>
-                            </select>
-                        </label>
+                        <SortMenu
+                            options={SORTS}
+                            current={sort_value}
+                            on_change={on_sort}
+                        />
 
                         <Button icon={dir_icon} title={dir_title} class="chip" onclick={link.callback(|_| Msg::ToggleDir)} />
 

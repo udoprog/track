@@ -15,12 +15,21 @@ pub async fn lists_people_by_credits(driver: &mut TestDriver, _: &mut Track) -> 
         .wait_texts(".person-name", ["Greta Garbo", "Ada Lovelace"])
         .await?;
 
-    let sort = driver.find_one_by(".chip-select select").await?;
-    driver.set_value(&sort, "name", "change").await?;
+    driver
+        .find_one_by("[title='Sort by']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by("[role=menuitemradio][title='Sort by name']")
+        .await?
+        .click()
+        .await?;
 
     driver
         .wait_texts(".person-name", ["Ada Lovelace", "Greta Garbo"])
-        .await
+        .await?;
+    driver.wait_texts("[title='Sort by']", ["Name"]).await
 }
 
 /// While the people load, the page shows neither a count nor pages of an
