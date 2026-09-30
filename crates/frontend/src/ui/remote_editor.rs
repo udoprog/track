@@ -3,7 +3,7 @@ use yew::prelude::*;
 
 use crate::ui::ContextMenu;
 
-use super::{Button, ConfirmDanger, Modal, Variant};
+use super::{Button, ConfirmDanger, DragHandle, Modal, Reorder, Variant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RemoteSourceKind {
@@ -83,7 +83,7 @@ pub(crate) enum Msg {
     PurgeCache(api::RemoteId),
     SetEnabled(api::RemoteId, bool),
     SetSyncKinds(api::RemoteId, Option<api::SyncKindSet>),
-    Move(usize, isize),
+    Move(usize, usize),
     Close,
     ToggleActionsExpanded(usize),
 }
@@ -281,16 +281,13 @@ impl Component for RemoteEditor {
                 ctx.props().on_set_sync_kinds.emit((remote_id, sync_kinds));
                 false
             }
-            Msg::Move(index, delta) => {
+            Msg::Move(from, to) => {
                 let mut identifiers: Vec<api::RemoteId> =
                     ctx.props().remotes.iter().map(|r| r.id).collect();
 
-                let Some(target) = index.checked_add_signed(delta) else {
-                    return false;
-                };
-
-                if target < identifiers.len() {
-                    identifiers.swap(index, target);
+                if from < identifiers.len() && to < identifiers.len() {
+                    let id = identifiers.remove(from);
+                    identifiers.insert(to, id);
                     ctx.props().on_reorder.emit(identifiers);
                 }
 
@@ -342,13 +339,14 @@ impl Component for RemoteEditor {
 
         html! {
             <Modal icon="identification" title="Remotes" on_close={link.callback(|_| Msg::Close)}>
-                <div class="table">
-                    if props.remotes.is_empty() {
+                if props.remotes.is_empty() {
+                    <div class="table">
                         <div class="text-muted">{"No remotes"}</div>
-                    } else {
+                    </div>
+                } else {
+                    <Reorder class="table" on_move={link.callback(|(from, to)| Msg::Move(from, to))}>
                         { for self.remotes.iter().enumerate().map(|(index, r)| {
                             let key = r.remote.remote.to_string();
-                            let count = props.remotes.len();
 
                             let edit_entry = r.remote.clone();
                             let id = r.remote.id;
@@ -420,6 +418,8 @@ impl Component for RemoteEditor {
                                 <div {key} class="column">
                                     <div class="toolbar">
                                         <div class="row">
+                                            <DragHandle {index} />
+
                                             if let Some(url) = url {
                                                 <a class="row clickable" href={url} target="_blank" rel="noopener noreferrer" title="Visit remote">
                                                     {identifier}
@@ -441,11 +441,6 @@ impl Component for RemoteEditor {
                                             <div class="desktop-input-group mobile-column">
                                                 <Button icon="pencil-square" title="Edit identifier" text="Edit" onclick={link.callback(move |_| Msg::Edit(edit_entry.clone()))} />
                                                 <Button icon="trash" variant={Variant::Danger} title="Remove identifier" text="Remove" onclick={link.callback(move |_| Msg::AskRemove(id))} />
-                                            </div>
-
-                                            <div class="input-group">
-                                                <Button class="fill" icon="chevron-up" title="Higher priority" disabled={index == 0} onclick={link.callback(move |_| Msg::Move(index, -1))} />
-                                                <Button class="fill" icon="chevron-down" title="Lower priority" disabled={index + 1 == count} onclick={link.callback(move |_| Msg::Move(index, 1))} />
                                             </div>
 
                                             <span class={classes!("input-checkbox", "mobile-has-text", enabled.then_some("checked"))} onclick={link.callback(move |_| Msg::SetEnabled(id, !enabled))} title="Enable this remote">
@@ -516,8 +511,8 @@ impl Component for RemoteEditor {
                                 </div>
                             }
                         }) }
-                    }
-                </div>
+                    </Reorder>
+                }
 
                 <div class="form">
                     <div class={classes!("field", self.error.is_some().then_some("error"))}>

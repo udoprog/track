@@ -158,5 +158,5 @@ yew_e2e::harness! {
     Track;
     dashboard::{labels_its_filters, marks_watched_in_one_click(seeded), marks_watched_at_a_chosen_time(seeded)},
     navigation::{opens_every_page, page_scrolls_the_window, toolbar_icons_are_small},
-    settings::{theme_applies_live, theme_is_remembered},
+    settings::{reorders_sync_sources, theme_applies_live, theme_is_remembered},
 }

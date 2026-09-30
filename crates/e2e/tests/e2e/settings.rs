@@ -102,3 +102,58 @@ fn luminance(color: &str) -> Result<f64> {
     ensure!(channels.len() == 3, "reading the color {color}");
     Ok(channels.iter().sum::<f64>() / 3.0)
 }
+
+/// Sync sources are reordered by dragging their handles or with the arrow keys,
+/// and the order is saved.
+pub async fn reorders_sync_sources(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_settings(driver).await?;
+
+    let order = async |driver: &TestDriver| -> Result<Vec<String>> {
+        driver.find_all_attrs(".reorder .logo", "class").await
+    };
+
+    let before = order(driver).await?;
+    ensure!(
+        before.len() == 3,
+        "expected three sync sources, got {before:?}"
+    );
+
+    // From the first handle to the lower half of the second row.
+    let first = driver.find_nth(".reorder .drag-handle", 0).await?;
+    let from = first.rect().await?;
+    let to = driver.find_nth(".reorder > *", 1).await?.rect().await?;
+    let dy = (to.y + to.height * 0.75) - (from.y + from.height / 2.0);
+
+    first.drag_by(0, dy as i64).await?;
+    driver.drop_held().await?;
+
+    let dragged = vec![before[1].clone(), before[0].clone(), before[2].clone()];
+
+    driver
+        .wait_until(
+            "the first source to be dragged below the second",
+            async || Ok(order(driver).await? == dragged),
+        )
+        .await?;
+
+    driver.reload().await?;
+    driver.find_one_by(".reorder").await?;
+
+    driver
+        .wait_until("the dragged order to survive a reload", async || {
+            Ok(order(driver).await? == dragged)
+        })
+        .await?;
+
+    driver
+        .press_key_on(".reorder .drag-handle[data-index='2']", "ArrowUp")
+        .await?;
+
+    let keyed = vec![dragged[0].clone(), dragged[2].clone(), dragged[1].clone()];
+
+    driver
+        .wait_until("the last source to move up with the keyboard", async || {
+            Ok(order(driver).await? == keyed)
+        })
+        .await
+}

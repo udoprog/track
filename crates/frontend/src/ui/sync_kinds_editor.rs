@@ -1,7 +1,7 @@
 use web_sys::MouseEvent;
 use yew::prelude::*;
 
-use super::Button;
+use super::{DragHandle, Reorder};
 
 /// Sources that can contribute syncable data, with the kinds they support fixed
 /// by [`api::RemoteSource::default_sync_kinds`].
@@ -38,39 +38,37 @@ fn ordered_entries(kinds: &[api::SourceSyncKinds]) -> Vec<api::SourceSyncKinds> 
 
 /// Global editor for the per-source sync-kind defaults and their priority: each
 /// source is a row with a checkbox per kind it can contribute, and the row order
-/// (changed with the up/down controls) is the default source priority used during
+/// (changed by dragging a row) is the default source priority used during
 /// sync. Graphics always accumulate from every source and are not selectable here.
 /// Per-remote overrides live in the remote editor; per-show remote order overrides
 /// this default.
 #[function_component]
 pub(crate) fn SyncKindsEditor(props: &Props) -> Html {
     let entries = ordered_entries(&props.kinds);
-    let count = entries.len();
+
+    let on_move = {
+        let entries = entries.clone();
+
+        props.on_change.reform(move |(from, to): (usize, usize)| {
+            let mut entries = entries.clone();
+            let entry = entries.remove(from);
+            entries.insert(to, entry);
+            entries
+        })
+    };
 
     html! {
-        <div class="form">
+        <Reorder class="form" {on_move}>
             {
                 for entries.iter().enumerate().map(|(index, entry)| {
                     let source = entry.source;
                     let capability = source.default_sync_kinds();
                     let current = entry.kinds.intersect(capability);
 
-                    let on_move = |delta: isize| {
-                        let entries = entries.clone();
-
-                        if let Some(target) = index.checked_add_signed(delta) && target < entries.len() {
-                            props.on_change.reform(move |_| {
-                                let mut entries = entries.clone();
-                                entries.swap(index, target);
-                                entries
-                            })
-                        } else {
-                            Callback::noop()
-                        }
-                    };
-
                     html! {
                         <div class="row input-group">
+                            <DragHandle {index} />
+
                             <span class="input-label has-text">
                                 <span class={classes!("logo", source.as_id())} />
                             </span>
@@ -96,13 +94,10 @@ pub(crate) fn SyncKindsEditor(props: &Props) -> Html {
                                     </span>
                                 }
                             }) }
-
-                            <Button icon="chevron-up" title="Higher priority" disabled={index == 0} onclick={on_move(-1)} />
-                            <Button icon="chevron-down" title="Lower priority" disabled={index + 1 == count} onclick={on_move(1)} />
                         </div>
                     }
                 })
             }
-        </div>
+        </Reorder>
     }
 }

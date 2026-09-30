@@ -1,7 +1,7 @@
 use web_sys::{Event, MouseEvent};
 use yew::prelude::*;
 
-use super::{Button, ConfirmDanger, ContextMenu, CountryPicker, Variant};
+use super::{Button, ConfirmDanger, ContextMenu, CountryPicker, DragHandle, Reorder, Variant};
 
 /// Predicate kinds offered when editing movie release filters.
 pub(crate) const RELEASE_KINDS: &[api::PredicateKind] = &[
@@ -185,9 +185,26 @@ impl Component for FiltersEditor {
             },
         };
 
+        let on_move = {
+            let rules = props.rules.clone();
+
+            props.on_change.reform(move |(from, to): (usize, usize)| {
+                let mut next = rules.clone();
+                let rule = next.remove(from);
+                next.insert(to, rule);
+                next
+            })
+        };
+
         html! {
             <div class="form">
-                {for rules}
+                if let Mode::Edit = self.mode {
+                    <Reorder class="form" {on_move}>
+                        {for rules}
+                    </Reorder>
+                } else {
+                    {for rules}
+                }
 
                 {toggle}
 
@@ -298,11 +315,9 @@ impl FiltersEditor {
         }
     }
 
-    /// A rule rendered in edit mode: a name field, reorder controls, a direct remove
+    /// A rule rendered in edit mode: a drag handle, a name field, a direct remove
     /// control, and the full predicate editors.
     fn view_rule(&self, props: &Props, index: usize, rule: &api::FilterRule) -> Html {
-        let count = props.rules.len();
-
         let on_name = {
             let rules = props.rules.clone();
             let cb = props.on_change.clone();
@@ -312,20 +327,6 @@ impl FiltersEditor {
                 if let Some(r) = next.get_mut(index) {
                     r.name = input.value();
                 }
-                cb.emit(next);
-            })
-        };
-
-        let on_move = |delta: isize| {
-            let rules = props.rules.clone();
-            let cb = props.on_change.clone();
-            Callback::from(move |_: MouseEvent| {
-                let target = index as isize + delta;
-                if target < 0 || target as usize >= rules.len() {
-                    return;
-                }
-                let mut next = rules.clone();
-                next.swap(index, target as usize);
                 cb.emit(next);
             })
         };
@@ -350,6 +351,8 @@ impl FiltersEditor {
         html! {
             <rule>
                 <div class="row-split">
+                    <DragHandle {index} />
+
                     <input
                         class="input-text fill"
                         type="text"
@@ -359,8 +362,6 @@ impl FiltersEditor {
                     />
 
                     <div class="input-group">
-                        <Button icon="chevron-up" title="Move up" disabled={index == 0} onclick={on_move(-1)} />
-                        <Button icon="chevron-down" title="Move down" disabled={index + 1 == count} onclick={on_move(1)} />
                         <Button icon="trash" variant={Variant::Danger} title="Remove rule" onclick={on_remove} />
                     </div>
                 </div>

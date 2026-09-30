@@ -27,6 +27,7 @@ mod outline;
 mod pagination_buttons;
 mod release_modal;
 mod remote_editor;
+mod reorder;
 mod secret_input;
 mod skeleton;
 mod sync_kinds_editor;
@@ -61,6 +62,7 @@ pub(crate) use self::outline::{Outline, OutlineControl, OutlineEntry, OutlineHan
 pub(crate) use self::pagination_buttons::PaginationButtons;
 pub(crate) use self::release_modal::{ReleaseModal, ReleaseTarget};
 pub(crate) use self::remote_editor::{RemoteEditor, RemoteSourceKind};
+pub(crate) use self::reorder::{DragHandle, Reorder};
 pub(crate) use self::secret_input::SecretInput;
 pub(crate) use self::skeleton::Skeleton;
 pub(crate) use self::sync_kinds_editor::SyncKindsEditor;
