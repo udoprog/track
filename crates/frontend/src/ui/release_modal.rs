@@ -9,7 +9,8 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 
 use super::{
-    AIR_DATE_KINDS, AIR_DATE_SOURCES, Button, FiltersEditor, Modal, RELEASE_KINDS, RELEASE_SOURCES,
+    AIR_DATE_KINDS, AIR_DATE_SOURCES, Button, FiltersEditor, FormRow, Modal, RELEASE_KINDS,
+    RELEASE_SOURCES,
 };
 
 /// What a [`ReleaseModal`] shows. Each variant fetches from its own endpoint; the
@@ -361,18 +362,20 @@ impl ReleaseModal {
             .clone()
             .unwrap_or_else(|| global.clone());
 
-        let (kinds, sources, custom_label, warning) = match target {
+        let (kinds, sources, label, custom_label, hint) = match target {
             ReleaseTarget::Movie(_) => (
                 RELEASE_KINDS,
                 RELEASE_SOURCES,
+                "Release date rules",
                 "Custom for this movie",
-                "Global default, this applies to all movies.",
+                "Changing the global default changes it for every movie.",
             ),
             ReleaseTarget::Episode(_) => (
                 AIR_DATE_KINDS,
                 AIR_DATE_SOURCES,
+                "Air date rules",
                 "Custom for this show",
-                "Global default, this applies to all shows.",
+                "Changing the global default changes it for every show.",
             ),
         };
 
@@ -381,24 +384,17 @@ impl ReleaseModal {
         let on_change = link.callback(Msg::EditFilters);
 
         html! {
-            <div class="form">
-                <div class="input-group">
-                    <span class="input-label has-text">{"Active filter"}</span>
+            <div class="form-rows">
+                <FormRow {label} hint={(!is_custom).then_some(hint)}>
+                    <select class="input-select" title={label} onchange={on_toggle}>
+                        <option value="default" selected={!is_custom}>{"Global default"}</option>
+                        <option value="custom" selected={is_custom}>{custom_label}</option>
+                    </select>
+                </FormRow>
 
-                    <Button label={if is_custom { custom_label } else { "Use global default" }} title="Switch between a custom filter and the global default" class="input-checkbox fill" onclick={on_toggle} />
+                <div class="form-wide">
+                    <FiltersEditor rules={rules} on_change={on_change} kinds={kinds} sources={sources} />
                 </div>
-
-                if !is_custom {
-                    <span class="row text-gap">
-                        <span class="item-inline danger">
-                            <span class="icon exclamation-triangle" aria-hidden="true" />
-                        </span>
-
-                        {warning}
-                    </span>
-                }
-
-                <FiltersEditor rules={rules} on_change={on_change} kinds={kinds} sources={sources} />
             </div>
         }
     }
@@ -424,7 +420,7 @@ impl ReleaseModal {
         }
 
         html! {
-            <div class="column">
+            <div class="release-rows">
                 { for groups.into_iter().map(|(label, releases)| self.view_group(ctx, label, releases)) }
             </div>
         }
@@ -446,60 +442,59 @@ impl ReleaseModal {
         });
 
         html! {
-            <Button class="row clickable align-top" title={format!("Show all dates from {label}")} expanded={Some(expanded)} onclick={on_toggle}>
-                <span class="item-inline">
-                    <span class={classes!("icon", if expanded { "ellipsis-horizontal" } else { "chevron-right" })} />
-                </span>
+            <>
+                <Button class="release-row release-group" title={format!("Show all dates from {label}")} expanded={Some(expanded)} onclick={on_toggle}>
+                    <span class={classes!("icon", "sm", if expanded { "chevron-down" } else { "chevron-right" })} aria-hidden="true" />
 
-                <div class="column fill">
-                    <div class="row-split">
-                        <div class="row">
-                            {indicator(group_considered)}
+                    {indicator(group_considered)}
 
-                            if let Some(earliest) = earliest {
-                                <span class="item-inline" title={earliest.source.as_label()}>
-                                    <span class={classes!("logo", earliest.source.as_id())} />
-                                </span>
-
-                                { view_country(earliest.country) }
-                            }
-
-                            <span>{label.clone()}</span>
-                        </div>
-
-                        if let Some(earliest) = earliest {
-                            <div class="row">
-                                <span class="text-muted">{earliest.timestamp.human_date_time(self.time.clone())}</span>
-                            </div>
-                        }
-                    </div>
-
-                    if expanded {
-                        <div class="column">
-                            { for releases.iter().map(|r| self.view_row(r)) }
-                        </div>
+                    if let Some(earliest) = earliest {
+                        {view_source(earliest.source)}
+                        <span>{view_country(earliest.country)}</span>
+                    } else {
+                        <span />
+                        <span />
                     }
-                </div>
-            </Button>
+
+                    <span class="release-label">{label.clone()}</span>
+
+                    <span class="release-date">
+                        if let Some(earliest) = earliest {
+                            {earliest.timestamp.human_date_time(self.time.clone())}
+                        }
+                    </span>
+                </Button>
+
+                if expanded {
+                    { for releases.iter().map(|r| self.view_row(r)) }
+                }
+            </>
         }
     }
 
     fn view_row(&self, r: &api::ReleaseRow) -> Html {
         html! {
-            <div class="row-split">
-                <div class="row">
-                    {indicator(r.considered)}
+            <div class="release-row">
+                <span />
 
-                    <span class="item-inline" title={r.source.as_label()}>
-                        <span class={classes!("logo", r.source.as_id())} />
-                    </span>
+                {indicator(r.considered)}
+                {view_source(r.source)}
+                <span>{view_country(r.country)}</span>
 
-                    { view_country(r.country) }
-                </div>
+                <span />
 
-                <span class="text-muted">{r.timestamp.human_date_time(self.time.clone())}</span>
+                <span class="release-date">{r.timestamp.human_date_time(self.time.clone())}</span>
             </div>
         }
+    }
+}
+
+/// A release's source as its logo.
+fn view_source(source: api::RemoteSource) -> Html {
+    html! {
+        <span class="item-inline" title={source.as_label()}>
+            <span class={classes!("logo", source.as_id())} />
+        </span>
     }
 }
 

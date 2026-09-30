@@ -649,3 +649,33 @@ pub async fn translations_sit_beside_their_language(
     );
     Ok(())
 }
+
+/// The air dates modal names its rule setting, hints quietly that the global
+/// default is shared, and needs no warning sign for it.
+pub async fn air_dates_explain_the_default_quietly(
+    driver: &mut TestDriver,
+    _: &mut Track,
+) -> Result<()> {
+    open_show(driver).await?;
+
+    driver
+        .find_first("[title='More actions']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by(".menu-list [title='Air dates']")
+        .await?
+        .click()
+        .await?;
+
+    driver
+        .wait_texts(".modal .form-label", ["Air date rules"])
+        .await?;
+    driver.find_one_by(".modal .form-row .hint").await?;
+    ensure!(
+        driver.count(".modal .exclamation-triangle").await? == 0,
+        "the default still carries a warning sign"
+    );
+    Ok(())
+}

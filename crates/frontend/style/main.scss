@@ -369,6 +369,57 @@ p {
     }
 }
 
+// Dates from each source in aligned columns: expand, considered, source,
+// country, network and date. A group's own dates follow it when expanded.
+.release-rows {
+    display: grid;
+    grid-template-columns: repeat(4, max-content) minmax(0, 1fr) max-content;
+    column-gap: v.$gap-sm;
+}
+
+.release-row {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    align-items: center;
+    min-height: v.$input-height;
+    padding: v.$padding v.$padding-lg;
+    font-size: v.$font-sm;
+
+    &.release-group {
+        width: 100%;
+        height: auto;
+        border: none;
+        border-radius: v.$radius;
+        background: transparent;
+        color: v.$text-color;
+        text-align: start;
+
+        &:hover {
+            background: var(--neutral-bg);
+        }
+    }
+
+    &:not(.release-group) {
+        color: v.$text-muted;
+    }
+
+    >.release-label {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    >.release-date {
+        justify-self: end;
+        font-variant-numeric: tabular-nums;
+
+        * {
+            color: inherit;
+        }
+    }
+}
+
 // Translations of a title or overview: the language in one column and the
 // text beside it, stacked on phones.
 .translations {
