@@ -1394,17 +1394,99 @@ image {
             border-bottom: 1px solid v.$border-subtle;
         }
 
-        >.screenshot {
-            width: 100%;
-            aspect-ratio: 16 / 9;
-            background: v.$bg-surface;
-        }
-
         @include g.on-mobile {
             grid-template-columns: minmax(0, 1fr);
             gap: v.$gap-sm;
         }
     }
+}
+
+// An episode's still, which picks the episode for a bulk action. A check in
+// its corner shows on hover and stays while it is picked.
+.episode-pick {
+    position: relative;
+    display: block;
+    height: auto;
+    padding: 0;
+    border: none;
+    border-radius: v.$radius-lg;
+    background: none;
+
+    .screenshot {
+        display: block;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        background: v.$bg-surface;
+    }
+
+    >.episode-pick-mark {
+        position: absolute;
+        top: v.$gap-xs;
+        left: v.$gap-xs;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        border-radius: 999px;
+        border: 2px solid v.$text-color;
+        background: color-mix(in srgb, v.$bg-dark 55%, transparent);
+        --icon-color: transparent;
+        opacity: 0;
+        transition: opacity 0.1s ease-out;
+    }
+
+    &:hover>.episode-pick-mark,
+    &:focus-visible>.episode-pick-mark {
+        opacity: 1;
+    }
+
+    &.picked {
+        .screenshot {
+            outline: 3px solid v.$color-primary;
+            outline-offset: -3px;
+        }
+
+        >.episode-pick-mark {
+            opacity: 1;
+            border-color: v.$color-primary;
+            background: v.$color-primary;
+            --icon-color: #{v.$text-on-accent};
+        }
+    }
+}
+
+// What can be done with the picked episodes, kept at the foot of the screen.
+.selection-bar {
+    position: sticky;
+    bottom: v.$gap;
+    z-index: 5;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: v.$gap-xs v.$gap;
+    align-self: center;
+    padding: v.$gap-xs v.$gap-xs v.$gap-xs v.$gap;
+    background: v.$bg-surface;
+    border: 1px solid v.$border-subtle;
+    border-radius: v.$radius-lg;
+    box-shadow: 0 8px 32px v.$shadow-strong;
+
+    @include g.on-mobile {
+        align-self: stretch;
+    }
+}
+
+.selection-count {
+    font-weight: v.$bold-weight;
+    font-variant-numeric: tabular-nums;
+}
+
+.selection-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: v.$gap-xs;
 }
 
 .episode-body {

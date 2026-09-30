@@ -109,6 +109,14 @@ Views of one page (What's Next / Upcoming / Schedule) are an underlined tab bar
 in text colour with an accent underline. On phones the tabs share the width
 equally and drop their icons.
 
+### Picking several
+
+An episode's still picks it for a bulk action (shift-click picks the range
+from the last one); a picked still is outlined in accent with a check in its
+corner. While anything is picked a selection bar sits at the foot of the
+screen with the count and the actions (Mark watched, Sync, Clear). Escape,
+Clear and switching seasons clear the selection.
+
 ### Chips
 
 Filters are chips (`.chips` > `Button class="chip"`): pills with a thin

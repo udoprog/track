@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use musli_web::web03::prelude::*;
+use wasm_bindgen::JsCast as _;
 use yew::prelude::*;
 
 use api::{TimeInfo, Timed};
@@ -72,6 +73,15 @@ pub(crate) struct ShowDetail {
     /// Episodes with a queued or running `SyncEpisode` task, so their sync button
     /// spins. Driven entirely by the task broadcasts, like [`Self::syncing`].
     syncing_episodes: HashSet<api::EpisodeId>,
+    /// Episodes picked for a bulk action, from the season shown only.
+    picked: BTreeSet<api::EpisodeId>,
+    /// The episode picked last, where a shift-click range starts.
+    pick_anchor: Option<api::EpisodeId>,
+    /// Clears the picked episodes on Escape while any are picked.
+    _pick_escape: Option<gloo::events::EventListener>,
+    /// Bulk requests in flight, and how many have yet to answer.
+    _bulk_reqs: Vec<ws::Request>,
+    bulk_pending: usize,
     actions_expanded: bool,
     /// The episode whose overflow menu is open, anchored to its trigger.
     episode_menu: Option<api::EpisodeId>,
@@ -147,6 +157,13 @@ pub(crate) enum Msg {
     SeasonsLoaded(Result<ws::Packet<api::ListSeasons>, ws::Error>),
     CreditsLoaded(Result<ws::Packet<api::ListCredits>, ws::Error>),
     ToggleCreditsExpanded,
+    /// Pick or unpick an episode; with shift, pick the range from the last one.
+    TogglePick(api::EpisodeId, bool),
+    ClearPicked,
+    BulkMark(api::MarkTime),
+    BulkMarkDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
+    BulkSync,
+    BulkSyncDone(Result<ws::Packet<api::SyncEpisode>, ws::Error>),
     SelectSeason(api::SeasonNumber),
     EpisodesLoaded(Result<ws::Packet<api::ListEpisodes>, ws::Error>),
     MarkWatched(api::ShowId, api::EpisodeId, api::MarkTime),
@@ -292,6 +309,11 @@ impl Component for ShowDetail {
             remove_anchor: NodeRef::default(),
             syncing: false,
             syncing_episodes: HashSet::new(),
+            picked: BTreeSet::new(),
+            pick_anchor: None,
+            _pick_escape: None,
+            _bulk_reqs: Vec::new(),
+            bulk_pending: 0,
             actions_expanded: false,
             episode_menu: None,
             episode_menu_anchor: NodeRef::default(),
@@ -572,6 +594,7 @@ impl Component for ShowDetail {
             self.syncing = false;
             self.confirm_remove_watch = None;
             self.watched_by_episode.clear();
+            self.clear_picked();
 
             if self.channel.id() != ws::ChannelId::NONE {
                 self.load_show(ctx);
@@ -596,6 +619,7 @@ impl Component for ShowDetail {
             self.next_unwatched = None;
             self.confirm_remove_watch = None;
             self.watched_by_episode.clear();
+            self.clear_picked();
 
             if self.channel.id() != ws::ChannelId::NONE {
                 self.load_episodes(ctx);
@@ -1070,6 +1094,118 @@ impl ShowDetail {
             }
             Msg::SyncDone(result) => {
                 result.context(Message::SyncingShow)?;
+                Ok(false)
+            }
+            Msg::TogglePick(episode_id, range) => {
+                let position = |id| self.episodes.iter().position(|e| e.id == id);
+
+                match (
+                    range,
+                    self.pick_anchor.and_then(position),
+                    position(episode_id),
+                ) {
+                    (true, Some(from), Some(to)) => {
+                        let (from, to) = (from.min(to), from.max(to));
+                        self.picked
+                            .extend(self.episodes[from..=to].iter().map(|e| e.id));
+                    }
+                    _ => {
+                        if !self.picked.remove(&episode_id) {
+                            self.picked.insert(episode_id);
+                        }
+                    }
+                }
+
+                self.pick_anchor = Some(episode_id);
+
+                if self.picked.is_empty() {
+                    self.clear_picked();
+                } else if self._pick_escape.is_none() {
+                    let clear = ctx.link().callback(|()| Msg::ClearPicked);
+
+                    self._pick_escape = web_sys::window().map(|window| {
+                        gloo::events::EventListener::new(&window, "keydown", move |e| {
+                            if let Some(e) = e.dyn_ref::<web_sys::KeyboardEvent>()
+                                && e.key() == "Escape"
+                            {
+                                clear.emit(());
+                            }
+                        })
+                    });
+                }
+
+                Ok(true)
+            }
+            Msg::ClearPicked => {
+                self.clear_picked();
+                Ok(true)
+            }
+            Msg::BulkMark(mark_time) => {
+                let show = props.show_id;
+
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._bulk_reqs = self
+                        .picked
+                        .iter()
+                        .map(|&episode| {
+                            self.channel
+                                .request()
+                                .body(api::MarkWatchedRequest {
+                                    kind: api::WatchedKind::Episode { show, episode },
+                                    mark_time,
+                                })
+                                .on_packet(ctx.link().callback(Msg::BulkMarkDone))
+                                .send()
+                        })
+                        .collect();
+                    self.bulk_pending = self._bulk_reqs.len();
+                }
+
+                self.clear_picked();
+                Ok(true)
+            }
+            Msg::BulkMarkDone(result) => {
+                self.bulk_pending = self.bulk_pending.saturating_sub(1);
+                result
+                    .context(Message::MarkingWatched)?
+                    .decode()
+                    .context(Message::MarkingWatched)?;
+
+                // Refresh once every mark has answered.
+                if self.bulk_pending == 0 {
+                    self.load_episodes(ctx);
+                    self.load_seasons(ctx);
+                    self.load_history(ctx);
+                    self.load_orphaned(ctx);
+                }
+
+                Ok(false)
+            }
+            Msg::BulkSync => {
+                let show_id = props.show_id;
+
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._bulk_reqs = self
+                        .picked
+                        .iter()
+                        .map(|&episode_id| {
+                            self.channel
+                                .request()
+                                .body(api::SyncEpisodeRequest {
+                                    show_id,
+                                    episode_id,
+                                })
+                                .on_packet(ctx.link().callback(Msg::BulkSyncDone))
+                                .send()
+                        })
+                        .collect();
+                }
+
+                self.clear_picked();
+                Ok(true)
+            }
+            Msg::BulkSyncDone(result) => {
+                result.context(Message::SyncingEpisode)?;
                 Ok(false)
             }
             Msg::SyncEpisode(episode_id) => {
@@ -1718,6 +1854,12 @@ impl ShowDetail {
         self.selected.and_then(|i| self.seasons.get(i))
     }
 
+    fn clear_picked(&mut self) {
+        self.picked.clear();
+        self.pick_anchor = None;
+        self._pick_escape = None;
+    }
+
     fn load_show(&mut self, ctx: &Context<Self>) {
         if self.channel.id() == ws::ChannelId::NONE {
             return;
@@ -2220,6 +2362,45 @@ impl ShowDetail {
                 <div class="episodes">
                     { for self.episodes.iter().map(|ep| self.view_episode(ctx, ep)) }
                 </div>
+
+                if !self.picked.is_empty() {
+                    { self.view_selection_bar(ctx) }
+                }
+            </div>
+        }
+    }
+
+    /// What can be done with the picked episodes, kept in view while any are
+    /// picked.
+    fn view_selection_bar(&self, ctx: &Context<Self>) -> Html {
+        let link = ctx.link();
+        let count = self.picked.len();
+
+        let aired = TimePreset::when_aired(
+            "calendar",
+            "Aired",
+            if count == 1 {
+                "When the episode aired"
+            } else {
+                "When each episode aired"
+            },
+        );
+
+        html! {
+            <div class="selection-bar" role="region" aria-label="Selected episodes">
+                <span class="selection-count">
+                    {if count == 1 { "1 episode selected".to_owned() } else { format!("{count} episodes selected") }}
+                </span>
+
+                <div class="selection-actions">
+                    <MarkTimeMenu class="primary has-text" icon="check" title="Mark the selected episodes watched" prompt="When did you watch them?" preset={aired} on_confirm={link.callback(Msg::BulkMark)}>
+                        <span class="icon check" aria-hidden="true" />
+                        <span>{"Mark watched"}</span>
+                    </MarkTimeMenu>
+
+                    <Button icon="arrow-path" label="Sync" title="Sync the selected episodes" onclick={link.callback(|_| Msg::BulkSync)} />
+                    <Button icon="x-mark" label="Clear" title="Clear the selection" onclick={link.callback(|_| Msg::ClearPicked)} />
+                </div>
             </div>
         }
     }
@@ -2242,6 +2423,7 @@ impl ShowDetail {
             (!watched.is_empty()).then(|| link.callback(move |_| Msg::ToggleHistory(episode_id)));
 
         let menu_open = self.episode_menu == Some(episode_id);
+        let picked = self.picked.contains(&episode_id);
         let on_toggle_menu = link.callback(move |_: MouseEvent| Msg::ToggleEpisodeMenu(episode_id));
         let syncing = self.syncing_episodes.contains(&episode_id);
 
@@ -2258,7 +2440,12 @@ impl ShowDetail {
 
         html! {
             <div class={classes!("episode", (!watched.is_empty()).then_some("watched"))} id={episode.code()}>
-                <Image class="screenshot artwork" placeholder={true} placeholder_icon="photo" src={episode.screenshot.clone()} />
+                <Button class={classes!("episode-pick", picked.then_some("picked"))} title={format!("Select {}", episode.code())} pressed={Some(picked)} onclick={link.callback(move |e: MouseEvent| Msg::TogglePick(episode_id, e.shift_key()))}>
+                    <Image class="screenshot artwork" placeholder={true} placeholder_icon="photo" src={episode.screenshot.clone()} />
+                    <span class="episode-pick-mark" aria-hidden="true">
+                        <span class="icon sm check" />
+                    </span>
+                </Button>
 
                 <div class="episode-body">
                     <div class="episode-head">

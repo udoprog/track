@@ -818,3 +818,84 @@ pub async fn remotes_show_their_actions(driver: &mut TestDriver, _: &mut Track) 
     ensure!(driver.count("[title='Identifier actions']").await? == 0);
     Ok(())
 }
+
+/// Clicking stills picks episodes (shift-click picks the range between), and
+/// the selection bar marks them all watched at once.
+pub async fn picked_episodes_are_marked_together(
+    driver: &mut TestDriver,
+    _: &mut Track,
+) -> Result<()> {
+    open_show(driver).await?;
+
+    driver
+        .find_one_by("[title='Select S01E01']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by("[title='Select S01E03']")
+        .await?
+        .shift_click()
+        .await?;
+
+    driver
+        .wait_texts(".selection-count", ["3 episodes selected"])
+        .await?;
+    ensure!(driver.count(".episode-pick[aria-pressed=true]").await? == 3);
+
+    driver
+        .find_one_by(".selection-bar [title='Mark the selected episodes watched']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by(".context-menu [title=Confirm]")
+        .await?
+        .click()
+        .await?;
+
+    driver.wait_count(".selection-bar", 0).await?;
+
+    for code in ["S01E01", "S01E02", "S01E03"] {
+        driver
+            .wait_until(format_args!("{code} to be watched"), async || {
+                Ok(driver.count(&format!("[id='{code}'].watched")).await? == 1)
+            })
+            .await?;
+    }
+
+    Ok(())
+}
+
+/// Escape and switching seasons both clear the picked episodes.
+pub async fn picked_episodes_clear(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_show(driver).await?;
+
+    let still = driver.find_one_by("[title='Select S01E01']").await?;
+    still.click().await?;
+    driver.find_one_by(".selection-bar").await?;
+
+    still.send_keys("\u{E00C}").await?;
+    driver.wait_count(".selection-bar", 0).await?;
+
+    driver
+        .find_one_by("[title='Select S01E02']")
+        .await?
+        .click()
+        .await?;
+    driver.find_one_by(".selection-bar").await?;
+
+    driver
+        .find_one_by(".season-list [title='Show Season 2']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .wait_texts(".detail-content .toolbar h2", ["Season 2"])
+        .await?;
+    ensure!(
+        driver.count(".selection-bar").await? == 0,
+        "the selection survived the season switch"
+    );
+    Ok(())
+}
