@@ -40,6 +40,9 @@ pub(crate) struct ContextMenu {
     /// Whether the popover opened below its trigger. Decided once, so content
     /// growing later (e.g. a picker expanding) never flips it over the trigger.
     below: Option<bool>,
+    /// Renders waited for the anchor to be attached. A trigger rendered by a
+    /// child component can attach its ref after this menu's first render.
+    waited: u8,
     /// The background context, so we can report errors to the user.
     background: Background,
 }
@@ -133,6 +136,7 @@ impl Component for ContextMenu {
             menu: NodeRef::default(),
             placed: None,
             below: None,
+            waited: 0,
             background,
         }
     }
@@ -143,6 +147,11 @@ impl Component for ContextMenu {
         };
 
         let Some(anchor) = ctx.props().anchor.cast::<HtmlElement>() else {
+            if self.waited < 3 {
+                self.waited += 1;
+                ctx.link().send_message(());
+            }
+
             return;
         };
 
