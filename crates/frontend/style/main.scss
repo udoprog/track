@@ -2003,7 +2003,7 @@ input-label-controls {
     @include g.on-mobile {
         width: 100%;
         max-height: 90vh;
-        border-bottom: none;
+        border-width: 1px 0 0;
         border-radius: v.$radius-lg v.$radius-lg 0 0;
     }
 

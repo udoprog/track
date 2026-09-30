@@ -212,7 +212,7 @@ pub async fn phone_modals_rise_from_the_bottom(
         gap.abs() < 1.0,
         "the modal ends {gap}px above the bottom of the screen"
     );
-    Ok(())
+    ensure_only_top_border(driver, ".modal").await
 }
 
 /// The show's settings are labelled rows whose controls start on one line.
@@ -490,6 +490,26 @@ pub async fn phone_popovers_are_sheets(driver: &mut TestDriver, _: &mut Track) -
     ensure!(
         menu.x.abs() < 1.0 && menu.width > page.width - 20.0,
         "the menu is not as wide as the screen: {menu:?} in {page:?}"
+    );
+    ensure_only_top_border(driver, ".context-menu").await
+}
+
+/// A sheet draws only its top edge; side borders would run down the screen
+/// edges from its rounded corners.
+async fn ensure_only_top_border(driver: &TestDriver, selector: &str) -> Result<()> {
+    let ret = driver
+        .webdriver()
+        .execute(
+            "const s = getComputedStyle(document.querySelector(arguments[0])); \
+             return [s.borderTopWidth, s.borderRightWidth, s.borderBottomWidth, s.borderLeftWidth].map(parseFloat);",
+            vec![selector.into()],
+        )
+        .await?;
+
+    let [top, right, bottom, left] = ret.convert::<[f64; 4]>()?;
+    ensure!(
+        top > 0.0 && right == 0.0 && bottom == 0.0 && left == 0.0,
+        "{selector} has borders {top} {right} {bottom} {left}"
     );
     Ok(())
 }

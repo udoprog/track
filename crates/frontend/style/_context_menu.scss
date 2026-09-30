@@ -92,7 +92,9 @@
         bottom: 0;
         width: auto;
         max-height: 85vh;
-        border-bottom: none;
+        // Only the top edge is drawn: side borders would run down the screen
+        // edges from the rounded corners.
+        border-width: 1px 0 0;
         border-radius: v.$radius-lg v.$radius-lg 0 0;
         padding-bottom: calc(#{v.$gap} + env(safe-area-inset-bottom));
     }
