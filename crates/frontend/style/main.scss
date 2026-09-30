@@ -757,7 +757,6 @@ image {
 .overview {
     font-size: v.$font-base;
     line-height: 1.5em;
-    text-align: justify;
 
     // Contain the floated .language-toggle so it never overflows the section.
     display: flow-root;
@@ -784,7 +783,7 @@ image {
     border: none;
     border-radius: 0;
 
-    opacity: 0.7;
+    opacity: 0.5;
 
     &:hover {
         opacity: 1;

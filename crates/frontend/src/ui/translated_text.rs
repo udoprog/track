@@ -1,7 +1,8 @@
 //! An overview-style paragraph resolved from a [`api::Translations`] set, with
 //! a non-persistent language picker: when alternate translations are available
-//! a subtle flag button floated at the top right of the text (so the text rows
-//! flow around it instead of it reserving a row of its own) opens an anchored
+//! a subtle button floated at the top right of the text (so the text rows flow
+//! around it instead of it reserving a row of its own), showing the flag of the
+//! displayed language only when it is not the configured one, opens an anchored
 //! language menu that switches the displayed text for this section only. The
 //! choice lives in component state, so it resets on navigation and is never
 //! persisted.
@@ -105,16 +106,20 @@ impl Component for TranslatedText {
             .selected
             .or_else(|| props.strings.resolved_locale(props.kind));
 
+        // Text in the configured language needs no flag calling it out.
+        let foreign = displayed
+            .filter(|locale| locale.language() != props.strings.locale().language());
+
         let toggle = html! {
             <button ref={self.anchor.clone()} class="language-toggle" title="Change displayed language" onclick={link.callback(|_| Msg::Open)}>
-                if let Some(locale) = displayed {
+                if let Some(locale) = foreign {
                     if let Some(flag) = locale.flag() {
                         <span class={classes!("flag", flag)} />
                     } else {
                         <span class="text-muted">{locale}</span>
                     }
                 } else {
-                    <span class="icon language" />
+                    <span class="icon sm language" />
                 }
             </button>
         };
