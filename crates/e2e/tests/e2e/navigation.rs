@@ -79,3 +79,50 @@ pub async fn page_scrolls_the_window(driver: &mut TestDriver, _: &mut Track) -> 
     ensure!(toolbar == 0.0, "the toolbar scrolled away to {toolbar}px");
     Ok(())
 }
+
+/// Every button says what it does, on each page and on a show: they all go
+/// through `ui::Button`, which requires a title.
+pub async fn every_button_has_a_title(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    let untitled = async |driver: &mut TestDriver, page: &str| -> Result<()> {
+        let ret = driver
+            .webdriver()
+            .execute(
+                "return [...document.querySelectorAll('button')] \
+                 .filter(b => !b.title).map(b => b.outerHTML.slice(0, 80));",
+                Vec::new(),
+            )
+            .await?;
+
+        let untitled = ret.convert::<Vec<String>>()?;
+        ensure!(
+            untitled.is_empty(),
+            "{page} has untitled buttons: {untitled:?}"
+        );
+        Ok(())
+    };
+
+    super::show::open_show(driver).await?;
+    untitled(driver, "The show").await?;
+
+    for page in [
+        "Dashboard",
+        "Media",
+        "People",
+        "Search",
+        "Queue",
+        "Settings",
+    ] {
+        driver
+            .find_one_by(&format!(".toolbar-item[title={page}]"))
+            .await?
+            .click()
+            .await?;
+
+        driver
+            .wait_texts(".toolbar-item[aria-current=page]", [page])
+            .await?;
+        untitled(driver, page).await?;
+    }
+
+    Ok(())
+}

@@ -419,9 +419,7 @@ impl Component for ShowDetail {
                     </div>
 
                     <div class="toolbar-toggle">
-                        <button onclick={link.callback(|_| Msg::ToggleActionsExpanded)}>
-                            <span class={classes!("icon", if self.actions_expanded { "ellipsis-horizontal" } else { "bars-2" })} />
-                        </button>
+                        <Button icon={if self.actions_expanded { "ellipsis-horizontal" } else { "bars-2" }} title="Actions" onclick={link.callback(|_| Msg::ToggleActionsExpanded)} />
                     </div>
 
                     <div class={classes!("toolbar-dropdown", "desktop-input-group", (!self.actions_expanded).then_some("desktop-only"))}>
@@ -1765,9 +1763,7 @@ impl ShowDetail {
                 }
 
                 if self.credits.len() > CAP {
-                    <button class="credits-toggle" onclick={ctx.link().callback(|_| Msg::ToggleCreditsExpanded)}>
-                        { if self.credits_expanded { "Show fewer" } else { "Show all cast" } }
-                    </button>
+                    <Button icon={if self.credits_expanded { "chevron-up" } else { "chevron-down" }} label={if self.credits_expanded { "Show fewer" } else { "Show all cast" }} title={if self.credits_expanded { "Show fewer cast" } else { "Show all cast" }} class="credits-toggle" onclick={ctx.link().callback(|_| Msg::ToggleCreditsExpanded)} />
                 }
             </section>
         }
@@ -2155,9 +2151,7 @@ impl ShowDetail {
                                     </a>
                                 }
 
-                                <button onclick={link.callback(move |_| Msg::ToggleSeasonActionsExpanded(season_number))}>
-                                    <span class={classes!("icon", if season_expanded { "ellipsis-horizontal" } else { "bars-2" })} />
-                                </button>
+                                <Button icon={if season_expanded { "ellipsis-horizontal" } else { "bars-2" }} title="Season actions" onclick={link.callback(move |_| Msg::ToggleSeasonActionsExpanded(season_number))} />
                             </div>
                         </div>
 
@@ -2377,10 +2371,7 @@ impl ShowDetail {
 
                                         <div class="row">
                                             <div class="input-group" ref={w.context_anchor.clone()}>
-                                                <button class="has-text" onclick={link.callback(move |_| Msg::FixWatched(wid))} title="Move to different episode">
-                                                    <span class="icon pencil-square" />
-                                                    <span>{"Move"}</span>
-                                                </button>
+                                                <Button icon="pencil-square" label="Move" title="Move to different episode" onclick={link.callback(move |_| Msg::FixWatched(wid))} />
 
                                                 if self.fixing_watched == Some(wid) {
                                                     <ContextMenu prompt="Where do you want to move watch at" label={w.watched.timestamp.human_date_time(self.time.clone())} anchor={w.context_anchor.clone()} on_close={link.callback(|_| Msg::CancelFixWatched)}>

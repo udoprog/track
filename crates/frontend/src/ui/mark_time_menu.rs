@@ -487,9 +487,9 @@ impl Component for MarkTimeMenu {
 
                     <Button node_ref={self.anchor.clone()} icon="chevron-down" class={classes!(props.class.clone(), "mark-time-more", self.context_open.then_some("selected"))} title="Choose when" onclick={link.callback(|_| Msg::Open)} />
                 } else {
-                    <button ref={self.anchor.clone()} class={props.class.clone()} title={props.title.clone()} onclick={link.callback(|_| Msg::Open)}>
+                    <Button node_ref={self.anchor.clone()} class={props.class.clone()} title={props.title.clone()} onclick={link.callback(|_| Msg::Open)}>
                         { for props.children.iter() }
-                    </button>
+                    </Button>
                 }
 
                 if self.context_open {
@@ -650,43 +650,22 @@ impl MarkTimeMenu {
         let link = ctx.link();
         let props = ctx.props();
 
-        let now_class = classes!(
-            "primary",
-            "has-text",
-            (self.preset == Preset::Now).then_some("selected")
-        );
-
-        let custom_class = classes!(
-            "has-text",
-            (self.preset == Preset::Custom).then_some("selected")
-        );
+        let now_class = classes!((self.preset == Preset::Now).then_some("selected"));
+        let custom_class = classes!((self.preset == Preset::Custom).then_some("selected"));
 
         html! {
             <div class="input-group">
-                    <button class={now_class} onclick={link.callback(|_| Msg::SelectPreset(Preset::Now))}>
-                        <span class="icon clock" />
-                        <span>{"Now"}</span>
-                    </button>
+                    <Button icon="clock" label="Now" title="Now" variant={Variant::Primary} class={now_class} onclick={link.callback(|_| Msg::SelectPreset(Preset::Now))} />
 
                     {props.preset.as_ref().map(|preset| {
-                        let class = classes!(
-                            "primary",
-                            "has-text",
-                            (matches!(self.preset, Preset::Supplied)).then_some("selected")
-                        );
+                        let class = classes!((matches!(self.preset, Preset::Supplied)).then_some("selected"));
 
                         html! {
-                            <button key="preset-button" {class} onclick={link.callback(move |_| Msg::SelectPreset(Preset::Supplied))}>
-                                <span class={classes!("icon", preset.icon.clone())} />
-                                <span>{&preset.label}</span>
-                            </button>
+                            <Button key="preset-button" icon={preset.icon.clone()} label={preset.label.clone()} title={preset.label.clone()} variant={Variant::Primary} {class} onclick={link.callback(move |_| Msg::SelectPreset(Preset::Supplied))} />
                         }
                     })}
 
-                    <button class={custom_class} onclick={link.callback(|_| Msg::SelectPreset(Preset::Custom))}>
-                        <span class="icon pencil-square" />
-                        <span>{"Custom"}</span>
-                    </button>
+                    <Button icon="pencil-square" label="Custom" title="Custom time" class={custom_class} onclick={link.callback(|_| Msg::SelectPreset(Preset::Custom))} />
             </div>
         }
     }

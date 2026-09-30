@@ -3,6 +3,8 @@ use std::iter;
 use web_sys::MouseEvent;
 use yew::prelude::*;
 
+use crate::ui::Button;
+
 const BUTTONS: usize = 3;
 
 #[derive(Properties, PartialEq)]
@@ -48,9 +50,7 @@ pub(crate) fn PaginationButtons(props: &Props) -> Html {
 
     html! {
         <pagination>
-            <button class={classes!("desktop-only", prev.is_none().then_some("disabled"))} onclick={on_back}>
-                <span class="icon chevron-left" />
-            </button>
+            <Button icon="chevron-left" title="Previous page" class={classes!("desktop-only", prev.is_none().then_some("disabled"))} onclick={on_back.unwrap_or_default()} />
 
             <pages>
                 {for pages.map(|(p, dist)| html! {
@@ -66,9 +66,7 @@ pub(crate) fn PaginationButtons(props: &Props) -> Html {
                 })}
             </pages>
 
-            <button class={classes!("desktop-only", next.is_none().then_some("disabled"))} onclick={on_next}>
-                <span class="icon chevron-right" />
-            </button>
+            <Button icon="chevron-right" title="Next page" class={classes!("desktop-only", next.is_none().then_some("disabled"))} onclick={on_next.unwrap_or_default()} />
         </pagination>
     }
 }

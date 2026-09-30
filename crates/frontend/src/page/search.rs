@@ -6,7 +6,7 @@ use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaSelection, Route, Router, SearchQuery, ShowDetailQuery};
-use crate::ui::{Image, MediaKindToggle, SEARCH};
+use crate::ui::{Button, Image, MediaKindToggle, SEARCH};
 
 pub(crate) struct Search {
     channel: ws::Channel,
@@ -160,10 +160,7 @@ impl Component for Search {
                     <div class="input-group">
                         <input class="input-text fill" type="text" placeholder={SEARCH} ref={self.input.clone()} value={self.query.clone()} oninput={on_input} onkeydown={on_keydown} />
 
-                        <button class="desktop-has-text" onclick={on_submit}>
-                            <span class="icon magnifying-glass" />
-                            <span class="desktop-only">{"Search Remotes"}</span>
-                        </button>
+                        <Button icon="magnifying-glass" desktop_text="Search Remotes" title="Search remotes" onclick={on_submit} />
                     </div>
 
                     <controls>
@@ -407,15 +404,9 @@ impl Search {
 
                         <div class="row">
                             if let Some(on_nav) = on_nav {
-                                <button class="desktop-has-text" onclick={on_nav} title="Already tracked">
-                                    <span class="icon check" />
-                                    <span class="desktop-only">{"Tracked"}</span>
-                                </button>
+                                <Button icon="check" desktop_text="Tracked" title="Already tracked" onclick={on_nav} />
                             } else {
-                                <button class="desktop-has-text" onclick={on_track} title="Track show">
-                                    <span class="icon plus" />
-                                    <span class="desktop-only">{"Track"}</span>
-                                </button>
+                                <Button icon="plus" desktop_text="Track" title="Track show" onclick={on_track} />
                             }
                         </div>
                     </div>
@@ -470,15 +461,9 @@ impl Search {
 
                         <div class="row">
                             if let Some(on_nav) = on_nav {
-                                <button class="desktop-has-text" onclick={on_nav} title="Already tracked">
-                                    <span class="icon check" />
-                                    <span class="desktop-only">{"Tracked"}</span>
-                                </button>
+                                <Button icon="check" desktop_text="Tracked" title="Already tracked" onclick={on_nav} />
                             } else {
-                                <button class="desktop-has-text" onclick={on_track} title="Track movie">
-                                    <span class="icon plus" />
-                                    <span class="desktop-only">{"Track"}</span>
-                                </button>
+                                <Button icon="plus" desktop_text="Track" title="Track movie" onclick={on_track} />
                             }
                         </div>
                     </div>

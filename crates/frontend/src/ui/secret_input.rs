@@ -2,6 +2,8 @@ use gloo::timers::callback::Timeout;
 use web_sys::{Event, MouseEvent};
 use yew::prelude::*;
 
+use crate::ui::Button;
+
 /// How long a revealed secret stays visible before auto-hiding.
 const SECRET_REVEAL_MS: u32 = 3000;
 
@@ -112,17 +114,9 @@ impl Component for SecretInput {
             <div class="input-group">
                 <input id={props.id.clone()} class="input-text fill" type={ty} placeholder={props.placeholder.clone()} value={props.value.clone()} onchange={on_change} autocomplete="off" spellcheck="false" />
 
-                <button type="button" title={toggle_title} disabled={is_empty} onclick={on_toggle}>
-                    <span class={classes!("icon", toggle_icon)} />
-                </button>
-
-                <button type="button" title="Copy to clipboard" disabled={is_empty} onclick={link.callback(|_| Msg::Copy)}>
-                    <span class="icon clipboard" />
-                </button>
-
-                <button type="button" title="Clear" disabled={is_empty} onclick={link.callback(|_| Msg::Clear)}>
-                    <span class="icon x-mark" />
-                </button>
+                <Button icon={toggle_icon} title={toggle_title} disabled={is_empty} onclick={on_toggle} />
+                <Button icon="clipboard" title="Copy to clipboard" disabled={is_empty} onclick={link.callback(|_| Msg::Copy)} />
+                <Button icon="x-mark" title="Clear" disabled={is_empty} onclick={link.callback(|_| Msg::Clear)} />
             </div>
         }
     }

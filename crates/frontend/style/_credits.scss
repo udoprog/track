@@ -53,6 +53,7 @@
 }
 
 .credits-toggle {
+    --icon-color: #{v.$link-color};
     margin-top: v.$gap-sm;
     background: none;
     border: none;

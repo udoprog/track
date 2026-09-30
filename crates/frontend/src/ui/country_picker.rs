@@ -1,7 +1,7 @@
 use web_sys::InputEvent;
 use yew::prelude::*;
 
-use super::{Modal, PaginationButtons};
+use super::{Button, Modal, PaginationButtons};
 
 const COUNTRY_PAGE_SIZE: usize = 8;
 
@@ -135,21 +135,13 @@ impl Component for CountryPicker {
         let current = &ctx.props().current;
 
         let trigger = html! {
-            <button class="has-text" onclick={link.callback(|_| Msg::Open)} title="Select countries">
-                <span class="icon globe-alt" />
-
-                if current.is_empty() {
-                    <span>{"All countries"}</span>
-                } else {
-                    <span>{format!("{} selected", current.len())}</span>
-
-                    {for current.iter().filter_map(|code| {
-                        code.to_iso().filter(|c| c.has_flag).map(|c| html! {
-                            <span class={classes!("flag", c.alpha2)} />
-                        })
-                    })}
-                }
-            </button>
+            <Button icon="globe-alt" label={if current.is_empty() { String::from("All countries") } else { format!("{} selected", current.len()) }} title="Select countries" onclick={link.callback(|_| Msg::Open)}>
+                {for current.iter().filter_map(|code| {
+                    code.to_iso().filter(|c| c.has_flag).map(|c| html! {
+                        <span class={classes!("flag", c.alpha2)} />
+                    })
+                })}
+            </Button>
         };
 
         if !self.open {

@@ -1017,9 +1017,7 @@ impl MovieDetail {
                 }
 
                 if self.credits.len() > CAP {
-                    <button class="credits-toggle" onclick={ctx.link().callback(|_| Msg::ToggleCreditsExpanded)}>
-                        { if self.credits_expanded { "Show fewer" } else { "Show all cast" } }
-                    </button>
+                    <Button icon={if self.credits_expanded { "chevron-up" } else { "chevron-down" }} label={if self.credits_expanded { "Show fewer" } else { "Show all cast" }} title={if self.credits_expanded { "Show fewer cast" } else { "Show all cast" }} class="credits-toggle" onclick={ctx.link().callback(|_| Msg::ToggleCreditsExpanded)} />
                 }
             </section>
         }
@@ -1115,9 +1113,7 @@ impl MovieDetail {
                     </div>
 
                     <div class="toolbar-toggle">
-                        <button onclick={link.callback(|_| Msg::ToggleActionsExpanded)}>
-                            <span class={classes!("icon", if self.actions_expanded { "ellipsis-horizontal" } else { "bars-3" })} />
-                        </button>
+                        <Button icon={if self.actions_expanded { "ellipsis-horizontal" } else { "bars-3" }} title="Actions" onclick={link.callback(|_| Msg::ToggleActionsExpanded)} />
                     </div>
 
                     <div class={classes!("toolbar-dropdown", (!self.actions_expanded).then_some("desktop-only"))}>
@@ -1246,9 +1242,7 @@ impl MovieDetail {
                                 </indicator>
 
                                 <div class="toolbar-toggle">
-                                    <button onclick={link.callback(move |_| Msg::ToggleDetailedActionsExpanded)}>
-                                        <span class={classes!("icon", if self.detailed_expand { "ellipsis-horizontal" } else { "bars-3" })} />
-                                    </button>
+                                    <Button icon={if self.detailed_expand { "ellipsis-horizontal" } else { "bars-3" }} title="Watch actions" onclick={link.callback(move |_| Msg::ToggleDetailedActionsExpanded)} />
                                 </div>
 
                                 <div class={classes!("toolbar-dropdown", "desktop-input-group", (!self.detailed_expand).then_some("desktop-only"))}>

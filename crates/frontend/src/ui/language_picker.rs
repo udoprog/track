@@ -1,6 +1,6 @@
 use yew::prelude::*;
 
-use super::{LanguageModal, locale_label};
+use super::{Button, LanguageModal, locale_label};
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
@@ -58,23 +58,17 @@ impl Component for LanguagePicker {
 
         let trigger = if current.is_default() {
             html! {
-                <button class="has-text" onclick={link.callback(|_| Msg::Open)} title="Select language">
-                    <span class="icon language" />
-                    <span>{props.placeholder}</span>
-                </button>
+                <Button icon="language" label={props.placeholder} title="Select language" onclick={link.callback(|_| Msg::Open)} />
             }
         } else {
             let (label, flag) = locale_label(current, "Default Language");
 
             html! {
-                <button class="has-text" onclick={link.callback(|_| Msg::Open)} title="Select language">
-                    <span class="icon language" />
-                    <span>{label}</span>
-
+                <Button icon="language" label={label} title="Select language" onclick={link.callback(|_| Msg::Open)}>
                     if let Some(code) = flag {
                         <span class={classes!("flag", code)}></span>
                     }
-                </button>
+                </Button>
             }
         };
 

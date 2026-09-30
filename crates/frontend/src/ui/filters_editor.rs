@@ -172,16 +172,10 @@ impl Component for FiltersEditor {
 
         let toggle = match self.mode {
             Mode::View => html! {
-                <button class="mobile-has-text" onclick={link.callback(|_| Msg::Edit)} title="Edit rules">
-                    <span class="icon pencil-square" />
-                    <span class="mobile-only">{"Edit"}</span>
-                </button>
+                <Button icon="pencil-square" text="Edit" title="Edit rules" onclick={link.callback(|_| Msg::Edit)} />
             },
             Mode::Edit => html! {
-                <button class="primary mobile-has-text" onclick={link.callback(|_| Msg::Save)} title="Save rules">
-                    <span class="icon check" />
-                    <span class="mobile-only">{"Save"}</span>
-                </button>
+                <Button icon="check" text="Save" title="Save rules" variant={Variant::Primary} onclick={link.callback(|_| Msg::Save)} />
             },
         };
 
@@ -434,9 +428,7 @@ impl FiltersEditor {
                 <span class="input-group">
                     <span class="input-label has-text fill">{p.kind().label()}</span>
 
-                    <button class="danger" onclick={on_remove} title="Remove predicate">
-                        <span class="icon trash" />
-                    </button>
+                    <Button icon="trash" title="Remove predicate" variant={Variant::Danger} onclick={on_remove} />
                 </span>
 
                 <controls>

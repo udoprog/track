@@ -622,10 +622,7 @@ impl PersonDetail {
                     </div>
 
                     <div class="field">
-                        <button class="has-text" onclick={link.callback(|_| Msg::OpenRemoteEditor)}>
-                            <span class="icon identification" />
-                            <span>{"Remotes"}</span>
-                        </button>
+                        <Button icon="identification" label="Remotes" title="Edit remotes" onclick={link.callback(|_| Msg::OpenRemoteEditor)} />
 
                         <span class="hint">{"Edit the TMDB, IMDb, and other remote identifiers used to sync."}</span>
                     </div>

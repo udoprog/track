@@ -9,7 +9,7 @@
 
 use yew::prelude::*;
 
-use super::{ContextMenu, locale_label};
+use super::{Button, ContextMenu, locale_label};
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
@@ -111,7 +111,7 @@ impl Component for TranslatedText {
             displayed.filter(|locale| locale.language() != props.strings.locale().language());
 
         let toggle = html! {
-            <button ref={self.anchor.clone()} class="language-toggle" title="Change displayed language" onclick={link.callback(|_| Msg::Open)}>
+            <Button node_ref={self.anchor.clone()} class="language-toggle" title="Change displayed language" onclick={link.callback(|_| Msg::Open)}>
                 if let Some(locale) = foreign {
                     if let Some(flag) = locale.flag() {
                         <span class={classes!("flag", flag)} />
@@ -121,7 +121,7 @@ impl Component for TranslatedText {
                 } else {
                     <span class="icon sm language" />
                 }
-            </button>
+            </Button>
         };
 
         html! {

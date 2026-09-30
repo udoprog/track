@@ -554,35 +554,17 @@ fn Toolbar(props: &ToolbarProps) -> Html {
                     <span class="mobile-only">{connection_title}</span>
                 </div>
 
-                <button class={classes!("toolbar-item", "has-text", (props.section == Section::Dashboard).then_some("active"))} aria-current={(props.section == Section::Dashboard).then_some("page")} onclick={on_nav(Route::Dashboard(DashboardQuery::default()))} title="Dashboard">
-                    <span class="icon rectangle-stack" />
-                    <span>{"Dashboard"}</span>
-                </button>
+                <Button icon="rectangle-stack" label="Dashboard" title="Dashboard" class={classes!("toolbar-item", (props.section == Section::Dashboard).then_some("active"))} current={props.section == Section::Dashboard} onclick={on_nav(Route::Dashboard(DashboardQuery::default()))} />
 
-                <button class={classes!("toolbar-item", "has-text", (props.section == Section::Media).then_some("active"))} aria-current={(props.section == Section::Media).then_some("page")} onclick={on_nav(Route::Media(MediaQuery::default()))} title="Media">
-                    <span class="icon film" />
-                    <span>{"Media"}</span>
-                </button>
+                <Button icon="film" label="Media" title="Media" class={classes!("toolbar-item", (props.section == Section::Media).then_some("active"))} current={props.section == Section::Media} onclick={on_nav(Route::Media(MediaQuery::default()))} />
 
-                <button class={classes!("toolbar-item", "has-text", (props.section == Section::People).then_some("active"))} aria-current={(props.section == Section::People).then_some("page")} onclick={on_nav(Route::People(PersonQuery::default()))} title="People">
-                    <span class="icon users" />
-                    <span>{"People"}</span>
-                </button>
+                <Button icon="users" label="People" title="People" class={classes!("toolbar-item", (props.section == Section::People).then_some("active"))} current={props.section == Section::People} onclick={on_nav(Route::People(PersonQuery::default()))} />
 
-                <button class={classes!("toolbar-item", "has-text", (props.section == Section::Search).then_some("active"))} aria-current={(props.section == Section::Search).then_some("page")} onclick={on_nav(Route::Search(SearchQuery::default()))} title="Search">
-                    <span class="icon magnifying-glass" />
-                    <span>{"Search"}</span>
-                </button>
+                <Button icon="magnifying-glass" label="Search" title="Search" class={classes!("toolbar-item", (props.section == Section::Search).then_some("active"))} current={props.section == Section::Search} onclick={on_nav(Route::Search(SearchQuery::default()))} />
 
-                <button class={classes!("toolbar-item", "has-text", (props.section == Section::Queue).then_some("active"))} aria-current={(props.section == Section::Queue).then_some("page")} onclick={on_nav(Route::Queue(QueueQuery::default()))} title="Queue">
-                    <span class="icon queue-list" />
-                    <span>{"Queue"}</span>
-                </button>
+                <Button icon="queue-list" label="Queue" title="Queue" class={classes!("toolbar-item", (props.section == Section::Queue).then_some("active"))} current={props.section == Section::Queue} onclick={on_nav(Route::Queue(QueueQuery::default()))} />
 
-                <button class={classes!("toolbar-item", "has-text", (props.section == Section::Settings).then_some("active"))} aria-current={(props.section == Section::Settings).then_some("page")} onclick={on_nav(Route::Settings)} title="Settings">
-                    <span class="icon cog-6-tooth" />
-                    <span>{"Settings"}</span>
-                </button>
+                <Button icon="cog-6-tooth" label="Settings" title="Settings" class={classes!("toolbar-item", (props.section == Section::Settings).then_some("active"))} current={props.section == Section::Settings} onclick={on_nav(Route::Settings)} />
             </div>
         </div>
     }

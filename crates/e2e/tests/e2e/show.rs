@@ -3,7 +3,7 @@ use yew_e2e::prelude::*;
 use super::Track;
 
 /// Open the seeded show from the dashboard.
-async fn open_show(driver: &TestDriver) -> Result<()> {
+pub(crate) async fn open_show(driver: &TestDriver) -> Result<()> {
     driver.find_one_by(".pending-title").await?.click().await?;
 
     driver.wait_texts(".detail-title", ["Seeded Show"]).await

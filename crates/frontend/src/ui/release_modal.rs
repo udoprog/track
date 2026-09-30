@@ -9,7 +9,7 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 
 use super::{
-    AIR_DATE_KINDS, AIR_DATE_SOURCES, FiltersEditor, Modal, RELEASE_KINDS, RELEASE_SOURCES,
+    AIR_DATE_KINDS, AIR_DATE_SOURCES, Button, FiltersEditor, Modal, RELEASE_KINDS, RELEASE_SOURCES,
 };
 
 /// What a [`ReleaseModal`] shows. Each variant fetches from its own endpoint; the
@@ -385,9 +385,7 @@ impl ReleaseModal {
                 <div class="input-group">
                     <span class="input-label has-text">{"Active filter"}</span>
 
-                    <button class="input-checkbox has-text fill" onclick={on_toggle}>
-                        {if is_custom { custom_label } else { "Use global default" }}
-                    </button>
+                    <Button label={if is_custom { custom_label } else { "Use global default" }} title="Switch between a custom filter and the global default" class="input-checkbox fill" onclick={on_toggle} />
                 </div>
 
                 if !is_custom {

@@ -432,9 +432,7 @@ impl Component for RemoteEditor {
                                         </div>
 
                                         <div class="toolbar-toggle">
-                                            <button onclick={toggle_actions}>
-                                                <span class={classes!("icon", if r.actions_expanded { "ellipsis-horizontal" } else { "bars-2" })} />
-                                            </button>
+                                            <Button icon={if r.actions_expanded { "ellipsis-horizontal" } else { "bars-2" }} title="Identifier actions" onclick={toggle_actions} />
                                         </div>
 
                                         <div ref={r.context_anchor.clone()} class={classes!("toolbar-dropdown", (!r.actions_expanded).then_some("desktop-only"))}>
@@ -527,10 +525,7 @@ impl Component for RemoteEditor {
 
                             <Button icon="link" title="Edit slug" class={classes!(self.show_slug.then_some("selected"))} onclick={link.callback(|_| Msg::ToggleSlug)} />
 
-                            <button class="success has-text" onclick={link.callback(|_| Msg::Submit)} disabled={self.value.trim().is_empty()} title={if editing { "Save identifier" } else { "Add identifier" }}>
-                                <span class={classes!("icon", if editing { "check" } else { "plus" })} />
-                                <span>{if editing { "Save" } else { "Add" }}</span>
-                            </button>
+                            <Button icon={if editing { "check" } else { "plus" }} label={if editing { "Save" } else { "Add" }} title={if editing { "Save identifier" } else { "Add identifier" }} variant={Variant::Success} disabled={self.value.trim().is_empty()} onclick={link.callback(|_| Msg::Submit)} />
 
                             if editing {
                                 <Button icon="x-mark" title="Cancel edit" onclick={link.callback(|_| Msg::CancelEdit)} />

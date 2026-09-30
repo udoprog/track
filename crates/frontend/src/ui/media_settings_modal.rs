@@ -593,10 +593,7 @@ impl MediaSettingsModal {
 
                 <div class="field">
                     if has_images {
-                        <button class="has-text" onclick={on_edit_graphics}>
-                            <span class="icon photo" />
-                            <span>{"Graphics"}</span>
-                        </button>
+                        <Button icon="photo" label="Graphics" title="Edit graphics" onclick={on_edit_graphics} />
 
                         <span class="hint">{"Choose the poster, backdrop, banner, and other artwork."}</span>
                     } else {
@@ -605,10 +602,7 @@ impl MediaSettingsModal {
                 </div>
 
                 <div class="field">
-                    <button class="has-text" onclick={on_edit_remotes}>
-                        <span class="icon identification" />
-                        <span>{"Remotes"}</span>
-                    </button>
+                    <Button icon="identification" label="Remotes" title="Edit remotes" onclick={on_edit_remotes} />
 
                     <span class="hint">{"Edit the TMDB, TVDB, and other remote identifiers used to sync."}</span>
                 </div>
@@ -675,9 +669,7 @@ impl MediaSettingsModal {
                 <div class="input-group">
                     <span class="input-label has-text">{"Air Date"}</span>
 
-                    <button class="input-checkbox has-text fill" onclick={on_mode}>
-                        {if is_custom { "Custom" } else { "Use global default" }}
-                    </button>
+                    <Button label={if is_custom { "Custom" } else { "Use global default" }} title="Switch between a custom air date filter and the global default" class="input-checkbox fill" onclick={on_mode} />
                 </div>
 
                 {editor}
