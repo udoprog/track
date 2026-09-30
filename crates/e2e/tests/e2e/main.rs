@@ -185,5 +185,5 @@ yew_e2e::harness! {
     queue::{lists_tasks_in_columns, keeps_rows_in_place(seeded), follows_the_next_task(crowded), shows_failed_tasks(seeded)},
     search::{focuses_the_input},
     settings::{reorders_sync_sources, theme_applies_live, theme_is_remembered, adds_languages_and_rules},
-    show::{episode_menu_holds_the_other_actions(seeded), menus_close_on_an_outside_click(seeded), modals_close_from_button_and_backdrop(seeded), phone_modals_rise_from_the_bottom(seeded), settings_line_up_their_controls(seeded), has_a_heading(seeded), phones_have_no_episode_rail(seeded), phones_do_not_scroll_sideways(seeded), seasons_count_watched_episodes(seeded), episodes_show_their_details(seeded)},
+    show::{episode_menu_holds_the_other_actions(seeded), menus_close_on_an_outside_click(seeded), modals_close_from_button_and_backdrop(seeded), phone_modals_rise_from_the_bottom(seeded), settings_line_up_their_controls(seeded), modals_hold_keyboard_focus(seeded), has_a_heading(seeded), phones_have_no_episode_rail(seeded), phones_do_not_scroll_sideways(seeded), seasons_count_watched_episodes(seeded), episodes_show_their_details(seeded)},
 }

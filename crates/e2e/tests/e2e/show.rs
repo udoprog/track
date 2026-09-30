@@ -252,3 +252,66 @@ pub async fn settings_line_up_their_controls(driver: &mut TestDriver, _: &mut Tr
     );
     Ok(())
 }
+
+/// The title of whatever has focus.
+async fn focused_title(driver: &TestDriver) -> Result<String> {
+    let ret = driver
+        .webdriver()
+        .execute("return document.activeElement.title;", Vec::new())
+        .await?;
+    Ok(ret.convert::<String>()?)
+}
+
+/// A modal is a labelled dialog that holds focus: it opens from the keyboard,
+/// Tab wraps inside it, and Escape closes it and returns focus to its opener.
+pub async fn modals_hold_keyboard_focus(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_show(driver).await?;
+
+    let settings = driver
+        .find_one_by("[title='Settings']:not(#toolbar *)")
+        .await?;
+    settings.focus().await?;
+    settings.send_keys("\u{E007}").await?;
+
+    let dialog = driver.find_one_by(".modal[role='dialog']").await?;
+    ensure!(dialog.attr("aria-modal").await? == "true");
+    let title = driver
+        .find_one_by(&format!("#{}", dialog.attr("aria-labelledby").await?))
+        .await?;
+    ensure!(title.text().await? == "Settings");
+
+    driver
+        .wait_until("focus to move into the dialog", async || {
+            Ok(driver
+                .webdriver()
+                .execute(
+                    "return !!document.activeElement.closest('.modal');",
+                    Vec::new(),
+                )
+                .await?
+                .convert::<bool>()?)
+        })
+        .await?;
+
+    driver
+        .find_one_by(".modal [title='Edit remotes']")
+        .await?
+        .send_keys("\u{E004}")
+        .await?;
+    let wrapped = focused_title(driver).await?;
+    ensure!(
+        wrapped == "Close",
+        "Tab from the last control went to {wrapped:?}"
+    );
+
+    driver
+        .find_one_by(".modal [title='Close']")
+        .await?
+        .send_keys("\u{E00C}")
+        .await?;
+    driver.wait_count(".modal", 0).await?;
+
+    let back = focused_title(driver).await?;
+    ensure!(back == "Settings", "focus went back to {back:?}");
+    Ok(())
+}

@@ -15,6 +15,7 @@ mod episode_cache_modal;
 mod episode_picker;
 mod error_box;
 mod filters_editor;
+pub(crate) mod focus;
 mod form_row;
 mod graphics_source_filter;
 mod image;

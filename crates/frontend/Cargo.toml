@@ -44,6 +44,8 @@ features = [
     "Location",
     "MouseEvent",
     "Navigator",
+    "Node",
+    "NodeList",
     "PointerEvent",
     "Storage",
     "WheelEvent",

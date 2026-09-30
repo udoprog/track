@@ -1333,6 +1333,12 @@ input-label-controls {
     width: min(600px, calc(100vw - #{v.$gap-sm * 2}));
     max-height: 85vh;
 
+    // Focused only as a fallback when it holds no control; the box is not
+    // itself something to act on.
+    &:focus {
+        outline: none;
+    }
+
     @include g.on-mobile {
         width: 100%;
         max-height: 90vh;
