@@ -972,6 +972,15 @@ input-controls {
         justify-content: flex-end;
         flex-wrap: wrap;
 
+        // Wrap the row before the sort group gets too narrow to read.
+        >.fill {
+            min-width: 14em;
+        }
+
+        .input-label {
+            white-space: nowrap;
+        }
+
         @include g.on-mobile {
             flex-direction: column;
             align-items: stretch;

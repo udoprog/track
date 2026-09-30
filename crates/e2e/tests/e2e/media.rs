@@ -54,3 +54,41 @@ pub async fn toggle_marks_are_icon_sized(driver: &mut TestDriver, _: &mut Track)
 
     Ok(())
 }
+
+/// Between phone and full width the controls wrap rather than squeezing the
+/// sort label onto two lines and the select to a sliver.
+pub async fn sort_stays_readable_at_tablet_width(
+    driver: &mut TestDriver,
+    _: &mut Track,
+) -> Result<()> {
+    driver.set_window_size(860, 900).await?;
+
+    driver
+        .find_one_by(".toolbar-item[title=Media]")
+        .await?
+        .click()
+        .await?;
+
+    let label = driver
+        .find_one_by("input-controls .input-label")
+        .await?
+        .rect()
+        .await?;
+    let select = driver
+        .find_one_by("input-controls select")
+        .await?
+        .rect()
+        .await?;
+
+    ensure!(
+        label.height <= 40.0,
+        "the sort label wraps to {}px",
+        label.height
+    );
+    ensure!(
+        select.width >= 100.0,
+        "the sort select is {}px wide",
+        select.width
+    );
+    Ok(())
+}
