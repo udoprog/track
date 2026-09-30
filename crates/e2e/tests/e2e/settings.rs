@@ -157,3 +157,39 @@ pub async fn reorders_sync_sources(driver: &mut TestDriver, _: &mut Track) -> Re
         })
         .await
 }
+
+/// Languages and date rules are added with labelled buttons below their
+/// lists, and the rules switch between viewing and editing.
+pub async fn adds_languages_and_rules(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_settings(driver).await?;
+
+    let add_language = driver.find_one_by("button[title='Add language']").await?;
+    ensure!(
+        add_language.text().await? == "Add language",
+        "Add language has no label"
+    );
+    add_language.click().await?;
+    driver.find_one_by(".modal").await?;
+    driver
+        .find_one_by(".modal-background")
+        .await?
+        .click()
+        .await?;
+    driver.wait_count(".modal", 0).await?;
+
+    let rules = driver.count("rule").await?;
+    driver
+        .find_first("button[title='Add rule']")
+        .await?
+        .click()
+        .await?;
+    driver.wait_count("rule", rules + 1).await?;
+
+    driver
+        .find_first("button[title='Edit rules']")
+        .await?
+        .click()
+        .await?;
+    driver.find_first("button[title='Save rules']").await?;
+    Ok(())
+}

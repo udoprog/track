@@ -62,37 +62,41 @@ impl Component for SyncLanguagesEditor {
         let props = ctx.props();
 
         html! {
-            <div class="table">
-                {
-                    for props.languages.iter().copied().enumerate().map(|(index, l)| {
-                        let on_remove = {
-                            let current = props.languages.clone();
-                            let on_change = props.on_change.clone();
-                            Callback::from(move |_: MouseEvent| {
-                                let mut next = current.clone();
-                                next.remove(index);
-                                on_change.emit(next);
-                            })
-                        };
+            <>
+                <div class="table">
+                    {
+                        for props.languages.iter().copied().enumerate().map(|(index, l)| {
+                            let on_remove = {
+                                let current = props.languages.clone();
+                                let on_change = props.on_change.clone();
+                                Callback::from(move |_: MouseEvent| {
+                                    let mut next = current.clone();
+                                    next.remove(index);
+                                    on_change.emit(next);
+                                })
+                            };
 
-                        let (label, flag) = locale_label(l, "Default Language");
+                            let (label, flag) = locale_label(l, "Default Language");
 
-                        html! {
-                            <div key={l.to_string()} class="row">
-                                <span class="fill">{label}</span>
+                            html! {
+                                <div key={l.to_string()} class="row">
+                                    <span class="fill">{label}</span>
 
-                                if let Some(flag) = flag {
-                                    <span class={classes!("item-inline", "flag", flag)} />
-                                }
+                                    if let Some(flag) = flag {
+                                        <span class={classes!("item-inline", "flag", flag)} />
+                                    } else {
+                                        <span class="item-inline"><span class="icon language" /></span>
+                                    }
 
-                                <Button icon="trash" variant={Variant::Danger} title="Remove language" text="Remove" onclick={on_remove} />
-                            </div>
-                        }
-                    })
-                }
+                                    <Button icon="trash" variant={Variant::Danger} title="Remove language" text="Remove" onclick={on_remove} />
+                                </div>
+                            }
+                        })
+                    }
+                </div>
 
-                <div class="row align-end">
-                    <Button icon="plus" title="Add language" text="Add language" onclick={link.callback(|_| Msg::Open)} />
+                <div class="row">
+                    <Button icon="plus" label="Add language" title="Add language" onclick={link.callback(|_| Msg::Open)} />
                 </div>
 
                 if self.open {
@@ -103,7 +107,7 @@ impl Component for SyncLanguagesEditor {
                         on_close={link.callback(|_| Msg::Close)}
                     />
                 }
-            </div>
+            </>
         }
     }
 }

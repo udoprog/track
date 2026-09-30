@@ -172,10 +172,10 @@ impl Component for FiltersEditor {
 
         let toggle = match self.mode {
             Mode::View => html! {
-                <Button icon="pencil-square" text="Edit" title="Edit rules" onclick={link.callback(|_| Msg::Edit)} />
+                <Button icon="pencil-square" label="Edit rules" title="Edit rules" onclick={link.callback(|_| Msg::Edit)} />
             },
             Mode::Edit => html! {
-                <Button icon="check" text="Save" title="Save rules" variant={Variant::Primary} onclick={link.callback(|_| Msg::Save)} />
+                <Button icon="check" label="Save rules" title="Save rules" variant={Variant::Primary} onclick={link.callback(|_| Msg::Save)} />
             },
         };
 
@@ -200,14 +200,10 @@ impl Component for FiltersEditor {
                     {for rules}
                 }
 
-                {toggle}
-
-                <rule-add onclick={link.callback(|_| Msg::AddRule)} title="Add rule">
-                    <span class="item-inline">
-                        <span class="icon plus" />
-                        <span class="mobile-only">{"Add rule"}</span>
-                    </span>
-                </rule-add>
+                <div class="row">
+                    {toggle}
+                    <Button icon="plus" label="Add rule" title="Add rule" onclick={link.callback(|_| Msg::AddRule)} />
+                </div>
             </div>
         }
     }

@@ -174,6 +174,6 @@ yew_e2e::harness! {
     people::{lists_people_by_name(seeded)},
     queue::{lists_tasks_in_columns, keeps_rows_in_place(seeded), follows_the_next_task(crowded), shows_failed_tasks(seeded)},
     search::{focuses_the_input},
-    settings::{reorders_sync_sources, theme_applies_live, theme_is_remembered},
+    settings::{reorders_sync_sources, theme_applies_live, theme_is_remembered, adds_languages_and_rules},
     show::{episode_menu_holds_the_other_actions(seeded), has_a_heading(seeded), phones_have_no_episode_rail(seeded), seasons_count_watched_episodes(seeded), watched_episodes_are_compact(seeded)},
 }
