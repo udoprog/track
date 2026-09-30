@@ -35,3 +35,28 @@ pub async fn episode_menu_holds_the_other_actions(
         )
         .await
 }
+
+/// A watched episode collapses to a compact row, and its disclosure shows the
+/// details again.
+pub async fn watched_episodes_are_compact(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_show(driver).await?;
+
+    let first = "[id='S01E01']";
+    driver.wait_count(&format!("{first}.compact"), 0).await?;
+
+    driver
+        .find_one_by(&format!("{first} [title='Mark watched']"))
+        .await?
+        .click()
+        .await?;
+
+    driver.wait_count(&format!("{first}.compact"), 1).await?;
+
+    driver
+        .find_one_by(&format!("{first} [title='Show details']"))
+        .await?
+        .click()
+        .await?;
+
+    driver.wait_count(&format!("{first}.compact"), 0).await
+}

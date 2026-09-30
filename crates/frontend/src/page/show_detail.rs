@@ -78,6 +78,8 @@ pub(crate) struct ShowDetail {
     confirm_remove_watch: Option<api::WatchedId>,
     watched_by_episode: HashMap<api::EpisodeId, Vec<WatchedState>>,
     history_expanded: HashSet<api::EpisodeId>,
+    /// Watched episodes shown in full rather than as a compact row.
+    expanded_episodes: HashSet<api::EpisodeId>,
     orphaned: Vec<OrphanedWatchedState>,
     fixing_watched: Option<api::WatchedId>,
     image_modal: bool,
@@ -167,6 +169,7 @@ pub(crate) enum Msg {
     SyncEpisode(api::EpisodeId),
     SyncEpisodeDone(Result<ws::Packet<api::SyncEpisode>, ws::Error>),
     ToggleHistory(api::EpisodeId),
+    ToggleEpisodeDetails(api::EpisodeId),
     WatchedLoaded(Result<ws::Packet<api::ListEpisodesWatched>, ws::Error>),
     OnWatchNext(api::EpisodeId, api::MarkTime),
     AddPendingDone(Result<ws::Packet<api::AddPending>, ws::Error>),
@@ -297,6 +300,7 @@ impl Component for ShowDetail {
             confirm_remove_watch: None,
             watched_by_episode: HashMap::new(),
             history_expanded: HashSet::new(),
+            expanded_episodes: HashSet::new(),
             orphaned: Vec::new(),
             fixing_watched: None,
             image_modal: false,
@@ -1092,6 +1096,13 @@ impl ShowDetail {
             Msg::SyncEpisodeDone(result) => {
                 result.context(Message::SyncingEpisode)?;
                 Ok(false)
+            }
+            Msg::ToggleEpisodeDetails(id) => {
+                if !self.expanded_episodes.insert(id) {
+                    self.expanded_episodes.remove(&id);
+                }
+
+                Ok(true)
             }
             Msg::ToggleHistory(id) => {
                 self.episode_menu = None;
@@ -2220,12 +2231,20 @@ impl ShowDetail {
             .aired
             .map(|timestamp| TimePreset::at("calendar", "Air date", timestamp));
 
+        // A watched episode that isn't up next is a compact row until expanded.
+        let collapsible = !watched.is_empty() && episode.pending.is_none();
+        let compact = collapsible && !self.expanded_episodes.contains(&episode_id);
+
         html! {
-            <div class={classes!("episode", (!watched.is_empty()).then_some("watched"))} id={episode.code()}>
+            <div class={classes!("episode", (!watched.is_empty()).then_some("watched"), compact.then_some("compact"))} id={episode.code()}>
                 <div class="column">
                     <div class="toolbar">
                         <div class="column">
                             <div class="row align-top">
+                                if collapsible {
+                                    <Button icon={if compact { "chevron-right" } else { "chevron-down" }} class="disclosure" title={if compact { "Show details" } else { "Hide details" }} onclick={link.callback(move |_| Msg::ToggleEpisodeDetails(episode_id))} />
+                                }
+
                                 <a class="episode-code" href={format!("#{}", episode.code())}>
                                     <span class="item-inline-xs">
                                         <span class="icon link" />
@@ -2270,20 +2289,22 @@ impl ShowDetail {
                         }
                     </div>
 
-                    <indicator title="Air date">
-                        <span class="item-inline">
-                            <span class={classes!("icon", if episode.aired().is_some() { "clock" } else { "exclamation-circle" })} />
-                        </span>
+                    if !compact {
+                        <indicator title="Air date">
+                            <span class="item-inline">
+                                <span class={classes!("icon", if episode.aired().is_some() { "clock" } else { "exclamation-circle" })} />
+                            </span>
 
-                        <content>
-                            if let Some(aired) = episode.human_date_time(self.time.clone()) {
-                                <span>{if aired.is_past() { "Aired" } else { "Airs" }}</span>
-                                {aired.lower().view()}
-                            } else {
-                                <span class="text-muted">{"No air date"}</span>
-                            }
-                        </content>
-                    </indicator>
+                            <content>
+                                if let Some(aired) = episode.human_date_time(self.time.clone()) {
+                                    <span>{if aired.is_past() { "Aired" } else { "Airs" }}</span>
+                                    {aired.lower().view()}
+                                } else {
+                                    <span class="text-muted">{"No air date"}</span>
+                                }
+                            </content>
+                        </indicator>
+                    }
 
                     <indicator title="Watch status">
                         if episode.pending.is_some() {
@@ -2325,13 +2346,15 @@ impl ShowDetail {
                     </indicator>
                 </div>
 
-                <div class="desktop-row mobile-column align-top">
-                    <Image class="screenshot" src={episode.screenshot.clone()} />
+                if !compact {
+                    <div class="desktop-row mobile-column align-top">
+                        <Image class="screenshot" src={episode.screenshot.clone()} />
 
-                    <div class="column desktop-fill">
-                        <TranslatedText strings={episode.strings.clone()} />
+                        <div class="column desktop-fill">
+                            <TranslatedText strings={episode.strings.clone()} />
+                        </div>
                     </div>
-                </div>
+                }
 
                 if history_expanded {
                     <Modal icon="clock" title={format!("Watch history for {}", episode.code())} on_close={link.callback(move |_| Msg::ToggleHistory(episode_id))}>
