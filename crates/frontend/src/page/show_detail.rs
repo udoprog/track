@@ -10,11 +10,11 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaQuery, Route, Router, ShowDetailQuery};
 use crate::ui::{
-    Button, ConfirmDanger, ContextMenu, DetailSkeleton, EpisodeCacheModal, EpisodePicker,
-    GraphicsSourceFilter, Image, ImageGallery, ImageItem, MarkTimeMenu, MediaSettingsModal, Modal,
-    OutlineControl, OutlineEntry, OutlineHandle, ReleaseModal, ReleaseTarget, RemoteEditor,
-    RemoteSourceKind, SettingsTarget, TimePreset, Tracked, TranslatedText, TranslationsModal,
-    Variant,
+    Button, ConfirmDanger, ContextMenu, DetailHero, DetailSkeleton, EpisodeCacheModal,
+    EpisodePicker, GraphicsSourceFilter, Image, ImageGallery, ImageItem, MarkTimeMenu,
+    MediaSettingsModal, Modal, OutlineControl, OutlineEntry, OutlineHandle, ReleaseModal,
+    ReleaseTarget, RemoteEditor, RemoteSourceKind, SettingsTarget, TimePreset, Tracked,
+    TranslatedText, TranslationsModal, Variant,
 };
 
 const ORPHAN_HINT: &str = r#"
@@ -394,16 +394,14 @@ impl Component for ShowDetail {
 
         html! {
             <>
-                <div class="mobile-row desktop-column desktop-center">
-                    <h1>{show.strings.title().unwrap_or("Untitled Show")}</h1>
-
-                    if let Some(date) = show.first_air_date {
-                        <span class="text-muted">{date.date(self.time.clone()).year()}</span>
-                    }
-                </div>
+                <DetailHero
+                    title={show.strings.title().unwrap_or("Untitled Show").to_owned()}
+                    meta={show.first_air_date.map(|date| date.date(self.time.clone()).year().to_string())}
+                    backdrop={show.backdrop.clone()}
+                />
 
                 <div class="toolbar">
-                    <div class="row mobile-justify-around mobile-flex-wrap">
+                    <div class="row detail-sources">
                         {for show.remotes.iter().filter_map(|r| {
                             let url = r.remote.show_url(r.slug.as_deref())?;
                             let id = r.remote.source().as_id();

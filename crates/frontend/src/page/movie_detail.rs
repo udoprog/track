@@ -8,10 +8,10 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaQuery, Route, Router};
 use crate::ui::{
-    Button, ConfirmDanger, ContextMenu, DetailSkeleton, GraphicsSourceFilter, Image, ImageGallery,
-    ImageItem, MarkTimeMenu, MediaSettingsModal, Modal, ReleaseModal, ReleaseTarget, RemoteEditor,
-    RemoteSourceKind, SettingsTarget, TimePreset, Tracked, TranslatedText, TranslationsModal,
-    Variant,
+    Button, ConfirmDanger, ContextMenu, DetailHero, DetailSkeleton, GraphicsSourceFilter, Image,
+    ImageGallery, ImageItem, MarkTimeMenu, MediaSettingsModal, Modal, ReleaseModal, ReleaseTarget,
+    RemoteEditor, RemoteSourceKind, SettingsTarget, TimePreset, Tracked, TranslatedText,
+    TranslationsModal, Variant,
 };
 
 const CAP: usize = 8;
@@ -1094,16 +1094,14 @@ impl MovieDetail {
 
         html! {
             <div class="column">
-                <div class="mobile-row desktop-column desktop-center">
-                    <h1>{movie.strings.title().unwrap_or("Untitled Movie")}</h1>
-
-                    if let Some(ts) = movie.release_date {
-                        <span class="text-muted">{ts.date(self.time.clone()).year()}</span>
-                    }
-                </div>
+                <DetailHero
+                    title={movie.strings.title().unwrap_or("Untitled Movie").to_owned()}
+                    meta={movie.release_date.map(|ts| ts.date(self.time.clone()).year().to_string())}
+                    backdrop={movie.backdrop.clone()}
+                />
 
                 <div class="toolbar">
-                    <div class="row mobile-justify-around mobile-flex-wrap">
+                    <div class="row detail-sources">
                         {for movie.remotes.iter().filter_map(|r| {
                             let url = r.remote.movie_url()?;
                             let id = r.remote.source().as_id();

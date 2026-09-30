@@ -1331,3 +1331,77 @@ pagination {
         box-shadow: 0 3px 0 v.$color-primary;
     }
 }
+
+// The heading of a show or movie page (ui/detail_hero.rs): the title large at
+// the bottom of a faded backdrop.
+.detail-hero {
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    min-height: 72px;
+    border-radius: v.$radius;
+    overflow: hidden;
+
+    &.has-backdrop {
+        min-height: 220px;
+        padding: v.$gap;
+
+        @include g.on-mobile {
+            min-height: 150px;
+        }
+    }
+}
+
+.detail-hero-image {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center 25%;
+
+    // Fade into the page towards the title so it stays readable.
+    &::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(to top, v.$bg-dark-transparent 15%, transparent 80%);
+    }
+}
+
+.detail-hero-text {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: v.$text-gap;
+    min-width: 0;
+}
+
+.detail-title {
+    margin: 0;
+    font-size: 32px;
+    font-weight: 600;
+    line-height: 1.15;
+    color: v.$text-primary;
+    overflow-wrap: anywhere;
+
+    @include g.on-mobile {
+        font-size: v.$font-title;
+    }
+}
+
+.detail-meta {
+    color: v.$text-muted;
+}
+
+// The source logos above a page, kept on one line next to its menu.
+.detail-sources {
+    flex-wrap: nowrap;
+    min-width: 0;
+
+    @include g.on-mobile {
+        gap: v.$gap-xs;
+
+        .item-inline-source {
+            height: v.$input-height;
+        }
+    }
+}
