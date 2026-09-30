@@ -66,24 +66,43 @@
     }
 }
 
-// Entries share columns: poster, title, and times ending on the right.
 .agenda-items {
-    display: grid;
-    grid-template-columns: 40px minmax(0, 1fr) auto;
-    column-gap: v.$gap-sm;
-    row-gap: 2px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
 }
 
+// An entry reads as one block: the poster, then its title over its times.
 .schedule-item {
     display: grid;
-    grid-column: 1 / -1;
-    grid-template-columns: subgrid;
-    align-items: center;
+    grid-template-columns: 40px minmax(0, 1fr);
+    grid-template-areas:
+        "poster title"
+        "poster times";
+    align-content: center;
+    column-gap: v.$gap-sm;
+    row-gap: v.$padding;
     padding: v.$padding-md v.$padding-lg;
     border-radius: v.$radius;
 
     &:hover {
         background: var(--neutral-bg);
+    }
+
+    >.schedule-poster {
+        grid-area: poster;
+    }
+
+    >.schedule-title {
+        grid-area: title;
+        align-self: end;
+    }
+
+    >.schedule-times {
+        grid-area: times;
+        align-self: start;
+        // Line the times' text up with the title, past their hover padding.
+        margin-inline-start: -(v.$padding);
     }
 }
 
@@ -107,9 +126,8 @@
 
 .schedule-times {
     display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 2px;
+    flex-wrap: wrap;
+    gap: 2px v.$gap-xs;
 }
 
 .schedule-time {
@@ -182,12 +200,15 @@
             display: none;
         }
 
+        // In this column align-self is horizontal: keep everything flush left.
         .schedule-title {
+            align-self: stretch;
             font-size: v.$font-xs;
         }
 
         .schedule-times {
-            align-items: flex-start;
+            align-self: stretch;
+            margin-inline-start: 0;
         }
 
         .schedule-time {
