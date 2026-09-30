@@ -5,7 +5,7 @@ use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::ui::{
-    AIR_DATE_KINDS, AIR_DATE_SOURCES, Button, DurationInput, DurationLabel, FiltersEditor,
+    AIR_DATE_KINDS, AIR_DATE_SOURCES, Button, DurationInput, FiltersEditor, FormRow,
     LanguagePicker, RELEASE_KINDS, RELEASE_SOURCES, SecretInput, Skeleton, SyncKindsEditor,
     SyncLanguagesEditor,
 };
@@ -141,235 +141,214 @@ impl Component for Settings {
 
         let theme_val = self.config.theme.to_string();
 
+        let tz_valid = tz_is_valid(&self.config.timezone);
+        let auto_sync = self.config.auto_sync_enabled;
+        let specials = self.config.include_specials;
+
         html! {
             <>
                 <h1>{"Settings"}</h1>
 
-                <div class="desktop-row mobile-column align-top">
-                    <div class="column fill">
-                        <h4>{"Appearance"}</h4>
+                <div class="settings">
+                    <section>
+                        <h2>{"Appearance"}</h2>
 
-                        <div class="field">
-                            <label>{"Theme"}</label>
-                            { self.field_slot("", html! {
-                                <select class="input-select" data-test="theme" onchange={on_theme} value={theme_val}>
-                                    <option value="dark" selected={self.config.theme == api::ThemeType::Dark}>{"Dark"}</option>
-                                    <option value="light" selected={self.config.theme == api::ThemeType::Light}>{"Light"}</option>
-                                    <option value="system" selected={self.config.theme == api::ThemeType::System}>{"System"}</option>
-                                </select>
-                            }) }
-                        </div>
-
-                        <div class="field">
-                            <label>{"Page title"}</label>
-                            { self.field_slot("", html! {
-                                <input class="input-text" type="text" placeholder="Track" value={self.config.page_title.clone()} onchange={on_page_title} autocomplete="off" />
-                            }) }
-                        </div>
-
-                        <div class={classes!("field", (!tz_is_valid(&self.config.timezone)).then_some("error"))}>
-                            <label>{"Time zone"}</label>
-
-                            { self.field_slot("", html! {
-                                <input class="input-text" type="text" placeholder="Leave empty to use browser timezone" value={self.config.timezone.clone()} onchange={on_timezone} list="tz-datalist" autocomplete="off" />
-                            }) }
-
-                            <datalist id="tz-datalist">
-                                { for jiff_tzdb::available().map(|name| html! {
-                                    <option value={name} />
+                        <div class="form-rows">
+                            <FormRow label="Theme">
+                                { self.field_slot("", html! {
+                                    <select class="input-select" data-test="theme" title="Theme" onchange={on_theme} value={theme_val}>
+                                        <option value="dark" selected={self.config.theme == api::ThemeType::Dark}>{"Dark"}</option>
+                                        <option value="light" selected={self.config.theme == api::ThemeType::Light}>{"Light"}</option>
+                                        <option value="system" selected={self.config.theme == api::ThemeType::System}>{"System"}</option>
+                                    </select>
                                 }) }
-                            </datalist>
+                            </FormRow>
 
-                            if !tz_is_valid(&self.config.timezone) {
-                                <span>
-                                    <span class="item-inline"><span class="icon exclamation-triangle" aria-hidden="true" /></span>
-                                    {"Unknown timezone"}
-                                </span>
-                            }
-                        </div>
+                            <FormRow label="Page title">
+                                { self.field_slot("", html! {
+                                    <input class="input-text fill" type="text" title="Page title" placeholder="Track" value={self.config.page_title.clone()} onchange={on_page_title} autocomplete="off" />
+                                }) }
+                            </FormRow>
 
-                        <div class="field fill">
-                            <label>{"Pending size"}</label>
+                            <FormRow label="Time zone" hint="Leave empty to use the browser's time zone.">
+                                { self.field_slot("", html! {
+                                    <input class="input-text fill" type="text" title="Time zone" placeholder="Browser time zone" value={self.config.timezone.clone()} onchange={on_timezone} list="tz-datalist" autocomplete="off" />
+                                }) }
 
-                            { self.field_slot("", html! {
-                                <input
-                                    type="number"
-                                    class="input-number"
-                                    min="1"
-                                    max="100"
-                                    value={self.config.dashboard_page.to_string()}
-                                    onchange={on_dashboard_page}
-                                />
-                            }) }
-                        </div>
+                                <datalist id="tz-datalist">
+                                    { for jiff_tzdb::available().map(|name| html! {
+                                        <option value={name} />
+                                    }) }
+                                </datalist>
 
-                        <div class="field fill">
-                            <label>{"Pending lookahead"}</label>
+                                if !tz_valid {
+                                    <span class="field-error" role="alert">{"Unknown time zone"}</span>
+                                }
+                            </FormRow>
 
-                            <span class="hint">
-                                {"How far into the future pending items are shown on the dashboard, currently "}
-                                <DurationLabel value={self.config.dashboard_lookahead} />
-                                {"."}
-                            </span>
-
-                            { self.field_slot("", html! {
-                                <div class="input-group fill">
-                                    <DurationInput
-                                        value={self.config.dashboard_lookahead}
-                                        on_change={link.callback(Msg::DashboardLookaheadChanged)}
+                            <FormRow label="Up next per page" hint="How many cards What's Next shows on a page.">
+                                { self.field_slot("", html! {
+                                    <input
+                                        type="number"
+                                        class="input-number"
+                                        title="Up next per page"
+                                        min="1"
+                                        max="100"
+                                        value={self.config.dashboard_page.to_string()}
+                                        onchange={on_dashboard_page}
                                     />
-                                </div>
-                            }) }
+                                }) }
+                            </FormRow>
+
+                            <FormRow label="Up next look-ahead" hint="How far ahead What's Next shows episodes that have not aired yet.">
+                                { self.field_slot("", html! {
+                                    <div class="input-group">
+                                        <DurationInput
+                                            value={self.config.dashboard_lookahead}
+                                            on_change={link.callback(Msg::DashboardLookaheadChanged)}
+                                        />
+                                    </div>
+                                }) }
+                            </FormRow>
                         </div>
-                    </div>
+                    </section>
 
-                    <div class="column fill">
-                        <h4>{"Language"}</h4>
+                    <section>
+                        <h2>{"Language"}</h2>
 
-                        <div class="field">
-                            <label>{"Language"}</label>
-                            <span class="hint">{"The default language used for shows and movies."}</span>
+                        <div class="form-rows">
+                            <FormRow label="Language" hint="The default language for shows and movies.">
+                                { self.field_slot("", html! {
+                                    <LanguagePicker
+                                        current={self.config.language}
+                                        placeholder="Default"
+                                        on_change={link.callback(Msg::LanguageChanged)}
+                                    />
+                                }) }
+                            </FormRow>
 
-                            { self.field_slot("", html! {
-                                <LanguagePicker
-                                    current={self.config.language}
-                                    placeholder="Default"
-                                    on_change={link.callback(Msg::LanguageChanged)}
-                                />
-                            }) }
+                            <FormRow label="Sync languages" hint="Translations to fetch; titles can be searched and filtered in these languages.">
+                                { self.field_slot("tall", html! {
+                                    <SyncLanguagesEditor
+                                        languages={self.config.sync_languages.clone()}
+                                        on_change={link.callback(Msg::SyncLanguagesChanged)}
+                                    />
+                                }) }
+                            </FormRow>
                         </div>
+                    </section>
 
-                        <div class="field">
-                            <label>{"Sync languages"}</label>
-                            <span class="hint">{"Which languages to fetch translations for. This will allow for searching and filtering based on these languages."}</span>
+                    <section>
+                        <h2>{"Sync"}</h2>
 
-                            { self.field_slot("tall", html! {
-                                <SyncLanguagesEditor
-                                    languages={self.config.sync_languages.clone()}
-                                    on_change={link.callback(Msg::SyncLanguagesChanged)}
-                                />
-                            }) }
+                        <div class="form-rows">
+                            <FormRow label="Automatic sync">
+                                { self.field_slot("", html! {
+                                    <Button class={classes!("input-checkbox", "has-text", auto_sync.then_some("checked"))} role="switch" checked={Some(auto_sync)} title="Automatic sync" onclick={on_auto_sync_toggle}>
+                                        <span class="mark" />
+                                        <span>{if auto_sync { "Enabled" } else { "Disabled" }}</span>
+                                    </Button>
+                                }) }
+                            </FormRow>
+
+                            <FormRow label="Sync every">
+                                { self.field_slot("", html! {
+                                    <div class="input-group">
+                                        <input
+                                            type="number"
+                                            class="input-number"
+                                            title="Sync every"
+                                            min="1"
+                                            max="168"
+                                            value={self.config.auto_sync_interval_hours.to_string()}
+                                            onchange={on_auto_sync_interval}
+                                        />
+
+                                        <span class="input-label has-text">{"hours"}</span>
+                                    </div>
+                                }) }
+                            </FormRow>
+
+                            <FormRow label="Specials in What's Next">
+                                { self.field_slot("", html! {
+                                    <Button class={classes!("input-checkbox", "has-text", specials.then_some("checked"))} role="switch" checked={Some(specials)} title="Specials for Watch Next" onclick={on_include_specials_change}>
+                                        <span class="mark" />
+                                        <span>{if specials { "Included" } else { "Skipped" }}</span>
+                                    </Button>
+                                }) }
+                            </FormRow>
+
+                            <FormRow label="Sync sources" hint="What each source contributes by default, in priority order (top wins). Base covers titles, overviews and episodes; air dates merge in this order; graphics come from every source. Shows and movies can override this per remote.">
+                                { self.field_slot("tall", html! {
+                                    <SyncKindsEditor
+                                        kinds={self.config.sync_kinds.clone()}
+                                        on_change={link.callback(Msg::SyncKindsChanged)}
+                                    />
+                                }) }
+                            </FormRow>
+
+                            <FormRow label="Release dates" hint="Which release dates count. A date matching any rule is considered, in the rules' order.">
+                                { self.field_slot("tall", html! {
+                                    <FiltersEditor
+                                        rules={self.config.release_filters.clone()}
+                                        on_change={link.callback(Msg::ReleaseFiltersChanged)}
+                                        kinds={RELEASE_KINDS}
+                                        sources={RELEASE_SOURCES}
+                                    />
+                                }) }
+                            </FormRow>
+
+                            <FormRow label="Air dates" hint="Which air dates count. A date matching any rule is considered, in the rules' order.">
+                                { self.field_slot("tall", html! {
+                                    <FiltersEditor
+                                        rules={self.config.air_date_filters.clone()}
+                                        on_change={link.callback(Msg::AirDateFiltersChanged)}
+                                        kinds={AIR_DATE_KINDS}
+                                        sources={AIR_DATE_SOURCES}
+                                    />
+                                }) }
+                            </FormRow>
                         </div>
-                    </div>
-                </div>
+                    </section>
 
-                <div class="column">
-                    <h4>{"Sync"}</h4>
+                    <section>
+                        <h2>{"API keys"}</h2>
 
-                    { self.field_slot("", html! {
-                        <Button class={classes!("input-checkbox", "has-text", self.config.auto_sync_enabled.then_some("checked"))} role="switch" checked={Some(self.config.auto_sync_enabled)} title="Automatic sync" onclick={on_auto_sync_toggle}>
-                            <span class="mark" />
-                            <span>{"Automatic Sync"}</span>
-                        </Button>
-                    }) }
+                        <div class="form-rows">
+                            <FormRow label="TheTVDB API key">
+                                { self.field_slot("", html! {
+                                    <SecretInput
+                                        id="tvdb-api-key"
+                                        placeholder="Enter TVDB API key"
+                                        value={self.config.tvdb_api_key.clone()}
+                                        on_change={link.callback(Msg::TvdbKeyChanged)}
+                                    />
+                                }) }
+                            </FormRow>
 
-                    <div class="input-group fill">
-                        <span class="input-label has-text">
-                            {"Sync Interval in Hours"}
-                        </span>
+                            <FormRow label="TheTVDB subscriber PIN" hint="Optional.">
+                                { self.field_slot("", html! {
+                                    <SecretInput
+                                        id="tvdb-pin"
+                                        placeholder="Enter TVDB subscriber PIN"
+                                        value={self.config.tvdb_pin.clone().unwrap_or_default()}
+                                        on_change={link.callback(Msg::TvdbPinChanged)}
+                                    />
+                                }) }
+                            </FormRow>
 
-                        { self.field_slot("", html! {
-                            <input
-                                type="number"
-                                class="input-number fill"
-                                min="1"
-                                max="168"
-                                value={self.config.auto_sync_interval_hours.to_string()}
-                                onchange={on_auto_sync_interval}
-                            />
-                        }) }
-                    </div>
-
-                    { self.field_slot("", html! {
-                        <Button class={classes!("input-checkbox", "has-text", self.config.include_specials.then_some("checked"))} role="switch" checked={Some(self.config.include_specials)} title="Specials for Watch Next" onclick={on_include_specials_change}>
-                            <span class="mark" />
-                            <span>{"Specials for Watch Next"}</span>
-                        </Button>
-                    }) }
-
-                    <div class="field">
-                        <label>{"Sync sources"}</label>
-                        <span class="hint">{"Which kinds of data each source contributes by default, and in which priority order (top wins). Base covers titles, overviews and episodes; air dates merge by this order. Graphics always accumulate from every source. Individual shows and movies can override this per remote."}</span>
-
-                        { self.field_slot("tall", html! {
-                            <SyncKindsEditor
-                                kinds={self.config.sync_kinds.clone()}
-                                on_change={link.callback(Msg::SyncKindsChanged)}
-                            />
-                        }) }
-                    </div>
-
-                    <div class="field">
-                        <label>{"Release dates"}</label>
-                        <span class="hint">{"Restrict which release date qualifies, all rules that match will cause a date to be considered, and they will be prioritized according to their sync order."}</span>
-
-                        { self.field_slot("tall", html! {
-                            <FiltersEditor
-                                rules={self.config.release_filters.clone()}
-                                on_change={link.callback(Msg::ReleaseFiltersChanged)}
-                                kinds={RELEASE_KINDS}
-                                sources={RELEASE_SOURCES}
-                            />
-                        }) }
-                    </div>
-
-
-                    <div class="field">
-                        <label>{"Air dates"}</label>
-                        <span class="hint">{"Restrict which air date qualifies, all rules that match will cause a date to be considered, and they will be prioritized according to their sync order."}</span>
-
-                        { self.field_slot("tall", html! {
-                            <FiltersEditor
-                                rules={self.config.air_date_filters.clone()}
-                                on_change={link.callback(Msg::AirDateFiltersChanged)}
-                                kinds={AIR_DATE_KINDS}
-                                sources={AIR_DATE_SOURCES}
-                            />
-                        }) }
-                    </div>
-                </div>
-
-                <div class="column">
-                    <h4>{"API Keys"}</h4>
-
-                    <div class="field">
-                        <label for="tvdb-api-key">{"TheTVDB API Key"}</label>
-
-                        { self.field_slot("", html! {
-                            <SecretInput
-                                id="tvdb-api-key"
-                                placeholder="Enter TVDB API key"
-                                value={self.config.tvdb_api_key.clone()}
-                                on_change={link.callback(Msg::TvdbKeyChanged)}
-                            />
-                        }) }
-                    </div>
-
-                    <div class="field">
-                        <label for="tvdb-pin">{"TheTVDB Subscriber PIN (optional)"}</label>
-
-                        { self.field_slot("", html! {
-                            <SecretInput
-                                id="tvdb-pin"
-                                placeholder="Enter TVDB subscriber PIN"
-                                value={self.config.tvdb_pin.clone().unwrap_or_default()}
-                                on_change={link.callback(Msg::TvdbPinChanged)}
-                            />
-                        }) }
-                    </div>
-
-                    <div class="field">
-                        <label for="tmdb-api-key">{"TheMovieDB API Key"}</label>
-
-                        { self.field_slot("", html! {
-                            <SecretInput
-                                id="tmdb-api-key"
-                                placeholder="Enter TMDB API key"
-                                value={self.config.tmdb_api_key.clone()}
-                                on_change={link.callback(Msg::TmdbKeyChanged)}
-                            />
-                        }) }
-                    </div>
+                            <FormRow label="TheMovieDB API key">
+                                { self.field_slot("", html! {
+                                    <SecretInput
+                                        id="tmdb-api-key"
+                                        placeholder="Enter TMDB API key"
+                                        value={self.config.tmdb_api_key.clone()}
+                                        on_change={link.callback(Msg::TmdbKeyChanged)}
+                                    />
+                                }) }
+                            </FormRow>
+                        </div>
+                    </section>
                 </div>
             </>
         }

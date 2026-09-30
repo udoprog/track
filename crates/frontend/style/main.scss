@@ -552,6 +552,54 @@ p {
     gap: v.$gap;
 }
 
+// The settings page: sections of form rows in one readable column.
+.settings {
+    display: flex;
+    flex-direction: column;
+    gap: v.$gap * 2;
+    max-width: 880px;
+
+    >section {
+        display: flex;
+        flex-direction: column;
+        gap: v.$gap;
+    }
+
+    h2 {
+        color: v.$text-color;
+        font-size: v.$font-lg;
+        padding-bottom: v.$padding-lg;
+        border-bottom: 1px solid v.$border-subtle-transparent;
+    }
+
+    // One label width for every section, so all controls start on one line.
+    .form-rows {
+        @include g.on-desktop {
+            grid-template-columns: 200px minmax(0, 1fr);
+        }
+    }
+
+    // Lists and editors take the width; single controls keep their own.
+    .form-inputs {
+        flex-direction: column;
+        align-items: stretch;
+
+        >select,
+        >button,
+        >.input-number,
+        >.input-group {
+            align-self: flex-start;
+        }
+    }
+}
+
+// A field's problem, said under it.
+.field-error {
+    flex-basis: 100%;
+    color: v.$color-danger;
+    font-size: v.$font-sm;
+}
+
 // Settings as rows (`ui::FormRow`): labels share one column beside their
 // controls, and stack above them on phones.
 .form-rows {

@@ -107,6 +107,32 @@ pub async fn switches_work_from_the_keyboard(driver: &mut TestDriver, _: &mut Tr
         .await
 }
 
+/// Every setting is a labelled row, and across all sections the controls
+/// start on one line.
+pub async fn settings_are_labelled_rows(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_settings(driver).await?;
+
+    driver
+        .wait_texts(
+            ".settings h2",
+            ["Appearance", "Language", "Sync", "API keys"],
+        )
+        .await?;
+
+    let mut lefts = Vec::new();
+
+    for control in driver.find_all(By::Css(".settings .form-control")).await? {
+        lefts.push(control.rect().await?.x);
+    }
+
+    ensure!(lefts.len() > 10, "only {} settings rows", lefts.len());
+    ensure!(
+        lefts.windows(2).all(|w| (w[0] - w[1]).abs() < 1.0),
+        "the controls start at different places: {lefts:?}"
+    );
+    Ok(())
+}
+
 async fn open_settings(driver: &TestDriver) -> Result<()> {
     driver
         .find_one_by(".toolbar-item[title=Settings]")
