@@ -42,6 +42,11 @@ pub struct Args {
     /// slow connection (e.g. `--delay 200..800`).
     #[arg(long, value_name = "MIN..MAX")]
     delay: Option<RandomDelay>,
+
+    /// Serve the frontend from this directory (a `trunk build` output) instead
+    /// of the bundled one.
+    #[arg(long, value_name = "DIR")]
+    dist: Option<PathBuf>,
 }
 
 pub async fn server(args: Args, db: &Path, log: &[String]) -> Result<ExitCode> {
@@ -121,7 +126,7 @@ pub async fn server(args: Args, db: &Path, log: &[String]) -> Result<ExitCode> {
         let shutdown = shutdown.clone();
 
         async move {
-            let serve = axum::serve(listener, web::router(state))
+            let serve = axum::serve(listener, web::router(state, args.dist.as_deref()))
                 .with_graceful_shutdown(async move { shutdown.cancelled().await });
 
             serve.await?;

@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::sync::Arc;
 
 use axum::Router;
@@ -5,6 +6,7 @@ use axum::routing::get;
 use musli_web::ws::Channels;
 use tokio::sync::Notify;
 use tower_http::cors::CorsLayer;
+use tower_http::services::{ServeDir, ServeFile};
 
 use crate::app_broadcast::Broadcaster;
 use crate::cache::ImageCache;
@@ -28,7 +30,7 @@ pub(crate) struct AppState {
     pub(crate) delay: Option<RandomDelay>,
 }
 
-pub(crate) fn router(state: AppState) -> Router {
+pub(crate) fn router(state: AppState, dist: Option<&Path>) -> Router {
     let app = Router::new()
         .route("/ws", get(crate::ws::ws_handler))
         .route(
@@ -36,8 +38,15 @@ pub(crate) fn router(state: AppState) -> Router {
             get(crate::proxy::image_handler),
         );
 
-    #[cfg(feature = "bundle")]
-    let app = app.fallback(get(crate::static_assets::handler));
+    // Unknown paths get index.html so client-side routes load.
+    let app = match dist {
+        Some(dir) => app
+            .fallback_service(ServeDir::new(dir).fallback(ServeFile::new(dir.join("index.html")))),
+        #[cfg(feature = "bundle")]
+        None => app.fallback(get(crate::static_assets::handler)),
+        #[cfg(not(feature = "bundle"))]
+        None => app,
+    };
 
     app.layer(CorsLayer::permissive()).with_state(state)
 }

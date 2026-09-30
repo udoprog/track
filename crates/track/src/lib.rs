@@ -69,6 +69,18 @@
 //! $ cargo run -- --delay 200..800
 //! ```
 //!
+//! The browser tests in `crates/e2e` use [yew-e2e]. They build the frontend and
+//! the server, and give every test its own server with a fresh database, so they
+//! never touch `track.db`. They need Firefox with `geckodriver`, or Chrome:
+//!
+//! ```text
+//! $ cargo test -p e2e
+//! $ cargo test -p e2e -- settings::
+//! $ cargo test -p e2e -- --headed --last-session
+//! ```
+//!
+//! [yew-e2e]: https://github.com/udoprog/yew-e2e
+//!
 //! <br>
 //!
 //! ## Importing from ontv

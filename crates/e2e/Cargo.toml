@@ -1,0 +1,22 @@
+[package]
+name = "e2e"
+edition = "2024"
+publish = false
+
+# The suite is the package; the library only exists because cargo needs a target.
+[lib]
+test = false
+doctest = false
+
+[dependencies]
+
+[dev-dependencies]
+anyhow = "1.0.104"
+tempfile = "3.27.0"
+tokio = { version = "1.53.1", features = ["full"] }
+yew-e2e = "0.1.1"
+
+[[test]]
+name = "e2e"
+path = "tests/e2e/main.rs"
+harness = false
