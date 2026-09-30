@@ -679,3 +679,34 @@ pub async fn air_dates_explain_the_default_quietly(
     );
     Ok(())
 }
+
+/// A season's overview offers its other translations, like the show's and
+/// the episodes' do.
+pub async fn season_overview_switches_language(
+    driver: &mut TestDriver,
+    _: &mut Track,
+) -> Result<()> {
+    open_show(driver).await?;
+
+    let season = ".detail-content > .column";
+    driver
+        .find_one_by(&format!("{season} [title='Change displayed language']"))
+        .await?
+        .click()
+        .await?;
+
+    driver
+        .find_one_by(".context-menu [title='Show in Swedish']")
+        .await?
+        .click()
+        .await?;
+
+    driver
+        .wait_until("the Swedish overview to show", async || {
+            let texts = driver
+                .find_all_texts(&format!("{season} .overview"))
+                .await?;
+            Ok(texts.iter().any(|t| t.contains("Den första säsongen")))
+        })
+        .await
+}

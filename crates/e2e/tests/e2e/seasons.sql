@@ -17,3 +17,10 @@ VALUES
     (3101, 1701734144, 1, 'Behind the Scenes'),
     (3201, 1701734144, 1, 'Second Season Opener'),
     (3202, 1701734144, 1, 'Second Season Finale');
+
+-- The first season's overview in English and Swedish (1937204480), so its
+-- displayed language can be switched.
+INSERT INTO season_strings (season_id, language, kind, text)
+VALUES
+    (2001, 1701734144, 2, 'The first season, in English.'),
+    (2001, 1937204480, 2, 'Den första säsongen, på svenska.');
