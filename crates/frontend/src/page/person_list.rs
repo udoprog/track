@@ -308,14 +308,30 @@ impl PersonList {
         );
 
         match self.sort {
-            PersonSort::Name => self
-                .order
-                .sort_by_key(|&i| self.persons[i].name.title().map(str::to_lowercase)),
-            PersonSort::Credits => self.order.sort_by_key(|&i| self.persons[i].credit_count),
-        }
+            PersonSort::Name => {
+                // People without any name go last whichever way names sort.
+                self.order.sort_by_cached_key(|&i| {
+                    let name = display_name(&self.persons[i]);
+                    (name.is_none(), name.map(str::to_lowercase))
+                });
 
-        if self.desc {
-            self.order.reverse();
+                if self.desc {
+                    let named = self
+                        .order
+                        .iter()
+                        .take_while(|&&i| display_name(&self.persons[i]).is_some())
+                        .count();
+
+                    self.order[..named].reverse();
+                }
+            }
+            PersonSort::Credits => {
+                self.order.sort_by_key(|&i| self.persons[i].credit_count);
+
+                if self.desc {
+                    self.order.reverse();
+                }
+            }
         }
     }
 
@@ -348,7 +364,7 @@ impl PersonList {
     }
 
     fn view_card(&self, ctx: &Context<Self>, p: &api::PersonItem) -> Html {
-        let name = p.name.title().unwrap_or("Unknown").to_owned();
+        let name = display_name(p).unwrap_or("Unknown").to_owned();
         let route = Route::PersonDetail(p.id);
         let onclick = ctx.link().callback(move |_| Msg::Navigate(route.clone()));
 
@@ -370,4 +386,12 @@ impl PersonList {
             </div>
         }
     }
+}
+
+/// A person's name in the display language, or in any language they have one
+/// in: a list entry is better named in another language than not at all.
+fn display_name(p: &api::PersonItem) -> Option<&str> {
+    p.name
+        .title()
+        .or_else(|| p.name.texts(api::StringKind::Title).next())
 }

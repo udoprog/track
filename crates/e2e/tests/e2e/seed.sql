@@ -28,3 +28,17 @@ VALUES
 -- The first episode is up next on the dashboard.
 INSERT INTO pending (timestamp, show_id, episode_id)
 VALUES (1700000000000, 1001, 3001);
+
+-- A person, named in English with a country as synced names are.
+INSERT INTO people (id, department, default_language)
+VALUES (5001, 'Acting', 6148257917992593152);
+
+INSERT INTO person_strings (person_id, language, kind, text)
+VALUES (5001, 6148257917992593152, 1, 'Ada Lovelace');
+
+-- A person with no default language, named only in Swedish (1937204480).
+INSERT INTO people (id, department, default_language)
+VALUES (5002, 'Acting', 0);
+
+INSERT INTO person_strings (person_id, language, kind, text)
+VALUES (5002, 1937204480, 1, 'Greta Garbo');

@@ -12,6 +12,7 @@
 mod dashboard;
 mod media;
 mod navigation;
+mod people;
 mod queue;
 mod settings;
 mod show;
@@ -162,6 +163,7 @@ yew_e2e::harness! {
     dashboard::{fills_rows_with_relative_dates(seeded), labels_its_filters, mobile_cards_always_have_a_picture(seeded), schedule_names_its_days, upcoming_days_keep_their_width, marks_watched_in_one_click(seeded), marks_watched_at_a_chosen_time(seeded)},
     media::{shows_a_poster_grid(seeded)},
     navigation::{opens_every_page, page_scrolls_the_window, toolbar_icons_are_small},
+    people::{lists_people_by_name(seeded)},
     queue::{lists_tasks_in_columns},
     settings::{reorders_sync_sources, theme_applies_live, theme_is_remembered},
     show::{episode_menu_holds_the_other_actions(seeded), has_a_heading(seeded), phones_have_no_episode_rail(seeded), seasons_count_watched_episodes(seeded), watched_episodes_are_compact(seeded)},

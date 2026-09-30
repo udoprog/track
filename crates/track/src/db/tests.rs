@@ -163,3 +163,25 @@ async fn skip_pending_episode_uses_next_air_date() {
     db.skip_pending_episode(show, e2, now).await.unwrap();
     assert!(db.pending(airs_later).await.unwrap().is_empty());
 }
+
+/// Person names are stored with a country (`eng-US`), and the people list must
+/// still resolve them when no display language is configured.
+#[tokio::test]
+async fn list_persons_resolves_names_in_the_persons_language() -> Result<()> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("test.db");
+    let db = Database::open(&path, OpenMode::Bulk, 1)?;
+
+    // 6148257917992593152 is `eng` with country `US`.
+    let c = OpenOptions::new().read_write().no_mutex().open(&path)?;
+    c.execute(
+        "INSERT INTO people (id, default_language) VALUES (1, 6148257917992593152);
+         INSERT INTO person_strings (person_id, language, kind, text)
+         VALUES (1, 6148257917992593152, 1, 'Ada Lovelace');",
+    )?;
+
+    let persons = db.list_persons().await?;
+    assert_eq!(persons.len(), 1);
+    assert_eq!(persons[0].name.title(), Some("Ada Lovelace"));
+    Ok(())
+}

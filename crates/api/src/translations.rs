@@ -248,3 +248,20 @@ impl fmt::Debug for Translations {
             .finish()
     }
 }
+
+#[cfg(test)]
+mod round_trip_tests {
+    use super::*;
+    use crate::{Country, Language};
+
+    #[test]
+    fn a_name_with_a_country_resolves_after_a_round_trip() {
+        let locale = Locale::new(Language::ENG, Country::US);
+        let parsed = locale.to_string().parse::<Locale>().unwrap();
+        assert_eq!(parsed, locale, "{locale} does not parse back to itself");
+
+        let mut name = Translations::new(Locale::DEFAULT.or(locale));
+        name.insert(StringKind::Title, locale, "Ada Lovelace");
+        assert_eq!(name.title(), Some("Ada Lovelace"));
+    }
+}
