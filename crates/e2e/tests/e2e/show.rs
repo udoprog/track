@@ -80,7 +80,7 @@ pub async fn seasons_count_watched_episodes(driver: &mut TestDriver, _: &mut Tra
 
     driver
         .wait_until("the season to read 0/3 watched", async || {
-            let texts = driver.find_all_texts(".column.active").await?;
+            let texts = driver.find_all_texts(".season-row.current").await?;
             Ok(texts.iter().any(|text| text.contains("0/3")))
         })
         .await
@@ -381,4 +381,80 @@ pub async fn mark_watched_is_one_colour(driver: &mut TestDriver, _: &mut Track) 
         "the show's Mark watched is {class:?}"
     );
     Ok(())
+}
+
+/// On wide screens the seasons are a list that stays beside the episodes:
+/// numbered seasons first and specials last, the shown one marked as current,
+/// and no progress line for a season nobody has started.
+pub async fn seasons_list_beside_the_episodes(
+    driver: &mut TestDriver,
+    _: &mut Track,
+) -> Result<()> {
+    open_show(driver).await?;
+
+    driver
+        .wait_texts(
+            ".season-list .season-name",
+            ["Season 1", "Season 2", "Specials"],
+        )
+        .await?;
+
+    let list = driver.find_one_by(".season-list").await?;
+    ensure!(
+        list.css("position").await? == "sticky",
+        "the season list scrolls away"
+    );
+    ensure!(
+        driver.count(".season-progress").await? == 0,
+        "an unstarted season shows a progress line"
+    );
+
+    driver
+        .wait_texts(
+            ".season-list [aria-current=page] .season-name",
+            ["Season 1"],
+        )
+        .await?;
+
+    driver
+        .find_one_by(".season-list [title='Show Season 2']")
+        .await?
+        .click()
+        .await?;
+
+    driver
+        .wait_texts(
+            ".season-list [aria-current=page] .season-name",
+            ["Season 2"],
+        )
+        .await?;
+    driver
+        .wait_texts(".detail-content .toolbar h2", ["Season 2"])
+        .await
+}
+
+/// On a phone the seasons are chips right above the episodes.
+pub async fn phones_pick_seasons_from_chips(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_show(driver).await?;
+    driver.set_window_size(400, 850).await?;
+
+    driver
+        .wait_until("the season chips to show instead of the list", async || {
+            let chips = driver.find_one_by(".season-chips").await?;
+            let list = driver.find_one_by(".season-list").await?;
+            Ok(chips.visible().await? && !list.visible().await?)
+        })
+        .await?;
+
+    ensure!(driver.count(".season-chips button").await? == 3);
+
+    driver
+        .find_one_by(".season-chips [title='Show Specials']")
+        .await?
+        .click()
+        .await?;
+
+    driver
+        .wait_texts(".detail-content .toolbar h2", ["Specials"])
+        .await
 }

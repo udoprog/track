@@ -60,7 +60,9 @@ pub(crate) struct ShowDetail {
     /// Whether the full cast list is expanded past the initial cap.
     credits_expanded: bool,
     selected: Option<usize>,
-    expanded_seasons: bool,
+    /// The phone season chips, and the season they were last scrolled to.
+    season_chips: NodeRef,
+    chips_scrolled: Option<usize>,
     episodes: Vec<api::Episode>,
     pending_episode: Option<(api::Code, api::EpisodeId)>,
     next_unwatched: Option<(api::Code, api::EpisodeId)>,
@@ -146,7 +148,6 @@ pub(crate) enum Msg {
     CreditsLoaded(Result<ws::Packet<api::ListCredits>, ws::Error>),
     ToggleCreditsExpanded,
     SelectSeason(api::SeasonNumber),
-    ToggleExpandSeasons,
     EpisodesLoaded(Result<ws::Packet<api::ListEpisodes>, ws::Error>),
     MarkWatched(api::ShowId, api::EpisodeId, api::MarkTime),
     MarkWatchedDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
@@ -282,7 +283,8 @@ impl Component for ShowDetail {
             credits: Vec::new(),
             credits_expanded: false,
             selected: None,
-            expanded_seasons: false,
+            season_chips: NodeRef::default(),
+            chips_scrolled: None,
             episodes: Vec::new(),
             pending_episode: None,
             next_unwatched: None,
@@ -363,6 +365,21 @@ impl Component for ShowDetail {
     }
 
     fn rendered(&mut self, _ctx: &Context<Self>, _first_render: bool) {
+        // Bring the current season's chip into view sideways, never moving the
+        // page itself.
+        if self.chips_scrolled != self.selected
+            && let Some(chips) = self.season_chips.cast::<web_sys::HtmlElement>()
+            && let Ok(Some(chip)) = chips.query_selector(".selected")
+        {
+            self.chips_scrolled = self.selected;
+            let (strip, chip) = (
+                chips.get_bounding_client_rect(),
+                chip.get_bounding_client_rect(),
+            );
+            let offset = chip.left() - strip.left() - (strip.width() - chip.width()) / 2.0;
+            chips.set_scroll_left(chips.scroll_left() + offset as i32);
+        }
+
         // Honor an initial URL hash (e.g. `#S01E05`) once its episode has been
         // rendered. The element is absent on the first renders while episodes
         // stream in, so we retry each render and clear the target on success.
@@ -548,7 +565,6 @@ impl Component for ShowDetail {
             self.show = ShowState::Loading;
             self.seasons.clear();
             self.selected = None;
-            self.expanded_seasons = false;
             self.episodes.clear();
             self.pending_episode = None;
             self.next_unwatched = None;
@@ -777,6 +793,10 @@ impl ShowDetail {
                     .context(Message::LoadingSeasons)?
                     .seasons;
 
+                // Specials are extras: list them after the numbered seasons.
+                self.seasons
+                    .sort_by_key(|s| matches!(s.season, api::SeasonNumber::Specials));
+
                 if self.selected.is_none() {
                     let initial = self
                         .seasons
@@ -827,24 +847,7 @@ impl ShowDetail {
                     ));
                 }
 
-                self.expanded_seasons = false;
                 Ok(false)
-            }
-            Msg::ToggleExpandSeasons => {
-                self.expanded_seasons = !self.expanded_seasons;
-
-                if props.orphaned {
-                    self.router.push(Route::ShowDetail(
-                        props.show_id,
-                        ShowDetailQuery {
-                            season: props.season,
-                            episode: None,
-                            orphaned: false,
-                        },
-                    ));
-                }
-
-                Ok(true)
             }
             Msg::EpisodesLoaded(result) => {
                 let result = result
@@ -1942,9 +1945,9 @@ impl ShowDetail {
             <div class="detail-sidebar">
                 <Image class="poster desktop-only" src={poster.cloned()} />
 
-                <div class="table">
-                    { for self.seasons.iter().map(|s| self.view_season(ctx, s, self.seasons.len())) }
-                </div>
+                <nav class="season-list desktop-only" aria-label="Seasons">
+                    { for self.seasons.iter().map(|s| self.view_season(ctx, s)) }
+                </nav>
             </div>
         }
     }
@@ -2011,88 +2014,93 @@ impl ShowDetail {
         }
     }
 
-    fn view_season(&self, ctx: &Context<Self>, s: &api::Season, total: usize) -> Html {
+    /// A season in the wide sidebar list: its name, how much of it is watched
+    /// and its year, with a progress line while it is under way.
+    fn view_season(&self, ctx: &Context<Self>, s: &api::Season) -> Html {
         let season = s.season;
-        let active = self.selected().as_ref().map(|s| s.id) == Some(s.id);
-        let clickable = total > 1;
-
-        let onclick = if !clickable {
-            Callback::noop()
-        } else if active {
-            ctx.link().callback(move |_| Msg::ToggleExpandSeasons)
-        } else {
-            ctx.link().callback(move |_| Msg::SelectSeason(season))
-        };
-
-        let f = (s.watched_count.min(s.total_count) as f64 * 100.0) / s.total_count.max(1) as f64;
-        let style = format!("width: {f:.0}%");
-
-        let class = classes!(
-            "column",
-            clickable.then_some("clickable"),
-            active.then_some("active"),
-            (!active && !self.expanded_seasons).then_some("desktop-only")
-        );
-
-        let name = match s.strings.title() {
-            Some(name) => name.to_owned(),
-            None => s.season.long().to_string(),
-        };
+        let current = self.selected().map(|s| s.id) == Some(s.id);
+        let watched = s.watched_count.min(s.total_count);
+        let finished = s.total_count > 0 && watched == s.total_count;
+        let name = season_name(s);
 
         let body = html! {
             <>
-                    <div class="row-split fill">
-                        <span>
-                            if let Some(name) = s.strings.title() {
-                                {name}
-                            } else {
-                                {s.season.long().to_string()}
-                            }
-                        </span>
+                <span class="season-name">{name.clone()}</span>
 
-                        <div class="row">
-                            if s.total_count > 0 {
-                                <span class="text-muted" title="Episodes watched">{format!("{}/{}", s.watched_count.min(s.total_count), s.total_count)}</span>
-                            }
-
-                            if let Some(ts) = s.air_date {
-                                <span class="text-muted">{ts.date(self.time.clone()).year().to_string()}</span>
-                            }
-
-                            // Every season is listed on wide screens, so the active one
-                            // needs no marker there; on phones it opens the list.
-                            if clickable && active {
-                                <span class="item-inline mobile-only">
-                                    <span class="icon chevron-up-down" aria-hidden="true" />
-                                </span>
-                            } else if clickable {
-                                <span class="item-inline">
-                                    <span class="icon chevron-right" aria-hidden="true" />
-                                </span>
-                            }
-                        </div>
-                    </div>
+                <span class="season-count" title="Episodes watched">
+                    if finished {
+                        <span class="icon sm check" aria-hidden="true" />
+                    }
 
                     if s.total_count > 0 {
-                        <div class="percentage-container">
-                            <span class="percentage-fill" {style} />
-                        </div>
+                        {format!("{watched}/{}", s.total_count)}
                     }
+                </span>
+
+                <span class="season-year">
+                    if let Some(ts) = s.air_date {
+                        {ts.date(self.time.clone()).year().to_string()}
+                    }
+                </span>
+
+                if watched > 0 && !finished {
+                    <span class="season-progress">
+                        <span style={format!("width: {:.0}%", watched as f64 * 100.0 / s.total_count as f64)} />
+                    </span>
+                }
             </>
         };
 
-        if clickable {
+        let class = classes!(
+            "season-row",
+            current.then_some("current"),
+            finished.then_some("finished")
+        );
+
+        if self.seasons.len() > 1 {
             html! {
-                <Button {class} title={format!("Show {name}")} pressed={Some(active)} {onclick}>
+                <Button {class} title={format!("Show {name}")} {current} onclick={ctx.link().callback(move |_| Msg::SelectSeason(season))}>
                     {body}
                 </Button>
             }
         } else {
             html! {
-                <div {class}>
-                    {body}
-                </div>
+                <div {class}>{body}</div>
             }
+        }
+    }
+
+    /// The seasons as a sideways-scrolling row of chips, shown on phones right
+    /// above the episodes they switch between.
+    fn view_season_chips(&self, ctx: &Context<Self>) -> Html {
+        if self.seasons.len() < 2 {
+            return html! {};
+        }
+
+        let current = self.selected().map(|s| s.id);
+
+        html! {
+            <nav class="season-chips mobile-only" aria-label="Seasons" ref={self.season_chips.clone()}>
+                { for self.seasons.iter().map(|s| {
+                    let season = s.season;
+                    let is_current = current == Some(s.id);
+                    let watched = s.watched_count.min(s.total_count);
+                    let finished = s.total_count > 0 && watched == s.total_count;
+                    let name = season_name(s);
+
+                    html! {
+                        <Button class={classes!("chip", is_current.then_some("selected"))} title={format!("Show {name}")} current={is_current} onclick={ctx.link().callback(move |_| Msg::SelectSeason(season))}>
+                            <span>{name}</span>
+
+                            if finished {
+                                <span class="icon sm check" aria-hidden="true" />
+                            } else if s.total_count > 0 {
+                                <span class="chip-count">{format!("{watched}/{}", s.total_count)}</span>
+                            }
+                        </Button>
+                    }
+                }) }
+            </nav>
         }
     }
 
@@ -2143,6 +2151,8 @@ impl ShowDetail {
         html! {
             <div class="detail-content">
                 { self.view_credits(ctx) }
+
+                { self.view_season_chips(ctx) }
 
                 <div class="column">
                     <div class="toolbar">
@@ -2473,5 +2483,13 @@ impl ShowDetail {
                 </div>
             </div>
         }
+    }
+}
+
+/// A season's own title, else its number spelled out ("Season 2", "Specials").
+fn season_name(s: &api::Season) -> String {
+    match s.strings.title() {
+        Some(name) => name.to_owned(),
+        None => s.season.long().to_string(),
     }
 }

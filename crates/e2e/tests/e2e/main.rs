@@ -44,6 +44,8 @@ const SEED: &str = include_str!("seed.sql");
 const CROWDED: &str = include_str!("crowded.sql");
 /// A movie on top of [`SEED`] for the tests that ask with `(movie)`.
 const MOVIE: &str = include_str!("movie.sql");
+/// Specials and a second season for the seeded show, with `(seasons)`.
+const SEASONS: &str = include_str!("seasons.sql");
 
 /// What a test asks of its server.
 #[derive(Default)]
@@ -54,6 +56,8 @@ struct Setup {
     crowded: bool,
     /// Start with `seed.sql` and the movie in `movie.sql`.
     movie: bool,
+    /// Start with `seed.sql` and the extra seasons in `seasons.sql`.
+    seasons: bool,
 }
 
 /// A track server for one test.
@@ -81,7 +85,7 @@ impl Fixture for Track {
         let sandbox = SANDBOX.get().context("the sandbox was not entered")?;
         let dir = TempDir::new_in(sandbox)?;
 
-        if setup.seeded || setup.crowded || setup.movie {
+        if setup.seeded || setup.crowded || setup.movie || setup.seasons {
             // The server creates the schema; the seed goes in while it is down.
             let (mut child, _) = spawn(server, dir.path()).await?;
             child.kill().await?;
@@ -95,6 +99,10 @@ impl Fixture for Track {
 
             if setup.movie {
                 c.execute(MOVIE).context("adding the movie")?;
+            }
+
+            if setup.seasons {
+                c.execute(SEASONS).context("adding the seasons")?;
             }
         }
 
@@ -185,5 +193,5 @@ yew_e2e::harness! {
     queue::{lists_tasks_in_columns, keeps_rows_in_place(seeded), follows_the_next_task(crowded), shows_failed_tasks(seeded)},
     search::{focuses_the_input},
     settings::{reorders_sync_sources, theme_applies_live, theme_is_remembered, adds_languages_and_rules, switches_work_from_the_keyboard, fields_follow_the_theme},
-    show::{episode_menu_holds_the_other_actions(seeded), menus_close_on_an_outside_click(seeded), modals_close_from_button_and_backdrop(seeded), phone_modals_rise_from_the_bottom(seeded), settings_line_up_their_controls(seeded), modals_hold_keyboard_focus(seeded), menus_work_from_the_keyboard(seeded), mark_watched_is_one_colour(seeded), has_a_heading(seeded), phones_have_no_episode_rail(seeded), phones_do_not_scroll_sideways(seeded), seasons_count_watched_episodes(seeded), episodes_show_their_details(seeded)},
+    show::{episode_menu_holds_the_other_actions(seeded), menus_close_on_an_outside_click(seeded), modals_close_from_button_and_backdrop(seeded), phone_modals_rise_from_the_bottom(seeded), settings_line_up_their_controls(seeded), modals_hold_keyboard_focus(seeded), menus_work_from_the_keyboard(seeded), mark_watched_is_one_colour(seeded), seasons_list_beside_the_episodes(seasons), phones_pick_seasons_from_chips(seasons), has_a_heading(seeded), phones_have_no_episode_rail(seeded), phones_do_not_scroll_sideways(seeded), seasons_count_watched_episodes(seeded), episodes_show_their_details(seeded)},
 }
