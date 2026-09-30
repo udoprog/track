@@ -1247,43 +1247,56 @@ input-label-controls {
     font-family: v.$monospace-font;
 }
 
+// Modals share the popover surface (`.context-menu`); on phones they rise from
+// the bottom edge as a sheet.
 .modal {
     display: flex;
     flex-direction: column;
     background: v.$bg-panel;
     border: 1px solid v.$border-subtle;
-    border-radius: v.$radius;
+    border-radius: v.$radius-lg;
+    box-shadow: 0 8px 32px v.$shadow-strong;
     width: min(600px, calc(100vw - #{v.$gap-sm * 2}));
-    z-index: 401;
+    max-height: 85vh;
 
     @include g.on-mobile {
         width: 100%;
-        border-radius: 0;
-
-        &-header {
-            padding: v.$gap;
-        }
+        max-height: 90vh;
+        border-bottom: none;
+        border-radius: v.$radius-lg v.$radius-lg 0 0;
     }
 
     &-background {
         position: fixed;
         inset: 0;
-        background: rgba(0, 0, 0, 0.6);
-        z-index: v.$bold-weight;
+        background: v.$scrim;
+        z-index: 500;
         display: flex;
         align-items: center;
         justify-content: center;
+
+        @include g.on-mobile {
+            align-items: flex-end;
+        }
     }
 
     &-header {
         display: flex;
         flex-direction: row;
-        flex-wrap: wrap;
         justify-content: space-between;
         align-items: center;
         gap: v.$gap-sm;
-        background: v.$bg-highlight;
-        padding: v.$gap-xs;
+        padding: v.$gap-sm v.$gap-sm 0 v.$gap;
+
+        h2 {
+            font-size: v.$font-lg;
+            color: v.$text-primary;
+            min-width: 0;
+        }
+
+        .icon {
+            --icon-color: #{v.$text-muted};
+        }
     }
 
     &-content {
@@ -1291,7 +1304,7 @@ input-label-controls {
         flex-direction: column;
         gap: v.$gap;
         overflow-y: auto;
-        max-height: 80vh;
+        min-height: 0;
         padding: v.$gap;
     }
 }

@@ -118,7 +118,11 @@ page filled; it hides when there is only one page.
 ### Popovers, toasts and undo
 
 Popovers are `ui::ContextMenu`: anchored to their trigger and keeping the
-side they opened on. Reversible actions happen at once and offer undo
+side they opened on. Popovers and modals (`ui::Modal`) share one surface:
+`--surface-3`, a soft border, `$radius-lg` and a `--shadow-strong` shadow.
+A modal's header is its title in text colour beside a ghost *Close*; the page
+behind it dims with `--scrim`. On phones a modal is a sheet along the bottom
+edge, rounded at the top. A list of actions in a popover is `.menu-list`. Reversible actions happen at once and offer undo
 through `Background::offer_undo` and the toast, instead of asking first.
 Destructive ones confirm with `ConfirmDanger` in a popover.
 

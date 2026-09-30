@@ -40,6 +40,7 @@
     >button {
         justify-content: flex-start;
         background: transparent;
+        white-space: nowrap;
 
         &:hover:not(:disabled) {
             background: color-mix(in srgb, v.$text-primary 8%, transparent);
@@ -61,8 +62,9 @@
     max-height: var(--cm-max-height, calc(100vh - #{v.$gap-xs * 2}));
     overflow-y: auto;
     background: v.$bg-panel;
-    border: 1px solid v.$border-input;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    border: 1px solid v.$border-subtle;
+    border-radius: v.$radius-lg;
+    box-shadow: 0 8px 32px v.$shadow-strong;
 
     gap: v.$gap;
     padding: v.$gap;

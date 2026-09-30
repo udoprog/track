@@ -41,6 +41,8 @@
 
     --shadow: rgb(0 0 0 / 0.35);
     --shadow-strong: rgb(0 0 0 / 0.5);
+    // Dims the page behind a modal.
+    --scrim: rgb(0 0 0 / 0.6);
 
     --backdrop-opacity: 0.18;
     // Third-party logos are drawn for dark backgrounds.
@@ -81,6 +83,7 @@
 
     --shadow: rgb(20 30 45 / 0.14);
     --shadow-strong: rgb(20 30 45 / 0.24);
+    --scrim: rgb(20 30 45 / 0.45);
 
     --backdrop-opacity: 0.1;
     --logo-plate: #1b2027;

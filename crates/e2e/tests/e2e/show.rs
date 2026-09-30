@@ -124,3 +124,93 @@ pub async fn phones_do_not_scroll_sideways(driver: &mut TestDriver, _: &mut Trac
     );
     Ok(())
 }
+
+/// Open the first episode's Translations modal from its menu.
+async fn open_episode_modal(driver: &TestDriver) -> Result<()> {
+    driver
+        .find_first("[title='More actions']")
+        .await?
+        .click()
+        .await?;
+
+    driver
+        .find_one_by(".menu-list [title='Translations']")
+        .await?
+        .click()
+        .await?;
+
+    driver.wait_count(".modal", 1).await
+}
+
+/// An episode's menu closes when the page around it is clicked.
+pub async fn menus_close_on_an_outside_click(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_show(driver).await?;
+
+    driver
+        .find_first("[title='More actions']")
+        .await?
+        .click()
+        .await?;
+
+    // Near the catcher's top-left corner, well away from the menu.
+    let catcher = driver.find_one_by(".context-catcher").await?;
+    let page = catcher.rect().await?;
+    catcher
+        .click_by(
+            -(page.width / 2.0 - 20.0) as i64,
+            -(page.height / 2.0 - 20.0) as i64,
+        )
+        .await?;
+
+    driver.wait_count(".context-menu", 0).await
+}
+
+/// A modal closes from its Close button and from the dimmed page around it.
+pub async fn modals_close_from_button_and_backdrop(
+    driver: &mut TestDriver,
+    _: &mut Track,
+) -> Result<()> {
+    open_show(driver).await?;
+
+    open_episode_modal(driver).await?;
+    driver
+        .find_one_by(".modal [title='Close']")
+        .await?
+        .click()
+        .await?;
+    driver.wait_count(".modal", 0).await?;
+
+    open_episode_modal(driver).await?;
+    let modal = driver.find_one_by(".modal").await?.rect().await?;
+    let background = driver.find_one_by(".modal-background").await?;
+    let page = background.rect().await?;
+
+    // Halfway between the page's top edge and the modal's.
+    let dy = (page.y + modal.y) / 2.0 - (page.y + page.height / 2.0);
+    background.click_by(0, dy as i64).await?;
+    driver.wait_count(".modal", 0).await
+}
+
+/// On a phone a modal is a sheet along the bottom edge of the screen.
+pub async fn phone_modals_rise_from_the_bottom(
+    driver: &mut TestDriver,
+    _: &mut Track,
+) -> Result<()> {
+    open_show(driver).await?;
+    driver.set_window_size(400, 850).await?;
+    open_episode_modal(driver).await?;
+
+    let modal = driver.find_one_by(".modal").await?.rect().await?;
+    let page = driver
+        .find_one_by(".modal-background")
+        .await?
+        .rect()
+        .await?;
+    let gap = page.y + page.height - (modal.y + modal.height);
+
+    ensure!(
+        gap.abs() < 1.0,
+        "the modal ends {gap}px above the bottom of the screen"
+    );
+    Ok(())
+}
