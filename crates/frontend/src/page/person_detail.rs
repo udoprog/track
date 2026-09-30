@@ -7,7 +7,7 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{PersonQuery, Route, Router, ShowDetailQuery};
 use crate::ui::{
-    Button, ConfirmDanger, ContextMenu, DetailSkeleton, Image, Link, Modal, RemoteEditor,
+    Button, ConfirmDanger, ContextMenu, DetailSkeleton, FormRow, Image, Link, Modal, RemoteEditor,
     RemoteSourceKind, TranslatedText, Variant,
 };
 
@@ -342,6 +342,8 @@ impl PersonDetail {
             }
             Msg::CloseRemoteEditor => {
                 self.remote_editor = false;
+                // Opened from Settings, so closing goes back there.
+                self.settings = true;
                 Ok(true)
             }
             Msg::AddRemote(slug, remote) => {
@@ -597,30 +599,22 @@ impl PersonDetail {
 
         html! {
             <Modal icon="cog-6-tooth" title="Settings" on_close={link.callback(|_| Msg::CloseSettings)}>
-                <div class="form">
-                    <div class="input-group">
-                        <span class="input-label has-text">{"Last Sync"}</span>
-
+                <div class="form-rows">
+                    <FormRow label="Last synced">
                         if let Some(ts) = last_synced {
-                            <div class="input-text has-text fill" title="Last synced at">
-                                <span>{ts}</span>
-                            </div>
+                            <span title="Last synced at">{ts}</span>
                         } else {
-                            <div class="input-text has-text fill text-muted">
-                                <span>{"Never synced"}</span>
-                            </div>
+                            <span class="text-muted">{"Never"}</span>
                         }
 
                         if !person.remotes.is_empty() {
-                            <Button icon="arrow-path" spin={self.syncing} onclick={link.callback(|_| Msg::SyncPerson)} title="Sync now" text="Sync" />
+                            <Button icon="arrow-path" spin={self.syncing} onclick={link.callback(|_| Msg::SyncPerson)} title="Sync now" label="Sync now" />
                         }
-                    </div>
+                    </FormRow>
 
-                    <div class="field">
-                        <Button icon="identification" label="Remotes" title="Edit remotes" onclick={link.callback(|_| Msg::OpenRemoteEditor)} />
-
-                        <span class="hint">{"Edit the TMDB, IMDb, and other remote identifiers used to sync."}</span>
-                    </div>
+                    <FormRow label="Remotes" hint="The TMDB, IMDb and other identifiers used to sync.">
+                        <Button icon="identification" label="Edit remotes" title="Edit remotes" onclick={link.callback(|_| Msg::OpenRemoteEditor)} />
+                    </FormRow>
                 </div>
             </Modal>
         }

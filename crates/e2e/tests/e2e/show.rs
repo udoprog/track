@@ -591,3 +591,30 @@ pub async fn tracking_toggle_names_the_show(driver: &mut TestDriver, _: &mut Tra
     ensure!(driver.count("[title='Track movie']").await? == 0);
     Ok(())
 }
+
+/// Closing a page opened from the show's settings goes back to the settings.
+pub async fn settings_pages_return_to_settings(
+    driver: &mut TestDriver,
+    _: &mut Track,
+) -> Result<()> {
+    open_show(driver).await?;
+
+    driver
+        .find_one_by("[title='Settings']:not(#toolbar *)")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by(".modal [title='Edit remotes']")
+        .await?
+        .click()
+        .await?;
+    driver.wait_texts(".modal h2", ["Remotes"]).await?;
+
+    driver
+        .find_one_by(".modal [title=Close]")
+        .await?
+        .click()
+        .await?;
+    driver.wait_texts(".modal h2", ["Settings"]).await
+}

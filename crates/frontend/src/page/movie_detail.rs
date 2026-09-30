@@ -798,6 +798,8 @@ impl MovieDetail {
             }
             Msg::CloseImageModal => {
                 self.image_modal = false;
+                // Opened from Settings, so closing goes back there.
+                self.settings_modal = true;
                 Ok(true)
             }
             Msg::OpenSettingsModal => {
@@ -826,6 +828,8 @@ impl MovieDetail {
             }
             Msg::CloseRemoteEditor => {
                 self.remote_editor = false;
+                // Opened from Settings, so closing goes back there.
+                self.settings_modal = true;
                 Ok(true)
             }
             Msg::AddRemote(slug, remote) => {
