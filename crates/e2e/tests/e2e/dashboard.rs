@@ -111,3 +111,22 @@ pub async fn fills_rows_with_relative_dates(driver: &mut TestDriver, _: &mut Tra
     );
     Ok(())
 }
+
+/// Upcoming gives every day a readable width, scrolling sideways instead of
+/// squeezing the days when they do not fit.
+pub async fn upcoming_days_keep_their_width(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    driver.set_window_size(800, 900).await?;
+    driver.reopen_with("view=upcoming").await?;
+
+    driver
+        .wait_count(".schedule-range-grid .schedule-range-poster", 0)
+        .await?;
+
+    let day = driver
+        .find_first(".schedule-range-grid > .calendar-cell")
+        .await?;
+
+    let width = day.rect().await?.width;
+    ensure!(width >= 160.0, "a day is only {width}px wide");
+    Ok(())
+}

@@ -64,23 +64,18 @@
     @include g.on-desktop {
         display: grid;
         gap: v.$gap;
-        // Top-align so a tall poster doesn't stretch the day cells.
         align-items: start;
-        // Poster column + one column per day, all equal width.
-        grid-template-columns: minmax(0, 1fr) repeat(var(--range-days, 3), minmax(0, 1fr));
+        // One column per day, all equal width, scrolling sideways rather than
+        // squeezing titles when many days are shown.
+        grid-template-columns: repeat(var(--range-days, 3), minmax(160px, 1fr));
+        overflow-x: auto;
 
-        // Insert a fit-to-content reset column after the poster, before the
-        // first day, when scrolled ahead of today.
+        // Insert a fit-to-content reset column before the first day when
+        // scrolled ahead of today.
         &.has-reset {
-            grid-template-columns: minmax(0, 1fr) auto repeat(var(--range-days, 3), minmax(0, 1fr));
+            grid-template-columns: auto repeat(var(--range-days, 3), minmax(160px, 1fr));
         }
     }
-}
-
-// The poster is a normal column, the same width as any day column.
-.schedule-range-poster {
-    width: 100%;
-    aspect-ratio: 2 / 3;
 }
 
 // Fit-to-content clickable area on the far left; clicking jumps back to today.

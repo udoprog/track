@@ -8,7 +8,7 @@ use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaSelection, Route, Router, ShowDetailQuery};
-use crate::ui::{Button, Image, Skeleton};
+use crate::ui::{Button, Skeleton};
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
@@ -22,8 +22,8 @@ pub(crate) struct Props {
 }
 
 /// A compact upcoming-days strip: a configurable number of consecutive days
-/// rendered like the schedule but without week breaks, with a poster rail on the
-/// left that tracks the hovered entry. Scrolls one day at a time. Sits above the
+/// rendered like the schedule but without week breaks. Hovering an entry shows
+/// its backdrop behind the page. Scrolls one day at a time. Sits above the
 /// full [`super::Calendar`] on the dashboard. The visible day count lives in
 /// [`api::Config::schedule_range_days`].
 pub(crate) struct ScheduleRange {
@@ -34,8 +34,6 @@ pub(crate) struct ScheduleRange {
     schedule_index: HashMap<api::Date, usize>,
     config: api::Config,
     loading: bool,
-    /// Poster of the hovered entry; falls back to the first upcoming show.
-    hovered_poster: Option<api::Image>,
     time: TimeInfo,
     _time_handle: ContextHandle<TimeInfo>,
     router: Router,
@@ -58,7 +56,7 @@ pub(crate) enum Msg {
     SetTime(TimeInfo),
     /// Hover an entry: show its poster in the rail and drive the page background
     /// from its backdrop. Carries (poster, backdrop URL).
-    Hover(Option<api::Image>, Option<String>),
+    Hover(Option<String>),
 }
 
 impl Component for ScheduleRange {
@@ -95,7 +93,6 @@ impl Component for ScheduleRange {
             schedule_index: HashMap::new(),
             config: api::Config::default(),
             loading: false,
-            hovered_poster: None,
             time,
             _time_handle,
             router,
@@ -143,12 +140,6 @@ impl Component for ScheduleRange {
             .map(|i| start.checked_add_days(i as u32).unwrap_or(start))
             .collect();
 
-        // Rail poster: the hovered entry, else the first upcoming show.
-        let poster = self
-            .hovered_poster
-            .clone()
-            .or_else(|| self.default_poster(ctx.props().selection));
-
         let link = ctx.link();
 
         let on_prev = ctx.props().on_set_range.reform(move |_| offset - 1);
@@ -172,10 +163,6 @@ impl Component for ScheduleRange {
                 </div>
 
                 <div class={classes!("schedule-range-grid", (offset != 0).then_some("has-reset"))} style={format!("--range-days: {days_count}")}>
-                    <div class="schedule-range-poster desktop-only">
-                        <Image src={poster.clone()} />
-                    </div>
-
                     if offset != 0 {
                         <div class="schedule-range-reset clickable" title="Back to today" onclick={on_reset}>
                             <span class="item-inline-lg">
@@ -311,14 +298,10 @@ impl ScheduleRange {
                 }
                 Ok(true)
             }
-            Msg::Hover(poster, backdrop) => {
+            Msg::Hover(backdrop) => {
                 // Keep the last hovered background (no revert on mouse-leave).
                 self.background.background(backdrop);
-                if self.hovered_poster == poster {
-                    return Ok(false);
-                }
-                self.hovered_poster = poster;
-                Ok(true)
+                Ok(false)
             }
         }
     }
@@ -326,22 +309,6 @@ impl ScheduleRange {
     /// Poster shown in the rail when nothing is hovered: the first show of the
     /// soonest loaded day (falling back to the first movie), restricted to the
     /// kinds the filter shows.
-    fn default_poster(&self, selection: MediaSelection) -> Option<api::Image> {
-        self.schedule.iter().find_map(|d| {
-            let show = selection
-                .contains(api::MediaKind::Shows)
-                .then(|| d.shows.iter().find_map(|s| s.poster.clone()))
-                .flatten();
-
-            show.or_else(|| {
-                selection
-                    .contains(api::MediaKind::Movies)
-                    .then(|| d.movies.iter().find_map(|m| m.poster.clone()))
-                    .flatten()
-            })
-        })
-    }
-
     fn view_day(&self, ctx: &Context<Self>, day: api::Date, today: api::Date) -> Html {
         let link = ctx.link();
 
@@ -390,10 +357,8 @@ impl ScheduleRange {
                                     let season = episode.map(|e| e.season).unwrap_or_default();
                                     Msg::Navigate(Route::ShowDetail(show_id, ShowDetailQuery { season, episode, orphaned: false }))
                                 });
-
-                                let hover_poster = entry.poster.clone();
                                 let hover_bg = entry.backdrop.as_ref().map(|i| i.proxy_url());
-                                let onmouseover = link.callback(move |_| Msg::Hover(hover_poster.clone(), hover_bg.clone()));
+                                let onmouseover = link.callback(move |_| Msg::Hover(hover_bg.clone()));
 
                                 html! {
                                     <div key={format!("show-{show_id}")} class="calendar-item" title={format!("Open {}", entry.show_title)} {onmouseover}>
@@ -427,10 +392,8 @@ impl ScheduleRange {
                                 let on_click = link.callback(move |_|
                                     Msg::Navigate(Route::MovieDetail(movie_id))
                                 );
-
-                                let hover_poster = movie.poster.clone();
                                 let hover_bg = movie.backdrop.as_ref().map(|i| i.proxy_url());
-                                let onmouseover = link.callback(move |_| Msg::Hover(hover_poster.clone(), hover_bg.clone()));
+                                let onmouseover = link.callback(move |_| Msg::Hover(hover_bg.clone()));
 
                                 html! {
                                     <div key={format!("movie-{movie_id}")} class="calendar-item clickable" onclick={on_click} title={movie.title.clone()} {onmouseover}>
