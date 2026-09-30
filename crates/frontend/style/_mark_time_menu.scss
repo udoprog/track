@@ -98,15 +98,8 @@
 }
 // The narrow trigger beside a quick mark button that opens the picker.
 .mark-time-more {
-    padding: 0 !important;
-    min-width: 24px;
-    justify-content: center;
     // Set apart from the instant mark beside it, so they read as two targets.
     border-inline-start: 1px solid color-mix(in srgb, v.$text-on-accent 25%, transparent) !important;
-
-    @include g.on-mobile {
-        min-width: v.$input-height-touch;
-    }
 }
 
 // The instant the selection resolves to, read as a preview rather than links.

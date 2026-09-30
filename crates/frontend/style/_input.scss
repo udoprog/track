@@ -142,6 +142,21 @@ button,
         flex: 1;
     }
 
+    // Icon-only buttons are square, so a row of them reads as one set.
+    @include g.on-desktop {
+        &:not(.desktop-has-text, .has-text) {
+            justify-content: center;
+            min-width: v.$input-height;
+        }
+    }
+
+    @include g.on-mobile {
+        &:not(.mobile-has-text, .has-text) {
+            justify-content: center;
+            min-width: v.$input-height-touch;
+        }
+    }
+
     &.disabled, &:disabled {
         opacity: 0.5;
         cursor: default;
