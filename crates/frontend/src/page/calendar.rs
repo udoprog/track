@@ -184,9 +184,9 @@ impl Component for Calendar {
                     </span>
 
                     <div class="row">
-                        <Button icon="chevron-left" title="Previous week" class="ghost" onclick={on_prev} />
+                        <Button icon="chevron-left" title="Previous week" onclick={on_prev} />
                         <Button icon="calendar" label="This week" title="Back to this week" class="chip" disabled={week_offset == 0 && !week_start} onclick={on_reset} />
-                        <Button icon="chevron-right" title="Next week" class="ghost" onclick={on_next} />
+                        <Button icon="chevron-right" title="Next week" onclick={on_next} />
                         <Button node_ref={self.options_anchor.clone()} icon="adjustments-horizontal" title="View options" class={classes!("chip", self.options_open.then_some("selected"))} expanded={Some(self.options_open)} haspopup="dialog" onclick={link.callback(|_| Msg::ToggleOptions)} />
                     </div>
                 </div>

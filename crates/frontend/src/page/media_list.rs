@@ -246,7 +246,7 @@ impl Component for MediaList {
                         <input type="text" placeholder="Filter" aria-label="Filter media" value={self.filter.clone()} oninput={on_filter} />
 
                         if !self.filter.is_empty() {
-                            <Button icon="x-mark" title="Clear filter" class="ghost" onclick={link.callback(|_| Msg::Filter(String::new()))} />
+                            <Button icon="x-mark" title="Clear filter" onclick={link.callback(|_| Msg::Filter(String::new()))} />
                         }
                     </div>
 

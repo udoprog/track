@@ -244,3 +244,22 @@ pub async fn buttons_expose_their_state(driver: &mut TestDriver, _: &mut Track) 
     ensure!(shows.attr("aria-pressed").await? == "true");
     Ok(())
 }
+
+/// A card's secondary actions look like buttons: they have a fill before they
+/// are hovered.
+pub async fn secondary_actions_are_filled(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    wait_label(driver, FIRST).await?;
+
+    for title in ["Move pending", "Skip episode"] {
+        let button = driver
+            .find_first(&format!(".pending-item [title='{title}']"))
+            .await?;
+        let fill = button.css("background-color").await?;
+        ensure!(
+            fill != "rgba(0, 0, 0, 0)" && fill != "transparent",
+            "{title} has no fill: {fill}"
+        );
+    }
+
+    Ok(())
+}

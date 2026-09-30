@@ -86,7 +86,7 @@ pub(crate) fn Modal(props: &Props) -> Html {
                         </h2>
                     }
 
-                    <Button icon="x-mark" title="Close" class="ghost" onclick={on_close.clone()} />
+                    <Button icon="x-mark" title="Close" onclick={on_close.clone()} />
                 </div>
 
                 <div class="modal-content" ref={content}>

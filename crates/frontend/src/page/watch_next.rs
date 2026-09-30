@@ -771,12 +771,12 @@ impl WatchNext {
                         </div>
 
                         <div class="row">
-                            <MarkTimeMenu class="ghost" title="Move pending" icon="bookmark" prompt={format!("When do you want to queue this {}?", pending_kind.title())} preset={preset.clone()} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkPending(pending_kind, mark_time))}>
+                            <MarkTimeMenu title="Move pending" icon="bookmark" prompt={format!("When do you want to queue this {}?", pending_kind.title())} preset={preset.clone()} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkPending(pending_kind, mark_time))}>
                                 <span class="icon bookmark" aria-hidden="true" />
                             </MarkTimeMenu>
 
                             if let Some((show, episode)) = skip_ids {
-                                <Button key="skip-button" node_ref={anchor.clone()} icon="forward" title="Skip episode" class="ghost" expanded={Some(confirming)} haspopup="dialog" onclick={ctx.link().callback(move |_| Msg::AskSkipEpisode(show, episode))} />
+                                <Button key="skip-button" node_ref={anchor.clone()} icon="forward" title="Skip episode" expanded={Some(confirming)} haspopup="dialog" onclick={ctx.link().callback(move |_| Msg::AskSkipEpisode(show, episode))} />
 
                                 if confirming && let Some(code) = skip_code {
                                     <ContextMenu icon="forward" prompt="Skip episode" label={code} anchor={anchor.clone()} on_close={ctx.link().callback(|_| Msg::CancelSkipEpisode)}>

@@ -695,18 +695,6 @@ image {
     }
 }
 
-// A secondary icon action with no chrome until hovered.
-button.ghost {
-    background: transparent;
-    --icon-color: #{v.$text-muted};
-
-    &:hover:not(.disabled):not(:disabled) {
-        background: var(--neutral-bg);
-        border-color: transparent;
-        --icon-color: #{v.$text-color};
-    }
-}
-
 .percentage-container {
     display: block;
     background: v.$bg-surface;

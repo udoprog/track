@@ -10,7 +10,8 @@ styles live in `crates/frontend/style/` and the shared components in
   them stays quiet: no panels, borders or backgrounds that compete with the
   picture.
 - **One primary action.** A card or row has at most one filled accent button
-  (usually *Mark watched*). Everything else is secondary or a quiet ghost icon.
+  (usually *Mark watched*). Everything else is a filled secondary button, so
+  it is always clear what can be pressed.
 - **Soft, not blocky.** Rounded shapes, few borders. Separate things with
   space and surface shades rather than outlines.
 - **Say what it is.** Every button has a title, every date says what happened
@@ -92,8 +93,6 @@ when it lacks something.
   screens only. `children` add content such as a flag.
 - Variants: default (neutral), `Primary`, `Success`, `Danger`. Keep `Primary`
   for the one main action and `Danger` for destructive ones.
-- `class="ghost"`: a secondary icon action with no fill until hovered, such as
-  bookmark and skip on a card.
 - `current`: marks the item for the page shown (`aria-current`), for
   navigation and tabs.
 - A quick action with a menu is a split button (`MarkTimeMenu quick`): the
@@ -127,7 +126,7 @@ page filled; it hides when there is only one page.
 Popovers are `ui::ContextMenu`: anchored to their trigger and keeping the
 side they opened on. Popovers and modals (`ui::Modal`) share one surface:
 `--surface-2` (the shade controls are drawn for), a soft border, `$radius-lg` and a `--shadow-strong` shadow.
-A modal's header is its title in text colour beside a ghost *Close*; the page
+A modal's header is its title in text colour beside a *Close* button; the page
 behind it dims with `--scrim`. On phones a modal is a sheet along the bottom
 edge, rounded at the top. A list of actions in a popover is `.menu-list`. Reversible actions happen at once and offer undo
 through `Background::offer_undo` and the toast, instead of asking first.

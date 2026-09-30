@@ -157,9 +157,9 @@ impl Component for ScheduleRange {
                     </span>
 
                     <div class="row">
-                        <Button icon="chevron-left" title="Previous day" class="ghost" onclick={on_prev} />
+                        <Button icon="chevron-left" title="Previous day" onclick={on_prev} />
                         <Button icon="calendar" label="Today" title="Back to today" class="chip" disabled={offset == 0} onclick={on_reset} />
-                        <Button icon="chevron-right" title="Next day" class="ghost" onclick={on_next} />
+                        <Button icon="chevron-right" title="Next day" onclick={on_next} />
                         <Button node_ref={self.options_anchor.clone()} icon="adjustments-horizontal" title="View options" class={classes!("chip", self.options_open.then_some("selected"))} expanded={Some(self.options_open)} haspopup="dialog" onclick={link.callback(|_| Msg::ToggleOptions)} />
                     </div>
                 </div>
