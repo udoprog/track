@@ -549,7 +549,7 @@ impl PersonDetail {
 
         html! {
             <div class="person-detail-header">
-                <Image class="person-detail-photo" placeholder={true} src={person.profile.clone()} alt={name.clone()} />
+                <Image class="person-detail-photo" placeholder={true} placeholder_icon="user" src={person.profile.clone()} alt={name.clone()} />
 
                 <div class="person-detail-info">
                     <div class="row-split">

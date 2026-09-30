@@ -48,3 +48,26 @@ pub async fn shows_no_count_while_loading(driver: &mut TestDriver, _: &mut Track
     driver.stop_delaying_websocket_sends().await?;
     driver.wait_texts("#page .row-split h4", ["2"]).await
 }
+
+/// People without a photo show a silhouette, on the list and in a show's
+/// cast, rather than a question mark.
+pub async fn shows_a_silhouette_without_a_photo(
+    driver: &mut TestDriver,
+    _: &mut Track,
+) -> Result<()> {
+    super::show::open_show(driver).await?;
+    driver.find_one_by(".cast-photo .icon.user").await?;
+
+    driver
+        .find_one_by(".toolbar-item[title=People]")
+        .await?
+        .click()
+        .await?;
+
+    driver.wait_count(".person-photo .icon.user", 2).await?;
+    ensure!(
+        driver.count(".icon.question-mark-circle").await? == 0,
+        "a person still shows a question mark"
+    );
+    Ok(())
+}

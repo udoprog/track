@@ -25,6 +25,9 @@ pub(crate) enum Msg {
 pub(crate) struct Props {
     #[prop_or_default]
     pub(crate) placeholder: bool,
+    /// The icon the placeholder shows.
+    #[prop_or(AttrValue::Static("question-mark-circle"))]
+    pub(crate) placeholder_icon: AttrValue,
     #[prop_or_default]
     pub(crate) src: Option<api::Image>,
     #[prop_or_default]
@@ -102,7 +105,7 @@ impl Component for Image {
             },
             State::Empty if props.placeholder => html! {
                 <image {class} style={props.style.clone()} onclick={props.onclick.clone()} title={props.title.clone()}>
-                    <span class="icon question-mark-circle" />
+                    <span class={classes!("icon", props.placeholder_icon.clone())} />
                 </image>
             },
             _ => html!(),

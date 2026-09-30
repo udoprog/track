@@ -539,6 +539,11 @@ image {
     .icon {
         height: v.$input-height-touch;
         width: v.$input-height-touch;
+
+        // People without a photo: a quiet silhouette rather than a question.
+        &.user {
+            --icon-color: #{v.$text-muted};
+        }
     }
 }
 

@@ -381,7 +381,7 @@ impl PersonList {
 
         html! {
             <div class="person-card clickable" {onclick}>
-                <Image class="person-photo" placeholder={true} src={p.profile.clone()} alt={name.clone()} />
+                <Image class="person-photo" placeholder={true} placeholder_icon="user" src={p.profile.clone()} alt={name.clone()} />
 
                 <div class="person-info">
                     <div class="person-name">{ name }</div>

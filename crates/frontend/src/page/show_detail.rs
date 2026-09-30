@@ -1781,7 +1781,7 @@ impl ShowDetail {
 
         html! {
             <div class="cast-card clickable" {onclick}>
-                <Image class="cast-photo" placeholder={true} src={credit.profile.clone()} alt={name.clone()} />
+                <Image class="cast-photo" placeholder={true} placeholder_icon="user" src={credit.profile.clone()} alt={name.clone()} />
 
                 <div class="cast-info">
                     <div class="cast-name">{ name }</div>
