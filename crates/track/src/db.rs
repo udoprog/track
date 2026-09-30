@@ -6669,7 +6669,7 @@ impl Database {
                 .get_config("release_filters")?
                 .as_deref()
                 .and_then(config::decode_filter_rules)
-                .unwrap_or_default();
+                .unwrap_or_else(api::FilterRules::default_release_rules);
 
             let air_date_filters = s
                 .get_config("air_date_filters")?

@@ -185,3 +185,18 @@ async fn list_persons_resolves_names_in_the_persons_language() -> Result<()> {
     assert_eq!(persons[0].name.title(), Some("Ada Lovelace"));
     Ok(())
 }
+
+/// A database that never saved release rules uses the default ones, so movie
+/// releases qualify on a fresh install.
+#[tokio::test]
+async fn fresh_config_has_the_default_release_rules() -> Result<()> {
+    let dir = tempfile::tempdir()?;
+    let db = Database::open(dir.path().join("test.db"), OpenMode::Bulk, 1)?;
+
+    assert_eq!(
+        db.load_config().await?.release_filters,
+        api::FilterRules::default_release_rules()
+    );
+
+    Ok(())
+}
