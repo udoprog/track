@@ -2,7 +2,14 @@ use yew::prelude::*;
 
 use super::{Button, Image, PaginationButtons, Variant};
 
-const GALLERY_PAGE_SIZE: usize = 4;
+/// How many images of a kind fit a page of the gallery.
+fn page_size(kind: api::ImageKind) -> usize {
+    match kind {
+        api::ImageKind::Poster | api::ImageKind::Profile => 8,
+        api::ImageKind::Banner => 3,
+        _ => 4,
+    }
+}
 
 /// A single entry shown in the image gallery.
 #[derive(Clone, PartialEq)]
@@ -12,9 +19,6 @@ pub(crate) struct ImageItem {
     pub(crate) kind: api::ImageKind,
     pub(crate) source: api::ImageSource,
     pub(crate) image: api::Image,
-    /// Raw remote score, sorted within a single remote. Absent for owners we
-    /// don't score (seasons/episodes).
-    pub(crate) score: Option<f64>,
 }
 
 #[derive(Properties, PartialEq)]
@@ -41,10 +45,11 @@ pub(crate) struct Props {
 pub(crate) fn ImageGallery(props: &Props) -> Html {
     let page = use_state(|| 0usize);
 
-    let total_pages = props.items.len().div_ceil(GALLERY_PAGE_SIZE);
+    let size = page_size(props.kind);
+    let total_pages = props.items.len().div_ceil(size);
     let this_page = (*page).min(total_pages.saturating_sub(1));
-    let start = this_page * GALLERY_PAGE_SIZE;
-    let end = (start + GALLERY_PAGE_SIZE).min(props.items.len());
+    let start = this_page * size;
+    let end = (start + size).min(props.items.len());
     let page_images = props.items.get(start..end).unwrap_or_default();
 
     let on_page = {
@@ -62,14 +67,14 @@ pub(crate) fn ImageGallery(props: &Props) -> Html {
 
                 <div class="row">
                     if let Some(on_pick_best) = &props.on_pick_best {
-                        <Button icon="sparkles" variant={Variant::Primary} title={format!("Pick best {}", props.kind)} text="Pick best" onclick={on_pick_best.reform(|_| ())} />
+                        <Button icon="sparkles" variant={Variant::Primary} title={format!("Pick best {}", props.kind)} label="Pick best" onclick={on_pick_best.reform(|_| ())} />
                     }
                     if props.user_selected {
                         if let Some(on_reset) = &props.on_reset {
-                            <Button icon="arrow-uturn-left" title={format!("Clear custom {}", props.kind)} text="Clear custom" onclick={on_reset.reform(|_| ())} />
+                            <Button icon="arrow-uturn-left" title={format!("Clear custom {}", props.kind)} label="Clear custom" onclick={on_reset.reform(|_| ())} />
                         }
                     }
-                    <Button icon="x-mark" variant={Variant::Danger} title={format!("Clear {}", props.kind)} text={format!("Clear {}", props.kind)} onclick={on_clear} />
+                    <Button icon="x-mark" title={format!("Clear {}", props.kind)} label="Clear" onclick={on_clear} />
                 </div>
             </div>
 
@@ -95,8 +100,8 @@ pub(crate) fn ImageGallery(props: &Props) -> Html {
                                 </Button>
                                 <div class="gallery-meta">
                                     <span class={classes!("logo", source)} title={title} />
-                                    if let Some(score) = img.score {
-                                        <span class="text-muted">{format!("{score:.1}")}</span>
+                                    if selected {
+                                        <span class="badge">{"Current"}</span>
                                     }
                                 </div>
                             </div>

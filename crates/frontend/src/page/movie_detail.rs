@@ -958,7 +958,6 @@ impl MovieDetail {
                     kind: i.kind,
                     source: i.source,
                     image: i.image.clone(),
-                    score: i.score,
                 });
 
                 self.present.insert(i.source);
@@ -1370,7 +1369,7 @@ impl MovieDetail {
             <Modal icon="photo" title="Graphics" on_close={link.callback(|_| Msg::CloseImageModal)}>
                 <div class="row desktop-align-end">
                     <GraphicsSourceFilter present={self.present.clone()} hidden={hidden.clone()} on_toggle={link.callback(Msg::ToggleGraphicsSource)} />
-                    <Button icon="sparkles" variant={Variant::Primary} title="Pick the best graphic for every kind" text="Pick best (all)" onclick={link.callback(|_| Msg::PickBestImage(None))} />
+                    <Button icon="sparkles" variant={Variant::Primary} title="Pick the best graphic for every kind" label="Pick best (all)" onclick={link.callback(|_| Msg::PickBestImage(None))} />
                 </div>
                 {for self.graphics.iter().filter_map(|(&kind, items)| {
                     let items: Vec<ImageItem> = items

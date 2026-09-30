@@ -719,3 +719,40 @@ pub async fn season_overview_switches_language(
         })
         .await
 }
+
+/// The graphics picker labels its actions, marks the current pick, and shows
+/// no raw source scores.
+pub async fn graphics_say_what_they_do(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_show(driver).await?;
+
+    driver
+        .find_one_by("[title='Settings']:not(#toolbar *)")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by(".modal [title='Edit graphics']")
+        .await?
+        .click()
+        .await?;
+
+    driver
+        .wait_texts(".modal .gallery-meta .badge", ["Current"])
+        .await?;
+
+    for title in ["Pick best poster", "Clear poster"] {
+        let text = driver
+            .find_one_by(&format!(".modal [title='{title}']"))
+            .await?
+            .text()
+            .await?;
+        ensure!(!text.trim().is_empty(), "{title} has no label");
+    }
+
+    let meta = driver.rendered_texts(".modal .gallery-meta").await?;
+    ensure!(
+        meta.iter().all(|m| !m.chars().any(|c| c.is_ascii_digit())),
+        "a raw score still shows: {meta:?}"
+    );
+    Ok(())
+}
