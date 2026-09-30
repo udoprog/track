@@ -130,3 +130,31 @@ pub async fn upcoming_days_keep_their_width(driver: &mut TestDriver, _: &mut Tra
     ensure!(width >= 160.0, "a day is only {width}px wide");
     Ok(())
 }
+
+/// The schedule names every day's weekday in its own cell, with no separate
+/// weekday header, under a heading naming the months shown.
+pub async fn schedule_names_its_days(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    driver.set_window_size(1200, 900).await?;
+    driver.reopen_with("view=schedule").await?;
+
+    let heading = driver.find_first(".calendar-month").await?.text().await?;
+    ensure!(
+        heading.chars().any(|c| c.is_ascii_digit()),
+        "the month heading has no year: {heading:?}"
+    );
+
+    driver.wait_count(".calendar-weekdays", 0).await?;
+
+    let days = driver.find_all_texts(".calendar-cell .day-of-week").await?;
+    ensure!(
+        days.len() >= 7,
+        "expected every day to be labelled, got {days:?}"
+    );
+
+    ensure!(
+        days.iter().all(|day| !day.trim().is_empty()),
+        "a day has no weekday: {days:?}"
+    );
+
+    Ok(())
+}

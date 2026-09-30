@@ -156,7 +156,7 @@ async fn build_server() -> Result<PathBuf> {
 
 yew_e2e::harness! {
     Track;
-    dashboard::{fills_rows_with_relative_dates(seeded), labels_its_filters, upcoming_days_keep_their_width, marks_watched_in_one_click(seeded), marks_watched_at_a_chosen_time(seeded)},
+    dashboard::{fills_rows_with_relative_dates(seeded), labels_its_filters, schedule_names_its_days, upcoming_days_keep_their_width, marks_watched_in_one_click(seeded), marks_watched_at_a_chosen_time(seeded)},
     navigation::{opens_every_page, page_scrolls_the_window, toolbar_icons_are_small},
     settings::{reorders_sync_sources, theme_applies_live, theme_is_remembered},
 }

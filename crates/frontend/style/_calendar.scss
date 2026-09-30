@@ -21,19 +21,6 @@
     @include column-base;
 }
 
-.calendar-weekdays {
-    display: grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
-    gap: v.$gap;
-}
-
-.calendar-weekday {
-    @include row-base;
-
-    text-align: center;
-    color: v.$text-muted;
-}
-
 .calendar-month {
     @include row-base;
 

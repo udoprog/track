@@ -199,15 +199,9 @@ impl Component for Calendar {
                     { for weeks.iter().enumerate().map(|(index, (month_band, days))| {
                         html! {
                             <>
-                            if let Some((month_name, year)) = month_band {
+                            if let Some(month_band) = month_band {
                                 <div key={format!("calendar-month-{index}")} class="calendar-month">
-                                    {format!("{month_name} {year}")}
-                                </div>
-
-                                <div key={format!("calendar-weekdays-{index}")} class="calendar-weekdays desktop-only">
-                                    { for api::Weekday::ALL.iter().map(|wd| html! {
-                                        <div class="calendar-weekday">{wd.short_name()}</div>
-                                    }) }
+                                    {month_band}
                                 </div>
                             }
 
@@ -234,23 +228,23 @@ impl Component for Calendar {
                                                 if is_yesterday {
                                                     <div class="day-of-week">
                                                         <span>{"Yesterday"}</span>
-                                                        <span class="mobile-only">{DOT}</span>
-                                                        <span class="mobile-only">{day.weekday().long_name()}</span>
+                                                        <span>{DOT}</span>
+                                                        <span>{day.weekday().short_name()}</span>
                                                     </div>
                                                 } else if is_today {
                                                     <div class="day-of-week">
                                                         <span>{"Today"}</span>
-                                                        <span class="mobile-only">{DOT}</span>
-                                                        <span class="mobile-only">{day.weekday().long_name()}</span>
+                                                        <span>{DOT}</span>
+                                                        <span>{day.weekday().short_name()}</span>
                                                     </div>
                                                 } else if is_tomorrow {
                                                     <div class="day-of-week">
                                                         <span>{"Tomorrow"}</span>
-                                                        <span class="mobile-only">{DOT}</span>
-                                                        <span class="mobile-only">{day.weekday().long_name()}</span>
+                                                        <span>{DOT}</span>
+                                                        <span>{day.weekday().short_name()}</span>
                                                     </div>
                                                 } else {
-                                                    <span class="day-of-week mobile-only">{day.weekday().short_name()}</span>
+                                                    <span class="day-of-week">{day.weekday().short_name()}</span>
                                                 }
                                             </div>
 
@@ -272,10 +266,6 @@ impl Component for Calendar {
                                                             html! {
                                                                 <div key={format!("show-{show_id}")} class="calendar-item" title={format!("Open {}", entry.show_title)}>
                                                                     <div class="calendar-item-title clickable" {onclick}>
-                                                                        <span class="item-inline">
-                                                                            <span class="icon tv" />
-                                                                        </span>
-
                                                                         {&entry.show_title}
                                                                     </div>
 
@@ -509,10 +499,9 @@ fn window_start(today: api::Date, week_offset: i32) -> api::Date {
     result.unwrap_or(today)
 }
 
-fn build_weeks(
-    window_start: api::Date,
-    weeks: u32,
-) -> Vec<(Option<(&'static str, i16)>, [api::Date; 7])> {
+/// The weeks shown from `window_start`, each with the month heading placed
+/// above it: the first week, and every week in which a month begins.
+fn build_weeks(window_start: api::Date, weeks: u32) -> Vec<(Option<String>, [api::Date; 7])> {
     let mut out = Vec::new();
     let mut d = window_start;
     let mut last_shown_month: Option<u8> = None;
@@ -524,7 +513,7 @@ fn build_weeks(
 
         let month_band = if last_shown_month != Some(band_day.month()) {
             last_shown_month = Some(band_day.month());
-            Some((band_day.month_name(), band_day.year()))
+            Some(month_range(days[0], days[6]))
         } else {
             None
         };
@@ -539,6 +528,28 @@ fn build_weeks(
     }
 
     out
+}
+
+/// Name the months a week spans, such as `"September – October 2026"`.
+fn month_range(first: api::Date, last: api::Date) -> String {
+    if first.month() == last.month() {
+        format!("{} {}", first.month_name(), first.year())
+    } else if first.year() == last.year() {
+        format!(
+            "{} – {} {}",
+            first.month_name(),
+            last.month_name(),
+            last.year()
+        )
+    } else {
+        format!(
+            "{} {} – {} {}",
+            first.month_name(),
+            first.year(),
+            last.month_name(),
+            last.year()
+        )
+    }
 }
 
 fn week_count_display(week_count: u32) -> impl fmt::Display {
