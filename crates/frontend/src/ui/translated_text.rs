@@ -119,7 +119,7 @@ impl Component for TranslatedText {
                         <span class="text-muted">{locale}</span>
                     }
                 } else {
-                    <span class="icon sm language" />
+                    <span class="icon sm language" aria-hidden="true" />
                 }
             </Button>
         };
@@ -140,12 +140,12 @@ impl Component for TranslatedText {
 
                                 if self.selected.is_none() {
                                     <span class="item-inline">
-                                        <span class="icon check" />
+                                        <span class="icon check" aria-hidden="true" />
                                     </span>
                                 }
 
                                 <span class="item-inline">
-                                    <span class="icon icon-4x3 language" />
+                                    <span class="icon icon-4x3 language" aria-hidden="true" />
                                 </span>
                             </Button>
 
@@ -161,7 +161,7 @@ impl Component for TranslatedText {
 
                                         if selected {
                                             <span class="item-inline">
-                                                <span class="icon check" />
+                                                <span class="icon check" aria-hidden="true" />
                                             </span>
                                         }
 

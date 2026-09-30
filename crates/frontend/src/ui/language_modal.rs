@@ -208,7 +208,7 @@ impl Component for LanguageModal {
         html! {
             <Modal icon="language" title={props.title} on_close={link.callback(|_| Msg::Close)}>
                 <div class="row">
-                    <input autofocus={true} type="text" class="input-text fill" placeholder="Filter" value={self.filter.clone()} oninput={on_filter} />
+                    <input autofocus={true} type="text" class="input-text fill" placeholder="Filter" aria-label="Filter languages" value={self.filter.clone()} oninput={on_filter} />
                 </div>
 
                 <div class="table">
@@ -222,12 +222,12 @@ impl Component for LanguageModal {
 
                                 if let Some(current) = current &&  current.is_default() {
                                     <span class="item-inline">
-                                        <span class="icon check" />
+                                        <span class="icon check" aria-hidden="true" />
                                     </span>
                                 }
 
                                 <span class="item-inline">
-                                    <span class="icon icon-4x3 language" />
+                                    <span class="icon icon-4x3 language" aria-hidden="true" />
                                 </span>
                             </Button>
                         }
@@ -243,7 +243,7 @@ impl Component for LanguageModal {
 
                                         if selected {
                                             <span class="item-inline">
-                                                <span class="icon check" />
+                                                <span class="icon check" aria-hidden="true" />
                                             </span>
                                         }
 
@@ -279,7 +279,7 @@ impl Component for LanguageModal {
 
                                         if selected {
                                             <span class="item-inline">
-                                                <span class="icon check" />
+                                                <span class="icon check" aria-hidden="true" />
                                             </span>
                                         }
 

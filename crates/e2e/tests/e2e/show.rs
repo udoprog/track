@@ -240,6 +240,13 @@ pub async fn settings_line_up_their_controls(driver: &mut TestDriver, _: &mut Tr
         )
         .await?;
 
+    // Each row is a group named by its label.
+    let row = driver.find_first(".modal .form-row[role=group]").await?;
+    let label = driver
+        .find_one_by(&format!("#{}", row.attr("aria-labelledby").await?))
+        .await?;
+    ensure!(label.text().await? == "Language");
+
     let mut lefts = Vec::new();
 
     for control in driver.find_all(By::Css(".modal .form-control")).await? {

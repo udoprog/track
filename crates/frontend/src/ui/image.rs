@@ -90,7 +90,7 @@ impl Component for Image {
         match self.state {
             State::Loading => html! {
                 <image {class} style={props.style.clone()} onclick={props.onclick.clone()} title={props.title.clone()}>
-                    <span class="icon arrow-path spin" />
+                    <span class="icon arrow-path spin" aria-hidden="true" />
                 </image>
             },
             State::Loaded(ref src) => html! {
@@ -100,12 +100,12 @@ impl Component for Image {
             },
             State::Error => html! {
                 <image {class} style={props.style.clone()} onclick={props.onclick.clone()} title={props.title.clone()}>
-                    <span class="icon exclamation-triangle" />
+                    <span class="icon exclamation-triangle" aria-hidden="true" />
                 </image>
             },
             State::Empty if props.placeholder => html! {
                 <image {class} style={props.style.clone()} onclick={props.onclick.clone()} title={props.title.clone()}>
-                    <span class={classes!("icon", props.placeholder_icon.clone())} />
+                    <span class={classes!("icon", props.placeholder_icon.clone())} aria-hidden="true" />
                 </image>
             },
             _ => html!(),

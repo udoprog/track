@@ -1,4 +1,8 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use yew::prelude::*;
+
+static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
@@ -10,12 +14,17 @@ pub(crate) struct Props {
 
 /// One setting in a `.form-rows` grid: its label beside the control, with an
 /// optional hint under the control. The labels of a grid share one column, and
-/// on phones each label sits above its control.
+/// on phones each label sits above its control. The row is a group named by
+/// its label, so the control inside is announced with it.
 #[function_component]
 pub(crate) fn FormRow(props: &Props) -> Html {
+    let id = use_memo((), |_| {
+        format!("form-label-{}", NEXT_ID.fetch_add(1, Ordering::Relaxed))
+    });
+
     html! {
-        <div class="form-row">
-            <span class="form-label">{props.label.clone()}</span>
+        <div class="form-row" role="group" aria-labelledby={(*id).clone()}>
+            <span class="form-label" id={(*id).clone()}>{props.label.clone()}</span>
 
             <div class="form-control">
                 <div class="form-inputs">

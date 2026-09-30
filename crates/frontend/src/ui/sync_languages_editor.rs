@@ -85,7 +85,7 @@ impl Component for SyncLanguagesEditor {
                                     if let Some(flag) = flag {
                                         <span class={classes!("item-inline", "flag", flag)} />
                                     } else {
-                                        <span class="item-inline"><span class="icon language" /></span>
+                                        <span class="item-inline"><span class="icon language" aria-hidden="true" /></span>
                                     }
 
                                     <Button icon="trash" variant={Variant::Danger} title="Remove language" text="Remove" onclick={on_remove} />

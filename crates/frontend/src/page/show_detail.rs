@@ -381,7 +381,7 @@ impl Component for ShowDetail {
             ShowState::Missing => {
                 return html! {
                     <div class="box info">
-                        <span class="icon exclamation-triangle" />
+                        <span class="icon exclamation-triangle" aria-hidden="true" />
                         <span>{"No such show"}</span>
                     </div>
                 };
@@ -2063,11 +2063,11 @@ impl ShowDetail {
                             // needs no marker there; on phones it opens the list.
                             if clickable && active {
                                 <span class="item-inline mobile-only">
-                                    <span class="icon chevron-up-down" />
+                                    <span class="icon chevron-up-down" aria-hidden="true" />
                                 </span>
                             } else if clickable {
                                 <span class="item-inline">
-                                    <span class="icon chevron-right" />
+                                    <span class="icon chevron-right" aria-hidden="true" />
                                 </span>
                             }
                         </div>
@@ -2158,7 +2158,7 @@ impl ShowDetail {
                             <div class="input-group">
                                 if let Some((ref label, _)) = pending_episode {
                                     <a class="button primary" href={format!("#{label}")} title="Jump to pending episode">
-                                        <span class="icon chevron-down" />
+                                        <span class="icon chevron-down" aria-hidden="true" />
                                     </a>
                                 }
 
@@ -2173,21 +2173,21 @@ impl ShowDetail {
 
                             if let Some((label, on_remove_next)) = pending_episode {
                                 <a class="button primary" href={format!("#{label}")} onclick={toggle_menu} title="Jump to pending episode">
-                                    <span class="icon chevron-down" />
+                                    <span class="icon chevron-down" aria-hidden="true" />
                                     <span class="mobile-only">{format!("Jump to next episode {label}")}</span>
                                 </a>
 
                                 <Button icon="bookmark" variant={Variant::Danger} title="Remove pending" text={format!("Clear next episode {label}")} onclick={on_remove_next} />
                             } else if let Some((label, episode_id)) = next_unwatched {
                                 <MarkTimeMenu class="mobile-has-text" title="Make next episode" prompt={format!("Pending {label} since when?")} preset={next_episode_preset.clone()} on_confirm={link.callback(move |mark_time| Msg::OnWatchNext(episode_id, mark_time))}>
-                                    <span class="icon bookmark-slash" />
+                                    <span class="icon bookmark-slash" aria-hidden="true" />
                                     <span class="mobile-only">{label}</span>
                                 </MarkTimeMenu>
                             }
 
                             if watched_count < total {
                                 <MarkTimeMenu class="success mobile-has-text" title="Mark remaining episodes as watched" prompt="When did you watch the remaining episodes?" preset={Some(remaining_preset.clone())} on_confirm={watch_remaining}>
-                                    <span class="icon check" />
+                                    <span class="icon check" aria-hidden="true" />
                                     <span class="mobile-only">{"Remaining"}</span>
                                 </MarkTimeMenu>
                             }
@@ -2268,7 +2268,7 @@ impl ShowDetail {
                                     <Button icon="bookmark" variant={Variant::Primary} title="Clear next episode" onclick={on_remove_next} />
                                 } else {
                                     <MarkTimeMenu icon="bookmark" title="Mark next" prompt={format!("When do you want to queue {}?", episode.code())} preset={preset.clone()} on_confirm={on_next_episode}>
-                                        <span class="icon bookmark" />
+                                        <span class="icon bookmark" aria-hidden="true" />
                                     </MarkTimeMenu>
                                 }
 
@@ -2311,15 +2311,15 @@ impl ShowDetail {
                         <indicator title="Watch status">
                         if episode.pending.is_some() {
                             <span class="item-inline" title="Next episode">
-                                <span class="icon primary exclamation-circle" />
+                                <span class="icon primary exclamation-circle" aria-hidden="true" />
                             </span>
                         } else if !watched.is_empty() {
                             <span class="item-inline" title="Watched">
-                                <span class="icon primary check-circle" />
+                                <span class="icon primary check-circle" aria-hidden="true" />
                             </span>
                         } else {
                             <span class="item-inline" title="Never watched">
-                                <span class="icon secondary x-circle" />
+                                <span class="icon secondary x-circle" aria-hidden="true" />
                             </span>
                         }
 

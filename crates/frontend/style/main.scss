@@ -48,6 +48,21 @@ p {
     user-select: none;
 }
 
+// Read by screen readers and agents, not drawn.
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+// Holds the toast; takes no room of its own.
+.toast-region {
+    display: contents;
+}
+
 #application {
     // Above the fixed `.background`.
     position: relative;

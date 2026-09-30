@@ -186,24 +186,26 @@ impl Component for App {
                 <ContextProvider<OutlineControl> context={self.outline_control.clone()}>
                     <div id="application">
                         if let Some(ref error) = self.error {
-                            <div id="error">
+                            <div id="error" role="alert">
                                 <ErrorBox error={error.clone()} onclearerror={self.onclearerror.clone()} />
                             </div>
                         }
 
                         <Toolbar site_title={self.site_title.clone()} connected={self.ws_state.is_open()} section={Section::of(&self.router_state.route)} />
 
-                        <div id="content">
+                        <main id="content">
                             <div id="page">
                                 { self.view_page(ctx) }
                             </div>
 
                             <Outline entries={self.outline_entries.clone()} />
-                        </div>
+                        </main>
 
+                        // Always present, so screen readers announce what appears in it.
+                        <div class="toast-region" role="status">
                         if let Some(undo) = &self.undo {
-                            <div class="toast" role="status">
-                                <span class="icon success check-circle" />
+                            <div class="toast">
+                                <span class="icon success check-circle" aria-hidden="true" />
 
                                 <span class="fill">{match undo.kind {
                                     api::WatchedKind::Episode { .. } => "Episode marked as watched",
@@ -214,6 +216,7 @@ impl Component for App {
                                 <Button icon="x-mark" class="toast-dismiss" title="Dismiss" onclick={ctx.link().callback(|_| Msg::DismissUndo)} />
                             </div>
                         }
+                        </div>
                     </div>
                 </ContextProvider<OutlineControl>>
                 </ContextProvider<Background>>
@@ -532,16 +535,16 @@ fn Toolbar(props: &ToolbarProps) -> Html {
     };
 
     html! {
-        <div id="toolbar" class="toolbar toolbar-padding">
+        <header id="toolbar" class="toolbar toolbar-padding">
             <div class="row text-gap">
                 <Link to={Route::Dashboard(DashboardQuery::default())} class="site-title" onclick={close_menu.clone()}>{ props.site_title.clone() }</Link>
             </div>
 
             <Button class="toolbar-toggle" icon={if *menu_open { "x-mark" } else { "bars-3" }} title="Navigation" expanded={Some(*menu_open)} onclick={on_menu_toggle} />
 
-            <div class={classes!("toolbar-dropdown", (!*menu_open).then_some("desktop-only"))}>
-                <div class="toolbar-item mobile-has-text" title={connection_title}>
-                    <span class={classes!("icon", connection_style, connection_icon)} />
+            <nav class={classes!("toolbar-dropdown", (!*menu_open).then_some("desktop-only"))} aria-label="Main">
+                <div class="toolbar-item mobile-has-text" title={connection_title} role="img" aria-label={connection_title}>
+                    <span class={classes!("icon", connection_style, connection_icon)} aria-hidden="true" />
                     <span class="mobile-only">{connection_title}</span>
                 </div>
 
@@ -574,7 +577,7 @@ fn Toolbar(props: &ToolbarProps) -> Html {
                     <span class="icon cog-6-tooth" aria-hidden="true" />
                     <span>{"Settings"}</span>
                 </Link>
-            </div>
-        </div>
+            </nav>
+        </header>
     }
 }

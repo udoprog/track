@@ -280,7 +280,7 @@ impl FiltersEditor {
                 if v.is_empty() {
                     html! {
                         <span class="input-text has-text">
-                            <span class="icon globe-alt" />
+                            <span class="icon globe-alt" aria-hidden="true" />
                             <span>{"All countries"}</span>
                         </span>
                     }

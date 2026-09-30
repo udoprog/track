@@ -90,8 +90,10 @@ impl Component for Dashboard {
 
         html! {
             <>
+                <h1 class="visually-hidden">{"Dashboard"}</h1>
+
                 <div class="page-tabs">
-                    <nav class="tabs">
+                    <nav class="tabs" aria-label="Dashboard views">
                         { tab(DashboardView::WatchNext, "forward", "What's Next") }
                         { tab(DashboardView::Upcoming, "calendar-days", "Upcoming") }
                         { tab(DashboardView::Schedule, "calendar", "Schedule") }

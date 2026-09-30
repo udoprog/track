@@ -391,7 +391,7 @@ impl ReleaseModal {
                 if !is_custom {
                     <span class="row text-gap">
                         <span class="item-inline danger">
-                            <span class="icon exclamation-triangle" />
+                            <span class="icon exclamation-triangle" aria-hidden="true" />
                         </span>
 
                         {warning}
@@ -555,7 +555,7 @@ fn indicator(on: bool) -> Html {
 
     html! {
         <span class={classes!("item-inline", (!on).then_some("text-muted"))} title={title}>
-            <span class={classes!("icon", icon)} />
+            <span class={classes!("icon", icon)} aria-hidden="true" />
         </span>
     }
 }

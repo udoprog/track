@@ -246,7 +246,7 @@ impl Component for MovieDetail {
             MovieState::Missing => {
                 return html! {
                     <div class="box info">
-                        <span class="icon exclamation-triangle" />
+                        <span class="icon exclamation-triangle" aria-hidden="true" />
                         <span>{"No such movie"}</span>
                     </div>
                 };
@@ -1201,15 +1201,15 @@ impl MovieDetail {
                                 <indicator title="Release date">
                                     if movie.pending.is_some() {
                                         <span class="item-inline" title="Next movie">
-                                            <span class="icon primary exclamation-circle" />
+                                            <span class="icon primary exclamation-circle" aria-hidden="true" />
                                         </span>
                                     } else if !self.watched.is_empty() {
                                         <span class="item-inline" title="Watched">
-                                            <span class="icon primary check-circle" />
+                                            <span class="icon primary check-circle" aria-hidden="true" />
                                         </span>
                                     } else {
                                         <span class="item-inline" title="Never watched">
-                                            <span class="icon secondary x-circle" />
+                                            <span class="icon secondary x-circle" aria-hidden="true" />
                                         </span>
                                     }
 
@@ -1248,7 +1248,7 @@ impl MovieDetail {
                                         <Button icon="bookmark" variant={Variant::Primary} title="Next movie" text="Next movie" onclick={on_remove_next} />
                                     } else {
                                         <MarkTimeMenu class="has-text" title="Not next movie" prompt="When do you want to watch the movie?" preset={release_preset.clone()} on_confirm={link.callback(Msg::OnWatchNext)}>
-                                            <span class="icon bookmark-slash" />
+                                            <span class="icon bookmark-slash" aria-hidden="true" />
                                             <span class="mobile-only">{"Not next movie"}</span>
                                         </MarkTimeMenu>
                                     }

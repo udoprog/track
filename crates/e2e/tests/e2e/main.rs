@@ -180,7 +180,7 @@ yew_e2e::harness! {
     dashboard::{fills_rows_with_relative_dates(seeded), labels_its_filters, keeps_view_options_in_a_menu, buttons_expose_their_state, mobile_cards_always_have_a_picture(seeded), schedule_names_its_days, upcoming_is_an_agenda, marks_watched_in_one_click(seeded), marks_watched_at_a_chosen_time(seeded)},
     media::{shows_a_poster_grid(seeded), toggle_marks_are_icon_sized, sort_stays_readable_at_tablet_width},
     movie::{puts_the_cast_beside_the_poster(movie), phone_release_line_stays_together(movie)},
-    navigation::{opens_every_page, tab_shows_a_focus_ring, navigation_is_links(seeded), page_scrolls_the_window, toolbar_icons_are_small, every_button_has_a_title(seeded)},
+    navigation::{opens_every_page, tab_shows_a_focus_ring, navigation_is_links(seeded), pages_have_landmarks_and_one_heading, page_scrolls_the_window, toolbar_icons_are_small, every_button_has_a_title(seeded)},
     people::{lists_people_by_credits(seeded), shows_no_count_while_loading(seeded), shows_a_silhouette_without_a_photo(seeded), phone_person_page_keeps_the_photo_shape(seeded), known_for_lists_each_title_once(seeded)},
     queue::{lists_tasks_in_columns, keeps_rows_in_place(seeded), follows_the_next_task(crowded), shows_failed_tasks(seeded)},
     search::{focuses_the_input},

@@ -772,7 +772,7 @@ impl WatchNext {
 
                         <div class="row">
                             <MarkTimeMenu class="ghost" title="Move pending" icon="bookmark" prompt={format!("When do you want to queue this {}?", pending_kind.title())} preset={preset.clone()} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkPending(pending_kind, mark_time))}>
-                                <span class="icon bookmark" />
+                                <span class="icon bookmark" aria-hidden="true" />
                             </MarkTimeMenu>
 
                             if let Some((show, episode)) = skip_ids {

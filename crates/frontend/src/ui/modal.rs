@@ -78,7 +78,7 @@ pub(crate) fn Modal(props: &Props) -> Html {
                         <h2 class="row text-gap" id={(*title_id).clone()}>
                             if let Some(ref icon) = props.icon {
                                 <span class="item-inline" aria-hidden="true">
-                                    <span class={classes!("icon", icon)} />
+                                    <span class={classes!("icon", icon)} aria-hidden="true" />
                                 </span>
                             }
 

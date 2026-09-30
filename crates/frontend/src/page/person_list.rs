@@ -168,8 +168,8 @@ impl Component for PersonList {
 
                 <div class="list-controls">
                     <div class="search-field">
-                        <span class="icon magnifying-glass" />
-                        <input type="text" placeholder="Filter" value={self.filter.clone()} oninput={on_filter} />
+                        <span class="icon magnifying-glass" aria-hidden="true" />
+                        <input type="text" placeholder="Filter" aria-label="Filter people" value={self.filter.clone()} oninput={on_filter} />
 
                         if !self.filter.is_empty() {
                             <Button icon="x-mark" title="Clear filter" class="ghost" onclick={link.callback(|_| Msg::Filter(String::new()))} />
@@ -178,7 +178,7 @@ impl Component for PersonList {
 
                     <div class="chips">
                         <label class="chip-select" title="Sort by">
-                            <span class="icon arrows-up-down" />
+                            <span class="icon arrows-up-down" aria-hidden="true" />
 
                             <select onchange={on_sort}>
                                 <option value="name" selected={matches!(self.sort, PersonSort::Name)}>
@@ -200,7 +200,7 @@ impl Component for PersonList {
 
                 if !self.loaded || self.list_req.is_pending() {
                     <div class="row center">
-                        <span class="item-inline-more"><span class="icon arrow-path spin" /></span>
+                        <span class="item-inline-more"><span class="icon arrow-path spin" aria-hidden="true" /></span>
                     </div>
                 } else if persons.len() == 0 {
                     <div class="row center">

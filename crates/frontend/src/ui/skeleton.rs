@@ -15,6 +15,6 @@ pub(crate) struct Props {
 #[function_component]
 pub(crate) fn Skeleton(props: &Props) -> Html {
     html! {
-        <div class={classes!("skeleton", props.class.clone())} style={props.style.clone()} />
+        <div class={classes!("skeleton", props.class.clone())} style={props.style.clone()} aria-hidden="true" />
     }
 }

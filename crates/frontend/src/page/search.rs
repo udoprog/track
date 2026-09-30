@@ -158,8 +158,8 @@ impl Component for Search {
 
                 <div class="list-controls">
                     <div class="search-field">
-                        <span class="icon magnifying-glass" />
-                        <input type="text" placeholder={SEARCH} ref={self.input.clone()} value={self.query.clone()} oninput={on_input} onkeydown={on_keydown} />
+                        <span class="icon magnifying-glass" aria-hidden="true" />
+                        <input type="text" placeholder={SEARCH} aria-label="Search for shows and movies" ref={self.input.clone()} value={self.query.clone()} oninput={on_input} onkeydown={on_keydown} />
                         <Button icon="arrow-right" title="Search remotes" variant={Variant::Primary} onclick={on_submit} />
                     </div>
 
@@ -348,7 +348,7 @@ impl Search {
 
                 if self.loading {
                     <div class="row center">
-                        <span class="item-inline-more"><span class="icon arrow-path spin" /></span>
+                        <span class="item-inline-more"><span class="icon arrow-path spin" aria-hidden="true" /></span>
                     </div>
                 } else if self.end {
                     <div class="row center">
@@ -380,7 +380,7 @@ impl Search {
         let heading = html! {
             <>
                 <span class="item-inline" title="Show">
-                    <span class="icon tv" />
+                    <span class="icon tv" aria-hidden="true" />
                 </span>
 
                 <span class="item-title">{r.title.as_deref().unwrap_or("Untitled Show")}</span>
@@ -447,7 +447,7 @@ impl Search {
         let heading = html! {
             <>
                 <span class="item-inline" title="Movie">
-                    <span class="icon film" />
+                    <span class="icon film" aria-hidden="true" />
                 </span>
 
                 <span class="item-title">{r.title.as_deref().unwrap_or("Untitled Movie")}</span>

@@ -143,6 +143,8 @@ impl Component for Settings {
 
         html! {
             <>
+                <h1>{"Settings"}</h1>
+
                 <div class="desktop-row mobile-column align-top">
                     <div class="column fill">
                         <h4>{"Appearance"}</h4>
@@ -180,7 +182,7 @@ impl Component for Settings {
 
                             if !tz_is_valid(&self.config.timezone) {
                                 <span>
-                                    <span class="item-inline"><span class="icon exclamation-triangle" /></span>
+                                    <span class="item-inline"><span class="icon exclamation-triangle" aria-hidden="true" /></span>
                                     {"Unknown timezone"}
                                 </span>
                             }

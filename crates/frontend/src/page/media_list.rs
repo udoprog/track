@@ -242,8 +242,8 @@ impl Component for MediaList {
 
                 <div class="list-controls">
                     <div class="search-field">
-                        <span class="icon magnifying-glass" />
-                        <input type="text" placeholder="Filter" value={self.filter.clone()} oninput={on_filter} />
+                        <span class="icon magnifying-glass" aria-hidden="true" />
+                        <input type="text" placeholder="Filter" aria-label="Filter media" value={self.filter.clone()} oninput={on_filter} />
 
                         if !self.filter.is_empty() {
                             <Button icon="x-mark" title="Clear filter" class="ghost" onclick={link.callback(|_| Msg::Filter(String::new()))} />
@@ -252,7 +252,7 @@ impl Component for MediaList {
 
                     <div class="chips">
                         <label class="chip-select" title="Sort by">
-                            <span class="icon arrows-up-down" />
+                            <span class="icon arrows-up-down" aria-hidden="true" />
 
                             <select onchange={on_sort} value={sort_value}>
                                 <option value="title" selected={matches!(self.sort, SortField::Title)}>
@@ -282,7 +282,7 @@ impl Component for MediaList {
 
                 if self.list_req.is_pending() {
                     <div class="row center">
-                        <span class="item-inline-more"><span class="icon arrow-path spin" /></span>
+                        <span class="item-inline-more"><span class="icon arrow-path spin" aria-hidden="true" /></span>
                     </div>
                 } else if items.len() == 0 {
                     <div class="row center">
@@ -623,7 +623,7 @@ impl MediaList {
 
                     if m.last_watched_at.is_some() {
                         <span class="media-badge" title="Watched">
-                            <span class="icon sm check" />
+                            <span class="icon sm check" aria-hidden="true" />
                         </span>
                     }
                 </Link>

@@ -233,7 +233,7 @@ impl Component for ContextMenu {
                         <div class="context-menu-header">
                             if let Some(ref icon) = props.icon {
                                 <span class="item-inline" aria-hidden="true">
-                                    <span class={classes!("icon", icon)} />
+                                    <span class={classes!("icon", icon)} aria-hidden="true" />
                                 </span>
                             }
 

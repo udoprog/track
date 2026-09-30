@@ -421,7 +421,7 @@ impl Queue {
 
         html! {
             <div class={classes!("queue-now", state)} data-test="queue-now">
-                <span class="queue-now-badge"><span class={classes!("icon", icon)} /></span>
+                <span class="queue-now-badge"><span class={classes!("icon", icon)} aria-hidden="true" /></span>
 
                 <div class="queue-now-text">
                     <span class="queue-now-caption">{caption}</span>

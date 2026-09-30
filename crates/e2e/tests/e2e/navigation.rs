@@ -198,3 +198,42 @@ pub async fn navigation_is_links(driver: &mut TestDriver, _: &mut Track) -> Resu
 
     only_buttons_and_links_click(driver).await
 }
+
+/// Every page has the landmarks and one heading that name it, for screen
+/// readers and agents finding their way around.
+pub async fn pages_have_landmarks_and_one_heading(
+    driver: &mut TestDriver,
+    _: &mut Track,
+) -> Result<()> {
+    for page in ["Dashboard", "Media", "People", "Queue", "Settings"] {
+        driver
+            .find_one_by(&format!("#toolbar a[title={page}]"))
+            .await?
+            .click()
+            .await?;
+        driver
+            .wait_texts("#toolbar a[aria-current=page]", [page])
+            .await?;
+
+        driver
+            .wait_until(format_args!("{page} to have one heading"), async || {
+                Ok(driver.count("h1").await? == 1)
+            })
+            .await?;
+
+        ensure!(
+            driver.count("main").await? == 1,
+            "{page} has no single main"
+        );
+        ensure!(
+            driver.count("header#toolbar").await? == 1,
+            "{page} has no header"
+        );
+        ensure!(
+            driver.count("nav[aria-label=Main]").await? == 1,
+            "{page} has no main navigation"
+        );
+    }
+
+    Ok(())
+}

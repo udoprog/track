@@ -22,7 +22,7 @@ pub(crate) struct HandleProps {
 pub(crate) fn DragHandle(props: &HandleProps) -> Html {
     html! {
         <span class="drag-handle" data-index={props.index.to_string()} tabindex="0" role="button" title="Drag to reorder" aria-label="Drag to reorder">
-            <span class="icon bars-2" />
+            <span class="icon bars-2" aria-hidden="true" />
         </span>
     }
 }
