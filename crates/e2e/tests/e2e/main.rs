@@ -1,5 +1,5 @@
 //! Browser tests for track. Every test gets a server of its own, with a fresh
-//! database and image cache in the run's sandbox, serving the frontend that
+//! database and image cache in a temporary directory, serving the frontend that
 //! yew-e2e builds for the run. A fresh database has no API keys, so nothing is
 //! synced from the remotes.
 //!
@@ -19,9 +19,8 @@ mod search;
 mod settings;
 mod show;
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::ExitCode;
-use std::sync::OnceLock;
 
 use anyhow::{Context, Result, ensure};
 use tempfile::TempDir;
@@ -32,8 +31,6 @@ use tracing_subscriber::filter::{LevelFilter, Targets};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use yew_e2e::{Config, Fixture};
-
-static SANDBOX: OnceLock<PathBuf> = OnceLock::new();
 
 /// Media for the tests that ask for it with `(seeded)`.
 const SEED: &str = include_str!("seed.sql");
@@ -92,14 +89,8 @@ impl Fixture for Track {
             .try_init();
     }
 
-    fn enter_sandbox(root: &Path) -> Result<()> {
-        _ = SANDBOX.set(root.to_owned());
-        Ok(())
-    }
-
     async fn start(setup: Setup) -> Result<Self> {
-        let sandbox = SANDBOX.get().context("the sandbox was not entered")?;
-        let dir = TempDir::new_in(sandbox)?;
+        let dir = TempDir::new()?;
 
         if setup.seeded
             || setup.crowded
