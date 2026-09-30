@@ -62,8 +62,7 @@ $icon-size-sm: 14px;
 $item-inline-padding: 4px;
 
 $sidebar-width: 240px;
-// The sticky toolbar: one row of controls plus its padding.
+// The sticky toolbar on wide screens: one row of controls plus its padding.
 $toolbar-height: $input-height + $gap * 2;
-$toolbar-height-touch: $input-height-touch + $gap * 2;
 $bold-weight: 500;
 $input-icon-height: 100%;

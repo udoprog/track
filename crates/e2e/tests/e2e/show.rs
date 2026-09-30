@@ -72,3 +72,19 @@ pub async fn seasons_count_watched_episodes(driver: &mut TestDriver, _: &mut Tra
         })
         .await
 }
+
+/// The episode rail beside the show page gives way on a phone.
+pub async fn phones_have_no_episode_rail(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_show(driver).await?;
+    driver.find_one_by("#outline.visible").await?;
+
+    driver.set_window_size(400, 850).await?;
+
+    let outline = driver.find_one_by("#outline").await?;
+
+    driver
+        .wait_until("the episode rail to hide", async || {
+            Ok(!outline.visible().await?)
+        })
+        .await
+}

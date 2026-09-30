@@ -1,6 +1,5 @@
-@use 'vars' as v;
-
 @use 'grid' as g;
+@use 'vars' as v;
 
 #outline {
     display: none;
@@ -8,11 +7,6 @@
     top: v.$toolbar-height;
     align-self: start;
     height: calc(100vh - #{v.$toolbar-height});
-
-    @include g.on-mobile {
-        top: v.$toolbar-height-touch;
-        height: calc(100vh - #{v.$toolbar-height-touch});
-    }
     touch-action: none;
     user-select: none;
     cursor: pointer;
@@ -21,6 +15,11 @@
     &.visible {
         display: grid;
         grid-template-rows: 1fr;
+
+        // No room beside the page on a phone.
+        @include g.on-mobile {
+            display: none;
+        }
     }
 
     &-mark {
