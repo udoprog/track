@@ -204,13 +204,31 @@ impl TaskQueue {
         };
 
         let emitted = scheduled.to_api(Instant::now());
-        inner.pending.push_back(scheduled);
+
+        // An immediate task (such as the first sync of a newly tracked show)
+        // runs next, ahead of everything already waiting.
+        if immediate {
+            inner.pending.push_front(scheduled);
+        } else {
+            inner.pending.push_back(scheduled);
+        }
 
         broadcast.emit(
             ChannelId::NONE,
-            api::AppEventKind::TaskAdded { task: emitted },
+            api::AppEventKind::TaskAdded {
+                task: emitted.clone(),
+            },
             "task queue task added",
         );
+
+        // Listeners place added tasks last; say that this one goes first.
+        if immediate {
+            broadcast.emit(
+                ChannelId::NONE,
+                api::AppEventKind::TaskBumped { task: emitted },
+                "task queue task queued first",
+            );
+        }
 
         self.notify.notify_one();
         true
@@ -576,6 +594,32 @@ mod tests {
         assert_eq!(list.completed.len(), 1);
         assert!(list.completed[0].error.is_some());
         running.stop().await;
+    }
+
+    #[tokio::test]
+    async fn immediate_tasks_run_before_waiting_ones() {
+        let queue = TaskQueue::new();
+        let (tx, _) = broadcast::channel(16);
+        let broadcast = Broadcaster::new(tx);
+
+        let waiting = api::TaskKind::SyncShow {
+            show_id: api::ShowId::random(),
+            title: Some("Waiting".into()),
+        };
+        let tracked = api::TaskKind::SyncShow {
+            show_id: api::ShowId::random(),
+            title: Some("Just tracked".into()),
+        };
+
+        assert!(queue.push(waiting, false, &broadcast).await);
+        assert!(queue.push(tracked, true, &broadcast).await);
+
+        let list = queue.list().await;
+        assert_eq!(list.pending.len(), 2);
+        assert!(matches!(
+            &list.pending[0].kind,
+            api::TaskKind::SyncShow { title: Some(title), .. } if title == "Just tracked"
+        ));
     }
 
     #[tokio::test]
