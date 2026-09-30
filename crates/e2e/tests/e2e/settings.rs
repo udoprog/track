@@ -139,6 +139,33 @@ pub async fn settings_are_labelled_rows(driver: &mut TestDriver, _: &mut Track) 
     Ok(())
 }
 
+/// Tab completes a partly typed time zone, and a second Tab moves on.
+pub async fn tab_completes_the_time_zone(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_settings(driver).await?;
+
+    let zone = driver.find_one_by("input[title='Time zone']").await?;
+    zone.clear().await?;
+    zone.send_keys("europe/sto").await?;
+    zone.send_keys("\u{E004}").await?;
+
+    driver
+        .wait_until("the zone to complete", async || {
+            Ok(zone.value().await? == "Europe/Stockholm")
+        })
+        .await?;
+
+    let focused = driver
+        .webdriver()
+        .execute("return document.activeElement.title;", Vec::new())
+        .await?
+        .convert::<String>()?;
+    ensure!(
+        focused == "Time zone",
+        "focus left the field for {focused:?}"
+    );
+    Ok(())
+}
+
 async fn open_settings(driver: &TestDriver) -> Result<()> {
     driver
         .find_one_by(".toolbar-item[title=Settings]")

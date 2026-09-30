@@ -126,6 +126,23 @@ impl Component for Settings {
             Msg::PageTitleChanged(input.value())
         });
 
+        // Tab takes the best matching zone, as a shell completes a name; the
+        // browser's own suggestion list only takes the arrow keys.
+        let on_timezone_key = link.batch_callback(|e: KeyboardEvent| {
+            if e.key() != "Tab" || e.shift_key() {
+                return None;
+            }
+
+            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+            let typed = input.value();
+            let zone = complete_timezone(&typed).filter(|zone| *zone != typed)?;
+
+            // Stay in the field so the completion is seen; Tab again moves on.
+            e.prevent_default();
+            input.set_value(zone);
+            Some(Msg::TimezoneChanged(zone.to_owned()))
+        });
+
         let on_timezone = link.callback(|e: Event| {
             let input: web_sys::HtmlInputElement = e.target_unchecked_into();
             Msg::TimezoneChanged(input.value())
@@ -172,7 +189,7 @@ impl Component for Settings {
 
                             <FormRow label="Time zone" hint="Leave empty to use the browser's time zone.">
                                 { self.field_slot("", html! {
-                                    <input class="input-text fill" type="text" title="Time zone" placeholder="Browser time zone" value={self.config.timezone.clone()} onchange={on_timezone} list="tz-datalist" autocomplete="off" />
+                                    <input class="input-text fill" type="text" title="Time zone" placeholder="Browser time zone" value={self.config.timezone.clone()} onchange={on_timezone} onkeydown={on_timezone_key} list="tz-datalist" autocomplete="off" />
                                 }) }
 
                                 <datalist id="tz-datalist">
@@ -527,4 +544,22 @@ impl Settings {
             .on_packet(ctx.link().callback(Msg::ConfigLoaded))
             .send();
     }
+}
+
+/// The time zone best matching what was typed, ignoring case: one whose name
+/// starts with it, else one whose city starts with it, else one containing it.
+fn complete_timezone(typed: &str) -> Option<&'static str> {
+    let typed = typed.trim().to_lowercase();
+
+    if typed.is_empty() {
+        return None;
+    }
+
+    let zones = jiff_tzdb::available;
+    let city = |name: &str| name.rsplit('/').next().unwrap_or(name).to_lowercase();
+
+    zones()
+        .find(|name| name.to_lowercase().starts_with(&typed))
+        .or_else(|| zones().find(|name| city(name).starts_with(&typed)))
+        .or_else(|| zones().find(|name| name.to_lowercase().contains(&typed)))
 }
