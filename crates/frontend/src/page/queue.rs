@@ -415,7 +415,7 @@ impl Queue {
                 if let Some((entry, since)) = running {
                     <span class="task-icon"><span class="icon arrow-path spin" /></span>
                     { view_task_cells(&entry.kind, self.on_navigate(ctx, &entry.kind), None) }
-                    <span class="task-time">{ since.map(|since| elapsed_label(since, self.now)).unwrap_or_default() }</span>
+                    <span class="task-time">{ running_label(since, self.now) }</span>
                 } else if let Some((entry, run_at)) = next {
                     <span class="task-icon"><span class="icon clock" /></span>
                     { view_task_cells(&entry.kind, self.on_navigate(ctx, &entry.kind), None) }
@@ -537,7 +537,7 @@ impl Queue {
             State::Running { since } => (
                 "running",
                 classes!("icon", "arrow-path", "spin"),
-                since.map(|since| elapsed_label(since, self.now)),
+                since.and_then(|since| elapsed_label(since, self.now)),
                 String::from("now"),
             ),
             State::Done(task) => (
@@ -679,21 +679,30 @@ fn humanize_count(secs: u64) -> (u64, &'static str) {
     }
 }
 
-/// How long a task ran, e.g. "0.4s", "12s", "3m 4s" or "1h 2m".
+/// How long a task ran, e.g. "<0.1s", "0.4s", "12s", "3m 4s" or "1h 2m".
 fn duration_label(millis: i64) -> String {
-    if millis < 10_000 {
+    if millis < 50 {
+        String::from("<0.1s")
+    } else if millis < 10_000 {
         format!("{:.1}s", millis.max(0) as f64 / 1000.0)
     } else {
         seconds_label(millis as u64 / 1000)
     }
 }
 
-/// How long a running task has run so far, in whole seconds.
-fn elapsed_label(since: api::Timestamp, now: api::Timestamp) -> String {
-    seconds_label(
-        now.checked_duration_since(since)
-            .map_or(0, |elapsed| elapsed.as_secs()),
-    )
+/// How long a running task has run so far, in whole seconds, or `None` in its
+/// first second, where "0s" would read like a finished countdown.
+fn elapsed_label(since: api::Timestamp, now: api::Timestamp) -> Option<String> {
+    let secs = now.checked_duration_since(since)?.as_secs();
+    (secs > 0).then(|| seconds_label(secs))
+}
+
+/// What the Now strip says about the running task.
+fn running_label(since: Option<api::Timestamp>, now: api::Timestamp) -> String {
+    match since.and_then(|since| elapsed_label(since, now)) {
+        Some(elapsed) => format!("running for {elapsed}"),
+        None => String::from("running"),
+    }
 }
 
 fn seconds_label(secs: u64) -> String {
