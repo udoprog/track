@@ -2673,6 +2673,31 @@ pub struct MarkWatchedRequest {
 #[musli(crate = musli_core)]
 pub struct MarkWatchedResponse {
     pub watched: Watched,
+    /// What was pending before the watch moved it along, for undoing it.
+    pub pending_before: PendingBefore,
+}
+
+/// The pending entry a watch replaced; see [`UndoWatchedRequest`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub enum PendingBefore {
+    None,
+    Episode {
+        episode: EpisodeId,
+        timestamp: Timestamp,
+    },
+    Movie {
+        timestamp: Timestamp,
+    },
+}
+
+/// Remove a watch that was just marked and put back what was pending before.
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct UndoWatchedRequest {
+    pub id: WatchedId,
+    pub kind: WatchedKind,
+    pub pending_before: PendingBefore,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -3502,6 +3527,12 @@ api::define! {
     pub type RemoveWatched;
     impl Endpoint for RemoveWatched {
         impl Request for RemoveWatchedRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type UndoWatched;
+    impl Endpoint for UndoWatched {
+        impl Request for UndoWatchedRequest;
         type Response<'de> = Empty;
     }
 

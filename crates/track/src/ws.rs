@@ -679,6 +679,8 @@ impl WsHandler {
                     .context("Expected a request payload")?;
 
                 let now = api::Timestamp::now();
+                let pending_before = self.db.pending_before(req.kind).await?;
+
                 let watched = self
                     .db
                     .mark_watched(api::WatchedId::random(), req.kind, req.mark_time, now)
@@ -709,7 +711,10 @@ impl WsHandler {
                     "ws mark watched pending changed",
                 );
 
-                outgoing.write(api::MarkWatchedResponse { watched });
+                outgoing.write(api::MarkWatchedResponse {
+                    watched,
+                    pending_before,
+                });
             }
             api::Request::MarkWatchedRemaining => {
                 let req = incoming
@@ -754,6 +759,50 @@ impl WsHandler {
                     incoming.channel(),
                     api::AppEventKind::PendingChanged,
                     "ws remove watched pending changed",
+                );
+
+                outgoing.write(api::Empty);
+            }
+            api::Request::UndoWatched => {
+                let req = incoming
+                    .read::<api::UndoWatchedRequest>()
+                    .context("Expected a request payload")?;
+
+                self.db.remove_watched(req.id).await?;
+
+                match (req.kind, req.pending_before) {
+                    (
+                        api::WatchedKind::Episode { show, .. },
+                        api::PendingBefore::Episode { episode, timestamp },
+                    ) => {
+                        self.db
+                            .add_pending_episode(show, episode, timestamp)
+                            .await?;
+                    }
+                    (api::WatchedKind::Episode { show, .. }, _) => {
+                        self.db.remove_pending_episode(show).await?;
+                    }
+                    (
+                        api::WatchedKind::Movie { movie },
+                        api::PendingBefore::Movie { timestamp },
+                    ) => {
+                        self.db.add_pending_movie(movie, timestamp).await?;
+                    }
+                    (api::WatchedKind::Movie { .. }, _) => {}
+                }
+
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::WatchedChanged {
+                        event: req.kind.into_event(),
+                    },
+                    "ws undo watched changed",
+                );
+
+                self.broadcast.emit(
+                    incoming.channel(),
+                    api::AppEventKind::PendingChanged,
+                    "ws undo watched pending changed",
                 );
 
                 outgoing.write(api::Empty);

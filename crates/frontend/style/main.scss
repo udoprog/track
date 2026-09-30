@@ -104,6 +104,10 @@ p {
         justify-content: center;
     }
 
+    &.end {
+        justify-content: flex-end;
+    }
+
     &.align-top {
         align-items: start;
     }
@@ -1249,5 +1253,40 @@ pagination {
                 background-color: var(--accent-selected);
             }
         }
+    }
+}
+// A transient notice at the bottom of the viewport, such as the offer to undo
+// marking something watched.
+.toast {
+    position: fixed;
+    left: 50%;
+    bottom: v.$gap;
+    transform: translateX(-50%);
+    z-index: 300;
+
+    display: flex;
+    align-items: center;
+    gap: v.$gap-sm;
+    width: max-content;
+    max-width: calc(100vw - #{v.$gap * 2});
+    padding: v.$gap-xs v.$gap-xs v.$gap-xs v.$gap-sm;
+
+    background: v.$bg-panel;
+    border: 1px solid v.$border-input;
+    border-radius: v.$radius;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+    font-size: v.$font-sm;
+
+    animation: toast-in 0.2s ease-out;
+
+    .toast-dismiss {
+        background: transparent;
+    }
+}
+
+@keyframes toast-in {
+    from {
+        opacity: 0;
+        transform: translate(-50%, 8px);
     }
 }

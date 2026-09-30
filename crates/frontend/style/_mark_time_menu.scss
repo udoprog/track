@@ -96,3 +96,18 @@
         height: v.$input-height-touch;
     }
 }
+// The narrow trigger beside a quick mark button that opens the picker.
+.mark-time-more {
+    padding: 0 !important;
+    min-width: 20px;
+    justify-content: center;
+}
+
+// The instant the selection resolves to, read as a preview rather than links.
+.mark-time-resolved {
+    color: v.$text-muted;
+
+    * {
+        color: inherit;
+    }
+}

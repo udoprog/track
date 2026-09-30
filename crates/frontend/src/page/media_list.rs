@@ -379,7 +379,12 @@ impl MediaList {
                 Ok(true)
             }
             Msg::MarkWatchedDone(result) => {
-                result.context(Message::MarkingWatched)?;
+                let response = result
+                    .context(Message::MarkingWatched)?
+                    .decode()
+                    .context(Message::MarkingWatched)?;
+
+                self.background.offer_undo(&response);
 
                 if self.channel.id() != ws::ChannelId::NONE {
                     self.load(ctx);
@@ -624,7 +629,7 @@ impl MediaList {
 
         let preset = m
             .date
-            .map(|timestamp| TimePreset::at("clock", "Released", timestamp));
+            .map(|timestamp| TimePreset::at("calendar", "Released", timestamp));
 
         html! {
             <div class="desktop-row mobile-column align-top" {onmouseover}>
@@ -710,7 +715,7 @@ impl MediaList {
                         <div class="row">
                             <div class="row">
                                 if is_movie {
-                                    <MarkTimeMenu class="success" title="Mark watched" prompt={match primary_title { Some(title) => format!("When did you watch {}?", title), None => "When did you watch this movie?".to_string() }} {preset} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(id, mark_time))}>
+                                    <MarkTimeMenu quick=true class="success" title="Mark watched" prompt={match primary_title { Some(title) => format!("When did you watch {}?", title), None => "When did you watch this movie?".to_string() }} {preset} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(id, mark_time))}>
                                         <span class="icon check" />
                                     </MarkTimeMenu>
                                 }

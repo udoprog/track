@@ -95,6 +95,8 @@ pub(crate) enum Message {
     LoadingSeasonImages,
     #[display("Marking watched")]
     MarkingWatched,
+    #[display("Undoing watched")]
+    UndoingWatched,
     #[display("Moving watch entry")]
     MovingWatched,
     #[display("Skipping episode")]

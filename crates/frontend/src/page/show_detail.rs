@@ -910,10 +910,12 @@ impl ShowDetail {
                 Ok(true)
             }
             Msg::MarkWatchedDone(result) => {
-                result
+                let response = result
                     .context(Message::MarkingWatched)?
                     .decode()
                     .context(Message::MarkingWatched)?;
+
+                self.background.offer_undo(&response);
 
                 // Refresh season counts so the progress bars reflect the mark.
                 self.load_episodes(ctx);
@@ -2101,14 +2103,14 @@ impl ShowDetail {
             link.callback(move |_: MouseEvent| Msg::ToggleSeasonActionsExpanded(season_number));
 
         let next_episode_preset = next_unwatched.map(|(label, _)| {
-            TimePreset::when_aired("clock", "Aired", format!("When {label} aired"))
+            TimePreset::when_aired("calendar", "Aired", format!("When {label} aired"))
         });
 
         let remaining_description = format!(
             "When each individual episode in {} aired",
             season.season.long()
         );
-        let remaining_preset = TimePreset::when_aired("clock", "Aired", remaining_description);
+        let remaining_preset = TimePreset::when_aired("calendar", "Aired", remaining_description);
         let watch_remaining = link.callback({
             let season = season.season;
             move |mark_time| Msg::WatchRemaining(season, mark_time)
@@ -2218,7 +2220,7 @@ impl ShowDetail {
 
         let preset = episode
             .aired
-            .map(|timestamp| TimePreset::at("clock", "Air date", timestamp));
+            .map(|timestamp| TimePreset::at("calendar", "Air date", timestamp));
 
         html! {
             <div class={classes!("episode", (!watched.is_empty()).then_some("watched"))} id={episode.code()}>
@@ -2241,7 +2243,7 @@ impl ShowDetail {
                         </div>
 
                         <div class="input-group">
-                            <MarkTimeMenu class="success" icon="check" title="Mark watched" prompt={format!("When did you watch {}?", episode.code())} preset={preset.clone()} on_confirm={on_mark_confirm}>
+                            <MarkTimeMenu quick=true class="success" icon="check" title="Mark watched" prompt={format!("When did you watch {}?", episode.code())} preset={preset.clone()} on_confirm={on_mark_confirm}>
                                 <span class="icon check" />
                             </MarkTimeMenu>
 

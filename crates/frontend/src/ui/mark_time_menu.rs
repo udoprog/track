@@ -8,7 +8,7 @@ use yew::prelude::*;
 
 use api::TimeInfo;
 
-use crate::ui::{Button, ContextMenu, Variant};
+use crate::ui::{Button, ContextMenu};
 
 /// Which ring of the clock is being edited.
 #[derive(Clone, Copy, PartialEq)]
@@ -200,6 +200,10 @@ pub(crate) struct Props {
     /// An optional caller-supplied quick option shown alongside "Now".
     #[prop_or_default]
     pub(crate) preset: Option<TimePreset>,
+    /// The trigger confirms `Now` straight away, and a narrow button beside it
+    /// opens the popover for choosing another time.
+    #[prop_or_default]
+    pub(crate) quick: bool,
     pub(crate) on_confirm: Callback<api::MarkTime>,
 }
 
@@ -207,6 +211,7 @@ pub(crate) enum Msg {
     Open,
     Close,
     Confirm,
+    ConfirmNow,
     SetTime(TimeInfo),
     SelectPreset(Preset),
     PrevMonth,
@@ -357,6 +362,10 @@ impl Component for MarkTimeMenu {
                 self.context_open = false;
                 true
             }
+            Msg::ConfirmNow => {
+                ctx.props().on_confirm.emit(api::MarkTime::Now);
+                false
+            }
             Msg::Confirm => {
                 let mark = match self.preset {
                     Preset::Now => api::MarkTime::Now,
@@ -469,15 +478,27 @@ impl Component for MarkTimeMenu {
 
         html! {
             <>
-                <button ref={self.anchor.clone()} class={props.class.clone()} title={props.title.clone()} onclick={link.callback(|_| Msg::Open)}>
-                    { for props.children.iter() }
-                </button>
+                if props.quick {
+                    <button class={props.class.clone()} title={props.title.clone()} onclick={link.callback(|_| Msg::ConfirmNow)}>
+                        { for props.children.iter() }
+                    </button>
+
+                    <button ref={self.anchor.clone()} class={classes!(props.class.clone(), "mark-time-more", self.context_open.then_some("selected"))} title="Choose when" onclick={link.callback(|_| Msg::Open)}>
+                        <span class="icon sm chevron-down" />
+                    </button>
+                } else {
+                    <button ref={self.anchor.clone()} class={props.class.clone()} title={props.title.clone()} onclick={link.callback(|_| Msg::Open)}>
+                        { for props.children.iter() }
+                    </button>
+                }
 
                 if self.context_open {
                     <ContextMenu icon={props.icon.clone()} prompt={props.prompt.clone()} anchor={self.anchor.clone()} on_close={link.callback(|_| Msg::Close)}>
-                        {self.view_interaction(ctx)}
+                        {self.view_presets(ctx)}
 
-                        {self.view_resolved(ctx)}
+                        <div class="mark-time-resolved">
+                            {self.view_resolved(ctx)}
+                        </div>
 
                         if self.preset == Preset::Custom {
                             <div class="mark-time-body">
@@ -486,6 +507,17 @@ impl Component for MarkTimeMenu {
                                 {self.view_calendar(ctx)}
                             </div>
                         }
+
+                        <div class="row end">
+                            <button class="has-text" onclick={link.callback(|_| Msg::Close)}>
+                                <span>{"Cancel"}</span>
+                            </button>
+
+                            <button class="primary selected has-text" data-test="confirm-time" onclick={link.callback(|_| Msg::Confirm)}>
+                                <span class="icon check" />
+                                <span>{"Confirm"}</span>
+                            </button>
+                        </div>
                     </ContextMenu>
                 }
             </>
@@ -619,7 +651,7 @@ impl MarkTimeMenu {
         }
     }
 
-    fn view_interaction(&self, ctx: &Context<Self>) -> Html {
+    fn view_presets(&self, ctx: &Context<Self>) -> Html {
         let link = ctx.link();
         let props = ctx.props();
 
@@ -635,8 +667,7 @@ impl MarkTimeMenu {
         );
 
         html! {
-            <div class="row-split">
-                <div class="input-group">
+            <div class="input-group">
                     <button class={now_class} onclick={link.callback(|_| Msg::SelectPreset(Preset::Now))}>
                         <span class="icon clock" />
                         <span>{"Now"}</span>
@@ -661,13 +692,6 @@ impl MarkTimeMenu {
                         <span class="icon pencil-square" />
                         <span>{"Custom"}</span>
                     </button>
-                </div>
-
-                <div class="input-group">
-                    <Button icon="x-mark" title="Cancel" onclick={link.callback(|_| Msg::Close)} />
-
-                    <Button icon="check" variant={Variant::Success} title="Confirm" onclick={link.callback(|_| Msg::Confirm)} />
-                </div>
             </div>
         }
     }

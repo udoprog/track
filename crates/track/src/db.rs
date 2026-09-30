@@ -1041,6 +1041,8 @@ struct InnerRead {
     pending_timestamp_for_episode: TypedStatement<(EpisodeId,), (Timestamp,)>,
     #[sql = "SELECT timestamp FROM pending WHERE movie_id = ?"]
     pending_timestamp_for_movie: TypedStatement<(MovieId,), (Timestamp,)>,
+    #[sql = "SELECT episode_id, timestamp FROM pending WHERE show_id = ?"]
+    pending_for_show: TypedStatement<(ShowId,), (EpisodeId, Timestamp)>,
     #[sql = "SELECT e.show_id, s.language, s.default_language, e.season, e.episode, e.aired"]
     #[sql = "FROM episodes e"]
     #[sql = "JOIN shows s ON s.id = e.show_id"]
@@ -6299,6 +6301,38 @@ impl Database {
     /// the media is no longer tracked or has no pending row. Used to emit granular
     /// pending updates without reloading the whole list.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
+    /// What is pending for the show or movie of `kind`, so that marking it
+    /// watched can be undone.
+    pub(crate) async fn pending_before(
+        &self,
+        kind: api::WatchedKind,
+    ) -> Result<api::PendingBefore> {
+        let mut s = self.inner.clone().shared().await?;
+
+        let result = spawn_blocking(move || match kind {
+            api::WatchedKind::Episode { show, .. } => {
+                let pending = s.pending_for_show.bind((show,))?.first()?;
+
+                Ok(match pending {
+                    Some((episode, timestamp)) => {
+                        api::PendingBefore::Episode { episode, timestamp }
+                    }
+                    None => api::PendingBefore::None,
+                })
+            }
+            api::WatchedKind::Movie { movie } => {
+                let pending = s.pending_timestamp_for_movie.bind((movie,))?.first()?;
+
+                Ok(match pending {
+                    Some((timestamp,)) => api::PendingBefore::Movie { timestamp },
+                    None => api::PendingBefore::None,
+                })
+            }
+        });
+
+        result.await?
+    }
+
     pub(crate) async fn pending_entry(
         &self,
         kind: api::PendingKind,

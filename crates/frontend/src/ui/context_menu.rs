@@ -37,6 +37,9 @@ pub(crate) struct ContextMenu {
     /// render to decide whether to re-place: positioning is driven entirely by
     /// the body's own size, so a change here is the only thing that can shift it.
     placed: Option<(f64, f64)>,
+    /// Whether the popover opened below its trigger. Decided once, so content
+    /// growing later (e.g. a picker expanding) never flips it over the trigger.
+    below: Option<bool>,
     /// The background context, so we can report errors to the user.
     background: Background,
 }
@@ -49,7 +52,7 @@ impl ContextMenu {
     /// variables. The coordinates are written into CSS custom properties, and the
     /// menu is revealed only once positioned to avoid a first-frame flash in the
     /// top-left corner.
-    fn place(&self, anchor: &HtmlElement) -> Result<(), Error> {
+    fn place(&mut self, anchor: &HtmlElement) -> Result<(), Error> {
         let menu = self
             .menu
             .cast::<HtmlElement>()
@@ -85,14 +88,24 @@ impl ContextMenu {
         // needed to keep the whole menu on-screen.
         let left = trig.left().min(vw - m.width() - MARGIN).max(MARGIN);
 
-        // Prefer below the trigger; flip above if it would overflow the bottom.
-        let top = if trig.bottom() + m.height() + GAP + MARGIN <= vh {
-            trig.bottom() + GAP
-        } else if trig.top() - m.height() - GAP >= MARGIN {
-            trig.top() - m.height() - GAP
+        // Prefer below the trigger, unless it only fits above. Once decided the
+        // side sticks, and the menu scrolls within the room on that side.
+        let below = *self.below.get_or_insert_with(|| {
+            trig.bottom() + m.height() + GAP + MARGIN <= vh
+                || trig.top() - GAP - MARGIN < vh - trig.bottom() - GAP - MARGIN
+        });
+
+        let (top, room) = if below {
+            let top = trig.bottom() + GAP;
+            (top, vh - top - MARGIN)
         } else {
-            (vh - m.height() - MARGIN).max(MARGIN)
+            let room = trig.top() - GAP - MARGIN;
+            ((trig.top() - GAP - m.height()).max(MARGIN), room)
         };
+
+        style
+            .set_property("--cm-max-height", &format!("{}px", room.max(0.0)))
+            .context(Message::PositioningMenu)?;
 
         style
             .set_property("--cm-left", &format!("{left}px"))
@@ -119,6 +132,7 @@ impl Component for ContextMenu {
         Self {
             menu: NodeRef::default(),
             placed: None,
+            below: None,
             background,
         }
     }

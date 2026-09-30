@@ -2,11 +2,11 @@ use std::rc::Rc;
 
 use api::{TimeInfo, TimeZone, Timestamp};
 use gloo::events::EventListener;
-use gloo::timers::callback::Interval;
+use gloo::timers::callback::{Interval, Timeout};
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
-use crate::background::{Background, BackgroundState};
+use crate::background::{Background, BackgroundState, UndoWatched};
 use crate::error::{CustomContext, Error, Message, RcError};
 use crate::page::{
     Dashboard, MediaList, MovieDetail, PersonDetail, PersonList, Queue, Search, Settings,
@@ -43,6 +43,10 @@ pub(super) struct App {
     _broadcast: ws::Listener,
     _config_req: ws::Request,
     _top_languages_req: ws::Request,
+    /// The latest watch that can be undone, shown as a toast until it times out.
+    undo: Option<UndoWatched>,
+    _undo_timeout: Option<Timeout>,
+    _undo_req: ws::Request,
     _tick_minute_interval: Interval,
     _history_listener: EventListener,
     onclearerror: Callback<()>,
@@ -65,7 +69,14 @@ pub(super) enum Msg {
     SetTitle(Option<String>),
     Error(Error),
     ClearError,
+    OfferUndo(UndoWatched),
+    Undo,
+    DismissUndo,
+    UndoDone(Result<ws::Packet<api::UndoWatched>, ws::Error>),
 }
+
+/// How long the undo toast stays up.
+const UNDO_TIMEOUT_MS: u32 = 8_000;
 
 impl Component for App {
     type Message = Msg;
@@ -109,7 +120,12 @@ impl Component for App {
 
         let router = Router::new(on_navigate, on_replace);
 
-        let background = Background::new(on_background, on_title, onerror);
+        let background = Background::new(
+            on_background,
+            on_title,
+            onerror,
+            link.callback(Msg::OfferUndo),
+        );
 
         Self {
             channel: ws::Channel::default(),
@@ -131,6 +147,9 @@ impl Component for App {
             _broadcast,
             _config_req: ws::Request::default(),
             _top_languages_req: ws::Request::default(),
+            undo: None,
+            _undo_timeout: None,
+            _undo_req: ws::Request::default(),
             _tick_minute_interval,
             onclearerror,
         }
@@ -181,6 +200,26 @@ impl Component for App {
 
                             <Outline entries={self.outline_entries.clone()} />
                         </div>
+
+                        if let Some(undo) = &self.undo {
+                            <div class="toast" role="status">
+                                <span class="icon success check-circle" />
+
+                                <span class="fill">{match undo.kind {
+                                    api::WatchedKind::Episode { .. } => "Episode marked as watched",
+                                    api::WatchedKind::Movie { .. } => "Movie marked as watched",
+                                }}</span>
+
+                                <button class="has-text" data-test="undo" onclick={ctx.link().callback(|_| Msg::Undo)}>
+                                    <span class="icon arrow-uturn-left" />
+                                    <span>{"Undo"}</span>
+                                </button>
+
+                                <button class="toast-dismiss" title="Dismiss" onclick={ctx.link().callback(|_| Msg::DismissUndo)}>
+                                    <span class="icon x-mark" />
+                                </button>
+                            </div>
+                        }
                     </div>
                 </ContextProvider<OutlineControl>>
                 </ContextProvider<Background>>
@@ -337,6 +376,42 @@ impl App {
             Msg::ClearError => {
                 self.error = None;
                 Ok(true)
+            }
+            Msg::OfferUndo(undo) => {
+                let link = ctx.link().clone();
+                self.undo = Some(undo);
+                self._undo_timeout = Some(Timeout::new(UNDO_TIMEOUT_MS, move || {
+                    link.send_message(Msg::DismissUndo)
+                }));
+                Ok(true)
+            }
+            Msg::Undo => {
+                let Some(undo) = self.undo.take() else {
+                    return Ok(false);
+                };
+
+                self._undo_timeout = None;
+
+                self._undo_req = self
+                    .channel
+                    .request()
+                    .body(api::UndoWatchedRequest {
+                        id: undo.id,
+                        kind: undo.kind,
+                        pending_before: undo.pending_before,
+                    })
+                    .on_packet(ctx.link().callback(Msg::UndoDone))
+                    .send();
+
+                Ok(true)
+            }
+            Msg::DismissUndo => {
+                self._undo_timeout = None;
+                Ok(self.undo.take().is_some())
+            }
+            Msg::UndoDone(result) => {
+                result.context(Message::UndoingWatched)?;
+                Ok(false)
             }
         }
     }

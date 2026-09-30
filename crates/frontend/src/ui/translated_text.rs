@@ -107,8 +107,8 @@ impl Component for TranslatedText {
             .or_else(|| props.strings.resolved_locale(props.kind));
 
         // Text in the configured language needs no flag calling it out.
-        let foreign = displayed
-            .filter(|locale| locale.language() != props.strings.locale().language());
+        let foreign =
+            displayed.filter(|locale| locale.language() != props.strings.locale().language());
 
         let toggle = html! {
             <button ref={self.anchor.clone()} class="language-toggle" title="Change displayed language" onclick={link.callback(|_| Msg::Open)}>

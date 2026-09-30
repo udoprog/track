@@ -437,7 +437,12 @@ impl MovieDetail {
                 Ok(true)
             }
             Msg::MarkWatchedDone(result) => {
-                result.context(Message::MarkingWatched)?;
+                let response = result
+                    .context(Message::MarkingWatched)?
+                    .decode()
+                    .context(Message::MarkingWatched)?;
+
+                self.background.offer_undo(&response);
                 self.load_movie(ctx);
                 self.load_watched(ctx);
                 Ok(false)
@@ -1176,9 +1181,9 @@ impl MovieDetail {
         // Mark-watched only offers the release date once the movie is actually out.
         let watched_preset = release_at
             .filter(|&r| r <= self.time.now())
-            .map(|ts| TimePreset::at("clock", "Released", ts));
+            .map(|ts| TimePreset::at("calendar", "Released", ts));
 
-        let release_preset = release_at.map(|ts| TimePreset::at("clock", "When released", ts));
+        let release_preset = release_at.map(|ts| TimePreset::at("calendar", "When released", ts));
 
         let on_remove_next = link.callback(move |_| Msg::OnRemoveNext);
 
@@ -1249,7 +1254,7 @@ impl MovieDetail {
                                 </div>
 
                                 <div class={classes!("toolbar-dropdown", "desktop-input-group", (!self.detailed_expand).then_some("desktop-only"))}>
-                                    <MarkTimeMenu class="success has-text" icon="check" title="Mark watched" prompt="When did you watch the movie?" preset={watched_preset.clone()} on_confirm={link.callback(Msg::MarkWatched)}>
+                                    <MarkTimeMenu quick=true class="success has-text" icon="check" title="Mark watched" prompt="When did you watch the movie?" preset={watched_preset.clone()} on_confirm={link.callback(Msg::MarkWatched)}>
                                         <span class="icon check" />
                                         <span class="mobile-only">{"Mark watched"}</span>
                                     </MarkTimeMenu>

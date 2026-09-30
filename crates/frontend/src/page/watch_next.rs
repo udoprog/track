@@ -321,7 +321,12 @@ impl WatchNext {
                 Ok(true)
             }
             Msg::MarkWatchedDone(result) => {
-                result.context(Message::MarkingWatched)?;
+                let response = result
+                    .context(Message::MarkingWatched)?
+                    .decode()
+                    .context(Message::MarkingWatched)?;
+
+                self.background.offer_undo(&response);
 
                 if self.channel.id() != ws::ChannelId::NONE {
                     self.load_pending(ctx);
@@ -621,7 +626,7 @@ impl WatchNext {
                 api::PendingKind::Movie { .. } => "Released",
             };
 
-            TimePreset::at("clock", label, timestamp)
+            TimePreset::at("calendar", label, timestamp)
         });
 
         let aired_in_past = pending.aired.is_some_and(|a| a <= self.time.now());
@@ -697,7 +702,7 @@ impl WatchNext {
                     <div class="pending-actions">
                         <div class="input-group">
                             if aired_in_past {
-                                <MarkTimeMenu class="primary" icon="check" title="Mark watched" prompt={format!("When did you watch this {}?", pending_kind.title())} preset={preset.clone()} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(kind, mark_time))}>
+                                <MarkTimeMenu quick=true class="primary" icon="check" title="Mark watched" prompt={format!("When did you watch this {}?", pending_kind.title())} preset={preset.clone()} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(kind, mark_time))}>
                                     <span class="icon check" />
                                 </MarkTimeMenu>
                             } else {

@@ -86,6 +86,15 @@ struct Inner {
     background: Callback<String>,
     title: Callback<Option<String>>,
     error: Callback<Error>,
+    undo: Callback<UndoWatched>,
+}
+
+/// A watch that was just marked, which the application offers to undo.
+#[derive(Clone, Copy, PartialEq)]
+pub(super) struct UndoWatched {
+    pub(super) id: api::WatchedId,
+    pub(super) kind: api::WatchedKind,
+    pub(super) pending_before: api::PendingBefore,
 }
 
 /// Context handed to descendant components so they can set the page background.
@@ -107,12 +116,14 @@ impl Background {
         background: Callback<String>,
         title: Callback<Option<String>>,
         error: Callback<Error>,
+        undo: Callback<UndoWatched>,
     ) -> Self {
         Self {
             inner: Rc::new(Inner {
                 background,
                 title,
                 error,
+                undo,
             }),
         }
     }
@@ -133,5 +144,14 @@ impl Background {
     /// Emit an error.
     pub(super) fn error(&self, error: Error) {
         self.inner.error.emit(error);
+    }
+
+    /// Offer to undo the watch a mark-watched request just made.
+    pub(super) fn offer_undo(&self, response: &api::MarkWatchedResponse) {
+        self.inner.undo.emit(UndoWatched {
+            id: response.watched.id,
+            kind: response.watched.kind,
+            pending_before: response.pending_before,
+        });
     }
 }
