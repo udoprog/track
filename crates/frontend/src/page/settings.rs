@@ -5,8 +5,9 @@ use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::ui::{
-    AIR_DATE_KINDS, AIR_DATE_SOURCES, DurationInput, DurationLabel, FiltersEditor, LanguagePicker,
-    RELEASE_KINDS, RELEASE_SOURCES, SecretInput, Skeleton, SyncKindsEditor, SyncLanguagesEditor,
+    AIR_DATE_KINDS, AIR_DATE_SOURCES, Button, DurationInput, DurationLabel, FiltersEditor,
+    LanguagePicker, RELEASE_KINDS, RELEASE_SOURCES, SecretInput, Skeleton, SyncKindsEditor,
+    SyncLanguagesEditor,
 };
 
 fn tz_is_valid(name: &str) -> bool {
@@ -254,10 +255,10 @@ impl Component for Settings {
                     <h4>{"Sync"}</h4>
 
                     { self.field_slot("", html! {
-                        <span class={classes!("input-checkbox", "has-text", self.config.auto_sync_enabled.then_some("checked"))} onclick={on_auto_sync_toggle}>
+                        <Button class={classes!("input-checkbox", "has-text", self.config.auto_sync_enabled.then_some("checked"))} role="switch" checked={Some(self.config.auto_sync_enabled)} title="Automatic sync" onclick={on_auto_sync_toggle}>
                             <span class="mark" />
                             <span>{"Automatic Sync"}</span>
-                        </span>
+                        </Button>
                     }) }
 
                     <div class="input-group fill">
@@ -278,10 +279,10 @@ impl Component for Settings {
                     </div>
 
                     { self.field_slot("", html! {
-                        <span class={classes!("input-checkbox", "has-text", self.config.include_specials.then_some("checked"))} onclick={on_include_specials_change}>
+                        <Button class={classes!("input-checkbox", "has-text", self.config.include_specials.then_some("checked"))} role="switch" checked={Some(self.config.include_specials)} title="Specials for Watch Next" onclick={on_include_specials_change}>
                             <span class="mark" />
                             <span>{"Specials for Watch Next"}</span>
-                        </span>
+                        </Button>
                     }) }
 
                     <div class="field">

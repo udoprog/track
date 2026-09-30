@@ -47,6 +47,40 @@ pub async fn theme_is_remembered(driver: &mut TestDriver, _: &mut Track) -> Resu
     Ok(())
 }
 
+/// Every toggle on the settings page is a switch the keyboard can reach:
+/// Space flips it and it reports its state.
+pub async fn switches_work_from_the_keyboard(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_settings(driver).await?;
+
+    ensure!(
+        driver.count("#content .clickable:not(button, a)").await? == 0,
+        "something clickable is neither a button nor a link"
+    );
+
+    let switch = driver
+        .find_one_by("[role='switch'][title='Automatic sync']")
+        .await?;
+    let before = switch.attr("aria-checked").await?;
+    ensure!(
+        before == "true" || before == "false",
+        "aria-checked is {before:?}"
+    );
+
+    switch.focus().await?;
+    switch.send_keys(" ").await?;
+
+    driver
+        .wait_until("Space to flip Automatic sync", async || {
+            let now = driver
+                .find_one_by("[role='switch'][title='Automatic sync']")
+                .await?
+                .attr("aria-checked")
+                .await?;
+            Ok(now != before)
+        })
+        .await
+}
+
 async fn open_settings(driver: &TestDriver) -> Result<()> {
     driver
         .find_one_by(".toolbar-item[title=Settings]")

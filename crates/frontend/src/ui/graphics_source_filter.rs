@@ -2,6 +2,8 @@ use std::collections::{BTreeSet, HashSet};
 
 use yew::prelude::*;
 
+use crate::ui::Button;
+
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
     pub(crate) present: BTreeSet<api::ImageSource>,
@@ -25,10 +27,10 @@ pub(crate) fn GraphicsSourceFilter(props: &Props) -> Html {
                 let on_toggle = props.on_toggle.reform(move |_| source);
 
                 html! {
-                    <span class={classes!("input-checkbox", "has-text", checked.then_some("checked"))} title={source.to_string()} onclick={on_toggle}>
+                    <Button class={classes!("input-checkbox", "has-text", checked.then_some("checked"))} role="switch" checked={Some(checked)} title={source.to_string()} onclick={on_toggle}>
                         <span class="mark" />
                         <span class={classes!("logo", source.as_str())} />
-                    </span>
+                    </Button>
                 }
             })}
         </div>

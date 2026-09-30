@@ -1243,6 +1243,21 @@ input-label-controls {
             background: v.$bg-highlight;
         }
     }
+
+    // A row that acts (a picker choice, a season) is a button drawn as a row.
+    >button {
+        width: 100%;
+        height: auto;
+        justify-content: flex-start;
+        text-align: start;
+        font-size: inherit;
+        color: v.$text-color;
+        border-radius: 0;
+
+        &.column {
+            align-items: stretch;
+        }
+    }
 }
 
 .image-gallery {
@@ -1275,19 +1290,32 @@ input-label-controls {
         gap: 0.35rem;
     }
 
-    &.poster .gallery-cell>image {
+    // The picture itself is the button.
+    .gallery-pick {
+        display: block;
+        height: auto;
+        padding: 0;
+        border: none;
+        background: none;
+
+        image {
+            width: 100%;
+        }
+    }
+
+    &.poster .gallery-cell image {
         aspect-ratio: 2 / 3;
     }
 
-    &.backdrop .gallery-cell>image {
+    &.backdrop .gallery-cell image {
         aspect-ratio: 16 / 9;
     }
 
-    &.screenshot .gallery-cell>image {
+    &.screenshot .gallery-cell image {
         aspect-ratio: 16 / 9;
     }
 
-    &.banner .gallery-cell>image {
+    &.banner .gallery-cell image {
         aspect-ratio: 21 / 4;
     }
 
@@ -1477,8 +1505,10 @@ pagination {
             }
         }
 
-        >page {
+        >.page {
             cursor: pointer;
+            background: transparent;
+            border: none;
 
             display: inline-flex;
             align-items: center;

@@ -1,7 +1,7 @@
 use web_sys::MouseEvent;
 use yew::prelude::*;
 
-use super::{DragHandle, Reorder};
+use super::{Button, DragHandle, Reorder};
 
 /// Sources that can contribute syncable data, with the kinds they support fixed
 /// by [`api::RemoteSource::default_sync_kinds`].
@@ -88,10 +88,10 @@ pub(crate) fn SyncKindsEditor(props: &Props) -> Html {
                                 };
 
                                 html! {
-                                    <span class={classes!("input-checkbox", "has-text", on.then_some("checked"))} onclick={on_toggle} title={kind.as_label()}>
+                                    <Button class={classes!("input-checkbox", "has-text", on.then_some("checked"))} role="switch" checked={Some(on)} title={kind.as_label()} onclick={on_toggle}>
                                         <span class="mark" />
                                         <span>{kind.as_label()}</span>
-                                    </span>
+                                    </Button>
                                 }
                             }) }
                         </div>

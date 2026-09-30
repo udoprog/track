@@ -446,7 +446,7 @@ impl ReleaseModal {
         });
 
         html! {
-            <div class="row clickable align-top" onclick={on_toggle}>
+            <Button class="row clickable align-top" title={format!("Show all dates from {label}")} expanded={Some(expanded)} onclick={on_toggle}>
                 <span class="item-inline">
                     <span class={classes!("icon", if expanded { "ellipsis-horizontal" } else { "chevron-right" })} />
                 </span>
@@ -480,7 +480,7 @@ impl ReleaseModal {
                         </div>
                     }
                 </div>
-            </div>
+            </Button>
         }
     }
 

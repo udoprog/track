@@ -50,7 +50,7 @@ pub(crate) fn PaginationButtons(props: &Props) -> Html {
 
     html! {
         <pagination>
-            <Button icon="chevron-left" title="Previous page" class={classes!("desktop-only", prev.is_none().then_some("disabled"))} onclick={on_back.unwrap_or_default()} />
+            <Button icon="chevron-left" title="Previous page" class={classes!("desktop-only", prev.is_none().then_some("disabled"))} disabled={prev.is_none()} onclick={on_back.unwrap_or_default()} />
 
             <pages>
                 {for pages.map(|(p, dist)| html! {
@@ -59,14 +59,14 @@ pub(crate) fn PaginationButtons(props: &Props) -> Html {
                             <ellipsis>{"…"}</ellipsis>
                         }
 
-                        <page class={classes!((page == p).then_some("current"))} onclick={props.on_page.reform(move |_: MouseEvent| p)}>
-                            {p.saturating_add(1)}
-                        </page>
+                        <Button class={classes!("page", (page == p).then_some("current"))} title={format!("Page {}", p.saturating_add(1))} current={page == p} onclick={props.on_page.reform(move |_: MouseEvent| p)}>
+                            <span>{p.saturating_add(1)}</span>
+                        </Button>
                     </>
                 })}
             </pages>
 
-            <Button icon="chevron-right" title="Next page" class={classes!("desktop-only", next.is_none().then_some("disabled"))} onclick={on_next.unwrap_or_default()} />
+            <Button icon="chevron-right" title="Next page" class={classes!("desktop-only", next.is_none().then_some("disabled"))} disabled={next.is_none()} onclick={on_next.unwrap_or_default()} />
         </pagination>
     }
 }

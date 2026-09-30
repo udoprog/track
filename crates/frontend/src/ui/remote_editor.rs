@@ -378,10 +378,10 @@ impl Component for RemoteEditor {
                                         let next = effective.with(kind, !on);
 
                                         html! {
-                                            <span class={classes!("input-checkbox", "has-text", on.then_some("checked"))} onclick={link.callback(move |_| Msg::SetSyncKinds(id, Some(next)))} title={kind.as_label()}>
+                                            <Button class={classes!("input-checkbox", "has-text", on.then_some("checked"))} role="switch" checked={Some(on)} title={kind.as_label()} onclick={link.callback(move |_| Msg::SetSyncKinds(id, Some(next)))}>
                                                 <span class="mark" />
                                                 <span>{kind.as_label()}</span>
-                                            </span>
+                                            </Button>
                                         }
                                     }) }
 
@@ -441,10 +441,10 @@ impl Component for RemoteEditor {
                                                 <Button icon="trash" variant={Variant::Danger} title="Remove identifier" text="Remove" expanded={Some(self.confirming_remove == Some(id))} haspopup="dialog" onclick={link.callback(move |_| Msg::AskRemove(id))} />
                                             </div>
 
-                                            <span class={classes!("input-checkbox", "mobile-has-text", enabled.then_some("checked"))} onclick={link.callback(move |_| Msg::SetEnabled(id, !enabled))} title="Enable this remote">
+                                            <Button class={classes!("input-checkbox", "mobile-has-text", enabled.then_some("checked"))} role="switch" checked={Some(enabled)} title="Enable this remote" onclick={link.callback(move |_| Msg::SetEnabled(id, !enabled))}>
                                                 <span class="mark" />
                                                 <span class="mobile-only">{"Enabled"}</span>
-                                            </span>
+                                            </Button>
                                         </div>
 
                                         if self.confirming_remove == Some(id) {

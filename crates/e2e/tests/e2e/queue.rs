@@ -100,7 +100,7 @@ pub async fn follows_the_next_task(driver: &mut TestDriver, _: &mut Track) -> Re
     );
 
     driver
-        .find_one_by("page:not(.current)")
+        .find_one_by("pagination .page:not(.current)")
         .await?
         .click()
         .await?;

@@ -355,11 +355,9 @@ impl Search {
                         <span class="item-inline-more">{"No more results."}</span>
                     </div>
                 } else if loaded < self.total {
-                    <a class="row center clickable" onclick={on_more}>
-                        <span class="item-inline-more">
-                            <span class="icon ellipsis-horizontal" />
-                        </span>
-                    </a>
+                    <div class="row center">
+                        <Button icon="ellipsis-horizontal" title="Load more results" label="More results" onclick={on_more} />
+                    </div>
                 }
             </>
         }

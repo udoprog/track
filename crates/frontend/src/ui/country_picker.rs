@@ -163,7 +163,7 @@ impl Component for CountryPicker {
             let selected = current.contains(&code);
 
             html! {
-                <div key={code} class={classes!("row", "clickable", selected.then_some("active"))} onclick={link.callback(move |_| Msg::Toggle(code))}>
+                <Button key={code} class={classes!("row", "clickable", selected.then_some("active"))} title={country.name} pressed={Some(selected)} onclick={link.callback(move |_| Msg::Toggle(code))}>
                     <span class="fill">{country.name}</span>
 
                     if let Some(c) = code.to_iso().filter(|c| c.has_flag) {
@@ -173,7 +173,7 @@ impl Component for CountryPicker {
                     <span class="item-inline" title={code}>
                         <span class={classes!("icon", if selected { "check" } else { "x-mark" })} />
                     </span>
-                </div>
+                </Button>
             }
         };
 
@@ -187,7 +187,7 @@ impl Component for CountryPicker {
                     </div>
 
                     <div class="table">
-                        <div class="row clickable" onclick={link.callback(|_| Msg::All)}>
+                        <Button class="row clickable" title="All countries" pressed={Some(current.is_empty())} onclick={link.callback(|_| Msg::All)}>
                             <span class="fill">{"All countries"}</span>
 
                             <span class="item-inline">
@@ -197,7 +197,7 @@ impl Component for CountryPicker {
                             <span class="item-inline">
                                 <span class={classes!("icon", if current.is_empty() { "check" } else { "x-mark" })} />
                             </span>
-                        </div>
+                        </Button>
 
                         {for selected_list.iter().map(|(country, code)| render_row(country, *code))}
 

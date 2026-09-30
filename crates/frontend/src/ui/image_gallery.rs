@@ -90,7 +90,9 @@ pub(crate) fn ImageGallery(props: &Props) -> Html {
 
                         html! {
                             <div class="gallery-cell">
-                                <Image class={classes!("clickable", selected.then_some("selected"))} onclick={Callback::from(move |_| on_select.emit(id))} title={title.clone()} src={img.image.clone()} />
+                                <Button class="gallery-pick" title={format!("Use this {} from {title}", props.kind)} pressed={Some(selected)} onclick={Callback::from(move |_| on_select.emit(id))}>
+                                    <Image class={classes!(selected.then_some("selected"))} src={img.image.clone()} />
+                                </Button>
                                 <div class="gallery-meta">
                                     <span class={classes!("logo", source)} title={title} />
                                     if let Some(score) = img.score {

@@ -82,6 +82,9 @@ pub(crate) struct Props {
     /// An ARIA role other than button, such as `menuitem` or `switch`.
     #[prop_or_default]
     pub(crate) role: Option<AttrValue>,
+    /// Whether a `switch` is on (`aria-checked`).
+    #[prop_or_default]
+    pub(crate) checked: Option<bool>,
     /// Extra content after the icon and label, e.g. a flag.
     #[prop_or_default]
     pub(crate) children: Children,
@@ -102,7 +105,7 @@ pub(crate) fn Button(props: &Props) -> Html {
     );
 
     html! {
-        <button ref={props.node_ref.clone()} {class} title={props.title.clone()} disabled={props.disabled} aria-current={props.current.then_some("page")} aria-pressed={props.pressed.map(bool_attr)} aria-expanded={props.expanded.map(bool_attr)} aria-haspopup={props.haspopup.clone()} role={props.role.clone()} onclick={props.onclick.clone()}>
+        <button ref={props.node_ref.clone()} {class} title={props.title.clone()} disabled={props.disabled} aria-current={props.current.then_some("page")} aria-pressed={props.pressed.map(bool_attr)} aria-expanded={props.expanded.map(bool_attr)} aria-haspopup={props.haspopup.clone()} role={props.role.clone()} aria-checked={props.checked.map(bool_attr)} onclick={props.onclick.clone()}>
             if !props.icon.is_empty() {
                 <span class={classes!("icon", props.icon.clone(), props.spin.then_some("spin"))} aria-hidden="true" />
             }
