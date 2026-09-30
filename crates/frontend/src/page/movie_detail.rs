@@ -1278,10 +1278,10 @@ impl MovieDetail {
                             on_close={link.callback(|_| Msg::ToggleOpenReleases)}
                         />
                     }
+
+                    { self.view_credits(ctx) }
                 </div>
             </div>
-
-            { self.view_credits(ctx) }
 
             if self.image_modal {
                 { self.view_image_modal(ctx) }

@@ -11,6 +11,7 @@
 
 mod dashboard;
 mod media;
+mod movie;
 mod navigation;
 mod people;
 mod queue;
@@ -41,6 +42,8 @@ const LISTEN_TIMEOUT: Duration = Duration::from_secs(10);
 const SEED: &str = include_str!("seed.sql");
 /// More shows on top of [`SEED`] for the tests that ask with `(crowded)`.
 const CROWDED: &str = include_str!("crowded.sql");
+/// A movie on top of [`SEED`] for the tests that ask with `(movie)`.
+const MOVIE: &str = include_str!("movie.sql");
 
 /// What a test asks of its server.
 #[derive(Default)]
@@ -49,6 +52,8 @@ struct Setup {
     seeded: bool,
     /// Start with `seed.sql` and the shows in `crowded.sql`.
     crowded: bool,
+    /// Start with `seed.sql` and the movie in `movie.sql`.
+    movie: bool,
 }
 
 /// A track server for one test.
@@ -76,7 +81,7 @@ impl Fixture for Track {
         let sandbox = SANDBOX.get().context("the sandbox was not entered")?;
         let dir = TempDir::new_in(sandbox)?;
 
-        if setup.seeded || setup.crowded {
+        if setup.seeded || setup.crowded || setup.movie {
             // The server creates the schema; the seed goes in while it is down.
             let (mut child, _) = spawn(server, dir.path()).await?;
             child.kill().await?;
@@ -86,6 +91,10 @@ impl Fixture for Track {
 
             if setup.crowded {
                 c.execute(CROWDED).context("crowding the database")?;
+            }
+
+            if setup.movie {
+                c.execute(MOVIE).context("adding the movie")?;
             }
         }
 
@@ -170,6 +179,7 @@ yew_e2e::harness! {
     Track;
     dashboard::{fills_rows_with_relative_dates(seeded), labels_its_filters, mobile_cards_always_have_a_picture(seeded), schedule_names_its_days, upcoming_days_keep_their_width, marks_watched_in_one_click(seeded), marks_watched_at_a_chosen_time(seeded)},
     media::{shows_a_poster_grid(seeded)},
+    movie::{puts_the_cast_beside_the_poster(movie)},
     navigation::{opens_every_page, page_scrolls_the_window, toolbar_icons_are_small, every_button_has_a_title(seeded)},
     people::{lists_people_by_credits(seeded), shows_no_count_while_loading(seeded), shows_a_silhouette_without_a_photo(seeded)},
     queue::{lists_tasks_in_columns, keeps_rows_in_place(seeded), follows_the_next_task(crowded), shows_failed_tasks(seeded)},
