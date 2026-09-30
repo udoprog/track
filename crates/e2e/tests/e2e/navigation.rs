@@ -255,3 +255,23 @@ pub(crate) async fn wait_heading(driver: &TestDriver, text: &str) -> Result<()> 
         )
         .await
 }
+
+/// The app bar's items have room around their labels on a wide screen, and
+/// at tablet width they still leave the site title whole.
+pub async fn app_bar_items_have_room(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    driver.set_window_size(1250, 900).await?;
+    let media = driver.find_one_by("#toolbar a[title=Media]").await?;
+    let padding = media.css("padding-left").await?;
+    ensure!(padding == "12px", "the items are padded {padding}");
+
+    driver.set_window_size(860, 900).await?;
+    let ret = driver
+        .webdriver()
+        .execute(
+            "const t = document.querySelector('.site-title'); return t.scrollWidth <= t.clientWidth + 1;",
+            Vec::new(),
+        )
+        .await?;
+    ensure!(ret.convert::<bool>()?, "the site title is clipped at 860px");
+    Ok(())
+}

@@ -42,7 +42,8 @@
 .toolbar-dropdown {
     display: flex;
     flex-direction: row;
-    gap: v.$gap;
+    align-items: center;
+    gap: v.$gap-xs;
 
     @include g.on-mobile {
         flex-direction: column;
@@ -96,5 +97,16 @@
     &.active {
         background: v.$bg-highlight;
         color: v.$color-primary;
+    }
+
+    // Room around each label on wide screens, so the items read as buttons;
+    // narrower desktops keep them tight so the site title still fits.
+    @media (min-width: 1000px) {
+        height: v.$input-height + v.$padding;
+        gap: v.$padding-md;
+
+        &.has-text {
+            padding: 0 v.$gap-sm;
+        }
     }
 }
