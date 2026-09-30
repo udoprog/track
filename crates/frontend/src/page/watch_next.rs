@@ -167,6 +167,8 @@ impl Component for WatchNext {
                     </div>
 
                     <div class="input-group desktop-only">
+                        <span class="input-label has-text" title="How many items are shown per page">{"Items"}</span>
+
                         <Button icon="minus" title="Show fewer" onclick={link.callback(|_| Msg::AdjustPageSize(-1))} />
 
                         <Button icon="plus" title="Show more" onclick={link.callback(|_| Msg::AdjustPageSize(1))} />

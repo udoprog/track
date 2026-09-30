@@ -69,3 +69,10 @@ pub async fn marks_watched_at_a_chosen_time(driver: &mut TestDriver, _: &mut Tra
     driver.wait_texts(".pending-label", [SECOND]).await?;
     Ok(())
 }
+
+/// The dashboard's filters say what they filter on wide screens too.
+pub async fn labels_its_filters(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    driver
+        .wait_texts(".input-checkbox", ["Shows", "Movies"])
+        .await
+}
