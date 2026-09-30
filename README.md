@@ -91,24 +91,27 @@ $ cargo test -p e2e -- --headed --last-session
 
 ## Deploying
 
-The `[deploy]` section in `Kick.toml` builds the frontend, builds the server
-with the frontend bundled into it, and installs it as `/usr/local/bin/track` on
-`integration@moore` over ssh with [kick]:
+The `[deploy]` section in `Kick.toml` deploys track to `integration@moore`
+over ssh with [kick]. It builds the frontend, builds the server with the
+frontend bundled into it, installs it as `/usr/local/bin/track`, and restarts
+the `track` service:
 
 ```text
 $ kick deploy
 ```
 
-Pass `--host` to deploy somewhere else, and `--dry-run` to print every command
-without running them:
+Pass `--host` to deploy somewhere else, and `--dry-run` to print the unit and
+every command without running them:
 
 ```text
 $ kick deploy --host someone@otherhost
 $ kick deploy --dry-run
 ```
 
-The deploying user needs passwordless `sudo` on the host, since kick runs its
-remote commands with `sudo -n`.
+Kick also manages `/etc/systemd/system/track.service`, which it renders from
+`[deploy.systemd]` and replaces whenever the installed unit differs. Edit the
+unit there, not on the host. The deploying user needs passwordless `sudo` on the
+host, since kick runs its remote commands with `sudo -n`.
 
 [kick]: https://github.com/udoprog/kick
 

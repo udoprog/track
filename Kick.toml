@@ -3,6 +3,15 @@ host = "integration@moore"
 binary = "track"
 pre_build = ["trunk build --release"]
 build_features = ["bundle"]
-# Interim: never touch moore's track.service. This also skips restarting it,
-# which is pending a decision on card 94354ff0.
-systemd = false
+
+# Mirrors moore's existing track.service, so an unchanged unit is left alone.
+[deploy.systemd]
+description = "Track Service"
+user = "track"
+group = "track"
+working_directory = "~"
+kill_signal = "SIGINT"
+start_limit_interval_sec = "60s"
+start_limit_burst = 3
+timeout_stop_sec = "5min"
+args = ["--bind", "0.0.0.0:3004"]
