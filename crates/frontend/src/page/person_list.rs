@@ -25,6 +25,9 @@ pub(crate) struct PersonList {
     _setup: SetupChannel,
     _broadcast: ws::Listener,
     list_req: ws::Request,
+    /// Whether the list has arrived, so an empty list is not shown as zero
+    /// people while it loads.
+    loaded: bool,
 }
 
 pub(crate) enum Msg {
@@ -82,6 +85,7 @@ impl Component for PersonList {
             _setup,
             _broadcast,
             list_req: ws::Request::default(),
+            loaded: false,
         }
     }
 
@@ -158,7 +162,9 @@ impl Component for PersonList {
             <>
                 <div class="row-split">
                     <h1>{"People"}</h1>
-                    <h4 class="text-muted">{total}</h4>
+                    if self.loaded {
+                        <h4 class="text-muted">{total}</h4>
+                    }
                 </div>
 
                 <input-controls>
@@ -186,11 +192,13 @@ impl Component for PersonList {
                             <Button icon={dir_icon} title={dir_title} onclick={link.callback(|_| Msg::ToggleDir)} />
                         </div>
 
-                        <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
+                        if self.loaded {
+                            <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
+                        }
                     </controls>
                 </input-controls>
 
-                if self.list_req.is_pending() {
+                if !self.loaded || self.list_req.is_pending() {
                     <div class="row center">
                         <span class="item-inline-more"><span class="icon arrow-path spin" /></span>
                     </div>
@@ -222,6 +230,7 @@ impl PersonList {
                     self.load(ctx);
                 } else {
                     self.persons.clear();
+                    self.loaded = false;
                     self.rebuild_order();
                 }
 
@@ -254,6 +263,7 @@ impl PersonList {
                     .decode()
                     .context(Message::LoadingPersons)?
                     .persons;
+                self.loaded = true;
                 self.rebuild_order();
                 Ok(true)
             }

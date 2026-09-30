@@ -22,3 +22,29 @@ pub async fn lists_people_by_credits(driver: &mut TestDriver, _: &mut Track) -> 
         .wait_texts(".person-name", ["Ada Lovelace", "Greta Garbo"])
         .await
 }
+
+/// While the people load, the page shows neither a count nor pages of an
+/// empty list.
+pub async fn shows_no_count_while_loading(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    driver.wait_texts(".site-title", ["Track"]).await?;
+    driver.delay_websocket_sends(2000).await?;
+
+    driver
+        .find_one_by(".toolbar-item[title=People]")
+        .await?
+        .click()
+        .await?;
+
+    driver.find_one_by("#page .icon.arrow-path.spin").await?;
+    ensure!(
+        driver.count("#page .row-split h4").await? == 0,
+        "a count shows before the people load"
+    );
+    ensure!(
+        driver.count("#page pagination").await? == 0,
+        "pages show before the people load"
+    );
+
+    driver.stop_delaying_websocket_sends().await?;
+    driver.wait_texts("#page .row-split h4", ["2"]).await
+}
