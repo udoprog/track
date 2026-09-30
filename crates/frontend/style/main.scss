@@ -369,6 +369,89 @@ p {
     }
 }
 
+// A watch history: one row per watch with its date and time, how long ago
+// that was, and its actions, all in aligned columns. Phones put the actions
+// under the date.
+.watch-history {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr) auto;
+    column-gap: v.$gap;
+
+    @include g.on-mobile {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+}
+
+.watch-row {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    align-items: center;
+    row-gap: v.$padding-md;
+    padding-block: v.$gap-xs;
+
+    &+.watch-row {
+        border-top: 1px solid v.$border-subtle-transparent;
+    }
+
+    @include g.on-mobile {
+        grid-template-areas:
+            "when age"
+            "actions actions";
+
+        >.watch-when {
+            grid-area: when;
+        }
+
+        >.watch-age {
+            grid-area: age;
+            text-align: end;
+        }
+
+        >.watch-actions {
+            grid-area: actions;
+        }
+    }
+}
+
+.watch-when {
+    font-variant-numeric: tabular-nums;
+
+    * {
+        color: inherit;
+    }
+}
+
+.watch-age {
+    color: v.$text-muted;
+    font-size: v.$font-sm;
+}
+
+.watch-actions {
+    display: flex;
+    gap: v.$gap-xs;
+    justify-content: flex-end;
+
+    @include g.on-mobile {
+        justify-content: flex-start;
+    }
+}
+
+.watch-move-lead {
+    color: v.$text-muted;
+
+    * {
+        color: v.$text-color;
+    }
+}
+
+// Choosing an episode: labelled season and episode fields over the actions.
+.episode-picker {
+    display: flex;
+    flex-direction: column;
+    gap: v.$gap;
+}
+
 // Settings as rows (`ui::FormRow`): labels share one column beside their
 // controls, and stack above them on phones.
 .form-rows {

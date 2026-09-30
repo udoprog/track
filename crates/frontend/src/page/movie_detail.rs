@@ -1323,18 +1323,18 @@ impl MovieDetail {
         let link = ctx.link();
 
         html! {
-            <div class="column">
+            <div class="watch-history">
                 { for self.watched.iter().map(|w| {
                     let wid = w.watched.id;
                     let kind = api::WatchedKind::Movie { movie: movie_id };
 
                     html! {
-                        <div class="row-split">
-                            <div class="row fill date-time">
-                                {w.watched.timestamp.human_date_time(self.time.clone()).view()}
-                            </div>
+                        <div class="watch-row">
+                            <span class="watch-when">{w.watched.timestamp.human_date_time(self.time.clone()).view()}</span>
+                            <span class="watch-age">{w.watched.timestamp.relative_to(self.time.now())}</span>
 
-                            <Button node_ref={w.remove_watch_anchor.clone()} icon="trash" variant={Variant::Danger} title="Remove" text="Remove" expanded={Some(self.confirm_remove_watch == Some(wid))} haspopup="dialog" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} />
+                            <div class="watch-actions">
+                            <Button node_ref={w.remove_watch_anchor.clone()} icon="trash" label="Remove" title="Remove" expanded={Some(self.confirm_remove_watch == Some(wid))} haspopup="dialog" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} />
 
                             if self.confirm_remove_watch == Some(wid) {
                                 <ContextMenu prompt="Remove watch at" label={w.watched.timestamp.human_date_time(self.time.clone())} anchor={w.remove_watch_anchor.clone()} on_close={link.callback(|_| Msg::CancelRemoveWatch)}>
@@ -1344,6 +1344,7 @@ impl MovieDetail {
                                     />
                                 </ContextMenu>
                             }
+                            </div>
                         </div>
                     }
                 }) }

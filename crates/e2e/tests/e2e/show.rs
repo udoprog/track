@@ -484,3 +484,100 @@ pub async fn phone_popovers_are_sheets(driver: &mut TestDriver, _: &mut Track) -
     );
     Ok(())
 }
+
+/// Open the watch history of the episode `code` from its menu.
+async fn open_history(driver: &TestDriver, code: &str) -> Result<()> {
+    driver
+        .find_one_by(&format!("[id='{code}'] [title='More actions']"))
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by(".menu-list [title='Watch history']")
+        .await?
+        .click()
+        .await?;
+    driver.find_one_by(".modal .watch-history").await?;
+    Ok(())
+}
+
+/// Whether the episode `code` reads `text` in its details.
+async fn wait_episode_reads(driver: &TestDriver, code: &str, text: &str) -> Result<()> {
+    driver
+        .wait_until(format_args!("{code} to read {text:?}"), async || {
+            let meta = driver
+                .rendered_texts(&format!("[id='{code}'] .episode-meta"))
+                .await?;
+            Ok(meta.iter().any(|m| {
+                m.split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ")
+                    .contains(text)
+            }))
+        })
+        .await
+}
+
+/// A watch can be moved to another episode from the watch history, and
+/// removed after confirming.
+pub async fn watch_history_moves_and_removes(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_show(driver).await?;
+
+    driver
+        .find_one_by("[id='S01E01'] [title='Mark watched']")
+        .await?
+        .click()
+        .await?;
+    wait_episode_reads(driver, "S01E01", "Watched once").await?;
+
+    open_history(driver, "S01E01").await?;
+    driver
+        .find_one_by(".modal [title='Move to another episode']")
+        .await?
+        .click()
+        .await?;
+
+    let episode = driver.find_one_by(".modal select[title=Episode]").await?;
+    driver
+        .wait_until("the episodes to load", async || {
+            Ok(driver.count(".modal select[title=Episode] option").await? == 3)
+        })
+        .await?;
+    driver
+        .webdriver()
+        .execute(
+            "const s = document.querySelector('.modal select[title=Episode]');
+             s.value = '2';
+             s.dispatchEvent(new Event('change', { bubbles: true }));",
+            Vec::new(),
+        )
+        .await?;
+    ensure!(episode.value().await? == "2");
+
+    driver
+        .find_one_by(".modal [title='Move the watch here']")
+        .await?
+        .click()
+        .await?;
+
+    // S02 is up next, so its details show that instead of its watches.
+    wait_episode_reads(driver, "S01E01", "Never watched").await?;
+    driver.wait_count(".modal", 0).await?;
+
+    open_history(driver, "S01E02").await?;
+    ensure!(driver.count(".modal .watch-row").await? == 1);
+
+    driver
+        .find_one_by(".modal [title=Remove]")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by(".context-menu [title=Yes]")
+        .await?
+        .click()
+        .await?;
+
+    // With its only watch gone the history has nothing left to show.
+    driver.wait_count(".modal .watch-row", 0).await
+}

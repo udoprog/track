@@ -2363,32 +2363,38 @@ impl ShowDetail {
 
                 if history_expanded {
                     <Modal icon="clock" title={format!("Watch history for {}", episode.code())} on_close={link.callback(move |_| Msg::ToggleHistory(episode_id))}>
-                        <div key="history" class="column fill">
-                            { for watched.iter().map(|w| {
-                                let wid = w.watched.id;
-                                let kind = api::WatchedKind::Episode { show: show_id, episode: episode_id };
+                        if let Some(moving) = watched.iter().find(|w| self.fixing_watched == Some(w.watched.id)) {
+                            <p class="watch-move-lead">
+                                {"Move the watch from "}
+                                {moving.watched.timestamp.human_date_time(self.time.clone()).lower().view()}
+                                {" to another episode."}
+                            </p>
 
-                                html! {
-                                    <div class="row-split">
-                                        {w.watched.timestamp.human_date_time(self.time.clone()).view()}
+                            <EpisodePicker
+                                show_id={show_id}
+                                season={episode.season}
+                                episode={episode.episode}
+                                on_confirm={link.callback({
+                                    let wid = moving.watched.id;
+                                    move |(season, ep)| Msg::MoveWatched(wid, season, ep)
+                                })}
+                                on_cancel={link.callback(|_| Msg::CancelFixWatched)}
+                            />
+                        } else {
+                            <div key="history" class="watch-history">
+                                { for watched.iter().map(|w| {
+                                    let wid = w.watched.id;
+                                    let kind = api::WatchedKind::Episode { show: show_id, episode: episode_id };
 
-                                        <div class="row">
-                                            <div class="input-group" ref={w.context_anchor.clone()}>
-                                                <Button icon="pencil-square" label="Move" title="Move to different episode" expanded={Some(self.fixing_watched == Some(wid))} haspopup="dialog" onclick={link.callback(move |_| Msg::FixWatched(wid))} />
+                                    html! {
+                                        <div class="watch-row">
+                                            <span class="watch-when">{w.watched.timestamp.human_date_time(self.time.clone()).view()}</span>
+                                            <span class="watch-age">{w.watched.timestamp.relative_to(self.time.now())}</span>
 
-                                                if self.fixing_watched == Some(wid) {
-                                                    <ContextMenu prompt="Where do you want to move watch at" label={w.watched.timestamp.human_date_time(self.time.clone())} anchor={w.context_anchor.clone()} on_close={link.callback(|_| Msg::CancelFixWatched)}>
-                                                        <EpisodePicker
-                                                            show_id={show_id}
-                                                            season={episode.season}
-                                                            episode={episode.episode}
-                                                            on_confirm={link.callback(move |(season, ep)| Msg::MoveWatched(wid, season, ep))}
-                                                            on_cancel={link.callback(|_| Msg::CancelFixWatched)}
-                                                        />
-                                                    </ContextMenu>
-                                                }
+                                            <div class="watch-actions" ref={w.context_anchor.clone()}>
+                                                <Button icon="arrow-uturn-right" label="Move" title="Move to another episode" onclick={link.callback(move |_| Msg::FixWatched(wid))} />
 
-                                                <Button icon="trash" variant={Variant::Danger} title="Remove" text="Remove" expanded={Some(self.confirm_remove_watch == Some(wid))} haspopup="dialog" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} />
+                                                <Button icon="trash" label="Remove" title="Remove" expanded={Some(self.confirm_remove_watch == Some(wid))} haspopup="dialog" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} />
 
                                                 if self.confirm_remove_watch == Some(wid) {
                                                     <ContextMenu prompt="Remove watch at" label={w.watched.timestamp.human_date_time(self.time.clone())} anchor={w.context_anchor.clone()} on_close={link.callback(|_| Msg::CancelRemoveWatch)}>
@@ -2400,10 +2406,10 @@ impl ShowDetail {
                                                 }
                                             </div>
                                         </div>
-                                    </div>
-                                }
-                            }) }
-                        </div>
+                                    }
+                                }) }
+                            </div>
+                        }
                     </Modal>
                 }
 

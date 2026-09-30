@@ -1,6 +1,5 @@
 use core::fmt;
 
-use api::Timed as _;
 use web_sys::Event;
 use yew::prelude::*;
 
@@ -9,7 +8,7 @@ use musli_web::web03::prelude::*;
 use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext as _, Error, Message};
-use crate::ui::{Button, Variant};
+use crate::ui::{Button, FormRow, Variant};
 
 pub(crate) struct EpisodePicker {
     channel: ws::Channel,
@@ -121,37 +120,43 @@ impl Component for EpisodePicker {
         let can_confirm = self.season.is_some() && self.episode.is_some();
 
         html! {
-            <div class="column align-end">
-                <select class="input-select" onchange={on_season_change}>
-                    { for self.seasons.iter().map(|s| {
-                        let value = s.season.ordinal().to_string();
-                        let selected = self.season == Some(s.season);
+            <div class="episode-picker">
+                <div class="form-rows">
+                    <FormRow label="Season">
+                        <select class="input-select" title="Season" onchange={on_season_change}>
+                            { for self.seasons.iter().map(|s| {
+                                let value = s.season.ordinal().to_string();
+                                let selected = self.season == Some(s.season);
 
-                        html! {
-                            <option {value} {selected}>
-                                {format_season_string(s, self.time.clone()).to_string()}
-                            </option>
-                        }
-                    }) }
-                </select>
+                                html! {
+                                    <option {value} {selected}>
+                                        {format_season_string(s, self.time.clone()).to_string()}
+                                    </option>
+                                }
+                            }) }
+                        </select>
+                    </FormRow>
 
-                <select class="input-select" onchange={on_episode_change} disabled={self.episodes.is_empty()}>
-                    { for self.episodes.iter().map(|e| {
-                        let value = e.episode.to_string();
-                        let selected = self.episode == Some(e.episode);
+                    <FormRow label="Episode">
+                        <select class="input-select" title="Episode" onchange={on_episode_change} disabled={self.episodes.is_empty()}>
+                            { for self.episodes.iter().map(|e| {
+                                let value = e.episode.to_string();
+                                let selected = self.episode == Some(e.episode);
 
-                        html! {
-                            <option {value} {selected}>
-                                {format_episode_string(e, self.time.clone()).to_string()}
-                            </option>
-                        }
-                    }) }
-                </select>
+                                html! {
+                                    <option {value} {selected}>
+                                        {format_episode_string(e).to_string()}
+                                    </option>
+                                }
+                            }) }
+                        </select>
+                    </FormRow>
+                </div>
 
-                <div class="input-group">
-                    <Button icon="x-mark" title="Cancel" onclick={link.callback(|_| Msg::Cancel)} />
+                <div class="row end">
+                    <Button icon="x-mark" label="Cancel" title="Cancel" onclick={link.callback(|_| Msg::Cancel)} />
 
-                    <Button icon="check" title="Confirm" variant={Variant::Success} disabled={!can_confirm} onclick={link.callback(|_| Msg::Confirm)} />
+                    <Button icon="check" label="Move" title="Move the watch here" variant={Variant::Primary} disabled={!can_confirm} onclick={link.callback(|_| Msg::Confirm)} />
                 </div>
             </div>
         }
@@ -286,33 +291,32 @@ impl EpisodePicker {
 fn format_season_string(season: &api::Season, time: api::TimeInfo) -> impl fmt::Display + '_ {
     fmt::from_fn(move |f| {
         if let Some(title) = season.strings.title() {
-            write!(f, "{} - {}", season.season.short(), title)?;
+            write!(f, "{title}")?;
         } else {
             write!(f, "{}", season.season.long())?;
         }
 
-        if let Some(date_time) = season.human_date_time(time.clone()) {
-            write!(f, " - {date_time}")?;
+        if let Some(ts) = season.air_date {
+            write!(f, " ({})", ts.date(time.clone()).year())?;
         }
 
         Ok(())
     })
 }
 
-fn format_episode_string(e: &api::Episode, time: api::TimeInfo) -> impl fmt::Display + '_ {
+/// An episode as its code and name, and how often it has been watched.
+fn format_episode_string(e: &api::Episode) -> impl fmt::Display + '_ {
     fmt::from_fn(move |f| {
+        write!(f, "{}", api::Code::new(e.season, e.episode))?;
+
         if let Some(title) = e.strings.title() {
-            write!(f, "{title}")?;
-        } else {
-            write!(f, "E{}", e.episode)?;
+            write!(f, " {title}")?;
         }
 
-        if let Some(date_time) = e.human_date_time(time.clone()) {
-            write!(f, " - {date_time}")?;
-        }
-
-        if e.watched_count > 0 {
-            write!(f, " - Watched {} time(s)", e.watched_count)?;
+        match e.watched_count {
+            0 => {}
+            1 => write!(f, " (watched once)")?,
+            n => write!(f, " (watched {n} times)")?,
         }
 
         Ok(())
