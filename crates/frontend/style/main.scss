@@ -371,14 +371,20 @@ p {
     font-size: v.$font-xs;
 }
 
-.pending-title {
-    display: block;
-    font-size: v.$font-lg;
-    color: v.$text-primary;
-    line-height: v.$input-height;
-    white-space: nowrap;
+// At most `$lines` lines of text, ending in an ellipsis.
+@mixin clamp-lines($lines) {
+    display: -webkit-box;
+    -webkit-line-clamp: $lines;
+    -webkit-box-orient: vertical;
     overflow: hidden;
-    text-overflow: ellipsis;
+}
+
+.pending-title {
+    font-size: v.$font-base;
+    font-weight: v.$bold-weight;
+    line-height: 1.3;
+    color: v.$text-primary;
+    @include clamp-lines(2);
 }
 
 .item-title {
@@ -458,17 +464,40 @@ h6 {
     }
 }
 
+// A What's Next card. On wide screens the poster is the card; on phones a
+// soft panel holds the banner and text.
 .pending-item {
     display: flex;
     flex-direction: column;
     gap: v.$gap-sm;
-    padding: v.$gap-sm;
-    background: v.$bg-dark-transparent;
-    border: 1px solid v.$border-subtle-transparent;
-    border-radius: v.$radius;
     min-width: 0;
     position: relative;
-    overflow: hidden;
+
+    >image.poster {
+        border-radius: v.$radius-lg;
+        overflow: hidden;
+        box-shadow: 0 4px 14px color-mix(in srgb, black 35%, transparent);
+        transition: transform 0.15s ease-out, box-shadow 0.15s ease-out;
+    }
+
+    &:hover>image.poster {
+        transform: translateY(-3px);
+        box-shadow: 0 10px 24px color-mix(in srgb, black 45%, transparent);
+    }
+
+    >image.banner {
+        border-radius: v.$radius;
+        overflow: hidden;
+    }
+
+    // Only the phone panel is rounded; on wide screens rounding the card would
+    // clip the poster's lift and the corner of the button beneath it.
+    @include g.on-mobile {
+        padding: v.$gap-sm;
+        background: v.$bg-dark-transparent;
+        border-radius: v.$radius-lg;
+        overflow: hidden;
+    }
 
     // Replays whenever the element mounts, i.e. when a row swaps to its next
     // episode after being marked watched (the element is keyed on its content).
@@ -558,27 +587,34 @@ image {
 .pending-content {
     display: flex;
     flex-direction: column;
-    gap: v.$gap-sm;
+    gap: v.$padding;
     flex: 1;
 }
 
+// The primary mark on the left, quieter actions on the right.
 .pending-actions {
     display: flex;
-    gap: v.$gap-sm;
-    justify-content: flex-end;
+    align-items: center;
+    justify-content: space-between;
+    gap: v.$gap-xs;
 }
 
 .pending-label {
     font-size: v.$font-sm;
-    font-weight: v.$bold-weight;
-    color: v.$text-primary;
-    white-space: wrap;
+    line-height: 1.4;
+    color: v.$text-color;
+    @include clamp-lines(2);
+}
 
-    @include g.on-desktop {
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
+// An episode code set as a small badge before the episode's name.
+.pending-code {
+    padding: 1px 6px;
+    border-radius: v.$radius-sm;
+    background: var(--neutral-bg);
+    font-size: v.$font-xs;
+    font-weight: v.$bold-weight;
+    font-variant-numeric: tabular-nums;
+    color: v.$text-muted;
 }
 
 .pending-date {
@@ -587,6 +623,18 @@ image {
 
     &.upcoming {
         color: v.$color-primary;
+    }
+}
+
+// A secondary icon action with no chrome until hovered.
+button.ghost {
+    background: transparent;
+    --icon-color: #{v.$text-muted};
+
+    &:hover:not(.disabled):not(:disabled) {
+        background: var(--neutral-bg);
+        border-color: transparent;
+        --icon-color: #{v.$text-color};
     }
 }
 

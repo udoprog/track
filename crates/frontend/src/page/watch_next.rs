@@ -748,7 +748,9 @@ impl WatchNext {
                         </span>
 
                         <span class="pending-label clickable" onclick={on_navigate_episode.clone()}>
-                            {format!("{}E{number:02} ─ {}", season.short(), episode.as_deref().unwrap_or("Untitled Episode"))}
+                            <span class="pending-code">{format!("{}E{number:02}", season.short())}</span>
+                            {" "}
+                            {episode.as_deref().unwrap_or("Untitled Episode")}
                         </span>
                     </>
                 }
@@ -779,7 +781,7 @@ impl WatchNext {
 
                         if let Some(aired) = pending.aired() {
                             <span class={classes!("pending-date", (aired > self.time.now()).then_some("upcoming"))} title={aired.human_date_time(self.time.clone()).to_string()}>
-                                {aired.relative_to(self.time.now())}
+                                { format!("{} {}", aired_verb(pending_kind, aired <= self.time.now()), aired.relative_to(self.time.now())) }
                             </span>
                         }
                     </div>
@@ -791,13 +793,15 @@ impl WatchNext {
                             } else {
                                 <Button icon="check" variant={Variant::Primary} title="Mark watched" onclick={ctx.link().callback(move |_| Msg::MarkWatched(kind, api::MarkTime::Now))} />
                             }
+                        </div>
 
-                            <MarkTimeMenu title="Move pending" icon="bookmark" prompt={format!("When do you want to queue this {}?", pending_kind.title())} preset={preset.clone()} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkPending(pending_kind, mark_time))}>
+                        <div class="row">
+                            <MarkTimeMenu class="ghost" title="Move pending" icon="bookmark" prompt={format!("When do you want to queue this {}?", pending_kind.title())} preset={preset.clone()} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkPending(pending_kind, mark_time))}>
                                 <span class="icon bookmark" />
                             </MarkTimeMenu>
 
                             if let Some((show, episode)) = skip_ids {
-                                <Button key="skip-button" node_ref={anchor.clone()} icon="forward" title="Skip episode" onclick={ctx.link().callback(move |_| Msg::AskSkipEpisode(show, episode))} />
+                                <Button key="skip-button" node_ref={anchor.clone()} icon="forward" title="Skip episode" class="ghost" onclick={ctx.link().callback(move |_| Msg::AskSkipEpisode(show, episode))} />
 
                                 if confirming && let Some(code) = skip_code {
                                     <ContextMenu icon="forward" prompt="Skip episode" label={code} anchor={anchor.clone()} on_close={ctx.link().callback(|_| Msg::CancelSkipEpisode)}>
@@ -813,5 +817,16 @@ impl WatchNext {
                 </div>
             </div>
         }
+    }
+}
+
+/// What the date on a card is: when the episode aired or the movie was
+/// released, or will be.
+fn aired_verb(kind: api::PendingKind, past: bool) -> &'static str {
+    match (kind, past) {
+        (api::PendingKind::Episode { .. }, true) => "Aired",
+        (api::PendingKind::Episode { .. }, false) => "Airs",
+        (api::PendingKind::Movie { .. }, true) => "Released",
+        (api::PendingKind::Movie { .. }, false) => "Releases",
     }
 }

@@ -2,8 +2,8 @@ use yew_e2e::prelude::*;
 
 use super::Track;
 
-const FIRST: &str = "S01E01 ─ First Episode";
-const SECOND: &str = "S01E02 ─ Second Episode";
+const FIRST: &str = "S01E01 First Episode";
+const SECOND: &str = "S01E02 Second Episode";
 
 /// The watched button marks the episode in one click and moves the show along,
 /// and the toast undoes it.
