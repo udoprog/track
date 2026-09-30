@@ -1410,3 +1410,79 @@ pagination {
 .disclosure {
     background: transparent;
 }
+
+// The Media page's poster grid.
+.media-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: v.$gap-sm;
+
+    @include g.on-mobile {
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    }
+}
+
+.media-card {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    background: v.$bg-item;
+    border-radius: v.$radius;
+    overflow: hidden;
+}
+
+.media-poster {
+    position: relative;
+
+    >image {
+        width: 100%;
+    }
+}
+
+// Marks a watched item in the poster's corner.
+.media-badge {
+    position: absolute;
+    top: v.$gap-xs;
+    right: v.$gap-xs;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--success-selected);
+    --icon-color: #{v.$text-on-accent};
+}
+
+.media-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: v.$padding-md;
+    min-width: 0;
+
+    >.input-group {
+        margin-top: v.$padding-md;
+    }
+}
+
+.media-title {
+    font-weight: v.$bold-weight;
+    font-size: v.$font-sm;
+    color: v.$text-primary;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.media-meta {
+    display: flex;
+    align-items: center;
+    gap: v.$text-gap;
+    min-width: 0;
+    font-size: v.$font-xs;
+    color: v.$text-muted;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

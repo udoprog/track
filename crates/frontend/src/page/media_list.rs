@@ -12,7 +12,7 @@ use crate::router::{
 };
 use crate::ui::{Button, Image, MarkTimeMenu, MediaKindToggle, PaginationButtons, TimePreset};
 
-const PAGE_SIZE: usize = 20;
+const PAGE_SIZE: usize = 36;
 
 /// Route to the detail view for a list item of the given kind.
 fn detail_route(kind: api::MediaKind, id: u64) -> Route {
@@ -291,8 +291,8 @@ impl Component for MediaList {
                         <span class="item-inline-more">{"Nothing to show."}</span>
                     </div>
                 } else {
-                    <div class="table">
-                        { for items.into_iter().map(|m| self.view_row(ctx, m)) }
+                    <div class="media-grid">
+                        { for items.into_iter().map(|m| self.view_card(ctx, m)) }
                     </div>
 
                     <div class="row desktop-align-end">
@@ -587,7 +587,7 @@ impl MediaList {
             .send();
     }
 
-    fn view_row(&self, ctx: &Context<Self>, m: &api::MediaItem) -> Html {
+    fn view_card(&self, ctx: &Context<Self>, m: &api::MediaItem) -> Html {
         let id = m.id;
         let kind = m.kind;
         let onclick = ctx
@@ -600,16 +600,6 @@ impl MediaList {
             .callback(move |_| Msg::HoverBackdrop(backdrop_url.clone()));
 
         let is_movie = matches!(m.kind, api::MediaKind::Movies);
-
-        let kind_icon = match m.kind {
-            api::MediaKind::Shows => "tv",
-            api::MediaKind::Movies => "film",
-        };
-
-        let kind_title = match m.kind {
-            api::MediaKind::Shows => "Show",
-            api::MediaKind::Movies => "Movie",
-        };
 
         // When the filter matched an alternate-language title rather than the
         // primary one, surface that alt title so it's clear why the row matched.
@@ -631,112 +621,60 @@ impl MediaList {
             .date
             .map(|timestamp| TimePreset::at("calendar", "Released", timestamp));
 
+        let title = primary_title.unwrap_or("Untitled Media");
+        let now = self.time.now();
+
         html! {
-            <div class="desktop-row mobile-column align-top" {onmouseover}>
-                <Image class="banner clickable mobile-only" onclick={&onclick} src={m.banner.clone()} />
-                <Image class="poster poster-side clickable desktop-only" onclick={&onclick} src={m.poster.clone()} />
+            <div class="media-card" {onmouseover}>
+                <div class="media-poster clickable" onclick={&onclick}>
+                    <Image class="poster" placeholder=true src={m.poster.clone()} alt={title.to_owned()} />
 
-                <div class="column fill">
-                    <div class="row-split fill align-top">
-                        <div class="column fill">
-                            <div class="row clickable" onclick={&onclick}>
-                                <div class="item-inline" title={kind_title}>
-                                    <div class={classes!("icon", kind_icon)} />
-                                </div>
-
-                                <span class="item-title">{primary_title.unwrap_or("Untitled Media")}</span>
-                            </div>
-
-                            if let Some(alt) = matched_alt {
-                                <div class="row text-gap text-muted">
-                                    <span>{"Alt:"}</span>
-                                    <span>{alt}</span>
-                                </div>
-                            }
-
-                            if !m.remotes.is_empty() {
-                                <div class="row">
-                                    { for m.remotes.iter().filter_map(|r| {
-                                        let url = match m.kind {
-                                            api::MediaKind::Shows => r.remote.show_url(r.slug.as_deref()),
-                                            api::MediaKind::Movies => r.remote.movie_url(),
-                                        }?;
-                                        let label = r.remote.source().as_label();
-                                        let id = r.remote.source().as_id();
-
-                                        Some(html! {
-                                            <a class="item-inline-source" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {label}")}>
-                                                <span class={classes!("logo", id)} />
-                                            </a>
-                                        })
-                                    }) }
-                                </div>
-                            }
-
-                            <div class="row">
-                                if let Some(ts) = m.date {
-                                    <div class="row">
-                                        <span class="text-muted item-inline" title="Release date">
-                                            <span class="icon calendar" />
-                                        </span>
-
-                                        <span>{ts.human_date(self.time.clone())}</span>
-                                    </div>
-                                } else {
-                                    <div class="row">
-                                        <span class="text-muted item-inline" title="Unknown release date">
-                                            <span class="icon calendar" />
-                                        </span>
-
-                                        {"No release date"}
-                                    </div>
-                                }
-
-                                if let Some(ts) = m.last_watched_at {
-                                    <div class="row">
-                                        <span class="text-muted item-inline" title="Last watched">
-                                            <span class="icon eye" />
-                                        </span>
-
-                                        <span>{ts.human_date(self.time.clone())}</span>
-                                    </div>
-                                } else {
-                                    <div class="row">
-                                        <span class="text-muted item-inline" title="Not watched">
-                                            <span class="icon eye-slash" />
-                                        </span>
-
-                                        {"Never watched"}
-                                    </div>
-                                }
-                            </div>
-                        </div>
-
-                        <div class="row">
-                            <div class="row">
-                                if is_movie {
-                                    <MarkTimeMenu quick=true class="success" icon="check" title="Mark watched" prompt={match primary_title { Some(title) => format!("When did you watch {}?", title), None => "When did you watch this movie?".to_string() }} {preset} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(id, mark_time))} />
-                                }
-                            </div>
-
-                            if !m.tracked {
-                                <button class="desktop-has-text" title="Track"
-                                    onclick={ctx.link().callback(move |_| Msg::SetTracked(kind, id, true))}>
-                                    <span class="icon eye-slash" />
-                                    <span class="desktop-only">{"Track"}</span>
-                                </button>
-                            }
-                        </div>
-                    </div>
-
-                    if let Some(overview) = m.strings.overview() {
-                        <div class="overview">
-                            {overview}
-                        </div>
+                    if m.last_watched_at.is_some() {
+                        <span class="media-badge" title="Watched">
+                            <span class="icon sm check" />
+                        </span>
                     }
                 </div>
 
-                <span class="item-inline align-end clickable"><span onclick={&onclick} class="icon chevron-right" /></span>
+                <div class="media-info">
+                    <span class="media-title clickable" title={title.to_owned()} onclick={&onclick}>{title}</span>
+
+                    if let Some(alt) = matched_alt {
+                        <span class="media-meta" title={alt.to_owned()}>{format!("Alt: {alt}")}</span>
+                    }
+
+                    <span class="media-meta">
+                        if is_movie {
+                            <span class="icon sm film" title="Movie" />
+                        }
+
+                        if let Some(ts) = m.date {
+                            <span title={ts.human_date(self.time.clone()).to_string()}>{ts.date(self.time.clone()).year()}</span>
+                        } else {
+                            <span>{"No date"}</span>
+                        }
+                    </span>
+
+                    <span class="media-meta">
+                        if let Some(ts) = m.last_watched_at {
+                            <span title={ts.human_date(self.time.clone()).to_string()}>{format!("Watched {}", ts.relative_to(now))}</span>
+                        } else {
+                            <span>{"Not watched"}</span>
+                        }
+                    </span>
+
+                    if is_movie || !m.tracked {
+                        <div class="input-group">
+                            if is_movie {
+                                <MarkTimeMenu quick=true class="success" icon="check" title="Mark watched" prompt={format!("When did you watch {title}?")} {preset} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(id, mark_time))} />
+                            }
+
+                            if !m.tracked {
+                                <Button icon="eye-slash" label="Track" title="Track" onclick={ctx.link().callback(move |_| Msg::SetTracked(kind, id, true))} />
+                            }
+                        </div>
+                    }
+                </div>
             </div>
         }
     }
