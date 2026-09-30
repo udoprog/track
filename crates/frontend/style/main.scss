@@ -552,6 +552,98 @@ p {
     gap: v.$gap;
 }
 
+// A remote identifier in the Remotes editor: its source and id with its
+// actions on one line, what it syncs under that, then its cache.
+.remote {
+    display: flex;
+    flex-direction: column;
+    gap: v.$gap-xs;
+}
+
+.remote-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: v.$gap-xs;
+}
+
+.remote-link {
+    display: inline-flex;
+    align-items: center;
+    gap: v.$gap-xs;
+    min-width: 0;
+    color: v.$text-color;
+
+    >.logo {
+        height: 20px;
+        padding: 0;
+    }
+}
+
+a.remote-link:hover .remote-id {
+    text-decoration: underline;
+}
+
+.remote-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: v.$gap-xs;
+    margin-inline-start: auto;
+}
+
+.remote-kinds {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: v.$gap-xs;
+}
+
+.remote-caption {
+    color: v.$text-muted;
+    font-size: v.$font-sm;
+}
+
+.remote-cache {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: v.$gap-xs v.$gap;
+    font-size: v.$font-sm;
+
+    >dl {
+        display: grid;
+        grid-template-columns: max-content minmax(0, 1fr);
+        gap: v.$padding v.$gap-sm;
+        margin: 0;
+        min-width: 0;
+        flex: 1;
+    }
+
+    dt {
+        color: v.$text-muted;
+    }
+
+    dd {
+        margin: 0;
+        min-width: 0;
+    }
+}
+
+.remote-etag {
+    font-family: v.$monospace-font;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.remote-errors {
+    flex-basis: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, max-content) minmax(0, 1fr) max-content;
+    gap: v.$padding v.$gap-sm;
+}
+
 // Search results: compact rows of a small poster, the title with its kind
 // and year, two lines of overview and the sources, with the action on the
 // right (under the text on phones).

@@ -769,3 +769,52 @@ pub async fn detail_poster_is_rounded(driver: &mut TestDriver, _: &mut Track) ->
     ensure!(radius == "12px", "the poster's corners are {radius}");
     Ok(())
 }
+
+/// A remote identifier added in the Remotes editor shows its source and id on
+/// one line with its switch and labelled actions, nothing collapsed.
+pub async fn remotes_show_their_actions(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_show(driver).await?;
+
+    driver
+        .find_one_by("[title='Settings']:not(#toolbar *)")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by(".modal [title='Edit remotes']")
+        .await?
+        .click()
+        .await?;
+
+    driver
+        .find_one_by(".modal input[aria-label=Identifier]")
+        .await?
+        .send_keys("12345")
+        .await?;
+    driver
+        .find_one_by(".modal [title='Add identifier']")
+        .await?
+        .click()
+        .await?;
+
+    driver.wait_texts(".modal .remote-id", ["12345"]).await?;
+
+    let switch = driver
+        .find_one_by(".modal .remote [title='Enable this remote']")
+        .await?
+        .text()
+        .await?;
+    ensure!(switch == "Enabled", "the switch reads {switch:?}");
+
+    for title in ["Edit identifier", "Remove identifier"] {
+        let text = driver
+            .find_one_by(&format!(".modal .remote [title='{title}']"))
+            .await?
+            .text()
+            .await?;
+        ensure!(!text.trim().is_empty(), "{title} has no label");
+    }
+
+    ensure!(driver.count("[title='Identifier actions']").await? == 0);
+    Ok(())
+}
