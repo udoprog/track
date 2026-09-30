@@ -658,7 +658,7 @@ impl MediaList {
                     if is_movie || !m.tracked {
                         <div class="input-group">
                             if is_movie {
-                                <MarkTimeMenu quick=true class="success" icon="check" title="Mark watched" prompt={format!("When did you watch {title}?")} {preset} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(id, mark_time))} />
+                                <MarkTimeMenu quick=true class="primary" icon="check" title="Mark watched" prompt={format!("When did you watch {title}?")} {preset} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(id, mark_time))} />
                             }
 
                             if !m.tracked {

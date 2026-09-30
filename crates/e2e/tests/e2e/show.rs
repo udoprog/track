@@ -364,3 +364,21 @@ pub async fn menus_work_from_the_keyboard(driver: &mut TestDriver, _: &mut Track
     ensure!(back == "More actions", "focus went back to {back:?}");
     Ok(())
 }
+
+/// Mark watched is the same primary button on the dashboard and on the show.
+pub async fn mark_watched_is_one_colour(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    let card = driver
+        .find_first(".pending-item [title='Mark watched']")
+        .await?;
+    ensure!(card.attr("class").await?.contains("primary"));
+
+    open_show(driver).await?;
+
+    let episode = driver.find_first(".episode [title='Mark watched']").await?;
+    let class = episode.attr("class").await?;
+    ensure!(
+        class.contains("primary") && !class.contains("success"),
+        "the show's Mark watched is {class:?}"
+    );
+    Ok(())
+}

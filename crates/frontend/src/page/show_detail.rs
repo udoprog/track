@@ -2186,7 +2186,7 @@ impl ShowDetail {
                             }
 
                             if watched_count < total {
-                                <MarkTimeMenu class="success mobile-has-text" title="Mark remaining episodes as watched" prompt="When did you watch the remaining episodes?" preset={Some(remaining_preset.clone())} on_confirm={watch_remaining}>
+                                <MarkTimeMenu class="primary mobile-has-text" title="Mark remaining episodes as watched" prompt="When did you watch the remaining episodes?" preset={Some(remaining_preset.clone())} on_confirm={watch_remaining}>
                                     <span class="icon check" aria-hidden="true" />
                                     <span class="mobile-only">{"Remaining"}</span>
                                 </MarkTimeMenu>
@@ -2260,7 +2260,7 @@ impl ShowDetail {
 
                         <div class="row episode-actions">
                             <div class="input-group">
-                                <MarkTimeMenu quick=true class="success" icon="check" title="Mark watched" prompt={format!("When did you watch {}?", episode.code())} preset={preset.clone()} on_confirm={on_mark_confirm} />
+                                <MarkTimeMenu quick=true class="primary" icon="check" title="Mark watched" prompt={format!("When did you watch {}?", episode.code())} preset={preset.clone()} on_confirm={on_mark_confirm} />
                             </div>
 
                             <div class="input-group">
