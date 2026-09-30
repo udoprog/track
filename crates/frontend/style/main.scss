@@ -185,16 +185,6 @@ p {
         flex-wrap: wrap;
     }
 
-    @include g.on-mobile {
-        &.mobile-justify-around {
-            justify-content: space-around;
-        }
-
-        &.mobile-flex-wrap {
-            flex-wrap: wrap;
-        }
-    }
-
     @include g.on-desktop {
         &.desktop-justify-around {
             justify-content: space-around;

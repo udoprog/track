@@ -574,7 +574,7 @@ impl PersonDetail {
                         <div class="text-muted">{ department.clone() }</div>
                     }
 
-                    <div class="row mobile-justify-around mobile-flex-wrap">
+                    <div class="row detail-sources">
                         {for person.remotes.iter().filter_map(|r| {
                             let url = r.remote.person_url(r.slug.as_deref())?;
                             let id = r.remote.source().as_id();
