@@ -749,7 +749,7 @@ impl SeasonNumber {
     #[inline]
     pub fn short(&self) -> impl fmt::Display + '_ {
         fmt::from_fn(|f| match self {
-            Self::Specials => write!(f, "Sp"),
+            Self::Specials => write!(f, "S00"),
             Self::Number(n) => write!(f, "S{n:02}"),
         })
     }
