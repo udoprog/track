@@ -2302,8 +2302,8 @@ pub struct Task {
     pub id: TaskId,
     pub kind: TaskKind,
     pub status: TaskStatus,
-    /// Wall-clock time the task is expected to start running, or `None` when it
-    /// is already running.
+    /// Wall-clock time the task is expected to start running, or when it
+    /// started once it is running.
     pub run_at: Option<Timestamp>,
 }
 

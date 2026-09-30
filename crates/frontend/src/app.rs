@@ -452,7 +452,7 @@ impl App {
                 html! { <Dashboard page={q.page} week={q.week} week_start={q.week_start} range={q.range} view={q.view} selection={q.selection} /> }
             }
             Route::Queue(ref q) => html! {
-                <Queue focus={q.focus} page={q.page} />
+                <Queue filter={q.filter} page={q.page} />
             },
             Route::Media(ref q) => html! {
                 <MediaList page={q.page} filter={q.filter.clone()} sort={q.sort} desc={q.desc} tracked={q.tracked} selection={q.selection} />

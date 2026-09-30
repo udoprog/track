@@ -1487,24 +1487,93 @@ pagination {
     text-overflow: ellipsis;
 }
 
-// Task lists on the Queue page: rows aligned in columns (status, kind,
-// subject, time, actions) on wide screens, stacking kind and time under the
-// subject on phones.
-.task-section {
+// The Queue page: a fixed strip for the running task, then one timeline of
+// fixed-height rows aligned in columns (status, kind, subject, duration, time,
+// actions) on wide screens, stacking kind and time under the subject on phones.
+.queue-now {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto auto auto;
+    align-items: center;
+    column-gap: v.$gap-sm;
+    height: v.$input-height + 2 * v.$padding-lg;
+    padding: 0 v.$padding-lg;
+    border: 1px solid v.$border-subtle;
+    border-radius: v.$radius;
+    background: v.$bg-surface;
+    font-size: v.$font-sm;
+
+    @include g.on-mobile {
+        grid-template-columns: auto auto minmax(0, 1fr) auto;
+        grid-template-areas:
+            "icon kind title time"
+            "counts counts counts sync";
+        height: 2 * v.$input-height-touch + 3 * v.$padding;
+        row-gap: v.$padding;
+        padding: v.$padding v.$padding-lg;
+
+        >.queue-counts {
+            grid-area: counts;
+        }
+
+        >button {
+            grid-area: sync;
+        }
+    }
+}
+
+.queue-counts {
     display: flex;
-    flex-direction: column;
-    gap: v.$gap-xs;
+    gap: v.$gap-sm;
+    color: v.$text-muted;
+    white-space: nowrap;
+
+    >span {
+        display: flex;
+        align-items: center;
+        gap: v.$text-gap;
+    }
+
+    .icon {
+        width: v.$icon-size-sm;
+        height: v.$icon-size-sm;
+    }
+
+    >.failed {
+        --icon-color: #{v.$color-danger};
+        color: v.$color-danger;
+    }
+}
+
+.queue-filters>button {
+    white-space: nowrap;
+
+    @include g.on-mobile {
+        >.icon {
+            display: none;
+        }
+    }
 }
 
 .task-grid {
+    --task-row-height: #{v.$input-height + 4px};
+
     display: grid;
-    grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+    grid-template-columns: auto auto minmax(0, 1fr) auto auto auto;
+    grid-auto-rows: var(--task-row-height);
+    align-content: start;
     column-gap: v.$gap-sm;
     font-size: v.$font-sm;
 
     @include g.on-mobile {
+        --task-row-height: #{v.$input-height-touch + 2 * v.$padding};
+
         grid-template-columns: auto minmax(0, 1fr) auto;
     }
+}
+
+// A full page of rows is reserved so status changes never move the page.
+.task-timeline {
+    min-height: calc(var(--page-rows) * var(--task-row-height));
 }
 
 .task-row {
@@ -1512,19 +1581,33 @@ pagination {
     grid-column: 1 / -1;
     grid-template-columns: subgrid;
     align-items: center;
-    min-height: v.$input-height;
-    padding: 2px v.$gap-xs;
+    height: var(--task-row-height);
+    padding: 0 v.$gap-xs;
     border-radius: v.$radius-sm;
+    overflow: hidden;
 
     &:nth-child(even) {
         background: v.$bg-dark-transparent;
+    }
+
+    &.running {
+        background: color-mix(in srgb, v.$color-primary 15%, transparent);
+    }
+
+    &.done>.task-icon {
+        --icon-color: #{v.$color-success};
+    }
+
+    &.failed>.task-icon {
+        --icon-color: #{v.$color-danger};
     }
 
     @include g.on-mobile {
         grid-template-areas:
             "icon title actions"
             "icon meta actions";
-        padding: v.$gap-xs;
+        grid-template-rows: auto auto;
+        align-content: center;
 
         >.task-icon {
             grid-area: icon;
@@ -1543,6 +1626,10 @@ pagination {
             justify-self: end;
         }
 
+        >.task-duration {
+            display: none;
+        }
+
         >.task-actions {
             grid-area: actions;
         }
@@ -1554,9 +1641,15 @@ pagination {
 }
 
 .task-kind,
+.task-duration,
 .task-time {
     color: v.$text-muted;
     white-space: nowrap;
+}
+
+.task-duration {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
 }
 
 .task-title {
@@ -1566,6 +1659,13 @@ pagination {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.task-error {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: v.$color-danger;
 }
 
 .task-actions {

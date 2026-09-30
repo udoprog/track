@@ -333,6 +333,7 @@ impl TaskQueue {
                 if inner.pending.front().is_some_and(|t| t.run_at <= now) {
                     let mut t = inner.pending.pop_front().unwrap().task;
                     t.status = api::TaskStatus::Running;
+                    t.run_at = Some(api::Timestamp::now());
                     inner.running = Some(t.clone());
                     Some(t)
                 } else {

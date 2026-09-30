@@ -427,57 +427,55 @@ impl PersonQuery {
     }
 }
 
-/// Which task list the queue overview is focused on.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(super) enum QueueFocus {
-    Running,
-    Pending,
-    Completed,
+/// Which tasks the queue timeline shows.
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub(super) enum QueueFilter {
+    #[default]
+    All,
+    /// Running and pending tasks.
+    Upcoming,
+    /// Tasks that completed successfully.
+    Done,
+    Failed,
 }
 
-impl QueueFocus {
-    pub(super) fn title(self) -> &'static str {
-        match self {
-            QueueFocus::Running => "Running",
-            QueueFocus::Pending => "Pending",
-            QueueFocus::Completed => "Completed",
-        }
-    }
-
+impl QueueFilter {
     fn as_str(self) -> &'static str {
         match self {
-            QueueFocus::Running => "running",
-            QueueFocus::Pending => "pending",
-            QueueFocus::Completed => "completed",
+            QueueFilter::All => "all",
+            QueueFilter::Upcoming => "upcoming",
+            QueueFilter::Done => "done",
+            QueueFilter::Failed => "failed",
         }
     }
 
-    fn parse(value: &str) -> Option<Self> {
+    fn parse(value: &str) -> Self {
         match value {
-            "running" => Some(QueueFocus::Running),
-            "pending" => Some(QueueFocus::Pending),
-            "completed" => Some(QueueFocus::Completed),
-            _ => None,
+            "upcoming" => QueueFilter::Upcoming,
+            "done" => QueueFilter::Done,
+            "failed" => QueueFilter::Failed,
+            _ => QueueFilter::All,
         }
     }
 }
 
 #[derive(Default, Debug, Clone, PartialEq)]
 pub(super) struct QueueQuery {
-    pub(super) focus: Option<QueueFocus>,
-    pub(super) page: usize,
+    pub(super) filter: QueueFilter,
+    /// The page shown, or `None` to follow the running task.
+    pub(super) page: Option<usize>,
 }
 
 impl QueueQuery {
     fn to_query_string(&self) -> String {
         let mut s = form_urlencoded::Serializer::new(String::new());
 
-        if let Some(focus) = self.focus {
-            s.append_pair("focus", focus.as_str());
+        if self.filter != QueueFilter::All {
+            s.append_pair("filter", self.filter.as_str());
         }
 
-        if self.page > 0 {
-            s.append_pair("page", &self.page.to_string());
+        if let Some(page) = self.page {
+            s.append_pair("page", &page.to_string());
         }
 
         s.finish()
@@ -488,11 +486,11 @@ impl QueueQuery {
 
         for (key, value) in form_urlencoded::parse(search.as_bytes()) {
             match key.as_ref() {
-                "focus" => {
-                    this.focus = QueueFocus::parse(value.as_ref());
+                "filter" => {
+                    this.filter = QueueFilter::parse(value.as_ref());
                 }
                 "page" => {
-                    this.page = value.parse::<usize>().unwrap_or(0);
+                    this.page = value.parse::<usize>().ok();
                 }
                 _ => continue,
             }

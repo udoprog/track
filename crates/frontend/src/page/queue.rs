@@ -1,28 +1,75 @@
-use api::TimeInfo;
+use gloo::render::{AnimationFrame, request_animation_frame};
+use gloo::timers::callback::Interval;
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
 use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{QueueFocus, QueueQuery, Route, Router, ShowDetailQuery};
+use crate::router::{QueueFilter, QueueQuery, Route, Router, ShowDetailQuery};
 use crate::ui::{Button, PaginationButtons, Skeleton, Variant};
 
 const PAGE_SIZE: usize = 20;
-/// How many pending and completed tasks the overview shows of each.
-const OVERVIEW_SIZE: usize = 10;
+/// Completed tasks kept, matching the server's history.
+const HISTORY: usize = 500;
+
+/// Where a task is in its life. Rows keep their place in the timeline while
+/// this changes.
+enum State {
+    Pending { run_at: Option<api::Timestamp> },
+    Running { since: Option<api::Timestamp> },
+    Done(api::CompletedTask),
+}
+
+struct Entry {
+    id: api::TaskId,
+    kind: api::TaskKind,
+    state: State,
+}
+
+impl Entry {
+    fn pending(task: api::Task) -> Self {
+        Self {
+            id: task.id,
+            kind: task.kind,
+            state: State::Pending {
+                run_at: task.run_at,
+            },
+        }
+    }
+
+    fn is_pending(&self) -> bool {
+        matches!(self.state, State::Pending { .. })
+    }
+
+    fn is_done(&self) -> bool {
+        matches!(self.state, State::Done(..))
+    }
+
+    fn matches(&self, filter: QueueFilter) -> bool {
+        match (filter, &self.state) {
+            (QueueFilter::All, _) => true,
+            (QueueFilter::Upcoming, State::Pending { .. } | State::Running { .. }) => true,
+            (QueueFilter::Done, State::Done(task)) => task.error.is_none(),
+            (QueueFilter::Failed, State::Done(task)) => task.error.is_some(),
+            _ => false,
+        }
+    }
+}
 
 pub(crate) struct Queue {
     channel: ws::Channel,
     background: Background,
     router: Router,
-    pending: Vec<api::Task>,
-    running: Vec<api::Task>,
-    completed: Vec<api::CompletedTask>,
+    /// Every task in the order it runs: completed, running, then pending.
+    entries: Vec<Entry>,
     /// Whether the initial task lists have loaded; gates skeleton placeholders.
     loaded: bool,
-    time: TimeInfo,
-    _time_handle: ContextHandle<TimeInfo>,
+    now: api::Timestamp,
+    /// A render waiting for the next animation frame, so a burst of queue
+    /// events renders once.
+    frame: Option<AnimationFrame>,
+    _tick: Interval,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
     _list_req: ws::Request,
@@ -30,28 +77,28 @@ pub(crate) struct Queue {
     _remove_req: ws::Request,
     _bump_req: ws::Request,
 }
+
 pub(crate) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     TasksLoaded(Result<ws::Packet<api::ListTasks>, ws::Error>),
+    Frame,
+    Tick,
     SyncAll,
     SyncAllDone(Result<ws::Packet<api::SyncAll>, ws::Error>),
     Remove(api::TaskId),
     RemoveDone(Result<ws::Packet<api::RemoveTask>, ws::Error>),
     Bump(api::TaskId),
     BumpDone(Result<ws::Packet<api::BumpTask>, ws::Error>),
-    Focus(Option<QueueFocus>),
-    SetPage(usize),
+    Query(QueueQuery),
     Navigate(Route),
-    SetTime(TimeInfo),
 }
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
-    /// Which list is focused, persisted in the route query. `None` is the overview.
-    pub(crate) focus: Option<QueueFocus>,
-    /// Current page of the focused pending list, persisted in the route query.
-    pub(crate) page: usize,
+    pub(crate) filter: QueueFilter,
+    /// The page shown, or `None` to follow the running task.
+    pub(crate) page: Option<usize>,
 }
 
 impl Component for Queue {
@@ -77,21 +124,20 @@ impl Component for Queue {
             .context::<Router>(Callback::noop())
             .expect("Expected router in context");
 
-        let (time, _time_handle) = ctx
-            .link()
-            .context::<TimeInfo>(ctx.link().callback(Msg::SetTime))
-            .expect("Expected a configured time zone");
+        let _tick = Interval::new(1000, {
+            let link = ctx.link().clone();
+            move || link.send_message(Msg::Tick)
+        });
 
         Self {
             channel: ws::Channel::default(),
             background,
             router,
-            pending: Vec::new(),
-            running: Vec::new(),
-            completed: Vec::new(),
+            entries: Vec::new(),
             loaded: false,
-            time,
-            _time_handle,
+            now: api::Timestamp::now(),
+            frame: None,
+            _tick,
             _setup,
             _broadcast,
             _list_req: ws::Request::default(),
@@ -122,20 +168,18 @@ impl Component for Queue {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
-        let link = ctx.link();
-
         html! {
             <>
-                <div class="row-split">
-                    <h1>{"Queue"}</h1>
+                <h1>{"Queue"}</h1>
 
-                    <Button icon="arrow-path" label="Sync all" title="Queue sync for all show and movies" onclick={link.callback(|_| Msg::SyncAll)} />
-                </div>
+                { self.view_now(ctx) }
 
-                if let Some(focus) = ctx.props().focus {
-                    { self.view_focused(ctx, focus) }
+                if self.loaded {
+                    { self.view_timeline(ctx) }
                 } else {
-                    { self.view_overview(ctx) }
+                    <div class="column">
+                        { for (0..3).map(|_| html! { <Skeleton /> }) }
+                    </div>
                 }
             </>
         }
@@ -150,52 +194,73 @@ impl Queue {
                 if self.channel.id() != ws::ChannelId::NONE {
                     self.load(ctx);
                 } else {
-                    self.pending.clear();
-                    self.running.clear();
-                    self.completed.clear();
+                    self.entries.clear();
                     self.loaded = false;
                 }
                 Ok(true)
             }
             Msg::AppBroadcast(packet) => {
                 let event = packet?.decode_event()?;
+
                 match event.kind {
                     api::AppEventKind::TaskAdded { task } => {
-                        self.pending.push(task);
-                        Ok(true)
+                        self.entries.push(Entry::pending(task));
                     }
                     api::AppEventKind::TaskBumped { task } => {
-                        self.pending.retain(|t| t.id != task.id);
-                        self.pending.insert(0, task);
-                        Ok(true)
+                        self.move_to_next(Entry::pending(task));
                     }
                     api::AppEventKind::TaskRemoved { task_id } => {
-                        self.pending.retain(|t| t.id != task_id);
-                        Ok(true)
+                        self.entries.retain(|e| e.id != task_id);
                     }
                     api::AppEventKind::TaskStarted { task } => {
-                        self.pending.retain(|t| t.id != task.id);
-                        self.running.push(task);
-                        Ok(true)
+                        self.move_to_next(Entry {
+                            id: task.id,
+                            kind: task.kind,
+                            state: State::Running { since: task.run_at },
+                        });
                     }
                     api::AppEventKind::TaskCompleted { task } => {
-                        self.running.retain(|t| t.id != task.id);
-                        self.completed.insert(0, task);
-                        Ok(true)
+                        self.complete(task);
                     }
-                    _ => Ok(false),
+                    _ => return Ok(false),
                 }
+
+                self.render_next_frame(ctx);
+                Ok(false)
             }
             Msg::TasksLoaded(result) => {
                 let resp = result
                     .context(Message::LoadingTasks)?
                     .decode()
                     .context(Message::LoadingTasks)?;
-                self.pending = resp.pending;
-                self.running = resp.running;
-                self.completed = resp.completed;
+
+                let done = resp.completed.into_iter().rev().map(|task| Entry {
+                    id: task.id,
+                    kind: task.kind.clone(),
+                    state: State::Done(task),
+                });
+
+                let running = resp.running.into_iter().map(|task| Entry {
+                    id: task.id,
+                    kind: task.kind,
+                    state: State::Running { since: task.run_at },
+                });
+
+                self.entries = done
+                    .chain(running)
+                    .chain(resp.pending.into_iter().map(Entry::pending))
+                    .collect();
+
                 self.loaded = true;
                 Ok(true)
+            }
+            Msg::Frame => {
+                self.frame = None;
+                Ok(true)
+            }
+            Msg::Tick => {
+                self.now = api::Timestamp::now();
+                Ok(!self.entries.is_empty())
             }
             Msg::SyncAll => {
                 if self.channel.id() != ws::ChannelId::NONE {
@@ -245,25 +310,13 @@ impl Queue {
                 result.context(Message::LoadingTasks)?;
                 Ok(false)
             }
-            Msg::Focus(focus) => {
-                self.router
-                    .push(Route::Queue(QueueQuery { focus, page: 0 }));
-                Ok(false)
-            }
-            Msg::SetPage(page) => {
-                self.router.push(Route::Queue(QueueQuery {
-                    focus: ctx.props().focus,
-                    page,
-                }));
+            Msg::Query(query) => {
+                self.router.push(Route::Queue(query));
                 Ok(false)
             }
             Msg::Navigate(route) => {
                 self.router.push(route);
                 Ok(false)
-            }
-            Msg::SetTime(time) => {
-                self.time = time;
-                Ok(!self.pending.is_empty() || !self.completed.is_empty())
             }
         }
     }
@@ -281,236 +334,265 @@ impl Queue {
             .send();
     }
 
-    /// A short run of placeholder rows shown while the task lists load, so the
-    /// page reads as loading rather than empty.
-    fn view_task_skeletons() -> Html {
-        html! {
-            <div class="column">
-                { for (0..3).map(|_| html! { <Skeleton /> }) }
-            </div>
+    fn render_next_frame(&mut self, ctx: &Context<Self>) {
+        if self.frame.is_none() {
+            let link = ctx.link().clone();
+            self.frame = Some(request_animation_frame(move |_| {
+                link.send_message(Msg::Frame)
+            }));
         }
     }
 
-    /// The overview: every running task, and the first few pending and
-    /// completed ones, each list offering the rest when there are more.
-    fn view_overview(&self, ctx: &Context<Self>) -> Html {
-        if !self.loaded {
-            return Self::view_task_skeletons();
-        }
+    /// Put `entry` where the next task to run goes: ahead of every pending
+    /// task, replacing its old row if it has one.
+    fn move_to_next(&mut self, entry: Entry) {
+        self.entries.retain(|e| e.id != entry.id);
 
-        html! {
-            <div class="column">
-                { self.view_section(ctx, QueueFocus::Running, self.running.len(), self.running.len(), html! {
-                    { for self.running.iter().map(|t| self.view_task_row(ctx, t, true)) }
-                }) }
+        let at = self
+            .entries
+            .iter()
+            .position(Entry::is_pending)
+            .unwrap_or(self.entries.len());
 
-                { self.view_section(ctx, QueueFocus::Pending, self.pending.len(), OVERVIEW_SIZE, html! {
-                    { for self.pending.iter().take(OVERVIEW_SIZE).map(|t| self.view_task_row(ctx, t, false)) }
-                }) }
-
-                { self.view_section(ctx, QueueFocus::Completed, self.completed.len(), OVERVIEW_SIZE, html! {
-                    { for self.completed.iter().take(OVERVIEW_SIZE).map(|t| self.view_completed_row(ctx, t)) }
-                }) }
-            </div>
-        }
+        self.entries.insert(at, entry);
     }
 
-    /// One task list in the overview: a heading with its count, the rows shown,
-    /// and a way to the whole list when `shown` is fewer than `count`.
-    fn view_section(
-        &self,
-        ctx: &Context<Self>,
-        focus: QueueFocus,
-        count: usize,
-        shown: usize,
-        rows: Html,
-    ) -> Html {
-        html! {
-            <section class="task-section">
-                <div class="row-split">
-                    <h3 class="row text-gap">
-                        <span>{focus.title()}</span>
-                        <span class="status">{count}</span>
-                    </h3>
+    fn complete(&mut self, task: api::CompletedTask) {
+        if let Some(entry) = self.entries.iter_mut().find(|e| e.id == task.id) {
+            entry.state = State::Done(task);
+        } else {
+            let at = self
+                .entries
+                .iter()
+                .position(|e| !e.is_done())
+                .unwrap_or(self.entries.len());
 
-                    if count > shown {
-                        <Button icon="chevron-right" label="Show all" title={format!("Show all {} tasks", focus.title().to_lowercase())} onclick={ctx.link().callback(move |_| Msg::Focus(Some(focus)))} />
-                    }
-                </div>
-
-                if count == 0 {
-                    <p class="text-muted">{"None"}</p>
-                } else {
-                    <div class="task-grid">{rows}</div>
-                }
-            </section>
-        }
-    }
-
-    /// The focused stage: a back button and a single task list.
-    fn view_focused(&self, ctx: &Context<Self>, focus: QueueFocus) -> Html {
-        let link = ctx.link();
-
-        let (buttons, body) = match focus {
-            QueueFocus::Running => (None, self.view_running_list(ctx)),
-            QueueFocus::Pending => self.view_pending_list(ctx),
-            QueueFocus::Completed => self.view_completed_list(ctx),
-        };
-
-        html! {
-            <div class="column">
-                <div class="row-split">
-                    <h3>{focus.title()}</h3>
-
-                    <div class="row">
-                        {buttons}
-
-                        <Button icon="arrow-uturn-left" label="Back" title="Back to overview" onclick={link.callback(|_| Msg::Focus(None))} />
-                    </div>
-                </div>
-
-                { body }
-            </div>
-        }
-    }
-
-    fn view_running_list(&self, ctx: &Context<Self>) -> Html {
-        if !self.loaded {
-            return Self::view_task_skeletons();
-        }
-
-        if self.running.is_empty() {
-            return html! { <h4 class="text-muted">{"No running tasks"}</h4> };
-        }
-
-        html! {
-            <div class="task-grid">
-                { for self.running.iter().map(|t| self.view_task_row(ctx, t, true)) }
-            </div>
-        }
-    }
-
-    fn view_pending_list(&self, ctx: &Context<Self>) -> (Option<Html>, Html) {
-        let link = ctx.link();
-
-        if !self.loaded {
-            return (None, Self::view_task_skeletons());
-        }
-
-        let total_pending = self.pending.len();
-
-        if total_pending == 0 {
-            return (
-                None,
-                html! { <h4 class="text-muted">{"No pending tasks"}</h4> },
+            self.entries.insert(
+                at,
+                Entry {
+                    id: task.id,
+                    kind: task.kind.clone(),
+                    state: State::Done(task),
+                },
             );
         }
 
-        let total_pages = total_pending.div_ceil(PAGE_SIZE).max(1);
-        let page = ctx.props().page.min(total_pages - 1);
+        let done = self.entries.iter().filter(|e| e.is_done()).count();
 
-        let page_pending = self.pending.iter().skip(page * PAGE_SIZE).take(PAGE_SIZE);
+        if done > HISTORY {
+            let mut excess = done - HISTORY;
 
-        let buttons = (total_pages > 1).then(|| {
-            html! {
-                <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
-            }
-        });
-
-        let body = html! {
-            <div class="task-grid">
-                { for page_pending.map(|t| self.view_task_row(ctx, t, false)) }
-            </div>
-        };
-
-        (buttons, body)
+            self.entries.retain(|e| {
+                if excess > 0 && e.is_done() {
+                    excess -= 1;
+                    false
+                } else {
+                    true
+                }
+            });
+        }
     }
 
-    fn view_task_row(&self, ctx: &Context<Self>, task: &api::Task, spinning: bool) -> Html {
-        let on_navigate =
-            task_route(&task.kind).map(|r| ctx.link().callback(move |_| Msg::Navigate(r.clone())));
+    /// The fixed strip above the timeline: what runs now (or next), the counts, and
+    /// Sync all. It never changes height.
+    fn view_now(&self, ctx: &Context<Self>) -> Html {
+        let running = self.entries.iter().find_map(|e| match e.state {
+            State::Running { since } => Some((e, since)),
+            _ => None,
+        });
 
-        let id = task.id;
+        let next = self.entries.iter().find_map(|e| match e.state {
+            State::Pending { run_at } => Some((e, run_at)),
+            _ => None,
+        });
 
-        let time = if spinning {
-            String::from("now")
-        } else {
-            eta_label(task.run_at, self.time.now())
+        let pending = self.entries.iter().filter(|e| e.is_pending()).count();
+        let failed = self.count(QueueFilter::Failed);
+        let done = self.count(QueueFilter::Done);
+
+        html! {
+            <div class="queue-now" data-test="queue-now">
+                if let Some((entry, since)) = running {
+                    <span class="task-icon"><span class="icon arrow-path spin" /></span>
+                    { view_task_cells(&entry.kind, self.on_navigate(ctx, &entry.kind), None) }
+                    <span class="task-time">{ since.map(|since| elapsed_label(since, self.now)).unwrap_or_default() }</span>
+                } else if let Some((entry, run_at)) = next {
+                    <span class="task-icon"><span class="icon clock" /></span>
+                    { view_task_cells(&entry.kind, self.on_navigate(ctx, &entry.kind), None) }
+                    <span class="task-time">{ eta_label(run_at, self.now) }</span>
+                } else {
+                    <span class="task-icon"><span class="icon pause-circle" /></span>
+                    <span class="task-kind" />
+                    <span class="task-title text-muted">{"Idle"}</span>
+                    <span class="task-time" />
+                }
+
+                <span class="queue-counts">
+                    <span title="Pending"><span class="icon clock" />{pending}</span>
+                    <span title="Done"><span class="icon check" />{done}</span>
+                    <span class={classes!((failed > 0).then_some("failed"))} title="Failed"><span class="icon x-mark" />{failed}</span>
+                </span>
+
+                <Button icon="arrow-path" label="Sync all" title="Queue sync for all show and movies" onclick={ctx.link().callback(|_| Msg::SyncAll)} />
+            </div>
+        }
+    }
+
+    fn count(&self, filter: QueueFilter) -> usize {
+        self.entries.iter().filter(|e| e.matches(filter)).count()
+    }
+
+    fn view_timeline(&self, ctx: &Context<Self>) -> Html {
+        let link = ctx.link();
+        let filter = ctx.props().filter;
+
+        let entries = self
+            .entries
+            .iter()
+            .filter(|e| e.matches(filter))
+            .collect::<Vec<_>>();
+
+        let total_pages = entries.len().div_ceil(PAGE_SIZE).max(1);
+
+        // Follow the running task, or the next one to run; with neither, the
+        // newest entry.
+        let followed = entries
+            .iter()
+            .position(|e| !e.is_done())
+            .unwrap_or(entries.len().saturating_sub(1));
+
+        let following = ctx.props().page.is_none();
+
+        let page = ctx
+            .props()
+            .page
+            .unwrap_or(followed / PAGE_SIZE)
+            .min(total_pages - 1);
+
+        let chip = |f: QueueFilter, icon: &'static str, label: &'static str| {
+            let onclick = link.callback(move |_| {
+                Msg::Query(QueueQuery {
+                    filter: f,
+                    page: None,
+                })
+            });
+
+            html! {
+                <Button {icon} label={format!("{label} {}", self.count(f))} title={format!("Show {} tasks", label.to_lowercase())} variant={if filter == f { Variant::Primary } else { Variant::Secondary }} {onclick} />
+            }
+        };
+
+        let on_page = link.callback(move |page| {
+            Msg::Query(QueueQuery {
+                filter,
+                page: Some(page),
+            })
+        });
+
+        let on_follow = link.callback(move |_| Msg::Query(QueueQuery { filter, page: None }));
+
+        html! {
+            <div class="column">
+                <div class="row-split queue-controls">
+                    <div class="input-group queue-filters">
+                        { chip(QueueFilter::All, "queue-list", "All") }
+                        { chip(QueueFilter::Upcoming, "clock", "Upcoming") }
+                        { chip(QueueFilter::Done, "check", "Done") }
+                        { chip(QueueFilter::Failed, "x-mark", "Failed") }
+                    </div>
+
+                    <div class="row">
+                        if !following {
+                            <Button icon="arrow-down-circle" label="Follow" title="Follow the running task" onclick={on_follow} />
+                        }
+
+                        if total_pages > 1 {
+                            <PaginationButtons {page} {total_pages} {on_page} />
+                        }
+                    </div>
+                </div>
+
+                <div class="task-grid task-timeline" style={format!("--page-rows: {PAGE_SIZE}")}>
+                    if entries.is_empty() {
+                        <p class="text-muted">{"No tasks"}</p>
+                    }
+
+                    { for entries.iter().skip(page * PAGE_SIZE).take(PAGE_SIZE).map(|e| self.view_row(ctx, e)) }
+                </div>
+            </div>
+        }
+    }
+
+    fn view_row(&self, ctx: &Context<Self>, entry: &Entry) -> Html {
+        let id = entry.id;
+        let on_navigate = self.on_navigate(ctx, &entry.kind);
+
+        let (state, icon, duration, time) = match &entry.state {
+            State::Pending { run_at } => (
+                "pending",
+                classes!("icon", "clock"),
+                None,
+                eta_label(*run_at, self.now),
+            ),
+            State::Running { since } => (
+                "running",
+                classes!("icon", "arrow-path", "spin"),
+                since.map(|since| elapsed_label(since, self.now)),
+                String::from("now"),
+            ),
+            State::Done(task) => (
+                if task.error.is_some() {
+                    "failed"
+                } else {
+                    "done"
+                },
+                classes!(
+                    "icon",
+                    if task.error.is_some() {
+                        "x-mark"
+                    } else {
+                        "check"
+                    }
+                ),
+                Some(duration_label(task.duration.millis())),
+                ago_label(task.completed_at, self.now),
+            ),
+        };
+
+        let error = match &entry.state {
+            State::Done(task) => task.error.as_deref(),
+            _ => None,
         };
 
         html! {
-            <div class="task-row">
-                <span class="task-icon">
-                    <span class={classes!("icon", if spinning { "arrow-path" } else { "clock" }, spinning.then_some("spin"))} />
-                </span>
+            <div key={id.get()} class={classes!("task-row", state)} data-task={id.get().to_string()} title={error.map(str::to_owned)}>
+                <span class="task-icon"><span class={icon} /></span>
 
-                { view_task_cells(&task.kind, on_navigate) }
+                { view_task_cells(&entry.kind, on_navigate, error) }
 
+                <span class="task-duration">{duration}</span>
                 <span class="task-time">{time}</span>
 
                 <span class="task-actions">
-                    if !spinning {
+                    if entry.is_pending() {
                         <div class="input-group">
                             <Button icon="forward" title="Run now" onclick={ctx.link().callback(move |_| Msg::Bump(id))} />
                             <Button icon="trash" variant={Variant::Danger} title="Remove from queue" onclick={ctx.link().callback(move |_| Msg::Remove(id))} />
                         </div>
                     }
                 </span>
+
             </div>
         }
     }
 
-    fn view_completed_list(&self, ctx: &Context<Self>) -> (Option<Html>, Html) {
-        let link = ctx.link();
-
-        if !self.loaded {
-            return (None, Self::view_task_skeletons());
-        }
-
-        let total = self.completed.len();
-
-        if total == 0 {
-            return (
-                None,
-                html! { <h4 class="text-muted">{"No completed tasks"}</h4> },
-            );
-        }
-
-        let total_pages = total.div_ceil(PAGE_SIZE).max(1);
-        let page = ctx.props().page.min(total_pages - 1);
-
-        let page_completed = self.completed.iter().skip(page * PAGE_SIZE).take(PAGE_SIZE);
-
-        let buttons = (total_pages > 1).then(|| {
-            html! {
-                <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
-            }
-        });
-
-        let body = html! {
-            <div class="task-grid">
-                { for page_completed.map(|t| self.view_completed_row(ctx, t)) }
-            </div>
-        };
-
-        (buttons, body)
-    }
-
-    fn view_completed_row(&self, ctx: &Context<Self>, task: &api::CompletedTask) -> Html {
-        let on_navigate =
-            task_route(&task.kind).map(|r| ctx.link().callback(move |_| Msg::Navigate(r.clone())));
-
-        html! {
-            <div class="task-row">
-                <span class="task-icon"><span class="icon check" /></span>
-
-                { view_task_cells(&task.kind, on_navigate) }
-
-                <span class="task-time">{ ago_label(task.completed_at, self.time.now()) }</span>
-
-                <span class="task-actions" />
-            </div>
-        }
+    fn on_navigate(
+        &self,
+        ctx: &Context<Self>,
+        kind: &api::TaskKind,
+    ) -> Option<Callback<MouseEvent>> {
+        let route = task_route(kind)?;
+        Some(ctx.link().callback(move |_| Msg::Navigate(route.clone())))
     }
 }
 
@@ -536,7 +618,11 @@ fn task_route(kind: &api::TaskKind) -> Option<Route> {
 }
 
 /// The kind and subject cells of a task row.
-fn view_task_cells(kind: &api::TaskKind, on_navigate: Option<Callback<MouseEvent>>) -> Html {
+fn view_task_cells(
+    kind: &api::TaskKind,
+    on_navigate: Option<Callback<MouseEvent>>,
+    error: Option<&str>,
+) -> Html {
     let label = match kind {
         api::TaskKind::SyncShow { .. } => "Show",
         api::TaskKind::SyncMovie { .. } => "Movie",
@@ -560,6 +646,10 @@ fn view_task_cells(kind: &api::TaskKind, on_navigate: Option<Callback<MouseEvent
 
                 if let Some(code) = task_code(kind) {
                     <span class="text-muted">{code}</span>
+                }
+
+                if let Some(error) = error {
+                    <span class="task-error">{error}</span>
                 }
             </span>
         </>
@@ -586,6 +676,33 @@ fn humanize_count(secs: u64) -> (u64, &'static str) {
         (secs / 3600, "hour")
     } else {
         (secs / 86400, "day")
+    }
+}
+
+/// How long a task ran, e.g. "0.4s", "12s", "3m 4s" or "1h 2m".
+fn duration_label(millis: i64) -> String {
+    if millis < 10_000 {
+        format!("{:.1}s", millis.max(0) as f64 / 1000.0)
+    } else {
+        seconds_label(millis as u64 / 1000)
+    }
+}
+
+/// How long a running task has run so far, in whole seconds.
+fn elapsed_label(since: api::Timestamp, now: api::Timestamp) -> String {
+    seconds_label(
+        now.checked_duration_since(since)
+            .map_or(0, |elapsed| elapsed.as_secs()),
+    )
+}
+
+fn seconds_label(secs: u64) -> String {
+    if secs < 60 {
+        format!("{secs}s")
+    } else if secs < 3600 {
+        format!("{}m {}s", secs / 60, secs % 60)
+    } else {
+        format!("{}h {}m", secs / 3600, secs % 3600 / 60)
     }
 }
 

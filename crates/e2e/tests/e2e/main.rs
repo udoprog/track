@@ -39,12 +39,16 @@ const LISTEN_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Media for the tests that ask for it with `(seeded)`.
 const SEED: &str = include_str!("seed.sql");
+/// More shows on top of [`SEED`] for the tests that ask with `(crowded)`.
+const CROWDED: &str = include_str!("crowded.sql");
 
 /// What a test asks of its server.
 #[derive(Default)]
 struct Setup {
     /// Start with the library in `seed.sql`.
     seeded: bool,
+    /// Start with `seed.sql` and the shows in `crowded.sql`.
+    crowded: bool,
 }
 
 /// A track server for one test.
@@ -72,14 +76,17 @@ impl Fixture for Track {
         let sandbox = SANDBOX.get().context("the sandbox was not entered")?;
         let dir = TempDir::new_in(sandbox)?;
 
-        if setup.seeded {
+        if setup.seeded || setup.crowded {
             // The server creates the schema; the seed goes in while it is down.
             let (mut child, _) = spawn(server, dir.path()).await?;
             child.kill().await?;
 
-            sqll::Connection::open(dir.path().join("track.db"))?
-                .execute(SEED)
-                .context("seeding the database")?;
+            let c = sqll::Connection::open(dir.path().join("track.db"))?;
+            c.execute(SEED).context("seeding the database")?;
+
+            if setup.crowded {
+                c.execute(CROWDED).context("crowding the database")?;
+            }
         }
 
         let (child, port) = spawn(server, dir.path()).await?;
@@ -165,7 +172,7 @@ yew_e2e::harness! {
     media::{shows_a_poster_grid(seeded)},
     navigation::{opens_every_page, page_scrolls_the_window, toolbar_icons_are_small},
     people::{lists_people_by_name(seeded)},
-    queue::{lists_tasks_in_columns},
+    queue::{lists_tasks_in_columns, keeps_rows_in_place(seeded), follows_the_next_task(crowded), shows_failed_tasks(seeded)},
     search::{focuses_the_input},
     settings::{reorders_sync_sources, theme_applies_live, theme_is_remembered},
     show::{episode_menu_holds_the_other_actions(seeded), has_a_heading(seeded), phones_have_no_episode_rail(seeded), seasons_count_watched_episodes(seeded), watched_episodes_are_compact(seeded)},
