@@ -212,3 +212,30 @@ pub async fn shows_failed_tasks(driver: &mut TestDriver, _: &mut Track) -> Resul
     );
     Ok(())
 }
+
+/// An empty filter says, across the list, what it has nothing of.
+pub async fn empty_filters_say_what_is_missing(
+    driver: &mut TestDriver,
+    _: &mut Track,
+) -> Result<()> {
+    open_queue(driver).await?;
+
+    driver
+        .find_one_by("[title='Show failed tasks']")
+        .await?
+        .click()
+        .await?;
+
+    driver
+        .wait_texts(".task-empty", ["No syncs have failed."])
+        .await?;
+
+    let line = driver.find_one_by(".task-empty").await?.rect().await?;
+    let list = driver.find_one_by(".task-timeline").await?.rect().await?;
+    let middle = list.x + list.width / 2.0;
+    ensure!(
+        (line.x + line.width / 2.0 - middle).abs() < 2.0,
+        "the line is not centred in the list: {line:?} in {list:?}"
+    );
+    Ok(())
+}

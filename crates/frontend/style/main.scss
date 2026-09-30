@@ -2484,6 +2484,15 @@ pagination {
     min-height: calc(var(--page-rows) * var(--task-row-height));
 }
 
+// An empty list: one muted line across the list, set apart from the filters.
+.task-empty {
+    grid-column: 1 / -1;
+    grid-row: span 2;
+    align-self: center;
+    justify-self: center;
+    color: v.$text-muted;
+}
+
 .task-row {
     display: grid;
     grid-column: 1 / -1;

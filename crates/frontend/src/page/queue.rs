@@ -519,7 +519,14 @@ impl Queue {
 
                 <div class="task-grid task-timeline" style={format!("--page-rows: {PAGE_SIZE}")}>
                     if entries.is_empty() {
-                        <p class="text-muted">{"No tasks"}</p>
+                        <p class="task-empty">
+                            {match filter {
+                                QueueFilter::All => "Nothing has been synced yet.",
+                                QueueFilter::Upcoming => "Nothing is waiting to sync.",
+                                QueueFilter::Done => "Nothing has finished syncing yet.",
+                                QueueFilter::Failed => "No syncs have failed.",
+                            }}
+                        </p>
                     }
 
                     { for entries.iter().skip(page * PAGE_SIZE).take(PAGE_SIZE).map(|e| self.view_row(ctx, e)) }
