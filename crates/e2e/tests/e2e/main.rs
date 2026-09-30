@@ -35,6 +35,10 @@ use yew_e2e::{Config, Fixture};
 static SANDBOX: OnceLock<PathBuf> = OnceLock::new();
 static SERVER: OnceCell<PathBuf> = OnceCell::const_new();
 
+/// track's exit status when its address is taken (`track::EXIT_ADDR_IN_USE`;
+/// the suite runs the binary, so it can't name the constant).
+const EXIT_ADDR_IN_USE: i32 = 3;
+
 /// How long a freshly started server may take to start listening.
 const LISTEN_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -151,18 +155,19 @@ impl Fixture for Track {
 /// it to listen.
 async fn spawn(server: &Path, dir: &Path) -> Result<(Child, u16)> {
     // The free port is released before the server binds it, so a test starting
-    // alongside can take it first; try again on another.
-    for _ in 0..3 {
-        match spawn_on_free_port(server, dir).await {
-            Err(e) if e.to_string().contains("Address already in use") => continue,
-            result => return result,
+    // alongside can take it first; then try another.
+    for _ in 0..4 {
+        if let Some(spawned) = spawn_on_free_port(server, dir).await? {
+            return Ok(spawned);
         }
     }
 
-    spawn_on_free_port(server, dir).await
+    bail!("every free port was taken before track could listen on it")
 }
 
-async fn spawn_on_free_port(server: &Path, dir: &Path) -> Result<(Child, u16)> {
+/// Start a server on a free port, or `None` when the port was taken before
+/// the server could bind it.
+async fn spawn_on_free_port(server: &Path, dir: &Path) -> Result<Option<(Child, u16)>> {
     let port = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?
         .local_addr()?
         .port();
@@ -188,6 +193,10 @@ async fn spawn_on_free_port(server: &Path, dir: &Path) -> Result<(Child, u16)> {
 
     while tokio::time::Instant::now() < deadline {
         if let Some(status) = child.try_wait()? {
+            if status.code() == Some(EXIT_ADDR_IN_USE) {
+                return Ok(None);
+            }
+
             let log = std::fs::read_to_string(dir.join("track.log"))?;
             bail!("track exited with {status}:\n{log}");
         }
@@ -196,7 +205,7 @@ async fn spawn_on_free_port(server: &Path, dir: &Path) -> Result<(Child, u16)> {
             .await
             .is_ok()
         {
-            return Ok((child, port));
+            return Ok(Some((child, port)));
         }
 
         tokio::time::sleep(Duration::from_millis(50)).await;

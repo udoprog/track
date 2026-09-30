@@ -134,5 +134,5 @@ mod web;
 mod ws;
 
 pub use self::backup::{BackupCommand, backup};
-pub use self::entry::{Args, server};
+pub use self::entry::{Args, EXIT_ADDR_IN_USE, server};
 pub use self::import::import;

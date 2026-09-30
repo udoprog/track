@@ -49,6 +49,10 @@ pub struct Args {
     dist: Option<PathBuf>,
 }
 
+/// The server's exit status when the address it should listen on is taken, so
+/// a caller that picked the port can try another.
+pub const EXIT_ADDR_IN_USE: u8 = 3;
+
 pub async fn server(args: Args, db: &Path, log: &[String]) -> Result<ExitCode> {
     let mut filter = tracing_subscriber::EnvFilter::builder()
         .with_default_directive(Level::INFO.into())
@@ -118,9 +122,14 @@ pub async fn server(args: Args, db: &Path, log: &[String]) -> Result<ExitCode> {
 
     tracing::info!("Listening on {}", args.bind);
 
-    let listener = tokio::net::TcpListener::bind(args.bind)
-        .await
-        .with_context(|| anyhow!("Binding to {}", args.bind))?;
+    let listener = match tokio::net::TcpListener::bind(args.bind).await {
+        Ok(listener) => listener,
+        Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+            tracing::error!("{} is already in use", args.bind);
+            return Ok(ExitCode::from(EXIT_ADDR_IN_USE));
+        }
+        Err(e) => return Err(e).with_context(|| anyhow!("Binding to {}", args.bind)),
+    };
 
     let server = {
         let shutdown = shutdown.clone();
