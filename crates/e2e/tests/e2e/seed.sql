@@ -34,7 +34,9 @@ INSERT INTO people (id, department, default_language)
 VALUES (5001, 'Acting', 6148257917992593152);
 
 INSERT INTO person_strings (person_id, language, kind, text)
-VALUES (5001, 6148257917992593152, 1, 'Ada Lovelace');
+VALUES
+    (5001, 6148257917992593152, 1, 'Ada Lovelace'),
+    (5001, 6148257917992593152, 2, 'Augusta Ada King, Countess of Lovelace, was an English mathematician and writer chiefly known for her work on the Analytical Engine, a proposed mechanical general-purpose computer. She was the first to recognise that the machine had applications beyond pure calculation, and her notes on it include what is often called the first computer program: an algorithm for computing Bernoulli numbers. She wrote of a poetical science and of the relations between mathematics, music and art, and her notes were long overlooked before being rediscovered and widely republished.');
 
 -- A person with no default language, named only in Swedish (1937204480).
 INSERT INTO people (id, department, default_language)

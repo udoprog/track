@@ -181,7 +181,7 @@ yew_e2e::harness! {
     media::{shows_a_poster_grid(seeded), toggle_marks_are_icon_sized},
     movie::{puts_the_cast_beside_the_poster(movie)},
     navigation::{opens_every_page, page_scrolls_the_window, toolbar_icons_are_small, every_button_has_a_title(seeded)},
-    people::{lists_people_by_credits(seeded), shows_no_count_while_loading(seeded), shows_a_silhouette_without_a_photo(seeded)},
+    people::{lists_people_by_credits(seeded), shows_no_count_while_loading(seeded), shows_a_silhouette_without_a_photo(seeded), phone_person_page_keeps_the_photo_shape(seeded)},
     queue::{lists_tasks_in_columns, keeps_rows_in_place(seeded), follows_the_next_task(crowded), shows_failed_tasks(seeded)},
     search::{focuses_the_input},
     settings::{reorders_sync_sources, theme_applies_live, theme_is_remembered, adds_languages_and_rules},

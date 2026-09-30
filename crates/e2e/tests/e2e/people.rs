@@ -71,3 +71,53 @@ pub async fn shows_a_silhouette_without_a_photo(
     );
     Ok(())
 }
+
+/// On a phone a person's photo keeps its shape beside the name, and the
+/// biography runs the width of the page below it.
+pub async fn phone_person_page_keeps_the_photo_shape(
+    driver: &mut TestDriver,
+    _: &mut Track,
+) -> Result<()> {
+    driver.set_window_size(400, 850).await?;
+    driver.wait_texts(".site-title", ["Track"]).await?;
+
+    driver.find_one_by(".toolbar-toggle").await?.click().await?;
+    driver
+        .find_one_by(".toolbar-item[title=People]")
+        .await?
+        .click()
+        .await?;
+
+    driver
+        .wait_texts(".person-name", ["Greta Garbo", "Ada Lovelace"])
+        .await?;
+    driver.find_nth(".person-card", 1).await?.click().await?;
+    driver.wait_texts("#page h1", ["Ada Lovelace"]).await?;
+
+    let photo = driver
+        .find_one_by(".person-detail-photo")
+        .await?
+        .rect()
+        .await?;
+    let ratio = photo.height / photo.width;
+    ensure!(
+        (1.4..=1.6).contains(&ratio),
+        "the photo is {}x{}px, not 2:3",
+        photo.width,
+        photo.height
+    );
+
+    let page = driver.find_one_by("#page").await?.rect().await?;
+    let bio = driver
+        .find_one_by(".person-biography")
+        .await?
+        .rect()
+        .await?;
+    ensure!(
+        bio.width > page.width * 0.8,
+        "the biography is {}px wide on a {}px page",
+        bio.width,
+        page.width
+    );
+    Ok(())
+}

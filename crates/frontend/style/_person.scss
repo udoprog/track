@@ -1,4 +1,5 @@
 @use 'vars' as v;
+@use 'grid' as g;
 
 .person-grid {
     display: grid;
@@ -43,6 +44,8 @@
 
 .person-detail-header {
     display: flex;
+    // The photo keeps its aspect instead of stretching down a long biography.
+    align-items: flex-start;
     gap: v.$gap;
 
     .person-detail-photo {
@@ -61,6 +64,30 @@
         display: flex;
         flex-direction: column;
         gap: v.$gap;
+    }
+
+    // Phones: the photo beside the name, actions and links, with the
+    // biography below across the full width.
+    @include g.on-mobile {
+        display: grid;
+        grid-template-columns: 120px minmax(0, 1fr);
+        align-items: start;
+        column-gap: v.$gap;
+        row-gap: v.$gap-xs;
+
+        .person-detail-photo {
+            grid-row: span 3;
+            width: 100%;
+            max-width: none;
+        }
+
+        .person-detail-info {
+            display: contents;
+        }
+
+        .person-biography {
+            grid-column: 1 / -1;
+        }
     }
 
     .person-biography {
