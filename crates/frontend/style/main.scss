@@ -1173,9 +1173,13 @@ image {
     top: v.$toolbar-height + v.$gap;
     max-height: calc(100vh - #{v.$toolbar-height + v.$gap * 2});
     overflow-y: auto;
-    display: flex;
     flex-direction: column;
     gap: 2px;
+
+    // Only here, so `.desktop-only` still hides it on phones.
+    @include g.on-desktop {
+        display: flex;
+    }
 }
 
 // One season: name, watched count and year on a line, over a bar showing how
@@ -1258,8 +1262,13 @@ image {
 // The seasons on phones: one row of chips over the episodes, scrolling
 // sideways when there are many.
 .season-chips {
-    display: flex;
     gap: v.$gap-xs;
+
+    // Only here, so `.mobile-only` still hides it on wide screens.
+    @include g.on-mobile {
+        display: flex;
+    }
+
     overflow-x: auto;
     padding-block: v.$padding;
     scrollbar-width: none;

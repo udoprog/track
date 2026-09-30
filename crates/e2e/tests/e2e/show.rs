@@ -405,6 +405,15 @@ pub async fn seasons_list_beside_the_episodes(
         "the season list scrolls away"
     );
     ensure!(
+        driver
+            .find_one_by(".season-chips")
+            .await?
+            .css("display")
+            .await?
+            == "none",
+        "the phone season chips show on a wide screen"
+    );
+    ensure!(
         driver.count(".season-list .season-progress").await? == 3,
         "not every season shows its progress bar"
     );
@@ -442,7 +451,7 @@ pub async fn phones_pick_seasons_from_chips(driver: &mut TestDriver, _: &mut Tra
         .wait_until("the season chips to show instead of the list", async || {
             let chips = driver.find_one_by(".season-chips").await?;
             let list = driver.find_one_by(".season-list").await?;
-            Ok(chips.visible().await? && !list.visible().await?)
+            Ok(chips.css("display").await? == "flex" && list.css("display").await? == "none")
         })
         .await?;
 
