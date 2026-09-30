@@ -7,8 +7,12 @@ default-run = "track"
 
 [features]
 default = ["bundle", "import"]
-bundle = ["dep:rust-embed", "dep:mime_guess"]
+bundle = ["dep:mime_guess"]
 import = ["dep:chrono", "dep:serde_yaml", "dep:uuid"]
+
+[[bin]]
+name = "import"
+required-features = ["import"]
 
 [dependencies]
 api = { path = "../api", features = ["rand", "sqll"] }
@@ -25,7 +29,7 @@ parking_lot = "0.12.5"
 reqwest = { version = "0.13.5", default-features = false, features = ["query", "rustls", "stream"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
-rust-embed = { version = "8.12.0", optional = true }
+rust-embed = "8.12.0"
 tempfile = "3.27.0"
 tokio = { version = "1.53.1", features = ["full"] }
 tower-http = { version = "0.7.1", features = ["cors", "fs"] }

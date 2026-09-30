@@ -1022,6 +1022,7 @@ struct InnerRead {
     #[sql = "ORDER BY e.season, e.episode"]
     #[sql = "LIMIT 1"]
     next_pending_episode_for_show: TypedStatement<(ShowId, api::IncludeSpecials), NextEpisodeRow>,
+    #[cfg(feature = "import")]
     #[sql = "SELECT e.id, e.aired"]
     #[sql = "FROM episodes e"]
     #[sql = "WHERE e.show_id = ?"]
@@ -5192,6 +5193,7 @@ impl Database {
         result.await?
     }
 
+    #[cfg(any(feature = "import", test))]
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn insert_watched_episode(
         &self,
@@ -5212,6 +5214,7 @@ impl Database {
         result.await?
     }
 
+    #[cfg(any(feature = "import", test))]
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn insert_watched_movie(
         &self,
@@ -5836,6 +5839,7 @@ impl Database {
     /// regardless of whether it has aired, and uses the actual aired timestamp rather than
     /// clamping to `now`. This preserves the episode's original air date as the pending
     /// timestamp so dashboard ordering reflects episode order rather than import time.
+    #[cfg(feature = "import")]
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn fill_pending_for_show_import(&self, show_id: api::ShowId) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;

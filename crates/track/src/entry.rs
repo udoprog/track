@@ -8,6 +8,7 @@ use std::sync::Arc;
 use anyhow::{Context as _, Result, anyhow};
 use clap::Parser;
 use musli_web::ws::Channels;
+use tokio::net::TcpListener;
 use tokio::sync::{Notify, broadcast};
 use tracing::Level;
 
@@ -22,11 +23,13 @@ use crate::task_queue::TaskQueue;
 use crate::web::{self, AppState};
 use crate::ws::RandomDelay;
 
+const READ_CONCURRENCY: usize = 16;
+
 #[derive(Parser)]
 #[command(version, about = "Track web server")]
 pub struct Args {
     /// Number of concurrent read connections to the database.
-    #[arg(long, default_value_t = 16)]
+    #[arg(long, default_value_t = READ_CONCURRENCY)]
     read_concurrency: usize,
 
     /// Directory for the image proxy disk cache.
@@ -49,10 +52,6 @@ pub struct Args {
     dist: Option<PathBuf>,
 }
 
-/// The server's exit status when the address it should listen on is taken, so
-/// a caller that picked the port can try another.
-pub const EXIT_ADDR_IN_USE: u8 = 3;
-
 pub async fn server(args: Args, db: &Path, log: &[String]) -> Result<ExitCode> {
     let mut filter = tracing_subscriber::EnvFilter::builder()
         .with_default_directive(Level::INFO.into())
@@ -64,7 +63,65 @@ pub async fn server(args: Args, db: &Path, log: &[String]) -> Result<ExitCode> {
 
     tracing_subscriber::fmt().with_env_filter(filter).init();
 
-    let db = Database::open(db, OpenMode::Normal, args.read_concurrency)
+    if let Some(delay) = args.delay {
+        tracing::info!(?delay, "Injecting artificial websocket delay");
+    }
+
+    tracing::info!("Listening on {}", args.bind);
+
+    let listener = TcpListener::bind(args.bind)
+        .await
+        .with_context(|| anyhow!("Binding to {}", args.bind))?;
+
+    let ctrl_c = async {
+        _ = tokio::signal::ctrl_c().await;
+        tracing::info!("Received Ctrl-C, shutting down");
+    };
+
+    run(
+        listener,
+        db,
+        args.read_concurrency,
+        &args.cache_dir,
+        args.delay,
+        args.dist.as_deref(),
+        ctrl_c,
+    )
+    .await
+}
+
+/// Run the server on an already bound `listener` against the database at `db`,
+/// serving the frontend from `dist` (the bundled one when `None`), until
+/// `shutdown` completes.
+pub async fn serve(
+    listener: TcpListener,
+    db: &Path,
+    cache_dir: &Path,
+    dist: Option<&Path>,
+    shutdown: impl Future<Output = ()>,
+) -> Result<ExitCode> {
+    run(
+        listener,
+        db,
+        READ_CONCURRENCY,
+        cache_dir,
+        None,
+        dist,
+        shutdown,
+    )
+    .await
+}
+
+async fn run(
+    listener: TcpListener,
+    db: &Path,
+    read_concurrency: usize,
+    cache_dir: &Path,
+    delay: Option<RandomDelay>,
+    dist: Option<&Path>,
+    shutdown_signal: impl Future<Output = ()>,
+) -> Result<ExitCode> {
+    let db = Database::open(db, OpenMode::Normal, read_concurrency)
         .with_context(|| anyhow!("Opening database at {}", db.display()))?;
 
     let http = reqwest::Client::builder()
@@ -72,7 +129,7 @@ pub async fn server(args: Args, db: &Path, log: &[String]) -> Result<ExitCode> {
         .build()
         .context("Building HTTP client")?;
 
-    let cache = ImageCache::new(&args.cache_dir);
+    let cache = ImageCache::new(cache_dir);
 
     let (broadcast_tx, _) = broadcast::channel(64);
     let broadcast = Broadcaster::new(broadcast_tx);
@@ -113,29 +170,15 @@ pub async fn server(args: Args, db: &Path, log: &[String]) -> Result<ExitCode> {
         remote,
         pending,
         config_changed,
-        delay: args.delay,
-    };
-
-    if let Some(delay) = args.delay {
-        tracing::info!(?delay, "Injecting artificial websocket delay");
-    }
-
-    tracing::info!("Listening on {}", args.bind);
-
-    let listener = match tokio::net::TcpListener::bind(args.bind).await {
-        Ok(listener) => listener,
-        Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
-            tracing::error!("{} is already in use", args.bind);
-            return Ok(ExitCode::from(EXIT_ADDR_IN_USE));
-        }
-        Err(e) => return Err(e).with_context(|| anyhow!("Binding to {}", args.bind)),
+        delay,
+        shutdown: shutdown.clone(),
     };
 
     let server = {
         let shutdown = shutdown.clone();
 
         async move {
-            let serve = axum::serve(listener, web::router(state, args.dist.as_deref()))
+            let serve = axum::serve(listener, web::router(state, dist))
                 .with_graceful_shutdown(async move { shutdown.cancelled().await });
 
             serve.await?;
@@ -144,6 +187,8 @@ pub async fn server(args: Args, db: &Path, log: &[String]) -> Result<ExitCode> {
     };
 
     let mut server = pin!(server);
+    let mut shutdown_signal = pin!(shutdown_signal);
+    let mut signalled = false;
 
     let mut stopped_server = false;
     let mut stopped_background = false;
@@ -183,8 +228,8 @@ pub async fn server(args: Args, db: &Path, log: &[String]) -> Result<ExitCode> {
 
                 stopped_queue = true;
             }
-            _ = tokio::signal::ctrl_c() => {
-                tracing::info!("Received Ctrl-C, shutting down");
+            _ = shutdown_signal.as_mut(), if !signalled => {
+                signalled = true;
             }
         }
 

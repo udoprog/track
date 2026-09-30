@@ -15,6 +15,10 @@ anyhow = "1.0.104"
 sqll = { version = "0.14.4", features = ["bundled"] }
 tempfile = "3.27.0"
 tokio = { version = "1.53.1", features = ["full"] }
+# Without `bundle`, which embeds dist/ at compile time: the suite serves the
+# frontend yew-e2e builds for the run.
+track = { path = "../track", default-features = false }
+tracing-subscriber = "0.3.23"
 yew-e2e = "0.1.1"
 
 [[test]]

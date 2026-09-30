@@ -19,28 +19,21 @@ mod search;
 mod settings;
 mod show;
 
-use std::fs::File;
-use std::net::{Ipv4Addr, TcpListener};
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 use std::sync::OnceLock;
-use std::time::Duration;
 
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, ensure};
 use tempfile::TempDir;
-use tokio::net::TcpStream;
-use tokio::process::{Child, Command};
-use tokio::sync::OnceCell;
+use tokio::net::TcpListener;
+use tokio::sync::oneshot;
+use tokio::task::JoinHandle;
+use tracing_subscriber::filter::{LevelFilter, Targets};
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 use yew_e2e::{Config, Fixture};
 
 static SANDBOX: OnceLock<PathBuf> = OnceLock::new();
-static SERVER: OnceCell<PathBuf> = OnceCell::const_new();
-
-/// track's exit status when its address is taken (`track::EXIT_ADDR_IN_USE`;
-/// the suite runs the binary, so it can't name the constant).
-const EXIT_ADDR_IN_USE: i32 = 3;
-
-/// How long a freshly started server may take to start listening.
-const LISTEN_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Media for the tests that ask for it with `(seeded)`.
 const SEED: &str = include_str!("seed.sql");
@@ -75,8 +68,8 @@ struct Setup {
 /// A track server for one test.
 struct Track {
     port: u16,
-    child: Child,
-    // Dropped after the server is killed, taking its database with it.
+    server: Option<Server>,
+    // Dropped after the server has stopped, taking its database with it.
     _dir: TempDir,
 }
 
@@ -87,13 +80,24 @@ impl Fixture for Track {
         Config::default().about("Browser tests for track.")
     }
 
+    /// The servers run in this process; only their warnings reach the output.
+    fn init_tracing() {
+        let filter = Targets::new()
+            .with_default(LevelFilter::INFO)
+            .with_target("track", LevelFilter::WARN);
+
+        _ = tracing_subscriber::registry()
+            .with(tracing_subscriber::fmt::layer())
+            .with(filter)
+            .try_init();
+    }
+
     fn enter_sandbox(root: &Path) -> Result<()> {
         _ = SANDBOX.set(root.to_owned());
         Ok(())
     }
 
     async fn start(setup: Setup) -> Result<Self> {
-        let server = SERVER.get_or_try_init(build_server).await?;
         let sandbox = SANDBOX.get().context("the sandbox was not entered")?;
         let dir = TempDir::new_in(sandbox)?;
 
@@ -105,8 +109,7 @@ impl Fixture for Track {
             || setup.graphics
         {
             // The server creates the schema; the seed goes in while it is down.
-            let (mut child, _) = spawn(server, dir.path()).await?;
-            child.kill().await?;
+            Server::start(dir.path()).await?.quit().await?;
 
             let c = sqll::Connection::open(dir.path().join("track.db"))?;
             c.execute(SEED).context("seeding the database")?;
@@ -132,11 +135,11 @@ impl Fixture for Track {
             }
         }
 
-        let (child, port) = spawn(server, dir.path()).await?;
+        let server = Server::start(dir.path()).await?;
 
         Ok(Self {
-            port,
-            child,
+            port: server.port,
+            server: Some(server),
             _dir: dir,
         })
     }
@@ -146,85 +149,57 @@ impl Fixture for Track {
     }
 
     async fn quit(mut self) -> Result<()> {
-        self.child.kill().await?;
+        self.stop().await
+    }
+}
+
+impl Track {
+    /// Stop the server before the test ends, dropping the browser's connection.
+    async fn stop(&mut self) -> Result<()> {
+        match self.server.take() {
+            Some(server) => server.quit().await,
+            None => Ok(()),
+        }
+    }
+}
+
+/// A server running in this process against the database in a directory.
+struct Server {
+    port: u16,
+    shutdown: oneshot::Sender<()>,
+    task: JoinHandle<Result<ExitCode>>,
+}
+
+impl Server {
+    async fn start(dir: &Path) -> Result<Self> {
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let port = listener.local_addr()?.port();
+        let (shutdown, rx) = oneshot::channel::<()>();
+
+        let db = dir.join("track.db");
+        let cache = dir.join("image-cache");
+        let dist = yew_e2e::dist()?;
+
+        let task = tokio::spawn(async move {
+            track::serve(listener, &db, &cache, Some(dist), async move {
+                _ = rx.await;
+            })
+            .await
+        });
+
+        Ok(Self {
+            port,
+            shutdown,
+            task,
+        })
+    }
+
+    async fn quit(self) -> Result<()> {
+        _ = self.shutdown.send(());
+        let code = self.task.await.context("track panicked")??;
+        ensure!(code == ExitCode::SUCCESS, "track stopped with {code:?}");
         Ok(())
     }
-}
-
-/// Start a server on a free port against the database in `dir`, and wait for
-/// it to listen.
-async fn spawn(server: &Path, dir: &Path) -> Result<(Child, u16)> {
-    // The free port is released before the server binds it, so a test starting
-    // alongside can take it first; then try another.
-    for _ in 0..4 {
-        if let Some(spawned) = spawn_on_free_port(server, dir).await? {
-            return Ok(spawned);
-        }
-    }
-
-    bail!("every free port was taken before track could listen on it")
-}
-
-/// Start a server on a free port, or `None` when the port was taken before
-/// the server could bind it.
-async fn spawn_on_free_port(server: &Path, dir: &Path) -> Result<Option<(Child, u16)>> {
-    let port = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?
-        .local_addr()?
-        .port();
-
-    let log = File::create(dir.join("track.log"))?;
-
-    let mut child = Command::new(server)
-        .arg("--db")
-        .arg(dir.join("track.db"))
-        .arg("--cache-dir")
-        .arg(dir.join("image-cache"))
-        .arg("--bind")
-        .arg(format!("127.0.0.1:{port}"))
-        .arg("--dist")
-        .arg(yew_e2e::dist()?)
-        .stdout(log.try_clone()?)
-        .stderr(log)
-        .kill_on_drop(true)
-        .spawn()
-        .context("starting track")?;
-
-    let deadline = tokio::time::Instant::now() + LISTEN_TIMEOUT;
-
-    while tokio::time::Instant::now() < deadline {
-        if let Some(status) = child.try_wait()? {
-            if status.code() == Some(EXIT_ADDR_IN_USE) {
-                return Ok(None);
-            }
-
-            let log = std::fs::read_to_string(dir.join("track.log"))?;
-            bail!("track exited with {status}:\n{log}");
-        }
-
-        if TcpStream::connect((Ipv4Addr::LOCALHOST, port))
-            .await
-            .is_ok()
-        {
-            return Ok(Some((child, port)));
-        }
-
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-
-    bail!("track did not listen on port {port} within {LISTEN_TIMEOUT:?}")
-}
-
-/// Build the server binary, once per run: cargo only builds this suite's own
-/// dependencies before running it.
-async fn build_server() -> Result<PathBuf> {
-    let status = Command::new(env!("CARGO"))
-        .args(["build", "-p", "track", "--bin", "track"])
-        .status()
-        .await
-        .context("running cargo build")?;
-
-    ensure!(status.success(), "building track failed: {status}");
-    Ok(yew_e2e::target_dir()?.join("debug").join("track"))
 }
 
 yew_e2e::harness! {

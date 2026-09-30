@@ -13,6 +13,7 @@ use crate::cache::ImageCache;
 use crate::db::Database;
 use crate::pending::PendingSystem;
 use crate::remote::RemoteClients;
+use crate::shutdown::Shutdown;
 use crate::task_queue::TaskQueue;
 use crate::ws::RandomDelay;
 
@@ -28,6 +29,7 @@ pub(crate) struct AppState {
     pub(crate) config_changed: Arc<Notify>,
     /// Optional artificial per-request websocket latency (dev/testing).
     pub(crate) delay: Option<RandomDelay>,
+    pub(crate) shutdown: Shutdown,
 }
 
 pub(crate) fn router(state: AppState, dist: Option<&Path>) -> Router {

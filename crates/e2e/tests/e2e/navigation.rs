@@ -280,7 +280,7 @@ pub async fn app_bar_items_have_room(driver: &mut TestDriver, _: &mut Track) -> 
 /// a way to dismiss it. A dropped connection is one way to cause one.
 pub async fn errors_show_as_a_card(driver: &mut TestDriver, track: &mut Track) -> Result<()> {
     driver.wait_texts(".site-title", ["Track"]).await?;
-    track.child.kill().await?;
+    track.stop().await?;
 
     driver
         .find_one_by(".toolbar-item[title=Media]")

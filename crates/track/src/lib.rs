@@ -118,6 +118,7 @@ mod backup;
 mod cache;
 mod db;
 mod entry;
+#[cfg(feature = "import")]
 mod import;
 mod pending;
 mod proxy;
@@ -134,5 +135,6 @@ mod web;
 mod ws;
 
 pub use self::backup::{BackupCommand, backup};
-pub use self::entry::{Args, EXIT_ADDR_IN_USE, server};
+pub use self::entry::{Args, serve, server};
+#[cfg(feature = "import")]
 pub use self::import::import;

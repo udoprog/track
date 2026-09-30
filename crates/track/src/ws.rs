@@ -2135,6 +2135,8 @@ pub(super) async fn ws_handler(
                     }
                     break;
                 }
+                // Upgraded connections outlive the server's graceful shutdown.
+                _ = state.shutdown.cancelled() => break,
             }
         }
     })
