@@ -2043,12 +2043,8 @@ impl ShowDetail {
             ctx.link().callback(move |_| Msg::SelectSeason(season))
         };
 
-        let style = if s.total_count > 0 {
-            let f = (s.watched_count.min(s.total_count) as f64 * 100.0) / s.total_count as f64;
-            format!("width: {f:.0}%")
-        } else {
-            "width: 0%".to_string()
-        };
+        let f = (s.watched_count.min(s.total_count) as f64 * 100.0) / s.total_count.max(1) as f64;
+        let style = format!("width: {f:.0}%");
 
         html! {
             <div class={classes!("column", clickable.then_some("clickable"), active.then_some("active"), (!active && !self.expanded_seasons).then_some("desktop-only"))} {onclick}>
@@ -2062,21 +2058,33 @@ impl ShowDetail {
                     </span>
 
                     <div class="row">
+                        if s.total_count > 0 {
+                            <span class="text-muted" title="Episodes watched">{format!("{}/{}", s.watched_count.min(s.total_count), s.total_count)}</span>
+                        }
+
                         if let Some(ts) = s.air_date {
                             <span class="text-muted">{ts.date(self.time.clone()).year().to_string()}</span>
                         }
 
-                        if clickable {
+                        // Every season is listed on wide screens, so the active one
+                        // needs no marker there; on phones it opens the list.
+                        if clickable && active {
+                            <span class="item-inline mobile-only">
+                                <span class="icon chevron-up-down" />
+                            </span>
+                        } else if clickable {
                             <span class="item-inline">
-                                <span class={classes!("icon", if active { "ellipsis-horizontal" } else { "chevron-right" })} />
+                                <span class="icon chevron-right" />
                             </span>
                         }
                     </div>
                 </div>
 
-                <div class="percentage-container">
-                    <span class="percentage-fill" {style} />
-                </div>
+                if s.total_count > 0 {
+                    <div class="percentage-container">
+                        <span class="percentage-fill" {style} />
+                    </div>
+                }
             </div>
         }
     }

@@ -60,3 +60,15 @@ pub async fn watched_episodes_are_compact(driver: &mut TestDriver, _: &mut Track
 
     driver.wait_count(&format!("{first}.compact"), 0).await
 }
+
+/// The season list says how much of each season has been watched.
+pub async fn seasons_count_watched_episodes(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_show(driver).await?;
+
+    driver
+        .wait_until("the season to read 0/3 watched", async || {
+            let texts = driver.find_all_texts(".column.active").await?;
+            Ok(texts.iter().any(|text| text.contains("0/3")))
+        })
+        .await
+}
