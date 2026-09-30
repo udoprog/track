@@ -618,3 +618,34 @@ pub async fn settings_pages_return_to_settings(
         .await?;
     driver.wait_texts(".modal h2", ["Settings"]).await
 }
+
+/// The translations modal lists each field's translations with the language
+/// beside the text.
+pub async fn translations_sit_beside_their_language(
+    driver: &mut TestDriver,
+    _: &mut Track,
+) -> Result<()> {
+    open_show(driver).await?;
+
+    driver
+        .find_one_by("[title='Translations']:not(.menu-list *)")
+        .await?
+        .click()
+        .await?;
+
+    driver
+        .wait_texts(".translations h3", ["Title", "Overview"])
+        .await?;
+
+    let language = driver
+        .find_first(".translation-language")
+        .await?
+        .rect()
+        .await?;
+    let text = driver.find_first(".translation-text").await?.rect().await?;
+    ensure!(
+        text.x > language.x + language.width && (text.y - language.y).abs() < 8.0,
+        "the text is not beside its language: {language:?} {text:?}"
+    );
+    Ok(())
+}

@@ -369,6 +369,55 @@ p {
     }
 }
 
+// Translations of a title or overview: the language in one column and the
+// text beside it, stacked on phones.
+.translations {
+    display: flex;
+    flex-direction: column;
+    gap: v.$gap;
+
+    h3 {
+        color: v.$text-color;
+        font-size: v.$font-lg;
+        margin-bottom: v.$gap-xs;
+    }
+}
+
+.translation-rows {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    column-gap: v.$gap;
+    row-gap: v.$gap-sm;
+
+    @include g.on-mobile {
+        grid-template-columns: minmax(0, 1fr);
+        row-gap: v.$gap;
+    }
+}
+
+.translation-row {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    align-items: baseline;
+    row-gap: v.$padding;
+}
+
+.translation-language {
+    display: inline-flex;
+    align-items: center;
+    gap: v.$padding-md;
+    color: v.$text-muted;
+    font-size: v.$font-sm;
+    white-space: nowrap;
+
+    // A flag sized like an icon, not like a touch target.
+    >.item-inline {
+        height: v.$icon-size;
+        min-width: 0;
+    }
+}
+
 // A watch history: one row per watch with its date and time, how long ago
 // that was, and its actions, all in aligned columns. Phones put the actions
 // under the date.

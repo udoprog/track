@@ -149,7 +149,7 @@ impl TranslationsModal {
         }
 
         html! {
-            <div class="column">
+            <div class="translations">
                 { for FIELDS.iter().filter_map(|&(kind, label)| {
                     let mut rows = translations.iter().filter(|t| t.kind == kind).peekable();
 
@@ -157,11 +157,13 @@ impl TranslationsModal {
                     rows.peek()?;
 
                     Some(html! {
-                        <div class="column">
+                        <section>
                             <h3>{label}</h3>
 
-                            { for rows.map(view_row) }
-                        </div>
+                            <div class="translation-rows">
+                                { for rows.map(view_row) }
+                            </div>
+                        </section>
                     })
                 }) }
             </div>
@@ -184,27 +186,24 @@ fn covers(event: api::TranslationTarget, mine: api::TranslationTarget) -> bool {
     }
 }
 
-/// Render a single translation as a row: language name with its flag (mirroring
-/// the `LanguagePicker` treatment, flag wrapped in `item-inline` so it sizes,
-/// falling back to the 3-letter code when no flag exists) followed by the text.
+/// Render a single translation as a row: the language with its flag (falling
+/// back to its code when there is no flag) in one column, the text beside it.
 fn view_row(translation: &api::Translation) -> Html {
     let (label, flag) = super::locale_label(translation.language, "Default Language");
 
     html! {
-        <div class="column">
-            <div class="row text-gap">
+        <div class="translation-row">
+            <span class="translation-language">
                 if let Some(flag) = flag {
                     <span class={classes!("item-inline", "flag", flag)} title={translation.language} />
                 } else {
-                    <span class="item-inline">
-                        <span class="text-muted">{translation.language}</span>
-                    </span>
+                    <span class="item-inline">{translation.language}</span>
                 }
 
                 <span>{label}</span>
-            </div>
+            </span>
 
-            <div>{&translation.text}</div>
+            <span class="translation-text">{&translation.text}</span>
         </div>
     }
 }
