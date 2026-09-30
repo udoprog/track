@@ -8,8 +8,6 @@ publish = false
 test = false
 doctest = false
 
-[dependencies]
-
 [dev-dependencies]
 anyhow = "1.0.104"
 sqll = { version = "0.14.4", features = ["bundled"] }
