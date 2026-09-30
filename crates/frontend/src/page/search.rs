@@ -22,6 +22,7 @@ pub(crate) struct Search {
     /// no further results rather than keep offering to load more (remote totals
     /// can over-report).
     end: bool,
+    input: NodeRef,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
     _search_req: ws::Request,
@@ -83,6 +84,7 @@ impl Component for Search {
             total: 0,
             loading: false,
             end: false,
+            input: NodeRef::default(),
             _setup,
             _broadcast,
             _search_req: ws::Request::default(),
@@ -103,6 +105,10 @@ impl Component for Search {
     fn rendered(&mut self, _ctx: &Context<Self>, first_render: bool) {
         if first_render {
             self.background.title(Some("Search Remotes".to_string()));
+
+            if let Some(input) = self.input.cast::<web_sys::HtmlElement>() {
+                _ = input.focus();
+            }
         }
     }
 
@@ -152,7 +158,7 @@ impl Component for Search {
 
                 <input-controls>
                     <div class="input-group">
-                        <input class="input-text fill" type="text" placeholder={SEARCH} autofocus=true value={self.query.clone()} oninput={on_input} onkeydown={on_keydown} />
+                        <input class="input-text fill" type="text" placeholder={SEARCH} ref={self.input.clone()} value={self.query.clone()} oninput={on_input} onkeydown={on_keydown} />
 
                         <button class="desktop-has-text" onclick={on_submit}>
                             <span class="icon magnifying-glass" />

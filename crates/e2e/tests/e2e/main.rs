@@ -14,6 +14,7 @@ mod media;
 mod navigation;
 mod people;
 mod queue;
+mod search;
 mod settings;
 mod show;
 
@@ -165,6 +166,7 @@ yew_e2e::harness! {
     navigation::{opens_every_page, page_scrolls_the_window, toolbar_icons_are_small},
     people::{lists_people_by_name(seeded)},
     queue::{lists_tasks_in_columns},
+    search::{focuses_the_input},
     settings::{reorders_sync_sources, theme_applies_live, theme_is_remembered},
     show::{episode_menu_holds_the_other_actions(seeded), has_a_heading(seeded), phones_have_no_episode_rail(seeded), seasons_count_watched_episodes(seeded), watched_episodes_are_compact(seeded)},
 }
