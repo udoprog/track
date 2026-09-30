@@ -1883,7 +1883,7 @@ pagination {
 .task-row {
     display: grid;
     grid-column: 1 / -1;
-    grid-template-columns: max-content minmax(0, 1fr);
+    grid-template-columns: subgrid;
     align-items: center;
     height: var(--task-row-height);
     padding: 0 v.$gap-xs;

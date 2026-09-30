@@ -43,6 +43,23 @@ pub async fn lists_tasks_in_columns(driver: &mut TestDriver, _: &mut Track) -> R
         !page.contains('—'),
         "the queue still separates fields with dashes"
     );
+
+    // On a wide screen a task's kind and subject sit side by side.
+    let kind = driver
+        .find_first(".task-row .task-kind")
+        .await?
+        .rect()
+        .await?;
+    let title = driver
+        .find_first(".task-row .task-title")
+        .await?
+        .rect()
+        .await?;
+    let (kind_mid, title_mid) = (kind.y + kind.height / 2.0, title.y + title.height / 2.0);
+    ensure!(
+        (kind_mid - title_mid).abs() < 4.0 && title.x > kind.x,
+        "the task's subject is not beside its kind: {kind:?} {title:?}"
+    );
     Ok(())
 }
 
