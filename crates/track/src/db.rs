@@ -313,6 +313,12 @@ struct LastWatchedShowRow {
 }
 
 #[derive(Row)]
+struct UnwatchedShowRow {
+    show_id: ShowId,
+    unwatched: i64,
+}
+
+#[derive(Row)]
 struct WatchedRow {
     id: WatchedId,
     timestamp: Timestamp,
@@ -930,6 +936,8 @@ struct InnerRead {
     last_watched_movies: TypedStatement<(), LastWatchedMovieRow>,
     #[sql = "SELECT show_id, MAX(timestamp) AS last_watched FROM watched_episodes GROUP BY show_id"]
     last_watched_shows: TypedStatement<(), LastWatchedShowRow>,
+    #[sql = "SELECT e.show_id AS show_id, COUNT(*) AS unwatched FROM episodes e WHERE e.season != 0 AND e.aired IS NOT NULL AND e.aired <= CAST(strftime('%s', 'now') AS INTEGER) * 1000 AND NOT EXISTS (SELECT 1 FROM watched_episodes w WHERE w.show_id = e.show_id AND w.season = e.season AND w.episode = e.episode) GROUP BY e.show_id"]
+    unwatched_shows: TypedStatement<(), UnwatchedShowRow>,
 
     // movies
     #[sql = "SELECT m.id, m.release_date, m.tracked, m.auto_sync, m.last_synced_at, m.language, m.default_language, m.release_filters"]
@@ -3166,6 +3174,18 @@ impl Database {
                         && let Some(o) = out.get_mut(i)
                     {
                         o.last_watched_at = Some(r.last_watched);
+                    }
+                }
+
+                stmt.reset()?;
+
+                let mut stmt = s.unwatched_shows.query()?;
+
+                while let Some(r) = stmt.next()? {
+                    if let Some(&i) = id_to_idx.get(&r.show_id.get())
+                        && let Some(o) = out.get_mut(i)
+                    {
+                        o.unwatched_episodes = u32::try_from(r.unwatched).unwrap_or(u32::MAX);
                     }
                 }
 
@@ -7134,6 +7154,7 @@ fn media_item_from_row(
         backdrop: None,
         tracked: r.tracked,
         last_watched_at: None,
+        unwatched_episodes: 0,
         remotes: Vec::new(),
     }
 }

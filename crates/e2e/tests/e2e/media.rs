@@ -90,3 +90,30 @@ pub async fn sort_stays_readable_at_tablet_width(
     );
     Ok(())
 }
+
+/// A show with aired episodes still to watch carries a yellow watched mark;
+/// once every regular episode is watched the mark is the plain one.
+pub async fn partly_watched_shows_are_marked(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    driver.wait_texts(".pending-title", ["Seeded Show"]).await?;
+
+    // Watch the first episode from the dashboard, then look at Media.
+    driver
+        .find_one_by(".pending-item [title='Mark watched']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .wait_texts(".pending-label", ["S01E02 Second Episode"])
+        .await?;
+
+    driver
+        .find_one_by(".toolbar-item[title=Media]")
+        .await?
+        .click()
+        .await?;
+
+    let badge = driver.find_one_by(".media-card .media-badge").await?;
+    ensure!(badge.attr("class").await?.contains("partial"));
+    ensure!(badge.attr("title").await? == "Partly watched: 2 episodes to go");
+    Ok(())
+}

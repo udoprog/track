@@ -37,6 +37,7 @@ colour literal or use Sass colour functions on a token; mix with
 | `--accent` (+ `-bg`, `-selected`) | Links, the primary action, selection, the current item |
 | `--neutral` (+ `-bg`, `-selected`) | Default buttons and hover fills |
 | `--success`, `--danger` (+ `-bg`, `-selected`) | State only (done, failed, destructive), never decoration |
+| `--warning`, `--on-warning` | Partly done (a show with aired episodes still to watch) |
 | `--border`, `--border-soft`, `--border-strong` | Dividers, soft outlines, input outlines |
 | `--shadow`, `--shadow-strong` | Resting and lifted artwork |
 

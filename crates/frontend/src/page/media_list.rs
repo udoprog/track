@@ -618,9 +618,15 @@ impl MediaList {
                     <Image class="poster" placeholder=true src={m.poster.clone()} alt={title.to_owned()} />
 
                     if m.last_watched_at.is_some() {
-                        <span class="media-badge" title="Watched">
-                            <span class="icon sm check" aria-hidden="true" />
-                        </span>
+                        if m.unwatched_episodes > 0 {
+                            <span class="media-badge partial" title={unwatched_label(m.unwatched_episodes)}>
+                                <span class="icon sm check" aria-hidden="true" />
+                            </span>
+                        } else {
+                            <span class="media-badge" title="Watched">
+                                <span class="icon sm check" aria-hidden="true" />
+                            </span>
+                        }
                     }
                 </Link>
 
@@ -665,5 +671,13 @@ impl MediaList {
                 </div>
             </div>
         }
+    }
+}
+
+/// How a partly watched show's badge reads on hover.
+fn unwatched_label(unwatched: u32) -> String {
+    match unwatched {
+        1 => "Partly watched: 1 episode to go".to_owned(),
+        n => format!("Partly watched: {n} episodes to go"),
     }
 }

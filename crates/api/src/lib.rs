@@ -2243,6 +2243,9 @@ pub struct MediaItem {
     pub backdrop: Option<Image>,
     pub tracked: bool,
     pub last_watched_at: Option<Timestamp>,
+    /// For shows, the regular (non-special) episodes that have aired but have
+    /// not been watched. Always 0 for movies.
+    pub unwatched_episodes: u32,
     /// Remote entries, used to render external links in the list.
     pub remotes: Vec<RemoteEntry>,
 }

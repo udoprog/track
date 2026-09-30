@@ -2332,6 +2332,12 @@ pagination {
     border-radius: 50%;
     background: var(--success-selected);
     --icon-color: #{v.$text-on-accent};
+
+    // Watched, but regular episodes that have aired are still unwatched.
+    &.partial {
+        background: var(--warning);
+        --icon-color: var(--on-warning);
+    }
 }
 
 .media-info {
