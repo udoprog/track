@@ -89,6 +89,31 @@ $ cargo test -p e2e -- --headed --last-session
 
 <br>
 
+## Deploying
+
+The `[deploy]` section in `Kick.toml` builds the frontend, builds the server
+with the frontend bundled into it, and installs it as `/usr/local/bin/track` on
+`integration@moore` over ssh with [kick]:
+
+```text
+$ kick deploy
+```
+
+Pass `--host` to deploy somewhere else, and `--dry-run` to print every command
+without running them:
+
+```text
+$ kick deploy --host someone@otherhost
+$ kick deploy --dry-run
+```
+
+The deploying user needs passwordless `sudo` on the host, since kick runs its
+remote commands with `sudo -n`.
+
+[kick]: https://github.com/udoprog/kick
+
+<br>
+
 ## Importing from ontv
 
 If you have been using [ontv], its YAML database can be imported like this:

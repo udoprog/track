@@ -1,0 +1,8 @@
+[deploy]
+host = "integration@moore"
+binary = "track"
+pre_build = ["trunk build --release"]
+build_features = ["bundle"]
+# Interim: never touch moore's track.service. This also skips restarting it,
+# which is pending a decision on card 94354ff0.
+systemd = false
