@@ -541,7 +541,7 @@ h6 {
     min-width: 0;
     position: relative;
 
-    >image.banner {
+    image.banner {
         border-radius: v.$radius;
         overflow: hidden;
     }
@@ -1708,6 +1708,7 @@ pagination {
 }
 
 .media-poster {
+    display: block;
     position: relative;
 
     >image {
@@ -1958,6 +1959,7 @@ pagination {
 
 .task-title {
     display: flex;
+    color: v.$text-color;
     gap: v.$text-gap;
     min-width: 0;
     white-space: nowrap;

@@ -10,10 +10,10 @@ use api::{TimeInfo, Timed};
 use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{MediaSelection, Route, Router, ShowDetailQuery};
+use crate::router::{MediaSelection, Route, ShowDetailQuery};
 use crate::ui::{
-    Button, ConfirmDanger, ContextMenu, DurationInput, Image, MarkTimeMenu, PaginationButtons,
-    Skeleton, TimePreset, Variant,
+    Button, ConfirmDanger, ContextMenu, DurationInput, Image, Link, MarkTimeMenu,
+    PaginationButtons, Skeleton, TimePreset, Variant,
 };
 
 struct PendingState {
@@ -33,7 +33,6 @@ pub(crate) struct WatchNext {
     time: TimeInfo,
     _time_handle: ContextHandle<TimeInfo>,
     background: Background,
-    router: Router,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
     _pending_req: ws::Request,
@@ -77,7 +76,6 @@ pub(crate) enum Msg {
     LookaheadSaved(Result<ws::Packet<api::SetConfig>, ws::Error>),
     SetConfigDone(Result<ws::Packet<api::SetConfig>, ws::Error>),
     SetPage(usize),
-    Navigate(Route),
     SetTime(TimeInfo),
     Resized,
     ToggleOptions,
@@ -119,11 +117,6 @@ impl Component for WatchNext {
             .context::<Background>(Callback::noop())
             .expect("Expected background handle in context");
 
-        let (router, _) = ctx
-            .link()
-            .context::<Router>(Callback::noop())
-            .expect("Expected router in context");
-
         Self {
             channel: ws::Channel::default(),
             pending: Vec::new(),
@@ -133,7 +126,6 @@ impl Component for WatchNext {
             time,
             _time_handle,
             background,
-            router,
             _setup,
             _broadcast,
             _pending_req: ws::Request::default(),
@@ -516,10 +508,6 @@ impl WatchNext {
                 ctx.props().on_set_page.emit(page);
                 Ok(false)
             }
-            Msg::Navigate(route) => {
-                self.router.push(route);
-                Ok(false)
-            }
             Msg::Resized => {
                 self.measure_columns();
                 self.clamp_page(ctx);
@@ -650,8 +638,8 @@ impl WatchNext {
 
         let pending_kind = pending.info.kind();
 
-        let on_navigate;
-        let on_navigate_episode;
+        let route;
+        let episode_route;
 
         match &pending.info {
             api::PendingInfo::Episode {
@@ -660,36 +648,19 @@ impl WatchNext {
                 number,
                 ..
             } => {
-                let show = *show_id;
-
-                on_navigate = ctx.link().callback({
-                    move |_| Msg::Navigate(Route::ShowDetail(show, ShowDetailQuery::default()))
-                });
-
-                on_navigate_episode = ctx.link().callback({
-                    let season = *season;
-                    let code = api::Code::new(season, *number);
-
-                    move |_| {
-                        Msg::Navigate(Route::ShowDetail(
-                            show,
-                            ShowDetailQuery {
-                                season,
-                                episode: Some(code),
-                                orphaned: false,
-                            },
-                        ))
-                    }
-                });
+                route = Route::ShowDetail(*show_id, ShowDetailQuery::default());
+                episode_route = Route::ShowDetail(
+                    *show_id,
+                    ShowDetailQuery {
+                        season: *season,
+                        episode: Some(api::Code::new(*season, *number)),
+                        orphaned: false,
+                    },
+                );
             }
             api::PendingInfo::Movie { movie, .. } => {
-                let movie = *movie;
-
-                on_navigate = ctx
-                    .link()
-                    .callback(move |_| Msg::Navigate(Route::MovieDetail(movie)));
-
-                on_navigate_episode = on_navigate.clone();
+                route = Route::MovieDetail(*movie);
+                episode_route = route.clone();
             }
         };
 
@@ -729,9 +700,9 @@ impl WatchNext {
         let title = match &pending.info {
             api::PendingInfo::Movie { title, .. } => {
                 html! {
-                    <span class="pending-title clickable" onclick={on_navigate.clone()} title={title.clone()}>
-                        {title.as_deref().unwrap_or("Untitled Movie")}
-                    </span>
+                    <Link to={route.clone()} class="pending-title" title={title.clone()}>
+                        <>{title.as_deref().unwrap_or("Untitled Movie")}</>
+                    </Link>
                 }
             }
             api::PendingInfo::Episode {
@@ -743,15 +714,15 @@ impl WatchNext {
             } => {
                 html! {
                     <>
-                        <span class="pending-title clickable" onclick={on_navigate.clone()} title={show.clone()}>
-                            {show.as_deref().unwrap_or("Untitled Show")}
-                        </span>
+                        <Link to={route.clone()} class="pending-title" title={show.clone()}>
+                            <>{show.as_deref().unwrap_or("Untitled Show")}</>
+                        </Link>
 
-                        <span class="pending-label clickable" onclick={on_navigate_episode.clone()}>
+                        <Link to={episode_route.clone()} class="pending-label">
                             <span class="badge">{format!("{}E{number:02}", season.short())}</span>
                             {" "}
                             {episode.as_deref().unwrap_or("Untitled Episode")}
-                        </span>
+                        </Link>
                     </>
                 }
             }
@@ -770,10 +741,14 @@ impl WatchNext {
 
         html! {
             <div {key} class="pending-item lift" {onmouseover}>
-                <Image class="poster clickable desktop-only artwork" src={pending.season_poster.clone().or_else(|| pending.poster.clone())} onclick={on_navigate.clone()} />
+                <Link to={route.clone()} class="pending-picture desktop-only" decorative=true>
+                    <Image class="poster artwork" src={pending.season_poster.clone().or_else(|| pending.poster.clone())} />
+                </Link>
                 // A show without a banner still gets a picture on mobile, cropped from
                 // its backdrop or poster.
-                <Image class="banner clickable mobile-only" placeholder=true src={pending.season_banner.clone().or_else(|| pending.banner.clone()).or_else(|| pending.backdrop.clone()).or_else(|| pending.poster.clone())} onclick={on_navigate.clone()} />
+                <Link to={route.clone()} class="pending-picture mobile-only" decorative=true>
+                    <Image class="banner" placeholder=true src={pending.season_banner.clone().or_else(|| pending.banner.clone()).or_else(|| pending.backdrop.clone()).or_else(|| pending.poster.clone())} />
+                </Link>
 
                 <div class="pending-info">
                     <div class="pending-content">

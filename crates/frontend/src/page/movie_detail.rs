@@ -9,9 +9,9 @@ use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaQuery, Route, Router};
 use crate::ui::{
     Button, ConfirmDanger, ContextMenu, DetailHero, DetailSkeleton, GraphicsSourceFilter, Image,
-    ImageGallery, ImageItem, MarkTimeMenu, MediaSettingsModal, Modal, ReleaseModal, ReleaseTarget,
-    RemoteEditor, RemoteSourceKind, SettingsTarget, TimePreset, Tracked, TranslatedText,
-    TranslationsModal, Variant,
+    ImageGallery, ImageItem, Link, MarkTimeMenu, MediaSettingsModal, Modal, ReleaseModal,
+    ReleaseTarget, RemoteEditor, RemoteSourceKind, SettingsTarget, TimePreset, Tracked,
+    TranslatedText, TranslationsModal, Variant,
 };
 
 const CAP: usize = 8;
@@ -1029,12 +1029,8 @@ impl MovieDetail {
         let name = credit.name.title().unwrap_or("Unknown").to_owned();
         let subtitle = subtitle.map(str::to_owned);
 
-        let router = self.router.clone();
-        let person_id = credit.person_id;
-        let onclick = Callback::from(move |_| router.push(Route::PersonDetail(person_id)));
-
         html! {
-            <div class="cast-card clickable" {onclick}>
+            <Link to={Route::PersonDetail(credit.person_id)} class="cast-card">
                 <Image class="cast-photo" placeholder={true} placeholder_icon="user" src={credit.profile.clone()} alt={name.clone()} />
 
                 <div class="cast-info">
@@ -1044,7 +1040,7 @@ impl MovieDetail {
                         <div class="cast-character">{ subtitle }</div>
                     }
                 </div>
-            </div>
+            </Link>
         }
     }
 

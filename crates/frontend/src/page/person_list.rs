@@ -5,7 +5,7 @@ use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{PersonQuery, PersonSort, Route, Router};
-use crate::ui::{Button, Image, PaginationButtons};
+use crate::ui::{Button, Image, Link, PaginationButtons};
 
 const PAGE_SIZE: usize = 24;
 
@@ -38,7 +38,6 @@ pub(crate) enum Msg {
     SetSort(PersonSort),
     ToggleDir,
     SetPage(usize),
-    Navigate(Route),
 }
 
 #[derive(Properties, PartialEq)]
@@ -209,7 +208,7 @@ impl Component for PersonList {
                     </div>
                 } else {
                     <div class="person-grid">
-                        { for persons.into_iter().map(|p| self.view_card(ctx, p)) }
+                        { for persons.into_iter().map(|p| self.view_card(p)) }
                     </div>
 
                     <div class="row desktop-align-end">
@@ -293,10 +292,6 @@ impl PersonList {
                 self.emit_navigate();
                 Ok(true)
             }
-            Msg::Navigate(route) => {
-                self.router.push(route);
-                Ok(false)
-            }
         }
     }
 
@@ -375,13 +370,12 @@ impl PersonList {
             .send();
     }
 
-    fn view_card(&self, ctx: &Context<Self>, p: &api::PersonItem) -> Html {
+    fn view_card(&self, p: &api::PersonItem) -> Html {
         let name = display_name(p).unwrap_or("Unknown").to_owned();
         let route = Route::PersonDetail(p.id);
-        let onclick = ctx.link().callback(move |_| Msg::Navigate(route.clone()));
 
         html! {
-            <div class="person-card clickable lift" {onclick}>
+            <Link to={route} class="person-card lift">
                 <Image class="person-photo artwork" placeholder={true} placeholder_icon="user" src={p.profile.clone()} alt={name.clone()} />
 
                 <div class="person-info">
@@ -395,7 +389,7 @@ impl PersonList {
                         { format!("{} credit{}", p.credit_count, if p.credit_count == 1 { "" } else { "s" }) }
                     </div>
                 </div>
-            </div>
+            </Link>
         }
     }
 }

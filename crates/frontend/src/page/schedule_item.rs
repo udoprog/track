@@ -5,7 +5,7 @@ use api::TimeInfo;
 use yew::prelude::*;
 
 use crate::router::{Route, ShowDetailQuery};
-use crate::ui::Image;
+use crate::ui::{Image, Link};
 
 /// A day's heading: its relative name when it has one ("Today"), and its date.
 pub(super) fn view_day_heading(day: api::Date, today: api::Date) -> Html {
@@ -44,7 +44,6 @@ pub(super) fn view_day_heading(day: api::Date, today: api::Date) -> Html {
 pub(super) fn view_schedule_item(
     item: &api::ScheduleItem,
     time: &TimeInfo,
-    on_navigate: &Callback<Route>,
     on_hover: &Callback<Option<String>>,
 ) -> Html {
     let (key, title, poster, backdrop, route) = match item {
@@ -77,7 +76,6 @@ pub(super) fn view_schedule_item(
         ),
     };
 
-    let onclick = on_navigate.reform(move |_: MouseEvent| route.clone());
     let backdrop = backdrop.as_ref().map(|i| i.proxy_url());
     let onmouseover = on_hover.reform(move |_: MouseEvent| backdrop.clone());
 
@@ -89,17 +87,14 @@ pub(super) fn view_schedule_item(
                 { for entry.episodes.iter().map(|ep| {
                     let code = ep.code();
 
-                    // The episode, not the show's latest one the whole entry opens.
-                    let onclick = on_navigate.reform(move |e: MouseEvent| {
-                        e.stop_propagation();
-                        Route::ShowDetail(show_id, ShowDetailQuery { season: code.season, episode: Some(code), orphaned: false })
-                    });
+                    // The episode, not the show's latest one the title opens.
+                    let to = Route::ShowDetail(show_id, ShowDetailQuery { season: code.season, episode: Some(code), orphaned: false });
 
                     html! {
-                        <span key={code.to_string()} class="schedule-time clickable" title={format!("Open {code}")} {onclick}>
+                        <Link key={code.to_string()} {to} class="schedule-time" title={format!("Open {code}")}>
                             <span>{ep.aired.time_of_day(time.clone())}</span>
                             <span class="badge">{code.to_string()}</span>
-                        </span>
+                        </Link>
                     }
                 }) }
             }
@@ -113,9 +108,11 @@ pub(super) fn view_schedule_item(
     };
 
     html! {
-        <div {key} class="schedule-item clickable" title={format!("Open {title}")} {onclick} {onmouseover}>
-            <Image class="schedule-poster" src={poster.clone()} />
-            <span class="schedule-title">{title}</span>
+        <div {key} class="schedule-item" {onmouseover}>
+            <Link to={route.clone()} class="schedule-poster" decorative=true>
+                <Image src={poster.clone()} />
+            </Link>
+            <Link to={route} class="schedule-title" title={format!("Open {title}")}><>{title}</></Link>
             <span class="schedule-times">{times}</span>
         </div>
     }

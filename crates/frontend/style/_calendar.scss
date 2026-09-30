@@ -107,6 +107,7 @@
 }
 
 .schedule-poster {
+    display: block;
     width: 40px;
     aspect-ratio: 2 / 3;
     border-radius: v.$radius-sm;
@@ -115,6 +116,7 @@
 }
 
 .schedule-title {
+    color: v.$text-color;
     font-size: v.$font-sm;
     font-weight: v.$bold-weight;
     line-height: 1.3;
@@ -140,7 +142,7 @@
     font-variant-numeric: tabular-nums;
     color: v.$text-muted;
 
-    &.clickable:hover {
+    &:hover {
         background: v.$bg-highlight;
         color: v.$text-color;
     }

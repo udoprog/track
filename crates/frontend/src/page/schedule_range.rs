@@ -7,7 +7,7 @@ use yew::prelude::*;
 use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{MediaSelection, Route, Router};
+use crate::router::MediaSelection;
 use crate::ui::{Button, ContextMenu, Skeleton};
 
 use super::schedule_item::{view_day_heading, view_schedule_item};
@@ -37,7 +37,6 @@ pub(crate) struct ScheduleRange {
     loading: bool,
     time: TimeInfo,
     _time_handle: ContextHandle<TimeInfo>,
-    router: Router,
     background: Background,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
@@ -56,7 +55,6 @@ pub(crate) enum Msg {
     ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
     AdjustRangeDays(i32),
     SetConfigDone(Result<ws::Packet<api::SetConfig>, ws::Error>),
-    Navigate(Route),
     SetTime(TimeInfo),
     /// Hover an entry: drive the page background from its backdrop.
     Hover(Option<String>),
@@ -81,11 +79,6 @@ impl Component for ScheduleRange {
             .context::<TimeInfo>(ctx.link().callback(Msg::SetTime))
             .expect("Expected a configured time zone");
 
-        let (router, _) = ctx
-            .link()
-            .context::<Router>(Callback::noop())
-            .expect("Expected router in context");
-
         let (background, _) = ctx
             .link()
             .context::<Background>(Callback::noop())
@@ -99,7 +92,6 @@ impl Component for ScheduleRange {
             loading: false,
             time,
             _time_handle,
-            router,
             background,
             _setup,
             _broadcast,
@@ -300,10 +292,6 @@ impl ScheduleRange {
                 result.context(Message::SavingConfig)?;
                 Ok(false)
             }
-            Msg::Navigate(route) => {
-                self.router.push(route);
-                Ok(false)
-            }
             Msg::SetTime(time) => {
                 self.time = time;
                 if self.channel.id() != ws::ChannelId::NONE {
@@ -335,7 +323,6 @@ impl ScheduleRange {
             .unwrap_or_default();
         items.retain(|i| selection.contains(i.kind()));
 
-        let on_navigate = link.callback(Msg::Navigate);
         let on_hover = link.callback(Msg::Hover);
 
         html! {
@@ -348,7 +335,7 @@ impl ScheduleRange {
                     <p class="text-muted">{"Nothing airs"}</p>
                 } else {
                     <div class="agenda-items">
-                        { for items.iter().map(|item| view_schedule_item(item, &self.time, &on_navigate, &on_hover)) }
+                        { for items.iter().map(|item| view_schedule_item(item, &self.time, &on_hover)) }
                     </div>
                 }
             </section>

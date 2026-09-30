@@ -8,7 +8,7 @@ use yew::prelude::*;
 use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::router::{MediaSelection, Route, Router};
+use crate::router::MediaSelection;
 use crate::ui::{Button, ContextMenu, Skeleton};
 
 use super::schedule_item::{view_day_heading, view_schedule_item};
@@ -43,7 +43,6 @@ pub(crate) struct Calendar {
     loading: bool,
     time: TimeInfo,
     _time_handle: ContextHandle<TimeInfo>,
-    router: Router,
     background: Background,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
@@ -62,7 +61,6 @@ pub(crate) enum Msg {
     ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
     AdjustScheduleWeeks(i32),
     SetConfigDone(Result<ws::Packet<api::SetConfig>, ws::Error>),
-    Navigate(Route),
     SetTime(TimeInfo),
     /// Hover an entry: drive the page background from its backdrop.
     Hover(Option<String>),
@@ -87,11 +85,6 @@ impl Component for Calendar {
             .context::<TimeInfo>(ctx.link().callback(Msg::SetTime))
             .expect("Expected a configured time zone");
 
-        let (router, _) = ctx
-            .link()
-            .context::<Router>(Callback::noop())
-            .expect("Expected router in context");
-
         let (background, _) = ctx
             .link()
             .context::<Background>(Callback::noop())
@@ -105,7 +98,6 @@ impl Component for Calendar {
             loading: false,
             time,
             _time_handle,
-            router,
             background,
             _setup,
             _broadcast,
@@ -179,7 +171,6 @@ impl Component for Calendar {
             Callback::from(move |_| cb.emit(()))
         };
 
-        let on_navigate = link.callback(Msg::Navigate);
         let on_hover = link.callback(Msg::Hover);
 
         let first = weeks[0].1[0];
@@ -264,7 +255,7 @@ impl Component for Calendar {
                                                 <Skeleton class="line" />
                                             } else if !items.is_empty() {
                                                 <div class="agenda-items">
-                                                    { for items.iter().map(|item| view_schedule_item(item, &self.time, &on_navigate, &on_hover)) }
+                                                    { for items.iter().map(|item| view_schedule_item(item, &self.time, &on_hover)) }
                                                 </div>
                                             }
                                         </div>
@@ -385,10 +376,6 @@ impl Calendar {
             }
             Msg::SetConfigDone(result) => {
                 result.context(Message::SavingConfig)?;
-                Ok(false)
-            }
-            Msg::Navigate(route) => {
-                self.router.push(route);
                 Ok(false)
             }
             Msg::Hover(backdrop) => {

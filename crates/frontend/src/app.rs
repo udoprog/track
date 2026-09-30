@@ -16,7 +16,7 @@ use crate::router::{
     DashboardQuery, MediaQuery, PersonQuery, QueueQuery, Route, Router, RouterState, SearchQuery,
 };
 use crate::setup_channel::SetupChannel;
-use crate::ui::{Button, ErrorBox, Outline, OutlineControl, OutlineEntry, TopLanguages};
+use crate::ui::{Button, ErrorBox, Link, Outline, OutlineControl, OutlineEntry, TopLanguages};
 
 pub(super) struct App {
     channel: ws::Channel,
@@ -515,23 +515,14 @@ struct ToolbarProps {
 fn Toolbar(props: &ToolbarProps) -> Html {
     let menu_open = use_state(|| false);
 
-    let router = use_context::<Router>().expect("Expected router in context");
-
     let on_menu_toggle = {
         let menu_open = menu_open.clone();
         Callback::from(move |_| menu_open.set(!*menu_open))
     };
 
-    let on_nav = {
-        |route: Route| {
-            let router = router.clone();
-            let menu_open = menu_open.clone();
-
-            Callback::from(move |_| {
-                menu_open.set(false);
-                router.push(route.clone());
-            })
-        }
+    let close_menu = {
+        let menu_open = menu_open.clone();
+        Callback::from(move |()| menu_open.set(false))
     };
 
     let (connection_icon, connection_style, connection_title) = if props.connected {
@@ -543,7 +534,7 @@ fn Toolbar(props: &ToolbarProps) -> Html {
     html! {
         <div id="toolbar" class="toolbar toolbar-padding">
             <div class="row text-gap">
-                <span class="site-title clickable" onclick={on_nav(Route::Dashboard(DashboardQuery::default()))}>{ props.site_title.clone() }</span>
+                <Link to={Route::Dashboard(DashboardQuery::default())} class="site-title" onclick={close_menu.clone()}>{ props.site_title.clone() }</Link>
             </div>
 
             <Button class="toolbar-toggle" icon={if *menu_open { "x-mark" } else { "bars-3" }} title="Navigation" expanded={Some(*menu_open)} onclick={on_menu_toggle} />
@@ -554,17 +545,35 @@ fn Toolbar(props: &ToolbarProps) -> Html {
                     <span class="mobile-only">{connection_title}</span>
                 </div>
 
-                <Button icon="rectangle-stack" label="Dashboard" title="Dashboard" class={classes!("toolbar-item", (props.section == Section::Dashboard).then_some("active"))} current={props.section == Section::Dashboard} onclick={on_nav(Route::Dashboard(DashboardQuery::default()))} />
+                <Link to={Route::Dashboard(DashboardQuery::default())} class={classes!("toolbar-item", "has-text", (props.section == Section::Dashboard).then_some("active"))} title="Dashboard" current={props.section == Section::Dashboard} onclick={close_menu.clone()}>
+                    <span class="icon rectangle-stack" aria-hidden="true" />
+                    <span>{"Dashboard"}</span>
+                </Link>
 
-                <Button icon="film" label="Media" title="Media" class={classes!("toolbar-item", (props.section == Section::Media).then_some("active"))} current={props.section == Section::Media} onclick={on_nav(Route::Media(MediaQuery::default()))} />
+                <Link to={Route::Media(MediaQuery::default())} class={classes!("toolbar-item", "has-text", (props.section == Section::Media).then_some("active"))} title="Media" current={props.section == Section::Media} onclick={close_menu.clone()}>
+                    <span class="icon film" aria-hidden="true" />
+                    <span>{"Media"}</span>
+                </Link>
 
-                <Button icon="users" label="People" title="People" class={classes!("toolbar-item", (props.section == Section::People).then_some("active"))} current={props.section == Section::People} onclick={on_nav(Route::People(PersonQuery::default()))} />
+                <Link to={Route::People(PersonQuery::default())} class={classes!("toolbar-item", "has-text", (props.section == Section::People).then_some("active"))} title="People" current={props.section == Section::People} onclick={close_menu.clone()}>
+                    <span class="icon users" aria-hidden="true" />
+                    <span>{"People"}</span>
+                </Link>
 
-                <Button icon="magnifying-glass" label="Search" title="Search" class={classes!("toolbar-item", (props.section == Section::Search).then_some("active"))} current={props.section == Section::Search} onclick={on_nav(Route::Search(SearchQuery::default()))} />
+                <Link to={Route::Search(SearchQuery::default())} class={classes!("toolbar-item", "has-text", (props.section == Section::Search).then_some("active"))} title="Search" current={props.section == Section::Search} onclick={close_menu.clone()}>
+                    <span class="icon magnifying-glass" aria-hidden="true" />
+                    <span>{"Search"}</span>
+                </Link>
 
-                <Button icon="queue-list" label="Queue" title="Queue" class={classes!("toolbar-item", (props.section == Section::Queue).then_some("active"))} current={props.section == Section::Queue} onclick={on_nav(Route::Queue(QueueQuery::default()))} />
+                <Link to={Route::Queue(QueueQuery::default())} class={classes!("toolbar-item", "has-text", (props.section == Section::Queue).then_some("active"))} title="Queue" current={props.section == Section::Queue} onclick={close_menu.clone()}>
+                    <span class="icon queue-list" aria-hidden="true" />
+                    <span>{"Queue"}</span>
+                </Link>
 
-                <Button icon="cog-6-tooth" label="Settings" title="Settings" class={classes!("toolbar-item", (props.section == Section::Settings).then_some("active"))} current={props.section == Section::Settings} onclick={on_nav(Route::Settings)} />
+                <Link to={Route::Settings} class={classes!("toolbar-item", "has-text", (props.section == Section::Settings).then_some("active"))} title="Settings" current={props.section == Section::Settings} onclick={close_menu.clone()}>
+                    <span class="icon cog-6-tooth" aria-hidden="true" />
+                    <span>{"Settings"}</span>
+                </Link>
             </div>
         </div>
     }

@@ -7,7 +7,7 @@ use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{QueueFilter, QueueQuery, Route, Router, ShowDetailQuery};
-use crate::ui::{Button, PaginationButtons, Skeleton, Variant};
+use crate::ui::{Button, Link, PaginationButtons, Skeleton, Variant};
 
 const PAGE_SIZE: usize = 20;
 /// Completed tasks kept, matching the server's history.
@@ -91,7 +91,6 @@ pub(crate) enum Msg {
     Bump(api::TaskId),
     BumpDone(Result<ws::Packet<api::BumpTask>, ws::Error>),
     Query(QueueQuery),
-    Navigate(Route),
 }
 
 #[derive(Properties, PartialEq)]
@@ -314,10 +313,6 @@ impl Queue {
                 self.router.push(Route::Queue(query));
                 Ok(false)
             }
-            Msg::Navigate(route) => {
-                self.router.push(route);
-                Ok(false)
-            }
         }
     }
 
@@ -434,7 +429,7 @@ impl Queue {
                     if let Some(entry) = entry {
                         <span class="queue-now-title">
                             <span class="badge">{kind_label(&entry.kind)}</span>
-                            { view_task_title(&entry.kind, self.on_navigate(ctx, &entry.kind), None) }
+                            { view_task_title(&entry.kind, task_route(&entry.kind), None) }
                         </span>
                     } else {
                         <span class="queue-now-title">{"All caught up"}</span>
@@ -535,7 +530,7 @@ impl Queue {
 
     fn view_row(&self, ctx: &Context<Self>, entry: &Entry) -> Html {
         let id = entry.id;
-        let on_navigate = self.on_navigate(ctx, &entry.kind);
+        let route = task_route(&entry.kind);
 
         let (state, icon, duration, time) = match &entry.state {
             State::Pending { run_at } => (
@@ -578,7 +573,7 @@ impl Queue {
             <div key={id.get()} class={classes!("task-row", state)} data-task={id.get().to_string()} title={error.map(str::to_owned)}>
                 <span class="task-icon"><span class={icon} /></span>
 
-                { view_task_cells(&entry.kind, on_navigate, error) }
+                { view_task_cells(&entry.kind, route, error) }
 
                 <span class="task-duration">{duration}</span>
                 <span class="task-time">{time}</span>
@@ -594,15 +589,6 @@ impl Queue {
 
             </div>
         }
-    }
-
-    fn on_navigate(
-        &self,
-        ctx: &Context<Self>,
-        kind: &api::TaskKind,
-    ) -> Option<Callback<MouseEvent>> {
-        let route = task_route(kind)?;
-        Some(ctx.link().callback(move |_| Msg::Navigate(route.clone())))
     }
 }
 
@@ -639,27 +625,19 @@ fn kind_label(kind: &api::TaskKind) -> &'static str {
 }
 
 /// The kind and subject cells of a task row.
-fn view_task_cells(
-    kind: &api::TaskKind,
-    on_navigate: Option<Callback<MouseEvent>>,
-    error: Option<&str>,
-) -> Html {
+fn view_task_cells(kind: &api::TaskKind, route: Option<Route>, error: Option<&str>) -> Html {
     html! {
         <>
             <span class="task-kind">{kind_label(kind)}</span>
-            { view_task_title(kind, on_navigate, error) }
+            { view_task_title(kind, route, error) }
         </>
     }
 }
 
 /// A task's subject: its title, episode code and any error.
-fn view_task_title(
-    kind: &api::TaskKind,
-    on_navigate: Option<Callback<MouseEvent>>,
-    error: Option<&str>,
-) -> Html {
-    html! {
-            <span class={classes!("task-title", on_navigate.is_some().then_some("clickable"))} onclick={on_navigate}>
+fn view_task_title(kind: &api::TaskKind, route: Option<Route>, error: Option<&str>) -> Html {
+    let body = html! {
+        <>
                 if let api::TaskKind::RefreshTopLanguages = kind {
                     <span class="text-muted">{"Top languages"}</span>
                 } else if let Some(title) = kind.title() {
@@ -675,7 +653,15 @@ fn view_task_title(
                 if let Some(error) = error {
                     <span class="task-error">{error}</span>
                 }
-            </span>
+        </>
+    };
+
+    html! {
+        if let Some(to) = route {
+            <Link {to} class="task-title">{body}</Link>
+        } else {
+            <span class="task-title">{body}</span>
+        }
     }
 }
 

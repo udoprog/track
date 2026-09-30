@@ -9,6 +9,7 @@
 
 .person-card {
     display: flex;
+    color: v.$text-color;
     flex-direction: column;
     gap: v.$gap-xs;
     min-width: 0;

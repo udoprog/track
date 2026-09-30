@@ -156,3 +156,45 @@ pub async fn tab_shows_a_focus_ring(driver: &mut TestDriver, _: &mut Track) -> R
     );
     Ok(())
 }
+
+/// Whether nothing in the page content is clickable without being a button or
+/// a link.
+async fn only_buttons_and_links_click(driver: &TestDriver) -> Result<()> {
+    let stray = driver.count("#content .clickable:not(button, a)").await?;
+    ensure!(
+        stray == 0,
+        "{stray} clickable elements are neither buttons nor links"
+    );
+    Ok(())
+}
+
+/// Going to another page is a real link: it has an address, can be opened in
+/// a new tab, and a plain click moves there without reloading the app.
+pub async fn navigation_is_links(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    let media = driver.find_one_by("#toolbar a[title='Media']").await?;
+    ensure!(media.attr("href").await? == "/media");
+
+    let title = driver.find_one_by("a.pending-title").await?;
+    let href = title.attr("href").await?;
+    ensure!(
+        href.starts_with("/shows/"),
+        "the card title links to {href:?}"
+    );
+    only_buttons_and_links_click(driver).await?;
+
+    driver
+        .webdriver()
+        .execute("window.__stayed = true;", Vec::new())
+        .await?;
+    title.click().await?;
+    driver.wait_texts(".detail-title", ["Seeded Show"]).await?;
+
+    let stayed = driver
+        .webdriver()
+        .execute("return window.__stayed === true;", Vec::new())
+        .await?
+        .convert::<bool>()?;
+    ensure!(stayed, "following the link reloaded the app");
+
+    only_buttons_and_links_click(driver).await
+}

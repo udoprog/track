@@ -10,7 +10,9 @@ use crate::error::{CustomContext, Error, Message};
 use crate::router::{
     MediaQuery, MediaSelection, Route, Router, ShowDetailQuery, SortField, TrackedFilter,
 };
-use crate::ui::{Button, Image, MarkTimeMenu, MediaKindToggle, PaginationButtons, TimePreset};
+use crate::ui::{
+    Button, Image, Link, MarkTimeMenu, MediaKindToggle, PaginationButtons, TimePreset,
+};
 
 const PAGE_SIZE: usize = 36;
 
@@ -69,7 +71,6 @@ pub(crate) enum Msg {
     CycleTracked,
     SetSelection(MediaSelection),
     SetPage(usize),
-    Navigate(Route),
     SetTime(TimeInfo),
 }
 
@@ -472,10 +473,6 @@ impl MediaList {
                 self.emit_navigate();
                 Ok(true)
             }
-            Msg::Navigate(route) => {
-                self.router.push(route);
-                Ok(false)
-            }
             Msg::SetTime(time) => {
                 self.time = time;
                 Ok(true)
@@ -587,9 +584,7 @@ impl MediaList {
     fn view_card(&self, ctx: &Context<Self>, m: &api::MediaItem) -> Html {
         let id = m.id;
         let kind = m.kind;
-        let onclick = ctx
-            .link()
-            .callback(move |_| Msg::Navigate(detail_route(kind, id)));
+        let route = detail_route(kind, id);
 
         let backdrop_url = m.backdrop.as_ref().map(|i| i.proxy_url());
         let onmouseover = ctx
@@ -623,7 +618,7 @@ impl MediaList {
 
         html! {
             <div class="media-card lift" {onmouseover}>
-                <div class="media-poster clickable artwork" onclick={&onclick}>
+                <Link to={route.clone()} class="media-poster artwork" decorative=true>
                     <Image class="poster" placeholder=true src={m.poster.clone()} alt={title.to_owned()} />
 
                     if m.last_watched_at.is_some() {
@@ -631,10 +626,10 @@ impl MediaList {
                             <span class="icon sm check" />
                         </span>
                     }
-                </div>
+                </Link>
 
                 <div class="media-info">
-                    <span class="media-title clickable" title={title.to_owned()} onclick={&onclick}>{title}</span>
+                    <Link to={route} class="media-title" title={title.to_owned()}><>{title}</></Link>
 
                     if let Some(alt) = matched_alt {
                         <span class="media-meta" title={alt.to_owned()}>{format!("Alt: {alt}")}</span>

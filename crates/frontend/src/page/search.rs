@@ -6,7 +6,7 @@ use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaSelection, Route, Router, SearchQuery, ShowDetailQuery};
-use crate::ui::{Button, Image, MediaKindToggle, SEARCH, Variant};
+use crate::ui::{Button, Image, Link, MediaKindToggle, SEARCH, Variant};
 
 pub(crate) struct Search {
     channel: ws::Channel,
@@ -377,6 +377,16 @@ impl Search {
             .link()
             .callback(move |_| Msg::TrackShow(slug.clone(), remote.clone()));
 
+        let heading = html! {
+            <>
+                <span class="item-inline" title="Show">
+                    <span class="icon tv" />
+                </span>
+
+                <span class="item-title">{r.title.as_deref().unwrap_or("Untitled Show")}</span>
+            </>
+        };
+
         html! {
             <div key={r.remote.to_string()} class="desktop-row mobile-column align-top">
                 <Image class="poster poster-side top desktop-only" src={r.poster.clone()} placeholder=true />
@@ -389,12 +399,12 @@ impl Search {
                                 <span class={classes!("logo", r.remote.source().as_id())} />
                             </a>
 
-                            <h2 class={classes!(on_nav.is_some().then_some("clickable"))} onclick={on_nav.clone()}>
-                                <div class="item-inline" title="Movie">
-                                    <div class="icon tv" />
-                                </div>
-
-                                <span class="item-title">{r.title.as_deref().unwrap_or("Untitled Movie")}</span>
+                            <h2>
+                                if let Some(id) = show_id {
+                                    <Link to={Route::ShowDetail(id, ShowDetailQuery::default())} class="row text-gap">{heading}</Link>
+                                } else {
+                                    {heading}
+                                }
                             </h2>
                         </div>
 
@@ -434,6 +444,16 @@ impl Search {
             .link()
             .callback(move |_| Msg::TrackMovie(None, remote.clone()));
 
+        let heading = html! {
+            <>
+                <span class="item-inline" title="Movie">
+                    <span class="icon film" />
+                </span>
+
+                <span class="item-title">{r.title.as_deref().unwrap_or("Untitled Movie")}</span>
+            </>
+        };
+
         html! {
             <div key={r.remote.to_string()} class="desktop-row mobile-column align-top">
                 <Image class="poster poster-side top desktop-only" src={r.poster.clone()} placeholder=true />
@@ -446,12 +466,12 @@ impl Search {
                                 <span class={classes!("logo", r.remote.source().as_id())} />
                             </a>
 
-                            <h2 class={classes!(on_nav.is_some().then_some("clickable"))} onclick={on_nav.clone()}>
-                                <div class="item-inline" title="Movie">
-                                    <div class="icon film" />
-                                </div>
-
-                                <span class="item-title">{r.title.as_deref().unwrap_or("Untitled Movie")}</span>
+                            <h2>
+                                if let Some(id) = show_id {
+                                    <Link to={Route::MovieDetail(id)} class="row text-gap">{heading}</Link>
+                                } else {
+                                    {heading}
+                                }
                             </h2>
                         </div>
 

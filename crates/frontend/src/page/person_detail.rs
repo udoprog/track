@@ -7,7 +7,7 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{PersonQuery, Route, Router, ShowDetailQuery};
 use crate::ui::{
-    Button, ConfirmDanger, ContextMenu, DetailSkeleton, Image, Modal, RemoteEditor,
+    Button, ConfirmDanger, ContextMenu, DetailSkeleton, Image, Link, Modal, RemoteEditor,
     RemoteSourceKind, TranslatedText, Variant,
 };
 
@@ -48,7 +48,6 @@ pub(crate) enum Msg {
     PersonLoaded(Result<ws::Packet<api::GetPerson>, ws::Error>),
     CreditsLoaded(Result<ws::Packet<api::ListPersonCredits>, ws::Error>),
     ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
-    Navigate(Route),
     SyncPerson,
     SyncDone(Result<ws::Packet<api::SyncPerson>, ws::Error>),
     OpenSettings,
@@ -158,7 +157,7 @@ impl Component for PersonDetail {
         html! {
             <>
                 { self.view_header(ctx, person) }
-                { self.view_filmography(ctx) }
+                { self.view_filmography() }
 
                 if self.settings {
                     { self.view_settings(ctx, person) }
@@ -277,10 +276,6 @@ impl PersonDetail {
                     .config;
                 self.global_sync_kinds = config.sync_kinds;
                 Ok(true)
-            }
-            Msg::Navigate(route) => {
-                self.router.push(route);
-                Ok(false)
             }
             Msg::SyncPerson => {
                 let id = ctx.props().person_id;
@@ -631,7 +626,7 @@ impl PersonDetail {
         }
     }
 
-    fn view_filmography(&self, ctx: &Context<Self>) -> Html {
+    fn view_filmography(&self) -> Html {
         if self.credits.is_empty() {
             return html! {};
         }
@@ -668,18 +663,13 @@ impl PersonDetail {
                 <h2>{"Known for"}</h2>
 
                 <div class="person-grid">
-                    { for titles.iter().map(|(c, roles)| self.view_credit(ctx, c, roles)) }
+                    { for titles.iter().map(|(c, roles)| self.view_credit(c, roles)) }
                 </div>
             </section>
         }
     }
 
-    fn view_credit(
-        &self,
-        ctx: &Context<Self>,
-        credit: &api::PersonCredit,
-        roles: &[String],
-    ) -> Html {
+    fn view_credit(&self, credit: &api::PersonCredit, roles: &[String]) -> Html {
         let title = credit.title.title().unwrap_or("Untitled").to_owned();
 
         let route = match credit.owner {
@@ -687,10 +677,8 @@ impl PersonDetail {
             api::CreditOwner::Movie(id) => Route::MovieDetail(id),
         };
 
-        let onclick = ctx.link().callback(move |_| Msg::Navigate(route.clone()));
-
         html! {
-            <div class="person-card clickable lift" {onclick}>
+            <Link to={route} class="person-card lift">
                 <Image class="person-photo artwork" placeholder={true} src={credit.poster.clone()} alt={title.clone()} />
 
                 <div class="person-info">
@@ -700,7 +688,7 @@ impl PersonDetail {
                         <div class="person-department person-roles text-muted" title={roles.join(", ")}>{ roles.join(", ") }</div>
                     }
                 </div>
-            </div>
+            </Link>
         }
     }
 }

@@ -23,6 +23,7 @@
 
 .cast-card {
     display: flex;
+    color: v.$text-color;
     flex-direction: column;
     background: v.$bg-item;
     border-radius: v.$radius;
