@@ -275,3 +275,30 @@ pub async fn app_bar_items_have_room(driver: &mut TestDriver, _: &mut Track) -> 
     ensure!(ret.convert::<bool>()?, "the site title is clipped at 860px");
     Ok(())
 }
+
+/// An error is a card under the app bar: what was being done, then why, and
+/// a way to dismiss it. A dropped connection is one way to cause one.
+pub async fn errors_show_as_a_card(driver: &mut TestDriver, track: &mut Track) -> Result<()> {
+    driver.wait_texts(".site-title", ["Track"]).await?;
+    track.child.kill().await?;
+
+    driver
+        .find_one_by(".toolbar-item[title=Media]")
+        .await?
+        .click()
+        .await?;
+
+    let card = driver.find_one_by("#error[role=alert]").await?;
+    ensure!(
+        card.css("position").await? == "fixed",
+        "the error pushes the page down"
+    );
+    driver.find_one_by("#error .error-text strong").await?;
+
+    driver
+        .find_one_by("#error [title='Dismiss error']")
+        .await?
+        .click()
+        .await?;
+    driver.wait_count("#error", 0).await
+}

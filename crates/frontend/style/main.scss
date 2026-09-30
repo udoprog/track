@@ -76,18 +76,50 @@ p {
     margin: 0 auto;
 }
 
+// Something went wrong: a card under the app bar with what was being done in
+// bold, its causes quietly under it, and a way to dismiss it.
 #error {
-    display: flex;
-    flex-direction: row;
-    gap: v.$gap;
-    padding: v.$gap;
-    align-items: start;
+    position: fixed;
+    top: v.$toolbar-height + v.$gap-xs;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 300;
+    width: min(560px, calc(100vw - #{v.$gap * 2}));
 
-    background: var(--danger-bg);
-    border-style: solid;
-    border-width: 0;
-    border-color: v.$color-danger;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: start;
+    gap: v.$gap-sm;
+    padding: v.$gap-sm v.$gap-sm v.$gap-sm v.$gap;
+
+    background: v.$bg-surface;
+    border: 1px solid color-mix(in srgb, v.$color-danger 45%, transparent);
+    border-radius: v.$radius-lg;
+    box-shadow: 0 8px 32px v.$shadow-strong;
     color: v.$text-primary;
+
+    >.icon {
+        --icon-color: #{v.$color-danger};
+        margin-top: v.$padding-md;
+    }
+}
+
+.error-text {
+    display: flex;
+    flex-direction: column;
+    gap: v.$padding;
+    min-width: 0;
+    padding-top: v.$padding-md;
+    overflow-wrap: anywhere;
+
+    >strong {
+        font-weight: v.$bold-weight;
+    }
+}
+
+.error-cause {
+    color: v.$text-muted;
+    font-size: v.$font-sm;
 }
 
 #content {
