@@ -384,8 +384,8 @@ pub async fn mark_watched_is_one_colour(driver: &mut TestDriver, _: &mut Track) 
 }
 
 /// On wide screens the seasons are a list that stays beside the episodes:
-/// numbered seasons first and specials last, the shown one marked as current,
-/// and no progress line for a season nobody has started.
+/// numbered seasons first and specials last, each with its progress bar, and
+/// the shown one marked as current.
 pub async fn seasons_list_beside_the_episodes(
     driver: &mut TestDriver,
     _: &mut Track,
@@ -405,8 +405,8 @@ pub async fn seasons_list_beside_the_episodes(
         "the season list scrolls away"
     );
     ensure!(
-        driver.count(".season-progress").await? == 0,
-        "an unstarted season shows a progress line"
+        driver.count(".season-list .season-progress").await? == 3,
+        "not every season shows its progress bar"
     );
 
     driver

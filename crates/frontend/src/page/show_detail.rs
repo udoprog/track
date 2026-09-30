@@ -2019,7 +2019,7 @@ impl ShowDetail {
     }
 
     /// A season in the wide sidebar list: its name, how much of it is watched
-    /// and its year, with a progress line while it is under way.
+    /// and its year, over a bar showing that progress.
     fn view_season(&self, ctx: &Context<Self>, s: &api::Season) -> Html {
         let season = s.season;
         let current = self.selected().map(|s| s.id) == Some(s.id);
@@ -2047,7 +2047,7 @@ impl ShowDetail {
                     }
                 </span>
 
-                if watched > 0 && !finished {
+                if s.total_count > 0 {
                     <span class="season-progress">
                         <span style={format!("width: {:.0}%", watched as f64 * 100.0 / s.total_count as f64)} />
                     </span>

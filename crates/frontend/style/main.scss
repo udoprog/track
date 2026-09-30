@@ -1058,8 +1058,8 @@ image {
     gap: 2px;
 }
 
-// One season: name, watched count and year on a line, with a thin progress
-// line under it while the season is under way.
+// One season: name, watched count and year on a line, over a bar showing how
+// much of it is watched.
 .season-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto 4ch;
@@ -1084,9 +1084,9 @@ image {
         background: var(--neutral-bg);
     }
 
-    &.current {
-        background: color-mix(in srgb, v.$color-primary 18%, transparent);
-        box-shadow: inset 3px 0 0 v.$color-primary;
+    // The season shown: its name in accent, no box around it.
+    &.current>.season-name {
+        color: v.$color-primary;
         font-weight: v.$bold-weight;
     }
 
@@ -1123,9 +1123,8 @@ image {
     >.season-progress {
         grid-area: bar;
         display: block;
-        height: 3px;
-        border-radius: 999px;
-        background: var(--field-bg);
+        height: 4px;
+        background: v.$bg-surface;
         overflow: hidden;
 
         >span {
