@@ -167,14 +167,46 @@ button,
     }
 }
 
+// A word joined to a field in an `.input-group`, such as a unit.
 .input-label {
     @include input-base($hover: false, $has-border: false);
 
-    background-color: var(--neutral-bg);
+    color: v.$text-muted;
+    background-color: var(--field-bg);
+}
+
+// Text, number and select fields: a faint fill and outline mixed from the
+// text colour, so they read on any surface, that strengthen on hover and turn
+// accent while focused.
+@mixin field {
+    @include input-base($hover: false, $editable: true);
+
+    background-color: var(--field-bg);
+    border-color: var(--field-border);
+    padding-inline: v.$padding-lg + 2px;
+    user-select: text;
+
+    &::placeholder {
+        color: v.$text-muted;
+        opacity: 1;
+    }
+
+    &:hover:not(:disabled) {
+        border-color: var(--field-border-hover);
+    }
+
+    &:focus {
+        border-color: v.$color-primary;
+    }
+
+    &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
 }
 
 .input-text {
-    @include input-base($editable: true);
+    @include field;
 
     &.selected {
         --icon-color: #{v.$text-color-selected};
@@ -184,12 +216,39 @@ button,
     }
 }
 
+// The chevron is drawn from two gradients so it takes the theme's colour.
 .input-select {
-    @include input-base($editable: true);
+    @include field;
+
+    appearance: none;
+    cursor: pointer;
+    padding-inline-end: v.$padding-lg * 3.5;
+    background-image:
+        linear-gradient(45deg, transparent 50%, v.$text-muted 50%),
+        linear-gradient(135deg, v.$text-muted 50%, transparent 50%);
+    background-position:
+        calc(100% - 16px) 55%,
+        calc(100% - 11px) 55%;
+    background-size: 5px 5px;
+    background-repeat: no-repeat;
+
+    >option {
+        background-color: v.$bg-surface;
+        color: v.$text-color;
+    }
 }
 
 .input-number {
-    @include input-base($editable: true);
+    @include field;
+
+    appearance: textfield;
+    font-variant-numeric: tabular-nums;
+
+    &::-webkit-inner-spin-button,
+    &::-webkit-outer-spin-button {
+        appearance: none;
+        margin: 0;
+    }
 
     @include g.on-desktop {
         width: 96px;

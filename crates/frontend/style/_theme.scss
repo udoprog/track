@@ -44,6 +44,12 @@
     // Dims the page behind a modal.
     --scrim: rgb(0 0 0 / 0.6);
 
+    // Form fields tint whatever surface they sit on with the text colour, so
+    // they follow the theme through --text.
+    --field-bg: color-mix(in srgb, var(--text) 5%, transparent);
+    --field-border: color-mix(in srgb, var(--text) 16%, transparent);
+    --field-border-hover: color-mix(in srgb, var(--text) 30%, transparent);
+
     --backdrop-opacity: 0.18;
     // Third-party logos are drawn for dark backgrounds.
     --logo-plate: transparent;

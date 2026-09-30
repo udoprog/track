@@ -166,7 +166,7 @@ impl Component for Settings {
                         </div>
 
                         <div class={classes!("field", (!tz_is_valid(&self.config.timezone)).then_some("error"))}>
-                            <label>{"TimeZone"}</label>
+                            <label>{"Time zone"}</label>
 
                             { self.field_slot("", html! {
                                 <input class="input-text" type="text" placeholder="Leave empty to use browser timezone" value={self.config.timezone.clone()} onchange={on_timezone} list="tz-datalist" autocomplete="off" />
@@ -238,7 +238,7 @@ impl Component for Settings {
                         </div>
 
                         <div class="field">
-                            <label>{"Sync Languages"}</label>
+                            <label>{"Sync languages"}</label>
                             <span class="hint">{"Which languages to fetch translations for. This will allow for searching and filtering based on these languages."}</span>
 
                             { self.field_slot("tall", html! {
@@ -286,7 +286,7 @@ impl Component for Settings {
                     }) }
 
                     <div class="field">
-                        <label>{"Sync Sources"}</label>
+                        <label>{"Sync sources"}</label>
                         <span class="hint">{"Which kinds of data each source contributes by default, and in which priority order (top wins). Base covers titles, overviews and episodes; air dates merge by this order. Graphics always accumulate from every source. Individual shows and movies can override this per remote."}</span>
 
                         { self.field_slot("tall", html! {
@@ -298,7 +298,7 @@ impl Component for Settings {
                     </div>
 
                     <div class="field">
-                        <label>{"Release Date"}</label>
+                        <label>{"Release dates"}</label>
                         <span class="hint">{"Restrict which release date qualifies, all rules that match will cause a date to be considered, and they will be prioritized according to their sync order."}</span>
 
                         { self.field_slot("tall", html! {
@@ -313,7 +313,7 @@ impl Component for Settings {
 
 
                     <div class="field">
-                        <label>{"Air Date"}</label>
+                        <label>{"Air dates"}</label>
                         <span class="hint">{"Restrict which air date qualifies, all rules that match will cause a date to be considered, and they will be prioritized according to their sync order."}</span>
 
                         { self.field_slot("tall", html! {

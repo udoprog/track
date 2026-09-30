@@ -47,6 +47,32 @@ pub async fn theme_is_remembered(driver: &mut TestDriver, _: &mut Track) -> Resu
     Ok(())
 }
 
+/// Fields are drawn by the theme: selects carry their own chevron instead of
+/// the browser's, and number fields have no spinner.
+pub async fn fields_follow_the_theme(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_settings(driver).await?;
+
+    let select = driver.find_one_by("[data-test=theme]").await?;
+    let appearance = select.css("appearance").await?;
+    ensure!(
+        appearance == "none",
+        "the select's appearance is {appearance}"
+    );
+    let image = select.css("background-image").await?;
+    ensure!(
+        image.contains("linear-gradient"),
+        "the select has no chevron: {image}"
+    );
+
+    let number = driver.find_first("input.input-number").await?;
+    let appearance = number.css("appearance").await?;
+    ensure!(
+        appearance == "textfield",
+        "the number field's appearance is {appearance}"
+    );
+    Ok(())
+}
+
 /// Every toggle on the settings page is a switch the keyboard can reach:
 /// Space flips it and it reports its state.
 pub async fn switches_work_from_the_keyboard(driver: &mut TestDriver, _: &mut Track) -> Result<()> {

@@ -112,7 +112,7 @@ pub async fn keeps_view_options_in_a_menu(driver: &mut TestDriver, _: &mut Track
         .click()
         .await?;
     driver
-        .wait_texts(".context-menu label", ["LOOK AHEAD", "PER PAGE"])
+        .wait_texts(".context-menu label", ["Look ahead", "Per page"])
         .await
 }
 

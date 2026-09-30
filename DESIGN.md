@@ -171,6 +171,14 @@ line, with an optional muted hint under it. On phones the label sits above
 the control. Content that needs the whole width (a rule editor) goes in a
 `.form-wide` block after its row.
 
+Fields (`.input-text`, `.input-number`, `.input-select`) share one look: a
+faint `--field-bg` fill and `--field-border` outline mixed from the text
+colour, so they read on any surface, stronger on hover and accent while
+focused. Selects draw their own chevron; number fields have no spinner and
+use tabular digits. A unit or word joined to a field is an `.input-label`
+in the same `.input-group`. Captions (`.field label`) are sentence case in
+text colour, never uppercase.
+
 ### Toggles
 
 On/off settings are `input-checkbox` toggles with a check or cross mark sized
