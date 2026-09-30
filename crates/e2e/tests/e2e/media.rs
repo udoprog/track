@@ -56,7 +56,7 @@ pub async fn toggle_marks_are_icon_sized(driver: &mut TestDriver, _: &mut Track)
 }
 
 /// Between phone and full width the controls wrap rather than squeezing the
-/// sort label onto two lines and the select to a sliver.
+/// sort chip, and the filter field stays usable.
 pub async fn sort_stays_readable_at_tablet_width(
     driver: &mut TestDriver,
     _: &mut Track,
@@ -69,26 +69,28 @@ pub async fn sort_stays_readable_at_tablet_width(
         .click()
         .await?;
 
-    let label = driver
-        .find_one_by("input-controls .input-label")
-        .await?
-        .rect()
-        .await?;
+    let sort = driver.find_one_by(".chip-select").await?.rect().await?;
     let select = driver
-        .find_one_by("input-controls select")
+        .find_one_by(".chip-select select")
         .await?
         .rect()
         .await?;
+    let filter = driver.find_one_by(".search-field").await?.rect().await?;
 
     ensure!(
-        label.height <= 40.0,
-        "the sort label wraps to {}px",
-        label.height
+        sort.height <= 40.0,
+        "the sort chip wraps to {}px",
+        sort.height
     );
     ensure!(
-        select.width >= 100.0,
+        select.width >= 40.0,
         "the sort select is {}px wide",
         select.width
+    );
+    ensure!(
+        filter.width >= 200.0,
+        "the filter field is {}px wide",
+        filter.width
     );
     Ok(())
 }

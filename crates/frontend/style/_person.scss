@@ -10,15 +10,14 @@
 .person-card {
     display: flex;
     flex-direction: column;
-    background: v.$bg-item;
-    border-radius: v.$radius;
-    overflow: hidden;
+    gap: v.$gap-xs;
+    min-width: 0;
 
     .person-info {
         display: flex;
         flex-direction: column;
-        padding: v.$padding-md;
-        gap: v.$padding-md;
+        padding: 0 2px;
+        gap: 2px;
     }
 
     .person-photo {
@@ -37,9 +36,6 @@
         font-size: v.$font-xs;
     }
 
-    .person-credits {
-        padding-bottom: v.$padding-md;
-    }
 }
 
 .person-detail-header {

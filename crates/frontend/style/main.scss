@@ -464,6 +464,20 @@ h6 {
     }
 }
 
+// Artwork in a card: rounded, with a soft shadow, lifting while its card
+// (marked `.lift`) is hovered.
+.artwork {
+    border-radius: v.$radius-lg;
+    overflow: hidden;
+    box-shadow: 0 4px 14px v.$shadow;
+    transition: transform 0.15s ease-out, box-shadow 0.15s ease-out;
+}
+
+.lift:hover .artwork {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 24px v.$shadow-strong;
+}
+
 // A What's Next card. On wide screens the poster is the card; on phones a
 // soft panel holds the banner and text.
 .pending-item {
@@ -472,18 +486,6 @@ h6 {
     gap: v.$gap-sm;
     min-width: 0;
     position: relative;
-
-    >image.poster {
-        border-radius: v.$radius-lg;
-        overflow: hidden;
-        box-shadow: 0 4px 14px v.$shadow;
-        transition: transform 0.15s ease-out, box-shadow 0.15s ease-out;
-    }
-
-    &:hover>image.poster {
-        transform: translateY(-3px);
-        box-shadow: 0 10px 24px v.$shadow-strong;
-    }
 
     >image.banner {
         border-radius: v.$radius;
@@ -1021,38 +1023,99 @@ input-label-controls {
     }
 }
 
-input-controls {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: v.$gap;
+// A list page's controls: a search field, then sort and filter chips, then
+// the pages, wrapping as the width runs out.
+.list-controls {
+    display: flex;
+    flex-wrap: wrap;
     align-items: center;
+    gap: v.$gap-xs v.$gap-sm;
 
-    >controls {
-        display: flex;
-        flex-direction: row;
-        gap: v.$gap;
-        justify-content: flex-end;
-        flex-wrap: wrap;
+    >.search-field {
+        flex: 1 1 240px;
+    }
 
-        // Wrap the row before the sort group gets too narrow to read.
-        >.fill {
-            min-width: 14em;
-        }
-
-        .input-label {
-            white-space: nowrap;
-        }
-
-        @include g.on-mobile {
-            flex-direction: column;
-            align-items: stretch;
-        }
+    >pagination {
+        margin-inline-start: auto;
     }
 
     @include g.on-mobile {
-        display: flex;
-        flex-direction: column;
-        align-items: stretch;
+        >.search-field {
+            flex-basis: 100%;
+        }
+    }
+}
+
+// A rounded text field with a leading search icon and optional trailing
+// actions, all inside the one outline.
+.search-field {
+    display: flex;
+    align-items: center;
+    gap: v.$padding-md;
+    min-width: 0;
+    height: v.$input-height;
+    padding-inline: v.$gap-sm 2px;
+    border: 1px solid v.$border-input;
+    border-radius: 999px;
+    background: v.$bg-surface;
+    --icon-color: #{v.$text-muted};
+
+    @include g.on-mobile {
+        height: v.$input-height-touch;
+    }
+
+    &:focus-within {
+        border-color: v.$color-primary;
+    }
+
+    >input {
+        flex: 1;
+        min-width: 0;
+        height: 100%;
+        border: none;
+        outline: none;
+        background: transparent;
+        color: v.$text-color;
+        font-size: v.$font-sm;
+    }
+
+    >button {
+        flex: none;
+        height: calc(100% - 4px);
+        border-radius: 999px;
+    }
+}
+
+// A native select dressed as a chip, so phones keep their own picker.
+.chip-select {
+    display: inline-flex;
+    align-items: center;
+    gap: v.$padding-md;
+    height: v.$input-height;
+    padding: 0 v.$padding-lg * 1.5;
+    border: 1px solid v.$border-subtle;
+    border-radius: 999px;
+    font-size: v.$font-sm;
+    --icon-color: #{v.$text-muted};
+    cursor: pointer;
+
+    @include g.on-mobile {
+        height: v.$input-height-touch;
+    }
+
+    &:hover,
+    &:focus-within {
+        border-color: v.$border-input;
+    }
+
+    >select {
+        appearance: none;
+        border: none;
+        outline: none;
+        background: transparent;
+        color: v.$text-color;
+        font: inherit;
+        cursor: pointer;
     }
 }
 
@@ -1498,10 +1561,8 @@ pagination {
 .media-card {
     display: flex;
     flex-direction: column;
+    gap: v.$gap-xs;
     min-width: 0;
-    background: v.$bg-item;
-    border-radius: v.$radius;
-    overflow: hidden;
 }
 
 .media-poster {
@@ -1531,7 +1592,7 @@ pagination {
     display: flex;
     flex-direction: column;
     gap: 2px;
-    padding: v.$padding-md;
+    padding: 0 2px;
     min-width: 0;
 
     >.input-group {
@@ -1542,10 +1603,9 @@ pagination {
 .media-title {
     font-weight: v.$bold-weight;
     font-size: v.$font-sm;
+    line-height: 1.3;
     color: v.$text-primary;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    @include clamp-lines(2);
 }
 
 .media-meta {

@@ -15,7 +15,7 @@ pub async fn lists_people_by_credits(driver: &mut TestDriver, _: &mut Track) -> 
         .wait_texts(".person-name", ["Greta Garbo", "Ada Lovelace"])
         .await?;
 
-    let sort = driver.find_one_by("select.input-select").await?;
+    let sort = driver.find_one_by(".chip-select select").await?;
     driver.set_value(&sort, "name", "change").await?;
 
     driver

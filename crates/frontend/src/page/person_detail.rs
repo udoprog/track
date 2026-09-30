@@ -690,8 +690,8 @@ impl PersonDetail {
         let onclick = ctx.link().callback(move |_| Msg::Navigate(route.clone()));
 
         html! {
-            <div class="person-card clickable" {onclick}>
-                <Image class="person-photo" placeholder={true} src={credit.poster.clone()} alt={title.clone()} />
+            <div class="person-card clickable lift" {onclick}>
+                <Image class="person-photo artwork" placeholder={true} src={credit.poster.clone()} alt={title.clone()} />
 
                 <div class="person-info">
                     <div class="person-name">{ title }</div>

@@ -239,22 +239,21 @@ impl Component for MediaList {
                     <h4 class="text-muted">{total}</h4>
                 </div>
 
-                <input-controls>
-                    <div class="input-group">
-                        <input type="text" placeholder="Filter" value={self.filter.clone()} oninput={on_filter} class="input-text fill" />
+                <div class="list-controls">
+                    <div class="search-field">
+                        <span class="icon magnifying-glass" />
+                        <input type="text" placeholder="Filter" value={self.filter.clone()} oninput={on_filter} />
 
                         if !self.filter.is_empty() {
-                            <Button icon="backspace" title="Clear filter" onclick={link.callback(|_| Msg::Filter(String::new()))} />
+                            <Button icon="x-mark" title="Clear filter" class="ghost" onclick={link.callback(|_| Msg::Filter(String::new()))} />
                         }
                     </div>
 
-                    <controls>
-                        <div class="input-group fill">
-                            <div class="input-label has-text">
-                                {"Sort by:"}
-                            </div>
+                    <div class="chips">
+                        <label class="chip-select" title="Sort by">
+                            <span class="icon arrows-up-down" />
 
-                            <select class="input-select fill" onchange={on_sort} value={sort_value}>
+                            <select onchange={on_sort} value={sort_value}>
                                 <option value="title" selected={matches!(self.sort, SortField::Title)}>
                                     {"Title"}
                                 </option>
@@ -265,22 +264,20 @@ impl Component for MediaList {
                                     {"Last watched"}
                                 </option>
                             </select>
+                        </label>
 
-                            <Button icon={dir_icon} title={dir_title} onclick={link.callback(|_| Msg::ToggleDir)} />
-                        </div>
+                        <Button icon={dir_icon} title={dir_title} class="chip" onclick={link.callback(|_| Msg::ToggleDir)} />
 
-                        <div class="chips">
-                            <Button icon={tracked_icon} title={format!("Showing: {tracked_label}")} label={tracked_label} class={classes!("chip", (self.tracked != TrackedFilter::All).then_some("selected"))} onclick={link.callback(|_| Msg::CycleTracked)} />
+                        <Button icon={tracked_icon} title={format!("Showing: {tracked_label}")} label={tracked_label} class={classes!("chip", (self.tracked != TrackedFilter::All).then_some("selected"))} onclick={link.callback(|_| Msg::CycleTracked)} />
 
-                            <MediaKindToggle
-                                selection={self.selection}
-                                on_change={link.callback(Msg::SetSelection)}
-                            />
-                        </div>
+                        <MediaKindToggle
+                            selection={self.selection}
+                            on_change={link.callback(Msg::SetSelection)}
+                        />
+                    </div>
 
-                        <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
-                    </controls>
-                </input-controls>
+                    <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
+                </div>
 
                 if self.list_req.is_pending() {
                     <div class="row center">
@@ -625,8 +622,8 @@ impl MediaList {
         let now = self.time.now();
 
         html! {
-            <div class="media-card" {onmouseover}>
-                <div class="media-poster clickable" onclick={&onclick}>
+            <div class="media-card lift" {onmouseover}>
+                <div class="media-poster clickable artwork" onclick={&onclick}>
                     <Image class="poster" placeholder=true src={m.poster.clone()} alt={title.to_owned()} />
 
                     if m.last_watched_at.is_some() {

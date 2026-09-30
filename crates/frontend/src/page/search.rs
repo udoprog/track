@@ -6,7 +6,7 @@ use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaSelection, Route, Router, SearchQuery, ShowDetailQuery};
-use crate::ui::{Button, Image, MediaKindToggle, SEARCH};
+use crate::ui::{Button, Image, MediaKindToggle, SEARCH, Variant};
 
 pub(crate) struct Search {
     channel: ws::Channel,
@@ -156,22 +156,20 @@ impl Component for Search {
             <>
                 <h1>{"Search Remotes"}</h1>
 
-                <input-controls>
-                    <div class="input-group">
-                        <input class="input-text fill" type="text" placeholder={SEARCH} ref={self.input.clone()} value={self.query.clone()} oninput={on_input} onkeydown={on_keydown} />
-
-                        <Button icon="magnifying-glass" desktop_text="Search Remotes" title="Search remotes" onclick={on_submit} />
+                <div class="list-controls">
+                    <div class="search-field">
+                        <span class="icon magnifying-glass" />
+                        <input type="text" placeholder={SEARCH} ref={self.input.clone()} value={self.query.clone()} oninput={on_input} onkeydown={on_keydown} />
+                        <Button icon="arrow-right" title="Search remotes" variant={Variant::Primary} onclick={on_submit} />
                     </div>
 
-                    <controls>
-                        <div class="chips">
-                            <MediaKindToggle
-                                selection={self.selection}
-                                on_change={link.callback(Msg::SelectionChanged)}
-                            />
-                        </div>
-                    </controls>
-                </input-controls>
+                    <div class="chips">
+                        <MediaKindToggle
+                            selection={self.selection}
+                            on_change={link.callback(Msg::SelectionChanged)}
+                        />
+                    </div>
+                </div>
 
                 { self.view_results(ctx) }
             </>

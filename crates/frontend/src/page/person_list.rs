@@ -167,20 +167,21 @@ impl Component for PersonList {
                     }
                 </div>
 
-                <input-controls>
-                    <div class="input-group">
-                        <input type="text" placeholder="Filter" value={self.filter.clone()} oninput={on_filter} class="input-text fill" />
+                <div class="list-controls">
+                    <div class="search-field">
+                        <span class="icon magnifying-glass" />
+                        <input type="text" placeholder="Filter" value={self.filter.clone()} oninput={on_filter} />
 
                         if !self.filter.is_empty() {
-                            <Button icon="backspace" title="Clear filter" onclick={link.callback(|_| Msg::Filter(String::new()))} />
+                            <Button icon="x-mark" title="Clear filter" class="ghost" onclick={link.callback(|_| Msg::Filter(String::new()))} />
                         }
                     </div>
 
-                    <controls>
-                        <div class="input-group fill">
-                            <div class="input-label has-text">{"Sort by:"}</div>
+                    <div class="chips">
+                        <label class="chip-select" title="Sort by">
+                            <span class="icon arrows-up-down" />
 
-                            <select class="input-select fill" onchange={on_sort}>
+                            <select onchange={on_sort}>
                                 <option value="name" selected={matches!(self.sort, PersonSort::Name)}>
                                     {"Name"}
                                 </option>
@@ -188,15 +189,15 @@ impl Component for PersonList {
                                     {"Credits"}
                                 </option>
                             </select>
+                        </label>
 
-                            <Button icon={dir_icon} title={dir_title} onclick={link.callback(|_| Msg::ToggleDir)} />
-                        </div>
+                        <Button icon={dir_icon} title={dir_title} class="chip" onclick={link.callback(|_| Msg::ToggleDir)} />
+                    </div>
 
-                        if self.loaded {
-                            <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
-                        }
-                    </controls>
-                </input-controls>
+                    if self.loaded {
+                        <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
+                    }
+                </div>
 
                 if !self.loaded || self.list_req.is_pending() {
                     <div class="row center">
@@ -380,8 +381,8 @@ impl PersonList {
         let onclick = ctx.link().callback(move |_| Msg::Navigate(route.clone()));
 
         html! {
-            <div class="person-card clickable" {onclick}>
-                <Image class="person-photo" placeholder={true} placeholder_icon="user" src={p.profile.clone()} alt={name.clone()} />
+            <div class="person-card clickable lift" {onclick}>
+                <Image class="person-photo artwork" placeholder={true} placeholder_icon="user" src={p.profile.clone()} alt={name.clone()} />
 
                 <div class="person-info">
                     <div class="person-name">{ name }</div>
