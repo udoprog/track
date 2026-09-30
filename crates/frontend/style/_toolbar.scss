@@ -12,6 +12,16 @@
     }
 }
 
+// The application's own toolbar stays at the top while the page scrolls.
+#toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: v.$bg-dark-transparent;
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid v.$border-subtle-transparent;
+}
+
 .toolbar-brand {
     font-size: v.$font-lg;
     display: flex;

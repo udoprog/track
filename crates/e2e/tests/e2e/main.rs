@@ -127,6 +127,6 @@ async fn build_server() -> Result<PathBuf> {
 
 yew_e2e::harness! {
     Track;
-    navigation::{opens_every_page, toolbar_icons_are_small},
+    navigation::{opens_every_page, page_scrolls_the_window, toolbar_icons_are_small},
     settings::{theme_applies_live, theme_is_remembered},
 }

@@ -52,3 +52,30 @@ pub async fn toolbar_icons_are_small(driver: &mut TestDriver, _: &mut Track) -> 
 
     Ok(())
 }
+
+/// Long pages scroll the window itself, with the toolbar staying on top.
+pub async fn page_scrolls_the_window(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    driver.set_window_size(1000, 500).await?;
+
+    driver
+        .find_one_by(".toolbar-item[title=Settings]")
+        .await?
+        .click()
+        .await?;
+
+    driver.find_one_by("[data-test=theme]").await?;
+
+    let ret = driver
+        .webdriver()
+        .execute(
+            "window.scrollTo(0, document.scrollingElement.scrollHeight); \
+             return [window.scrollY, document.getElementById('toolbar').getBoundingClientRect().top];",
+            Vec::new(),
+        )
+        .await?;
+
+    let [scrolled, toolbar] = ret.convert::<[f64; 2]>()?;
+    ensure!(scrolled > 0.0, "the window did not scroll");
+    ensure!(toolbar == 0.0, "the toolbar scrolled away to {toolbar}px");
+    Ok(())
+}

@@ -1,9 +1,18 @@
 @use 'vars' as v;
 
+@use 'grid' as g;
+
 #outline {
     display: none;
-    min-height: 0;
-    position: relative;
+    position: sticky;
+    top: v.$toolbar-height;
+    align-self: start;
+    height: calc(100vh - #{v.$toolbar-height});
+
+    @include g.on-mobile {
+        top: v.$toolbar-height-touch;
+        height: calc(100vh - #{v.$toolbar-height-touch});
+    }
     touch-action: none;
     user-select: none;
     cursor: pointer;

@@ -23,8 +23,6 @@
 
 html,
 body {
-    position: fixed;
-    inset: 0;
     margin: 0;
     padding: 0;
     background: v.$bg-site;
@@ -51,8 +49,10 @@ p {
 }
 
 #application {
-    position: fixed;
-    inset: 0;
+    // Above the fixed `.background`.
+    position: relative;
+    z-index: 1;
+    min-height: 100vh;
     display: flex;
     flex-direction: column;
     justify-items: stretch;
@@ -79,7 +79,6 @@ p {
     flex: 1;
     display: grid;
     grid-template-columns: 1fr auto;
-    min-height: 0;
 }
 
 #page {
@@ -87,10 +86,7 @@ p {
     flex-direction: column;
     padding: v.$gap;
     gap: v.$gap;
-    overflow-y: auto;
-    min-height: 0;
-    // Positioning context so episode `offsetTop` is measured against the page.
-    position: relative;
+    min-width: 0;
 }
 
 @mixin row-base {

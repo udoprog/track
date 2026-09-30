@@ -29,8 +29,6 @@ pub(super) struct App {
     site_title: AttrValue,
     top_languages: TopLanguages,
     error: Option<RcError>,
-    /// Scroll container the outline reflects and drives; passed to [`Outline`].
-    page: NodeRef,
     /// Entries currently shown in the outline, pushed in by a consumer through
     /// [`OutlineControl`] and forwarded to [`Outline`]. `None` hides it.
     outline_entries: Rc<[OutlineEntry]>,
@@ -121,7 +119,6 @@ impl Component for App {
             site_title: AttrValue::from("Track"),
             top_languages: TopLanguages::default(),
             error: None,
-            page: NodeRef::default(),
             outline_entries: Rc::from([]),
             outline_control,
             router_state,
@@ -178,14 +175,11 @@ impl Component for App {
                         <Toolbar site_title={self.site_title.clone()} connected={self.ws_state.is_open()} section={Section::of(&self.router_state.route)} />
 
                         <div id="content">
-                            <div id="page" ref={self.page.clone()}>
+                            <div id="page">
                                 { self.view_page(ctx) }
                             </div>
 
-                            <Outline
-                                page={self.page.clone()}
-                                entries={self.outline_entries.clone()}
-                            />
+                            <Outline entries={self.outline_entries.clone()} />
                         </div>
                     </div>
                 </ContextProvider<OutlineControl>>
@@ -478,7 +472,7 @@ fn Toolbar(props: &ToolbarProps) -> Html {
     };
 
     html! {
-        <div class="toolbar toolbar-padding">
+        <div id="toolbar" class="toolbar toolbar-padding">
             <div class="row text-gap">
                 <span class="site-title clickable" onclick={on_nav(Route::Dashboard(DashboardQuery::default()))}>{ props.site_title.clone() }</span>
             </div>
