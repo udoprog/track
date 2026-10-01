@@ -29,7 +29,7 @@ pub(crate) struct WatchNext {
     /// reallocate nor re-filter per render.
     order: Vec<usize>,
     pending_loaded: bool,
-    config: api::Config,
+    preferences: api::Preferences,
     time: TimeInfo,
     _time_handle: ContextHandle<TimeInfo>,
     background: Background,
@@ -60,7 +60,7 @@ pub(crate) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     PendingLoaded(Result<ws::Packet<api::ListPending>, ws::Error>),
-    ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
+    ConfigLoaded(Result<ws::Packet<api::GetPreferences>, ws::Error>),
     MarkWatched(api::WatchedKind, api::MarkTime),
     MarkWatchedDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
     /// Hover a pending item: drive the page background from its backdrop, kept.
@@ -73,8 +73,8 @@ pub(crate) enum Msg {
     MarkPendingDone(Result<ws::Packet<api::AddPending>, ws::Error>),
     AdjustPageSize(i32),
     LookaheadChanged(api::Duration),
-    LookaheadSaved(Result<ws::Packet<api::SetConfig>, ws::Error>),
-    SetConfigDone(Result<ws::Packet<api::SetConfig>, ws::Error>),
+    LookaheadSaved(Result<ws::Packet<api::SetPreferences>, ws::Error>),
+    SetConfigDone(Result<ws::Packet<api::SetPreferences>, ws::Error>),
     SetPage(usize),
     SetTime(TimeInfo),
     Resized,
@@ -122,7 +122,7 @@ impl Component for WatchNext {
             pending: Vec::new(),
             order: Vec::new(),
             pending_loaded: false,
-            config: api::Config::default(),
+            preferences: api::Preferences::default(),
             time,
             _time_handle,
             background,
@@ -208,7 +208,7 @@ impl Component for WatchNext {
                                 <span class="hint">{"How far into the future upcoming episodes are included."}</span>
 
                                 <div class="input-group">
-                                    <DurationInput value={self.config.dashboard_lookahead} on_change={link.callback(Msg::LookaheadChanged)} />
+                                    <DurationInput value={self.preferences.dashboard_lookahead} on_change={link.callback(Msg::LookaheadChanged)} />
                                 </div>
                             </div>
 
@@ -251,7 +251,7 @@ impl WatchNext {
     /// The configured page size rounded up to whole rows.
     fn page_size(&self) -> usize {
         let columns = self.columns.max(1);
-        (self.config.dashboard_page.max(1) as usize).div_ceil(columns) * columns
+        (self.preferences.dashboard_page.max(1) as usize).div_ceil(columns) * columns
     }
 
     /// Measure how many cards fit in a row, returning whether it changed.
@@ -300,13 +300,13 @@ impl WatchNext {
                 }
 
                 match event.kind {
-                    api::AppEventKind::ConfigChanged { config } => {
+                    api::AppEventKind::PreferencesChanged { preferences } => {
                         // A changed lookahead moves the server-side cutoff, so
                         // the list has to be reloaded to match it.
                         let lookahead_changed =
-                            config.dashboard_lookahead != self.config.dashboard_lookahead;
+                            preferences.dashboard_lookahead != self.preferences.dashboard_lookahead;
 
-                        self.config = config;
+                        self.preferences = preferences;
 
                         if lookahead_changed {
                             self.load_pending(ctx);
@@ -356,11 +356,11 @@ impl WatchNext {
                 Ok(true)
             }
             Msg::ConfigLoaded(result) => {
-                self.config = result
+                self.preferences = result
                     .context(Message::LoadingPending)?
                     .decode()
                     .context(Message::LoadingPending)?
-                    .config;
+                    .preferences;
 
                 self.clamp_page(ctx);
                 Ok(true)
@@ -463,15 +463,15 @@ impl WatchNext {
                 let new_size = current
                     .saturating_add_signed(rows * columns as i32)
                     .max(columns);
-                self.config.dashboard_page = new_size;
+                self.preferences.dashboard_page = new_size;
                 self.clamp_page(ctx);
 
                 if self.channel.id() != ws::ChannelId::NONE {
                     self._set_config_req = self
                         .channel
                         .request()
-                        .body(api::SetConfigRequest {
-                            config: self.config.clone(),
+                        .body(api::SetPreferencesRequest {
+                            preferences: self.preferences.clone(),
                         })
                         .on_packet(ctx.link().callback(Msg::SetConfigDone))
                         .send();
@@ -480,13 +480,13 @@ impl WatchNext {
                 Ok(true)
             }
             Msg::LookaheadChanged(lookahead) => {
-                self.config.dashboard_lookahead = lookahead;
+                self.preferences.dashboard_lookahead = lookahead;
 
                 self._set_config_req = self
                     .channel
                     .request()
-                    .body(api::SetConfigRequest {
-                        config: self.config.clone(),
+                    .body(api::SetPreferencesRequest {
+                        preferences: self.preferences.clone(),
                     })
                     .on_packet(ctx.link().callback(Msg::LookaheadSaved))
                     .send();
@@ -586,7 +586,7 @@ impl WatchNext {
         let cutoff = self
             .time
             .now()
-            .saturating_add(self.config.dashboard_lookahead);
+            .saturating_add(self.preferences.dashboard_lookahead);
 
         if pending.timestamp <= cutoff {
             self.pending.push(PendingState {
@@ -610,7 +610,7 @@ impl WatchNext {
         self._config_req = self
             .channel
             .request()
-            .body(api::GetConfigRequest)
+            .body(api::GetPreferencesRequest)
             .on_packet(ctx.link().callback(Msg::ConfigLoaded))
             .send();
     }

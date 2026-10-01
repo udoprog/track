@@ -9,10 +9,8 @@ CREATE TABLE
         id INTEGER PRIMARY KEY,
         first_air INTEGER,
         sync_source INTEGER,
-        language INTEGER NOT NULL DEFAULT 0,
         default_language INTEGER NOT NULL DEFAULT 0,
         last_synced_at INTEGER,
-        include_specials INTEGER,
         auto_sync INTEGER NOT NULL DEFAULT 1,
         air_date_filters TEXT,
         remote_id INTEGER REFERENCES show_remotes (id) ON DELETE SET NULL
@@ -67,7 +65,6 @@ CREATE TABLE
         id INTEGER PRIMARY KEY,
         release_date INTEGER,
         sync_source INTEGER,
-        language INTEGER NOT NULL DEFAULT 0,
         default_language INTEGER NOT NULL DEFAULT 0,
         last_synced_at INTEGER,
         release_filters TEXT,
@@ -161,6 +158,38 @@ WHERE
 
 CREATE TABLE
     config (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+
+-- Preferences, per user and per user and show/movie: one row per non-default
+-- value, keyed by api::PreferenceKey and holding the value as JSON.
+CREATE TABLE
+    user_config (
+        user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+        key TEXT NOT NULL,
+        value TEXT NOT NULL CHECK (json_valid (value)),
+        PRIMARY KEY (user_id, key)
+    );
+
+CREATE TABLE
+    user_show_config (
+        user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+        show_id INTEGER NOT NULL REFERENCES shows (id) ON DELETE CASCADE,
+        key TEXT NOT NULL,
+        value TEXT NOT NULL CHECK (json_valid (value)),
+        PRIMARY KEY (user_id, show_id, key)
+    );
+
+CREATE INDEX idx_user_show_config_show ON user_show_config (show_id);
+
+CREATE TABLE
+    user_movie_config (
+        user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+        movie_id INTEGER NOT NULL REFERENCES movies (id) ON DELETE CASCADE,
+        key TEXT NOT NULL,
+        value TEXT NOT NULL CHECK (json_valid (value)),
+        PRIMARY KEY (user_id, movie_id, key)
+    );
+
+CREATE INDEX idx_user_movie_config_movie ON user_movie_config (movie_id);
 
 -- Candidate image pools, one per owner. Each holds every stored graphic for an
 -- owner (ranked, optionally scored); the paired `*_images` selection table below

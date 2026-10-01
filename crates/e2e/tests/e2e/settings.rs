@@ -121,7 +121,7 @@ pub async fn settings_are_labelled_rows(driver: &mut TestDriver, _: &mut Track) 
     driver
         .wait_texts(
             ".settings h2",
-            ["Appearance", "Language", "Sync", "API keys"],
+            ["Appearance", "Language", "Site", "Sync", "API keys"],
         )
         .await?;
 

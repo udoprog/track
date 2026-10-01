@@ -47,7 +47,7 @@ pub(crate) enum Msg {
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     PersonLoaded(Result<ws::Packet<api::GetPerson>, ws::Error>),
     CreditsLoaded(Result<ws::Packet<api::ListPersonCredits>, ws::Error>),
-    ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
+    ConfigLoaded(Result<ws::Packet<api::GetPreferences>, ws::Error>),
     SyncPerson,
     SyncDone(Result<ws::Packet<api::SyncPerson>, ws::Error>),
     OpenSettings,
@@ -269,12 +269,12 @@ impl PersonDetail {
                 Ok(true)
             }
             Msg::ConfigLoaded(result) => {
-                let config = result
+                let site = result
                     .context(Message::LoadingConfig)?
                     .decode()
                     .context(Message::LoadingConfig)?
-                    .config;
-                self.global_sync_kinds = config.sync_kinds;
+                    .site;
+                self.global_sync_kinds = site.sync_kinds;
                 Ok(true)
             }
             Msg::SyncPerson => {
@@ -535,7 +535,7 @@ impl PersonDetail {
         self._config_req = self
             .channel
             .request()
-            .body(api::GetConfigRequest)
+            .body(api::GetPreferencesRequest)
             .on_packet(ctx.link().callback(Msg::ConfigLoaded))
             .send();
     }

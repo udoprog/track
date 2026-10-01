@@ -302,7 +302,11 @@ pub(crate) async fn sync_show(
         .await?
         .context("Expected show to exist")?;
 
-    let config = db.load_config().await?;
+    let mut config = db.load_config().await?;
+    config.sync_languages = api::sync_languages_for_viewers(
+        &config.sync_languages,
+        &db.show_viewer_languages(show_id).await?,
+    );
 
     // Ensure a TVmaze remote is stored (resolved via TVDB/IMDb) so air-date
     // enrichment participates in the layered order, as it did unconditionally
@@ -556,10 +560,7 @@ pub(crate) async fn sync_show(
     }
 
     let now = api::Timestamp::now();
-    let include_specials = show.effective_include_specials(config.include_specials);
-    pending
-        .fill_for_show(show_id, include_specials, now)
-        .await?;
+    pending.fill_for_show(show_id, now).await?;
     db.set_show_synced_at(show_id, now).await?;
     broadcast.broadcast_event(api::AppEventKind::PendingChanged);
     tracing::info!(show_id = %show_id, "Sync complete");
@@ -947,7 +948,7 @@ async fn tmdb_show_layer(
         recover(
             state,
             translations_key(),
-            collect_tmdb_show_strings(draft, tmdb_id, show, config, remote, shutdown),
+            collect_tmdb_show_strings(draft, tmdb_id, config, remote, shutdown),
         )
         .await;
     }
@@ -958,7 +959,7 @@ async fn tmdb_show_layer(
         recover(
             state,
             credits_key(),
-            collect_tmdb_show_credits(draft, tmdb_id, show, config, remote, shutdown),
+            collect_tmdb_show_credits(draft, tmdb_id, config, remote, shutdown),
         )
         .await;
     }
@@ -1235,17 +1236,11 @@ fn locale_matches_targets(
 async fn collect_tmdb_show_strings(
     draft: &mut ShowDraft,
     tmdb_id: u32,
-    show: &api::Show,
     config: &api::Config,
     remote: &RemoteClients,
     shutdown: &Shutdown,
 ) -> Result<()> {
-    let language = show
-        .language
-        .or(config.language)
-        .or(draft.original_language);
-
-    let targets = api::expand_sync_languages(&config.sync_languages, language);
+    let targets = api::expand_sync_languages(&config.sync_languages, draft.original_language);
 
     let mut remaining = targets.clone();
 
@@ -1530,17 +1525,11 @@ fn merge_credits(
 async fn collect_tmdb_show_credits(
     draft: &mut ShowDraft,
     tmdb_id: u32,
-    show: &api::Show,
     config: &api::Config,
     remote: &RemoteClients,
     shutdown: &Shutdown,
 ) -> Result<()> {
-    let language = show
-        .language
-        .or(config.language)
-        .or(draft.original_language);
-
-    let targets = api::expand_sync_languages(&config.sync_languages, language);
+    let targets = api::expand_sync_languages(&config.sync_languages, draft.original_language);
 
     let mut merged: BTreeMap<String, CreditDraft> = BTreeMap::new();
 
@@ -1606,7 +1595,7 @@ pub(crate) async fn sync_person(
     broadcast: &Broadcaster,
     shutdown: &Shutdown,
 ) -> Result<()> {
-    let Some(person) = db.person_by_id(person_id).await? else {
+    let Some(person) = db.person_by_id(None, person_id).await? else {
         return Ok(());
     };
 
@@ -1780,12 +1769,12 @@ async fn tmdb_person_layer(
     }
 
     // Resolve sync targets against the person's canonical (primary) language,
-    // which also becomes the display fallback when no global language is set.
+    // which also becomes the display fallback.
     let primary = translations
         .iter()
         .find(|t| t.primary)
         .map(|t| t.locale)
-        .unwrap_or(config.language);
+        .unwrap_or_default();
 
     draft.default_language = primary;
 
@@ -2269,7 +2258,11 @@ pub(crate) async fn sync_episode(
         .await?
         .context("Expected episode to exist")?;
 
-    let config = db.load_config().await?;
+    let mut config = db.load_config().await?;
+    config.sync_languages = api::sync_languages_for_viewers(
+        &config.sync_languages,
+        &db.show_viewer_languages(show_id).await?,
+    );
     let cache = db.episode_cache(episode_id).await?;
 
     // One clock for the whole sync, so every error recorded this run expires together.
@@ -2458,10 +2451,7 @@ pub(crate) async fn sync_episode(
     db.recompute_episode_aired_for_show(show_id, config.air_date_filters.clone())
         .await?;
 
-    let include_specials = show.effective_include_specials(config.include_specials);
-    pending
-        .fill_for_show(show_id, include_specials, now)
-        .await?;
+    pending.fill_for_show(show_id, now).await?;
     db.set_episode_synced_at(episode_id, now).await?;
 
     if let Some(episode) = db.episode_by_id(None, episode_id).await? {
@@ -2475,9 +2465,9 @@ pub(crate) async fn sync_episode(
     Ok(())
 }
 
-/// The target locales an episode's strings are collected for: the show's effective
-/// locale (its own override, else the global config, else the show's default),
-/// expanded by the configured sync languages.
+/// The target locales an episode's strings are collected for: the configured
+/// sync languages (with viewers' languages added) expanded against the show's
+/// original language.
 fn episode_string_targets(show: &api::Show, config: &api::Config) -> BTreeSet<api::Locale> {
     api::expand_sync_languages(&config.sync_languages, show.strings.locale())
 }
@@ -2897,7 +2887,11 @@ pub(crate) async fn sync_movie(
         .await?
         .context("Expected movie to exist")?;
 
-    let config = db.load_config().await?;
+    let mut config = db.load_config().await?;
+    config.sync_languages = api::sync_languages_for_viewers(
+        &config.sync_languages,
+        &db.movie_viewer_languages(movie_id).await?,
+    );
 
     tracing::info!(movie_id = %movie_id, title = movie.strings.title(), "Syncing movie");
 
@@ -2947,8 +2941,8 @@ pub(crate) async fn sync_movie(
             RemoteSource::Tmdb => match entry.remote.value().as_u32() {
                 Some(tmdb_id) => {
                     tmdb_movie_layer(
-                        &mut draft, &mut state, &config, &movie, tmdb_id, do_base, do_release,
-                        do_credits, remote, shutdown, allow_skip,
+                        &mut draft, &mut state, &config, tmdb_id, do_base, do_release, do_credits,
+                        remote, shutdown, allow_skip,
                     )
                     .await
                 }
@@ -3086,7 +3080,6 @@ async fn tmdb_movie_layer(
     draft: &mut MovieDraft,
     state: &mut CacheState,
     config: &api::Config,
-    movie: &api::Movie,
     tmdb_id: u32,
     do_base: bool,
     do_release: bool,
@@ -3159,7 +3152,7 @@ async fn tmdb_movie_layer(
         if let Some(rows) = recover(
             state,
             translations_key(),
-            collect_tmdb_movie_strings(tmdb_id, &info, movie, config, remote, shutdown),
+            collect_tmdb_movie_strings(tmdb_id, &info, config, remote, shutdown),
         )
         .await
         {
@@ -3171,14 +3164,7 @@ async fn tmdb_movie_layer(
         && let Some(credits) = recover(
             state,
             credits_key(),
-            collect_tmdb_movie_credits(
-                tmdb_id,
-                movie,
-                config,
-                info.original_language,
-                remote,
-                shutdown,
-            ),
+            collect_tmdb_movie_credits(tmdb_id, config, info.original_language, remote, shutdown),
         )
         .await
     {
@@ -3304,14 +3290,12 @@ async fn persist_movie_draft(
 #[tracing::instrument(skip_all, fields(tmdb_id))]
 async fn collect_tmdb_movie_credits(
     tmdb_id: u32,
-    movie: &api::Movie,
     config: &api::Config,
     original_language: api::Locale,
     remote: &RemoteClients,
     shutdown: &Shutdown,
 ) -> Result<Vec<CreditDraft>> {
-    let language = movie.language.or(config.language).or(original_language);
-    let targets = api::expand_sync_languages(&config.sync_languages, language);
+    let targets = api::expand_sync_languages(&config.sync_languages, original_language);
 
     let mut merged: BTreeMap<String, CreditDraft> = BTreeMap::new();
 
@@ -3409,17 +3393,11 @@ async fn persist_movie_releases(
 async fn collect_tmdb_movie_strings(
     tmdb_id: u32,
     info: &tmdb::MovieInfo,
-    movie: &api::Movie,
     config: &api::Config,
     remote: &RemoteClients,
     shutdown: &Shutdown,
 ) -> Result<StringRows> {
-    let language = movie
-        .language
-        .or(config.language)
-        .or(info.original_language);
-
-    let targets = api::expand_sync_languages(&config.sync_languages, language);
+    let targets = api::expand_sync_languages(&config.sync_languages, info.original_language);
 
     let translations = remote.fetch_tmdb_movie_translations(tmdb_id).await?;
 
@@ -3437,7 +3415,7 @@ async fn collect_tmdb_movie_strings(
 
         remaining.remove(&locale);
 
-        tracing::info!(?translation, ?targets, ?language, "Movie translation");
+        tracing::info!(?translation, ?targets, "Movie translation");
 
         push_string(
             &mut rows,

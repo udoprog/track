@@ -42,7 +42,7 @@ pub(crate) enum Msg {
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     MovieLoaded(Result<ws::Packet<api::GetMovie>, ws::Error>),
     ShowLoaded(Result<ws::Packet<api::GetShow>, ws::Error>),
-    ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
+    ConfigLoaded(Result<ws::Packet<api::GetPreferences>, ws::Error>),
     SetLanguage(api::Locale),
     SetAutoSync(bool),
     SetIncludeSpecials(IncludeSpecials),
@@ -215,13 +215,13 @@ impl MediaSettingsModal {
                 Ok(true)
             }
             Msg::ConfigLoaded(result) => {
-                let config = result
+                let site = result
                     .context(Message::LoadingConfig)?
                     .decode()
                     .context(Message::LoadingConfig)?
-                    .config;
-                self.default_release_filters = config.release_filters;
-                self.default_air_date_filters = config.air_date_filters;
+                    .site;
+                self.default_release_filters = site.release_filters;
+                self.default_air_date_filters = site.air_date_filters;
                 Ok(true)
             }
             Msg::SetLanguage(language) => {
@@ -468,7 +468,7 @@ impl MediaSettingsModal {
         self._config_req = self
             .channel
             .request()
-            .body(api::GetConfigRequest)
+            .body(api::GetPreferencesRequest)
             .on_packet(ctx.link().callback(Msg::ConfigLoaded))
             .send();
     }

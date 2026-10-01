@@ -302,7 +302,8 @@ async fn admin_only_requests() -> Result<()> {
     });
 
     for id in [
-        api::Request::SetConfig,
+        api::Request::GetSystemConfig,
+        api::Request::SetSystemConfig,
         api::Request::RemoveShow,
         api::Request::RemoveMovie,
         api::Request::ListUsers,
@@ -318,7 +319,8 @@ async fn admin_only_requests() -> Result<()> {
     }
 
     for id in [
-        api::Request::GetConfig,
+        api::Request::GetPreferences,
+        api::Request::SetPreferences,
         api::Request::ListMedia,
         api::Request::SyncAll,
         api::Request::TrackShow,
@@ -334,7 +336,7 @@ async fn admin_only_requests() -> Result<()> {
         id: root.id,
         session: None,
     });
-    admin.authorize(api::Request::SetConfig).await?;
+    admin.authorize(api::Request::SetSystemConfig).await?;
     admin.authorize(api::Request::ListUsers).await?;
 
     // A role change applies to open sockets.
@@ -520,8 +522,8 @@ async fn broadcasts_are_per_user() -> Result<()> {
         "test",
     );
     let mine = events.recv().await?;
-    assert!(mine.reaches(alice));
-    assert!(!mine.reaches(root));
+    assert!(mine.reaches(alice, false));
+    assert!(!mine.reaches(root, true));
 
     let show = db.show_by_id(Some(root), show).await?.unwrap();
     assert!(show.tracked);
@@ -530,7 +532,7 @@ async fn broadcasts_are_per_user() -> Result<()> {
         .broadcast
         .broadcast_event(api::AppEventKind::ShowChanged { show });
     let shared = events.recv().await?;
-    assert!(shared.reaches(alice) && shared.reaches(root));
+    assert!(shared.reaches(alice, false) && shared.reaches(root, true));
 
     let mut kind = shared.event.kind;
     crate::ws::personalize(db, alice, &mut kind).await?;
@@ -544,5 +546,30 @@ async fn broadcasts_are_per_user() -> Result<()> {
         panic!("expected a show change");
     };
     assert!(show.tracked, "root does");
+
+    // Each recipient sees the show in their own language.
+    let swedish = api::Locale::from_iso("sv").unwrap();
+    db.set_show_language(root, show.id, swedish).await?;
+    crate::ws::personalize(db, alice, &mut kind).await?;
+    let api::AppEventKind::ShowChanged { show } = &kind else {
+        panic!("expected a show change");
+    };
+    assert_eq!(show.language, api::Locale::DEFAULT);
+    crate::ws::personalize(db, root, &mut kind).await?;
+    let api::AppEventKind::ShowChanged { show } = &kind else {
+        panic!("expected a show change");
+    };
+    assert_eq!(show.language, swedish);
+
+    // The system configuration reaches administrators only.
+    server.state.broadcast.emit_to_admins(
+        musli_web::api::ChannelId::NONE,
+        api::AppEventKind::ConfigChanged {
+            config: api::Config::default(),
+        },
+    );
+    let config = events.recv().await?;
+    assert!(config.reaches(root, true));
+    assert!(!config.reaches(alice, false));
     Ok(())
 }

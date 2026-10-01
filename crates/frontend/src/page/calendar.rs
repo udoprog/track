@@ -39,7 +39,7 @@ pub(crate) struct Calendar {
     /// `schedule` indices keyed by date, maintained when `schedule` changes so
     /// `view` can look days up without building a map every render.
     schedule_index: HashMap<api::Date, usize>,
-    config: api::Config,
+    preferences: api::Preferences,
     /// First and last day of the most recently requested window.
     requested: Option<(api::Date, api::Date)>,
     /// First and last day `schedule` covers. Days outside it show a skeleton
@@ -62,9 +62,9 @@ pub(crate) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     ScheduleLoaded(Result<ws::Packet<api::ListSchedule>, ws::Error>),
-    ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
+    ConfigLoaded(Result<ws::Packet<api::GetPreferences>, ws::Error>),
     AdjustScheduleWeeks(i32),
-    SetConfigDone(Result<ws::Packet<api::SetConfig>, ws::Error>),
+    SetConfigDone(Result<ws::Packet<api::SetPreferences>, ws::Error>),
     SetTime(TimeInfo),
     /// Hover an entry: drive the page background from its backdrop.
     Hover(Option<String>),
@@ -98,7 +98,7 @@ impl Component for Calendar {
             channel: ws::Channel::default(),
             schedule: Vec::new(),
             schedule_index: HashMap::new(),
-            config: api::Config::default(),
+            preferences: api::Preferences::default(),
             requested: None,
             loaded: None,
             time,
@@ -139,7 +139,7 @@ impl Component for Calendar {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let today = api::Date::today();
-        let week_count = self.config.schedule_weeks.max(1);
+        let week_count = self.preferences.schedule_weeks.max(1);
         let week_offset = ctx.props().week_offset;
         let week_start = ctx.props().week_start;
         let selection = ctx.props().selection;
@@ -304,11 +304,12 @@ impl Calendar {
                     return Ok(false);
                 }
                 match event.kind {
-                    api::AppEventKind::ConfigChanged { config } => {
-                        // Adopt the fresh config; reload the schedule only when the
+                    api::AppEventKind::PreferencesChanged { preferences } => {
+                        // Adopt the fresh preferences; reload the schedule only when the
                         // visible week count actually changed.
-                        let weeks_changed = config.schedule_weeks != self.config.schedule_weeks;
-                        self.config = config;
+                        let weeks_changed =
+                            preferences.schedule_weeks != self.preferences.schedule_weeks;
+                        self.preferences = preferences;
                         if weeks_changed && self.channel.id() != ws::ChannelId::NONE {
                             self.load_schedule(ctx);
                         }
@@ -342,37 +343,37 @@ impl Calendar {
                 Ok(true)
             }
             Msg::ConfigLoaded(result) => {
-                let config = result
+                let preferences = result
                     .context(Message::LoadingSchedule)?
                     .decode()
                     .context(Message::LoadingSchedule)?
-                    .config;
+                    .preferences;
 
                 // A larger/smaller week count changes the visible window; reload
                 // the schedule if the count differs from the default we started with.
-                let weeks_changed = config.schedule_weeks != self.config.schedule_weeks;
-                self.config = config;
+                let weeks_changed = preferences.schedule_weeks != self.preferences.schedule_weeks;
+                self.preferences = preferences;
                 if weeks_changed && self.channel.id() != ws::ChannelId::NONE {
                     self.load_schedule(ctx);
                 }
                 Ok(true)
             }
             Msg::AdjustScheduleWeeks(delta) => {
-                self.config.schedule_weeks = self
-                    .config
+                self.preferences.schedule_weeks = self
+                    .preferences
                     .schedule_weeks
                     .saturating_add_signed(delta)
                     .max(1);
 
-                // Reload directly: our own SetConfig broadcast is filtered out.
+                // Reload directly: our own SetPreferences broadcast is filtered out.
                 if self.channel.id() != ws::ChannelId::NONE {
                     self.load_schedule(ctx);
 
                     self._set_config_req = self
                         .channel
                         .request()
-                        .body(api::SetConfigRequest {
-                            config: self.config.clone(),
+                        .body(api::SetPreferencesRequest {
+                            preferences: self.preferences.clone(),
                         })
                         .on_packet(ctx.link().callback(Msg::SetConfigDone))
                         .send();
@@ -410,7 +411,7 @@ impl Calendar {
             return;
         }
 
-        let weeks = self.config.schedule_weeks.max(1);
+        let weeks = self.preferences.schedule_weeks.max(1);
         let today = api::Date::today();
 
         let first = window_start(today, ctx.props().week_offset);
@@ -442,7 +443,7 @@ impl Calendar {
         self._config_req = self
             .channel
             .request()
-            .body(api::GetConfigRequest)
+            .body(api::GetPreferencesRequest)
             .on_packet(ctx.link().callback(Msg::ConfigLoaded))
             .send();
     }

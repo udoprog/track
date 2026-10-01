@@ -38,6 +38,11 @@ pub use self::time::{
     Date, HumanDate, HumanDateTime, TimeInfo, TimeOfDay, TimeZone, Timestamp, Weekday,
 };
 
+mod preferences;
+pub use self::preferences::{
+    PreferenceError, PreferenceKey, PreferenceScope, PreferenceValue, Preferences,
+};
+
 mod duration;
 pub use self::duration::{Duration, DurationUnit, HumanDuration, ParseDurationUnitErr};
 
@@ -1530,6 +1535,21 @@ pub fn expand_sync_languages(sync_languages: &[Locale], original: Locale) -> BTr
         .collect()
 }
 
+/// The configured sync languages plus the locales users view a media item in.
+/// Each viewer locale is added only when the configuration asks for the media's
+/// own language (an entry whose language is the default), so
+/// [`expand_sync_languages`] then covers the original language and every
+/// viewer's.
+pub fn sync_languages_for_viewers(sync_languages: &[Locale], viewers: &[Locale]) -> Vec<Locale> {
+    let mut out = sync_languages.to_vec();
+
+    if sync_languages.iter().any(|l| l.language().is_default()) {
+        out.extend(viewers.iter().filter(|l| !l.language().is_default()));
+    }
+
+    out
+}
+
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct MediaImage {
@@ -2103,32 +2123,18 @@ impl ScheduledDay {
     }
 }
 
+/// System configuration: administrators read and write it.
 #[derive(Debug, Clone, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub struct Config {
-    pub theme: ThemeType,
     pub tvdb_api_key: String,
     pub tvdb_pin: Option<String>,
     pub tmdb_api_key: String,
-    pub dashboard_page: u32,
-    /// How far into the future pending items surface on the dashboard. A
-    /// pending item is shown once its timestamp falls within this window.
-    pub dashboard_lookahead: Duration,
-    /// Number of weeks shown in the dashboard schedule (always at least 1).
-    pub schedule_weeks: u32,
-    /// Number of days shown in the dashboard's upcoming-days strip (always at
-    /// least 1).
-    pub schedule_range_days: u32,
     pub auto_sync_enabled: bool,
     pub auto_sync_interval_hours: u32,
     /// The site/page title. Empty (or whitespace-only) means the default
     /// `"Track"` is used.
     pub page_title: String,
-    pub timezone: String,
-    /// The default display locale. [`Locale::DEFAULT`] means "use each
-    /// show's/movie's own original language".
-    pub language: Locale,
-    pub include_specials: bool,
     /// Default rules that determine which releases set a movie's release date.
     pub release_filters: FilterRules,
     /// Default air-date qualification rules for episodes (empty = none qualify).
@@ -2141,6 +2147,29 @@ pub struct Config {
     /// [`Locale::DEFAULT`] stands for each media's own original language.
     pub sync_languages: Vec<Locale>,
     pub cloudflare_access: CloudflareAccess,
+}
+
+/// The part of the system configuration every signed-in user sees.
+#[derive(Debug, Clone, PartialEq, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct SiteConfig {
+    pub page_title: String,
+    pub release_filters: FilterRules,
+    pub air_date_filters: FilterRules,
+    pub sync_kinds: Vec<SourceSyncKinds>,
+}
+
+impl Default for SiteConfig {
+    fn default() -> Self {
+        Config::default().site()
+    }
+}
+
+impl SiteConfig {
+    /// The global default sync kinds for `source`; see [`Config::sync_kinds_for`].
+    pub fn sync_kinds_for(&self, source: RemoteSource) -> SyncKindSet {
+        sync_kinds_for(&self.sync_kinds, source)
+    }
 }
 
 /// Signing users in through Cloudflare Access: a verified email logs in the
@@ -2174,20 +2203,12 @@ impl Default for CloudflareAccess {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            theme: ThemeType::Dark,
             tvdb_api_key: String::new(),
             tvdb_pin: None,
             tmdb_api_key: String::new(),
-            dashboard_page: 12,
-            dashboard_lookahead: Duration::from_hours(24),
-            schedule_weeks: 4,
-            schedule_range_days: 3,
             auto_sync_enabled: false,
             auto_sync_interval_hours: 24,
             page_title: String::new(),
-            timezone: String::new(),
-            language: Locale::DEFAULT,
-            include_specials: false,
             release_filters: FilterRules::default_release_rules(),
             air_date_filters: FilterRules::default(),
             sync_kinds: Vec::new(),
@@ -2205,13 +2226,27 @@ impl Config {
     /// present, otherwise the source's full capability - in both cases clamped
     /// to capability.
     pub fn sync_kinds_for(&self, source: RemoteSource) -> SyncKindSet {
-        self.sync_kinds
-            .iter()
-            .find(|s| s.source == source)
-            .map(|s| s.kinds)
-            .unwrap_or_else(|| source.default_sync_kinds())
-            .intersect(source.default_sync_kinds())
+        sync_kinds_for(&self.sync_kinds, source)
     }
+
+    /// The part every signed-in user sees.
+    pub fn site(&self) -> SiteConfig {
+        SiteConfig {
+            page_title: self.page_title.clone(),
+            release_filters: self.release_filters.clone(),
+            air_date_filters: self.air_date_filters.clone(),
+            sync_kinds: self.sync_kinds.clone(),
+        }
+    }
+}
+
+fn sync_kinds_for(kinds: &[SourceSyncKinds], source: RemoteSource) -> SyncKindSet {
+    kinds
+        .iter()
+        .find(|s| s.source == source)
+        .map(|s| s.kinds)
+        .unwrap_or_else(|| source.default_sync_kinds())
+        .intersect(source.default_sync_kinds())
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -3203,12 +3238,23 @@ pub struct ListTasksResponse {
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
-pub struct GetConfigRequest;
+pub struct GetSystemConfigRequest;
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
-pub struct GetConfigResponse {
+pub struct GetSystemConfigResponse {
     pub config: Config,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct GetPreferencesRequest;
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct GetPreferencesResponse {
+    pub preferences: Preferences,
+    pub site: SiteConfig,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -3224,8 +3270,14 @@ pub struct GetTopLanguagesResponse {
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
-pub struct SetConfigRequest {
+pub struct SetSystemConfigRequest {
     pub config: Config,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct SetPreferencesRequest {
+    pub preferences: Preferences,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -3465,8 +3517,17 @@ pub enum AppEventKind {
     PendingEntryChanged {
         pending: Pending,
     },
+    /// The system configuration changed; sent to administrators only.
     ConfigChanged {
         config: Config,
+    },
+    /// The part of the system configuration everyone sees changed.
+    SiteConfigChanged {
+        site: SiteConfig,
+    },
+    /// The user's own preferences changed; sent to that user only.
+    PreferencesChanged {
+        preferences: Preferences,
     },
     TopLanguagesChanged {
         top_languages: Vec<Locale>,
@@ -3915,10 +3976,16 @@ api::define! {
         type Response<'de> = Empty;
     }
 
-    pub type GetConfig;
-    impl Endpoint for GetConfig {
-        impl Request for GetConfigRequest;
-        type Response<'de> = GetConfigResponse;
+    pub type GetSystemConfig;
+    impl Endpoint for GetSystemConfig {
+        impl Request for GetSystemConfigRequest;
+        type Response<'de> = GetSystemConfigResponse;
+    }
+
+    pub type GetPreferences;
+    impl Endpoint for GetPreferences {
+        impl Request for GetPreferencesRequest;
+        type Response<'de> = GetPreferencesResponse;
     }
 
     pub type GetTopLanguages;
@@ -3927,9 +3994,15 @@ api::define! {
         type Response<'de> = GetTopLanguagesResponse;
     }
 
-    pub type SetConfig;
-    impl Endpoint for SetConfig {
-        impl Request for SetConfigRequest;
+    pub type SetSystemConfig;
+    impl Endpoint for SetSystemConfig {
+        impl Request for SetSystemConfigRequest;
+        type Response<'de> = Empty;
+    }
+
+    pub type SetPreferences;
+    impl Endpoint for SetPreferences {
+        impl Request for SetPreferencesRequest;
         type Response<'de> = Empty;
     }
 

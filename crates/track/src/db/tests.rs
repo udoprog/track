@@ -184,7 +184,8 @@ async fn list_persons_resolves_names_in_the_persons_language() -> Result<()> {
          VALUES (1, 6148257917992593152, 1, 'Ada Lovelace');",
     )?;
 
-    let persons = db.list_persons().await?;
+    let root = db.default_owner().await?;
+    let persons = db.list_persons(root).await?;
     assert_eq!(persons.len(), 1);
     assert_eq!(persons[0].name.title(), Some("Ada Lovelace"));
     Ok(())
@@ -258,7 +259,7 @@ async fn tracking_watch_history_and_pending_are_per_user() -> Result<()> {
     assert!(!db.movie_by_id(Some(root), movie).await?.unwrap().tracked);
 
     // A sync fills pending only for the users tracking the show.
-    db.fill_pending_for_show(show, false, now).await?;
+    db.fill_pending_for_show(show, now).await?;
     let pending_episodes = |pending: Vec<api::Pending>| {
         pending
             .into_iter()
@@ -273,8 +274,7 @@ async fn tracking_watch_history_and_pending_are_per_user() -> Result<()> {
 
     // Alice starts tracking: her own pending starts at the first episode.
     db.set_show_tracked(alice, show, true).await?;
-    db.fill_pending_for_user_show(alice, show, false, now)
-        .await?;
+    db.fill_pending_for_user_show(alice, show, now).await?;
     assert_eq!(pending_episodes(db.pending(alice, now).await?), [e1]);
 
     // Root watches E1 and moves on; alice is unaffected.
@@ -322,5 +322,129 @@ async fn tracking_watch_history_and_pending_are_per_user() -> Result<()> {
     )?;
     assert_eq!(q.next::<i64>()?, Some(0));
     assert_eq!(db.episodes_watched(root, show).await?.len(), 1);
+    Ok(())
+}
+
+fn count(path: &Path, sql: &str) -> Result<i64> {
+    let c = OpenOptions::new().read_write().no_mutex().open(path)?;
+    let mut q = c.prepare(sql)?;
+    Ok(q.next::<i64>()?.unwrap_or_default())
+}
+
+/// Preferences without rows read as the default, only non-default values are
+/// stored, and rows that do not read are skipped.
+#[tokio::test]
+async fn preferences_default_on_missing_rows() -> Result<()> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("test.db");
+    let db = Database::open(&path, OpenMode::Bulk, 1)?;
+    let root = db.default_owner().await?;
+
+    assert_eq!(
+        db.load_preferences(root).await?,
+        api::Preferences::default()
+    );
+
+    let preferences = api::Preferences {
+        schedule_weeks: 2,
+        language: api::Locale::new(api::Language::ENG, api::Country::DEFAULT),
+        ..api::Preferences::default()
+    };
+    db.save_preferences(root, &preferences).await?;
+    assert_eq!(db.load_preferences(root).await?, preferences);
+    assert_eq!(count(&path, "SELECT COUNT(*) FROM user_config")?, 2);
+
+    let c = OpenOptions::new().read_write().no_mutex().open(&path)?;
+    c.execute(
+        "INSERT INTO user_config (user_id, key, value)
+         SELECT id, 'no-such-key', '1' FROM users WHERE login = 'root';
+         INSERT INTO user_config (user_id, key, value)
+         SELECT id, 'theme', '\"purple\"' FROM users WHERE login = 'root';",
+    )?;
+    assert_eq!(db.load_preferences(root).await?, preferences);
+
+    db.save_preferences(root, &api::Preferences::default())
+        .await?;
+    assert_eq!(count(&path, "SELECT COUNT(*) FROM user_config")?, 0);
+    Ok(())
+}
+
+/// A user's language and include-specials for a show or movie apply to that
+/// user alone.
+#[tokio::test]
+async fn show_and_movie_preferences_are_per_user() -> Result<()> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("test.db");
+    let db = Database::open(&path, OpenMode::Bulk, 1)?;
+
+    let root = db.default_owner().await?;
+    let alice = db
+        .create_user("alice", None, auth::UserRole::Regular, Timestamp::now())
+        .await?
+        .expect("alice is free")
+        .id;
+
+    let show = api::ShowId::new(1);
+    let movie = api::MovieId::new(2);
+    db.create_show(show, "Show", None, "").await?;
+    db.create_movie(movie, "Movie", None, "").await?;
+
+    let swedish = api::Locale::from_iso("sv").unwrap();
+    let english = api::Locale::new(api::Language::ENG, api::Country::DEFAULT);
+
+    db.set_show_language(root, show, swedish).await?;
+    db.set_show_include_specials(root, show, IncludeSpecials::Include)
+        .await?;
+    db.set_movie_language(alice, movie, swedish).await?;
+
+    let root_show = db.show_by_id(Some(root), show).await?.unwrap();
+    assert_eq!(root_show.language, swedish);
+    assert_eq!(root_show.include_specials, IncludeSpecials::Include);
+    assert_eq!(root_show.strings.locale(), swedish);
+
+    let alice_show = db.show_by_id(Some(alice), show).await?.unwrap();
+    assert_eq!(alice_show.language, api::Locale::DEFAULT);
+    assert_eq!(alice_show.include_specials, IncludeSpecials::Default);
+
+    let shared = db.show_by_id(None, show).await?.unwrap();
+    assert_eq!(shared.language, api::Locale::DEFAULT);
+
+    assert_eq!(
+        db.movie_by_id(Some(alice), movie).await?.unwrap().language,
+        swedish
+    );
+    assert_eq!(
+        db.movie_by_id(Some(root), movie).await?.unwrap().language,
+        api::Locale::DEFAULT
+    );
+
+    // A user's own language applies where they picked none for the show.
+    db.save_preferences(
+        alice,
+        &api::Preferences {
+            language: english,
+            ..api::Preferences::default()
+        },
+    )
+    .await?;
+    let alice_show = db.show_by_id(Some(alice), show).await?.unwrap();
+    assert_eq!(alice_show.language, api::Locale::DEFAULT);
+    assert_eq!(alice_show.strings.locale(), english);
+
+    // Sync covers the languages of everyone who tracks the show or picked one.
+    assert_eq!(db.show_viewer_languages(show).await?, [swedish]);
+    db.set_show_tracked(alice, show, true).await?;
+    assert_eq!(db.show_viewer_languages(show).await?, [swedish, english]);
+
+    // The default removes the row.
+    db.set_show_language(root, show, api::Locale::DEFAULT)
+        .await?;
+    assert_eq!(
+        count(
+            &path,
+            "SELECT COUNT(*) FROM user_show_config WHERE key = 'language'"
+        )?,
+        0
+    );
     Ok(())
 }

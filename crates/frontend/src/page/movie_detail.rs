@@ -129,7 +129,7 @@ pub(crate) enum Msg {
     SetRemoteSyncKindsDone(Result<ws::Packet<api::SetMovieRemoteSyncKinds>, ws::Error>),
     ReorderRemotes(Vec<api::RemoteId>),
     ReorderRemotesDone(Result<ws::Packet<api::ReorderMovieRemotes>, ws::Error>),
-    ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
+    ConfigLoaded(Result<ws::Packet<api::GetPreferences>, ws::Error>),
     SetTracked(bool),
     SetTrackedDone(bool, Result<ws::Packet<api::UntrackMovie>, ws::Error>),
     OnWatchNext(api::MarkTime),
@@ -600,13 +600,13 @@ impl MovieDetail {
                 Ok(false)
             }
             Msg::ConfigLoaded(result) => {
-                let config = result
+                let site = result
                     .context(Message::LoadingConfig)?
                     .decode()
                     .context(Message::LoadingConfig)?
-                    .config;
-                self.default_release_filters = config.release_filters;
-                self.global_sync_kinds = config.sync_kinds;
+                    .site;
+                self.default_release_filters = site.release_filters;
+                self.global_sync_kinds = site.sync_kinds;
                 Ok(true)
             }
             Msg::SetTracked(tracked) => {
@@ -1071,7 +1071,7 @@ impl MovieDetail {
         self._config_req = self
             .channel
             .request()
-            .body(api::GetConfigRequest)
+            .body(api::GetPreferencesRequest)
             .on_packet(ctx.link().callback(Msg::ConfigLoaded))
             .send();
     }

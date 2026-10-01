@@ -69,7 +69,7 @@ pub(super) enum Msg {
     WsState(ws::State),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     TickTime,
-    ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
+    PreferencesLoaded(Result<ws::Packet<api::GetPreferences>, ws::Error>),
     TopLanguagesLoaded(Result<ws::Packet<api::GetTopLanguages>, ws::Error>),
     /// A consumer set (or cleared) the outline contents.
     SetOutline(Rc<[OutlineEntry]>),
@@ -198,6 +198,7 @@ impl Component for App {
                 <ContextProvider<Router> context={self.router.clone()}>
                 <ContextProvider<Background> context={self.background.clone()}>
                 <ContextProvider<OutlineControl> context={self.outline_control.clone()}>
+                <ContextProvider<api::User> context={ctx.props().user.clone()}>
                     <div id="application">
                         if let Some(ref error) = self.error {
                             <div id="error" role="alert">
@@ -232,6 +233,7 @@ impl Component for App {
                         }
                         </div>
                     </div>
+                </ContextProvider<api::User>>
                 </ContextProvider<OutlineControl>>
                 </ContextProvider<Background>>
                 </ContextProvider<Router>>
@@ -255,8 +257,8 @@ impl App {
                     self._config_req = self
                         .channel
                         .request()
-                        .body(api::GetConfigRequest)
-                        .on_packet(link.callback(Msg::ConfigLoaded))
+                        .body(api::GetPreferencesRequest)
+                        .on_packet(link.callback(Msg::PreferencesLoaded))
                         .send();
 
                     self._top_languages_req = self
@@ -286,17 +288,11 @@ impl App {
                 let event = result?.decode_event()?;
 
                 match event.kind {
-                    api::AppEventKind::ConfigChanged { config } => {
-                        crate::theme::apply(config.theme);
-                        let mut render = self.apply_config_title(&config);
-
-                        let tz = Self::tz_from_config(&config);
-                        if *self.time.tz() != tz {
-                            self.time = TimeInfo::new(tz, self.time.now());
-                            render = true;
-                        }
-
-                        return Ok(render);
+                    api::AppEventKind::PreferencesChanged { preferences } => {
+                        return Ok(self.apply_preferences(&preferences));
+                    }
+                    api::AppEventKind::SiteConfigChanged { site } => {
+                        return Ok(self.apply_site_title(&site));
                     }
                     api::AppEventKind::TopLanguagesChanged { top_languages } => {
                         let next = TopLanguages(top_languages);
@@ -339,23 +335,14 @@ impl App {
                 self.outline_entries = entries;
                 Ok(true)
             }
-            Msg::ConfigLoaded(result) => {
-                let config = result
+            Msg::PreferencesLoaded(result) => {
+                let response = result
                     .context(Message::LoadingConfig)?
                     .decode()
-                    .context(Message::LoadingConfig)?
-                    .config;
+                    .context(Message::LoadingConfig)?;
 
-                crate::theme::apply(config.theme);
-                let mut render = self.apply_config_title(&config);
-
-                let new_tz = Self::tz_from_config(&config);
-                if *self.time.tz() != new_tz {
-                    self.time = TimeInfo::new(new_tz, self.time.now());
-                    render = true;
-                }
-
-                Ok(render)
+                let title = self.apply_site_title(&response.site);
+                Ok(self.apply_preferences(&response.preferences) || title)
             }
             Msg::WsError(e) => Err(e.into()),
             Msg::Navigate(route) => {
@@ -456,10 +443,25 @@ impl App {
             .send_future(async { Msg::SessionChecked(http::me().await) });
     }
 
-    /// Apply the config's title to the tab-title fallback and the toolbar.
+    /// Apply the user's theme and time zone. Returns whether the time zone
+    /// changed (and a re-render is needed).
+    fn apply_preferences(&mut self, preferences: &api::Preferences) -> bool {
+        crate::theme::apply(preferences.theme);
+
+        let tz = Self::tz_from_preferences(preferences);
+
+        if *self.time.tz() != tz {
+            self.time = TimeInfo::new(tz, self.time.now());
+            return true;
+        }
+
+        false
+    }
+
+    /// Apply the site's title to the tab-title fallback and the toolbar.
     /// Returns whether the toolbar title changed (and a re-render is needed).
-    fn apply_config_title(&mut self, config: &api::Config) -> bool {
-        let title = Self::title_from_config(config);
+    fn apply_site_title(&mut self, site: &api::SiteConfig) -> bool {
+        let title = Self::title_from_site(site);
         self.background_state.set_default_title(&title);
 
         if self.site_title != title {
@@ -472,8 +474,8 @@ impl App {
 
     /// The effective site title: the configured `page_title`, or `"Track"` when
     /// it is empty/whitespace-only.
-    fn title_from_config(config: &api::Config) -> String {
-        let title = config.page_title.trim();
+    fn title_from_site(site: &api::SiteConfig) -> String {
+        let title = site.page_title.trim();
 
         if title.is_empty() {
             "Track".to_owned()
@@ -482,9 +484,9 @@ impl App {
         }
     }
 
-    fn tz_from_config(config: &api::Config) -> TimeZone {
-        if !config.timezone.is_empty()
-            && let Some(tz) = TimeZone::get(&config.timezone)
+    fn tz_from_preferences(preferences: &api::Preferences) -> TimeZone {
+        if !preferences.timezone.is_empty()
+            && let Some(tz) = TimeZone::get(&preferences.timezone)
         {
             return tz;
         }
@@ -520,7 +522,10 @@ impl App {
             Route::Search(ref q) => html! {
                 <Search selection={q.selection} filter={q.filter.clone()} />
             },
-            Route::Settings => html! { <Settings /> },
+            Route::Settings => {
+                let admin = ctx.props().user.role == api::UserRole::Admin;
+                html! { <Settings {admin} /> }
+            }
             Route::Users => {
                 let user = &ctx.props().user;
 
@@ -583,7 +588,7 @@ struct ToolbarProps {
     /// The signed-in user's login, naming the account link.
     login: AttrValue,
     /// Whether the signed-in user is an administrator, who alone sees the
-    /// settings and users.
+    /// users.
     admin: bool,
 }
 
@@ -646,12 +651,12 @@ fn Toolbar(props: &ToolbarProps) -> Html {
                     <span>{"Queue"}</span>
                 </Link>
 
-                if props.admin {
-                    <Link to={Route::Settings} class={classes!("toolbar-item", "has-text", (props.section == Section::Settings).then_some("active"))} title="Settings" current={props.section == Section::Settings} onclick={close_menu.clone()}>
-                        <span class="icon cog-6-tooth" aria-hidden="true" />
-                        <span>{"Settings"}</span>
-                    </Link>
+                <Link to={Route::Settings} class={classes!("toolbar-item", "has-text", (props.section == Section::Settings).then_some("active"))} title="Settings" current={props.section == Section::Settings} onclick={close_menu.clone()}>
+                    <span class="icon cog-6-tooth" aria-hidden="true" />
+                    <span>{"Settings"}</span>
+                </Link>
 
+                if props.admin {
                     <Link to={Route::Users} class={classes!("toolbar-item", "has-text", (props.section == Section::Users).then_some("active"))} title="Users" current={props.section == Section::Users} onclick={close_menu.clone()}>
                         <span class="icon user-group" aria-hidden="true" />
                         <span>{"Users"}</span>

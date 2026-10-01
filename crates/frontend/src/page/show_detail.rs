@@ -205,7 +205,7 @@ pub(crate) enum Msg {
     SetRemoteSyncKindsDone(Result<ws::Packet<api::SetShowRemoteSyncKinds>, ws::Error>),
     ReorderRemotes(Vec<api::RemoteId>),
     ReorderRemotesDone(Result<ws::Packet<api::ReorderShowRemotes>, ws::Error>),
-    ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
+    ConfigLoaded(Result<ws::Packet<api::GetPreferences>, ws::Error>),
     OpenImageModal,
     CloseImageModal,
     OpenSeasonImageModal,
@@ -1482,7 +1482,7 @@ impl ShowDetail {
                     .context(Message::LoadingConfig)?
                     .decode()
                     .context(Message::LoadingConfig)?
-                    .config
+                    .site
                     .sync_kinds;
                 Ok(true)
             }
@@ -2077,7 +2077,7 @@ impl ShowDetail {
         self._config_req = self
             .channel
             .request()
-            .body(api::GetConfigRequest)
+            .body(api::GetPreferencesRequest)
             .on_packet(ctx.link().callback(Msg::ConfigLoaded))
             .send();
     }

@@ -33,14 +33,15 @@ pub(crate) enum Msg {
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     MovieLoaded(Result<ws::Packet<api::GetMovieReleases>, ws::Error>),
     EpisodeLoaded(Result<ws::Packet<api::GetEpisodeReleases>, ws::Error>),
-    ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
+    SiteLoaded(Result<ws::Packet<api::GetPreferences>, ws::Error>),
+    ConfigLoaded(Result<ws::Packet<api::GetSystemConfig>, ws::Error>),
     /// The active filter was edited (whichever scope is in effect).
     EditFilters(api::FilterRules),
     /// Switch between the per-media override and the global default.
     ToggleMode,
     SetReleaseFiltersDone(Result<ws::Packet<api::SetMovieReleaseFilters>, ws::Error>),
     SetAirDateFiltersDone(Result<ws::Packet<api::SetShowAirDateFilters>, ws::Error>),
-    SaveConfigDone(Result<ws::Packet<api::SetConfig>, ws::Error>),
+    SaveConfigDone(Result<ws::Packet<api::SetSystemConfig>, ws::Error>),
     ToggleGroup(AttrValue),
     SetTime(TimeInfo),
 }
@@ -50,11 +51,16 @@ pub(crate) struct ReleaseModal {
     _setup: SetupChannel,
     _broadcast: ws::Listener,
     _req: ws::Request,
+    _site_req: ws::Request,
     _config_req: ws::Request,
     _mutate_req: ws::Request,
     /// `None` while loading, `Some` once the response has arrived.
     rows: Option<Vec<api::ReleaseRow>>,
-    /// The global config, holding the default filters and resent on a global edit.
+    /// Whether the user is an administrator, who alone edits the global default.
+    admin: bool,
+    /// The site configuration, holding the default filters.
+    site: Option<api::SiteConfig>,
+    /// The system configuration an administrator resends on a global edit.
     config: Option<api::Config>,
     /// The per-media override; `None` means the active filter is the global default.
     override_filters: Option<api::FilterRules>,
@@ -87,6 +93,11 @@ impl Component for ReleaseModal {
             .context::<TimeInfo>(ctx.link().callback(Msg::SetTime))
             .expect("Expected TimeInfo in context");
 
+        let (user, _) = ctx
+            .link()
+            .context::<api::User>(Callback::noop())
+            .expect("Expected the signed-in user in context");
+
         let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
@@ -95,9 +106,12 @@ impl Component for ReleaseModal {
             _setup,
             _broadcast,
             _req: ws::Request::default(),
+            _site_req: ws::Request::default(),
             _config_req: ws::Request::default(),
             _mutate_req: ws::Request::default(),
             rows: None,
+            admin: user.role == api::UserRole::Admin,
+            site: None,
             config: None,
             override_filters: None,
             show_id: None,
@@ -173,6 +187,16 @@ impl ReleaseModal {
                 self.show_id = Some(resp.show_id);
                 Ok(true)
             }
+            Msg::SiteLoaded(result) => {
+                self.site = Some(
+                    result
+                        .context(Message::LoadingConfig)?
+                        .decode()
+                        .context(Message::LoadingConfig)?
+                        .site,
+                );
+                Ok(true)
+            }
             Msg::ConfigLoaded(result) => {
                 self.config = Some(
                     result
@@ -187,13 +211,20 @@ impl ReleaseModal {
                 if self.override_filters.is_some() {
                     self.override_filters = Some(filters.clone());
                     self.send_override(ctx, Some(filters));
-                } else {
-                    if let Some(config) = self.config.as_mut() {
-                        match ctx.props().target {
-                            ReleaseTarget::Movie(_) => config.release_filters = filters,
-                            ReleaseTarget::Episode(_) => config.air_date_filters = filters,
+                } else if let (Some(site), Some(config)) =
+                    (self.site.as_mut(), self.config.as_mut())
+                {
+                    match ctx.props().target {
+                        ReleaseTarget::Movie(_) => {
+                            site.release_filters = filters.clone();
+                            config.release_filters = filters;
+                        }
+                        ReleaseTarget::Episode(_) => {
+                            site.air_date_filters = filters.clone();
+                            config.air_date_filters = filters;
                         }
                     }
+
                     self.send_global(ctx);
                 }
 
@@ -262,27 +293,36 @@ impl ReleaseModal {
         };
     }
 
-    /// Request the global config (default filters, plus the full config resent on
-    /// a global edit).
+    /// Request the default filters, and for an administrator the system
+    /// configuration resent on a global edit.
     fn load_config(&mut self, ctx: &Context<Self>) {
         if self.channel.id() == ws::ChannelId::NONE {
             return;
         }
 
-        self._config_req = self
+        self._site_req = self
             .channel
             .request()
-            .body(api::GetConfigRequest)
-            .on_packet(ctx.link().callback(Msg::ConfigLoaded))
+            .body(api::GetPreferencesRequest)
+            .on_packet(ctx.link().callback(Msg::SiteLoaded))
             .send();
+
+        if self.admin {
+            self._config_req = self
+                .channel
+                .request()
+                .body(api::GetSystemConfigRequest)
+                .on_packet(ctx.link().callback(Msg::ConfigLoaded))
+                .send();
+        }
     }
 
-    /// The global default rules for this target, once the config has loaded.
+    /// The global default rules for this target, once they have loaded.
     fn global_rules(&self, ctx: &Context<Self>) -> Option<&api::FilterRules> {
-        let config = self.config.as_ref()?;
+        let site = self.site.as_ref()?;
         Some(match ctx.props().target {
-            ReleaseTarget::Movie(_) => &config.release_filters,
-            ReleaseTarget::Episode(_) => &config.air_date_filters,
+            ReleaseTarget::Movie(_) => &site.release_filters,
+            ReleaseTarget::Episode(_) => &site.air_date_filters,
         })
     }
 
@@ -334,7 +374,7 @@ impl ReleaseModal {
         self._mutate_req = self
             .channel
             .request()
-            .body(api::SetConfigRequest { config })
+            .body(api::SetSystemConfigRequest { config })
             .on_packet(ctx.link().callback(Msg::SaveConfigDone))
             .send();
     }
@@ -379,6 +419,14 @@ impl ReleaseModal {
             ),
         };
 
+        // Only administrators change the global default.
+        let editable = is_custom || self.admin;
+        let hint = if self.admin {
+            hint
+        } else {
+            "An administrator sets the global default."
+        };
+
         let link = ctx.link();
         let on_toggle = link.callback(|_| Msg::ToggleMode);
         let on_change = link.callback(Msg::EditFilters);
@@ -392,9 +440,11 @@ impl ReleaseModal {
                     </select>
                 </FormRow>
 
-                <div class="form-wide">
-                    <FiltersEditor rules={rules} on_change={on_change} kinds={kinds} sources={sources} />
-                </div>
+                if editable {
+                    <div class="form-wide">
+                        <FiltersEditor rules={rules} on_change={on_change} kinds={kinds} sources={sources} />
+                    </div>
+                }
             </div>
         }
     }

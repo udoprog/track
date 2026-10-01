@@ -9,7 +9,7 @@ const ENTER: &str = "\u{E007}";
 
 /// An administrator adds a user and gets a login link, which the new user
 /// opens to choose a password and sign in, as a regular user without the
-/// settings and users.
+/// users or the system settings.
 pub async fn creates_a_user_who_registers(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     open_users(driver).await?;
 
@@ -64,8 +64,8 @@ pub async fn creates_a_user_who_registers(driver: &mut TestDriver, _: &mut Track
     hides_admin_pages(driver).await
 }
 
-/// A regular user has no settings or users in the app bar, and the users page
-/// lists no one for them.
+/// A regular user has no users in the app bar, the users page lists no one
+/// for them, and their settings hold only their own preferences.
 pub async fn regular_users_do_not_see_users(
     driver: &mut TestDriver,
     track: &mut Track,
@@ -92,7 +92,28 @@ pub async fn regular_users_do_not_see_users(
     driver
         .wait_texts(".toolbar-item[title=Account]", ["alice"])
         .await?;
-    hides_admin_pages(driver).await
+    hides_admin_pages(driver).await?;
+
+    // Their preferences are their own to change.
+    driver
+        .find_one_by(".toolbar-item[title=Settings]")
+        .await?
+        .click()
+        .await?;
+    let theme = driver.find_one_by("[data-test=theme]").await?;
+    driver
+        .wait_until("the theme select to read dark", async || {
+            Ok(theme.value().await? == "dark")
+        })
+        .await?;
+    driver.set_value(&theme, "light", "change").await?;
+    driver.reload().await?;
+    let theme = driver.find_one_by("[data-test=theme]").await?;
+    driver
+        .wait_until("the theme to stay light", async || {
+            Ok(theme.value().await? == "light")
+        })
+        .await
 }
 
 /// The role is changed from the user's row and stays changed; the
@@ -210,15 +231,26 @@ async fn hides_admin_pages(driver: &TestDriver) -> Result<()> {
         .wait_texts(".toolbar-item.active", ["Dashboard"])
         .await?;
 
-    for page in ["Settings", "Users"] {
-        ensure!(
-            driver
-                .count(&format!(".toolbar-item[title={page}]"))
-                .await?
-                == 0,
-            "a regular user sees {page} in the app bar"
-        );
-    }
+    ensure!(
+        driver.count(".toolbar-item[title=Users]").await? == 0,
+        "a regular user sees Users in the app bar"
+    );
+
+    driver
+        .find_one_by(".toolbar-item[title=Settings]")
+        .await?
+        .click()
+        .await?;
+    driver
+        .wait_texts(".settings h2", ["Appearance", "Language"])
+        .await?;
+    ensure!(
+        driver
+            .count("input[title='Page title'], #tvdb-api-key")
+            .await?
+            == 0,
+        "a regular user sees the system settings"
+    );
 
     let users = driver.webdriver().current_url().await?.join("/users")?;
     driver.webdriver().goto(users.as_str()).await?;

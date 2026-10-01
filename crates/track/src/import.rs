@@ -366,29 +366,22 @@ pub async fn import() -> Result<()> {
         };
 
         db.save_config(&api::Config {
-            theme,
             tvdb_api_key: config.tvdb_api_key,
             tvdb_pin: config.tvdb_pin,
             tmdb_api_key: config.tmdb_api_key,
-            dashboard_page: config.dashboard_page,
-            dashboard_lookahead: api::Duration::from_hours(24),
-            schedule_weeks: 4,
-            schedule_range_days: 3,
-            auto_sync_enabled: false,
-            auto_sync_interval_hours: 24,
-            page_title: String::new(),
-            timezone: String::new(),
-            language: api::Locale::DEFAULT,
-            include_specials: false,
-            release_filters: api::FilterRules::default_release_rules(),
-            air_date_filters: api::FilterRules::default(),
-            sync_kinds: Vec::new(),
-            sync_languages: vec![
-                api::Locale::DEFAULT,
-                api::Locale::new(api::Language::ENG, api::Country::DEFAULT),
-            ],
-            cloudflare_access: api::CloudflareAccess::default(),
+            ..api::Config::default()
         })
+        .await
+        .context("Saving config")?;
+
+        db.save_preferences(
+            owner,
+            &api::Preferences {
+                theme,
+                dashboard_page: config.dashboard_page,
+                ..api::Preferences::default()
+            },
+        )
         .await
         .context("Saving config")?;
     }

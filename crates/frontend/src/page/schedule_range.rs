@@ -26,14 +26,14 @@ pub(crate) struct Props {
 /// The Upcoming agenda: a configurable number of consecutive days, each with
 /// what airs on it. Hovering an entry shows its backdrop behind the page. Moves
 /// one day at a time. The visible day count lives in
-/// [`api::Config::schedule_range_days`].
+/// [`api::Preferences::schedule_range_days`].
 pub(crate) struct ScheduleRange {
     channel: ws::Channel,
     schedule: Vec<api::ScheduledDay>,
     /// `schedule` indices keyed by date, maintained when `schedule` changes so
     /// `view_day` can look days up without building a map every render.
     schedule_index: HashMap<api::Date, usize>,
-    config: api::Config,
+    preferences: api::Preferences,
     /// First and last day of the most recently requested window.
     requested: Option<(api::Date, api::Date)>,
     /// First and last day `schedule` covers. Days outside it show a skeleton
@@ -56,9 +56,9 @@ pub(crate) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     ScheduleLoaded(Result<ws::Packet<api::ListSchedule>, ws::Error>),
-    ConfigLoaded(Result<ws::Packet<api::GetConfig>, ws::Error>),
+    ConfigLoaded(Result<ws::Packet<api::GetPreferences>, ws::Error>),
     AdjustRangeDays(i32),
-    SetConfigDone(Result<ws::Packet<api::SetConfig>, ws::Error>),
+    SetConfigDone(Result<ws::Packet<api::SetPreferences>, ws::Error>),
     SetTime(TimeInfo),
     /// Hover an entry: drive the page background from its backdrop.
     Hover(Option<String>),
@@ -92,7 +92,7 @@ impl Component for ScheduleRange {
             channel: ws::Channel::default(),
             schedule: Vec::new(),
             schedule_index: HashMap::new(),
-            config: api::Config::default(),
+            preferences: api::Preferences::default(),
             requested: None,
             loaded: None,
             time,
@@ -131,7 +131,7 @@ impl Component for ScheduleRange {
     fn view(&self, ctx: &Context<Self>) -> Html {
         let today = api::Date::today();
         let offset = ctx.props().day_offset;
-        let days_count = self.config.schedule_range_days.max(1) as usize;
+        let days_count = self.preferences.schedule_range_days.max(1) as usize;
 
         let start = start_date(today, offset);
         let days: Vec<api::Date> = (0..days_count)
@@ -213,12 +213,12 @@ impl ScheduleRange {
                     return Ok(false);
                 }
                 match event.kind {
-                    api::AppEventKind::ConfigChanged { config } => {
-                        // Adopt the fresh config; reload the schedule only when the
+                    api::AppEventKind::PreferencesChanged { preferences } => {
+                        // Adopt the fresh preferences; reload the schedule only when the
                         // visible day count actually changed.
                         let days_changed =
-                            config.schedule_range_days != self.config.schedule_range_days;
-                        self.config = config;
+                            preferences.schedule_range_days != self.preferences.schedule_range_days;
+                        self.preferences = preferences;
                         if days_changed && self.channel.id() != ws::ChannelId::NONE {
                             self.load_schedule(ctx);
                         }
@@ -252,35 +252,36 @@ impl ScheduleRange {
                 Ok(true)
             }
             Msg::ConfigLoaded(result) => {
-                let config = result
+                let preferences = result
                     .context(Message::LoadingSchedule)?
                     .decode()
                     .context(Message::LoadingSchedule)?
-                    .config;
+                    .preferences;
 
-                let days_changed = config.schedule_range_days != self.config.schedule_range_days;
-                self.config = config;
+                let days_changed =
+                    preferences.schedule_range_days != self.preferences.schedule_range_days;
+                self.preferences = preferences;
                 if days_changed && self.channel.id() != ws::ChannelId::NONE {
                     self.load_schedule(ctx);
                 }
                 Ok(true)
             }
             Msg::AdjustRangeDays(delta) => {
-                self.config.schedule_range_days = self
-                    .config
+                self.preferences.schedule_range_days = self
+                    .preferences
                     .schedule_range_days
                     .saturating_add_signed(delta)
                     .max(1);
 
-                // Reload directly: our own SetConfig broadcast is filtered out.
+                // Reload directly: our own SetPreferences broadcast is filtered out.
                 if self.channel.id() != ws::ChannelId::NONE {
                     self.load_schedule(ctx);
 
                     self._set_config_req = self
                         .channel
                         .request()
-                        .body(api::SetConfigRequest {
-                            config: self.config.clone(),
+                        .body(api::SetPreferencesRequest {
+                            preferences: self.preferences.clone(),
                         })
                         .on_packet(ctx.link().callback(Msg::SetConfigDone))
                         .send();
@@ -347,7 +348,7 @@ impl ScheduleRange {
             return;
         }
 
-        let days = self.config.schedule_range_days.max(1);
+        let days = self.preferences.schedule_range_days.max(1);
         let first = start_date(api::Date::today(), ctx.props().day_offset);
         self.requested = Some((first, first.checked_add_days(days - 1).unwrap_or(first)));
 
@@ -371,7 +372,7 @@ impl ScheduleRange {
         self._config_req = self
             .channel
             .request()
-            .body(api::GetConfigRequest)
+            .body(api::GetPreferencesRequest)
             .on_packet(ctx.link().callback(Msg::ConfigLoaded))
             .send();
     }

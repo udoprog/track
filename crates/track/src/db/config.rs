@@ -1,4 +1,31 @@
-use api::{FilterRules, Locale, SourceSyncKinds};
+use api::{FilterRules, Locale, PreferenceValue, SourceSyncKinds};
+use sqll::{FromColumn, Statement, ty};
+
+/// A preference read from a `*_config` table: the row's JSON value, NULL when
+/// there is no row. No row, or a value that does not read, is the default.
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub(crate) struct Pref<T>(pub(crate) T);
+
+impl<T> FromColumn<'_> for Pref<T>
+where
+    T: PreferenceValue + Default,
+{
+    type Type = ty::Nullable<ty::Text>;
+
+    fn from_column(stmt: &Statement, index: Self::Type) -> sqll::Result<Self> {
+        let Some(json) = Option::<String>::from_column(stmt, index)? else {
+            return Ok(Self(T::default()));
+        };
+
+        match T::from_json(&json) {
+            Some(value) => Ok(Self(value)),
+            None => {
+                tracing::warn!(json, "Skipping unreadable preference value");
+                Ok(Self(T::default()))
+            }
+        }
+    }
+}
 
 /// Serialize a collection of filter rules (release or air-date) for storage in a text column.
 pub(super) fn encode_filter_rules(rules: &FilterRules) -> String {

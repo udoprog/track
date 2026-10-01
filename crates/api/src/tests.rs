@@ -761,3 +761,83 @@ fn remote_error_expires_by_kind() {
     assert!(!cache.has_expired_errors(after(2)));
     assert!(cache.has_expired_errors(after(25)));
 }
+
+#[test]
+fn preference_keys_round_trip() {
+    for key in PreferenceKey::ALL {
+        assert_eq!(key.as_str().parse::<PreferenceKey>(), Ok(*key));
+        assert!(key.allowed_in(PreferenceScope::User));
+    }
+
+    assert_eq!(PreferenceKey::DashboardPage.as_str(), "dashboard-page");
+    assert_eq!(
+        "dashboard_page".parse::<PreferenceKey>(),
+        Err(PreferenceError::UnknownKey)
+    );
+    assert!(PreferenceKey::Language.allowed_in(PreferenceScope::Movie));
+    assert!(PreferenceKey::IncludeSpecials.allowed_in(PreferenceScope::Show));
+    assert!(!PreferenceKey::IncludeSpecials.allowed_in(PreferenceScope::Movie));
+    assert!(!PreferenceKey::Theme.allowed_in(PreferenceScope::Show));
+}
+
+#[test]
+fn preferences_round_trip() {
+    assert!(Preferences::default().encode().is_empty());
+
+    let preferences = Preferences {
+        theme: ThemeType::System,
+        dashboard_page: 9,
+        dashboard_lookahead: Duration::from_hours(3),
+        schedule_weeks: 2,
+        schedule_range_days: 7,
+        timezone: "Europe/Stockholm".to_owned(),
+        language: Locale::from_iso("sv-SE").unwrap(),
+        include_specials: true,
+    };
+
+    let rows = preferences.encode();
+    assert_eq!(rows.len(), PreferenceKey::ALL.len());
+
+    let mut decoded = Preferences::default();
+
+    for (key, json) in &rows {
+        decoded.decode(key.as_str(), json).unwrap();
+    }
+
+    assert_eq!(decoded, preferences);
+
+    let mut decoded = Preferences::default();
+    assert_eq!(
+        decoded.decode("theme", "\"purple\""),
+        Err(PreferenceError::InvalidValue)
+    );
+    assert_eq!(
+        decoded.decode("nope", "1"),
+        Err(PreferenceError::UnknownKey)
+    );
+    assert_eq!(decoded, Preferences::default());
+}
+
+#[test]
+fn include_specials_preference_values() {
+    for value in [IncludeSpecials::Include, IncludeSpecials::Skip] {
+        assert_eq!(IncludeSpecials::from_json(&value.to_json()), Some(value));
+    }
+
+    assert_eq!(IncludeSpecials::from_json("1"), None);
+}
+
+#[test]
+fn viewer_languages_join_a_default_sync_language() {
+    let english = Locale::new(Language::ENG, Country::DEFAULT);
+    let swedish = Locale::from_iso("sv").unwrap();
+
+    assert_eq!(
+        sync_languages_for_viewers(&[Locale::DEFAULT, english], &[swedish]),
+        [Locale::DEFAULT, english, swedish]
+    );
+    assert_eq!(
+        sync_languages_for_viewers(&[english], &[swedish]),
+        [english]
+    );
+}

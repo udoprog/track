@@ -13,7 +13,7 @@ use musli_web::ws;
 use tokio::sync::broadcast;
 use tokio::time;
 
-use crate::app_broadcast::Broadcaster;
+use crate::app_broadcast::{Audience, Broadcaster};
 use crate::db::Database;
 use crate::db::users::{Conflict, UserRecord};
 use crate::identity::{Auth, AuthUser, Revoke};
@@ -117,7 +117,8 @@ impl From<Conflict> for Refused {
 fn requires_admin(id: api::Request) -> bool {
     matches!(
         id,
-        api::Request::SetConfig
+        api::Request::GetSystemConfig
+            | api::Request::SetSystemConfig
             | api::Request::RemoveShow
             | api::Request::RemoveMovie
             | api::Request::ListUsers
@@ -261,7 +262,7 @@ impl WsHandler {
         reason: &'static str,
     ) -> Result<()> {
         self.db
-            .person_by_id(person_id)
+            .person_by_id(None, person_id)
             .await?
             .context("Expected person to exist")?;
 
@@ -284,7 +285,7 @@ impl WsHandler {
     ) -> Result<()> {
         let person = self
             .db
-            .person_by_id(person_id)
+            .person_by_id(None, person_id)
             .await?
             .context("Expected person to exist")?;
 
@@ -303,22 +304,14 @@ impl WsHandler {
     /// The cutoff pending items are listed up to: now shifted forward by the
     /// configured dashboard lookahead, so items surface before they air.
     async fn pending_cutoff(&self) -> Result<api::Timestamp> {
-        let config = self.db.load_config().await?;
-        Ok(api::Timestamp::now().saturating_add(config.dashboard_lookahead))
+        let preferences = self.db.load_preferences(self.user.id).await?;
+        Ok(api::Timestamp::now().saturating_add(preferences.dashboard_lookahead))
     }
 
     /// Fill the current user's pending slot for a show they started tracking.
     async fn fill_my_pending(&self, show: &api::Show) -> Result<()> {
-        let config = self.db.load_config().await?;
-        let include_specials = show.effective_include_specials(config.include_specials);
-
         self.db
-            .fill_pending_for_user_show(
-                self.user.id,
-                show.id,
-                include_specials,
-                api::Timestamp::now(),
-            )
+            .fill_pending_for_user_show(self.user.id, show.id, api::Timestamp::now())
             .await
     }
 
@@ -402,8 +395,12 @@ impl WsHandler {
                     .context("Expected a request payload")?;
 
                 let credits = match req.owner {
-                    api::CreditOwner::Show(id) => self.db.list_show_credits(id).await?,
-                    api::CreditOwner::Movie(id) => self.db.list_movie_credits(id).await?,
+                    api::CreditOwner::Show(id) => {
+                        self.db.list_show_credits(self.user.id, id).await?
+                    }
+                    api::CreditOwner::Movie(id) => {
+                        self.db.list_movie_credits(self.user.id, id).await?
+                    }
                 };
 
                 outgoing.write(api::ListCreditsResponse { credits });
@@ -412,21 +409,21 @@ impl WsHandler {
                 incoming
                     .read::<api::ListPersonsRequest>()
                     .context("Expected a request payload")?;
-                let persons = self.db.list_persons().await?;
+                let persons = self.db.list_persons(self.user.id).await?;
                 outgoing.write(api::ListPersonsResponse { persons });
             }
             api::Request::GetPerson => {
                 let req = incoming
                     .read::<api::GetPersonRequest>()
                     .context("Expected a request payload")?;
-                let person = self.db.person_by_id(req.id).await?;
+                let person = self.db.person_by_id(Some(self.user.id), req.id).await?;
                 outgoing.write(person);
             }
             api::Request::ListPersonCredits => {
                 let req = incoming
                     .read::<api::ListPersonCreditsRequest>()
                     .context("Expected a request payload")?;
-                let credits = self.db.list_person_credits(req.id).await?;
+                let credits = self.db.list_person_credits(self.user.id, req.id).await?;
                 outgoing.write(api::ListPersonCreditsResponse { credits });
             }
             api::Request::AddPersonRemote => {
@@ -1252,7 +1249,7 @@ impl WsHandler {
 
                 let person = self
                     .db
-                    .person_by_id(req.id)
+                    .person_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected person to exist")?;
 
@@ -1700,7 +1697,9 @@ impl WsHandler {
                     .read::<api::SetShowLanguageRequest>()
                     .context("Expected a request payload")?;
 
-                self.db.set_show_language(req.id, req.language).await?;
+                self.db
+                    .set_show_language(self.user.id, req.id, req.language)
+                    .await?;
 
                 let show = self
                     .db
@@ -1708,7 +1707,8 @@ impl WsHandler {
                     .await?
                     .context("Expected show to exist")?;
 
-                self.broadcast.emit(
+                self.broadcast.emit_to(
+                    self.user.id,
                     incoming.channel(),
                     api::AppEventKind::ShowChanged { show: show.clone() },
                     "ws set show language changed",
@@ -1725,7 +1725,7 @@ impl WsHandler {
                     .context("Expected a request payload")?;
 
                 self.db
-                    .set_show_include_specials(req.id, req.include_specials)
+                    .set_show_include_specials(self.user.id, req.id, req.include_specials)
                     .await?;
 
                 let show = self
@@ -1734,7 +1734,8 @@ impl WsHandler {
                     .await?
                     .context("Expected show to exist")?;
 
-                self.broadcast.emit(
+                self.broadcast.emit_to(
+                    self.user.id,
                     incoming.channel(),
                     api::AppEventKind::ShowChanged { show: show.clone() },
                     "ws set show include specials changed",
@@ -1831,7 +1832,9 @@ impl WsHandler {
                     .read::<api::SetMovieLanguageRequest>()
                     .context("Expected a request payload")?;
 
-                self.db.set_movie_language(req.id, req.language).await?;
+                self.db
+                    .set_movie_language(self.user.id, req.id, req.language)
+                    .await?;
 
                 let movie = self
                     .db
@@ -1839,7 +1842,8 @@ impl WsHandler {
                     .await?
                     .context("Expected movie to exist")?;
 
-                self.broadcast.emit(
+                self.broadcast.emit_to(
+                    self.user.id,
                     incoming.channel(),
                     api::AppEventKind::MovieChanged {
                         movie: movie.clone(),
@@ -1932,14 +1936,44 @@ impl WsHandler {
 
                 outgoing.write(api::Empty);
             }
-            api::Request::GetConfig => {
+            api::Request::GetSystemConfig => {
                 let _req = incoming
-                    .read::<api::GetConfigRequest>()
+                    .read::<api::GetSystemConfigRequest>()
                     .context("Expected a request payload")?;
 
                 let config = self.db.load_config().await?;
 
-                outgoing.write(api::GetConfigResponse { config });
+                outgoing.write(api::GetSystemConfigResponse { config });
+            }
+            api::Request::GetPreferences => {
+                let _req = incoming
+                    .read::<api::GetPreferencesRequest>()
+                    .context("Expected a request payload")?;
+
+                let preferences = self.db.load_preferences(self.user.id).await?;
+                let site = self.db.load_config().await?.site();
+
+                outgoing.write(api::GetPreferencesResponse { preferences, site });
+            }
+            api::Request::SetPreferences => {
+                let req = incoming
+                    .read::<api::SetPreferencesRequest>()
+                    .context("Expected a request payload")?;
+
+                self.db
+                    .save_preferences(self.user.id, &req.preferences)
+                    .await?;
+
+                self.broadcast.emit_to(
+                    self.user.id,
+                    incoming.channel(),
+                    api::AppEventKind::PreferencesChanged {
+                        preferences: req.preferences,
+                    },
+                    "ws preferences changed",
+                );
+
+                outgoing.write(api::Empty);
             }
             api::Request::GetTopLanguages => {
                 let _req = incoming
@@ -1950,9 +1984,9 @@ impl WsHandler {
 
                 outgoing.write(api::GetTopLanguagesResponse { top_languages });
             }
-            api::Request::SetConfig => {
+            api::Request::SetSystemConfig => {
                 let req = incoming
-                    .read::<api::SetConfigRequest>()
+                    .read::<api::SetSystemConfigRequest>()
                     .context("Expected a request payload")?;
 
                 let prev = self.db.load_config().await?;
@@ -1963,13 +1997,22 @@ impl WsHandler {
 
                 self.config_changed.notify_one();
 
-                self.broadcast.emit(
+                self.broadcast.emit_to_admins(
                     incoming.channel(),
                     api::AppEventKind::ConfigChanged {
                         config: req.config.clone(),
                     },
-                    "ws config changed",
                 );
+
+                let site = req.config.site();
+
+                if prev.site() != site {
+                    self.broadcast.emit(
+                        incoming.channel(),
+                        api::AppEventKind::SiteConfigChanged { site },
+                        "ws site config changed",
+                    );
+                }
 
                 // The global air-date filters feed every show's effective dates;
                 // recompute when they change (per-show overrides use their own).
@@ -2490,6 +2533,17 @@ impl WsHandler {
 
 /// Rewrites the per-user parts of an event about shared data (tracked, pending,
 /// watched counts) for the user receiving it.
+/// Whether the user is an administrator now; a lookup failure counts as not.
+async fn is_admin(db: &Database, user: api::UserId) -> bool {
+    match db.user_by_id(user).await {
+        Ok(user) => user.is_some_and(|u| u.role == auth::UserRole::Admin),
+        Err(error) => {
+            tracing::error!("Looking up user {user}: {error:#}");
+            false
+        }
+    }
+}
+
 pub(crate) async fn personalize(
     db: &Database,
     user: api::UserId,
@@ -2497,10 +2551,14 @@ pub(crate) async fn personalize(
 ) -> Result<()> {
     match kind {
         api::AppEventKind::ShowCreated { show } | api::AppEventKind::ShowChanged { show } => {
-            show.tracked = db.is_show_tracked(user, show.id).await?;
+            if let Some(mine) = db.show_by_id(Some(user), show.id).await? {
+                *show = mine;
+            }
         }
         api::AppEventKind::MovieCreated { movie } | api::AppEventKind::MovieChanged { movie } => {
-            (movie.tracked, movie.pending) = db.movie_user_state(user, movie.id).await?;
+            if let Some(mine) = db.movie_by_id(Some(user), movie.id).await? {
+                *movie = mine;
+            }
         }
         api::AppEventKind::EpisodeChanged { episode } => {
             if let Some(mine) = db.episode_by_id(Some(user), episode.id).await? {
@@ -2560,7 +2618,10 @@ pub(super) async fn ws_handler(
                         Err(_) => break,
                     };
 
-                    if !msg.reaches(user.id) {
+                    let admin = msg.audience == Audience::Admins
+                        && is_admin(&state.db, user.id).await;
+
+                    if !msg.reaches(user.id, admin) {
                         continue;
                     }
 
