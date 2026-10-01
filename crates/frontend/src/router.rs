@@ -150,8 +150,8 @@ impl SortField {
 /// Tracked-state filter applied to a media list.
 #[derive(Default, Debug, Clone, Copy, PartialEq)]
 pub(super) enum TrackedFilter {
-    #[default]
     All,
+    #[default]
     Tracked,
     Untracked,
 }

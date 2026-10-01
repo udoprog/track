@@ -154,3 +154,35 @@ pub async fn reversing_keeps_the_cards(driver: &mut TestDriver, _: &mut Track) -
     );
     Ok(())
 }
+
+/// A fresh visit lists only what the user tracks; All shows the rest.
+pub async fn lists_tracked_items_by_default(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    driver
+        .find_one_by(".toolbar-item[title=Media]")
+        .await?
+        .click()
+        .await?;
+    driver.wait_texts(".media-title", ["Seeded Show"]).await?;
+
+    driver
+        .find_one_by("[title='Showing: Tracked']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .wait_texts(".media-title", ["Untracked Show"])
+        .await?;
+
+    driver
+        .find_one_by("[title='Showing: Untracked']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .wait_texts(".media-title", ["Seeded Show", "Untracked Show"])
+        .await?;
+
+    let url = driver.webdriver().current_url().await?;
+    ensure!(url.as_str().contains("tracked=all"), "the URL is {url}");
+    Ok(())
+}
