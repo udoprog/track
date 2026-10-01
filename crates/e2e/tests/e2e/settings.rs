@@ -2,6 +2,8 @@ use yew_e2e::prelude::*;
 
 use super::Track;
 
+const ENTER: &str = "\u{E007}";
+
 /// Switching the theme restyles the page without a reload, and System leaves
 /// the choice to the browser.
 pub async fn theme_applies_live(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
@@ -113,6 +115,51 @@ pub async fn switches_work_from_the_keyboard(driver: &mut TestDriver, _: &mut Tr
         .await
 }
 
+/// An administrator sets up Cloudflare Access, and the settings survive a
+/// reload.
+pub async fn configures_cloudflare_access(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_settings(driver).await?;
+
+    let enabled = "[role='switch'][title='Sign in through Access']";
+    driver.find_one_by(enabled).await?.click().await?;
+
+    let domain = driver.find_one_by("input[title='Team domain']").await?;
+    domain.send_keys("team.cloudflareaccess.com").await?;
+    domain.send_keys(ENTER).await?;
+
+    let audience = driver.find_one_by("input[title='Audience']").await?;
+    audience.send_keys("aud-tag").await?;
+    audience.send_keys(ENTER).await?;
+
+    driver
+        .wait_until("the switch to turn on", async || {
+            Ok(driver
+                .find_one_by(enabled)
+                .await?
+                .attr("aria-checked")
+                .await?
+                == "true")
+        })
+        .await?;
+
+    driver.reload().await?;
+
+    driver
+        .wait_until("the Access settings to come back", async || {
+            let domain = driver.find_one_by("input[title='Team domain']").await?;
+            let audience = driver.find_one_by("input[title='Audience']").await?;
+            let on = driver
+                .find_one_by(enabled)
+                .await?
+                .attr("aria-checked")
+                .await?;
+            Ok(domain.value().await? == "team.cloudflareaccess.com"
+                && audience.value().await? == "aud-tag"
+                && on == "true")
+        })
+        .await
+}
+
 /// Every setting is a labelled row, and across all sections the controls
 /// start on one line.
 pub async fn settings_are_labelled_rows(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
@@ -121,7 +168,14 @@ pub async fn settings_are_labelled_rows(driver: &mut TestDriver, _: &mut Track) 
     driver
         .wait_texts(
             ".settings h2",
-            ["Appearance", "Language", "Site", "Sync", "API keys"],
+            [
+                "Appearance",
+                "Language",
+                "Site",
+                "Sync",
+                "API keys",
+                "Cloudflare Access",
+            ],
         )
         .await?;
 

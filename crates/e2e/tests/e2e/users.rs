@@ -246,7 +246,7 @@ async fn hides_admin_pages(driver: &TestDriver) -> Result<()> {
         .await?;
     ensure!(
         driver
-            .count("input[title='Page title'], #tvdb-api-key")
+            .count("input[title='Page title'], #tvdb-api-key, input[title='Team domain']")
             .await?
             == 0,
         "a regular user sees the system settings"

@@ -59,6 +59,11 @@ pub(crate) enum Msg {
     ReleaseFiltersChanged(api::FilterRules),
     AirDateFiltersChanged(api::FilterRules),
     SyncKindsChanged(Vec<api::SourceSyncKinds>),
+    CloudflareEnabledToggle,
+    CloudflareTeamDomainChanged(String),
+    CloudflareAudienceChanged(String),
+    CloudflareVerifyJwtToggle,
+    CloudflareTrustEmailToggle,
     PreferencesSaved(Result<ws::Packet<api::SetPreferences>, ws::Error>),
     ConfigSaved(Result<ws::Packet<api::SetSystemConfig>, ws::Error>),
 }
@@ -173,7 +178,18 @@ impl Component for Settings {
             Msg::AutoSyncIntervalChanged(input.value())
         });
 
+        let on_cloudflare_team_domain = link.callback(|e: Event| {
+            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+            Msg::CloudflareTeamDomainChanged(input.value())
+        });
+
+        let on_cloudflare_audience = link.callback(|e: Event| {
+            let input: web_sys::HtmlInputElement = e.target_unchecked_into();
+            Msg::CloudflareAudienceChanged(input.value())
+        });
+
         let theme_val = self.preferences.theme.to_string();
+        let cloudflare = &self.config.cloudflare_access;
 
         let tz_valid = tz_is_valid(&self.preferences.timezone);
         let auto_sync = self.config.auto_sync_enabled;
@@ -392,6 +408,51 @@ impl Component for Settings {
                                 </FormRow>
                             </div>
                         </section>
+
+                        <section>
+                            <h2>{"Cloudflare Access"}</h2>
+
+                            <div class="form-rows">
+                                <FormRow label="Sign in through Access" hint="Signs in the existing user whose email Cloudflare Access reports. Users are never created.">
+                                    { system("", html! {
+                                        <Button class={classes!("input-checkbox", "has-text", cloudflare.enabled.then_some("checked"))} role="switch" checked={Some(cloudflare.enabled)} title="Sign in through Access" onclick={link.callback(|_| Msg::CloudflareEnabledToggle)}>
+                                            <span class="mark" />
+                                            <span>{if cloudflare.enabled { "Enabled" } else { "Disabled" }}</span>
+                                        </Button>
+                                    }) }
+                                </FormRow>
+
+                                <FormRow label="Team domain" hint="Your Zero Trust team's host.">
+                                    { system("", html! {
+                                        <input class="input-text fill" type="text" title="Team domain" placeholder="yourteam.cloudflareaccess.com" value={cloudflare.team_domain.clone()} onchange={on_cloudflare_team_domain} autocomplete="off" spellcheck="false" />
+                                    }) }
+                                </FormRow>
+
+                                <FormRow label="Audience" hint="The Access application's AUD tag.">
+                                    { system("", html! {
+                                        <input class="input-text fill" type="text" title="Audience" value={cloudflare.audience.clone()} onchange={on_cloudflare_audience} autocomplete="off" spellcheck="false" />
+                                    }) }
+                                </FormRow>
+
+                                <FormRow label="Verify token" hint="Checks the signed Access token against your team's keys. Keep this on unless the server is only reachable through Cloudflare.">
+                                    { system("", html! {
+                                        <Button class={classes!("input-checkbox", "has-text", cloudflare.verify_jwt.then_some("checked"))} role="switch" checked={Some(cloudflare.verify_jwt)} title="Verify token" onclick={link.callback(|_| Msg::CloudflareVerifyJwtToggle)}>
+                                            <span class="mark" />
+                                            <span>{if cloudflare.verify_jwt { "Enabled" } else { "Disabled" }}</span>
+                                        </Button>
+                                    }) }
+                                </FormRow>
+
+                                <FormRow label="Trust email header" hint="Accepts the email header Access adds. With token verification on, the two must match.">
+                                    { system("", html! {
+                                        <Button class={classes!("input-checkbox", "has-text", cloudflare.trust_email_header.then_some("checked"))} role="switch" checked={Some(cloudflare.trust_email_header)} title="Trust email header" onclick={link.callback(|_| Msg::CloudflareTrustEmailToggle)}>
+                                            <span class="mark" />
+                                            <span>{if cloudflare.trust_email_header { "Enabled" } else { "Disabled" }}</span>
+                                        </Button>
+                                    }) }
+                                </FormRow>
+                            </div>
+                        </section>
                     }
                 </div>
             </>
@@ -550,6 +611,34 @@ impl Settings {
             }
             Msg::SyncKindsChanged(kinds) => {
                 self.config.sync_kinds = kinds;
+                self.save_config(ctx);
+                Ok(true)
+            }
+            Msg::CloudflareEnabledToggle => {
+                let access = &mut self.config.cloudflare_access;
+                access.enabled = !access.enabled;
+                self.save_config(ctx);
+                Ok(true)
+            }
+            Msg::CloudflareTeamDomainChanged(value) => {
+                self.config.cloudflare_access.team_domain = value.trim().to_owned();
+                self.save_config(ctx);
+                Ok(true)
+            }
+            Msg::CloudflareAudienceChanged(value) => {
+                self.config.cloudflare_access.audience = value.trim().to_owned();
+                self.save_config(ctx);
+                Ok(true)
+            }
+            Msg::CloudflareVerifyJwtToggle => {
+                let access = &mut self.config.cloudflare_access;
+                access.verify_jwt = !access.verify_jwt;
+                self.save_config(ctx);
+                Ok(true)
+            }
+            Msg::CloudflareTrustEmailToggle => {
+                let access = &mut self.config.cloudflare_access;
+                access.trust_email_header = !access.trust_email_header;
                 self.save_config(ctx);
                 Ok(true)
             }
