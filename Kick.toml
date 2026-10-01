@@ -1,7 +1,7 @@
-[deploy]
+[build]
 binary = "track"
 pre_build = ["trunk build --release"]
-build_features = ["bundle"]
+features = ["bundle"]
 
 # The host is left to the command line: `kick deploy --to remote --host moore`.
 [deploy.profiles.remote]
