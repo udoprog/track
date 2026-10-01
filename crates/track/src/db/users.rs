@@ -93,6 +93,12 @@ impl LoginTokenRow {
     }
 }
 
+#[derive(Row)]
+pub(crate) struct PendingLoginLink {
+    pub(crate) user_id: UserId,
+    pub(crate) expires_at: Timestamp,
+}
+
 #[derive(Statements)]
 #[sql(read_only)]
 pub(super) struct Read {
@@ -113,6 +119,9 @@ pub(super) struct Read {
     // Root, or the first administrator if root was renamed.
     #[sql = "SELECT id FROM users WHERE role = 'admin' ORDER BY login <> 'root', id LIMIT 1"]
     default_owner: TypedStatement<(), UserId>,
+    #[sql = "SELECT user_id, MAX(expires_at) AS expires_at FROM login_tokens"]
+    #[sql = "WHERE used_at IS NULL AND expires_at > ? GROUP BY user_id"]
+    pending_login_links: TypedStatement<(Timestamp,), PendingLoginLink>,
 }
 
 impl Read {
@@ -208,6 +217,28 @@ impl Database {
 
             while let Some(row) = stmt.next()? {
                 out.push(row.into_record()?);
+            }
+
+            Ok(out)
+        });
+
+        result.await?
+    }
+
+    /// Each user's unused login link that has not expired at `now`.
+    #[tracing::instrument(skip(self))]
+    pub(crate) async fn pending_login_links(
+        &self,
+        now: Timestamp,
+    ) -> Result<Vec<PendingLoginLink>> {
+        let mut s = self.inner.clone().shared().await?;
+
+        let result = spawn_blocking(move || {
+            let mut out = Vec::new();
+            let mut stmt = s.users.pending_login_links.bind((now,))?;
+
+            while let Some(row) = stmt.next()? {
+                out.push(row);
             }
 
             Ok(out)

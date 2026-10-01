@@ -580,6 +580,7 @@ pub(super) enum Route {
     PersonDetail(api::PersonId),
     Search(SearchQuery),
     Settings,
+    Users,
     Account,
 }
 
@@ -656,6 +657,7 @@ impl fmt::Display for Route {
                 }
             }
             Route::Settings => f.write_str("/settings"),
+            Route::Users => f.write_str("/users"),
             Route::Account => f.write_str("/account"),
         }
     }
@@ -700,6 +702,7 @@ impl Route {
             },
             Some("search") => Route::Search(SearchQuery::from_search(search)),
             Some("settings") => Route::Settings,
+            Some("users") => Route::Users,
             Some("account") => Route::Account,
             _ => Route::Dashboard(DashboardQuery::from_search(search)),
         }

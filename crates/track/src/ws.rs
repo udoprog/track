@@ -2319,7 +2319,19 @@ impl WsHandler {
 
                 let users = self.db.list_users().await?;
                 let users = users.iter().map(UserRecord::to_api).collect();
-                outgoing.write(api::ListUsersResponse { users });
+
+                let login_links = self
+                    .db
+                    .pending_login_links(api::Timestamp::now())
+                    .await?
+                    .into_iter()
+                    .map(|link| api::LoginLink {
+                        user_id: link.user_id,
+                        expires_at: link.expires_at,
+                    })
+                    .collect();
+
+                outgoing.write(api::ListUsersResponse { users, login_links });
             }
             api::Request::CreateUser => {
                 let req = incoming

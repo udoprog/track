@@ -3236,6 +3236,16 @@ pub struct ListUsersRequest;
 #[musli(crate = musli_core)]
 pub struct ListUsersResponse {
     pub users: Vec<User>,
+    /// The users with an unused, unexpired login link.
+    pub login_links: Vec<LoginLink>,
+}
+
+/// A user's pending login link; its token is only shown when it is generated.
+#[derive(Debug, Clone, PartialEq, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct LoginLink {
+    pub user_id: UserId,
+    pub expires_at: Timestamp,
 }
 
 #[derive(Debug, Encode, Decode)]

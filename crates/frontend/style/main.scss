@@ -901,6 +901,142 @@ a.search-title:hover {
     justify-content: flex-end;
 }
 
+// Users in aligned columns: login, email, role, login link and actions. A
+// login link just generated and the last action's outcome span the row.
+// Phones stack each user as a card.
+.users-page {
+    max-width: none;
+}
+
+.user-rows {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr) max-content max-content max-content;
+    column-gap: v.$gap;
+
+    @include g.on-mobile {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+}
+
+.user-row {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    align-items: center;
+    row-gap: v.$padding-md;
+    padding-block: v.$gap-sm;
+
+    &+.user-row {
+        border-top: 1px solid v.$border-subtle-transparent;
+    }
+
+    @include g.on-mobile {
+        grid-template-areas:
+            "login role"
+            "email email"
+            "link link"
+            "actions actions";
+
+        >.user-login {
+            grid-area: login;
+        }
+
+        >.user-email {
+            grid-area: email;
+        }
+
+        >.user-role-cell {
+            grid-area: role;
+        }
+
+        >.user-link-cell {
+            grid-area: link;
+        }
+
+        >.user-actions {
+            grid-area: actions;
+        }
+    }
+}
+
+.user-head {
+    padding-block: 0 v.$padding-md;
+    color: v.$text-muted;
+    font-size: v.$font-sm;
+
+    @include g.on-mobile {
+        display: none;
+
+        &+.user-row {
+            border-top: none;
+        }
+    }
+}
+
+.user-login {
+    display: flex;
+    align-items: baseline;
+    gap: v.$padding-md;
+}
+
+.user-name {
+    font-weight: v.$bold-weight;
+}
+
+.user-you {
+    color: v.$text-muted;
+    font-size: v.$font-xs;
+}
+
+.user-email {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    &.muted {
+        color: v.$text-muted;
+    }
+}
+
+.user-link {
+    font-size: v.$font-sm;
+
+    &.muted {
+        color: v.$text-muted;
+    }
+
+    * {
+        color: inherit;
+    }
+}
+
+.user-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: v.$gap-xs;
+}
+
+.user-confirm {
+    font-size: v.$font-sm;
+}
+
+.user-new-link,
+.user-status {
+    grid-column: 1 / -1;
+}
+
+.user-new-link {
+    display: flex;
+    flex-direction: column;
+    gap: v.$gap-xs;
+    max-width: 640px;
+}
+
+.user-skeleton {
+    height: 160px;
+}
+
 // Settings as rows (`ui::FormRow`): labels share one column beside their
 // controls, and stack above them on phones.
 .form-rows {

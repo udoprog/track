@@ -360,6 +360,10 @@ async fn login_token_is_single_use() -> Result<()> {
     // A newer link replaces the unused one.
     db.create_login_token("second", alice, expires).await?;
 
+    let pending = db.pending_login_links(Timestamp::now()).await?;
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].user_id, alice);
+
     let first = server.get("/api/register/first", HeaderMap::new()).await?;
     assert_eq!(first.status, StatusCode::NOT_FOUND);
 
@@ -401,6 +405,8 @@ async fn login_token_is_single_use() -> Result<()> {
         StatusCode::GONE
     );
 
+    assert!(db.pending_login_links(Timestamp::now()).await?.is_empty());
+
     server.login("alice", "new password").await?;
     Ok(())
 }
@@ -417,6 +423,15 @@ async fn login_token_expires() -> Result<()> {
         .db
         .create_login_token("old", alice, expired)
         .await?;
+
+    assert!(
+        server
+            .state
+            .db
+            .pending_login_links(Timestamp::now())
+            .await?
+            .is_empty()
+    );
 
     let info = server.get("/api/register/old", HeaderMap::new()).await?;
     assert_eq!(info.status, StatusCode::GONE);

@@ -18,6 +18,7 @@ mod schedule_range;
 mod search;
 mod settings;
 mod show_detail;
+mod users;
 mod watch_next;
 
 pub(crate) use self::account::Account;
@@ -34,4 +35,5 @@ pub(crate) use self::schedule_range::ScheduleRange;
 pub(crate) use self::search::Search;
 pub(crate) use self::settings::Settings;
 pub(crate) use self::show_detail::ShowDetail;
+pub(crate) use self::users::Users;
 pub(crate) use self::watch_next::WatchNext;

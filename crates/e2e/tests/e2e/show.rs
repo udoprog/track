@@ -261,7 +261,7 @@ pub async fn settings_line_up_their_controls(driver: &mut TestDriver, _: &mut Tr
 }
 
 /// The title of whatever has focus.
-async fn focused_title(driver: &TestDriver) -> Result<String> {
+pub(super) async fn focused_title(driver: &TestDriver) -> Result<String> {
     let ret = driver
         .webdriver()
         .execute("return document.activeElement.title;", Vec::new())

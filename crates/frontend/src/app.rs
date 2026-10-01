@@ -11,7 +11,7 @@ use crate::error::{CustomContext, Error, Message, RcError};
 use crate::http::{self, HttpError};
 use crate::page::{
     Account, Dashboard, MediaList, MovieDetail, PersonDetail, PersonList, Queue, Search, Settings,
-    ShowDetail,
+    ShowDetail, Users,
 };
 use crate::router::{
     DashboardQuery, MediaQuery, PersonQuery, QueueQuery, Route, Router, RouterState, SearchQuery,
@@ -205,7 +205,7 @@ impl Component for App {
                             </div>
                         }
 
-                        <Toolbar site_title={self.site_title.clone()} connected={self.ws_state.is_open()} section={Section::of(&self.router_state.route)} login={ctx.props().user.login.clone()} />
+                        <Toolbar site_title={self.site_title.clone()} connected={self.ws_state.is_open()} section={Section::of(&self.router_state.route)} login={ctx.props().user.login.clone()} admin={ctx.props().user.role == api::UserRole::Admin} />
 
                         <main id="content">
                             <div id="page">
@@ -521,6 +521,20 @@ impl App {
                 <Search selection={q.selection} filter={q.filter.clone()} />
             },
             Route::Settings => html! { <Settings /> },
+            Route::Users => {
+                let user = &ctx.props().user;
+
+                if user.role == api::UserRole::Admin {
+                    html! { <Users me={user.id} /> }
+                } else {
+                    html! {
+                        <>
+                            <h1>{"Users"}</h1>
+                            <p>{"Only administrators can manage users."}</p>
+                        </>
+                    }
+                }
+            }
             Route::Account => {
                 let props = ctx.props();
 
@@ -541,6 +555,7 @@ enum Section {
     Search,
     Queue,
     Settings,
+    Users,
     Account,
 }
 
@@ -553,6 +568,7 @@ impl Section {
             Route::Search(..) => Section::Search,
             Route::Queue(..) => Section::Queue,
             Route::Settings => Section::Settings,
+            Route::Users => Section::Users,
             Route::Account => Section::Account,
         }
     }
@@ -566,6 +582,9 @@ struct ToolbarProps {
     section: Section,
     /// The signed-in user's login, naming the account link.
     login: AttrValue,
+    /// Whether the signed-in user is an administrator, who alone sees the
+    /// settings and users.
+    admin: bool,
 }
 
 #[function_component]
@@ -627,10 +646,17 @@ fn Toolbar(props: &ToolbarProps) -> Html {
                     <span>{"Queue"}</span>
                 </Link>
 
-                <Link to={Route::Settings} class={classes!("toolbar-item", "has-text", (props.section == Section::Settings).then_some("active"))} title="Settings" current={props.section == Section::Settings} onclick={close_menu.clone()}>
-                    <span class="icon cog-6-tooth" aria-hidden="true" />
-                    <span>{"Settings"}</span>
-                </Link>
+                if props.admin {
+                    <Link to={Route::Settings} class={classes!("toolbar-item", "has-text", (props.section == Section::Settings).then_some("active"))} title="Settings" current={props.section == Section::Settings} onclick={close_menu.clone()}>
+                        <span class="icon cog-6-tooth" aria-hidden="true" />
+                        <span>{"Settings"}</span>
+                    </Link>
+
+                    <Link to={Route::Users} class={classes!("toolbar-item", "has-text", (props.section == Section::Users).then_some("active"))} title="Users" current={props.section == Section::Users} onclick={close_menu.clone()}>
+                        <span class="icon user-group" aria-hidden="true" />
+                        <span>{"Users"}</span>
+                    </Link>
+                }
 
                 <Link to={Route::Account} class={classes!("toolbar-item", "has-text", (props.section == Section::Account).then_some("active"))} title="Account" current={props.section == Section::Account} onclick={close_menu.clone()}>
                     <span class="icon user-circle" aria-hidden="true" />
