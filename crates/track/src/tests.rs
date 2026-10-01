@@ -478,26 +478,147 @@ async fn cloudflare_matches_email_only() -> Result<()> {
         headers
     };
 
-    let me = server
-        .get("/api/auth/me", email("Alice@Example.com"))
+    let available = server
+        .get("/api/auth/cloudflare", email("Alice@Example.com"))
         .await?;
-    assert_eq!(me.status, StatusCode::OK);
-    assert_eq!(me.body.unwrap()["login"], "alice");
+    assert_eq!(available.body, Some(json!(true)));
+    assert!(available.cookie.is_none());
+    assert_eq!(
+        server
+            .get("/api/auth/me", email("alice@example.com"))
+            .await?
+            .status,
+        StatusCode::UNAUTHORIZED
+    );
+    let mut upgrade = upgrade_headers();
+    upgrade.extend(email("alice@example.com"));
+    assert_eq!(
+        server.get("/ws", upgrade).await?.status,
+        StatusCode::UNAUTHORIZED
+    );
 
-    // A login name is not an email, and unknown emails create no user.
-    for unknown in ["root", "alice", "carol@example.com"] {
-        let me = server.get("/api/auth/me", email(unknown)).await?;
-        assert_eq!(me.status, StatusCode::UNAUTHORIZED, "{unknown}");
+    for headers in [
+        HeaderMap::new(),
+        email("root"),
+        email("alice"),
+        email("carol@example.com"),
+    ] {
+        let available = server.get("/api/auth/cloudflare", headers.clone()).await?;
+        assert_eq!(available.body, Some(json!(false)));
+        let login = Response::from(
+            server
+                .client
+                .post(format!("{}/api/auth/cloudflare", server.url))
+                .headers(headers)
+                .send()
+                .await?,
+        )
+        .await?;
+        assert_eq!(login.status, StatusCode::UNAUTHORIZED);
+        assert!(login.cookie.is_none());
     }
 
-    assert_eq!(server.state.db.list_users().await?.len(), 2);
+    let login = Response::from(
+        server
+            .client
+            .post(format!("{}/api/auth/cloudflare", server.url))
+            .headers(email("Alice@Example.com"))
+            .send()
+            .await?,
+    )
+    .await?;
+    assert_eq!(login.status, StatusCode::OK);
+    assert_eq!(login.body.unwrap()["login"], "alice");
+    let cookie = login.cookie.expect("Cloudflare sign-in creates a session");
+    assert_eq!(server.me(&cookie).await?.body.unwrap()["login"], "alice");
+    let mut upgrade = upgrade_headers();
+    upgrade.extend(cookie_header(&cookie));
+    assert_eq!(
+        server.get("/ws", upgrade).await?.status,
+        StatusCode::SWITCHING_PROTOCOLS
+    );
 
-    let ws = server.get("/ws", {
-        let mut headers = upgrade_headers();
-        headers.extend(email("alice@example.com"));
-        headers
-    });
-    assert_eq!(ws.await?.status, StatusCode::SWITCHING_PROTOCOLS);
+    let root = server.login("root", "root").await?;
+    let mut headers = email("alice@example.com");
+    headers.extend(cookie_header(&root));
+    assert_eq!(
+        server.get("/api/auth/me", headers).await?.body.unwrap()["login"],
+        "root"
+    );
+
+    let mut headers = email("alice@example.com");
+    headers.extend(cookie_header(&cookie));
+    let logout = server
+        .client
+        .post(format!("{}/api/auth/logout", server.url))
+        .headers(headers.clone())
+        .send()
+        .await?;
+    assert_eq!(logout.status(), StatusCode::NO_CONTENT);
+    assert_eq!(
+        server.get("/api/auth/me", headers).await?.status,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        server
+            .get("/api/auth/cloudflare", email("alice@example.com"))
+            .await?
+            .body,
+        Some(json!(true))
+    );
+    assert_eq!(server.state.db.list_users().await?.len(), 2);
+    Ok(())
+}
+
+#[tokio::test]
+async fn cloudflare_rejects_disabled_and_invalid_credentials() -> Result<()> {
+    for enabled in [false, true] {
+        let server = Server::start(api::Config {
+            cloudflare_access: api::CloudflareAccess {
+                enabled,
+                team_domain: "example.cloudflareaccess.com".to_owned(),
+                audience: "aud".to_owned(),
+                trust_email_header: true,
+                verify_jwt: true,
+            },
+            ..api::Config::default()
+        })
+        .await?;
+        server
+            .create_user("alice", Some("alice@example.com"))
+            .await?;
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            auth::cloudflare::EMAIL_HEADER,
+            HeaderValue::from_static("alice@example.com"),
+        );
+        headers.insert(
+            auth::cloudflare::JWT_HEADER,
+            HeaderValue::from_static("a.b.c"),
+        );
+        assert_eq!(
+            server
+                .get("/api/auth/cloudflare", headers.clone())
+                .await?
+                .body,
+            Some(json!(false))
+        );
+        let response = Response::from(
+            server
+                .client
+                .post(format!("{}/api/auth/cloudflare", server.url))
+                .headers(headers.clone())
+                .send()
+                .await?,
+        )
+        .await?;
+        assert_eq!(response.status, StatusCode::UNAUTHORIZED);
+        assert!(response.cookie.is_none());
+        assert_eq!(
+            server.get("/api/auth/me", headers).await?.status,
+            StatusCode::UNAUTHORIZED
+        );
+    }
     Ok(())
 }
 
@@ -515,15 +636,15 @@ async fn access_failures_are_logged() -> Result<()> {
     // Disabled: the credentials are ignored, and the log says so.
     let server = Server::start(api::Config::default()).await?;
 
-    let me = server.get("/api/auth/me", HeaderMap::new()).await?;
-    assert_eq!(me.status, StatusCode::UNAUTHORIZED);
+    let me = server.get("/api/auth/cloudflare", HeaderMap::new()).await?;
+    assert_eq!(me.body, Some(json!(false)));
     assert!(server.state.auth.warnings().is_empty());
 
     for _ in 0..2 {
         let me = server
-            .get("/api/auth/me", cookie("CF_Authorization=a.b.c"))
+            .get("/api/auth/cloudflare", cookie("CF_Authorization=a.b.c"))
             .await?;
-        assert_eq!(me.status, StatusCode::UNAUTHORIZED);
+        assert_eq!(me.body, Some(json!(false)));
     }
 
     let warnings = server.state.auth.warnings();
@@ -548,7 +669,7 @@ async fn access_failures_are_logged() -> Result<()> {
         auth::cloudflare::EMAIL_HEADER,
         HeaderValue::from_static("carol@example.com"),
     );
-    server.get("/api/auth/me", headers).await?;
+    server.get("/api/auth/cloudflare", headers).await?;
     assert!(
         server
             .state
@@ -572,7 +693,7 @@ async fn access_failures_are_logged() -> Result<()> {
     })
     .await?;
     server
-        .get("/api/auth/me", cookie("CF_Authorization=a.b.c"))
+        .get("/api/auth/cloudflare", cookie("CF_Authorization=a.b.c"))
         .await?;
     assert!(
         server

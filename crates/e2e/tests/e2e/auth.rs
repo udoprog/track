@@ -6,6 +6,83 @@ use super::{LOGIN_LINK, Track};
 
 const ENTER: &str = "\u{E007}";
 
+pub async fn cloudflare_requires_a_click(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    let selector = "button[title='Login using Cloudflare']";
+    driver.find_one_by(selector).await?;
+    for (width, name) in [(1280, "cloudflare-wide"), (390, "cloudflare-phone")] {
+        driver.set_window_size(width, 900).await?;
+        driver.find_one_by(selector).await?;
+        driver.snapshot(name).await?;
+        let fits = driver
+            .webdriver()
+            .execute(
+                "return document.documentElement.scrollWidth <= window.innerWidth;",
+                Vec::new(),
+            )
+            .await?;
+        ensure!(fits.convert::<bool>()?, "sign-in overflows at {width}px");
+    }
+    driver.set_window_size(1280, 900).await?;
+    ensure!(
+        driver.count("#toolbar").await? == 0,
+        "Cloudflare signed in automatically"
+    );
+    driver.reload().await?;
+    driver.find_one_by(selector).await?;
+    driver.find_one_by("input[title='Password']").await?;
+    driver.find_one_by(selector).await?.click().await?;
+    driver
+        .wait_texts(".toolbar-item[title=Account]", ["root"])
+        .await?;
+    driver.reload().await?;
+    driver
+        .wait_texts(".toolbar-item[title=Account]", ["root"])
+        .await?;
+    open_account(driver).await?;
+    driver
+        .find_one_by("[title='Sign out']")
+        .await?
+        .click()
+        .await?;
+    driver.find_one_by(selector).await?;
+    driver.reload().await?;
+    driver.find_one_by(selector).await?;
+    ensure!(
+        driver.count("#toolbar").await? == 0,
+        "Cloudflare signed in after logout"
+    );
+    fill_sign_in(driver, "root", "wrong").await?;
+    driver
+        .wait_texts(".auth-card .field-error", ["Wrong login or password."])
+        .await?;
+    ensure!(
+        driver.count("#toolbar").await? == 0,
+        "Enter selected Cloudflare instead of password sign-in"
+    );
+    sign_in(driver, "root", "root").await?;
+    Ok(())
+}
+
+pub async fn cloudflare_is_unavailable(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    driver.find_one_by("input[title='Login or email']").await?;
+    let available = driver.webdriver().execute_async(
+        "const done = arguments[arguments.length - 1]; fetch('/api/auth/cloudflare').then(r => r.json()).then(done);",
+        Vec::new(),
+    ).await?;
+    ensure!(
+        !available.convert::<bool>()?,
+        "Cloudflare unexpectedly available"
+    );
+    ensure!(
+        driver
+            .count("button[title='Login using Cloudflare']")
+            .await?
+            == 0,
+        "unavailable Cloudflare button shown"
+    );
+    Ok(())
+}
+
 /// Signing in from the keyboard with a login name and password opens the app,
 /// with the account named in the app bar.
 pub async fn signs_in(driver: &mut TestDriver, _: &mut Track) -> Result<()> {

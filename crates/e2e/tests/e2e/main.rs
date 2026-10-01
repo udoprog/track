@@ -70,6 +70,8 @@ struct Setup {
     graphics: bool,
     /// Start at the sign-in page instead of signed in as `root`.
     signed_out: bool,
+    /// Supply trusted Cloudflare credentials on a scratch server.
+    cloudflare: bool,
     /// A regular user without a password, `alice`, with the unused login link
     /// [`LOGIN_LINK`].
     login_link: bool,
@@ -124,7 +126,7 @@ impl Fixture for Track {
             || setup.untracked
             || setup.graphics;
 
-        if seeded || setup.login_link {
+        if seeded || setup.login_link || setup.cloudflare {
             // The server creates the schema; the seed goes in while it is down.
             Server::start(dir.path(), yew_e2e::dist()?)
                 .await?
@@ -161,12 +163,26 @@ impl Fixture for Track {
                 c.execute(GRAPHICS).context("adding the graphics")?;
             }
 
+            if setup.cloudflare {
+                c.execute(
+                    "UPDATE users SET email = 'root@example.com' WHERE login = 'root';
+                    INSERT OR REPLACE INTO config (key, value) VALUES
+                    ('cloudflare_access_enabled', 'true'),
+                    ('cloudflare_team_domain', 'example.cloudflareaccess.com'),
+                    ('cloudflare_audience', 'aud'),
+                    ('cloudflare_trust_email_header', 'true'),
+                    ('cloudflare_verify_jwt', 'false');",
+                )?;
+            }
+
             if setup.login_link {
                 c.execute(LOGIN_LINK_SQL).context("adding the login link")?;
             }
         }
 
-        let dist = if setup.signed_out {
+        let dist = if setup.cloudflare {
+            cloudflare_dist()?
+        } else if setup.signed_out {
             yew_e2e::dist()?
         } else {
             signed_in_dist()?
@@ -217,8 +233,41 @@ fn signed_in_dist() -> Result<&'static Path> {
         return Ok(dist);
     }
 
+    let script = "<head><script>(() => {
+        const me = new XMLHttpRequest();
+        me.open('GET', '/api/auth/me', false);
+        me.send();
+        if (me.status !== 401) return;
+        const login = new XMLHttpRequest();
+        login.open('POST', '/api/auth/login', false);
+        login.setRequestHeader('Content-Type', 'application/json');
+        login.send(JSON.stringify({ login: 'root', password: 'root' }));
+    })();</script>";
+
+    let dist = scripted_dist("e2e-signed-in-dist", script)?;
+    Ok(DIST.get_or_init(|| dist))
+}
+
+fn cloudflare_dist() -> Result<&'static Path> {
+    static DIST: OnceLock<PathBuf> = OnceLock::new();
+    if let Some(dist) = DIST.get() {
+        return Ok(dist);
+    }
+    let script = "<head><script>(() => {
+        const fetch = window.fetch.bind(window);
+        window.fetch = (input, init) => {
+            const request = new Request(input, init);
+            request.headers.set('cf-access-authenticated-user-email', 'root@example.com');
+            return fetch(request);
+        };
+    })();</script>";
+    let dist = scripted_dist("e2e-cloudflare-dist", script)?;
+    Ok(DIST.get_or_init(|| dist))
+}
+
+fn scripted_dist(name: &str, script: &str) -> Result<PathBuf> {
     let built = yew_e2e::dist()?;
-    let dist = yew_e2e::target_dir()?.join("e2e-signed-in-dist");
+    let dist = yew_e2e::target_dir()?.join(name);
 
     if dist.exists() {
         std::fs::remove_dir_all(&dist)?;
@@ -235,20 +284,9 @@ fn signed_in_dist() -> Result<&'static Path> {
     }
 
     let index = std::fs::read_to_string(built.join("index.html"))?;
-    let script = "<head><script>(() => {
-        const me = new XMLHttpRequest();
-        me.open('GET', '/api/auth/me', false);
-        me.send();
-        if (me.status !== 401) return;
-        const login = new XMLHttpRequest();
-        login.open('POST', '/api/auth/login', false);
-        login.setRequestHeader('Content-Type', 'application/json');
-        login.send(JSON.stringify({ login: 'root', password: 'root' }));
-    })();</script>";
-
     ensure!(index.contains("<head>"), "index.html has no <head>");
     std::fs::write(dist.join("index.html"), index.replacen("<head>", script, 1))?;
-    Ok(DIST.get_or_init(|| dist))
+    Ok(dist)
 }
 
 impl Server {
@@ -312,7 +350,7 @@ async fn kept_marked(driver: &TestDriver, selector: &str) -> Result<usize> {
 
 yew_e2e::harness! {
     Track;
-    auth::{signs_in(signed_out), rejects_a_wrong_password(signed_out), signs_out(signed_out), registers_with_a_login_link(signed_out, login_link), changes_the_password(signed_out), changes_the_login},
+    auth::{cloudflare_requires_a_click(cloudflare), cloudflare_is_unavailable(signed_out), signs_in(signed_out), rejects_a_wrong_password(signed_out), signs_out(signed_out), registers_with_a_login_link(signed_out, login_link), changes_the_password(signed_out), changes_the_login},
     dashboard::{fills_rows_with_relative_dates(seeded), labels_its_filters, keeps_view_options_in_a_menu, buttons_expose_their_state, secondary_actions_are_filled(seeded), mobile_cards_always_have_a_picture(seeded), schedule_names_its_days, upcoming_is_an_agenda, upcoming_times_open_their_episode(upcoming), upcoming_keeps_days_when_more_are_shown(upcoming), schedule_keeps_weeks_when_more_are_shown(upcoming), schedule_entries_sit_flush_left(upcoming), marks_watched_in_one_click(seeded), marks_watched_at_a_chosen_time(seeded)},
     media::{shows_a_poster_grid(seeded), partly_watched_shows_are_marked(seeded), toggle_marks_are_icon_sized, sort_stays_readable_at_tablet_width, reversing_keeps_the_cards(crowded), lists_tracked_items_by_default(untracked)},
     movie::{puts_the_cast_beside_the_poster(movie), phone_release_line_stays_together(movie)},

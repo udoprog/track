@@ -99,6 +99,40 @@ pub(crate) async fn login(
         .into_response())
 }
 
+pub(crate) async fn cloudflare_available(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<bool>, Error> {
+    Ok(Json(
+        state
+            .auth
+            .cloudflare_user(&state.db, &headers)
+            .await?
+            .is_some(),
+    ))
+}
+
+pub(crate) async fn cloudflare_login(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Response, Error> {
+    let user = state
+        .auth
+        .cloudflare_user(&state.db, &headers)
+        .await?
+        .ok_or(Error::Unauthorized)?;
+    let session_id = auth::new_session_id();
+    state
+        .db
+        .create_session(&session_id, user.id, Timestamp::now())
+        .await?;
+    Ok((
+        [(header::SET_COOKIE, state.auth.set_cookie(&session_id))],
+        Json(user.to_api()),
+    )
+        .into_response())
+}
+
 pub(crate) async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Response {
     if let Some(session_id) = state.auth.session_id(&headers) {
         if let Err(error) = state.db.delete_session(&session_id).await {

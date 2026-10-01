@@ -38,6 +38,10 @@ pub(crate) fn router(state: AppState, dist: Option<&Path>) -> Router {
     let app = Router::new()
         .route("/ws", get(crate::ws::ws_handler))
         .route("/api/auth/login", post(crate::http::login))
+        .route(
+            "/api/auth/cloudflare",
+            get(crate::http::cloudflare_available).post(crate::http::cloudflare_login),
+        )
         .route("/api/auth/logout", post(crate::http::logout))
         .route("/api/auth/me", get(crate::http::me))
         .route(

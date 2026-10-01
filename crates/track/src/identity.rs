@@ -1,4 +1,4 @@
-//! Who is making a request: a signed session cookie, or Cloudflare Access.
+//! Session authentication and Cloudflare Access sign-in eligibility.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -23,7 +23,7 @@ pub(crate) const SESSION_COOKIE: &str = "track_session";
 #[derive(Debug, Clone)]
 pub(crate) struct AuthUser {
     pub(crate) id: UserId,
-    /// The session this user signed in with, absent under Cloudflare Access.
+    /// The session this user signed in with.
     pub(crate) session: Option<String>,
 }
 
@@ -116,8 +116,7 @@ impl Auth {
         });
     }
 
-    /// Identifies the user of a request: a valid session cookie first, then
-    /// Cloudflare Access, which only signs in an existing user by email.
+    /// Identifies the user of a request by its session cookie.
     pub(crate) async fn authenticate(
         &self,
         db: &Database,
@@ -132,6 +131,14 @@ impl Auth {
             }));
         }
 
+        Ok(None)
+    }
+
+    pub(crate) async fn cloudflare_user(
+        &self,
+        db: &Database,
+        headers: &HeaderMap,
+    ) -> Result<Option<crate::db::users::UserRecord>> {
         let access = self.inner.cloudflare.read().access.clone();
 
         // Without anything from Access the request is simply signed out, which
@@ -168,12 +175,7 @@ impl Auth {
             return Ok(None);
         };
 
-        tracing::debug!(email, user = %user.id, "Signed in through Cloudflare Access");
-
-        Ok(Some(AuthUser {
-            id: user.id,
-            session: None,
-        }))
+        Ok(Some(user))
     }
 
     /// The id of a correctly signed session cookie.

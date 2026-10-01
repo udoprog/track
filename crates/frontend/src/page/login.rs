@@ -12,13 +12,55 @@ pub(crate) struct Props {
     pub(crate) notice: Option<AttrValue>,
 }
 
-/// Signing in with a login name or email and a password.
+/// Signing in with a password or Cloudflare Access.
 #[function_component]
 pub(crate) fn Login(props: &Props) -> Html {
     let login = use_state(String::new);
     let password = use_state(String::new);
     let busy = use_state(|| false);
     let error = use_state(|| None::<AttrValue>);
+
+    let cloudflare = use_state(|| false);
+
+    {
+        let cloudflare = cloudflare.clone();
+        use_effect_with((), move |_| {
+            spawn_local(async move {
+                cloudflare.set(http::cloudflare_available().await.unwrap_or(false));
+            });
+        });
+    }
+
+    let on_cloudflare = {
+        let busy = busy.clone();
+        let error = error.clone();
+        let on_login = props.on_login.clone();
+        Callback::from(move |e: MouseEvent| {
+            e.prevent_default();
+            if *busy {
+                return;
+            }
+            busy.set(true);
+            error.set(None);
+            let busy = busy.clone();
+            let error = error.clone();
+            let on_login = on_login.clone();
+            spawn_local(async move {
+                match http::cloudflare_login().await {
+                    Ok(user) => on_login.emit(user),
+                    Err(e) => {
+                        error.set(Some(match e {
+                            HttpError::Unauthorized => {
+                                "Cloudflare could not sign you in. Reload to try again.".into()
+                            }
+                            _ => login_error(&e),
+                        }));
+                        busy.set(false);
+                    }
+                }
+            });
+        })
+    };
 
     let on_login_input = {
         let login = login.clone();
@@ -87,6 +129,14 @@ pub(crate) fn Login(props: &Props) -> Html {
                         <input class="input-text fill" type="password" title="Password" autocomplete="current-password" required=true value={(*password).clone()} oninput={on_password_input} />
                     </FormRow>
                 </div>
+
+                if *cloudflare {
+                    <div class="auth-actions">
+                        <button type="button" class="has-text" title="Login using Cloudflare" onclick={on_cloudflare} disabled={*busy}>
+                            <span>{"Login using Cloudflare"}</span>
+                        </button>
+                    </div>
+                }
 
                 <div class="auth-actions">
                     <Button variant="primary" icon="arrow-right-end-on-rectangle" label="Sign in" title="Sign in" disabled={*busy} />

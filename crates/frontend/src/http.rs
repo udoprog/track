@@ -71,6 +71,16 @@ pub(crate) async fn login(login: &str, password: &str) -> Result<api::User, Http
     Ok(check(response).await?.json().await?)
 }
 
+pub(crate) async fn cloudflare_available() -> Result<bool, HttpError> {
+    let response = Request::get("/api/auth/cloudflare").send().await?;
+    Ok(check(response).await?.json().await?)
+}
+
+pub(crate) async fn cloudflare_login() -> Result<api::User, HttpError> {
+    let response = Request::post("/api/auth/cloudflare").send().await?;
+    Ok(check(response).await?.json().await?)
+}
+
 pub(crate) async fn logout() -> Result<(), HttpError> {
     let response = Request::post("/api/auth/logout").send().await?;
     check(response).await?;
