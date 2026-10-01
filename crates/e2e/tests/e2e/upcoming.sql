@@ -1,8 +1,11 @@
 -- A show with episodes airing tomorrow, for Upcoming and the Schedule. The
 -- times are computed from the current time, so they are always ahead.
 
-INSERT INTO shows (id, first_air, tracked, default_language, auto_sync)
-VALUES (1002, 1700000000000, 1, 1701734144, 0);
+INSERT INTO shows (id, first_air, default_language, auto_sync)
+VALUES (1002, 1700000000000, 1701734144, 0);
+
+INSERT INTO user_tracked_shows (user_id, show_id)
+VALUES ((SELECT id FROM users WHERE login = 'root'), 1002);
 
 INSERT INTO show_strings (show_id, language, kind, text)
 VALUES (1002, 1701734144, 1, 'Future Show');

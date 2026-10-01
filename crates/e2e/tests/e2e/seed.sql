@@ -1,9 +1,13 @@
 -- A small library for tests that need media, applied after the server has
 -- created the schema. Languages are packed locales (1701734144 is English),
 -- string kinds are 1 (title) and 2 (overview), timestamps are milliseconds.
+-- Tracking and pending belong to root, whom the browser signs in as.
 
-INSERT INTO shows (id, first_air, tracked, default_language, auto_sync)
-VALUES (1001, 1700000000000, 1, 1701734144, 0);
+INSERT INTO shows (id, first_air, default_language, auto_sync)
+VALUES (1001, 1700000000000, 1701734144, 0);
+
+INSERT INTO user_tracked_shows (user_id, show_id)
+VALUES ((SELECT id FROM users WHERE login = 'root'), 1001);
 
 INSERT INTO show_strings (show_id, language, kind, text)
 VALUES
@@ -26,8 +30,8 @@ VALUES
     (3003, 1701734144, 1, 'Unbreakablyconcatenatedepisodename');
 
 -- The first episode is up next on the dashboard.
-INSERT INTO pending (timestamp, show_id, episode_id)
-VALUES (1700000000000, 1001, 3001);
+INSERT INTO pending (user_id, timestamp, show_id, episode_id)
+VALUES ((SELECT id FROM users WHERE login = 'root'), 1700000000000, 1001, 3001);
 
 -- A person, named in English with a country as synced names are.
 INSERT INTO people (id, department, default_language)
