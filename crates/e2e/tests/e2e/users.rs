@@ -226,6 +226,90 @@ async fn open_users(driver: &TestDriver) -> Result<()> {
     Ok(())
 }
 
+/// Only administrators are offered removing a show or movie or deleting a
+/// person; a regular user's pages leave the buttons out.
+pub async fn regular_users_cannot_remove_media(
+    driver: &mut TestDriver,
+    track: &mut Track,
+) -> Result<()> {
+    let show = open_media(driver, 1, "Seeded Show").await?;
+    driver.find_one_by("[title='Remove show']").await?;
+
+    let movie = open_media(driver, 0, "Seeded Movie").await?;
+    driver.find_one_by("[title='Remove movie']").await?;
+
+    driver
+        .find_one_by(".toolbar-item[title=People]")
+        .await?
+        .click()
+        .await?;
+    driver.find_nth(".person-card", 0).await?.click().await?;
+    driver.find_one_by("[title='Delete person']").await?;
+    let person = driver.webdriver().current_url().await?;
+
+    let link = format!("{}/register/{LOGIN_LINK}", track.url());
+    driver.webdriver().goto(&link).await?;
+
+    for title in ["Password", "Confirm password"] {
+        driver
+            .find_one_by(&format!("input[title='{title}']"))
+            .await?
+            .send_keys("correct horse")
+            .await?;
+    }
+
+    driver
+        .find_one_by("input[title='Confirm password']")
+        .await?
+        .send_keys(ENTER)
+        .await?;
+    driver
+        .wait_texts(".toolbar-item[title=Account]", ["alice"])
+        .await?;
+
+    driver.webdriver().goto(&show).await?;
+    driver.wait_texts(".detail-title", ["Seeded Show"]).await?;
+    ensure!(
+        driver.count("[title='Remove show']").await? == 0,
+        "a regular user is offered Remove show"
+    );
+
+    driver.webdriver().goto(&movie).await?;
+    driver.wait_texts(".detail-title", ["Seeded Movie"]).await?;
+    ensure!(
+        driver.count("[title='Remove movie']").await? == 0,
+        "a regular user is offered Remove movie"
+    );
+
+    driver.webdriver().goto(person.as_str()).await?;
+    driver.find_one_by(".person-detail-info h1").await?;
+    driver.find_one_by("[title='Sync now']").await?;
+    ensure!(
+        driver.count("[title='Delete person']").await? == 0,
+        "a regular user is offered Delete person"
+    );
+    Ok(())
+}
+
+/// Opens the `nth` card on the media page and returns the detail page's URL.
+async fn open_media(driver: &TestDriver, nth: usize, title: &str) -> Result<String> {
+    driver
+        .find_one_by(".toolbar-item[title=Media]")
+        .await?
+        .click()
+        .await?;
+    driver
+        .wait_texts(".media-title", ["Seeded Movie", "Seeded Show"])
+        .await?;
+    driver
+        .find_nth(".media-card .media-poster", nth)
+        .await?
+        .click()
+        .await?;
+    driver.wait_texts(".detail-title", [title]).await?;
+    Ok(driver.webdriver().current_url().await?.to_string())
+}
+
 async fn hides_admin_pages(driver: &TestDriver) -> Result<()> {
     driver
         .wait_texts(".toolbar-item.active", ["Dashboard"])

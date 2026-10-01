@@ -554,15 +554,17 @@ impl PersonDetail {
                         <div class="input-group">
                             <Button icon="arrow-path" spin={self.syncing} title="Sync now" text="Sync" onclick={link.callback(|_| Msg::SyncPerson)} />
                             <Button icon="cog-6-tooth" title="Settings" onclick={link.callback(|_| Msg::OpenSettings)} />
-                            <Button node_ref={self.remove_anchor.clone()} icon="trash" variant={Variant::Danger} class="detached" title="Delete person" expanded={Some(self.confirming_delete)} haspopup="dialog" onclick={link.callback(|_| Msg::AskDelete)} />
+                            if crate::is_admin(ctx) {
+                                <Button node_ref={self.remove_anchor.clone()} icon="trash" variant={Variant::Danger} class="detached" title="Delete person" expanded={Some(self.confirming_delete)} haspopup="dialog" onclick={link.callback(|_| Msg::AskDelete)} />
 
-                            if self.confirming_delete {
-                                <ContextMenu prompt="Delete person" label={person.name.title().map(str::to_owned)} anchor={self.remove_anchor.clone()} on_close={link.callback(|_| Msg::CancelDelete)}>
-                                    <ConfirmDanger
-                                        on_confirm={link.callback(|_| Msg::DeletePerson)}
-                                        on_cancel={link.callback(|_| Msg::CancelDelete)}
-                                    />
-                                </ContextMenu>
+                                if self.confirming_delete {
+                                    <ContextMenu prompt="Delete person" label={person.name.title().map(str::to_owned)} anchor={self.remove_anchor.clone()} on_close={link.callback(|_| Msg::CancelDelete)}>
+                                        <ConfirmDanger
+                                            on_confirm={link.callback(|_| Msg::DeletePerson)}
+                                            on_cancel={link.callback(|_| Msg::CancelDelete)}
+                                        />
+                                    </ContextMenu>
+                                }
                             }
                         </div>
                     </div>

@@ -478,12 +478,14 @@ impl Component for ShowDetail {
 
                         <Button icon="cog-6-tooth" title="Settings" text="Settings" onclick={link.callback(|_| Msg::OpenSettingsModal)} />
 
-                        <Button node_ref={self.remove_anchor.clone()} icon="trash" variant={Variant::Danger} class="detached" title="Remove show" text="Remove" expanded={Some(self.confirm_remove)} haspopup="dialog" onclick={link.callback(|_| Msg::ConfirmRemove)} />
+                        if crate::is_admin(ctx) {
+                            <Button node_ref={self.remove_anchor.clone()} icon="trash" variant={Variant::Danger} class="detached" title="Remove show" text="Remove" expanded={Some(self.confirm_remove)} haspopup="dialog" onclick={link.callback(|_| Msg::ConfirmRemove)} />
 
-                        if self.confirm_remove {
-                            <ContextMenu prompt="Remove show" label={show.strings.title().map(str::to_owned)} anchor={self.remove_anchor.clone()} on_close={ctx.link().callback(|_| Msg::CancelRemove)}>
-                                <ConfirmDanger on_confirm={link.callback(|_| Msg::RemoveShow)} on_cancel={link.callback(|_| Msg::CancelRemove)} />
-                            </ContextMenu>
+                            if self.confirm_remove {
+                                <ContextMenu prompt="Remove show" label={show.strings.title().map(str::to_owned)} anchor={self.remove_anchor.clone()} on_close={ctx.link().callback(|_| Msg::CancelRemove)}>
+                                    <ConfirmDanger on_confirm={link.callback(|_| Msg::RemoveShow)} on_cancel={link.callback(|_| Msg::CancelRemove)} />
+                                </ContextMenu>
+                            }
                         }
                     </div>
                 </div>

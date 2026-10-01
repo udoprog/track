@@ -121,6 +121,7 @@ fn requires_admin(id: api::Request) -> bool {
             | api::Request::SetSystemConfig
             | api::Request::RemoveShow
             | api::Request::RemoveMovie
+            | api::Request::DeletePerson
             | api::Request::ListUsers
             | api::Request::CreateUser
             | api::Request::SetUserRole
