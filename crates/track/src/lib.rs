@@ -118,6 +118,8 @@ mod backup;
 mod cache;
 mod db;
 mod entry;
+mod http;
+mod identity;
 #[cfg(feature = "import")]
 mod import;
 mod pending;
@@ -128,6 +130,8 @@ mod shutdown;
 mod static_assets;
 mod sync;
 mod task_queue;
+#[cfg(test)]
+mod tests;
 mod tmdb;
 mod tvdb;
 mod tvmaze;

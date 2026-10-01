@@ -2,7 +2,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use axum::Router;
-use axum::routing::get;
+use axum::routing::{get, post};
 use musli_web::ws::Channels;
 use tokio::sync::Notify;
 use tower_http::cors::CorsLayer;
@@ -11,6 +11,7 @@ use tower_http::services::{ServeDir, ServeFile};
 use crate::app_broadcast::Broadcaster;
 use crate::cache::ImageCache;
 use crate::db::Database;
+use crate::identity::Auth;
 use crate::pending::PendingSystem;
 use crate::remote::RemoteClients;
 use crate::shutdown::Shutdown;
@@ -30,11 +31,19 @@ pub(crate) struct AppState {
     /// Optional artificial per-request websocket latency (dev/testing).
     pub(crate) delay: Option<RandomDelay>,
     pub(crate) shutdown: Shutdown,
+    pub(crate) auth: Auth,
 }
 
 pub(crate) fn router(state: AppState, dist: Option<&Path>) -> Router {
     let app = Router::new()
         .route("/ws", get(crate::ws::ws_handler))
+        .route("/api/auth/login", post(crate::http::login))
+        .route("/api/auth/logout", post(crate::http::logout))
+        .route("/api/auth/me", get(crate::http::me))
+        .route(
+            "/api/register/{token}",
+            get(crate::http::get_register).post(crate::http::post_register),
+        )
         .route(
             "/api/image/{source}/{*path}",
             get(crate::proxy::image_handler),

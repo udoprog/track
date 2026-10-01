@@ -24,6 +24,7 @@ use tokio::task::spawn_blocking;
 mod tests;
 
 pub(crate) mod config;
+pub(crate) mod users;
 
 const MIGRATIONS_INIT: &str = r#"
 CREATE TABLE IF NOT EXISTS migrations (
@@ -719,6 +720,8 @@ struct InnerRead {
     translations: InnerTranslations,
     #[sql(statements)]
     episodes: InnerEpisodes,
+    #[sql(statements)]
+    users: users::Read,
 
     // shows
     #[sql = "SELECT shows.id, first_air, tracked, auto_sync, last_synced_at, language, default_language, include_specials, air_date_filters"]
@@ -1175,6 +1178,8 @@ struct InnerRead {
 struct InnerWrite {
     #[sql(statements)]
     read: InnerRead,
+    #[sql(statements)]
+    users_write: users::Write,
 
     // shows
     #[sql = "INSERT INTO shows (id, first_air, tracked)"]
@@ -6718,6 +6723,20 @@ impl Database {
                     ]
                 });
 
+            let cloudflare_access = api::CloudflareAccess {
+                enabled: s
+                    .get_config("cloudflare_access_enabled")?
+                    .is_some_and(|v| v == "true"),
+                team_domain: s.get_config("cloudflare_team_domain")?.unwrap_or_default(),
+                audience: s.get_config("cloudflare_audience")?.unwrap_or_default(),
+                trust_email_header: s
+                    .get_config("cloudflare_trust_email_header")?
+                    .is_some_and(|v| v == "true"),
+                verify_jwt: s
+                    .get_config("cloudflare_verify_jwt")?
+                    .is_none_or(|v| v == "true"),
+            };
+
             Ok(Config {
                 theme,
                 tvdb_api_key,
@@ -6737,6 +6756,7 @@ impl Database {
                 air_date_filters,
                 sync_kinds,
                 sync_languages,
+                cloudflare_access,
             })
         });
 
@@ -6814,6 +6834,17 @@ impl Database {
                 "sync_languages",
                 config::encode_sync_languages(&config.sync_languages),
             )?;
+
+            let bool_text = |v: bool| if v { "true" } else { "false" };
+            let access = &config.cloudflare_access;
+            s.set_config("cloudflare_access_enabled", bool_text(access.enabled))?;
+            s.set_config("cloudflare_team_domain", &access.team_domain)?;
+            s.set_config("cloudflare_audience", &access.audience)?;
+            s.set_config(
+                "cloudflare_trust_email_header",
+                bool_text(access.trust_email_header),
+            )?;
+            s.set_config("cloudflare_verify_jwt", bool_text(access.verify_jwt))?;
             Ok(())
         });
 

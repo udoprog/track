@@ -4,10 +4,12 @@ use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
 
+use crate::identity::AuthUser;
 use crate::web::AppState;
 
 pub(super) async fn image_handler(
     State(state): State<AppState>,
+    _user: AuthUser,
     Path((source, path)): Path<(ImageSource, String)>,
 ) -> Response {
     let cache = state.cache.clone();

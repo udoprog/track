@@ -15,6 +15,8 @@ use tokio::time;
 
 use crate::app_broadcast::Broadcaster;
 use crate::db::Database;
+use crate::db::users::{Conflict, UserRecord};
+use crate::identity::{Auth, AuthUser, Revoke};
 use crate::pending::PendingSystem;
 use crate::remote::RemoteClients;
 use crate::task_queue::TaskQueue;
@@ -68,6 +70,84 @@ pub(super) struct WsHandler {
     pub(super) pending: PendingSystem,
     pub(super) config_changed: Arc<tokio::sync::Notify>,
     pub(super) delay: Option<RandomDelay>,
+    pub(super) auth: Auth,
+    pub(super) user: Arc<AuthUser>,
+}
+
+/// A request refused for a reason the user can act on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Refused {
+    NotAdmin,
+    OwnAccount,
+    NoSuchUser,
+    EmptyLogin,
+    LoginTaken,
+    EmailTaken,
+    WrongPassword,
+    WeakPassword(&'static str),
+}
+
+impl std::fmt::Display for Refused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Refused::NotAdmin => f.write_str("Only administrators can do this."),
+            Refused::OwnAccount => f.write_str("You cannot do this to your own account."),
+            Refused::NoSuchUser => f.write_str("No such user."),
+            Refused::EmptyLogin => f.write_str("The login cannot be empty."),
+            Refused::LoginTaken => f.write_str("That login is already in use."),
+            Refused::EmailTaken => f.write_str("That email is already in use."),
+            Refused::WrongPassword => f.write_str("The current password is incorrect."),
+            Refused::WeakPassword(message) => f.write_str(message),
+        }
+    }
+}
+
+impl std::error::Error for Refused {}
+
+impl From<Conflict> for Refused {
+    fn from(conflict: Conflict) -> Self {
+        match conflict {
+            Conflict::Login => Refused::LoginTaken,
+            Conflict::Email => Refused::EmailTaken,
+        }
+    }
+}
+
+/// Requests only administrators may make.
+fn requires_admin(id: api::Request) -> bool {
+    matches!(
+        id,
+        api::Request::SetConfig
+            | api::Request::ListUsers
+            | api::Request::CreateUser
+            | api::Request::SetUserRole
+            | api::Request::DeleteUser
+            | api::Request::GenerateLoginToken
+            | api::Request::RevokeLoginToken
+            | api::Request::RevokeUserAccess
+    )
+}
+
+fn parse_login(login: &str) -> Result<String, Refused> {
+    let login = login.trim();
+
+    if login.is_empty() {
+        return Err(Refused::EmptyLogin);
+    }
+
+    Ok(login.to_owned())
+}
+
+/// A normalized email, with a blank one meaning none.
+fn parse_email(email: Option<&str>) -> Option<String> {
+    email.map(auth::normalize_email).filter(|e| !e.is_empty())
+}
+
+fn role_from_api(role: api::UserRole) -> auth::UserRole {
+    match role {
+        api::UserRole::Admin => auth::UserRole::Admin,
+        api::UserRole::Regular => auth::UserRole::Regular,
+    }
 }
 
 impl ws::Handler for WsHandler {
@@ -225,12 +305,38 @@ impl WsHandler {
         Ok(api::Timestamp::now().saturating_add(config.dashboard_lookahead))
     }
 
+    /// The current user as stored now, so role changes apply to open sockets.
+    async fn current_user(&self) -> Result<UserRecord> {
+        let user = self.db.user_by_id(self.user.id).await?;
+        Ok(user.ok_or(Refused::NoSuchUser)?)
+    }
+
+    /// Refuses admin-only requests from anyone else.
+    pub(crate) async fn authorize(&self, id: api::Request) -> Result<()> {
+        if requires_admin(id) && self.current_user().await?.role != auth::UserRole::Admin {
+            return Err(Refused::NotAdmin.into());
+        }
+
+        Ok(())
+    }
+
+    /// Refuses to act on the current user's own account.
+    fn not_self(&self, user_id: api::UserId) -> Result<(), Refused> {
+        if user_id == self.user.id {
+            return Err(Refused::OwnAccount);
+        }
+
+        Ok(())
+    }
+
     async fn handle_inner(
         &self,
         id: api::Request,
         incoming: &mut ws::Incoming<'_>,
         outgoing: &mut ws::Outgoing<'_>,
     ) -> Result<()> {
+        self.authorize(id).await?;
+
         match id {
             api::Request::ListMedia => {
                 incoming
@@ -1734,6 +1840,7 @@ impl WsHandler {
 
                 self.db.save_config(&req.config).await?;
                 self.remote.configure(&req.config)?;
+                self.auth.configure(&req.config);
 
                 self.config_changed.notify_one();
 
@@ -2075,6 +2182,161 @@ impl WsHandler {
 
                 outgoing.write(api::Empty);
             }
+            api::Request::ListUsers => {
+                incoming
+                    .read::<api::ListUsersRequest>()
+                    .context("Expected a request payload")?;
+
+                let users = self.db.list_users().await?;
+                let users = users.iter().map(UserRecord::to_api).collect();
+                outgoing.write(api::ListUsersResponse { users });
+            }
+            api::Request::CreateUser => {
+                let req = incoming
+                    .read::<api::CreateUserRequest>()
+                    .context("Expected a request payload")?;
+
+                let login = parse_login(&req.login)?;
+                let email = parse_email(req.email.as_deref());
+
+                let user = self
+                    .db
+                    .create_user(
+                        &login,
+                        email.as_deref(),
+                        role_from_api(req.role),
+                        api::Timestamp::now(),
+                    )
+                    .await?
+                    .map_err(Refused::from)?;
+
+                outgoing.write(api::UserResponse {
+                    user: user.to_api(),
+                });
+            }
+            api::Request::SetUserRole => {
+                let req = incoming
+                    .read::<api::SetUserRoleRequest>()
+                    .context("Expected a request payload")?;
+
+                self.not_self(req.user_id)?;
+
+                let user = self
+                    .db
+                    .set_user_role(req.user_id, role_from_api(req.role))
+                    .await?
+                    .ok_or(Refused::NoSuchUser)?;
+
+                outgoing.write(api::UserResponse {
+                    user: user.to_api(),
+                });
+            }
+            api::Request::DeleteUser => {
+                let req = incoming
+                    .read::<api::DeleteUserRequest>()
+                    .context("Expected a request payload")?;
+
+                self.not_self(req.user_id)?;
+                self.db.delete_user(req.user_id).await?;
+                self.auth.revoke(Revoke::User(req.user_id));
+                outgoing.write(api::Empty);
+            }
+            api::Request::GenerateLoginToken => {
+                let req = incoming
+                    .read::<api::GenerateLoginTokenRequest>()
+                    .context("Expected a request payload")?;
+
+                self.db
+                    .user_by_id(req.user_id)
+                    .await?
+                    .ok_or(Refused::NoSuchUser)?;
+
+                let token = auth::new_login_token();
+                let expires_at = api::Timestamp::from_jiff(auth::login_token_expiry(
+                    api::Timestamp::now().into_jiff(),
+                ));
+
+                self.db
+                    .create_login_token(&token, req.user_id, expires_at)
+                    .await?;
+
+                outgoing.write(api::GenerateLoginTokenResponse { token, expires_at });
+            }
+            api::Request::RevokeLoginToken => {
+                let req = incoming
+                    .read::<api::RevokeLoginTokenRequest>()
+                    .context("Expected a request payload")?;
+
+                self.db.revoke_login_tokens(req.user_id).await?;
+                outgoing.write(api::Empty);
+            }
+            api::Request::RevokeUserAccess => {
+                let req = incoming
+                    .read::<api::RevokeUserAccessRequest>()
+                    .context("Expected a request payload")?;
+
+                self.not_self(req.user_id)?;
+                self.db.delete_user_sessions(req.user_id).await?;
+                self.auth.revoke(Revoke::User(req.user_id));
+                outgoing.write(api::Empty);
+            }
+            api::Request::SetLogin => {
+                let req = incoming
+                    .read::<api::SetLoginRequest>()
+                    .context("Expected a request payload")?;
+
+                let login = parse_login(&req.login)?;
+
+                let user = self
+                    .db
+                    .set_user_login(self.user.id, &login)
+                    .await?
+                    .map_err(Refused::from)?
+                    .ok_or(Refused::NoSuchUser)?;
+
+                outgoing.write(api::UserResponse {
+                    user: user.to_api(),
+                });
+            }
+            api::Request::SetEmail => {
+                let req = incoming
+                    .read::<api::SetEmailRequest>()
+                    .context("Expected a request payload")?;
+
+                let email = parse_email(req.email.as_deref());
+
+                let user = self
+                    .db
+                    .set_user_email(self.user.id, email.as_deref())
+                    .await?
+                    .map_err(Refused::from)?
+                    .ok_or(Refused::NoSuchUser)?;
+
+                outgoing.write(api::UserResponse {
+                    user: user.to_api(),
+                });
+            }
+            api::Request::SetPassword => {
+                let req = incoming
+                    .read::<api::SetPasswordRequest>()
+                    .context("Expected a request payload")?;
+
+                let user = self.current_user().await?;
+
+                if let Some(hash) = &user.password_hash
+                    && !auth::verify_password(&req.old_password, hash)
+                {
+                    return Err(Refused::WrongPassword.into());
+                }
+
+                if let Some(message) = auth::validate_password(&req.new_password) {
+                    return Err(Refused::WeakPassword(message).into());
+                }
+
+                let hash = auth::hash_password(&req.new_password)?;
+                self.db.set_user_password_hash(user.id, &hash).await?;
+                outgoing.write(api::Empty);
+            }
             api::Request::Unknown(id) => {
                 anyhow::bail!("Unknown request id: {id:?}");
             }
@@ -2084,11 +2346,15 @@ impl WsHandler {
     }
 }
 
+/// Upgrades only signed-in users; others get 401 before the upgrade.
 pub(super) async fn ws_handler(
-    ws: WebSocketUpgrade,
     State(state): State<AppState>,
+    user: AuthUser,
+    ws: WebSocketUpgrade,
 ) -> axum::response::Response {
     ws.on_upgrade(move |socket| async move {
+        let user = Arc::new(user);
+
         let handler = WsHandler {
             db: state.db.clone(),
             broadcast: state.broadcast.clone(),
@@ -2097,9 +2363,12 @@ pub(super) async fn ws_handler(
             pending: state.pending.clone(),
             config_changed: state.config_changed.clone(),
             delay: state.delay,
+            auth: state.auth.clone(),
+            user: user.clone(),
         };
 
         let mut subscribe = state.broadcast.subscribe();
+        let mut revocations = state.auth.subscribe_revocations();
 
         let connect =
             axum08::server(socket, handler).with_channel_allocator(state.channels.clone());
@@ -2134,6 +2403,13 @@ pub(super) async fn ws_handler(
                         }
                     }
                     break;
+                }
+                revoke = revocations.recv() => {
+                    match revoke {
+                        Ok(revoke) if revoke.applies_to(&user) => break,
+                        Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                        Err(_) => break,
+                    }
                 }
                 // Upgraded connections outlive the server's graceful shutdown.
                 _ = state.shutdown.cancelled() => break,

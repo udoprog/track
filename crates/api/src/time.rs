@@ -159,6 +159,11 @@ impl Timestamp {
         Self(ts)
     }
 
+    #[inline]
+    pub fn into_jiff(self) -> JiffTimestamp {
+        self.0
+    }
+
     /// Format this timestamp in the given timezone as `"YYYY-MM-DD HH:MM TZ"`.
     /// The timezone suffix is the IANA abbreviation (e.g. `CEST`, `EST`) when
     /// available, or the numeric offset (e.g. `+05:30`) for fixed-offset zones.

@@ -16,6 +16,7 @@ use crate::app_broadcast::Broadcaster;
 use crate::background;
 use crate::cache::ImageCache;
 use crate::db::{Database, OpenMode};
+use crate::identity::Auth;
 use crate::pending::PendingSystem;
 use crate::remote::RemoteClients;
 use crate::shutdown::Shutdown;
@@ -142,6 +143,9 @@ async fn run(
     let config = db.load_config().await.context("Loading config")?;
     remote.configure(&config)?;
 
+    let session_key = db.session_key().await.context("Loading session key")?;
+    let auth = Auth::new(session_key, http.clone(), &config);
+
     let pending = PendingSystem::new(db.clone());
     let config_changed = Arc::new(Notify::new());
 
@@ -172,6 +176,7 @@ async fn run(
         config_changed,
         delay,
         shutdown: shutdown.clone(),
+        auth,
     };
 
     let server = {

@@ -384,6 +384,7 @@ pub async fn import() -> Result<()> {
                 api::Locale::DEFAULT,
                 api::Locale::new(api::Language::ENG, api::Country::DEFAULT),
             ],
+            cloudflare_access: api::CloudflareAccess::default(),
         })
         .await
         .context("Saving config")?;
