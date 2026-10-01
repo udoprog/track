@@ -995,3 +995,37 @@ pub async fn phone_action_rows_align(driver: &mut TestDriver, _: &mut Track) -> 
     super::navigation::ensure_menu_rows_align(driver, ".menu-list > button").await?;
     driver.snapshot("phone-episode-actions").await
 }
+
+/// A watched episode's rail sample is coloured apart from the pending one.
+pub async fn rail_colours_watched_apart_from_pending(
+    driver: &mut TestDriver,
+    _: &mut Track,
+) -> Result<()> {
+    open_show(driver).await?;
+    driver
+        .find_one_by("#outline .outline-sample.pending")
+        .await?;
+
+    driver
+        .find_first(".episode [title='Mark watched']")
+        .await?
+        .click()
+        .await?;
+    driver.find_one_by("#outline .outline-sample.seen").await?;
+
+    let seen = driver
+        .find_one_by("#outline .outline-sample.seen")
+        .await?
+        .css("color")
+        .await?;
+    let pending = driver
+        .find_one_by("#outline .outline-sample.pending")
+        .await?
+        .css("color")
+        .await?;
+    ensure!(
+        seen != pending,
+        "watched and pending samples are both {seen}"
+    );
+    Ok(())
+}
