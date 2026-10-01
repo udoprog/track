@@ -887,6 +887,55 @@ pub async fn picked_episodes_are_marked_together(
     Ok(())
 }
 
+/// Marking the rest of a season watched moves the pending episode on to the
+/// next season, and it stays there after a reload.
+pub async fn remaining_episodes_advance_pending(
+    driver: &mut TestDriver,
+    _: &mut Track,
+) -> Result<()> {
+    open_show(driver).await?;
+    driver
+        .find_one_by("[id='S01E01'] [title='Next episode']")
+        .await?;
+
+    driver
+        .find_one_by("[title='Mark remaining episodes as watched']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by(".context-menu [title=Confirm]")
+        .await?
+        .click()
+        .await?;
+
+    for code in ["S01E01", "S01E02", "S01E03"] {
+        driver
+            .wait_until(format_args!("{code} to be watched"), async || {
+                Ok(driver.count(&format!("[id='{code}'].watched")).await? == 1)
+            })
+            .await?;
+    }
+
+    driver.wait_count("[title='Next episode']", 0).await?;
+
+    driver
+        .find_one_by(".season-list [title='Show Season 2']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by("[id='S02E01'] [title='Next episode']")
+        .await?;
+
+    driver.reload().await?;
+    driver
+        .find_one_by("[id='S02E01'] [title='Next episode']")
+        .await?;
+    ensure!(driver.count("[title='Next episode']").await? == 1);
+    Ok(())
+}
+
 /// Escape and switching seasons both clear the picked episodes.
 pub async fn picked_episodes_clear(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     open_show(driver).await?;

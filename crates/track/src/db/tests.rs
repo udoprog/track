@@ -448,3 +448,120 @@ async fn show_and_movie_preferences_are_per_user() -> Result<()> {
     );
     Ok(())
 }
+
+const REMAINING_SHOW: api::ShowId = api::ShowId::new(1);
+
+/// The show for [`mark_watched_remaining_advances_pending_like_individual_marks`]:
+/// three episodes in season 1 and two in season 2.
+fn remaining_episodes() -> [(api::EpisodeId, api::SeasonNumber, u32); 5] {
+    let s1 = api::SeasonNumber::from_ordinal(1);
+    let s2 = api::SeasonNumber::from_ordinal(2);
+
+    [
+        (api::EpisodeId::new(11), s1, 1),
+        (api::EpisodeId::new(12), s1, 2),
+        (api::EpisodeId::new(13), s1, 3),
+        (api::EpisodeId::new(21), s2, 1),
+        (api::EpisodeId::new(22), s2, 2),
+    ]
+}
+
+/// With S01E01 watched and S01E02 pending, finish `season` in bulk or one
+/// episode at a time as the websocket handlers do, and return the watched
+/// episodes and what is pending.
+async fn finish_season(
+    season: api::SeasonNumber,
+    bulk: bool,
+) -> Result<(Vec<(api::SeasonNumber, u32)>, api::PendingBefore)> {
+    let show = REMAINING_SHOW;
+    let episodes = remaining_episodes();
+    let now = ms(1_800_000_000_000);
+
+    let dir = tempfile::tempdir()?;
+    let db = Database::open(dir.path().join("test.db"), OpenMode::Bulk, 1)?;
+    let pending = crate::pending::PendingSystem::new(db.clone());
+
+    let root = db.default_owner().await?;
+    db.create_show(show, "", None, "").await?;
+    db.set_show_tracked(root, show, true).await?;
+
+    for (n, &(id, season, number)) in episodes.iter().enumerate() {
+        let aired = ms(1_700_000_000_000 + n as i64 * 604_800_000);
+        db.upsert_episode(id, show, season, number, None, Some(aired))
+            .await?;
+    }
+
+    let kind = |episode| api::WatchedKind::Episode { show, episode };
+
+    db.mark_watched(
+        root,
+        WatchedId::random(),
+        kind(episodes[0].0),
+        MarkTime::Now,
+        now,
+    )
+    .await?;
+    db.add_pending_episode(root, show, episodes[1].0, now)
+        .await?;
+
+    if bulk {
+        if let Some(last) = db
+            .mark_watched_remaining(root, show, season, MarkTime::Now, now)
+            .await?
+        {
+            pending
+                .on_episode_watched_from(root, show, last, now)
+                .await?;
+        }
+    } else {
+        let watched = db.episodes_watched(root, show).await?;
+
+        for &(id, s, _) in &episodes {
+            if s != season || watched.iter().any(|w| w.episode_id == id) {
+                continue;
+            }
+
+            db.mark_watched(root, WatchedId::random(), kind(id), MarkTime::Now, now)
+                .await?;
+            pending.on_episode_watched_from(root, show, id, now).await?;
+        }
+    }
+
+    let mut watched = db
+        .episodes_watched(root, show)
+        .await?
+        .into_iter()
+        .map(|w| (w.season, w.number))
+        .collect::<Vec<_>>();
+    watched.sort();
+
+    let pending = db.pending_before(root, kind(episodes[0].0)).await?;
+    Ok((watched, pending))
+}
+
+/// Marking the rest of a season watched leaves the same watches and pending
+/// episode as marking those episodes watched one by one, in order.
+#[tokio::test]
+async fn mark_watched_remaining_advances_pending_like_individual_marks() -> Result<()> {
+    let episodes = remaining_episodes();
+    let s1 = api::SeasonNumber::from_ordinal(1);
+    let s2 = api::SeasonNumber::from_ordinal(2);
+
+    // Across the season boundary: S01E02 and S01E03 get watched, S02E01 is next.
+    let bulk = finish_season(s1, true).await?;
+    assert_eq!(bulk, finish_season(s1, false).await?);
+    assert_eq!(bulk.0, [(s1, 1), (s1, 2), (s1, 3)]);
+    assert!(
+        matches!(bulk.1, api::PendingBefore::Episode { episode, .. } if episode == episodes[3].0),
+        "pending should advance to S02E01, got {:?}",
+        bulk.1
+    );
+
+    // Finishing the last season leaves no next episode to queue.
+    let bulk = finish_season(s2, true).await?;
+    assert_eq!(bulk, finish_season(s2, false).await?);
+    assert_eq!(bulk.0, [(s1, 1), (s2, 1), (s2, 2)]);
+    assert_eq!(bulk.1, api::PendingBefore::None);
+
+    Ok(())
+}

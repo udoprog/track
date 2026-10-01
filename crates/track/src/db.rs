@@ -2915,7 +2915,7 @@ impl Database {
         season: SeasonNumber,
         mark_time: MarkTime,
         now: Timestamp,
-    ) -> Result<()> {
+    ) -> Result<Option<EpisodeId>> {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
@@ -2926,7 +2926,13 @@ impl Database {
                 .select_unwatched_by_show_season
                 .bind((user, show_id, season))?;
 
+            let mut last = None::<(u32, EpisodeId)>;
+
             while let Some(r) = stmt.next()? {
+                if last.is_none_or(|(number, _)| r.number > number) {
+                    last = Some((r.number, r.id));
+                }
+
                 let timestamp = read.episodes.episode_mark_time(r.id, mark_time, now)?;
 
                 s.insert_watched_episode.execute((
@@ -2940,7 +2946,7 @@ impl Database {
             }
 
             stmt.reset()?;
-            Ok(())
+            Ok(last.map(|(_, id)| id))
         });
 
         result.await?

@@ -914,7 +914,8 @@ impl WsHandler {
 
                 let now = api::Timestamp::now();
 
-                self.db
+                let last = self
+                    .db
                     .mark_watched_remaining(
                         self.user.id,
                         req.show_id,
@@ -923,6 +924,12 @@ impl WsHandler {
                         now,
                     )
                     .await?;
+
+                if let Some(last) = last {
+                    self.pending
+                        .on_episode_watched_from(self.user.id, req.show_id, last, now)
+                        .await?;
+                }
 
                 self.broadcast.emit_to(
                     self.user.id,
@@ -934,6 +941,13 @@ impl WsHandler {
                         },
                     },
                     "ws mark watched changed remaining season",
+                );
+
+                self.broadcast.emit_to(
+                    self.user.id,
+                    incoming.channel(),
+                    api::AppEventKind::PendingChanged,
+                    "ws mark watched remaining pending changed",
                 );
 
                 outgoing.write(api::Empty);
