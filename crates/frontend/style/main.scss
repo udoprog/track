@@ -837,6 +837,67 @@ a.search-title:hover {
     }
 }
 
+// Administrators get the settings as pages: a list of them beside the page
+// on a wide screen, and on a phone the list alone at /settings with each page
+// on its own.
+.settings-layout.has-nav {
+    display: grid;
+    gap: v.$gap * 2;
+
+    @include g.on-desktop {
+        grid-template-columns: 180px minmax(0, 1fr);
+        align-items: start;
+    }
+
+    @include g.on-mobile {
+        &.settings-index .settings,
+        &:not(.settings-index) .settings-nav {
+            display: none;
+        }
+    }
+}
+
+.settings-nav {
+    display: flex;
+    flex-direction: column;
+
+    @include g.on-desktop {
+        position: sticky;
+        top: v.$gap * 5;
+    }
+}
+
+// The current page is marked by accent text alone.
+.settings-nav-item {
+    padding: v.$padding-lg 0;
+    color: v.$text-muted;
+    text-decoration: none;
+
+    &:hover {
+        color: v.$text-color;
+    }
+
+    &.active {
+        color: v.$link-color;
+        font-weight: 600;
+    }
+
+    @include g.on-mobile {
+        color: v.$text-color;
+        border-bottom: 1px solid v.$border-subtle-transparent;
+    }
+}
+
+// Back to the list of pages, which only phones need.
+.settings-back {
+    color: v.$link-color;
+    text-decoration: none;
+
+    @include g.on-desktop {
+        display: none;
+    }
+}
+
 // A field's problem, said under it.
 .field-error {
     flex-basis: 100%;

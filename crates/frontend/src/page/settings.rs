@@ -4,9 +4,10 @@ use yew::prelude::*;
 use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
+use crate::router::{Route, SettingsPage};
 use crate::ui::{
     AIR_DATE_KINDS, AIR_DATE_SOURCES, Button, DurationInput, FiltersEditor, FormRow,
-    LanguagePicker, RELEASE_KINDS, RELEASE_SOURCES, SecretInput, Skeleton, SyncKindsEditor,
+    LanguagePicker, Link, RELEASE_KINDS, RELEASE_SOURCES, SecretInput, Skeleton, SyncKindsEditor,
     SyncLanguagesEditor,
 };
 
@@ -18,6 +19,8 @@ fn tz_is_valid(name: &str) -> bool {
 pub(crate) struct Props {
     /// Whether the user is an administrator, who also sees the system settings.
     pub(crate) admin: bool,
+    /// The page to show; `None` lists the pages on a phone.
+    pub(crate) page: Option<SettingsPage>,
 }
 
 pub(crate) struct Settings {
@@ -197,11 +200,39 @@ impl Component for Settings {
         let mine = |skeleton, control| self.field_slot(self.preferences_loaded, skeleton, control);
         let system = |skeleton, control| self.field_slot(self.config_loaded, skeleton, control);
 
+        let admin = ctx.props().admin;
+        // Only administrators have more than one page; anyone else lands on
+        // their preferences whatever the address says.
+        let current = ctx
+            .props()
+            .page
+            .filter(|page| admin || !page.admin())
+            .unwrap_or(SettingsPage::Preferences);
+        let index = admin && ctx.props().page.is_none();
+
         html! {
             <>
                 <h1 class="visually-hidden">{"Settings"}</h1>
 
+                <div class={classes!("settings-layout", admin.then_some("has-nav"), index.then_some("settings-index"))}>
+                if admin {
+                    <nav class="settings-nav" aria-label="Settings pages">
+                        { for SettingsPage::ALL.into_iter().map(|page| html! {
+                            <Link to={Route::Settings(Some(page))} title={page.title()} class={classes!("settings-nav-item", (page == current).then_some("active"))} current={page == current}>
+                                <span>{ page.title() }</span>
+                            </Link>
+                        }) }
+
+                        <Link to={Route::Users} title="Users" class="settings-nav-item"><span>{"Users"}</span></Link>
+                    </nav>
+                }
+
                 <div class="settings">
+                    if admin {
+                        <Link to={Route::Settings(None)} title="All settings" class="settings-back"><span>{"All settings"}</span></Link>
+                    }
+
+                    if current == SettingsPage::Preferences {
                     <section>
                         <h2>{"Appearance"}</h2>
 
@@ -283,8 +314,9 @@ impl Component for Settings {
                             </FormRow>
                         </div>
                     </section>
+                    }
 
-                    if ctx.props().admin {
+                    if current == SettingsPage::Site {
                         <section>
                             <h2>{"Site"}</h2>
 
@@ -296,7 +328,9 @@ impl Component for Settings {
                                 </FormRow>
                             </div>
                         </section>
+                    }
 
+                    if current == SettingsPage::Sync {
                         <section>
                             <h2>{"Sync"}</h2>
 
@@ -336,7 +370,15 @@ impl Component for Settings {
                                         />
                                     }) }
                                 </FormRow>
+                            </div>
+                        </section>
+                    }
 
+                    if current == SettingsPage::Sources {
+                        <section>
+                            <h2>{"Sources & dates"}</h2>
+
+                            <div class="form-rows">
                                 <FormRow label="Sync sources" hint="What each source contributes by default, in priority order (top wins). Base covers titles, overviews and episodes; air dates merge in this order; graphics come from every source. Shows and movies can override this per remote.">
                                     { system("tall", html! {
                                         <SyncKindsEditor
@@ -369,7 +411,9 @@ impl Component for Settings {
                                 </FormRow>
                             </div>
                         </section>
+                    }
 
+                    if current == SettingsPage::ApiKeys {
                         <section>
                             <h2>{"API keys"}</h2>
 
@@ -408,7 +452,9 @@ impl Component for Settings {
                                 </FormRow>
                             </div>
                         </section>
+                    }
 
+                    if current == SettingsPage::CloudflareAccess {
                         <section>
                             <h2>{"Cloudflare Access"}</h2>
 
@@ -454,6 +500,7 @@ impl Component for Settings {
                             </div>
                         </section>
                     }
+                </div>
                 </div>
             </>
         }

@@ -522,9 +522,9 @@ impl App {
             Route::Search(ref q) => html! {
                 <Search selection={q.selection} filter={q.filter.clone()} />
             },
-            Route::Settings => {
+            Route::Settings(page) => {
                 let admin = ctx.props().user.role == api::UserRole::Admin;
-                html! { <Settings {admin} /> }
+                html! { <Settings {admin} {page} /> }
             }
             Route::Users => {
                 let user = &ctx.props().user;
@@ -572,7 +572,7 @@ impl Section {
             Route::People(..) | Route::PersonDetail(..) => Section::People,
             Route::Search(..) => Section::Search,
             Route::Queue(..) => Section::Queue,
-            Route::Settings => Section::Settings,
+            Route::Settings(..) => Section::Settings,
             Route::Users => Section::Users,
             Route::Account => Section::Account,
         }
@@ -651,7 +651,7 @@ fn Toolbar(props: &ToolbarProps) -> Html {
                     <span>{"Queue"}</span>
                 </Link>
 
-                <Link to={Route::Settings} class={classes!("toolbar-item", "has-text", (props.section == Section::Settings).then_some("active"))} title="Settings" current={props.section == Section::Settings} onclick={close_menu.clone()}>
+                <Link to={Route::Settings(None)} class={classes!("toolbar-item", "has-text", (props.section == Section::Settings).then_some("active"))} title="Settings" current={props.section == Section::Settings} onclick={close_menu.clone()}>
                     <span class="icon cog-6-tooth" aria-hidden="true" />
                     <span>{"Settings"}</span>
                 </Link>

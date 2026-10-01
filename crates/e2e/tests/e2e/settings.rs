@@ -66,18 +66,19 @@ pub async fn fields_follow_the_theme(driver: &mut TestDriver, _: &mut Track) -> 
         "the select has no chevron: {image}"
     );
 
-    // A focused field shows one ring over its border, not a second outside.
-    let title = driver.find_one_by("input[title='Page title']").await?;
-    title.focus().await?;
-    let offset = title.css("outline-offset").await?;
-    ensure!(offset == "-1px", "the focus ring sits {offset} out");
-
     let number = driver.find_first("input.input-number").await?;
     let appearance = number.css("appearance").await?;
     ensure!(
         appearance == "textfield",
         "the number field's appearance is {appearance}"
     );
+
+    // A focused field shows one ring over its border, not a second outside.
+    open_page(driver, "Site").await?;
+    let title = driver.find_one_by("input[title='Page title']").await?;
+    title.focus().await?;
+    let offset = title.css("outline-offset").await?;
+    ensure!(offset == "-1px", "the focus ring sits {offset} out");
     Ok(())
 }
 
@@ -85,6 +86,7 @@ pub async fn fields_follow_the_theme(driver: &mut TestDriver, _: &mut Track) -> 
 /// Space flips it and it reports its state.
 pub async fn switches_work_from_the_keyboard(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     open_settings(driver).await?;
+    open_page(driver, "Sync").await?;
 
     ensure!(
         driver.count("#content .clickable:not(button, a)").await? == 0,
@@ -119,6 +121,7 @@ pub async fn switches_work_from_the_keyboard(driver: &mut TestDriver, _: &mut Tr
 /// reload.
 pub async fn configures_cloudflare_access(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     open_settings(driver).await?;
+    open_page(driver, "Cloudflare Access").await?;
 
     let enabled = "[role='switch'][title='Sign in through Access']";
     driver.find_one_by(enabled).await?.click().await?;
@@ -165,24 +168,28 @@ pub async fn configures_cloudflare_access(driver: &mut TestDriver, _: &mut Track
 pub async fn settings_are_labelled_rows(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     open_settings(driver).await?;
 
-    driver
-        .wait_texts(
-            ".settings h2",
-            [
-                "Appearance",
-                "Language",
-                "Site",
-                "Sync",
-                "API keys",
-                "Cloudflare Access",
-            ],
-        )
-        .await?;
+    let pages: [(&str, &[&str]); 6] = [
+        ("Preferences", &["Appearance", "Language"]),
+        ("Site", &["Site"]),
+        ("Sync", &["Sync"]),
+        ("Sources & dates", &["Sources & dates"]),
+        ("API keys", &["API keys"]),
+        ("Cloudflare Access", &["Cloudflare Access"]),
+    ];
 
     let mut lefts = Vec::new();
 
-    for control in driver.find_all(By::Css(".settings .form-control")).await? {
-        lefts.push(control.rect().await?.x);
+    for (page, headings) in pages {
+        open_page(driver, page).await?;
+        match headings {
+            [one] => driver.wait_texts(".settings h2", [*one]).await?,
+            [one, two] => driver.wait_texts(".settings h2", [*one, *two]).await?,
+            _ => bail!("unexpected headings {headings:?}"),
+        }
+
+        for control in driver.find_all(By::Css(".settings .form-control")).await? {
+            lefts.push(control.rect().await?.x);
+        }
     }
 
     ensure!(lefts.len() > 10, "only {} settings rows", lefts.len());
@@ -190,6 +197,56 @@ pub async fn settings_are_labelled_rows(driver: &mut TestDriver, _: &mut Track) 
         lefts.windows(2).all(|w| (w[0] - w[1]).abs() < 1.0),
         "the controls start at different places: {lefts:?}"
     );
+    Ok(())
+}
+
+/// On a phone an administrator's settings open on the list of pages; a page
+/// replaces the list and leads back to it.
+pub async fn phones_list_the_settings_pages(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    driver.set_window_size(400, 850).await?;
+    driver.find_one_by(".toolbar-toggle").await?.click().await?;
+    driver
+        .find_one_by(".toolbar-item[title=Settings]")
+        .await?
+        .click()
+        .await?;
+
+    driver
+        .wait_texts(
+            ".settings-nav-item",
+            [
+                "Preferences",
+                "Site",
+                "Sync",
+                "Sources & dates",
+                "API keys",
+                "Cloudflare Access",
+                "Users",
+            ],
+        )
+        .await?;
+    ensure!(
+        !driver.find_one_by(".settings").await?.visible().await?,
+        "a page shows beside the list on a phone"
+    );
+
+    driver
+        .find_one_by(".settings-nav-item[title='API keys']")
+        .await?
+        .click()
+        .await?;
+    driver.wait_texts(".settings h2", ["API keys"]).await?;
+    ensure!(
+        !driver.find_one_by(".settings-nav").await?.visible().await?,
+        "the list stays beside a page on a phone"
+    );
+
+    driver
+        .find_one_by("[title='All settings']")
+        .await?
+        .click()
+        .await?;
+    driver.find_one_by(".settings-nav-item[title=Site]").await?;
     Ok(())
 }
 
@@ -218,6 +275,25 @@ pub async fn tab_completes_the_time_zone(driver: &mut TestDriver, _: &mut Track)
         "focus left the field for {focused:?}"
     );
     Ok(())
+}
+
+/// Opens a settings page from the list of pages.
+async fn open_page(driver: &TestDriver, title: &str) -> Result<()> {
+    driver
+        .find_one_by(&format!(".settings-nav-item[title='{title}']"))
+        .await?
+        .click()
+        .await?;
+    driver
+        .wait_until("the page to open", async || {
+            let current = driver
+                .find_one_by(&format!(".settings-nav-item[title='{title}']"))
+                .await?
+                .attr("aria-current")
+                .await?;
+            Ok(current == "page")
+        })
+        .await
 }
 
 async fn open_settings(driver: &TestDriver) -> Result<()> {
@@ -280,6 +356,7 @@ fn luminance(color: &str) -> Result<f64> {
 /// and the order is saved.
 pub async fn reorders_sync_sources(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     open_settings(driver).await?;
+    open_page(driver, "Sources & dates").await?;
 
     let order = async |driver: &TestDriver| -> Result<Vec<String>> {
         driver.find_all_attrs(".reorder .logo", "class").await
@@ -335,6 +412,7 @@ pub async fn reorders_sync_sources(driver: &mut TestDriver, _: &mut Track) -> Re
 /// lists, and the rules switch between viewing and editing.
 pub async fn adds_languages_and_rules(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     open_settings(driver).await?;
+    open_page(driver, "Sync").await?;
 
     let add_language = driver.find_one_by("button[title='Add language']").await?;
     ensure!(
@@ -350,6 +428,7 @@ pub async fn adds_languages_and_rules(driver: &mut TestDriver, _: &mut Track) ->
         .await?;
     driver.wait_count(".modal", 0).await?;
 
+    open_page(driver, "Sources & dates").await?;
     let rules = driver.count("rule").await?;
     driver
         .find_first("button[title='Add rule']")

@@ -569,6 +569,60 @@ impl ShowDetailQuery {
     }
 }
 
+/// A page of the settings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum SettingsPage {
+    Preferences,
+    Site,
+    Sync,
+    Sources,
+    ApiKeys,
+    CloudflareAccess,
+}
+
+impl SettingsPage {
+    /// Every page, in the order they are listed.
+    pub(super) const ALL: [SettingsPage; 6] = [
+        SettingsPage::Preferences,
+        SettingsPage::Site,
+        SettingsPage::Sync,
+        SettingsPage::Sources,
+        SettingsPage::ApiKeys,
+        SettingsPage::CloudflareAccess,
+    ];
+
+    pub(super) fn slug(self) -> &'static str {
+        match self {
+            SettingsPage::Preferences => "preferences",
+            SettingsPage::Site => "site",
+            SettingsPage::Sync => "sync",
+            SettingsPage::Sources => "sources",
+            SettingsPage::ApiKeys => "api-keys",
+            SettingsPage::CloudflareAccess => "cloudflare-access",
+        }
+    }
+
+    fn from_slug(slug: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|page| page.slug() == slug)
+    }
+
+    pub(super) fn title(self) -> &'static str {
+        match self {
+            SettingsPage::Preferences => "Preferences",
+            SettingsPage::Site => "Site",
+            SettingsPage::Sync => "Sync",
+            SettingsPage::Sources => "Sources & dates",
+            SettingsPage::ApiKeys => "API keys",
+            SettingsPage::CloudflareAccess => "Cloudflare Access",
+        }
+    }
+
+    /// Whether only administrators have this page.
+    pub(super) fn admin(self) -> bool {
+        self != SettingsPage::Preferences
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub(super) enum Route {
     Dashboard(DashboardQuery),
@@ -579,7 +633,9 @@ pub(super) enum Route {
     People(PersonQuery),
     PersonDetail(api::PersonId),
     Search(SearchQuery),
-    Settings,
+    /// The settings, on one of their pages; `None` is the list of pages on a
+    /// phone and the first page on a wide screen.
+    Settings(Option<SettingsPage>),
     Users,
     Account,
 }
@@ -656,7 +712,8 @@ impl fmt::Display for Route {
                     write!(f, "/search?{qs}")
                 }
             }
-            Route::Settings => f.write_str("/settings"),
+            Route::Settings(None) => f.write_str("/settings"),
+            Route::Settings(Some(page)) => write!(f, "/settings/{}", page.slug()),
             Route::Users => f.write_str("/users"),
             Route::Account => f.write_str("/account"),
         }
@@ -701,7 +758,7 @@ impl Route {
                 None => Route::People(PersonQuery::from_search(search)),
             },
             Some("search") => Route::Search(SearchQuery::from_search(search)),
-            Some("settings") => Route::Settings,
+            Some("settings") => Route::Settings(parts.next().and_then(SettingsPage::from_slug)),
             Some("users") => Route::Users,
             Some("account") => Route::Account,
             _ => Route::Dashboard(DashboardQuery::from_search(search)),
