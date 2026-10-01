@@ -3,13 +3,16 @@
 //! component it exports, and is re-exported here so callers can refer to it as
 //! `crate::page::<Name>`.
 
+mod account;
 mod calendar;
 mod dashboard;
+mod login;
 mod media_list;
 mod movie_detail;
 mod person_detail;
 mod person_list;
 mod queue;
+mod register;
 mod schedule_item;
 mod schedule_range;
 mod search;
@@ -17,13 +20,16 @@ mod settings;
 mod show_detail;
 mod watch_next;
 
+pub(crate) use self::account::Account;
 pub(crate) use self::calendar::Calendar;
 pub(crate) use self::dashboard::Dashboard;
+pub(crate) use self::login::Login;
 pub(crate) use self::media_list::MediaList;
 pub(crate) use self::movie_detail::MovieDetail;
 pub(crate) use self::person_detail::PersonDetail;
 pub(crate) use self::person_list::PersonList;
 pub(crate) use self::queue::Queue;
+pub(crate) use self::register::Register;
 pub(crate) use self::schedule_range::ScheduleRange;
 pub(crate) use self::search::Search;
 pub(crate) use self::settings::Settings;

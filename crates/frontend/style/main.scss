@@ -844,6 +844,63 @@ a.search-title:hover {
     font-size: v.$font-sm;
 }
 
+// A save that went through, said under its field.
+.field-ok {
+    flex-basis: 100%;
+    color: v.$color-success;
+    font-size: v.$font-sm;
+}
+
+// A read-only value in a form row, lined up with the inputs beside it.
+.auth-value {
+    display: flex;
+    align-items: center;
+    min-height: v.$input-height;
+    font-weight: v.$bold-weight;
+}
+
+// Signing in and login links: one card in the middle of the page.
+.auth-page {
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: v.$gap;
+}
+
+.auth-card {
+    display: flex;
+    flex-direction: column;
+    gap: v.$gap;
+    width: min(480px, 100%);
+    padding: v.$gap * 1.5;
+    background: v.$bg-surface;
+    border: 1px solid v.$border-subtle;
+    border-radius: v.$radius-lg;
+    box-shadow: 0 8px 32px v.$shadow;
+
+    h1 {
+        margin: 0;
+        color: v.$color-title;
+        font-size: v.$font-xl;
+    }
+
+    .form-rows {
+        @include g.on-desktop {
+            grid-template-columns: 140px minmax(0, 1fr);
+        }
+    }
+}
+
+// Holds an error or notice; empty, it takes no room.
+.auth-message:empty {
+    display: none;
+}
+
+.auth-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
 // Settings as rows (`ui::FormRow`): labels share one column beside their
 // controls, and stack above them on phones.
 .form-rows {

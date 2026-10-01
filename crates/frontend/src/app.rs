@@ -8,8 +8,9 @@ use yew::prelude::*;
 
 use crate::background::{Background, BackgroundState, UndoWatched};
 use crate::error::{CustomContext, Error, Message, RcError};
+use crate::http::{self, HttpError};
 use crate::page::{
-    Dashboard, MediaList, MovieDetail, PersonDetail, PersonList, Queue, Search, Settings,
+    Account, Dashboard, MediaList, MovieDetail, PersonDetail, PersonList, Queue, Search, Settings,
     ShowDetail,
 };
 use crate::router::{
@@ -17,6 +18,15 @@ use crate::router::{
 };
 use crate::setup_channel::SetupChannel;
 use crate::ui::{Button, ErrorBox, Link, Outline, OutlineControl, OutlineEntry, TopLanguages};
+
+#[derive(Properties, PartialEq)]
+pub(super) struct Props {
+    pub(super) user: api::User,
+    pub(super) on_user_changed: Callback<api::User>,
+    pub(super) on_sign_out: Callback<()>,
+    /// The server no longer accepts the session.
+    pub(super) on_session_ended: Callback<()>,
+}
 
 pub(super) struct App {
     channel: ws::Channel,
@@ -50,6 +60,8 @@ pub(super) struct App {
     _tick_minute_interval: Interval,
     _history_listener: EventListener,
     onclearerror: Callback<()>,
+    /// Whether the session is being checked after losing the websocket.
+    checking_session: bool,
 }
 
 pub(super) enum Msg {
@@ -73,6 +85,7 @@ pub(super) enum Msg {
     Undo,
     DismissUndo,
     UndoDone(Result<ws::Packet<api::UndoWatched>, ws::Error>),
+    SessionChecked(Result<api::User, HttpError>),
 }
 
 /// How long the undo toast stays up.
@@ -80,7 +93,7 @@ const UNDO_TIMEOUT_MS: u32 = 8_000;
 
 impl Component for App {
     type Message = Msg;
-    type Properties = ();
+    type Properties = Props;
 
     fn create(ctx: &Context<Self>) -> Self {
         let link = ctx.link();
@@ -152,6 +165,7 @@ impl Component for App {
             _undo_req: ws::Request::default(),
             _tick_minute_interval,
             onclearerror,
+            checking_session: false,
         }
     }
 
@@ -191,7 +205,7 @@ impl Component for App {
                             </div>
                         }
 
-                        <Toolbar site_title={self.site_title.clone()} connected={self.ws_state.is_open()} section={Section::of(&self.router_state.route)} />
+                        <Toolbar site_title={self.site_title.clone()} connected={self.ws_state.is_open()} section={Section::of(&self.router_state.route)} login={ctx.props().user.login.clone()} />
 
                         <main id="content">
                             <div id="page">
@@ -261,6 +275,11 @@ impl App {
                 }
 
                 self.ws_state = state;
+
+                if !state.is_open() {
+                    self.check_session(ctx);
+                }
+
                 Ok(true)
             }
             Msg::AppBroadcast(result) => {
@@ -293,6 +312,11 @@ impl App {
                 Ok(false)
             }
             Msg::TickTime => {
+                // A refused upgrade only shows as a socket that never opens.
+                if !self.ws_state.is_open() {
+                    self.check_session(ctx);
+                }
+
                 self.time = TimeInfo::new(self.time.tz().clone(), Timestamp::now());
                 Ok(true)
             }
@@ -410,7 +434,26 @@ impl App {
                 result.context(Message::UndoingWatched)?;
                 Ok(false)
             }
+            Msg::SessionChecked(result) => {
+                self.checking_session = false;
+
+                if let Err(HttpError::Unauthorized) = result {
+                    ctx.props().on_session_ended.emit(());
+                }
+
+                Ok(false)
+            }
         }
+    }
+
+    fn check_session(&mut self, ctx: &Context<Self>) {
+        if self.checking_session {
+            return;
+        }
+
+        self.checking_session = true;
+        ctx.link()
+            .send_future(async { Msg::SessionChecked(http::me().await) });
     }
 
     /// Apply the config's title to the tab-title fallback and the toolbar.
@@ -449,7 +492,7 @@ impl App {
         TimeZone::system()
     }
 
-    fn view_page(&self, _: &Context<Self>) -> Html {
+    fn view_page(&self, ctx: &Context<Self>) -> Html {
         match self.router_state.route {
             Route::Dashboard(ref q) => {
                 html! { <Dashboard page={q.page} week={q.week} week_start={q.week_start} range={q.range} view={q.view} selection={q.selection} /> }
@@ -478,6 +521,13 @@ impl App {
                 <Search selection={q.selection} filter={q.filter.clone()} />
             },
             Route::Settings => html! { <Settings /> },
+            Route::Account => {
+                let props = ctx.props();
+
+                html! {
+                    <Account user={props.user.clone()} on_user_changed={props.on_user_changed.clone()} on_sign_out={props.on_sign_out.clone()} />
+                }
+            }
         }
     }
 }
@@ -491,6 +541,7 @@ enum Section {
     Search,
     Queue,
     Settings,
+    Account,
 }
 
 impl Section {
@@ -502,6 +553,7 @@ impl Section {
             Route::Search(..) => Section::Search,
             Route::Queue(..) => Section::Queue,
             Route::Settings => Section::Settings,
+            Route::Account => Section::Account,
         }
     }
 }
@@ -512,6 +564,8 @@ struct ToolbarProps {
     /// Whether the websocket is currently connected.
     connected: bool,
     section: Section,
+    /// The signed-in user's login, naming the account link.
+    login: AttrValue,
 }
 
 #[function_component]
@@ -576,6 +630,11 @@ fn Toolbar(props: &ToolbarProps) -> Html {
                 <Link to={Route::Settings} class={classes!("toolbar-item", "has-text", (props.section == Section::Settings).then_some("active"))} title="Settings" current={props.section == Section::Settings} onclick={close_menu.clone()}>
                     <span class="icon cog-6-tooth" aria-hidden="true" />
                     <span>{"Settings"}</span>
+                </Link>
+
+                <Link to={Route::Account} class={classes!("toolbar-item", "has-text", (props.section == Section::Account).then_some("active"))} title="Account" current={props.section == Section::Account} onclick={close_menu.clone()}>
+                    <span class="icon user-circle" aria-hidden="true" />
+                    <span>{props.login.clone()}</span>
                 </Link>
             </nav>
         </header>

@@ -1,7 +1,8 @@
 //! Browser tests for track. Every test gets a server of its own, with a fresh
 //! database and image cache in a temporary directory, serving the frontend that
 //! yew-e2e builds for the run. A fresh database has no API keys, so nothing is
-//! synced from the remotes.
+//! synced from the remotes. The browser is signed in as the administrator
+//! `root` unless a test asks for `(signed_out)`.
 //!
 //! ```text
 //! cargo test -p e2e
@@ -9,6 +10,7 @@
 //! cargo test -p e2e -- --headed --last-session
 //! ```
 
+mod auth;
 mod dashboard;
 mod media;
 mod movie;
@@ -19,8 +21,9 @@ mod search;
 mod settings;
 mod show;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::OnceLock;
 
 use anyhow::{Context, Result, ensure};
 use tempfile::TempDir;
@@ -60,7 +63,23 @@ struct Setup {
     upcoming: bool,
     /// Start with `seed.sql` and the poster candidates in `graphics.sql`.
     graphics: bool,
+    /// Start at the sign-in page instead of signed in as `root`.
+    signed_out: bool,
+    /// A regular user without a password, `alice`, with the unused login link
+    /// [`LOGIN_LINK`].
+    login_link: bool,
 }
+
+/// The token of the login link that `(login_link)` creates.
+const LOGIN_LINK: &str = "e2e-login-link";
+
+/// The user and login link for `(login_link)`, valid for a day.
+const LOGIN_LINK_SQL: &str = "
+    INSERT INTO users (login, email, role, created_at)
+    VALUES ('alice', 'alice@example.com', 'regular', CAST(unixepoch('subsec') * 1000 AS INTEGER));
+    INSERT INTO login_tokens (id, user_id, expires_at)
+    VALUES ('e2e-login-link', last_insert_rowid(), CAST((unixepoch('subsec') + 86400) * 1000 AS INTEGER));
+";
 
 /// A track server for one test.
 struct Track {
@@ -92,18 +111,25 @@ impl Fixture for Track {
     async fn start(setup: Setup) -> Result<Self> {
         let dir = TempDir::new()?;
 
-        if setup.seeded
+        let seeded = setup.seeded
             || setup.crowded
             || setup.movie
             || setup.seasons
             || setup.upcoming
-            || setup.graphics
-        {
+            || setup.graphics;
+
+        if seeded || setup.login_link {
             // The server creates the schema; the seed goes in while it is down.
-            Server::start(dir.path()).await?.quit().await?;
+            Server::start(dir.path(), yew_e2e::dist()?)
+                .await?
+                .quit()
+                .await?;
 
             let c = sqll::Connection::open(dir.path().join("track.db"))?;
-            c.execute(SEED).context("seeding the database")?;
+
+            if seeded {
+                c.execute(SEED).context("seeding the database")?;
+            }
 
             if setup.crowded {
                 c.execute(CROWDED).context("crowding the database")?;
@@ -124,9 +150,19 @@ impl Fixture for Track {
             if setup.graphics {
                 c.execute(GRAPHICS).context("adding the graphics")?;
             }
+
+            if setup.login_link {
+                c.execute(LOGIN_LINK_SQL).context("adding the login link")?;
+            }
         }
 
-        let server = Server::start(dir.path()).await?;
+        let dist = if setup.signed_out {
+            yew_e2e::dist()?
+        } else {
+            signed_in_dist()?
+        };
+
+        let server = Server::start(dir.path(), dist).await?;
 
         Ok(Self {
             port: server.port,
@@ -161,15 +197,58 @@ struct Server {
     task: JoinHandle<Result<ExitCode>>,
 }
 
+/// The frontend with a script that signs in as `root` before the app starts,
+/// unless the page already has a session: a copy of the build whose
+/// `index.html` carries the script and whose other files link to the build's.
+fn signed_in_dist() -> Result<&'static Path> {
+    static DIST: OnceLock<PathBuf> = OnceLock::new();
+
+    if let Some(dist) = DIST.get() {
+        return Ok(dist);
+    }
+
+    let built = yew_e2e::dist()?;
+    let dist = yew_e2e::target_dir()?.join("e2e-signed-in-dist");
+
+    if dist.exists() {
+        std::fs::remove_dir_all(&dist)?;
+    }
+
+    std::fs::create_dir_all(&dist)?;
+
+    for entry in std::fs::read_dir(built)? {
+        let entry = entry?;
+
+        if entry.file_name() != "index.html" {
+            std::os::unix::fs::symlink(entry.path(), dist.join(entry.file_name()))?;
+        }
+    }
+
+    let index = std::fs::read_to_string(built.join("index.html"))?;
+    let script = "<head><script>(() => {
+        const me = new XMLHttpRequest();
+        me.open('GET', '/api/auth/me', false);
+        me.send();
+        if (me.status !== 401) return;
+        const login = new XMLHttpRequest();
+        login.open('POST', '/api/auth/login', false);
+        login.setRequestHeader('Content-Type', 'application/json');
+        login.send(JSON.stringify({ login: 'root', password: 'root' }));
+    })();</script>";
+
+    ensure!(index.contains("<head>"), "index.html has no <head>");
+    std::fs::write(dist.join("index.html"), index.replacen("<head>", script, 1))?;
+    Ok(DIST.get_or_init(|| dist))
+}
+
 impl Server {
-    async fn start(dir: &Path) -> Result<Self> {
+    async fn start(dir: &Path, dist: &'static Path) -> Result<Self> {
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let port = listener.local_addr()?.port();
         let (shutdown, rx) = oneshot::channel::<()>();
 
         let db = dir.join("track.db");
         let cache = dir.join("image-cache");
-        let dist = yew_e2e::dist()?;
 
         let task = tokio::spawn(async move {
             track::serve(listener, &db, &cache, Some(dist), async move {
@@ -223,6 +302,7 @@ async fn kept_marked(driver: &TestDriver, selector: &str) -> Result<usize> {
 
 yew_e2e::harness! {
     Track;
+    auth::{signs_in(signed_out), rejects_a_wrong_password(signed_out), signs_out(signed_out), registers_with_a_login_link(signed_out, login_link), changes_the_password(signed_out), changes_the_login},
     dashboard::{fills_rows_with_relative_dates(seeded), labels_its_filters, keeps_view_options_in_a_menu, buttons_expose_their_state, secondary_actions_are_filled(seeded), mobile_cards_always_have_a_picture(seeded), schedule_names_its_days, upcoming_is_an_agenda, upcoming_times_open_their_episode(upcoming), upcoming_keeps_days_when_more_are_shown(upcoming), schedule_keeps_weeks_when_more_are_shown(upcoming), schedule_entries_sit_flush_left(upcoming), marks_watched_in_one_click(seeded), marks_watched_at_a_chosen_time(seeded)},
     media::{shows_a_poster_grid(seeded), partly_watched_shows_are_marked(seeded), toggle_marks_are_icon_sized, sort_stays_readable_at_tablet_width, reversing_keeps_the_cards(crowded)},
     movie::{puts_the_cast_beside_the_poster(movie), phone_release_line_stays_together(movie)},

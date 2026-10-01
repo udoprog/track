@@ -3,13 +3,15 @@
 mod app;
 mod background;
 mod error;
+mod http;
 mod page;
+mod root;
 mod router;
 mod setup_channel;
 mod theme;
 mod ui;
 
-use self::app::App;
+use self::root::Root;
 use self::setup_channel::SetupChannel;
 
 use tracing::Level;
@@ -22,5 +24,5 @@ fn main() {
     config.set_max_level(Level::INFO);
     let config = config.build();
     tracing_wasm::set_as_global_default_with_config(config);
-    yew::Renderer::<App>::new().render();
+    yew::Renderer::<Root>::new().render();
 }
