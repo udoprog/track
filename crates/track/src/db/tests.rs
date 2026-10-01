@@ -565,3 +565,110 @@ async fn mark_watched_remaining_advances_pending_like_individual_marks() -> Resu
 
     Ok(())
 }
+
+/// The next episode in watch order follows the most recent watch in its scope,
+/// so a rewatch continues in order, and the specials are kept apart from the
+/// regular seasons.
+#[tokio::test]
+async fn next_episode_follows_the_most_recent_watch_in_scope() -> Result<()> {
+    use api::EpisodeScope::{Regular, Specials};
+
+    let dir = tempfile::tempdir()?;
+    let db = Database::open(dir.path().join("test.db"), OpenMode::Bulk, 1)?;
+
+    let root = db.default_owner().await?;
+    let show = api::ShowId::new(1);
+    db.create_show(show, "", None, "").await?;
+
+    let now = ms(1_800_000_000_000);
+    let aired = ms(1_700_000_000_000);
+    let unaired = ms(1_900_000_000_000);
+
+    let s0 = api::SeasonNumber::Specials;
+    let s1 = api::SeasonNumber::from_ordinal(1);
+    let s2 = api::SeasonNumber::from_ordinal(2);
+
+    let sp1 = api::EpisodeId::new(1);
+    let sp2 = api::EpisodeId::new(2);
+    let e1 = api::EpisodeId::new(11);
+    let e2 = api::EpisodeId::new(12);
+    let e3 = api::EpisodeId::new(13);
+    let e4 = api::EpisodeId::new(21);
+
+    for (id, season, number, aired) in [
+        (sp1, s0, 1, aired),
+        (sp2, s0, 2, aired),
+        (e1, s1, 1, aired),
+        (e2, s1, 2, aired),
+        (e3, s1, 3, aired),
+        (e4, s2, 1, unaired),
+    ] {
+        db.upsert_episode(id, show, season, number, None, Some(aired))
+            .await?;
+    }
+
+    let next = |scope| db.next_episode(root, show, scope, now);
+    let listed = async || -> Result<(bool, bool)> {
+        let item = db
+            .media_items(root)
+            .await?
+            .into_iter()
+            .find(|m| m.kind == api::MediaKind::Shows && m.id == show.get())
+            .context("show is listed")?;
+        Ok((item.next_regular, item.next_specials))
+    };
+    let mut minute = 0;
+    let mut watch = async |season, number| {
+        minute += 1;
+        db.insert_watched_episode(
+            root,
+            WatchedId::random(),
+            ms(1_750_000_000_000 + minute * 60_000),
+            show,
+            season,
+            number,
+        )
+        .await
+    };
+
+    // No watches: the first aired episode of each scope.
+    assert_eq!(next(Regular).await?, Some(e1));
+    assert_eq!(next(Specials).await?, Some(sp1));
+    assert_eq!(listed().await?, (true, true));
+
+    // Mid-season: the episode after the watch; specials are untouched.
+    watch(s1, 1).await?;
+    assert_eq!(next(Regular).await?, Some(e2));
+    assert_eq!(next(Specials).await?, Some(sp1));
+
+    // The next episode after S01E03 has not aired yet.
+    watch(s1, 3).await?;
+    assert_eq!(next(Regular).await?, None);
+
+    // A rewatch of an earlier episode continues from it, even into an
+    // episode already watched.
+    watch(s1, 2).await?;
+    assert_eq!(next(Regular).await?, Some(e3));
+
+    // Watching specials leaves the regular scope alone, and the last special
+    // ends that scope.
+    watch(s0, 1).await?;
+    assert_eq!(next(Specials).await?, Some(sp2));
+    assert_eq!(next(Regular).await?, Some(e3));
+    watch(s0, 2).await?;
+    assert_eq!(next(Specials).await?, None);
+    assert_eq!(next(Regular).await?, Some(e3));
+    assert_eq!(listed().await?, (true, false));
+
+    // Once S02E01 airs, it follows the end of season 1.
+    watch(s1, 3).await?;
+    assert_eq!(next(Regular).await?, None);
+    assert_eq!(
+        db.next_episode(root, show, Regular, unaired).await?,
+        Some(e4)
+    );
+
+    assert_eq!(listed().await?, (false, false));
+
+    Ok(())
+}

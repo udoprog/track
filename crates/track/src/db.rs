@@ -314,6 +314,13 @@ struct LastWatchedShowRow {
 }
 
 #[derive(Row)]
+struct WatchOrderNextRow {
+    show_id: ShowId,
+    special: bool,
+    episode_id: EpisodeId,
+}
+
+#[derive(Row)]
 struct UnwatchedShowRow {
     show_id: ShowId,
     unwatched: i64,
@@ -985,6 +992,23 @@ struct InnerRead {
     last_watched_shows: TypedStatement<(UserId,), LastWatchedShowRow>,
     #[sql = "SELECT e.show_id AS show_id, COUNT(*) AS unwatched FROM episodes e WHERE e.season != 0 AND e.aired IS NOT NULL AND e.aired <= CAST(strftime('%s', 'now') AS INTEGER) * 1000 AND NOT EXISTS (SELECT 1 FROM watched_episodes w WHERE w.user_id = ?1 AND w.show_id = e.show_id AND w.season = e.season AND w.episode = e.episode) GROUP BY e.show_id"]
     unwatched_shows: TypedStatement<(UserId,), UnwatchedShowRow>,
+    // The next episode in watch order per show and scope (specials or regular
+    // seasons): the first aired episode after the most recent watch in that
+    // scope, or the first aired one with no watch. ?2 limits it to one show.
+    #[sql = "WITH last AS ("]
+    #[sql = "    SELECT show_id, season = 0 AS special, season, episode,"]
+    #[sql = "        ROW_NUMBER() OVER (PARTITION BY show_id, season = 0 ORDER BY timestamp DESC, id DESC) AS rn"]
+    #[sql = "    FROM watched_episodes WHERE user_id = ?1 AND show_id IS NOT NULL AND (?2 IS NULL OR show_id = ?2)"]
+    #[sql = "), next AS ("]
+    #[sql = "    SELECT e.show_id, e.season = 0 AS special, e.id AS episode_id,"]
+    #[sql = "        ROW_NUMBER() OVER (PARTITION BY e.show_id, e.season = 0 ORDER BY e.season, e.episode) AS rn"]
+    #[sql = "    FROM episodes e"]
+    #[sql = "    LEFT JOIN last l ON l.rn = 1 AND l.show_id = e.show_id AND l.special = (e.season = 0)"]
+    #[sql = "    WHERE (?2 IS NULL OR e.show_id = ?2) AND e.aired IS NOT NULL AND e.aired <= ?3"]
+    #[sql = "        AND (l.show_id IS NULL OR (e.season, e.episode) > (l.season, l.episode))"]
+    #[sql = ")"]
+    #[sql = "SELECT show_id, special, episode_id FROM next WHERE rn = 1"]
+    next_episodes: TypedStatement<(UserId, Option<ShowId>, Timestamp), WatchOrderNextRow>,
 
     // movies
     #[sql = "SELECT m.id, m.release_date, EXISTS (SELECT 1 FROM user_tracked_movies t WHERE t.movie_id = m.id AND t.user_id = ?1) AS tracked, m.auto_sync, m.last_synced_at, (SELECT c.value FROM user_movie_config c WHERE c.user_id = ?1 AND c.movie_id = m.id AND c.key = 'language') AS language, m.default_language, m.release_filters"]
@@ -3470,6 +3494,24 @@ impl Database {
 
                 stmt.reset()?;
 
+                let mut stmt = s
+                    .next_episodes
+                    .bind((user, None::<ShowId>, Timestamp::now()))?;
+
+                while let Some(r) = stmt.next()? {
+                    if let Some(&i) = id_to_idx.get(&r.show_id.get())
+                        && let Some(o) = out.get_mut(i)
+                    {
+                        if r.special {
+                            o.next_specials = true;
+                        } else {
+                            o.next_regular = true;
+                        }
+                    }
+                }
+
+                stmt.reset()?;
+
                 let mut stmt = s.list_all_show_remotes.query()?;
 
                 while let Some(r) = stmt.next()? {
@@ -5445,6 +5487,34 @@ impl Database {
     pub(crate) async fn show_id_for_season(&self, season_id: SeasonId) -> Result<Option<ShowId>> {
         let mut s = self.inner.clone().shared().await?;
         spawn_blocking(move || Ok(s.show_id_for_season.bind((season_id,))?.first()?)).await?
+    }
+
+    /// The next episode in watch order of `show` in `scope`; see
+    /// `next_episodes` for the rule.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn next_episode(
+        &self,
+        user: UserId,
+        show: ShowId,
+        scope: api::EpisodeScope,
+        now: Timestamp,
+    ) -> Result<Option<EpisodeId>> {
+        let mut s = self.inner.clone().shared().await?;
+
+        let result = spawn_blocking(move || {
+            let special = scope == api::EpisodeScope::Specials;
+            let mut stmt = s.next_episodes.bind((user, Some(show), now))?;
+
+            while let Some(r) = stmt.next()? {
+                if r.special == special {
+                    return Ok(Some(r.episode_id));
+                }
+            }
+
+            Ok(None)
+        });
+
+        result.await?
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -7671,6 +7741,8 @@ fn media_item_from_row(
         tracked: r.tracked,
         last_watched_at: None,
         unwatched_episodes: 0,
+        next_regular: false,
+        next_specials: false,
         remotes: Vec::new(),
     }
 }

@@ -503,7 +503,7 @@ impl App {
                 <Queue filter={q.filter} page={q.page} />
             },
             Route::Media(ref q) => html! {
-                <MediaList page={q.page} filter={q.filter.clone()} sort={q.sort} desc={q.desc} tracked={q.tracked} selection={q.selection} />
+                <MediaList page={q.page} filter={q.filter.clone()} sort={q.sort} desc={q.desc} tracked={q.tracked} next={q.next} selection={q.selection} />
             },
             Route::ShowDetail(show_id, ref q) => {
                 html! {

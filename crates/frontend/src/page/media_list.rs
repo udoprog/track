@@ -8,7 +8,8 @@ use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{
-    MediaQuery, MediaSelection, Route, Router, ShowDetailQuery, SortField, TrackedFilter,
+    MediaQuery, MediaSelection, NextFilter, Route, Router, ShowDetailQuery, SortField,
+    TrackedFilter,
 };
 use crate::ui::{
     Button, Image, Link, MarkTimeMenu, MediaKindToggle, PaginationButtons, SortMenu, TimePreset,
@@ -45,6 +46,7 @@ pub(crate) struct MediaList {
     sort: SortField,
     desc: bool,
     tracked: TrackedFilter,
+    next: NextFilter,
     selection: MediaSelection,
     time: TimeInfo,
     _time_handle: ContextHandle<TimeInfo>,
@@ -76,6 +78,7 @@ pub(crate) enum Msg {
     SetSort(SortField),
     ToggleDir,
     CycleTracked,
+    CycleNext,
     SetSelection(MediaSelection),
     SetPage(usize),
     SetTime(TimeInfo),
@@ -88,6 +91,7 @@ pub(crate) struct Props {
     pub(crate) sort: SortField,
     pub(crate) desc: bool,
     pub(crate) tracked: TrackedFilter,
+    pub(crate) next: NextFilter,
     pub(crate) selection: MediaSelection,
 }
 
@@ -128,6 +132,7 @@ impl Component for MediaList {
             sort: ctx.props().sort,
             desc: ctx.props().desc,
             tracked: ctx.props().tracked,
+            next: ctx.props().next,
             selection: ctx.props().selection,
             time,
             _time_handle,
@@ -162,6 +167,7 @@ impl Component for MediaList {
         self.sort = props.sort;
         self.desc = props.desc;
         self.tracked = props.tracked;
+        self.next = props.next;
         self.selection = props.selection;
 
         // Only the order-affecting inputs warrant a rebuild; a bare page change
@@ -170,6 +176,7 @@ impl Component for MediaList {
             || old_props.sort != props.sort
             || old_props.desc != props.desc
             || old_props.tracked != props.tracked
+            || old_props.next != props.next
             || old_props.selection != props.selection
         {
             self.rebuild_order();
@@ -239,6 +246,12 @@ impl Component for MediaList {
             TrackedFilter::Untracked => ("eye-slash", "Untracked"),
         };
 
+        let (next_icon, next_scope) = match self.next {
+            NextFilter::All => ("forward", "any"),
+            NextFilter::Regular => ("forward", "regular"),
+            NextFilter::Specials => ("sparkles", "specials"),
+        };
+
         html! {
             <>
                 // The app bar already says which page this is.
@@ -264,6 +277,8 @@ impl Component for MediaList {
                         <Button icon={dir_icon} title={dir_title} class="chip" onclick={link.callback(|_| Msg::ToggleDir)} />
 
                         <Button icon={tracked_icon} title={format!("Showing: {tracked_label}")} label={tracked_label} class={classes!("chip", (self.tracked != TrackedFilter::All).then_some("selected"))} onclick={link.callback(|_| Msg::CycleTracked)} />
+
+                        <Button icon={next_icon} title={format!("Next episode: {next_scope}")} label={format!("Next: {next_scope}")} class={classes!("chip", (self.next != NextFilter::All).then_some("selected"))} onclick={link.callback(|_| Msg::CycleNext)} />
 
                         <MediaKindToggle
                             selection={self.selection}
@@ -457,6 +472,13 @@ impl MediaList {
                 self.emit_navigate();
                 Ok(true)
             }
+            Msg::CycleNext => {
+                self.next = self.next.next();
+                self.page = 0;
+                self.rebuild_order();
+                self.emit_navigate();
+                Ok(true)
+            }
             Msg::SetSelection(selection) => {
                 self.selection = selection;
                 self.page = 0;
@@ -491,6 +513,11 @@ impl MediaList {
                     TrackedFilter::All => true,
                     TrackedFilter::Tracked => m.tracked,
                     TrackedFilter::Untracked => !m.tracked,
+                })
+                .filter(|(_, m)| match self.next {
+                    NextFilter::All => true,
+                    NextFilter::Regular => m.next_regular,
+                    NextFilter::Specials => m.next_specials,
                 })
                 .filter(|(_, m)| {
                     filter.is_empty()
@@ -560,6 +587,7 @@ impl MediaList {
             sort: self.sort,
             desc: self.desc,
             tracked: self.tracked,
+            next: self.next,
             selection: self.selection,
         }));
     }

@@ -254,6 +254,54 @@ impl WsHandler {
             .await;
     }
 
+    /// Mark a watch, advance pending past it and tell the user's other sockets.
+    async fn mark_watched(
+        &self,
+        channel: musli_web::api::ChannelId,
+        kind: api::WatchedKind,
+        mark_time: api::MarkTime,
+        now: api::Timestamp,
+    ) -> Result<api::MarkWatchedResponse> {
+        let pending_before = self.db.pending_before(self.user.id, kind).await?;
+
+        let watched = self
+            .db
+            .mark_watched(self.user.id, api::WatchedId::random(), kind, mark_time, now)
+            .await?;
+
+        match kind {
+            api::WatchedKind::Episode { show, episode } => {
+                self.pending
+                    .on_episode_watched_from(self.user.id, show, episode, now)
+                    .await?;
+            }
+            api::WatchedKind::Movie { movie } => {
+                self.db.remove_pending_movie(self.user.id, movie).await?;
+            }
+        }
+
+        self.broadcast.emit_to(
+            self.user.id,
+            channel,
+            api::AppEventKind::WatchedChanged {
+                event: kind.into_event(),
+            },
+            "ws mark watched changed",
+        );
+
+        self.broadcast.emit_to(
+            self.user.id,
+            channel,
+            api::AppEventKind::PendingChanged,
+            "ws mark watched pending changed",
+        );
+
+        Ok(api::MarkWatchedResponse {
+            watched,
+            pending_before,
+        })
+    }
+
     /// Broadcast that a person changed, after a mutation that does not warrant a
     /// resync (add/remove/update remote).
     async fn broadcast_person_changed(
@@ -861,51 +909,43 @@ impl WsHandler {
                     .read::<api::MarkWatchedRequest>()
                     .context("Expected a request payload")?;
 
-                let now = api::Timestamp::now();
-                let pending_before = self.db.pending_before(self.user.id, req.kind).await?;
-
-                let watched = self
-                    .db
+                let response = self
                     .mark_watched(
-                        self.user.id,
-                        api::WatchedId::random(),
+                        incoming.channel(),
                         req.kind,
                         req.mark_time,
-                        now,
+                        api::Timestamp::now(),
                     )
                     .await?;
+                outgoing.write(response);
+            }
+            api::Request::MarkNextEpisode => {
+                let req = incoming
+                    .read::<api::MarkNextEpisodeRequest>()
+                    .context("Expected a request payload")?;
 
-                match req.kind {
-                    api::WatchedKind::Episode { show, episode } => {
-                        self.pending
-                            .on_episode_watched_from(self.user.id, show, episode, now)
-                            .await?;
+                let now = api::Timestamp::now();
+
+                let marked = match self
+                    .db
+                    .next_episode(self.user.id, req.show, req.scope, now)
+                    .await?
+                {
+                    Some(episode) => {
+                        let kind = api::WatchedKind::Episode {
+                            show: req.show,
+                            episode,
+                        };
+
+                        Some(
+                            self.mark_watched(incoming.channel(), kind, req.mark_time, now)
+                                .await?,
+                        )
                     }
-                    api::WatchedKind::Movie { movie } => {
-                        self.db.remove_pending_movie(self.user.id, movie).await?;
-                    }
-                }
+                    None => None,
+                };
 
-                self.broadcast.emit_to(
-                    self.user.id,
-                    incoming.channel(),
-                    api::AppEventKind::WatchedChanged {
-                        event: req.kind.into_event(),
-                    },
-                    "ws mark watched changed",
-                );
-
-                self.broadcast.emit_to(
-                    self.user.id,
-                    incoming.channel(),
-                    api::AppEventKind::PendingChanged,
-                    "ws mark watched pending changed",
-                );
-
-                outgoing.write(api::MarkWatchedResponse {
-                    watched,
-                    pending_before,
-                });
+                outgoing.write(api::MarkNextEpisodeResponse { marked });
             }
             api::Request::MarkWatchedRemaining => {
                 let req = incoming

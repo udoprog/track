@@ -2335,6 +2335,12 @@ pub struct MediaItem {
     /// For shows, the regular (non-special) episodes that have aired but have
     /// not been watched. Always 0 for movies.
     pub unwatched_episodes: u32,
+    /// For shows, whether a next episode in watch order exists among the
+    /// regular seasons. Always false for movies.
+    pub next_regular: bool,
+    /// For shows, whether a next episode in watch order exists among the
+    /// specials. Always false for movies.
+    pub next_specials: bool,
     /// Remote entries, used to render external links in the list.
     pub remotes: Vec<RemoteEntry>,
 }
@@ -2794,6 +2800,33 @@ pub struct UndoWatchedRequest {
     pub id: WatchedId,
     pub kind: WatchedKind,
     pub pending_before: PendingBefore,
+}
+
+/// Which seasons the next episode in watch order is taken from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub enum EpisodeScope {
+    /// Every season but the specials.
+    Regular,
+    /// Season 0.
+    Specials,
+}
+
+/// Mark the episode after the most recently watched one in `scope`, or the
+/// first aired one when nothing in `scope` has been watched.
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct MarkNextEpisodeRequest {
+    pub show: ShowId,
+    pub scope: EpisodeScope,
+    pub mark_time: MarkTime,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct MarkNextEpisodeResponse {
+    /// The watch that was marked, or `None` when the show has no next episode.
+    pub marked: Option<MarkWatchedResponse>,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -3734,6 +3767,12 @@ api::define! {
     impl Endpoint for MarkWatched {
         impl Request for MarkWatchedRequest;
         type Response<'de> = MarkWatchedResponse;
+    }
+
+    pub type MarkNextEpisode;
+    impl Endpoint for MarkNextEpisode {
+        impl Request for MarkNextEpisodeRequest;
+        type Response<'de> = MarkNextEpisodeResponse;
     }
 
     pub type MarkWatchedRemaining;

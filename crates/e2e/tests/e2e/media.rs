@@ -186,3 +186,48 @@ pub async fn lists_tracked_items_by_default(driver: &mut TestDriver, _: &mut Tra
     ensure!(url.as_str().contains("tracked=all"), "the URL is {url}");
     Ok(())
 }
+
+/// The next-episode filter keeps the shows with an episode up next in the
+/// regular seasons or the specials, hides movies, and survives a reload.
+pub async fn filters_by_next_episode(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    driver
+        .find_one_by(".toolbar-item[title=Media]")
+        .await?
+        .click()
+        .await?;
+    driver
+        .wait_texts(
+            ".media-title",
+            [
+                "Finished Show",
+                "Seeded Movie",
+                "Seeded Show",
+                "Specials Show",
+            ],
+        )
+        .await?;
+
+    driver
+        .find_one_by("[title='Next episode: any']")
+        .await?
+        .click()
+        .await?;
+    driver.wait_texts(".media-title", ["Seeded Show"]).await?;
+
+    driver
+        .find_one_by("[title='Next episode: regular']")
+        .await?
+        .click()
+        .await?;
+    driver.wait_texts(".media-title", ["Specials Show"]).await?;
+
+    let url = driver.webdriver().current_url().await?;
+    ensure!(url.as_str().contains("next=specials"), "the URL is {url}");
+
+    driver.reload().await?;
+    driver.wait_texts(".media-title", ["Specials Show"]).await?;
+    driver
+        .find_one_by("[title='Next episode: specials']")
+        .await?;
+    Ok(())
+}

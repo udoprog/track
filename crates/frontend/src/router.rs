@@ -184,6 +184,43 @@ impl TrackedFilter {
     }
 }
 
+/// Keeps only the shows with a next episode in watch order in a scope.
+#[derive(Default, Debug, Clone, Copy, PartialEq)]
+pub(super) enum NextFilter {
+    #[default]
+    All,
+    Regular,
+    Specials,
+}
+
+impl NextFilter {
+    fn as_str(self) -> &'static str {
+        match self {
+            NextFilter::All => "all",
+            NextFilter::Regular => "regular",
+            NextFilter::Specials => "specials",
+        }
+    }
+
+    fn parse(value: &str) -> Option<Self> {
+        match value {
+            "all" => Some(NextFilter::All),
+            "regular" => Some(NextFilter::Regular),
+            "specials" => Some(NextFilter::Specials),
+            _ => None,
+        }
+    }
+
+    /// Next state when cycling the toggle.
+    pub(super) fn next(self) -> Self {
+        match self {
+            NextFilter::All => NextFilter::Regular,
+            NextFilter::Regular => NextFilter::Specials,
+            NextFilter::Specials => NextFilter::All,
+        }
+    }
+}
+
 /// Which media kinds the list shows. Two independent toggles, defaulting to
 /// both enabled; serialized exclusionarily via a repeatable `hide` key.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -226,6 +263,7 @@ pub(super) struct MediaQuery {
     pub(super) sort: SortField,
     pub(super) desc: bool,
     pub(super) tracked: TrackedFilter,
+    pub(super) next: NextFilter,
     pub(super) selection: MediaSelection,
 }
 
@@ -247,6 +285,10 @@ impl MediaQuery {
 
         if self.tracked != TrackedFilter::default() {
             s.append_pair("tracked", self.tracked.as_str());
+        }
+
+        if self.next != NextFilter::default() {
+            s.append_pair("next", self.next.as_str());
         }
 
         // Exclusionary: default is both shown, so only serialize deselected kinds.
@@ -284,6 +326,11 @@ impl MediaQuery {
                 "tracked" => {
                     if let Some(tracked) = TrackedFilter::parse(value.as_ref()) {
                         this.tracked = tracked;
+                    }
+                }
+                "next" => {
+                    if let Some(next) = NextFilter::parse(value.as_ref()) {
+                        this.next = next;
                     }
                 }
                 "hide" => match value.as_ref() {
