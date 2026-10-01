@@ -2641,6 +2641,7 @@ button.media-pick {
     justify-content: center;
     width: 28px;
     height: 28px;
+    min-width: 0;
     padding: 0;
     border-radius: 999px;
     border: 2px solid v.$text-color;
@@ -2648,6 +2649,11 @@ button.media-pick {
     --icon-color: transparent;
     opacity: 0;
     transition: opacity 0.1s ease-out;
+
+    @include g.on-mobile {
+        width: 36px;
+        height: 36px;
+    }
 
     .media-card:hover>&,
     .media-grid.picking &,

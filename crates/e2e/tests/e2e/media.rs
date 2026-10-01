@@ -493,3 +493,30 @@ pub async fn picked_items_track_and_untrack(
         .await?;
     Ok(())
 }
+
+/// A card's select control stays a circle on a phone.
+pub async fn phone_pick_control_is_round(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    driver.set_window_size(400, 850).await?;
+    driver.wait_texts(".site-title", ["Track"]).await?;
+
+    driver.find_one_by(".toolbar-toggle").await?.click().await?;
+    driver
+        .find_one_by(".toolbar-item[title=Media]")
+        .await?
+        .click()
+        .await?;
+
+    let rect = driver
+        .find_one_by("[title='Select Seeded Show']")
+        .await?
+        .rect()
+        .await?;
+
+    ensure!(
+        rect.width == rect.height,
+        "the select control is {}x{}px",
+        rect.width,
+        rect.height
+    );
+    Ok(())
+}
