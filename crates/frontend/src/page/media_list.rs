@@ -1,6 +1,9 @@
+use std::collections::HashSet;
+
 use api::TimeInfo;
 use gloo::events::EventListener;
 use musli_web::web03::prelude::*;
+use wasm_bindgen::JsCast as _;
 use web_sys::HtmlImageElement;
 use yew::prelude::*;
 
@@ -23,6 +26,13 @@ const SORTS: &[(&str, &str)] = &[
 ];
 
 const PAGE_SIZE: usize = 36;
+
+/// Identifies a list item across reloads.
+type PickKey = (api::MediaKind, u64);
+
+fn pick_key(m: &api::MediaItem) -> PickKey {
+    (m.kind, m.id)
+}
 
 /// Route to the detail view for a list item of the given kind.
 fn detail_route(kind: api::MediaKind, id: u64) -> Route {
@@ -57,6 +67,22 @@ pub(crate) struct MediaList {
     list_req: ws::Request,
     _mark_req: ws::Request,
     _track_req: ws::Request,
+    /// Items picked for a bulk action, kept to those the filters show.
+    picked: HashSet<PickKey>,
+    /// The item picked last, where a shift-click range starts.
+    pick_anchor: Option<PickKey>,
+    /// Clears the picked items on Escape while any are picked.
+    _pick_escape: Option<EventListener>,
+    /// The scope picked for Mark next, overriding the one the Next filter implies.
+    pick_scope: Option<api::EpisodeScope>,
+    /// Bulk requests in flight, and how many have yet to answer.
+    _bulk_reqs: Vec<ws::Request>,
+    bulk_pending: usize,
+    /// Shows the Mark next in flight has marked, and found no next episode in.
+    next_marked: usize,
+    next_missing: usize,
+    /// What the last Mark next did, until dismissed or something else is picked.
+    report: Option<String>,
     /// Backdrop URL last requested as the page background, to avoid re-emitting.
     applied_backdrop: Option<String>,
     /// The image element preloading the next backdrop, kept alive until it loads.
@@ -74,6 +100,16 @@ pub(crate) enum Msg {
     HoverBackdrop(Option<String>),
     SetTracked(api::MediaKind, u64, bool),
     SetTrackedDone(Result<(), ws::Error>),
+    /// Pick or unpick an item; with shift, pick the range from the last one.
+    TogglePick(PickKey, bool),
+    ClearPicked,
+    SetScope(api::EpisodeScope),
+    BulkMarkNext(api::MarkTime),
+    BulkMarkNextDone(Result<ws::Packet<api::MarkNextEpisode>, ws::Error>),
+    BulkMarkMovies(api::MarkTime),
+    BulkTrack(bool),
+    BulkDone(Message, Result<(), ws::Error>),
+    DismissReport,
     Filter(String),
     SetSort(SortField),
     ToggleDir,
@@ -143,6 +179,15 @@ impl Component for MediaList {
             list_req: ws::Request::default(),
             _mark_req: ws::Request::default(),
             _track_req: ws::Request::default(),
+            picked: HashSet::new(),
+            pick_anchor: None,
+            _pick_escape: None,
+            pick_scope: None,
+            _bulk_reqs: Vec::new(),
+            bulk_pending: 0,
+            next_marked: 0,
+            next_missing: 0,
+            report: None,
             applied_backdrop: None,
             _preload_img: None,
             _preload_load: None,
@@ -300,14 +345,29 @@ impl Component for MediaList {
                         <span class="item-inline-more">{"Nothing to show."}</span>
                     </div>
                 } else {
-                    <div class="media-grid">
+                    <div class={classes!("media-grid", (!self.picked.is_empty()).then_some("picking"))}>
                         { for items.into_iter().map(|m| self.view_card(ctx, m)) }
                     </div>
 
                     <div class="row desktop-align-end">
                         <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
                     </div>
+
+                    if !self.picked.is_empty() {
+                        { self.view_selection_bar(ctx) }
+                    }
                 }
+
+                // Always present, so screen readers announce what appears in it.
+                <div class="toast-region" role="status">
+                    if let Some(report) = &self.report {
+                        <div class="toast">
+                            <span class="icon success check-circle" aria-hidden="true" />
+                            <span class="fill">{report}</span>
+                            <Button icon="x-mark" class="toast-dismiss" title="Dismiss" onclick={link.callback(|_| Msg::DismissReport)} />
+                        </div>
+                    }
+                </div>
             </>
         }
     }
@@ -444,6 +504,186 @@ impl MediaList {
 
                 Ok(false)
             }
+            Msg::TogglePick(key, range) => {
+                let position = |key: PickKey| {
+                    self.order
+                        .iter()
+                        .position(|&i| pick_key(&self.items[i]) == key)
+                };
+
+                match (range, self.pick_anchor.and_then(position), position(key)) {
+                    (true, Some(from), Some(to)) => {
+                        let (from, to) = (from.min(to), from.max(to));
+                        self.picked.extend(
+                            self.order[from..=to]
+                                .iter()
+                                .map(|&i| pick_key(&self.items[i])),
+                        );
+                    }
+                    _ => {
+                        if !self.picked.remove(&key) {
+                            self.picked.insert(key);
+                        }
+                    }
+                }
+
+                self.pick_anchor = Some(key);
+                self.report = None;
+
+                if self.picked.is_empty() {
+                    self.clear_picked();
+                } else if self._pick_escape.is_none() {
+                    let clear = ctx.link().callback(|()| Msg::ClearPicked);
+
+                    self._pick_escape = web_sys::window().map(|window| {
+                        EventListener::new(&window, "keydown", move |e| {
+                            if let Some(e) = e.dyn_ref::<web_sys::KeyboardEvent>()
+                                && e.key() == "Escape"
+                            {
+                                clear.emit(());
+                            }
+                        })
+                    });
+                }
+
+                Ok(true)
+            }
+            Msg::ClearPicked => {
+                self.clear_picked();
+                Ok(true)
+            }
+            Msg::SetScope(scope) => {
+                self.pick_scope = Some(scope);
+                Ok(true)
+            }
+            Msg::BulkMarkNext(mark_time) => {
+                let scope = self.scope();
+
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._bulk_reqs = self
+                        .picked
+                        .iter()
+                        .filter(|(kind, _)| *kind == api::MediaKind::Shows)
+                        .map(|&(_, id)| {
+                            self.channel
+                                .request()
+                                .body(api::MarkNextEpisodeRequest {
+                                    show: api::ShowId::new(id),
+                                    scope,
+                                    mark_time,
+                                })
+                                .on_packet(ctx.link().callback(Msg::BulkMarkNextDone))
+                                .send()
+                        })
+                        .collect();
+                    self.bulk_pending = self._bulk_reqs.len();
+                    self.next_marked = 0;
+                    self.next_missing = 0;
+                }
+
+                self.clear_picked();
+                Ok(true)
+            }
+            Msg::BulkMarkNextDone(result) => {
+                let result = result.context(Message::MarkingWatched).and_then(|packet| {
+                    packet
+                        .decode()
+                        .context(Message::MarkingWatched)
+                        .map(|r| r.marked.is_some())
+                });
+
+                match result {
+                    Ok(true) => self.next_marked += 1,
+                    Ok(false) => self.next_missing += 1,
+                    Err(_) => {}
+                }
+
+                if self.bulk_answered(ctx) {
+                    self.report = Some(next_report(self.next_marked, self.next_missing));
+                }
+
+                result?;
+                Ok(true)
+            }
+            Msg::BulkMarkMovies(mark_time) => {
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._bulk_reqs = self
+                        .picked
+                        .iter()
+                        .filter(|(kind, _)| *kind == api::MediaKind::Movies)
+                        .map(|&(_, id)| {
+                            self.channel
+                                .request()
+                                .body(api::MarkWatchedRequest {
+                                    kind: api::WatchedKind::Movie {
+                                        movie: api::MovieId::new(id),
+                                    },
+                                    mark_time,
+                                })
+                                .on_packet(ctx.link().callback(
+                                    |r: Result<ws::Packet<api::MarkWatched>, ws::Error>| {
+                                        Msg::BulkDone(Message::MarkingWatched, r.map(drop))
+                                    },
+                                ))
+                                .send()
+                        })
+                        .collect();
+                    self.bulk_pending = self._bulk_reqs.len();
+                }
+
+                self.clear_picked();
+                Ok(true)
+            }
+            Msg::BulkTrack(tracked) => {
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._bulk_reqs = self
+                        .items
+                        .iter()
+                        .filter(|m| m.tracked != tracked && self.picked.contains(&pick_key(m)))
+                        .map(|m| match m.kind {
+                            api::MediaKind::Shows => self
+                                .channel
+                                .request()
+                                .body(api::UntrackShowRequest {
+                                    id: api::ShowId::new(m.id),
+                                    tracked,
+                                })
+                                .on_packet(ctx.link().callback(
+                                    |r: Result<ws::Packet<api::UntrackShow>, ws::Error>| {
+                                        Msg::BulkDone(Message::TrackingShow, r.map(drop))
+                                    },
+                                ))
+                                .send(),
+                            api::MediaKind::Movies => self
+                                .channel
+                                .request()
+                                .body(api::UntrackMovieRequest {
+                                    id: api::MovieId::new(m.id),
+                                    tracked,
+                                })
+                                .on_packet(ctx.link().callback(
+                                    |r: Result<ws::Packet<api::UntrackMovie>, ws::Error>| {
+                                        Msg::BulkDone(Message::TrackingMovie, r.map(drop))
+                                    },
+                                ))
+                                .send(),
+                        })
+                        .collect();
+                    self.bulk_pending = self._bulk_reqs.len();
+                }
+
+                self.clear_picked();
+                Ok(true)
+            }
+            Msg::BulkDone(message, result) => {
+                self.bulk_answered(ctx);
+                result.context(message)?;
+                Ok(false)
+            }
+            Msg::DismissReport => {
+                self.report = None;
+                Ok(true)
+            }
             Msg::Filter(s) => {
                 self.filter = s;
                 self.page = 0;
@@ -539,6 +779,51 @@ impl MediaList {
         if self.desc {
             self.order.reverse();
         }
+
+        if !self.picked.is_empty() {
+            let shown = self
+                .order
+                .iter()
+                .map(|&i| pick_key(&self.items[i]))
+                .collect::<HashSet<_>>();
+
+            self.picked.retain(|key| shown.contains(key));
+
+            if self.picked.is_empty() {
+                self.clear_picked();
+            } else if self.pick_anchor.is_some_and(|key| !shown.contains(&key)) {
+                self.pick_anchor = None;
+            }
+        }
+    }
+
+    fn clear_picked(&mut self) {
+        self.picked.clear();
+        self.pick_anchor = None;
+        self._pick_escape = None;
+        self.pick_scope = None;
+    }
+
+    /// The scope Mark next uses: the one picked, else the Next filter's.
+    fn scope(&self) -> api::EpisodeScope {
+        self.pick_scope.unwrap_or(match self.next {
+            NextFilter::Specials => api::EpisodeScope::Specials,
+            NextFilter::All | NextFilter::Regular => api::EpisodeScope::Regular,
+        })
+    }
+
+    /// Count a bulk request as answered, reloading once the last one has.
+    /// Returns whether it was the last.
+    fn bulk_answered(&mut self, ctx: &Context<Self>) -> bool {
+        self.bulk_pending = self.bulk_pending.saturating_sub(1);
+
+        if self.bulk_pending > 0 {
+            return false;
+        }
+
+        self._bulk_reqs.clear();
+        self.load(ctx);
+        true
     }
 
     /// Items matching the current filter/selection, ordered by the active sort,
@@ -605,6 +890,78 @@ impl MediaList {
             .send();
     }
 
+    /// What can be done with the picked items, kept in view while any are
+    /// picked. Offers only the actions that apply to them.
+    fn view_selection_bar(&self, ctx: &Context<Self>) -> Html {
+        let link = ctx.link();
+
+        let (mut shows, mut movies, mut tracked, mut untracked) = (0, 0, false, false);
+
+        for m in self
+            .items
+            .iter()
+            .filter(|m| self.picked.contains(&pick_key(m)))
+        {
+            match m.kind {
+                api::MediaKind::Shows => shows += 1,
+                api::MediaKind::Movies => movies += 1,
+            }
+
+            tracked |= m.tracked;
+            untracked |= !m.tracked;
+        }
+
+        let scope = self.scope();
+        let regular = scope == api::EpisodeScope::Regular;
+
+        let released = TimePreset::when_aired(
+            "calendar",
+            "Released",
+            if movies == 1 {
+                "When the movie was released"
+            } else {
+                "When each movie was released"
+            },
+        );
+
+        html! {
+            <div class="selection-bar" role="region" aria-label="Selected media">
+                <span class="selection-count">{picked_label(shows, movies)}</span>
+
+                <div class="selection-actions">
+                    if shows > 0 {
+                        <div class="chips" role="group" aria-label="Mark the next episode from">
+                            <Button class={classes!("chip", regular.then_some("selected"))} label="Regular" title="From the regular seasons" pressed={Some(regular)} onclick={link.callback(|_| Msg::SetScope(api::EpisodeScope::Regular))} />
+                            <Button class={classes!("chip", (!regular).then_some("selected"))} label="Specials" title="From the specials" pressed={Some(!regular)} onclick={link.callback(|_| Msg::SetScope(api::EpisodeScope::Specials))} />
+                        </div>
+
+                        <MarkTimeMenu class="primary has-text" icon="forward" title="Mark the next episode of the selected shows watched" prompt="When did you watch them?" on_confirm={link.callback(Msg::BulkMarkNext)}>
+                            <span class="icon forward" aria-hidden="true" />
+                            <span>{"Mark next"}</span>
+                        </MarkTimeMenu>
+                    }
+
+                    if movies > 0 {
+                        <MarkTimeMenu class="primary has-text" icon="check" title="Mark the selected movies watched" prompt="When did you watch them?" preset={released} on_confirm={link.callback(Msg::BulkMarkMovies)}>
+                            <span class="icon check" aria-hidden="true" />
+                            <span>{"Mark watched"}</span>
+                        </MarkTimeMenu>
+                    }
+
+                    if untracked {
+                        <Button icon="eye" label="Track" title="Track the selected items" onclick={link.callback(|_| Msg::BulkTrack(true))} />
+                    }
+
+                    if tracked {
+                        <Button icon="eye-slash" label="Untrack" title="Stop tracking the selected items" onclick={link.callback(|_| Msg::BulkTrack(false))} />
+                    }
+
+                    <Button icon="x-mark" label="Clear" title="Clear the selection" onclick={link.callback(|_| Msg::ClearPicked)} />
+                </div>
+            </div>
+        }
+    }
+
     fn view_card(&self, ctx: &Context<Self>, m: &api::MediaItem) -> Html {
         let id = m.id;
         let kind = m.kind;
@@ -640,8 +997,18 @@ impl MediaList {
         let title = primary_title.unwrap_or("Untitled Media");
         let now = self.time.now();
 
+        let key = pick_key(m);
+        let picked = self.picked.contains(&key);
+        let on_pick = ctx
+            .link()
+            .callback(move |e: MouseEvent| Msg::TogglePick(key, e.shift_key()));
+
         html! {
-            <div key={format!("{kind:?}-{id}")} class="media-card lift" {onmouseover}>
+            <div key={format!("{kind:?}-{id}")} class={classes!("media-card", "lift", picked.then_some("picked"))} {onmouseover}>
+                <Button class={classes!("media-pick", picked.then_some("picked"))} title={format!("Select {title}")} pressed={Some(picked)} onclick={on_pick}>
+                    <span class="icon sm check" aria-hidden="true" />
+                </Button>
+
                 <Link to={route.clone()} class="media-poster artwork" decorative=true>
                     <Image class="poster" placeholder=true src={m.poster.clone()} alt={title.to_owned()} />
 
@@ -699,6 +1066,47 @@ impl MediaList {
                 </div>
             </div>
         }
+    }
+}
+
+/// How the selection bar counts the picked items.
+fn picked_label(shows: usize, movies: usize) -> String {
+    let count = |n: usize, one: &str, many: &str| {
+        if n == 1 {
+            format!("1 {one}")
+        } else {
+            format!("{n} {many}")
+        }
+    };
+
+    match (shows, movies) {
+        (shows, 0) => format!("{} selected", count(shows, "show", "shows")),
+        (0, movies) => format!("{} selected", count(movies, "movie", "movies")),
+        (shows, movies) => format!(
+            "{} and {} selected",
+            count(shows, "show", "shows"),
+            count(movies, "movie", "movies")
+        ),
+    }
+}
+
+/// What a bulk Mark next did.
+fn next_report(marked: usize, missing: usize) -> String {
+    let shows = |n: usize| {
+        if n == 1 {
+            "1 show".to_owned()
+        } else {
+            format!("{n} shows")
+        }
+    };
+
+    match missing {
+        0 => format!("Marked the next episode of {}", shows(marked)),
+        missing => format!(
+            "Marked the next episode of {}; {} had no next episode",
+            shows(marked),
+            shows(missing)
+        ),
     }
 }
 

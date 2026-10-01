@@ -2607,10 +2607,16 @@ pagination {
 }
 
 .media-card {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: v.$gap-xs;
     min-width: 0;
+
+    &.picked .media-poster {
+        outline: 3px solid v.$color-primary;
+        outline-offset: -3px;
+    }
 }
 
 .media-poster {
@@ -2619,6 +2625,45 @@ pagination {
 
     >image {
         width: 100%;
+    }
+}
+
+// Picks a card for a bulk action from the poster's corner. Shown on hover or
+// focus, on every card once one is picked, and always without a pointer that
+// hovers.
+button.media-pick {
+    position: absolute;
+    top: v.$gap-xs;
+    left: v.$gap-xs;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border-radius: 999px;
+    border: 2px solid v.$text-color;
+    background: color-mix(in srgb, v.$bg-dark 55%, transparent);
+    --icon-color: transparent;
+    opacity: 0;
+    transition: opacity 0.1s ease-out;
+
+    .media-card:hover>&,
+    .media-grid.picking &,
+    &:focus-visible {
+        opacity: 1;
+    }
+
+    @media (hover: none) {
+        opacity: 1;
+    }
+
+    &.picked {
+        opacity: 1;
+        border-color: v.$color-primary;
+        background: v.$color-primary;
+        --icon-color: #{v.$text-on-accent};
     }
 }
 

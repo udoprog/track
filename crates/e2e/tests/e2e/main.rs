@@ -50,7 +50,8 @@ const UPCOMING: &str = include_str!("upcoming.sql");
 const UNTRACKED: &str = include_str!("untracked.sql");
 /// Poster candidates for the seeded show, with `(graphics)`.
 const GRAPHICS: &str = include_str!("graphics.sql");
-/// A finished show and one with only a special left, with `(next)`.
+/// A finished show, one with only a special left and one being rewatched,
+/// with `(next)`.
 const NEXT: &str = include_str!("next.sql");
 
 /// What a test asks of its server.
@@ -97,7 +98,7 @@ struct Track {
     port: u16,
     server: Option<Server>,
     // Dropped after the server has stopped, taking its database with it.
-    _dir: TempDir,
+    dir: TempDir,
 }
 
 impl Fixture for Track {
@@ -202,7 +203,7 @@ impl Fixture for Track {
         Ok(Self {
             port: server.port,
             server: Some(server),
-            _dir: dir,
+            dir,
         })
     }
 
@@ -216,6 +217,19 @@ impl Fixture for Track {
 }
 
 impl Track {
+    /// The first column of every row `sql` selects from the server's database.
+    fn query(&self, sql: &str) -> Result<Vec<String>> {
+        let c = sqll::Connection::open(self.dir.path().join("track.db"))?;
+        let mut q = c.prepare(sql)?;
+        let mut out = Vec::new();
+
+        while let Some(value) = q.next::<String>()? {
+            out.push(value);
+        }
+
+        Ok(out)
+    }
+
     /// Stop the server before the test ends, dropping the browser's connection.
     async fn stop(&mut self) -> Result<()> {
         match self.server.take() {
@@ -361,7 +375,7 @@ yew_e2e::harness! {
     Track;
     auth::{cloudflare_requires_a_click(cloudflare), cloudflare_is_unavailable(signed_out), signs_in(signed_out), rejects_a_wrong_password(signed_out), signs_out(signed_out), registers_with_a_login_link(signed_out, login_link), changes_the_password(signed_out), changes_the_login},
     dashboard::{fills_rows_with_relative_dates(seeded), labels_its_filters, keeps_view_options_in_a_menu, buttons_expose_their_state, secondary_actions_are_filled(seeded), mobile_cards_always_have_a_picture(seeded), schedule_names_its_days, upcoming_is_an_agenda, upcoming_times_open_their_episode(upcoming), upcoming_keeps_days_when_more_are_shown(upcoming), schedule_keeps_weeks_when_more_are_shown(upcoming), schedule_entries_sit_flush_left(upcoming), marks_watched_in_one_click(seeded), marks_watched_at_a_chosen_time(seeded)},
-    media::{shows_a_poster_grid(seeded), partly_watched_shows_are_marked(seeded), toggle_marks_are_icon_sized, sort_stays_readable_at_tablet_width, reversing_keeps_the_cards(crowded), lists_tracked_items_by_default(untracked), filters_by_next_episode(next, movie)},
+    media::{shows_a_poster_grid(seeded), partly_watched_shows_are_marked(seeded), toggle_marks_are_icon_sized, sort_stays_readable_at_tablet_width, reversing_keeps_the_cards(crowded), lists_tracked_items_by_default(untracked), filters_by_next_episode(next, movie), marks_the_next_episode_of_picked_shows(next), picked_items_track_and_untrack(next, movie)},
     movie::{puts_the_cast_beside_the_poster(movie), phone_release_line_stays_together(movie)},
     navigation::{phone_menu_rows_align, opens_every_page, tab_shows_a_focus_ring, navigation_is_links(seeded), pages_have_landmarks_and_one_heading, page_scrolls_the_window, toolbar_icons_are_small, app_bar_items_have_room, errors_show_as_a_card, every_button_has_a_title(seeded)},
     people::{lists_people_by_credits(seeded), shows_no_count_while_loading(seeded), shows_a_silhouette_without_a_photo(seeded), phone_person_page_keeps_the_photo_shape(seeded), known_for_lists_each_title_once(seeded)},

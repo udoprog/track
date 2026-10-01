@@ -200,6 +200,7 @@ pub async fn filters_by_next_episode(driver: &mut TestDriver, _: &mut Track) -> 
             ".media-title",
             [
                 "Finished Show",
+                "Rewatch Show",
                 "Seeded Movie",
                 "Seeded Show",
                 "Specials Show",
@@ -212,7 +213,9 @@ pub async fn filters_by_next_episode(driver: &mut TestDriver, _: &mut Track) -> 
         .await?
         .click()
         .await?;
-    driver.wait_texts(".media-title", ["Seeded Show"]).await?;
+    driver
+        .wait_texts(".media-title", ["Rewatch Show", "Seeded Show"])
+        .await?;
 
     driver
         .find_one_by("[title='Next episode: regular']")
@@ -228,6 +231,265 @@ pub async fn filters_by_next_episode(driver: &mut TestDriver, _: &mut Track) -> 
     driver.wait_texts(".media-title", ["Specials Show"]).await?;
     driver
         .find_one_by("[title='Next episode: specials']")
+        .await?;
+    Ok(())
+}
+
+const ESCAPE: &str = "\u{E00C}";
+
+/// The episodes of a show that root has watched, oldest first.
+fn watched(track: &Track, show: u64) -> Result<Vec<String>> {
+    track.query(&format!(
+        "SELECT printf('S%02dE%02d', season, episode) FROM watched_episodes \
+         WHERE show_id = {show} ORDER BY timestamp, id"
+    ))
+}
+
+/// The titles of the shows root tracks, in order.
+fn tracked_shows(track: &Track) -> Result<Vec<String>> {
+    track.query(
+        "SELECT text FROM show_strings JOIN user_tracked_shows USING (show_id) \
+         WHERE kind = 1 ORDER BY text",
+    )
+}
+
+async fn mark_next(driver: &TestDriver) -> Result<()> {
+    driver
+        .find_one_by(".selection-bar [title='Mark the next episode of the selected shows watched']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by(".context-menu [title=Confirm]")
+        .await?
+        .click()
+        .await
+}
+
+/// Mark next marks each picked show's next episode in the scope the bar
+/// picks, continues a rewatch where it is, and says how many shows had no
+/// next episode.
+pub async fn marks_the_next_episode_of_picked_shows(
+    driver: &mut TestDriver,
+    track: &mut Track,
+) -> Result<()> {
+    driver
+        .find_one_by(".toolbar-item[title=Media]")
+        .await?
+        .click()
+        .await?;
+    driver
+        .wait_texts(
+            ".media-title",
+            [
+                "Finished Show",
+                "Rewatch Show",
+                "Seeded Show",
+                "Specials Show",
+            ],
+        )
+        .await?;
+
+    driver
+        .find_one_by("[title='Select Finished Show']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by("[title='Select Specials Show']")
+        .await?
+        .shift_click()
+        .await?;
+
+    driver
+        .wait_texts(".selection-count", ["4 shows selected"])
+        .await?;
+    ensure!(driver.count(".media-pick[aria-pressed=true]").await? == 4);
+    driver
+        .find_one_by(".selection-bar [title='From the regular seasons'][aria-pressed=true]")
+        .await?;
+
+    mark_next(driver).await?;
+    driver.wait_count(".selection-bar", 0).await?;
+    driver
+        .wait_texts(
+            ".toast .fill",
+            ["Marked the next episode of 2 shows; 2 shows had no next episode"],
+        )
+        .await?;
+
+    ensure!(watched(track, 1001)? == ["S01E01"]);
+    ensure!(watched(track, 1003)? == ["S01E01"]);
+    ensure!(watched(track, 1004)? == ["S01E01"]);
+    ensure!(
+        watched(track, 1005)? == ["S01E01", "S01E02", "S01E01", "S01E02"],
+        "the rewatch went on to {:?}",
+        watched(track, 1005)?
+    );
+
+    driver
+        .find_one_by("[title='Select Specials Show']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by("[title='Select Seeded Show']")
+        .await?
+        .click()
+        .await?;
+    driver.wait_count(".toast", 0).await?;
+    driver
+        .find_one_by(".selection-bar [title='From the specials']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by(".selection-bar [title='From the specials'][aria-pressed=true]")
+        .await?;
+
+    mark_next(driver).await?;
+    driver
+        .wait_texts(
+            ".toast .fill",
+            ["Marked the next episode of 1 show; 1 show had no next episode"],
+        )
+        .await?;
+
+    ensure!(watched(track, 1004)? == ["S01E01", "S00E01"]);
+    ensure!(watched(track, 1001)? == ["S01E01"]);
+    Ok(())
+}
+
+/// The selection bar offers only what applies to the picked items: tracking
+/// what is untracked, untracking what is tracked, and marking movies or the
+/// next episode of shows. Escape clears it, and Mark next takes its scope
+/// from the next-episode filter.
+pub async fn picked_items_track_and_untrack(
+    driver: &mut TestDriver,
+    track: &mut Track,
+) -> Result<()> {
+    const MARK_NEXT: &str =
+        ".selection-bar [title='Mark the next episode of the selected shows watched']";
+    const MARK_MOVIES: &str = ".selection-bar [title='Mark the selected movies watched']";
+    const TRACK: &str = ".selection-bar [title='Track the selected items']";
+    const UNTRACK: &str = ".selection-bar [title='Stop tracking the selected items']";
+
+    driver
+        .find_one_by(".toolbar-item[title=Media]")
+        .await?
+        .click()
+        .await?;
+
+    driver
+        .wait_texts(
+            ".media-title",
+            [
+                "Finished Show",
+                "Rewatch Show",
+                "Seeded Movie",
+                "Seeded Show",
+                "Specials Show",
+            ],
+        )
+        .await?;
+
+    driver
+        .find_one_by("[title='Select Seeded Movie']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .wait_texts(".selection-count", ["1 movie selected"])
+        .await?;
+    ensure!(driver.count(MARK_NEXT).await? == 0);
+    ensure!(driver.count(MARK_MOVIES).await? == 1);
+    ensure!(driver.count(TRACK).await? == 0);
+    ensure!(driver.count(UNTRACK).await? == 1);
+
+    driver
+        .find_one_by("[title='Select Seeded Show']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .wait_texts(".selection-count", ["1 show and 1 movie selected"])
+        .await?;
+    ensure!(driver.count(MARK_NEXT).await? == 1);
+
+    driver
+        .find_one_by("[title='Select Seeded Movie']")
+        .await?
+        .send_keys(ESCAPE)
+        .await?;
+    driver.wait_count(".selection-bar", 0).await?;
+    ensure!(driver.count(".media-pick[aria-pressed=true]").await? == 0);
+
+    driver
+        .find_one_by("[title='Select Finished Show']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by("[title='Select Rewatch Show']")
+        .await?
+        .click()
+        .await?;
+    driver.find_one_by(UNTRACK).await?.click().await?;
+    driver
+        .wait_texts(
+            ".media-title",
+            ["Seeded Movie", "Seeded Show", "Specials Show"],
+        )
+        .await?;
+    ensure!(tracked_shows(track)? == ["Seeded Show", "Specials Show"]);
+
+    for title in ["Showing: Tracked", "Showing: Untracked"] {
+        driver
+            .find_one_by(&format!("[title='{title}']"))
+            .await?
+            .click()
+            .await?;
+    }
+
+    driver
+        .find_one_by("[title='Select Finished Show']")
+        .await?
+        .click()
+        .await?;
+    ensure!(driver.count(TRACK).await? == 1);
+    ensure!(driver.count(UNTRACK).await? == 0);
+
+    driver
+        .find_one_by("[title='Select Seeded Show']")
+        .await?
+        .click()
+        .await?;
+    ensure!(driver.count(UNTRACK).await? == 1);
+
+    driver.find_one_by(TRACK).await?.click().await?;
+    driver.wait_count(".selection-bar", 0).await?;
+    driver
+        .wait_until("Finished Show to be tracked", async || {
+            Ok(tracked_shows(track)? == ["Finished Show", "Seeded Show", "Specials Show"])
+        })
+        .await?;
+
+    for title in ["Next episode: any", "Next episode: regular"] {
+        driver
+            .find_one_by(&format!("[title='{title}']"))
+            .await?
+            .click()
+            .await?;
+    }
+
+    driver.wait_texts(".media-title", ["Specials Show"]).await?;
+    driver
+        .find_one_by("[title='Select Specials Show']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by(".selection-bar [title='From the specials'][aria-pressed=true]")
         .await?;
     Ok(())
 }

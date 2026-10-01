@@ -2304,7 +2304,7 @@ pub struct SearchMovie {
 }
 
 /// Whether a media item is a show or a movie.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Encode, Decode)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Encode, Decode)]
 #[musli(crate = musli_core)]
 pub enum MediaKind {
     #[default]
