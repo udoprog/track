@@ -367,6 +367,21 @@ pub async fn marks_the_next_episode_of_picked_shows(
     Ok(())
 }
 
+/// Waits for the listed cards in one read, which cannot go stale while the
+/// list reloads.
+async fn wait_picks(driver: &TestDriver, titles: &[&str]) -> Result<()> {
+    let expected = titles
+        .iter()
+        .map(|t| format!("Select {t}"))
+        .collect::<Vec<_>>();
+
+    driver
+        .wait_until("the media cards", async || {
+            Ok(driver.find_all_attrs(".media-pick", "title").await? == expected)
+        })
+        .await
+}
+
 /// The selection bar offers only what applies to the picked items: tracking
 /// what is untracked, untracking what is tracked, and marking movies or the
 /// next episode of shows. Escape clears it, and Mark next takes its scope
@@ -387,18 +402,17 @@ pub async fn picked_items_track_and_untrack(
         .click()
         .await?;
 
-    driver
-        .wait_texts(
-            ".media-title",
-            [
-                "Finished Show",
-                "Rewatch Show",
-                "Seeded Movie",
-                "Seeded Show",
-                "Specials Show",
-            ],
-        )
-        .await?;
+    wait_picks(
+        driver,
+        &[
+            "Finished Show",
+            "Rewatch Show",
+            "Seeded Movie",
+            "Seeded Show",
+            "Specials Show",
+        ],
+    )
+    .await?;
 
     driver
         .find_one_by("[title='Select Seeded Movie']")
@@ -442,12 +456,7 @@ pub async fn picked_items_track_and_untrack(
         .click()
         .await?;
     driver.find_one_by(UNTRACK).await?.click().await?;
-    driver
-        .wait_texts(
-            ".media-title",
-            ["Seeded Movie", "Seeded Show", "Specials Show"],
-        )
-        .await?;
+    wait_picks(driver, &["Seeded Movie", "Seeded Show", "Specials Show"]).await?;
     ensure!(tracked_shows(track)? == ["Seeded Show", "Specials Show"]);
 
     for title in ["Showing: Tracked", "Showing: Untracked"] {
@@ -458,18 +467,17 @@ pub async fn picked_items_track_and_untrack(
             .await?;
     }
 
-    driver
-        .wait_texts(
-            ".media-title",
-            [
-                "Finished Show",
-                "Rewatch Show",
-                "Seeded Movie",
-                "Seeded Show",
-                "Specials Show",
-            ],
-        )
-        .await?;
+    wait_picks(
+        driver,
+        &[
+            "Finished Show",
+            "Rewatch Show",
+            "Seeded Movie",
+            "Seeded Show",
+            "Specials Show",
+        ],
+    )
+    .await?;
 
     driver
         .find_one_by("[title='Select Finished Show']")
@@ -505,7 +513,7 @@ pub async fn picked_items_track_and_untrack(
             .await?;
     }
 
-    driver.wait_texts(".media-title", ["Specials Show"]).await?;
+    wait_picks(driver, &["Specials Show"]).await?;
     driver
         .find_one_by("[title='Select Specials Show']")
         .await?
