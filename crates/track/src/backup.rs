@@ -1,5 +1,5 @@
-//! Backup of the irreplaceable data in the service: the user's remotes and
-//! their watched history. Everything else (titles, episodes, images, release
+//! Backup of the irreplaceable data in the service: the remotes and each user's
+//! watched history. Everything else (titles, episodes, images, release
 //! dates) is reproducible by re-syncing from the remotes, so it is deliberately
 //! not exported.
 //!
@@ -12,8 +12,10 @@
 //! Identifiers are exported as their canonical string form and timestamps as UTC
 //! ISO-8601 strings. The id columns in the database are intentionally not foreign
 //! keys, so a backup can be inserted (or removed) without touching the associated
-//! `shows`/`movies` rows.
+//! `shows`/`movies` rows. Watched entries name their owner by login, which must
+//! exist when importing; entries without one belong to root.
 
+use std::collections::HashMap;
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 
@@ -115,6 +117,9 @@ enum BackupRow {
     WatchedEpisode {
         #[serde(with = "as_string")]
         id: api::WatchedId,
+        /// The owner's login; absent in backups from before there were users.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        user: Option<String>,
         #[serde(with = "as_string")]
         show: api::ShowId,
         season: api::SeasonNumber,
@@ -126,6 +131,8 @@ enum BackupRow {
     WatchedMovie {
         #[serde(with = "as_string")]
         id: api::WatchedId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        user: Option<String>,
         #[serde(with = "as_string")]
         movie: api::MovieId,
         #[serde(with = "ts_utc")]
@@ -180,9 +187,10 @@ async fn export(db: &Database, mut out: impl Write) -> Result<()> {
         writeln!(out, "{}", serde_json::to_string(&row)?)?;
     }
 
-    for (id, timestamp, show, season, episode) in db.export_watched_episodes().await? {
+    for (id, user, timestamp, show, season, episode) in db.export_watched_episodes().await? {
         let row = BackupRow::WatchedEpisode {
             id,
+            user: Some(user),
             show,
             season,
             episode,
@@ -191,9 +199,10 @@ async fn export(db: &Database, mut out: impl Write) -> Result<()> {
         writeln!(out, "{}", serde_json::to_string(&row)?)?;
     }
 
-    for (id, timestamp, movie) in db.export_watched_movies().await? {
+    for (id, user, timestamp, movie) in db.export_watched_movies().await? {
         let row = BackupRow::WatchedMovie {
             id,
+            user: Some(user),
             movie,
             timestamp,
         };
@@ -210,11 +219,54 @@ fn is_skippable(line: &str) -> bool {
     trimmed.is_empty() || trimmed.starts_with('#')
 }
 
+/// Resolves the owners named by watched entries, once per login.
+struct Owners<'a> {
+    db: &'a Database,
+    by_login: HashMap<String, api::UserId>,
+    default: Option<api::UserId>,
+}
+
+impl<'a> Owners<'a> {
+    fn new(db: &'a Database) -> Self {
+        Self {
+            db,
+            by_login: HashMap::new(),
+            default: None,
+        }
+    }
+
+    async fn get(&mut self, login: Option<String>) -> Result<api::UserId> {
+        let Some(login) = login else {
+            if let Some(id) = self.default {
+                return Ok(id);
+            }
+
+            let id = self.db.default_owner().await?;
+            self.default = Some(id);
+            return Ok(id);
+        };
+
+        if let Some(&id) = self.by_login.get(&login) {
+            return Ok(id);
+        }
+
+        let user = self
+            .db
+            .user_by_login(&login)
+            .await?
+            .with_context(|| anyhow!("No user with the login {login:?}; create it first"))?;
+
+        self.by_login.insert(login, user.id);
+        Ok(user.id)
+    }
+}
+
 /// Read JSON lines from `input` and apply them idempotently. Returns the totals
 /// for remotes and watched entries.
 async fn import(db: &Database, input: impl BufRead) -> Result<(ImportStats, ImportStats)> {
     let mut remotes = ImportStats::default();
     let mut watched = ImportStats::default();
+    let mut owners = Owners::new(db);
 
     for (n, line) in input.lines().enumerate() {
         let line = line.with_context(|| anyhow!("Reading line {}", n + 1))?;
@@ -277,22 +329,26 @@ async fn import(db: &Database, input: impl BufRead) -> Result<(ImportStats, Impo
             }
             BackupRow::WatchedEpisode {
                 id,
+                user,
                 show,
                 season,
                 episode,
                 timestamp,
             } => {
+                let user = owners.get(user).await?;
                 let inserted = db
-                    .import_watched_episode(id, timestamp, show, season, episode)
+                    .import_watched_episode(user, id, timestamp, show, season, episode)
                     .await?;
                 watched.record(inserted);
             }
             BackupRow::WatchedMovie {
                 id,
+                user,
                 movie,
                 timestamp,
             } => {
-                let inserted = db.import_watched_movie(id, timestamp, movie).await?;
+                let user = owners.get(user).await?;
+                let inserted = db.import_watched_movie(user, id, timestamp, movie).await?;
                 watched.record(inserted);
             }
         }
@@ -394,6 +450,7 @@ mod tests {
     /// movie + remote + watched movie, using non-default remote attributes so the
     /// round-trip exercises field preservation.
     async fn seed(db: &Database) {
+        let root = db.default_owner().await.unwrap();
         let show = api::ShowId::new(1001);
         db.create_show(show, "", None, "").await.unwrap();
         db.import_show_remote(crate::db::ExportRemote {
@@ -409,6 +466,7 @@ mod tests {
         .await
         .unwrap();
         db.insert_watched_episode(
+            root,
             api::WatchedId::new(5001),
             ts(),
             show,
@@ -419,7 +477,7 @@ mod tests {
         .unwrap();
 
         let movie = api::MovieId::new(2001);
-        db.create_movie(movie, "", None, "", true).await.unwrap();
+        db.create_movie(movie, "", None, "").await.unwrap();
         db.import_movie_remote(crate::db::ExportRemote {
             id: api::RemoteId::new(9002),
             owner: movie,
@@ -432,7 +490,7 @@ mod tests {
         })
         .await
         .unwrap();
-        db.insert_watched_movie(api::WatchedId::new(6001), ts(), movie)
+        db.insert_watched_movie(root, api::WatchedId::new(6001), ts(), movie)
             .await
             .unwrap();
     }
@@ -499,5 +557,25 @@ mod tests {
         let dst = temp_db(&dir, "dst.db");
         let (remotes, watched) = import(&dst, annotated.as_bytes()).await.unwrap();
         assert_eq!((remotes.inserted, watched.inserted), (2, 2));
+    }
+
+    #[tokio::test]
+    async fn watched_entries_keep_their_owner() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = temp_db(&dir, "src.db");
+        seed(&src).await;
+        let exported = String::from_utf8(export_to_vec(&src).await).unwrap();
+        assert!(exported.contains(r#""user":"root""#), "{exported}");
+
+        // An entry naming a missing user is refused rather than reassigned.
+        let dst = temp_db(&dir, "dst.db");
+        let to_bob = exported.replace(r#""user":"root""#, r#""user":"bob""#);
+        assert!(import(&dst, to_bob.as_bytes()).await.is_err());
+
+        // Entries from before there were users belong to root.
+        let unowned = exported.replace(r#""user":"root","#, "");
+        let (_, watched) = import(&dst, unowned.as_bytes()).await.unwrap();
+        assert_eq!(watched.inserted, 2);
+        assert_eq!(dst.export_watched_episodes().await.unwrap()[0].1, "root");
     }
 }

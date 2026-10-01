@@ -59,8 +59,10 @@ async fn episodes_needing_air_sync_respects_window_and_interval() {
     let now = Timestamp::now();
     let hours = |h: i64| now.saturating_add(api::Duration::from_hours(h));
 
+    let root = db.default_owner().await.unwrap();
     let show = api::ShowId::new(1);
     db.create_show(show, "", None, "").await.unwrap();
+    db.set_show_tracked(root, show, true).await.unwrap();
 
     let season = api::SeasonNumber::from_ordinal(1);
 
@@ -115,10 +117,10 @@ async fn episodes_needing_air_sync_respects_window_and_interval() {
     assert!(due(db.clone()).await.is_empty());
 
     db.set_show_auto_sync(show, true).await.unwrap();
-    db.update_show(show, None, false).await.unwrap();
+    db.set_show_tracked(root, show, false).await.unwrap();
     assert!(
         due(db.clone()).await.is_empty(),
-        "an untracked show contributes no episodes"
+        "a show nobody tracks contributes no episodes"
     );
 }
 
@@ -130,8 +132,10 @@ async fn skip_pending_episode_uses_next_air_date() {
     let dir = tempfile::tempdir().unwrap();
     let db = Database::open(&dir.path().join("test.db"), OpenMode::Bulk, 1).unwrap();
 
+    let root = db.default_owner().await.unwrap();
     let show = api::ShowId::new(1);
     db.create_show(show, "", None, "").await.unwrap();
+    db.set_show_tracked(root, show, true).await.unwrap();
 
     let season = api::SeasonNumber::from_ordinal(1);
     let e1 = api::EpisodeId::new(1);
@@ -147,21 +151,21 @@ async fn skip_pending_episode_uses_next_air_date() {
     db.upsert_episode(e2, show, season, 2, None, Some(airs_later))
         .await
         .unwrap();
-    db.add_pending_episode(show, e1, now).await.unwrap();
+    db.add_pending_episode(root, show, e1, now).await.unwrap();
 
-    db.skip_pending_episode(show, e1, now).await.unwrap();
+    db.skip_pending_episode(root, show, e1, now).await.unwrap();
 
     // E2 airs beyond the cutoff, so it is not on the dashboard yet.
-    assert!(db.pending(now).await.unwrap().is_empty());
+    assert!(db.pending(root, now).await.unwrap().is_empty());
 
     // Once the cutoff reaches its air date it surfaces.
-    let pending = db.pending(airs_later).await.unwrap();
+    let pending = db.pending(root, airs_later).await.unwrap();
     assert_eq!(pending.len(), 1);
     assert_eq!(pending[0].timestamp, airs_later);
 
     // Skipping the last episode empties the show's pending slot.
-    db.skip_pending_episode(show, e2, now).await.unwrap();
-    assert!(db.pending(airs_later).await.unwrap().is_empty());
+    db.skip_pending_episode(root, show, e2, now).await.unwrap();
+    assert!(db.pending(root, airs_later).await.unwrap().is_empty());
 }
 
 /// Person names are stored with a country (`eng-US`), and the people list must
@@ -198,5 +202,125 @@ async fn fresh_config_has_the_default_release_rules() -> Result<()> {
         api::FilterRules::default_release_rules()
     );
 
+    Ok(())
+}
+
+/// Two users share the catalog but each has their own tracking, watch history
+/// and pending; deleting a user takes only their own rows with them.
+#[tokio::test]
+async fn tracking_watch_history_and_pending_are_per_user() -> Result<()> {
+    let dir = tempfile::tempdir()?;
+    let db = Database::open(dir.path().join("test.db"), OpenMode::Bulk, 1)?;
+
+    let root = db.default_owner().await?;
+    let alice = db
+        .create_user("alice", None, auth::UserRole::Regular, Timestamp::now())
+        .await?
+        .expect("alice is free")
+        .id;
+
+    let show = api::ShowId::new(1);
+    let movie = api::MovieId::new(2);
+    db.create_show(show, "Show", None, "").await?;
+    db.create_movie(movie, "Movie", None, "").await?;
+
+    let season = api::SeasonNumber::from_ordinal(1);
+    let e1 = api::EpisodeId::new(11);
+    let e2 = api::EpisodeId::new(12);
+    let now = ms(1_700_000_000_000);
+    db.upsert_episode(e1, show, season, 1, None, Some(ms(1_600_000_000_000)))
+        .await?;
+    db.upsert_episode(e2, show, season, 2, None, Some(ms(1_600_000_100_000)))
+        .await?;
+
+    // Only root tracks the show; only alice tracks the movie.
+    db.set_show_tracked(root, show, true).await?;
+    db.set_movie_tracked(alice, movie, true).await?;
+
+    let tracked = |items: Vec<api::MediaItem>| {
+        items
+            .into_iter()
+            .filter(|i| i.tracked)
+            .map(|i| i.id)
+            .collect::<HashSet<_>>()
+    };
+
+    assert_eq!(
+        tracked(db.media_items(root).await?),
+        HashSet::from([show.get()])
+    );
+    assert_eq!(
+        tracked(db.media_items(alice).await?),
+        HashSet::from([movie.get()])
+    );
+    assert!(db.show_by_id(Some(root), show).await?.unwrap().tracked);
+    assert!(!db.show_by_id(Some(alice), show).await?.unwrap().tracked);
+    assert!(!db.movie_by_id(Some(root), movie).await?.unwrap().tracked);
+
+    // A sync fills pending only for the users tracking the show.
+    db.fill_pending_for_show(show, false, now).await?;
+    let pending_episodes = |pending: Vec<api::Pending>| {
+        pending
+            .into_iter()
+            .filter_map(|p| match p.info {
+                api::PendingInfo::Episode { episode_id, .. } => Some(episode_id),
+                api::PendingInfo::Movie { .. } => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(pending_episodes(db.pending(root, now).await?), [e1]);
+    assert!(db.pending(alice, now).await?.is_empty());
+
+    // Alice starts tracking: her own pending starts at the first episode.
+    db.set_show_tracked(alice, show, true).await?;
+    db.fill_pending_for_user_show(alice, show, false, now)
+        .await?;
+    assert_eq!(pending_episodes(db.pending(alice, now).await?), [e1]);
+
+    // Root watches E1 and moves on; alice is unaffected.
+    let episode = api::WatchedKind::Episode { show, episode: e1 };
+    let watched = db
+        .mark_watched(root, api::WatchedId::random(), episode, MarkTime::Now, now)
+        .await?;
+    crate::pending::PendingSystem::new(db.clone())
+        .on_episode_watched_from(root, show, e1, now)
+        .await?;
+
+    assert_eq!(pending_episodes(db.pending(root, now).await?), [e2]);
+    assert_eq!(pending_episodes(db.pending(alice, now).await?), [e1]);
+    assert_eq!(db.episodes_watched(root, show).await?.len(), 1);
+    assert!(db.episodes_watched(alice, show).await?.is_empty());
+    assert_eq!(db.watched_for_episode(root, e1).await?.len(), 1);
+    assert!(db.watched_for_episode(alice, e1).await?.is_empty());
+
+    let counts = |episodes: Vec<api::Episode>| {
+        episodes
+            .into_iter()
+            .map(|e| e.watched_count)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(counts(db.episodes(root, show, season).await?), [1, 0]);
+    assert_eq!(counts(db.episodes(alice, show, season).await?), [0, 0]);
+
+    // Alice cannot remove root's watch.
+    db.remove_watched(alice, watched.id).await?;
+    assert_eq!(db.episodes_watched(root, show).await?.len(), 1);
+
+    // Untracking hides the show from the user's dashboard and schedule only.
+    db.set_show_tracked(alice, show, false).await?;
+    assert!(db.pending(alice, now).await?.is_empty());
+    assert_eq!(pending_episodes(db.pending(root, now).await?), [e2]);
+
+    // Deleting alice removes her rows and leaves root's.
+    db.delete_user(alice).await?;
+    let c = OpenOptions::new()
+        .read_write()
+        .no_mutex()
+        .open(dir.path().join("test.db"))?;
+    let mut q = c.prepare(
+        "SELECT (SELECT COUNT(*) FROM user_tracked_movies) + (SELECT COUNT(*) FROM pending WHERE user_id NOT IN (SELECT id FROM users))",
+    )?;
+    assert_eq!(q.next::<i64>()?, Some(0));
+    assert_eq!(db.episodes_watched(root, show).await?.len(), 1);
     Ok(())
 }

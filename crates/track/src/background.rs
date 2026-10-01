@@ -63,7 +63,7 @@ pub(crate) async fn discover_pending_movies(db: &Database) -> anyhow::Result<()>
         .await
         .context("Listing movie pending candidates")?;
 
-    for (id, filters) in candidates {
+    for (user, id, filters) in candidates {
         let releases = db
             .movie_releases(id)
             .await
@@ -75,7 +75,7 @@ pub(crate) async fn discover_pending_movies(db: &Database) -> anyhow::Result<()>
             .earliest_release(&releases)
             && ts <= now
         {
-            db.add_pending_movie(id, ts)
+            db.add_pending_movie(user, id, ts)
                 .await
                 .with_context(|| format!("Adding pending entry for movie {id}"))?;
         }
@@ -184,7 +184,7 @@ pub(crate) async fn run(
 
         for (show_id, episode_id, code) in airing {
             let title = db
-                .show_by_id(show_id)
+                .show_by_id(None, show_id)
                 .await?
                 .and_then(|s| s.strings.title().map(str::to_owned));
 

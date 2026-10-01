@@ -318,12 +318,15 @@ pub async fn import() -> Result<()> {
     let db = Database::open(&args.db, OpenMode::Bulk, 1)
         .with_context(|| anyhow!("Opening database at {}", args.db.display()))?;
 
+    // The legacy data had a single user; it all belongs to root.
+    let owner = db.default_owner().await?;
+
     // Maps from old UUID → new SQLite rowid
     let mut show_by_uuid: HashMap<Uuid, api::ShowId> = HashMap::new();
 
     // Dedup maps keyed by remote_id for show/movies, (id, timestamp) for watched
     let mut show_by_remote: HashMap<String, api::ShowId> = db
-        .shows()
+        .shows(None)
         .await
         .context("Loading existing show")?
         .into_iter()
@@ -336,7 +339,7 @@ pub async fn import() -> Result<()> {
         .collect();
 
     let mut movies_by_remote: HashMap<String, api::MovieId> = db
-        .movies()
+        .movies(None)
         .await
         .context("Loading existing movies")?
         .into_iter()
@@ -413,8 +416,9 @@ pub async fn import() -> Result<()> {
                 .await
                 .with_context(|| anyhow!("Inserting show '{}'", s.title))?;
 
-            if !s.tracked {
-                db.set_show_tracked(show_id, false).await?;
+            if s.tracked {
+                db.set_show_tracked(owner, show_id, true).await?;
+            } else {
                 // Mirror the legacy single flag into auto_sync so previously
                 // untracked shows are not picked up by automatic sync.
                 db.set_show_auto_sync(show_id, false).await?;
@@ -554,9 +558,11 @@ pub async fn import() -> Result<()> {
 
             let movie_id = api::MovieId::new(uuid_to_u64(m.id));
 
-            db.create_movie(movie_id, &m.title, release_date, &m.overview, true)
+            db.create_movie(movie_id, &m.title, release_date, &m.overview)
                 .await
                 .with_context(|| anyhow!("Inserting movie '{}'", m.title))?;
+
+            db.set_movie_tracked(owner, movie_id, true).await?;
 
             import_movie_images(&db, movie_id, &m.graphics).await?;
 
@@ -596,6 +602,7 @@ pub async fn import() -> Result<()> {
                     chrono_to_timestamp(timestamp).context("Parsing watched timestamp")?;
 
                 db.insert_watched_episode(
+                    owner,
                     api::WatchedId::new(uuid_to_u64(id)),
                     timestamp,
                     api::ShowId::new(uuid_to_u64(series)),
@@ -614,6 +621,7 @@ pub async fn import() -> Result<()> {
                     chrono_to_timestamp(timestamp).context("Parsing watched timestamp")?;
 
                 db.insert_watched_movie(
+                    owner,
                     api::WatchedId::new(uuid_to_u64(id)),
                     timestamp,
                     api::MovieId::new(uuid_to_u64(movie)),
@@ -674,7 +682,7 @@ pub async fn import() -> Result<()> {
     let mut pending_filled = 0usize;
 
     for &show_id in show_by_uuid.values() {
-        db.fill_pending_for_show_import(show_id).await?;
+        db.fill_pending_for_show_import(owner, show_id).await?;
         pending_filled += 1;
     }
 

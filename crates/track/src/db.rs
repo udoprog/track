@@ -14,7 +14,7 @@ use api::{
     Config, Country, Credit, CreditId, CreditKind, Date, EpisodeId, Image, ImageId, ImageKey,
     ImageKind, ImageSource, IncludeSpecials, MarkTime, MovieId, PendingId, PersonId, ReleaseType,
     Remote, RemoteId, RemoteSource, RemoteValue, SeasonId, SeasonNumber, ShowId, ThemeType,
-    Timestamp, WatchedId, WatchedKind,
+    Timestamp, UserId, WatchedId, WatchedKind,
 };
 use rust_embed::RustEmbed;
 use sqll::{OpenOptions, Pool, PoolBuilder, Row, Statements, TypedStatement};
@@ -409,6 +409,7 @@ struct PendingEpisodeAiredRow {
 
 #[derive(Row)]
 struct MoviePendingCandidateRow {
+    user_id: UserId,
     id: api::MovieId,
     release_filters: Option<String>,
 }
@@ -493,6 +494,7 @@ pub(crate) struct ExportRemote<Owner> {
 #[derive(Row)]
 struct AllWatchedEpisodeRow {
     id: WatchedId,
+    login: String,
     timestamp: Timestamp,
     show_id: Option<ShowId>,
     season: SeasonNumber,
@@ -504,6 +506,7 @@ struct AllWatchedEpisodeRow {
 #[derive(Row)]
 struct AllWatchedMovieRow {
     id: WatchedId,
+    login: String,
     timestamp: Timestamp,
     movie_id: Option<MovieId>,
 }
@@ -724,17 +727,26 @@ struct InnerRead {
     users: users::Read,
 
     // shows
-    #[sql = "SELECT shows.id, first_air, tracked, auto_sync, last_synced_at, language, default_language, include_specials, air_date_filters"]
+    // Shows and movies carry whether the viewer (?1, NULL for nobody) tracks them.
+    #[sql = "SELECT shows.id, first_air, EXISTS (SELECT 1 FROM user_tracked_shows t WHERE t.show_id = shows.id AND t.user_id = ?1) AS tracked, auto_sync, last_synced_at, language, default_language, include_specials, air_date_filters"]
     #[sql = "FROM shows ORDER BY shows.id"]
-    list_shows: TypedStatement<(), ShowRow>,
-    #[sql = "SELECT shows.id, first_air, tracked, auto_sync, last_synced_at, language, default_language, include_specials, air_date_filters"]
-    #[sql = "FROM shows WHERE shows.id = ?"]
-    show_by_id: TypedStatement<(ShowId,), ShowRow>,
-    #[sql = "SELECT s.id, s.first_air, s.tracked, s.auto_sync, s.last_synced_at, s.language, s.default_language, s.include_specials, s.air_date_filters"]
+    list_shows: TypedStatement<(Option<UserId>,), ShowRow>,
+    #[sql = "SELECT shows.id, first_air, EXISTS (SELECT 1 FROM user_tracked_shows t WHERE t.show_id = shows.id AND t.user_id = ?1) AS tracked, auto_sync, last_synced_at, language, default_language, include_specials, air_date_filters"]
+    #[sql = "FROM shows WHERE shows.id = ?2"]
+    show_by_id: TypedStatement<(Option<UserId>, ShowId), ShowRow>,
+    #[sql = "SELECT s.id, s.first_air, EXISTS (SELECT 1 FROM user_tracked_shows t WHERE t.show_id = s.id AND t.user_id = ?1) AS tracked, s.auto_sync, s.last_synced_at, s.language, s.default_language, s.include_specials, s.air_date_filters"]
     #[sql = "FROM shows s"]
     #[sql = "JOIN show_remotes r ON r.show_id = s.id"]
-    #[sql = "WHERE r.source = ? AND r.value = ?"]
-    shows_by_remote: TypedStatement<(RemoteSource, RemoteValue), ShowRow>,
+    #[sql = "WHERE r.source = ?2 AND r.value = ?3"]
+    shows_by_remote: TypedStatement<(Option<UserId>, RemoteSource, RemoteValue), ShowRow>,
+    #[sql = "SELECT 1 FROM user_tracked_shows WHERE user_id = ? AND show_id = ?"]
+    is_show_tracked: TypedStatement<(UserId, ShowId), i64>,
+    #[sql = "SELECT 1 FROM user_tracked_movies WHERE user_id = ? AND movie_id = ?"]
+    is_movie_tracked: TypedStatement<(UserId, MovieId), i64>,
+    #[sql = "SELECT user_id FROM user_tracked_shows WHERE show_id = ?"]
+    show_trackers: TypedStatement<(ShowId,), UserId>,
+    #[sql = "SELECT user_id FROM user_tracked_movies WHERE movie_id = ?"]
+    movie_trackers: TypedStatement<(MovieId,), UserId>,
 
     // remotes (one table per owner; source is a numeric enum, value is dynamic)
     #[sql = "SELECT id, slug, source, value, enabled, priority, sync_kinds, cache FROM show_remotes WHERE show_id = ? ORDER BY priority, id"]
@@ -886,13 +898,13 @@ struct InnerRead {
     // seasons
     #[sql = "SELECT s.id, s.show_id, s.season, s.air_date,"]
     #[sql = "    i.source AS poster_source, i.path AS poster_path,"]
-    #[sql = "    (SELECT COUNT(DISTINCT we.episode) FROM watched_episodes we WHERE we.show_id = s.show_id AND we.season = s.season) AS watched_count,"]
+    #[sql = "    (SELECT COUNT(DISTINCT we.episode) FROM watched_episodes we WHERE we.user_id = ?1 AND we.show_id = s.show_id AND we.season = s.season) AS watched_count,"]
     #[sql = "    (SELECT COUNT(*) FROM episodes e WHERE e.show_id = s.show_id AND e.season = s.season) AS total_count"]
     #[sql = "FROM seasons s"]
     #[sql = "LEFT JOIN season_images si ON si.season_id = s.id AND si.kind = 1"]
     #[sql = "LEFT JOIN season_image_candidates i ON i.id = si.image_id"]
-    #[sql = "WHERE s.show_id = ? ORDER BY s.season"]
-    list_seasons: TypedStatement<(ShowId,), SeasonRow>,
+    #[sql = "WHERE s.show_id = ?2 ORDER BY s.season"]
+    list_seasons: TypedStatement<(Option<UserId>, ShowId), SeasonRow>,
     #[sql = "SELECT ss.season_id, ss.language, ss.kind, ss.text FROM season_strings ss"]
     #[sql = "JOIN seasons s ON s.id = ss.season_id"]
     #[sql = "WHERE s.show_id = ? ORDER BY ss.season_id"]
@@ -906,18 +918,18 @@ struct InnerRead {
     #[sql = "SELECT id, season, episode FROM episodes WHERE show_id = ?"]
     list_episode_ids_for_show: TypedStatement<(ShowId,), EpisodeIdRow>,
     #[sql = "SELECT e.id, e.show_id, e.season, e.episode, e.absolute_number, e.aired, p.timestamp AS pending,"]
-    #[sql = "    (SELECT COUNT(*) FROM watched_episodes we WHERE we.show_id = e.show_id AND we.season = e.season AND we.episode = e.episode) AS watched_count"]
+    #[sql = "    (SELECT COUNT(*) FROM watched_episodes we WHERE we.user_id = ?1 AND we.show_id = e.show_id AND we.season = e.season AND we.episode = e.episode) AS watched_count"]
     #[sql = "FROM episodes e"]
-    #[sql = "LEFT JOIN pending p ON p.episode_id = e.id"]
-    #[sql = "WHERE e.show_id = ? AND e.season = ?"]
+    #[sql = "LEFT JOIN pending p ON p.episode_id = e.id AND p.user_id = ?1"]
+    #[sql = "WHERE e.show_id = ?2 AND e.season = ?3"]
     #[sql = "ORDER BY e.episode"]
-    list_episodes: TypedStatement<(ShowId, SeasonNumber), EpisodeRow>,
+    list_episodes: TypedStatement<(Option<UserId>, ShowId, SeasonNumber), EpisodeRow>,
     #[sql = "SELECT e.id, e.show_id, e.season, e.episode, e.absolute_number, e.aired, p.timestamp AS pending,"]
-    #[sql = "    (SELECT COUNT(*) FROM watched_episodes we WHERE we.show_id = e.show_id AND we.season = e.season AND we.episode = e.episode) AS watched_count"]
+    #[sql = "    (SELECT COUNT(*) FROM watched_episodes we WHERE we.user_id = ?1 AND we.show_id = e.show_id AND we.season = e.season AND we.episode = e.episode) AS watched_count"]
     #[sql = "FROM episodes e"]
-    #[sql = "LEFT JOIN pending p ON p.episode_id = e.id"]
-    #[sql = "WHERE e.id = ?"]
-    episode_by_id: TypedStatement<(EpisodeId,), EpisodeRow>,
+    #[sql = "LEFT JOIN pending p ON p.episode_id = e.id AND p.user_id = ?1"]
+    #[sql = "WHERE e.id = ?2"]
+    episode_by_id: TypedStatement<(Option<UserId>, EpisodeId), EpisodeRow>,
     #[sql = "SELECT es.episode_id, es.language, es.kind, es.text FROM episode_strings es"]
     #[sql = "JOIN episodes e ON e.id = es.episode_id"]
     #[sql = "WHERE e.show_id = ? AND e.season = ? ORDER BY es.episode_id"]
@@ -925,37 +937,37 @@ struct InnerRead {
     #[sql = "SELECT we.id, we.timestamp, we.season, we.episode, e.id AS episode_id"]
     #[sql = "FROM watched_episodes we"]
     #[sql = "JOIN episodes e ON e.show_id = we.show_id AND e.season = we.season AND e.episode = we.episode"]
-    #[sql = "WHERE we.show_id = ?"]
+    #[sql = "WHERE we.user_id = ? AND we.show_id = ?"]
     #[sql = "ORDER BY we.timestamp DESC"]
-    list_episodes_watched: TypedStatement<(ShowId,), WatchedEpisodeRow>,
+    list_episodes_watched: TypedStatement<(UserId, ShowId), WatchedEpisodeRow>,
 
     // slim list views
-    #[sql = "SELECT id, release_date AS date, tracked, language, default_language FROM movies ORDER BY id"]
-    list_movie_items: TypedStatement<(), MediaItemRow>,
-    #[sql = "SELECT id, first_air AS date, tracked, language, default_language FROM shows ORDER BY id"]
-    list_show_items: TypedStatement<(), MediaItemRow>,
+    #[sql = "SELECT id, release_date AS date, EXISTS (SELECT 1 FROM user_tracked_movies t WHERE t.movie_id = movies.id AND t.user_id = ?1) AS tracked, language, default_language FROM movies ORDER BY id"]
+    list_movie_items: TypedStatement<(UserId,), MediaItemRow>,
+    #[sql = "SELECT id, first_air AS date, EXISTS (SELECT 1 FROM user_tracked_shows t WHERE t.show_id = shows.id AND t.user_id = ?1) AS tracked, language, default_language FROM shows ORDER BY id"]
+    list_show_items: TypedStatement<(UserId,), MediaItemRow>,
     #[sql = "SELECT movie_id, MAX(timestamp) AS last_watched FROM watched_movies"]
-    #[sql = "WHERE movie_id IS NOT NULL GROUP BY movie_id"]
-    last_watched_movies: TypedStatement<(), LastWatchedMovieRow>,
-    #[sql = "SELECT show_id, MAX(timestamp) AS last_watched FROM watched_episodes GROUP BY show_id"]
-    last_watched_shows: TypedStatement<(), LastWatchedShowRow>,
-    #[sql = "SELECT e.show_id AS show_id, COUNT(*) AS unwatched FROM episodes e WHERE e.season != 0 AND e.aired IS NOT NULL AND e.aired <= CAST(strftime('%s', 'now') AS INTEGER) * 1000 AND NOT EXISTS (SELECT 1 FROM watched_episodes w WHERE w.show_id = e.show_id AND w.season = e.season AND w.episode = e.episode) GROUP BY e.show_id"]
-    unwatched_shows: TypedStatement<(), UnwatchedShowRow>,
+    #[sql = "WHERE user_id = ? AND movie_id IS NOT NULL GROUP BY movie_id"]
+    last_watched_movies: TypedStatement<(UserId,), LastWatchedMovieRow>,
+    #[sql = "SELECT show_id, MAX(timestamp) AS last_watched FROM watched_episodes WHERE user_id = ? GROUP BY show_id"]
+    last_watched_shows: TypedStatement<(UserId,), LastWatchedShowRow>,
+    #[sql = "SELECT e.show_id AS show_id, COUNT(*) AS unwatched FROM episodes e WHERE e.season != 0 AND e.aired IS NOT NULL AND e.aired <= CAST(strftime('%s', 'now') AS INTEGER) * 1000 AND NOT EXISTS (SELECT 1 FROM watched_episodes w WHERE w.user_id = ?1 AND w.show_id = e.show_id AND w.season = e.season AND w.episode = e.episode) GROUP BY e.show_id"]
+    unwatched_shows: TypedStatement<(UserId,), UnwatchedShowRow>,
 
     // movies
-    #[sql = "SELECT m.id, m.release_date, m.tracked, m.auto_sync, m.last_synced_at, m.language, m.default_language, m.release_filters"]
+    #[sql = "SELECT m.id, m.release_date, EXISTS (SELECT 1 FROM user_tracked_movies t WHERE t.movie_id = m.id AND t.user_id = ?1) AS tracked, m.auto_sync, m.last_synced_at, m.language, m.default_language, m.release_filters"]
     #[sql = "FROM movies m ORDER BY m.id"]
-    list_movies: TypedStatement<(), MovieRow>,
-    #[sql = "SELECT m.id, m.release_date, m.tracked, m.auto_sync, m.last_synced_at, m.language, m.default_language, m.release_filters"]
-    #[sql = "FROM movies m WHERE m.id = ?"]
-    movie_by_id: TypedStatement<(MovieId,), MovieRow>,
+    list_movies: TypedStatement<(Option<UserId>,), MovieRow>,
+    #[sql = "SELECT m.id, m.release_date, EXISTS (SELECT 1 FROM user_tracked_movies t WHERE t.movie_id = m.id AND t.user_id = ?1) AS tracked, m.auto_sync, m.last_synced_at, m.language, m.default_language, m.release_filters"]
+    #[sql = "FROM movies m WHERE m.id = ?2"]
+    movie_by_id: TypedStatement<(Option<UserId>, MovieId), MovieRow>,
     #[sql = "SELECT release_filters FROM movies WHERE id = ?"]
     movie_release_filters: TypedStatement<(MovieId,), Option<String>>,
-    #[sql = "SELECT m.id, m.release_date, m.tracked, m.auto_sync, m.last_synced_at, m.language, m.default_language, m.release_filters"]
+    #[sql = "SELECT m.id, m.release_date, EXISTS (SELECT 1 FROM user_tracked_movies t WHERE t.movie_id = m.id AND t.user_id = ?1) AS tracked, m.auto_sync, m.last_synced_at, m.language, m.default_language, m.release_filters"]
     #[sql = "FROM movies m"]
     #[sql = "JOIN movie_remotes r ON r.movie_id = m.id"]
-    #[sql = "WHERE r.source = ? AND r.value = ?"]
-    movie_by_remote: TypedStatement<(RemoteSource, RemoteValue), MovieRow>,
+    #[sql = "WHERE r.source = ?2 AND r.value = ?3"]
+    movie_by_remote: TypedStatement<(Option<UserId>, RemoteSource, RemoteValue), MovieRow>,
     #[sql = "SELECT id, slug, source, value, enabled, priority, sync_kinds, cache FROM movie_remotes WHERE movie_id = ? ORDER BY priority, id"]
     list_movie_remotes: TypedStatement<(MovieId,), RemoteRow>,
     #[sql = "SELECT movie_id, id, slug, source, value, enabled, priority, sync_kinds, cache FROM movie_remotes ORDER BY movie_id, priority, id"]
@@ -971,40 +983,42 @@ struct InnerRead {
     #[sql = "SELECT we.id, we.timestamp, e.id AS episode_id, NULL AS movie_id, e.show_id"]
     #[sql = "FROM watched_episodes we"]
     #[sql = "JOIN episodes e ON e.show_id = we.show_id AND e.season = we.season AND e.episode = we.episode"]
-    #[sql = "WHERE e.id = ?"]
+    #[sql = "WHERE we.user_id = ? AND e.id = ?"]
     #[sql = "ORDER BY we.timestamp DESC"]
-    list_watched_by_episode: TypedStatement<(EpisodeId,), WatchedRow>,
+    list_watched_by_episode: TypedStatement<(UserId, EpisodeId), WatchedRow>,
     #[sql = "SELECT id, timestamp, NULL AS episode_id, movie_id, NULL AS show_id"]
-    #[sql = "FROM watched_movies WHERE movie_id = ? ORDER BY timestamp DESC"]
-    list_watched_by_movie: TypedStatement<(MovieId,), WatchedRow>,
+    #[sql = "FROM watched_movies WHERE user_id = ? AND movie_id = ? ORDER BY timestamp DESC"]
+    list_watched_by_movie: TypedStatement<(UserId, MovieId), WatchedRow>,
     #[sql = "SELECT we.id, we.timestamp, we.show_id, we.season, we.episode"]
     #[sql = "FROM watched_episodes we"]
     #[sql = "LEFT JOIN episodes e"]
     #[sql = "    ON e.show_id = we.show_id AND e.season = we.season AND e.episode = we.episode"]
-    #[sql = "WHERE we.show_id = ? AND e.id IS NULL"]
+    #[sql = "WHERE we.user_id = ? AND we.show_id = ? AND e.id IS NULL"]
     #[sql = "ORDER BY we.timestamp ASC"]
-    list_orphaned_for_show: TypedStatement<(ShowId,), OrphanedWatchedRow>,
+    list_orphaned_for_show: TypedStatement<(UserId, ShowId), OrphanedWatchedRow>,
     // select episodes which have 0 watched by show and season.
     #[sql = "SELECT id, show_id, season, episode FROM episodes"]
-    #[sql = "WHERE show_id = ? AND season = ?"]
+    #[sql = "WHERE show_id = ?2 AND season = ?3"]
     #[sql = "    AND NOT EXISTS ("]
     #[sql = "        SELECT 1 FROM watched_episodes we"]
-    #[sql = "        WHERE we.show_id = episodes.show_id"]
+    #[sql = "        WHERE we.user_id = ?1"]
+    #[sql = "        AND we.show_id = episodes.show_id"]
     #[sql = "        AND we.season = episodes.season"]
     #[sql = "        AND we.episode = episodes.episode"]
     #[sql = "    )"]
-    select_unwatched_by_show_season: TypedStatement<(ShowId, SeasonNumber), UnwatchedEpisodeRow>,
+    select_unwatched_by_show_season:
+        TypedStatement<(UserId, ShowId, SeasonNumber), UnwatchedEpisodeRow>,
 
     // pending table management
-    #[sql = "SELECT timestamp FROM pending WHERE movie_id = ? LIMIT 1"]
-    select_pending_movie: TypedStatement<(MovieId,), Timestamp>,
-    #[sql = "SELECT 1 FROM pending WHERE show_id = ? LIMIT 1"]
-    has_pending_episode_for_show: TypedStatement<(ShowId,), (i64,)>,
+    #[sql = "SELECT timestamp FROM pending WHERE user_id = ? AND movie_id = ? LIMIT 1"]
+    select_pending_movie: TypedStatement<(Option<UserId>, MovieId), Timestamp>,
+    #[sql = "SELECT 1 FROM pending WHERE user_id = ? AND show_id = ? LIMIT 1"]
+    has_pending_episode_for_show: TypedStatement<(UserId, ShowId), (i64,)>,
     #[sql = "SELECT e.aired, p.timestamp"]
     #[sql = "FROM pending p"]
     #[sql = "JOIN episodes e ON e.id = p.episode_id"]
-    #[sql = "WHERE p.show_id = ?"]
-    pending_episode_aired_for_show: TypedStatement<(ShowId,), PendingEpisodeAiredRow>,
+    #[sql = "WHERE p.user_id = ? AND p.show_id = ?"]
+    pending_episode_aired_for_show: TypedStatement<(UserId, ShowId), PendingEpisodeAiredRow>,
     #[sql = "SELECT e.season, e.episode"]
     #[sql = "FROM episodes e"]
     #[sql = "WHERE e.show_id = ?1"]
@@ -1015,53 +1029,57 @@ struct InnerRead {
     find_episode_by_timestamp: TypedStatement<(ShowId, Timestamp), EpisodeMatchRow>,
     #[sql = "SELECT e.id, e.aired"]
     #[sql = "FROM episodes e"]
-    #[sql = "WHERE e.show_id = ?1"]
+    #[sql = "WHERE e.show_id = ?2"]
     #[sql = "    AND e.aired IS NOT NULL"]
-    #[sql = "    AND (?2 OR e.season <> 0)"]
+    #[sql = "    AND (?3 OR e.season <> 0)"]
     #[sql = "    AND NOT EXISTS ("]
     #[sql = "        SELECT 1 FROM watched_episodes we"]
-    #[sql = "        WHERE we.show_id = e.show_id AND we.season = e.season AND we.episode = e.episode"]
+    #[sql = "        WHERE we.user_id = ?1 AND we.show_id = e.show_id AND we.season = e.season AND we.episode = e.episode"]
     #[sql = "    )"]
     #[sql = "ORDER BY e.season, e.episode"]
     #[sql = "LIMIT 1"]
-    next_pending_episode_for_show: TypedStatement<(ShowId, api::IncludeSpecials), NextEpisodeRow>,
+    next_pending_episode_for_show:
+        TypedStatement<(UserId, ShowId, api::IncludeSpecials), NextEpisodeRow>,
     #[cfg(feature = "import")]
     #[sql = "SELECT e.id, e.aired"]
     #[sql = "FROM episodes e"]
-    #[sql = "WHERE e.show_id = ?"]
+    #[sql = "WHERE e.show_id = ?2"]
     #[sql = "    AND NOT EXISTS ("]
     #[sql = "        SELECT 1 FROM watched_episodes we"]
-    #[sql = "        WHERE we.show_id = e.show_id AND we.season = e.season AND we.episode = e.episode"]
+    #[sql = "        WHERE we.user_id = ?1 AND we.show_id = e.show_id AND we.season = e.season AND we.episode = e.episode"]
     #[sql = "    )"]
     #[sql = "ORDER BY e.season, e.episode"]
     #[sql = "LIMIT 1"]
-    first_unwatched_episode_for_show: TypedStatement<(ShowId,), NextEpisodeRow>,
-    #[sql = "SELECT m.id, m.release_filters"]
-    #[sql = "FROM movies m"]
-    #[sql = "WHERE m.tracked = 1"]
-    #[sql = "    AND NOT EXISTS (SELECT 1 FROM watched_movies wm WHERE wm.movie_id = m.id)"]
-    #[sql = "    AND NOT EXISTS (SELECT 1 FROM pending p WHERE p.movie_id = m.id)"]
+    first_unwatched_episode_for_show: TypedStatement<(UserId, ShowId), NextEpisodeRow>,
+    #[sql = "SELECT t.user_id, m.id, m.release_filters"]
+    #[sql = "FROM user_tracked_movies t"]
+    #[sql = "JOIN movies m ON m.id = t.movie_id"]
+    #[sql = "WHERE NOT EXISTS (SELECT 1 FROM watched_movies wm WHERE wm.user_id = t.user_id AND wm.movie_id = m.id)"]
+    #[sql = "    AND NOT EXISTS (SELECT 1 FROM pending p WHERE p.user_id = t.user_id AND p.movie_id = m.id)"]
     movie_pending_candidates: TypedStatement<(), MoviePendingCandidateRow>,
-    #[sql = "SELECT 1 FROM watched_movies WHERE movie_id = ? LIMIT 1"]
-    has_watched_movie: TypedStatement<(MovieId,), (i64,)>,
+    #[sql = "SELECT 1 FROM watched_movies WHERE user_id = ? AND movie_id = ? LIMIT 1"]
+    has_watched_movie: TypedStatement<(UserId, MovieId), (i64,)>,
     #[sql = "SELECT episode_id, movie_id, timestamp"]
     #[sql = "FROM pending"]
-    #[sql = "WHERE timestamp <= ?"]
+    #[sql = "WHERE user_id = ? AND timestamp <= ?"]
     #[sql = "ORDER BY timestamp DESC"]
-    list_pending_before: TypedStatement<(Timestamp,), PendingBaseRow>,
-    #[sql = "SELECT timestamp FROM pending WHERE episode_id = ?"]
-    pending_timestamp_for_episode: TypedStatement<(EpisodeId,), (Timestamp,)>,
-    #[sql = "SELECT timestamp FROM pending WHERE movie_id = ?"]
-    pending_timestamp_for_movie: TypedStatement<(MovieId,), (Timestamp,)>,
-    #[sql = "SELECT episode_id, timestamp FROM pending WHERE show_id = ?"]
-    pending_for_show: TypedStatement<(ShowId,), (EpisodeId, Timestamp)>,
+    list_pending_before: TypedStatement<(UserId, Timestamp), PendingBaseRow>,
+    #[sql = "SELECT timestamp FROM pending WHERE user_id = ? AND episode_id = ?"]
+    pending_timestamp_for_episode: TypedStatement<(UserId, EpisodeId), (Timestamp,)>,
+    #[sql = "SELECT timestamp FROM pending WHERE user_id = ? AND movie_id = ?"]
+    pending_timestamp_for_movie: TypedStatement<(UserId, MovieId), (Timestamp,)>,
+    #[sql = "SELECT episode_id, timestamp FROM pending WHERE user_id = ? AND show_id = ?"]
+    pending_for_show: TypedStatement<(UserId, ShowId), (EpisodeId, Timestamp)>,
     #[sql = "SELECT e.show_id, s.language, s.default_language, e.season, e.episode, e.aired"]
     #[sql = "FROM episodes e"]
     #[sql = "JOIN shows s ON s.id = e.show_id"]
-    #[sql = "WHERE e.id = ? AND s.tracked = 1"]
-    pending_episode_detail: TypedStatement<(EpisodeId,), PendingEpisodeDetailRow>,
-    #[sql = "SELECT release_date FROM movies WHERE id = ? AND tracked = 1"]
-    pending_movie_detail: TypedStatement<(MovieId,), PendingMovieDetailRow>,
+    #[sql = "JOIN user_tracked_shows t ON t.show_id = s.id AND t.user_id = ?1"]
+    #[sql = "WHERE e.id = ?2"]
+    pending_episode_detail: TypedStatement<(UserId, EpisodeId), PendingEpisodeDetailRow>,
+    #[sql = "SELECT m.release_date FROM movies m"]
+    #[sql = "JOIN user_tracked_movies t ON t.movie_id = m.id AND t.user_id = ?1"]
+    #[sql = "WHERE m.id = ?2"]
+    pending_movie_detail: TypedStatement<(UserId, MovieId), PendingMovieDetailRow>,
     #[sql = "SELECT id FROM seasons WHERE show_id = ? AND season = ?"]
     season_id_for: TypedStatement<(ShowId, SeasonNumber), SeasonId>,
     #[sql = "SELECT e.id, e.aired FROM episodes e"]
@@ -1075,24 +1093,29 @@ struct InnerRead {
     // schedule: episodes airing in the next N days
     #[sql = "SELECT e.show_id, e.season, e.episode, e.aired"]
     #[sql = "FROM episodes e"]
-    #[sql = "JOIN shows s ON s.id = e.show_id"]
-    #[sql = "WHERE s.tracked = 1"]
+    #[sql = "JOIN user_tracked_shows t ON t.show_id = e.show_id"]
+    #[sql = "WHERE t.user_id = ?"]
     #[sql = "    AND e.aired > ?"]
     #[sql = "    AND e.aired <= ?"]
     #[sql = "ORDER BY e.aired, e.show_id, e.season, e.episode"]
-    list_schedule: TypedStatement<(Timestamp, Timestamp), ScheduleRow>,
+    list_schedule: TypedStatement<(UserId, Timestamp, Timestamp), ScheduleRow>,
     #[sql = "SELECT m.id, m.release_date"]
     #[sql = "FROM movies m"]
-    #[sql = "WHERE m.tracked = 1"]
+    #[sql = "JOIN user_tracked_movies t ON t.movie_id = m.id"]
+    #[sql = "WHERE t.user_id = ?"]
     #[sql = "    AND m.release_date > ?"]
     #[sql = "    AND m.release_date <= ?"]
     #[sql = "ORDER BY m.release_date, m.id"]
-    list_schedule_movies: TypedStatement<(Timestamp, Timestamp), ScheduleMovieRow>,
+    list_schedule_movies: TypedStatement<(UserId, Timestamp, Timestamp), ScheduleMovieRow>,
 
     // all watched + existence checks (backup export/import)
-    #[sql = "SELECT id, timestamp, show_id, season, episode FROM watched_episodes ORDER BY show_id, season, episode, id"]
+    #[sql = "SELECT w.id, u.login, w.timestamp, w.show_id, w.season, w.episode FROM watched_episodes w"]
+    #[sql = "JOIN users u ON u.id = w.user_id"]
+    #[sql = "ORDER BY u.login, w.show_id, w.season, w.episode, w.id"]
     list_all_watched_episodes: TypedStatement<(), AllWatchedEpisodeRow>,
-    #[sql = "SELECT id, timestamp, movie_id FROM watched_movies ORDER BY movie_id, id"]
+    #[sql = "SELECT w.id, u.login, w.timestamp, w.movie_id FROM watched_movies w"]
+    #[sql = "JOIN users u ON u.id = w.user_id"]
+    #[sql = "ORDER BY u.login, w.movie_id, w.id"]
     list_all_watched_movies: TypedStatement<(), AllWatchedMovieRow>,
     #[sql = "SELECT 1 FROM watched_episodes WHERE id = ? LIMIT 1"]
     watched_episode_exists: TypedStatement<(WatchedId,), (i64,)>,
@@ -1118,13 +1141,13 @@ struct InnerRead {
     list_movie_languages: TypedStatement<(), LanguageRow>,
 
     // stale-item queries
-    #[sql = "SELECT shows.id, first_air, tracked, auto_sync, last_synced_at, language, default_language, include_specials, air_date_filters"]
+    #[sql = "SELECT shows.id, first_air, EXISTS (SELECT 1 FROM user_tracked_shows t WHERE t.show_id = shows.id) AS tracked, auto_sync, last_synced_at, language, default_language, include_specials, air_date_filters"]
     #[sql = "FROM shows"]
     #[sql = "WHERE auto_sync = 1"]
     #[sql = "    AND (last_synced_at IS NULL OR last_synced_at < ?)"]
     #[sql = "ORDER BY last_synced_at IS NOT NULL, last_synced_at"]
     shows_needing_sync: TypedStatement<(Timestamp,), ShowRow>,
-    #[sql = "SELECT m.id, m.release_date, m.tracked, m.auto_sync, m.last_synced_at, m.language, m.default_language, m.release_filters"]
+    #[sql = "SELECT m.id, m.release_date, EXISTS (SELECT 1 FROM user_tracked_movies t WHERE t.movie_id = m.id) AS tracked, m.auto_sync, m.last_synced_at, m.language, m.default_language, m.release_filters"]
     #[sql = "FROM movies m"]
     #[sql = "WHERE m.auto_sync = 1"]
     #[sql = "    AND (m.last_synced_at IS NULL OR m.last_synced_at < ?)"]
@@ -1134,7 +1157,8 @@ struct InnerRead {
     // Bound as (window start, window end, sync cutoff).
     #[sql = "SELECT e.id, e.show_id, e.season, e.episode"]
     #[sql = "FROM episodes e JOIN shows s ON s.id = e.show_id"]
-    #[sql = "WHERE s.auto_sync = 1 AND s.tracked = 1"]
+    #[sql = "WHERE s.auto_sync = 1"]
+    #[sql = "    AND EXISTS (SELECT 1 FROM user_tracked_shows t WHERE t.show_id = s.id)"]
     #[sql = "    AND e.aired IS NOT NULL"]
     #[sql = "    AND e.aired BETWEEN ? AND ?"]
     #[sql = "    AND (e.last_synced_at IS NULL OR e.last_synced_at < ?)"]
@@ -1182,13 +1206,13 @@ struct InnerWrite {
     users_write: users::Write,
 
     // shows
-    #[sql = "INSERT INTO shows (id, first_air, tracked)"]
-    #[sql = "VALUES (?, ?, ?)"]
-    insert_show: TypedStatement<(ShowId, Option<Timestamp>, bool), ()>,
+    #[sql = "INSERT INTO shows (id, first_air)"]
+    #[sql = "VALUES (?, ?)"]
+    insert_show: TypedStatement<(ShowId, Option<Timestamp>), ()>,
     #[sql = "UPDATE shows"]
-    #[sql = "SET first_air = ?, tracked = ?"]
+    #[sql = "SET first_air = ?"]
     #[sql = "WHERE id = ?"]
-    update_show: TypedStatement<(Option<Timestamp>, bool, ShowId), ()>,
+    update_show: TypedStatement<(Option<Timestamp>, ShowId), ()>,
     #[sql = "UPDATE shows SET language = ? WHERE id = ?"]
     update_show_language: TypedStatement<(api::Locale, ShowId), ()>,
     #[sql = "UPDATE shows SET include_specials = ? WHERE id = ?"]
@@ -1197,8 +1221,10 @@ struct InnerWrite {
     update_show_air_date_filters: TypedStatement<(Option<String>, ShowId), ()>,
     #[sql = "DELETE FROM shows WHERE id = ?"]
     delete_show: TypedStatement<(ShowId,), ()>,
-    #[sql = "UPDATE shows SET tracked = ? WHERE id = ?"]
-    set_show_tracked: TypedStatement<(bool, ShowId), ()>,
+    #[sql = "INSERT OR IGNORE INTO user_tracked_shows (user_id, show_id) VALUES (?, ?)"]
+    track_show: TypedStatement<(UserId, ShowId), ()>,
+    #[sql = "DELETE FROM user_tracked_shows WHERE user_id = ? AND show_id = ?"]
+    untrack_show: TypedStatement<(UserId, ShowId), ()>,
     #[sql = "UPDATE shows SET auto_sync = ? WHERE id = ?"]
     set_show_auto_sync: TypedStatement<(bool, ShowId), ()>,
 
@@ -1499,11 +1525,13 @@ struct InnerWrite {
     delete_episode_cache_for_show_source: TypedStatement<(RemoteSource, ShowId), ()>,
 
     // movies
-    #[sql = "INSERT INTO movies (id, release_date, tracked)"]
-    #[sql = "VALUES (?, ?, ?)"]
-    insert_movie: TypedStatement<(MovieId, Option<Timestamp>, bool), ()>,
-    #[sql = "UPDATE movies SET tracked = ? WHERE id = ?"]
-    set_movie_tracked: TypedStatement<(bool, MovieId), ()>,
+    #[sql = "INSERT INTO movies (id, release_date)"]
+    #[sql = "VALUES (?, ?)"]
+    insert_movie: TypedStatement<(MovieId, Option<Timestamp>), ()>,
+    #[sql = "INSERT OR IGNORE INTO user_tracked_movies (user_id, movie_id) VALUES (?, ?)"]
+    track_movie: TypedStatement<(UserId, MovieId), ()>,
+    #[sql = "DELETE FROM user_tracked_movies WHERE user_id = ? AND movie_id = ?"]
+    untrack_movie: TypedStatement<(UserId, MovieId), ()>,
     #[sql = "UPDATE movies SET auto_sync = ? WHERE id = ?"]
     set_movie_auto_sync: TypedStatement<(bool, MovieId), ()>,
     #[sql = "UPDATE movies SET release_date = ? WHERE id = ?"]
@@ -1573,34 +1601,35 @@ struct InnerWrite {
     insert_season_string: TypedStatement<(SeasonId, api::Locale, api::StringKind, String), ()>,
 
     // watched
-    #[sql = "INSERT OR IGNORE INTO watched_episodes (id, timestamp, show_id, season, episode)"]
-    #[sql = "VALUES (?, ?, ?, ?, ?)"]
-    insert_watched_episode: TypedStatement<(WatchedId, Timestamp, ShowId, SeasonNumber, u32), ()>,
-    #[sql = "INSERT OR IGNORE INTO watched_movies (id, timestamp, movie_id)"]
-    #[sql = "VALUES (?, ?, ?)"]
-    insert_watched_movie: TypedStatement<(WatchedId, Timestamp, MovieId), ()>,
-    #[sql = "DELETE FROM watched_episodes WHERE id = ?"]
-    delete_watched_episode: TypedStatement<(WatchedId,), ()>,
-    #[sql = "DELETE FROM watched_movies WHERE id = ?"]
-    delete_watched_movie: TypedStatement<(WatchedId,), ()>,
-    #[sql = "UPDATE watched_episodes SET season = ?, episode = ? WHERE id = ?"]
-    move_watched_episode: TypedStatement<(SeasonNumber, u32, WatchedId), ()>,
+    #[sql = "INSERT OR IGNORE INTO watched_episodes (id, user_id, timestamp, show_id, season, episode)"]
+    #[sql = "VALUES (?, ?, ?, ?, ?, ?)"]
+    insert_watched_episode:
+        TypedStatement<(WatchedId, UserId, Timestamp, ShowId, SeasonNumber, u32), ()>,
+    #[sql = "INSERT OR IGNORE INTO watched_movies (id, user_id, timestamp, movie_id)"]
+    #[sql = "VALUES (?, ?, ?, ?)"]
+    insert_watched_movie: TypedStatement<(WatchedId, UserId, Timestamp, MovieId), ()>,
+    #[sql = "DELETE FROM watched_episodes WHERE user_id = ? AND id = ?"]
+    delete_watched_episode: TypedStatement<(UserId, WatchedId), ()>,
+    #[sql = "DELETE FROM watched_movies WHERE user_id = ? AND id = ?"]
+    delete_watched_movie: TypedStatement<(UserId, WatchedId), ()>,
+    #[sql = "UPDATE watched_episodes SET season = ?, episode = ? WHERE user_id = ? AND id = ?"]
+    move_watched_episode: TypedStatement<(SeasonNumber, u32, UserId, WatchedId), ()>,
 
     // pending table management
-    #[sql = "INSERT INTO pending (id, timestamp, show_id, episode_id) VALUES (?, ?, ?, ?)"]
-    #[sql = "ON CONFLICT(show_id) WHERE show_id IS NOT NULL"]
+    #[sql = "INSERT INTO pending (id, user_id, timestamp, show_id, episode_id) VALUES (?, ?, ?, ?, ?)"]
+    #[sql = "ON CONFLICT(user_id, show_id) WHERE show_id IS NOT NULL"]
     #[sql = "    DO UPDATE SET episode_id = excluded.episode_id, timestamp = excluded.timestamp"]
-    upsert_pending_episode: TypedStatement<(PendingId, Timestamp, ShowId, EpisodeId), ()>,
-    #[sql = "INSERT INTO pending (id, timestamp, movie_id) VALUES (?, ?, ?)"]
-    #[sql = "ON CONFLICT(movie_id) WHERE movie_id IS NOT NULL"]
+    upsert_pending_episode: TypedStatement<(PendingId, UserId, Timestamp, ShowId, EpisodeId), ()>,
+    #[sql = "INSERT INTO pending (id, user_id, timestamp, movie_id) VALUES (?, ?, ?, ?)"]
+    #[sql = "ON CONFLICT(user_id, movie_id) WHERE movie_id IS NOT NULL"]
     #[sql = "    DO UPDATE SET timestamp = excluded.timestamp"]
-    upsert_pending_movie: TypedStatement<(PendingId, Timestamp, MovieId), ()>,
-    #[sql = "UPDATE pending SET timestamp = ? WHERE show_id = ?"]
-    update_pending_episode_timestamp: TypedStatement<(Timestamp, ShowId), ()>,
-    #[sql = "DELETE FROM pending WHERE show_id = ?"]
-    delete_pending_episode: TypedStatement<(ShowId,), ()>,
-    #[sql = "DELETE FROM pending WHERE movie_id = ?"]
-    delete_pending_movie: TypedStatement<(MovieId,), ()>,
+    upsert_pending_movie: TypedStatement<(PendingId, UserId, Timestamp, MovieId), ()>,
+    #[sql = "UPDATE pending SET timestamp = ? WHERE user_id = ? AND show_id = ?"]
+    update_pending_episode_timestamp: TypedStatement<(Timestamp, UserId, ShowId), ()>,
+    #[sql = "DELETE FROM pending WHERE user_id = ? AND show_id = ?"]
+    delete_pending_episode: TypedStatement<(UserId, ShowId), ()>,
+    #[sql = "DELETE FROM pending WHERE user_id = ? AND movie_id = ?"]
+    delete_pending_movie: TypedStatement<(UserId, MovieId), ()>,
 
     // config
     #[sql = "INSERT INTO config (key, value) VALUES (?, ?)"]
@@ -1651,9 +1680,88 @@ impl InnerRead {
     fn get_config(&mut self, key: &str) -> Result<Option<String>> {
         Ok(self.get_config.bind((key,))?.first()?)
     }
+
+    fn trackers_of_show(&mut self, show_id: ShowId) -> Result<Vec<UserId>> {
+        let mut out = Vec::new();
+        let mut stmt = self.show_trackers.bind((show_id,))?;
+
+        while let Some(user) = stmt.next()? {
+            out.push(user);
+        }
+
+        stmt.reset()?;
+        Ok(out)
+    }
+
+    fn trackers_of_movie(&mut self, movie_id: MovieId) -> Result<Vec<UserId>> {
+        let mut out = Vec::new();
+        let mut stmt = self.movie_trackers.bind((movie_id,))?;
+
+        while let Some(user) = stmt.next()? {
+            out.push(user);
+        }
+
+        stmt.reset()?;
+        Ok(out)
+    }
 }
 
 impl InnerWrite {
+    /// Fill the user's pending slot for a show unless it already has one, in
+    /// which case only a changed future air date is carried over.
+    fn fill_pending_for_show(
+        &mut self,
+        user: UserId,
+        show_id: ShowId,
+        include_specials: bool,
+        now: Timestamp,
+    ) -> Result<()> {
+        let already_has = self
+            .has_pending_episode_for_show
+            .bind((user, show_id))?
+            .first()?
+            .is_some();
+
+        if already_has {
+            let row = self
+                .pending_episode_aired_for_show
+                .bind((user, show_id))?
+                .first()?;
+
+            let maybe_update = row.and_then(|r| {
+                let aired = r.aired?;
+
+                if aired > now && aired != r.timestamp {
+                    Some(aired)
+                } else {
+                    None
+                }
+            });
+
+            if let Some(aired) = maybe_update {
+                self.update_pending_episode_timestamp
+                    .execute((aired, user, show_id))?;
+            }
+
+            return Ok(());
+        }
+
+        let Some(row) = self
+            .next_pending_episode_for_show
+            .bind((user, show_id, include_specials))?
+            .first()?
+        else {
+            return Ok(());
+        };
+
+        let ts = row.aired.unwrap_or(now).max(now);
+
+        self.upsert_pending_episode
+            .execute((PendingId::random(), user, ts, show_id, row.id))?;
+
+        Ok(())
+    }
+
     fn set_config(&mut self, key: &str, value: impl AsRef<str>) -> Result<()> {
         self.set_config.execute((key, value.as_ref()))?;
         Ok(())
@@ -1746,7 +1854,7 @@ impl Database {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            s.insert_show.execute((id, first_air.as_ref(), true))?;
+            s.insert_show.execute((id, first_air.as_ref()))?;
 
             // Store the placeholder title/overview under the default locale so the
             // show has something to show before its first sync; sync replaces these.
@@ -1851,7 +1959,7 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn shows(&self) -> Result<Vec<api::Show>> {
+    pub(crate) async fn shows(&self, user: Option<UserId>) -> Result<Vec<api::Show>> {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
@@ -1860,7 +1968,7 @@ impl Database {
 
             let config = s.config_language()?;
 
-            let mut stmt = s.list_shows.query()?;
+            let mut stmt = s.list_shows.bind((user,))?;
 
             while let Some(r) = stmt.next()? {
                 id_to_idx.insert(r.id, out.len());
@@ -1946,11 +2054,15 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn show_by_id(&self, id: ShowId) -> Result<Option<api::Show>> {
+    pub(crate) async fn show_by_id(
+        &self,
+        user: Option<UserId>,
+        id: ShowId,
+    ) -> Result<Option<api::Show>> {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
-            let Some(r) = s.show_by_id.bind((id,))?.first()? else {
+            let Some(r) = s.show_by_id.bind((user, id))?.first()? else {
                 return Ok(None);
             };
 
@@ -1999,16 +2111,11 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn update_show(
-        &self,
-        id: ShowId,
-        first_air: Option<Timestamp>,
-        tracked: bool,
-    ) -> Result<()> {
+    pub(crate) async fn update_show(&self, id: ShowId, first_air: Option<Timestamp>) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            s.update_show.execute((first_air.as_ref(), tracked, id))?;
+            s.update_show.execute((first_air.as_ref(), id))?;
             Ok(())
         });
 
@@ -2028,12 +2135,48 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn set_show_tracked(&self, id: ShowId, tracked: bool) -> Result<()> {
+    pub(crate) async fn set_show_tracked(
+        &self,
+        user: UserId,
+        id: ShowId,
+        tracked: bool,
+    ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            s.set_show_tracked.execute((tracked, id))?;
+            if tracked {
+                s.track_show.execute((user, id))?;
+            } else {
+                s.untrack_show.execute((user, id))?;
+            }
+
             Ok(())
+        });
+
+        result.await?
+    }
+
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn is_show_tracked(&self, user: UserId, id: ShowId) -> Result<bool> {
+        let mut s = self.inner.clone().shared().await?;
+        let result =
+            spawn_blocking(move || Ok(s.is_show_tracked.bind((user, id))?.first()?.is_some()));
+        result.await?
+    }
+
+    /// Whether the user tracks the movie, and when it is pending for them.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn movie_user_state(
+        &self,
+        user: UserId,
+        id: MovieId,
+    ) -> Result<(bool, Option<Timestamp>)> {
+        let mut s = self.inner.clone().shared().await?;
+
+        let result = spawn_blocking(move || {
+            let tracked = s.is_movie_tracked.bind((user, id))?.first()?.is_some();
+            let pending = s.select_pending_movie.bind((Some(user), id))?.first()?;
+            Ok((tracked, pending))
         });
 
         result.await?
@@ -2229,7 +2372,11 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn seasons(&self, show_id: ShowId) -> Result<Vec<api::Season>> {
+    pub(crate) async fn seasons(
+        &self,
+        user: Option<UserId>,
+        show_id: ShowId,
+    ) -> Result<Vec<api::Season>> {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
@@ -2247,7 +2394,7 @@ impl Database {
 
             let mut id_to_idx: HashMap<SeasonId, usize> = HashMap::new();
 
-            let mut stmt = s.list_seasons.bind((show_id,))?;
+            let mut stmt = s.list_seasons.bind((user, show_id))?;
 
             while let Some(r) = stmt.next()? {
                 id_to_idx.insert(r.id, out.len());
@@ -2281,7 +2428,7 @@ impl Database {
         show_id: ShowId,
         kept: &HashSet<SeasonNumber>,
     ) -> Result<Vec<SeasonNumber>> {
-        let existing = self.seasons(show_id).await?;
+        let existing = self.seasons(None, show_id).await?;
         let mut removed = Vec::new();
 
         for season in existing {
@@ -2420,6 +2567,7 @@ impl Database {
 
     pub(crate) async fn episodes(
         &self,
+        user: UserId,
         show_id: ShowId,
         season: SeasonNumber,
     ) -> Result<Vec<api::Episode>> {
@@ -2439,7 +2587,7 @@ impl Database {
                 .map(|r| (r.language, r.default_language))
                 .unwrap_or_default();
 
-            let mut stmt = s.list_episodes.bind((show_id, season))?;
+            let mut stmt = s.list_episodes.bind((Some(user), show_id, season))?;
 
             while let Some(r) = stmt.next()? {
                 idx_by_id.insert(r.id, out.len());
@@ -2481,13 +2629,17 @@ impl Database {
     }
 
     /// Load a single episode, the way [`Self::episodes`] loads a season's worth.
-    pub(crate) async fn episode_by_id(&self, id: EpisodeId) -> Result<Option<api::Episode>> {
+    pub(crate) async fn episode_by_id(
+        &self,
+        user: Option<UserId>,
+        id: EpisodeId,
+    ) -> Result<Option<api::Episode>> {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
             let s = &mut *s;
 
-            let Some(r) = s.episode_by_id.bind((id,))?.first()? else {
+            let Some(r) = s.episode_by_id.bind((user, id))?.first()? else {
                 return Ok(None);
             };
 
@@ -2645,6 +2797,7 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn mark_watched_remaining(
         &self,
+        user: UserId,
         show_id: ShowId,
         season: SeasonNumber,
         mark_time: MarkTime,
@@ -2658,13 +2811,14 @@ impl Database {
 
             let mut stmt = read
                 .select_unwatched_by_show_season
-                .bind((show_id, season))?;
+                .bind((user, show_id, season))?;
 
             while let Some(r) = stmt.next()? {
                 let timestamp = read.episodes.episode_mark_time(r.id, mark_time, now)?;
 
                 s.insert_watched_episode.execute((
                     WatchedId::random(),
+                    user,
                     timestamp,
                     r.show_id,
                     r.season,
@@ -2682,6 +2836,7 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn episodes_watched(
         &self,
+        user: UserId,
         show_id: ShowId,
     ) -> Result<Vec<api::WatchedEpisode>> {
         let mut s = self.inner.clone().exclusive().await?;
@@ -2689,7 +2844,7 @@ impl Database {
         let result = spawn_blocking(move || {
             let mut out = Vec::new();
 
-            let mut stmt = s.list_episodes_watched.bind((show_id,))?;
+            let mut stmt = s.list_episodes_watched.bind((user, show_id))?;
 
             while let Some(r) = stmt.next()? {
                 out.push(watched_episode_from_row(r));
@@ -2751,7 +2906,7 @@ impl Database {
         kept: &HashSet<(EpisodeId, RemoteSource, Country, String)>,
         ran: &HashSet<RemoteSource>,
     ) -> Result<()> {
-        let Some(show) = self.show_by_id(show_id).await? else {
+        let Some(show) = self.show_by_id(None, show_id).await? else {
             return Ok(());
         };
 
@@ -2809,7 +2964,7 @@ impl Database {
         kept: &HashSet<(RemoteSource, Country, String)>,
         ran: &HashSet<RemoteSource>,
     ) -> Result<()> {
-        let Some(show) = self.show_by_id(show_id).await? else {
+        let Some(show) = self.show_by_id(None, show_id).await? else {
             return Ok(());
         };
 
@@ -2885,7 +3040,7 @@ impl Database {
         show_id: ShowId,
         default_filters: api::FilterRules,
     ) -> Result<()> {
-        let Some(show) = self.show_by_id(show_id).await? else {
+        let Some(show) = self.show_by_id(None, show_id).await? else {
             return Ok(());
         };
 
@@ -2943,14 +3098,13 @@ impl Database {
         title: &str,
         release_date: Option<Timestamp>,
         overview: &str,
-        tracked: bool,
     ) -> Result<()> {
         let title = title.to_owned();
         let overview = overview.to_owned();
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            s.insert_movie.execute((id, release_date, tracked))?;
+            s.insert_movie.execute((id, release_date))?;
 
             // Store the placeholder title/overview under the default locale so the
             // movie has something to show before its first sync; sync replaces these.
@@ -3060,7 +3214,7 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     /// List every show and movie as slim [`api::MediaItem`]s, each tagged with
     /// its [`api::MediaKind`]. The frontend filters and sorts client-side.
-    pub(crate) async fn media_items(&self) -> Result<Vec<api::MediaItem>> {
+    pub(crate) async fn media_items(&self, user: UserId) -> Result<Vec<api::MediaItem>> {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
@@ -3073,7 +3227,7 @@ impl Database {
                 let base = out.len();
                 let mut id_to_idx: HashMap<u64, usize> = HashMap::new();
 
-                let mut stmt = s.list_movie_items.query()?;
+                let mut stmt = s.list_movie_items.bind((user,))?;
 
                 while let Some(r) = stmt.next()? {
                     let strings =
@@ -3104,7 +3258,7 @@ impl Database {
                     item.backdrop = s.image.image_for_movie(id, ImageKind::Backdrop)?;
                 }
 
-                let mut stmt = s.last_watched_movies.query()?;
+                let mut stmt = s.last_watched_movies.bind((user,))?;
 
                 while let Some(r) = stmt.next()? {
                     if let Some(&i) = id_to_idx.get(&r.movie_id.get())
@@ -3142,7 +3296,7 @@ impl Database {
                 let base = out.len();
                 let mut id_to_idx: HashMap<u64, usize> = HashMap::new();
 
-                let mut stmt = s.list_show_items.query()?;
+                let mut stmt = s.list_show_items.bind((user,))?;
 
                 while let Some(r) = stmt.next()? {
                     let strings =
@@ -3173,7 +3327,7 @@ impl Database {
                     item.backdrop = s.image.image_for_show(id, ImageKind::Backdrop)?;
                 }
 
-                let mut stmt = s.last_watched_shows.query()?;
+                let mut stmt = s.last_watched_shows.bind((user,))?;
 
                 while let Some(r) = stmt.next()? {
                     if let Some(&i) = id_to_idx.get(&r.show_id.get())
@@ -3185,7 +3339,7 @@ impl Database {
 
                 stmt.reset()?;
 
-                let mut stmt = s.unwatched_shows.query()?;
+                let mut stmt = s.unwatched_shows.bind((user,))?;
 
                 while let Some(r) = stmt.next()? {
                     if let Some(&i) = id_to_idx.get(&r.show_id.get())
@@ -3225,7 +3379,7 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn movies(&self) -> Result<Vec<api::Movie>> {
+    pub(crate) async fn movies(&self, user: Option<UserId>) -> Result<Vec<api::Movie>> {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
@@ -3234,7 +3388,7 @@ impl Database {
 
             let cfg = s.config_language()?;
 
-            let mut stmt = s.list_movies.query()?;
+            let mut stmt = s.list_movies.bind((user,))?;
 
             while let Some(r) = stmt.next()? {
                 id_to_idx.insert(r.id, out.len());
@@ -3320,11 +3474,15 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn movie_by_id(&self, id: MovieId) -> Result<Option<api::Movie>> {
+    pub(crate) async fn movie_by_id(
+        &self,
+        user: Option<UserId>,
+        id: MovieId,
+    ) -> Result<Option<api::Movie>> {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
-            let Some(r) = s.movie_by_id.bind((id,))?.first()? else {
+            let Some(r) = s.movie_by_id.bind((user, id))?.first()? else {
                 return Ok(None);
             };
 
@@ -3378,7 +3536,7 @@ impl Database {
 
             stmt.reset()?;
 
-            movie.pending = s.select_pending_movie.bind((movie_id,))?.first()?;
+            movie.pending = s.select_pending_movie.bind((user, movie_id))?.first()?;
             movie.poster = s.image.image_for_movie(movie_id, ImageKind::Poster)?;
             movie.banner = s.image.image_for_movie(movie_id, ImageKind::Banner)?;
 
@@ -3410,14 +3568,18 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn shows_by_remote_id(&self, remote: &Remote) -> Result<Option<api::Show>> {
+    pub(crate) async fn shows_by_remote_id(
+        &self,
+        user: Option<UserId>,
+        remote: &Remote,
+    ) -> Result<Option<api::Show>> {
         let remote = remote.clone();
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
             let Some(row) = s
                 .shows_by_remote
-                .bind((remote.source(), remote.value()))?
+                .bind((user, remote.source(), remote.value()))?
                 .first()?
             else {
                 return Ok(None);
@@ -3469,14 +3631,18 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn movie_by_remote_id(&self, remote: &Remote) -> Result<Option<api::Movie>> {
+    pub(crate) async fn movie_by_remote_id(
+        &self,
+        user: Option<UserId>,
+        remote: &Remote,
+    ) -> Result<Option<api::Movie>> {
         let remote = remote.clone();
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
             let Some(row) = s
                 .movie_by_remote
-                .bind((remote.source(), remote.value()))?
+                .bind((user, remote.source(), remote.value()))?
                 .first()?
             else {
                 return Ok(None);
@@ -3541,11 +3707,21 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn set_movie_tracked(&self, id: MovieId, tracked: bool) -> Result<()> {
+    pub(crate) async fn set_movie_tracked(
+        &self,
+        user: UserId,
+        id: MovieId,
+        tracked: bool,
+    ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            s.set_movie_tracked.execute((tracked, id))?;
+            if tracked {
+                s.track_movie.execute((user, id))?;
+            } else {
+                s.untrack_movie.execute((user, id))?;
+            }
+
             Ok(())
         });
 
@@ -5144,6 +5320,7 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn mark_watched(
         &self,
+        user: UserId,
         id: WatchedId,
         kind: WatchedKind,
         mark_time: MarkTime,
@@ -5164,6 +5341,7 @@ impl Database {
 
                     s.insert_watched_episode.execute((
                         id,
+                        user,
                         timestamp,
                         key.show_id,
                         key.season,
@@ -5183,7 +5361,8 @@ impl Database {
                             .context("Movie has no release date")?,
                     };
 
-                    s.insert_watched_movie.execute((id, timestamp, movie))?;
+                    s.insert_watched_movie
+                        .execute((id, user, timestamp, movie))?;
                     (id, timestamp)
                 }
             };
@@ -5202,6 +5381,7 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn insert_watched_episode(
         &self,
+        user: UserId,
         id: WatchedId,
         timestamp: Timestamp,
         show_id: ShowId,
@@ -5212,7 +5392,7 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.insert_watched_episode
-                .execute((id, timestamp, show_id, season, episode))?;
+                .execute((id, user, timestamp, show_id, season, episode))?;
             Ok(())
         });
 
@@ -5223,6 +5403,7 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn insert_watched_movie(
         &self,
+        user: UserId,
         id: WatchedId,
         timestamp: Timestamp,
         movie_id: MovieId,
@@ -5230,7 +5411,8 @@ impl Database {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            s.insert_watched_movie.execute((id, timestamp, movie_id))?;
+            s.insert_watched_movie
+                .execute((id, user, timestamp, movie_id))?;
             Ok(())
         });
 
@@ -5298,12 +5480,12 @@ impl Database {
         result.await?
     }
 
-    /// Every watched episode for backup export. Orphaned rows (NULL `show_id`)
-    /// can't be attributed to a show and are skipped.
+    /// Every watched episode for backup export, with its owner's login. Orphaned
+    /// rows (NULL `show_id`) can't be attributed to a show and are skipped.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn export_watched_episodes(
         &self,
-    ) -> Result<Vec<(WatchedId, Timestamp, ShowId, SeasonNumber, u32)>> {
+    ) -> Result<Vec<(WatchedId, String, Timestamp, ShowId, SeasonNumber, u32)>> {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
@@ -5315,7 +5497,7 @@ impl Database {
                     continue;
                 };
 
-                out.push((r.id, r.timestamp, show_id, r.season, r.episode));
+                out.push((r.id, r.login, r.timestamp, show_id, r.season, r.episode));
             }
 
             stmt.reset()?;
@@ -5325,12 +5507,12 @@ impl Database {
         result.await?
     }
 
-    /// Every watched movie for backup export. Orphaned rows (NULL `movie_id`) are
-    /// skipped.
+    /// Every watched movie for backup export, with its owner's login. Orphaned
+    /// rows (NULL `movie_id`) are skipped.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn export_watched_movies(
         &self,
-    ) -> Result<Vec<(WatchedId, Timestamp, MovieId)>> {
+    ) -> Result<Vec<(WatchedId, String, Timestamp, MovieId)>> {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
@@ -5342,7 +5524,7 @@ impl Database {
                     continue;
                 };
 
-                out.push((r.id, r.timestamp, movie_id));
+                out.push((r.id, r.login, r.timestamp, movie_id));
             }
 
             stmt.reset()?;
@@ -5417,6 +5599,7 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn import_watched_episode(
         &self,
+        user: UserId,
         id: WatchedId,
         timestamp: Timestamp,
         show_id: ShowId,
@@ -5433,7 +5616,7 @@ impl Database {
             }
 
             s.insert_watched_episode
-                .execute((id, timestamp, show_id, season, episode))?;
+                .execute((id, user, timestamp, show_id, season, episode))?;
             Ok(true)
         });
 
@@ -5443,6 +5626,7 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn import_watched_movie(
         &self,
+        user: UserId,
         id: WatchedId,
         timestamp: Timestamp,
         movie_id: MovieId,
@@ -5456,7 +5640,8 @@ impl Database {
                 return Ok(false);
             }
 
-            s.insert_watched_movie.execute((id, timestamp, movie_id))?;
+            s.insert_watched_movie
+                .execute((id, user, timestamp, movie_id))?;
             Ok(true)
         });
 
@@ -5466,6 +5651,7 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn move_watched_episode(
         &self,
+        user: UserId,
         id: WatchedId,
         season: api::SeasonNumber,
         episode: u32,
@@ -5473,7 +5659,8 @@ impl Database {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            s.move_watched_episode.execute((season, episode, id))?;
+            s.move_watched_episode
+                .execute((season, episode, user, id))?;
             Ok(())
         });
 
@@ -5483,6 +5670,7 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn orphaned_for_show(
         &self,
+        user: UserId,
         show_id: ShowId,
     ) -> Result<Vec<api::OrphanedWatched>> {
         let mut s = self.inner.clone().shared().await?;
@@ -5490,7 +5678,7 @@ impl Database {
         let result = spawn_blocking(move || {
             let mut out = Vec::new();
 
-            let mut stmt = s.list_orphaned_for_show.bind((show_id,))?;
+            let mut stmt = s.list_orphaned_for_show.bind((user, show_id))?;
 
             while let Some(r) = stmt.next()? {
                 out.push(api::OrphanedWatched {
@@ -5510,12 +5698,12 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn remove_watched(&self, id: WatchedId) -> Result<()> {
+    pub(crate) async fn remove_watched(&self, user: UserId, id: WatchedId) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            s.delete_watched_episode.execute((id,))?;
-            s.delete_watched_movie.execute((id,))?;
+            s.delete_watched_episode.execute((user, id))?;
+            s.delete_watched_movie.execute((user, id))?;
             Ok(())
         });
 
@@ -5525,6 +5713,7 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn watched_for_episode(
         &self,
+        user: UserId,
         episode_id: EpisodeId,
     ) -> Result<Vec<api::Watched>> {
         let mut s = self.inner.clone().shared().await?;
@@ -5532,7 +5721,7 @@ impl Database {
         let result = spawn_blocking(move || {
             let mut out = Vec::new();
 
-            let mut stmt = s.list_watched_by_episode.bind((episode_id,))?;
+            let mut stmt = s.list_watched_by_episode.bind((user, episode_id))?;
 
             while let Some(r) = stmt.next()? {
                 out.push(watched_from_row(r)?);
@@ -5546,13 +5735,17 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn watched_for_movie(&self, movie_id: MovieId) -> Result<Vec<api::Watched>> {
+    pub(crate) async fn watched_for_movie(
+        &self,
+        user: UserId,
+        movie_id: MovieId,
+    ) -> Result<Vec<api::Watched>> {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
             let mut out = Vec::new();
 
-            let mut stmt = s.list_watched_by_movie.bind((movie_id,))?;
+            let mut stmt = s.list_watched_by_movie.bind((user, movie_id))?;
 
             while let Some(r) = stmt.next()? {
                 out.push(watched_from_row(r)?);
@@ -5567,6 +5760,7 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn add_pending_episode(
         &self,
+        user: UserId,
         show_id: api::ShowId,
         episode_id: api::EpisodeId,
         ts: Timestamp,
@@ -5574,8 +5768,13 @@ impl Database {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            s.upsert_pending_episode
-                .execute((PendingId::random(), ts, show_id, episode_id))?;
+            s.upsert_pending_episode.execute((
+                PendingId::random(),
+                user,
+                ts,
+                show_id,
+                episode_id,
+            ))?;
             Ok(())
         });
 
@@ -5585,6 +5784,7 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn add_pending_movie(
         &self,
+        user: UserId,
         movie_id: api::MovieId,
         ts: Timestamp,
     ) -> Result<()> {
@@ -5592,7 +5792,7 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.upsert_pending_movie
-                .execute((PendingId::random(), ts, movie_id))?;
+                .execute((PendingId::random(), user, ts, movie_id))?;
             Ok(())
         });
 
@@ -5600,11 +5800,15 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn remove_pending_episode(&self, show_id: api::ShowId) -> Result<()> {
+    pub(crate) async fn remove_pending_episode(
+        &self,
+        user: UserId,
+        show_id: api::ShowId,
+    ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            s.delete_pending_episode.execute((show_id,))?;
+            s.delete_pending_episode.execute((user, show_id))?;
             Ok(())
         });
 
@@ -5614,6 +5818,7 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn skip_pending_episode(
         &self,
+        user: UserId,
         show_id: api::ShowId,
         episode_id: api::EpisodeId,
         now: Timestamp,
@@ -5629,13 +5834,14 @@ impl Database {
 
                     s.upsert_pending_episode.execute((
                         PendingId::random(),
+                        user,
                         ts,
                         show_id,
                         next_id,
                     ))?;
                 }
                 None => {
-                    s.delete_pending_episode.execute((show_id,))?;
+                    s.delete_pending_episode.execute((user, show_id))?;
                 }
             }
 
@@ -5646,11 +5852,15 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn remove_pending_movie(&self, movie_id: api::MovieId) -> Result<()> {
+    pub(crate) async fn remove_pending_movie(
+        &self,
+        user: UserId,
+        movie_id: api::MovieId,
+    ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            s.delete_pending_movie.execute((movie_id,))?;
+            s.delete_pending_movie.execute((user, movie_id))?;
             Ok(())
         });
 
@@ -5662,10 +5872,10 @@ impl Database {
     ///
     /// The effective release date is the earliest release matching the filters; it is written back
     /// to `movies.release_date` so the displayed date reflects the settings (when no release matches
-    /// the date is cleared). Movies with watches keep their release date but are left to the watch
-    /// flow for pending; otherwise any qualifying release date (past or future) creates/updates the
-    /// pending entry, and the absence of a qualifying release (e.g. filters changed so nothing
-    /// matches) removes it. Future-dated pending rows stay dormant on the dashboard until their
+    /// the date is cleared). Pending is then updated for each user tracking the movie: one who has
+    /// watched it is left to the watch flow; otherwise any qualifying release date (past or future)
+    /// creates/updates their pending entry, and the absence of a qualifying release (e.g. filters
+    /// changed so nothing matches) removes it. Future-dated pending rows stay dormant on the dashboard until their
     /// timestamp falls within the configured dashboard lookahead (`list_pending_before` filters
     /// `timestamp <= cutoff`).
     ///
@@ -5719,18 +5929,27 @@ impl Database {
                     .execute((release.as_ref(), movie_id))?;
             }
 
-            // Movies with watches keep their release date but defer pending to the watch flow.
-            if s.has_watched_movie.bind((movie_id,))?.first()?.is_some() {
-                return Ok(());
-            }
-
-            match release {
-                Some(ts) => {
-                    s.upsert_pending_movie
-                        .execute((PendingId::random(), ts, movie_id))?;
+            for user in s.trackers_of_movie(movie_id)? {
+                if s.has_watched_movie
+                    .bind((user, movie_id))?
+                    .first()?
+                    .is_some()
+                {
+                    continue;
                 }
-                None => {
-                    s.delete_pending_movie.execute((movie_id,))?;
+
+                match release {
+                    Some(ts) => {
+                        s.upsert_pending_movie.execute((
+                            PendingId::random(),
+                            user,
+                            ts,
+                            movie_id,
+                        ))?;
+                    }
+                    None => {
+                        s.delete_pending_movie.execute((user, movie_id))?;
+                    }
                 }
             }
 
@@ -5740,8 +5959,8 @@ impl Database {
         result.await?
     }
 
-    /// Fill the pending slot for a show, but ONLY if it currently has no pending episode.
-    /// Called after sync upserts episodes, and after MarkWatched clears the old pending row.
+    /// Fill the pending slot for a show for every user tracking it, but ONLY for
+    /// those without a pending episode. Called after sync upserts episodes.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn fill_pending_for_show(
         &self,
@@ -5752,48 +5971,9 @@ impl Database {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            let already_has = s
-                .has_pending_episode_for_show
-                .bind((show_id,))?
-                .first()?
-                .is_some();
-
-            if already_has {
-                // If the pending episode has a future air date that changed, update the timestamp.
-                let maybe_update = {
-                    let row = s.pending_episode_aired_for_show.bind((show_id,))?.first()?;
-
-                    row.and_then(|r| {
-                        let aired = r.aired?;
-
-                        if aired > now && aired != r.timestamp {
-                            Some(aired)
-                        } else {
-                            None
-                        }
-                    })
-                };
-
-                if let Some(aired) = maybe_update {
-                    s.update_pending_episode_timestamp
-                        .execute((aired, show_id))?;
-                }
-
-                return Ok(());
+            for user in s.trackers_of_show(show_id)? {
+                s.fill_pending_for_show(user, show_id, include_specials, now)?;
             }
-
-            let Some(row) = s
-                .next_pending_episode_for_show
-                .bind((show_id, include_specials))?
-                .first()?
-            else {
-                return Ok(());
-            };
-
-            let ts = row.aired.unwrap_or(now).max(now);
-
-            s.upsert_pending_episode
-                .execute((PendingId::random(), ts, show_id, row.id))?;
 
             Ok(())
         });
@@ -5801,11 +5981,31 @@ impl Database {
         result.await?
     }
 
-    /// Fill the pending slot for a show, but ONLY if it currently has no pending episode.
-    /// Called after sync upserts episodes, and after MarkWatched clears the old pending row.
+    /// Fill one user's pending slot for a show, as [`Self::fill_pending_for_show`]
+    /// does for every user tracking it.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn fill_pending_for_user_show(
+        &self,
+        user: UserId,
+        show_id: api::ShowId,
+        include_specials: bool,
+        now: Timestamp,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result =
+            spawn_blocking(move || s.fill_pending_for_show(user, show_id, include_specials, now));
+
+        result.await?
+    }
+
+    /// Fill the user's pending slot for a show with the episode after
+    /// `episode_id`, but ONLY if it currently has no pending episode. Called
+    /// after MarkWatched clears the old pending row.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn fill_pending_for_show_from(
         &self,
+        user: UserId,
         show_id: api::ShowId,
         episode_id: api::EpisodeId,
         now: Timestamp,
@@ -5815,7 +6015,7 @@ impl Database {
         let result = spawn_blocking(move || {
             let already_has = s
                 .has_pending_episode_for_show
-                .bind((show_id,))?
+                .bind((user, show_id))?
                 .first()?
                 .is_some();
 
@@ -5832,7 +6032,7 @@ impl Database {
             let now = aired.unwrap_or(now).max(now);
 
             s.upsert_pending_episode
-                .execute((PendingId::random(), now, show_id, next_id))?;
+                .execute((PendingId::random(), user, now, show_id, next_id))?;
 
             Ok(())
         });
@@ -5846,11 +6046,15 @@ impl Database {
     /// timestamp so dashboard ordering reflects episode order rather than import time.
     #[cfg(feature = "import")]
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn fill_pending_for_show_import(&self, show_id: api::ShowId) -> Result<()> {
+    pub(crate) async fn fill_pending_for_show_import(
+        &self,
+        user: UserId,
+        show_id: api::ShowId,
+    ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            let stmt = s.has_pending_episode_for_show.bind((show_id,))?;
+            let stmt = s.has_pending_episode_for_show.bind((user, show_id))?;
 
             let already_has = stmt.first()?.is_some();
 
@@ -5858,7 +6062,7 @@ impl Database {
                 return Ok(());
             }
 
-            let stmt = s.first_unwatched_episode_for_show.bind((show_id,))?;
+            let stmt = s.first_unwatched_episode_for_show.bind((user, show_id))?;
 
             let Some(row) = stmt.first()? else {
                 return Ok(());
@@ -5869,7 +6073,7 @@ impl Database {
             };
 
             s.upsert_pending_episode
-                .execute((PendingId::random(), ts, show_id, row.id))?;
+                .execute((PendingId::random(), user, ts, show_id, row.id))?;
 
             Ok(())
         });
@@ -5877,12 +6081,12 @@ impl Database {
         result.await?
     }
 
-    /// Tracked movies that are not yet pending or watched, paired with their per-movie release
-    /// filter override (raw JSON, `None` = use global default).
+    /// Movies a user tracks that are not yet pending or watched by them, paired with their
+    /// per-movie release filter override (raw JSON, `None` = use global default).
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn movie_pending_candidates(
         &self,
-    ) -> Result<Vec<(MovieId, Option<api::FilterRules>)>> {
+    ) -> Result<Vec<(UserId, MovieId, Option<api::FilterRules>)>> {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
@@ -5896,7 +6100,7 @@ impl Database {
                     .as_deref()
                     .and_then(config::decode_filter_rules);
 
-                out.push((r.id, release_filters));
+                out.push((r.user_id, r.id, release_filters));
             }
 
             stmt.reset()?;
@@ -5984,7 +6188,7 @@ impl Database {
             return Ok((Vec::new(), ShowId::new(0), None));
         };
 
-        let Some(show) = self.show_by_id(show_id).await? else {
+        let Some(show) = self.show_by_id(None, show_id).await? else {
             return Ok((Vec::new(), show_id, None));
         };
 
@@ -6120,7 +6324,7 @@ impl Database {
         kept: &HashSet<(RemoteSource, Country, ReleaseType)>,
         ran: &HashSet<RemoteSource>,
     ) -> Result<()> {
-        let Some(movie) = self.movie_by_id(movie_id).await? else {
+        let Some(movie) = self.movie_by_id(None, movie_id).await? else {
             return Ok(());
         };
 
@@ -6219,7 +6423,7 @@ impl Database {
 
     /// Unified pending list replacing pending_episodes + pending_movies.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn pending(&self, now: Timestamp) -> Result<Vec<api::Pending>> {
+    pub(crate) async fn pending(&self, user: UserId, now: Timestamp) -> Result<Vec<api::Pending>> {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
@@ -6229,12 +6433,12 @@ impl Database {
 
             let config = s.config_language()?;
 
-            let mut stmt = s.list_pending_before.bind((now,))?;
+            let mut stmt = s.list_pending_before.bind((user, now))?;
 
             'outer: while let Some(r) = stmt.next()? {
                 let pending = 'pending: {
                     if let Some(episode_id) = r.episode_id {
-                        let detail = s.pending_episode_detail.bind((episode_id,))?.first()?;
+                        let detail = s.pending_episode_detail.bind((user, episode_id))?.first()?;
 
                         let Some(d) = detail else {
                             continue 'outer;
@@ -6282,7 +6486,7 @@ impl Database {
                     }
 
                     if let Some(movie_id) = r.movie_id {
-                        let detail = s.pending_movie_detail.bind((movie_id,))?.first()?;
+                        let detail = s.pending_movie_detail.bind((user, movie_id))?.first()?;
 
                         let Some(d) = detail else {
                             continue 'outer;
@@ -6334,13 +6538,14 @@ impl Database {
     /// watched can be undone.
     pub(crate) async fn pending_before(
         &self,
+        user: UserId,
         kind: api::WatchedKind,
     ) -> Result<api::PendingBefore> {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || match kind {
             api::WatchedKind::Episode { show, .. } => {
-                let pending = s.pending_for_show.bind((show,))?.first()?;
+                let pending = s.pending_for_show.bind((user, show))?.first()?;
 
                 Ok(match pending {
                     Some((episode, timestamp)) => {
@@ -6350,7 +6555,7 @@ impl Database {
                 })
             }
             api::WatchedKind::Movie { movie } => {
-                let pending = s.pending_timestamp_for_movie.bind((movie,))?.first()?;
+                let pending = s.pending_timestamp_for_movie.bind((user, movie))?.first()?;
 
                 Ok(match pending {
                     Some((timestamp,)) => api::PendingBefore::Movie { timestamp },
@@ -6364,19 +6569,22 @@ impl Database {
 
     pub(crate) async fn pending_entry(
         &self,
+        user: UserId,
         kind: api::PendingKind,
     ) -> Result<Option<api::Pending>> {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || match kind {
             api::PendingKind::Episode { show, episode } => {
-                let Some((timestamp,)) =
-                    s.pending_timestamp_for_episode.bind((episode,))?.first()?
+                let Some((timestamp,)) = s
+                    .pending_timestamp_for_episode
+                    .bind((user, episode))?
+                    .first()?
                 else {
                     return Ok(None);
                 };
 
-                let Some(d) = s.pending_episode_detail.bind((episode,))?.first()? else {
+                let Some(d) = s.pending_episode_detail.bind((user, episode))?.first()? else {
                     return Ok(None);
                 };
 
@@ -6422,12 +6630,13 @@ impl Database {
                 }))
             }
             api::PendingKind::Movie { movie } => {
-                let Some((timestamp,)) = s.pending_timestamp_for_movie.bind((movie,))?.first()?
+                let Some((timestamp,)) =
+                    s.pending_timestamp_for_movie.bind((user, movie))?.first()?
                 else {
                     return Ok(None);
                 };
 
-                let Some(d) = s.pending_movie_detail.bind((movie,))?.first()? else {
+                let Some(d) = s.pending_movie_detail.bind((user, movie))?.first()? else {
                     return Ok(None);
                 };
 
@@ -6457,6 +6666,7 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn schedule(
         &self,
+        user: UserId,
         start_offset_days: i32,
         days: u32,
         time: api::TimeInfo,
@@ -6505,7 +6715,7 @@ impl Database {
             let mut show_images: HashMap<ShowId, (Option<api::Image>, Option<api::Image>)> =
                 HashMap::new();
 
-            let mut stmt = s.list_schedule.bind((start, end))?;
+            let mut stmt = s.list_schedule.bind((user, start, end))?;
 
             while let Some(r) = stmt.next()? {
                 let Some(day) = r.aired else { continue };
@@ -6564,7 +6774,7 @@ impl Database {
 
             stmt.reset()?;
 
-            let mut stmt = s.list_schedule_movies.bind((start, end))?;
+            let mut stmt = s.list_schedule_movies.bind((user, start, end))?;
 
             while let Some(r) = stmt.next()? {
                 let Some(released) = r.released else { continue };

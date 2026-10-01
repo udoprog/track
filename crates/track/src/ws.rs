@@ -118,6 +118,8 @@ fn requires_admin(id: api::Request) -> bool {
     matches!(
         id,
         api::Request::SetConfig
+            | api::Request::RemoveShow
+            | api::Request::RemoveMovie
             | api::Request::ListUsers
             | api::Request::CreateUser
             | api::Request::SetUserRole
@@ -305,6 +307,21 @@ impl WsHandler {
         Ok(api::Timestamp::now().saturating_add(config.dashboard_lookahead))
     }
 
+    /// Fill the current user's pending slot for a show they started tracking.
+    async fn fill_my_pending(&self, show: &api::Show) -> Result<()> {
+        let config = self.db.load_config().await?;
+        let include_specials = show.effective_include_specials(config.include_specials);
+
+        self.db
+            .fill_pending_for_user_show(
+                self.user.id,
+                show.id,
+                include_specials,
+                api::Timestamp::now(),
+            )
+            .await
+    }
+
     /// The current user as stored now, so role changes apply to open sockets.
     async fn current_user(&self) -> Result<UserRecord> {
         let user = self.db.user_by_id(self.user.id).await?;
@@ -342,7 +359,11 @@ impl WsHandler {
                 incoming
                     .read::<api::ListMediaRequest>()
                     .context("Expected a request payload")?;
-                let items = self.db.media_items().await.context("Loading media")?;
+                let items = self
+                    .db
+                    .media_items(self.user.id)
+                    .await
+                    .context("Loading media")?;
                 outgoing.write(api::ListMediaResponse { items });
             }
             api::Request::GetShow => {
@@ -350,7 +371,7 @@ impl WsHandler {
                     .read::<api::GetShowRequest>()
                     .context("Expected a request payload")?;
 
-                let show = self.db.show_by_id(req.id).await?;
+                let show = self.db.show_by_id(Some(self.user.id), req.id).await?;
 
                 outgoing.write(show);
             }
@@ -372,7 +393,7 @@ impl WsHandler {
                 let req = incoming
                     .read::<api::ListSeasonsRequest>()
                     .context("Expected a request payload")?;
-                let seasons = self.db.seasons(req.show_id).await?;
+                let seasons = self.db.seasons(Some(self.user.id), req.show_id).await?;
                 outgoing.write(api::ListSeasonsResponse { seasons });
             }
             api::Request::ListCredits => {
@@ -541,32 +562,48 @@ impl WsHandler {
                     .read::<api::TrackShowRequest>()
                     .context("Expected a request payload")?;
 
-                let show_id = match self.db.show_id_by_remote(&req.remote).await? {
-                    Some(id) => id,
-                    None => ShowId::random(),
-                };
+                let existing = self.db.show_id_by_remote(&req.remote).await?;
+                let show_id = existing.unwrap_or_else(ShowId::random);
 
-                self.db
-                    .create_show(show_id, &req.remote.value().to_string(), None, "")
-                    .await?;
+                if existing.is_none() {
+                    self.db
+                        .create_show(show_id, &req.remote.value().to_string(), None, "")
+                        .await?;
+                }
 
                 self.db
                     .add_show_remote(show_id, req.slug.as_deref(), &req.remote)
                     .await?;
 
+                self.db
+                    .set_show_tracked(self.user.id, show_id, true)
+                    .await?;
+
                 let show = self
                     .db
-                    .show_by_id(show_id)
+                    .show_by_id(Some(self.user.id), show_id)
                     .await?
                     .context("Expected show to exist")?;
 
-                self.broadcast.emit(
-                    incoming.channel(),
-                    api::AppEventKind::ShowCreated { show: show.clone() },
-                    "ws track show created",
-                );
+                if existing.is_some() {
+                    self.fill_my_pending(&show).await?;
 
-                self.broadcast.emit(
+                    self.broadcast.emit_to(
+                        self.user.id,
+                        incoming.channel(),
+                        api::AppEventKind::ShowCreated { show: show.clone() },
+                        "ws track existing show",
+                    );
+                } else {
+                    self.broadcast.emit(
+                        incoming.channel(),
+                        api::AppEventKind::ShowCreated { show: show.clone() },
+                        "ws track show created",
+                    );
+                }
+
+                self.broadcast.emit_to(
+                    self.user.id,
                     incoming.channel(),
                     api::AppEventKind::PendingChanged,
                     "ws track show pending changed",
@@ -581,18 +618,26 @@ impl WsHandler {
                 let req = incoming
                     .read::<api::UntrackShowRequest>()
                     .context("Expected a request payload")?;
-                self.db.set_show_tracked(req.id, req.tracked).await?;
+                self.db
+                    .set_show_tracked(self.user.id, req.id, req.tracked)
+                    .await?;
                 let show = self
                     .db
-                    .show_by_id(req.id)
+                    .show_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected show to exist")?;
-                self.broadcast.emit(
+
+                if req.tracked {
+                    self.fill_my_pending(&show).await?;
+                }
+                self.broadcast.emit_to(
+                    self.user.id,
                     incoming.channel(),
                     api::AppEventKind::ShowChanged { show: show.clone() },
                     "ws untrack show changed",
                 );
-                self.broadcast.emit(
+                self.broadcast.emit_to(
+                    self.user.id,
                     incoming.channel(),
                     api::AppEventKind::PendingChanged,
                     "ws untrack show pending changed",
@@ -620,8 +665,11 @@ impl WsHandler {
                 let req = incoming
                     .read::<api::ListEpisodesRequest>()
                     .context("Expected a request payload")?;
-                let episodes = self.db.episodes(req.show_id, req.season).await?;
-                let watched = self.db.episodes_watched(req.show_id).await?;
+                let episodes = self
+                    .db
+                    .episodes(self.user.id, req.show_id, req.season)
+                    .await?;
+                let watched = self.db.episodes_watched(self.user.id, req.show_id).await?;
                 outgoing.write(api::ListEpisodesResponse { episodes, watched });
             }
             api::Request::FindEpisodeByTimestamp => {
@@ -683,7 +731,7 @@ impl WsHandler {
                 let req = incoming
                     .read::<api::GetMovieRequest>()
                     .context("Expected a request payload")?;
-                let movie = self.db.movie_by_id(req.id).await?;
+                let movie = self.db.movie_by_id(Some(self.user.id), req.id).await?;
                 outgoing.write(movie);
             }
             api::Request::TrackMovie => {
@@ -691,34 +739,54 @@ impl WsHandler {
                     .read::<api::TrackMovieRequest>()
                     .context("Expected a request payload")?;
 
-                let movie_id = match self.db.movie_id_by_remote(&req.remote).await? {
-                    Some(id) => id,
-                    None => MovieId::random(),
-                };
+                let existing = self.db.movie_id_by_remote(&req.remote).await?;
+                let movie_id = existing.unwrap_or_else(MovieId::random);
 
-                self.db
-                    .create_movie(movie_id, &req.remote.value().to_string(), None, "", true)
-                    .await?;
+                if existing.is_none() {
+                    self.db
+                        .create_movie(movie_id, &req.remote.value().to_string(), None, "")
+                        .await?;
+                }
 
                 self.db
                     .add_movie_remote(movie_id, req.slug.as_deref(), &req.remote)
                     .await?;
 
+                self.db
+                    .set_movie_tracked(self.user.id, movie_id, true)
+                    .await?;
+
+                if existing.is_some() {
+                    let config = self.db.load_config().await?;
+                    self.db
+                        .update_movie_pending(movie_id, config.release_filters)
+                        .await?;
+                }
+
                 let movie = self
                     .db
-                    .movie_by_id(movie_id)
+                    .movie_by_id(Some(self.user.id), movie_id)
                     .await?
                     .context("Expected movie to exist")?;
 
-                self.broadcast.emit(
-                    incoming.channel(),
-                    api::AppEventKind::MovieCreated {
-                        movie: movie.clone(),
-                    },
-                    "ws track movie created",
-                );
+                let created = api::AppEventKind::MovieCreated {
+                    movie: movie.clone(),
+                };
 
-                self.broadcast.emit(
+                if existing.is_some() {
+                    self.broadcast.emit_to(
+                        self.user.id,
+                        incoming.channel(),
+                        created,
+                        "ws track existing movie",
+                    );
+                } else {
+                    self.broadcast
+                        .emit(incoming.channel(), created, "ws track movie created");
+                }
+
+                self.broadcast.emit_to(
+                    self.user.id,
                     incoming.channel(),
                     api::AppEventKind::PendingChanged,
                     "ws track movie pending changed",
@@ -734,15 +802,25 @@ impl WsHandler {
                     .read::<api::UntrackMovieRequest>()
                     .context("Expected a request payload")?;
 
-                self.db.set_movie_tracked(req.id, req.tracked).await?;
+                self.db
+                    .set_movie_tracked(self.user.id, req.id, req.tracked)
+                    .await?;
+
+                if req.tracked {
+                    let config = self.db.load_config().await?;
+                    self.db
+                        .update_movie_pending(req.id, config.release_filters)
+                        .await?;
+                }
 
                 let movie = self
                     .db
-                    .movie_by_id(req.id)
+                    .movie_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected movie to exist")?;
 
-                self.broadcast.emit(
+                self.broadcast.emit_to(
+                    self.user.id,
                     incoming.channel(),
                     api::AppEventKind::MovieChanged {
                         movie: movie.clone(),
@@ -750,7 +828,8 @@ impl WsHandler {
                     "ws untrack movie changed",
                 );
 
-                self.broadcast.emit(
+                self.broadcast.emit_to(
+                    self.user.id,
                     incoming.channel(),
                     api::AppEventKind::PendingChanged,
                     "ws untrack movie pending changed",
@@ -785,25 +864,32 @@ impl WsHandler {
                     .context("Expected a request payload")?;
 
                 let now = api::Timestamp::now();
-                let pending_before = self.db.pending_before(req.kind).await?;
+                let pending_before = self.db.pending_before(self.user.id, req.kind).await?;
 
                 let watched = self
                     .db
-                    .mark_watched(api::WatchedId::random(), req.kind, req.mark_time, now)
+                    .mark_watched(
+                        self.user.id,
+                        api::WatchedId::random(),
+                        req.kind,
+                        req.mark_time,
+                        now,
+                    )
                     .await?;
 
                 match req.kind {
                     api::WatchedKind::Episode { show, episode } => {
                         self.pending
-                            .on_episode_watched_from(show, episode, now)
+                            .on_episode_watched_from(self.user.id, show, episode, now)
                             .await?;
                     }
                     api::WatchedKind::Movie { movie } => {
-                        self.db.remove_pending_movie(movie).await?;
+                        self.db.remove_pending_movie(self.user.id, movie).await?;
                     }
                 }
 
-                self.broadcast.emit(
+                self.broadcast.emit_to(
+                    self.user.id,
                     incoming.channel(),
                     api::AppEventKind::WatchedChanged {
                         event: req.kind.into_event(),
@@ -811,7 +897,8 @@ impl WsHandler {
                     "ws mark watched changed",
                 );
 
-                self.broadcast.emit(
+                self.broadcast.emit_to(
+                    self.user.id,
                     incoming.channel(),
                     api::AppEventKind::PendingChanged,
                     "ws mark watched pending changed",
@@ -830,10 +917,17 @@ impl WsHandler {
                 let now = api::Timestamp::now();
 
                 self.db
-                    .mark_watched_remaining(req.show_id, req.season, req.mark_time, now)
+                    .mark_watched_remaining(
+                        self.user.id,
+                        req.show_id,
+                        req.season,
+                        req.mark_time,
+                        now,
+                    )
                     .await?;
 
-                self.broadcast.emit(
+                self.broadcast.emit_to(
+                    self.user.id,
                     incoming.channel(),
                     api::AppEventKind::WatchedChanged {
                         event: api::WatchedEvent::RemainingSeason {
@@ -851,9 +945,10 @@ impl WsHandler {
                     .read::<api::RemoveWatchedRequest>()
                     .context("Expected a request payload")?;
 
-                self.db.remove_watched(req.id).await?;
+                self.db.remove_watched(self.user.id, req.id).await?;
 
-                self.broadcast.emit(
+                self.broadcast.emit_to(
+                    self.user.id,
                     incoming.channel(),
                     api::AppEventKind::WatchedChanged {
                         event: req.kind.into_event(),
@@ -861,7 +956,8 @@ impl WsHandler {
                     "ws remove watched changed",
                 );
 
-                self.broadcast.emit(
+                self.broadcast.emit_to(
+                    self.user.id,
                     incoming.channel(),
                     api::AppEventKind::PendingChanged,
                     "ws remove watched pending changed",
@@ -874,7 +970,7 @@ impl WsHandler {
                     .read::<api::UndoWatchedRequest>()
                     .context("Expected a request payload")?;
 
-                self.db.remove_watched(req.id).await?;
+                self.db.remove_watched(self.user.id, req.id).await?;
 
                 match (req.kind, req.pending_before) {
                     (
@@ -882,22 +978,25 @@ impl WsHandler {
                         api::PendingBefore::Episode { episode, timestamp },
                     ) => {
                         self.db
-                            .add_pending_episode(show, episode, timestamp)
+                            .add_pending_episode(self.user.id, show, episode, timestamp)
                             .await?;
                     }
                     (api::WatchedKind::Episode { show, .. }, _) => {
-                        self.db.remove_pending_episode(show).await?;
+                        self.db.remove_pending_episode(self.user.id, show).await?;
                     }
                     (
                         api::WatchedKind::Movie { movie },
                         api::PendingBefore::Movie { timestamp },
                     ) => {
-                        self.db.add_pending_movie(movie, timestamp).await?;
+                        self.db
+                            .add_pending_movie(self.user.id, movie, timestamp)
+                            .await?;
                     }
                     (api::WatchedKind::Movie { .. }, _) => {}
                 }
 
-                self.broadcast.emit(
+                self.broadcast.emit_to(
+                    self.user.id,
                     incoming.channel(),
                     api::AppEventKind::WatchedChanged {
                         event: req.kind.into_event(),
@@ -905,7 +1004,8 @@ impl WsHandler {
                     "ws undo watched changed",
                 );
 
-                self.broadcast.emit(
+                self.broadcast.emit_to(
+                    self.user.id,
                     incoming.channel(),
                     api::AppEventKind::PendingChanged,
                     "ws undo watched pending changed",
@@ -918,7 +1018,7 @@ impl WsHandler {
                     .read::<api::ListEpisodesWatchedRequest>()
                     .context("Expected a request payload")?;
 
-                let watched = self.db.episodes_watched(req.show_id).await?;
+                let watched = self.db.episodes_watched(self.user.id, req.show_id).await?;
                 outgoing.write(api::ListEpisodesWatchedResponse { watched });
             }
             api::Request::ListWatched => {
@@ -928,9 +1028,11 @@ impl WsHandler {
 
                 let watched = match req.kind {
                     api::WatchedKind::Episode { episode, .. } => {
-                        self.db.watched_for_episode(episode).await?
+                        self.db.watched_for_episode(self.user.id, episode).await?
                     }
-                    api::WatchedKind::Movie { movie } => self.db.watched_for_movie(movie).await?,
+                    api::WatchedKind::Movie { movie } => {
+                        self.db.watched_for_movie(self.user.id, movie).await?
+                    }
                 };
 
                 outgoing.write(api::ListWatchedResponse { watched });
@@ -941,10 +1043,11 @@ impl WsHandler {
                     .context("Expected a request payload")?;
 
                 self.db
-                    .move_watched_episode(req.id, req.season, req.episode)
+                    .move_watched_episode(self.user.id, req.id, req.season, req.episode)
                     .await?;
 
-                self.broadcast.emit(
+                self.broadcast.emit_to(
+                    self.user.id,
                     incoming.channel(),
                     api::AppEventKind::WatchedChanged {
                         event: api::WatchedEvent::Episode {
@@ -962,7 +1065,7 @@ impl WsHandler {
                     .read::<api::ListOrphanedWatchedRequest>()
                     .context("Expected a request payload")?;
 
-                let watched = self.db.orphaned_for_show(req.show_id).await?;
+                let watched = self.db.orphaned_for_show(self.user.id, req.show_id).await?;
                 outgoing.write(api::ListOrphanedWatchedResponse { watched });
             }
             api::Request::ListPending => {
@@ -971,7 +1074,11 @@ impl WsHandler {
                     .context("Expected a request payload")?;
 
                 let now = self.pending_cutoff().await?;
-                let pending = self.db.pending(now).await.context("Loading pending")?;
+                let pending = self
+                    .db
+                    .pending(self.user.id, now)
+                    .await
+                    .context("Loading pending")?;
                 outgoing.write(api::ListPendingResponse { pending });
             }
             api::Request::ListSchedule => {
@@ -984,7 +1091,7 @@ impl WsHandler {
                 let time = api::TimeInfo::new(tz, api::Timestamp::now());
                 let days = self
                     .db
-                    .schedule(req.start_offset_days, req.days, time)
+                    .schedule(self.user.id, req.start_offset_days, req.days, time)
                     .await?;
                 outgoing.write(api::ListScheduleResponse { days });
             }
@@ -994,7 +1101,11 @@ impl WsHandler {
                     .context("Expected a request payload")?;
 
                 let now = self.pending_cutoff().await?;
-                let pending = self.db.pending(now).await.context("Loading watch next")?;
+                let pending = self
+                    .db
+                    .pending(self.user.id, now)
+                    .await
+                    .context("Loading watch next")?;
                 outgoing.write(api::ListWatchNextResponse { pending });
             }
             api::Request::Search => {
@@ -1015,8 +1126,12 @@ impl WsHandler {
                     total += count;
 
                     for r in results {
-                        let already_tracked =
-                            self.db.shows_by_remote_id(&r.remote).await?.map(|s| s.id);
+                        let already_tracked = self
+                            .db
+                            .shows_by_remote_id(Some(self.user.id), &r.remote)
+                            .await?
+                            .filter(|s| s.tracked)
+                            .map(|s| s.id);
 
                         shows.push(api::SearchShow {
                             already_tracked,
@@ -1031,8 +1146,12 @@ impl WsHandler {
                     total += count;
 
                     for r in results {
-                        let already_tracked =
-                            self.db.movie_by_remote_id(&r.remote).await?.map(|m| m.id);
+                        let already_tracked = self
+                            .db
+                            .movie_by_remote_id(Some(self.user.id), &r.remote)
+                            .await?
+                            .filter(|m| m.tracked)
+                            .map(|m| m.id);
 
                         movies.push(api::SearchMovie {
                             already_tracked,
@@ -1073,7 +1192,7 @@ impl WsHandler {
 
                 let show = self
                     .db
-                    .show_by_id(req.id)
+                    .show_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected show to exist")?;
 
@@ -1089,13 +1208,13 @@ impl WsHandler {
 
                 let show = self
                     .db
-                    .show_by_id(req.show_id)
+                    .show_by_id(Some(self.user.id), req.show_id)
                     .await?
                     .context("Expected show to exist")?;
 
                 let episode = self
                     .db
-                    .episode_by_id(req.episode_id)
+                    .episode_by_id(Some(self.user.id), req.episode_id)
                     .await?
                     .context("Expected episode to exist")?;
 
@@ -1117,7 +1236,7 @@ impl WsHandler {
 
                 let movie = self
                     .db
-                    .movie_by_id(req.id)
+                    .movie_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected movie to exist")?;
 
@@ -1153,7 +1272,7 @@ impl WsHandler {
 
                 let show = self
                     .db
-                    .show_by_id(req.id)
+                    .show_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected show to exist")?;
 
@@ -1177,7 +1296,7 @@ impl WsHandler {
 
                 let show = self
                     .db
-                    .show_by_id(req.id)
+                    .show_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected show to exist")?;
 
@@ -1203,7 +1322,7 @@ impl WsHandler {
 
                 let movie = self
                     .db
-                    .movie_by_id(req.id)
+                    .movie_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected movie to exist")?;
 
@@ -1229,7 +1348,7 @@ impl WsHandler {
 
                 let movie = self
                     .db
-                    .movie_by_id(req.id)
+                    .movie_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected movie to exist")?;
 
@@ -1257,7 +1376,7 @@ impl WsHandler {
 
                 let show = self
                     .db
-                    .show_by_id(req.id)
+                    .show_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected show to exist")?;
 
@@ -1283,7 +1402,7 @@ impl WsHandler {
 
                 let movie = self
                     .db
-                    .movie_by_id(req.id)
+                    .movie_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected movie to exist")?;
 
@@ -1306,7 +1425,7 @@ impl WsHandler {
                     .context("Expected a request payload")?;
 
                 self.db
-                    .show_by_id(req.id)
+                    .show_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected show to exist")?;
 
@@ -1316,7 +1435,7 @@ impl WsHandler {
 
                 let show = self
                     .db
-                    .show_by_id(req.id)
+                    .show_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected show to exist")?;
 
@@ -1340,7 +1459,7 @@ impl WsHandler {
                     .context("Expected a request payload")?;
 
                 self.db
-                    .show_by_id(req.id)
+                    .show_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected show to exist")?;
 
@@ -1348,7 +1467,7 @@ impl WsHandler {
 
                 let show = self
                     .db
-                    .show_by_id(req.id)
+                    .show_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected show to exist")?;
 
@@ -1372,7 +1491,7 @@ impl WsHandler {
                     .context("Expected a request payload")?;
 
                 self.db
-                    .movie_by_id(req.id)
+                    .movie_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected movie to exist")?;
 
@@ -1382,7 +1501,7 @@ impl WsHandler {
 
                 let movie = self
                     .db
-                    .movie_by_id(req.id)
+                    .movie_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected movie to exist")?;
 
@@ -1408,7 +1527,7 @@ impl WsHandler {
                     .context("Expected a request payload")?;
 
                 self.db
-                    .movie_by_id(req.id)
+                    .movie_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected movie to exist")?;
 
@@ -1416,7 +1535,7 @@ impl WsHandler {
 
                 let movie = self
                     .db
-                    .movie_by_id(req.id)
+                    .movie_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected movie to exist")?;
 
@@ -1443,7 +1562,7 @@ impl WsHandler {
 
                 let show = self
                     .db
-                    .show_by_id(req.id)
+                    .show_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected show to exist")?;
 
@@ -1464,7 +1583,7 @@ impl WsHandler {
 
                 let show = self
                     .db
-                    .show_by_id(req.id)
+                    .show_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected show to exist")?;
 
@@ -1483,7 +1602,7 @@ impl WsHandler {
 
                 let movie = self
                     .db
-                    .movie_by_id(req.id)
+                    .movie_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected movie to exist")?;
 
@@ -1494,7 +1613,7 @@ impl WsHandler {
 
                 let movie = self
                     .db
-                    .movie_by_id(req.id)
+                    .movie_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected movie to exist")?;
 
@@ -1512,7 +1631,7 @@ impl WsHandler {
                     .context("Expected a request payload")?;
 
                 self.db
-                    .show_by_id(req.id)
+                    .show_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected show to exist")?;
 
@@ -1522,7 +1641,7 @@ impl WsHandler {
 
                 let show = self
                     .db
-                    .show_by_id(req.id)
+                    .show_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected show to exist")?;
 
@@ -1546,7 +1665,7 @@ impl WsHandler {
                     .context("Expected a request payload")?;
 
                 self.db
-                    .movie_by_id(req.id)
+                    .movie_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected movie to exist")?;
 
@@ -1556,7 +1675,7 @@ impl WsHandler {
 
                 let movie = self
                     .db
-                    .movie_by_id(req.id)
+                    .movie_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected movie to exist")?;
 
@@ -1585,7 +1704,7 @@ impl WsHandler {
 
                 let show = self
                     .db
-                    .show_by_id(req.id)
+                    .show_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected show to exist")?;
 
@@ -1611,7 +1730,7 @@ impl WsHandler {
 
                 let show = self
                     .db
-                    .show_by_id(req.id)
+                    .show_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected show to exist")?;
 
@@ -1632,7 +1751,7 @@ impl WsHandler {
 
                 let show = self
                     .db
-                    .show_by_id(req.id)
+                    .show_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected show to exist")?;
 
@@ -1653,7 +1772,7 @@ impl WsHandler {
 
                 let movie = self
                     .db
-                    .movie_by_id(req.id)
+                    .movie_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected movie to exist")?;
 
@@ -1684,7 +1803,7 @@ impl WsHandler {
 
                 let show = self
                     .db
-                    .show_by_id(req.id)
+                    .show_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected show to exist")?;
 
@@ -1694,7 +1813,7 @@ impl WsHandler {
                     "ws set show air date filters changed",
                 );
 
-                for season in self.db.seasons(req.id).await? {
+                for season in self.db.seasons(Some(self.user.id), req.id).await? {
                     self.broadcast.emit(
                         incoming.channel(),
                         api::AppEventKind::EpisodesChanged {
@@ -1716,7 +1835,7 @@ impl WsHandler {
 
                 let movie = self
                     .db
-                    .movie_by_id(req.id)
+                    .movie_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected movie to exist")?;
 
@@ -1748,7 +1867,7 @@ impl WsHandler {
 
                 let movie = self
                     .db
-                    .movie_by_id(req.id)
+                    .movie_by_id(Some(self.user.id), req.id)
                     .await?
                     .context("Expected movie to exist")?;
 
@@ -1770,14 +1889,14 @@ impl WsHandler {
                     .read::<api::SyncAllRequest>()
                     .context("Expected a request payload")?;
 
-                let shows = self.db.shows().await?;
+                let shows = self.db.shows(None).await?;
 
                 for s in shows {
                     self.enqueue_show_sync(s.id, s.strings.title().map(str::to_owned), false)
                         .await;
                 }
 
-                let movies = self.db.movies().await?;
+                let movies = self.db.movies(None).await?;
 
                 for m in movies {
                     self.enqueue_movie_sync(m.id, m.strings.title().map(str::to_owned), false)
@@ -1857,7 +1976,7 @@ impl WsHandler {
                 if prev.air_date_filters != req.config.air_date_filters {
                     let default = req.config.air_date_filters.clone();
 
-                    for show in self.db.shows().await? {
+                    for show in self.db.shows(None).await? {
                         self.db
                             .recompute_episode_aired_for_show(show.id, default.clone())
                             .await?;
@@ -1876,7 +1995,7 @@ impl WsHandler {
                 if prev.release_filters != req.config.release_filters {
                     let default = req.config.release_filters.clone();
 
-                    for movie in self.db.movies().await? {
+                    for movie in self.db.movies(None).await? {
                         self.db
                             .update_movie_pending(movie.id, default.clone())
                             .await?;
@@ -1911,7 +2030,9 @@ impl WsHandler {
                             }
                         };
 
-                        self.db.add_pending_episode(show, episode, ts).await?;
+                        self.db
+                            .add_pending_episode(self.user.id, show, episode, ts)
+                            .await?;
                     }
                     api::PendingKind::Movie { movie } => {
                         let ts = match req.mark_time {
@@ -1927,21 +2048,23 @@ impl WsHandler {
                             }
                         };
 
-                        self.db.add_pending_movie(movie, ts).await?;
+                        self.db.add_pending_movie(self.user.id, movie, ts).await?;
                     }
                 }
 
                 // Rebuild just the affected entry so listeners can update a single
                 // row instead of reloading the whole pending list.
-                let pending = self.db.pending_entry(req.kind).await?;
+                let pending = self.db.pending_entry(self.user.id, req.kind).await?;
 
                 match pending.clone() {
-                    Some(pending) => self.broadcast.emit(
+                    Some(pending) => self.broadcast.emit_to(
+                        self.user.id,
                         incoming.channel(),
                         api::AppEventKind::PendingEntryChanged { pending },
                         "ws add pending",
                     ),
-                    None => self.broadcast.emit(
+                    None => self.broadcast.emit_to(
+                        self.user.id,
                         incoming.channel(),
                         api::AppEventKind::PendingChanged,
                         "ws add pending",
@@ -1957,14 +2080,15 @@ impl WsHandler {
 
                 match req.kind {
                     api::PendingKind::Episode { show, .. } => {
-                        self.db.remove_pending_episode(show).await?;
+                        self.db.remove_pending_episode(self.user.id, show).await?;
                     }
                     api::PendingKind::Movie { movie } => {
-                        self.db.remove_pending_movie(movie).await?;
+                        self.db.remove_pending_movie(self.user.id, movie).await?;
                     }
                 }
 
-                self.broadcast.emit(
+                self.broadcast.emit_to(
+                    self.user.id,
                     incoming.channel(),
                     api::AppEventKind::PendingChanged,
                     "ws remove pending",
@@ -1978,10 +2102,16 @@ impl WsHandler {
                     .context("Expected a request payload")?;
 
                 self.db
-                    .skip_pending_episode(req.show, req.episode, api::Timestamp::now())
+                    .skip_pending_episode(
+                        self.user.id,
+                        req.show,
+                        req.episode,
+                        api::Timestamp::now(),
+                    )
                     .await?;
 
-                self.broadcast.emit(
+                self.broadcast.emit_to(
+                    self.user.id,
                     incoming.channel(),
                     api::AppEventKind::PendingChanged,
                     "ws skip episode",
@@ -2000,7 +2130,7 @@ impl WsHandler {
                     api::ImageOwner::Show(show_id) => {
                         let show = self
                             .db
-                            .show_by_id(show_id)
+                            .show_by_id(Some(self.user.id), show_id)
                             .await?
                             .context("Expected show to exist")?;
 
@@ -2013,7 +2143,7 @@ impl WsHandler {
                     api::ImageOwner::Movie(movie_id) => {
                         let movie = self
                             .db
-                            .movie_by_id(movie_id)
+                            .movie_by_id(Some(self.user.id), movie_id)
                             .await?
                             .context("Expected movie to exist")?;
 
@@ -2027,7 +2157,7 @@ impl WsHandler {
                     }
                     api::ImageOwner::Season(season_id) => {
                         if let Some(show_id) = self.db.show_id_for_season(season_id).await? {
-                            let seasons = self.db.seasons(show_id).await?;
+                            let seasons = self.db.seasons(Some(self.user.id), show_id).await?;
                             self.broadcast.emit(
                                 incoming.channel(),
                                 api::AppEventKind::SeasonsChanged { show_id, seasons },
@@ -2050,7 +2180,7 @@ impl WsHandler {
                     api::ImageOwner::Show(show_id) => {
                         let show = self
                             .db
-                            .show_by_id(show_id)
+                            .show_by_id(Some(self.user.id), show_id)
                             .await?
                             .context("Expected show to exist")?;
 
@@ -2063,7 +2193,7 @@ impl WsHandler {
                     api::ImageOwner::Movie(movie_id) => {
                         let movie = self
                             .db
-                            .movie_by_id(movie_id)
+                            .movie_by_id(Some(self.user.id), movie_id)
                             .await?
                             .context("Expected movie to exist")?;
                         self.broadcast.emit(
@@ -2076,7 +2206,7 @@ impl WsHandler {
                     }
                     api::ImageOwner::Season(season_id) => {
                         if let Some(show_id) = self.db.show_id_for_season(season_id).await? {
-                            let seasons = self.db.seasons(show_id).await?;
+                            let seasons = self.db.seasons(Some(self.user.id), show_id).await?;
                             self.broadcast.emit(
                                 incoming.channel(),
                                 api::AppEventKind::SeasonsChanged { show_id, seasons },
@@ -2101,7 +2231,7 @@ impl WsHandler {
 
                         let show = self
                             .db
-                            .show_by_id(show_id)
+                            .show_by_id(Some(self.user.id), show_id)
                             .await?
                             .context("Expected show to exist")?;
 
@@ -2118,7 +2248,7 @@ impl WsHandler {
 
                         let movie = self
                             .db
-                            .movie_by_id(movie_id)
+                            .movie_by_id(Some(self.user.id), movie_id)
                             .await?
                             .context("Expected movie to exist")?;
 
@@ -2148,7 +2278,7 @@ impl WsHandler {
 
                         let show = self
                             .db
-                            .show_by_id(show_id)
+                            .show_by_id(Some(self.user.id), show_id)
                             .await?
                             .context("Expected show to exist")?;
 
@@ -2165,7 +2295,7 @@ impl WsHandler {
 
                         let movie = self
                             .db
-                            .movie_by_id(movie_id)
+                            .movie_by_id(Some(self.user.id), movie_id)
                             .await?
                             .context("Expected movie to exist")?;
 
@@ -2346,6 +2476,34 @@ impl WsHandler {
     }
 }
 
+/// Rewrites the per-user parts of an event about shared data (tracked, pending,
+/// watched counts) for the user receiving it.
+pub(crate) async fn personalize(
+    db: &Database,
+    user: api::UserId,
+    kind: &mut api::AppEventKind,
+) -> Result<()> {
+    match kind {
+        api::AppEventKind::ShowCreated { show } | api::AppEventKind::ShowChanged { show } => {
+            show.tracked = db.is_show_tracked(user, show.id).await?;
+        }
+        api::AppEventKind::MovieCreated { movie } | api::AppEventKind::MovieChanged { movie } => {
+            (movie.tracked, movie.pending) = db.movie_user_state(user, movie.id).await?;
+        }
+        api::AppEventKind::EpisodeChanged { episode } => {
+            if let Some(mine) = db.episode_by_id(Some(user), episode.id).await? {
+                *episode = mine;
+            }
+        }
+        api::AppEventKind::SeasonsChanged { show_id, seasons } if !seasons.is_empty() => {
+            *seasons = db.seasons(Some(user), *show_id).await?;
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
 /// Upgrades only signed-in users; others get 401 before the upgrade.
 pub(super) async fn ws_handler(
     State(state): State<AppState>,
@@ -2390,7 +2548,17 @@ pub(super) async fn ws_handler(
                         Err(_) => break,
                     };
 
-                    if let Err(error) = server.broadcast(msg) {
+                    if !msg.reaches(user.id) {
+                        continue;
+                    }
+
+                    let mut event = msg.event;
+
+                    if let Err(error) = personalize(&state.db, user.id, &mut event.kind).await {
+                        tracing::error!("Personalizing broadcast: {error:#}");
+                    }
+
+                    if let Err(error) = server.broadcast(event) {
                         tracing::error!("Broadcast Error: {error}");
                         break;
                     }

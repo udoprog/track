@@ -303,6 +303,8 @@ async fn admin_only_requests() -> Result<()> {
 
     for id in [
         api::Request::SetConfig,
+        api::Request::RemoveShow,
+        api::Request::RemoveMovie,
         api::Request::ListUsers,
         api::Request::CreateUser,
         api::Request::SetUserRole,
@@ -319,6 +321,8 @@ async fn admin_only_requests() -> Result<()> {
         api::Request::GetConfig,
         api::Request::ListMedia,
         api::Request::SyncAll,
+        api::Request::TrackShow,
+        api::Request::MarkWatched,
         api::Request::SetLogin,
         api::Request::SetEmail,
         api::Request::SetPassword,
@@ -476,5 +480,54 @@ async fn cloudflare_matches_email_only() -> Result<()> {
         headers
     });
     assert_eq!(ws.await?.status, StatusCode::SWITCHING_PROTOCOLS);
+    Ok(())
+}
+
+/// Events about a user's own data reach only that user's sockets, and events
+/// about shared data carry each recipient's own tracked state.
+#[tokio::test]
+async fn broadcasts_are_per_user() -> Result<()> {
+    let server = Server::start(api::Config::default()).await?;
+    let db = &server.state.db;
+    let root = db.default_owner().await?;
+    let alice = server.create_user("alice", None).await?;
+
+    let show = api::ShowId::new(1);
+    db.create_show(show, "Show", None, "").await?;
+    db.set_show_tracked(root, show, true).await?;
+
+    let mut events = server.state.broadcast.subscribe();
+
+    server.state.broadcast.emit_to(
+        alice,
+        musli_web::api::ChannelId::NONE,
+        api::AppEventKind::PendingChanged,
+        "test",
+    );
+    let mine = events.recv().await?;
+    assert!(mine.reaches(alice));
+    assert!(!mine.reaches(root));
+
+    let show = db.show_by_id(Some(root), show).await?.unwrap();
+    assert!(show.tracked);
+    server
+        .state
+        .broadcast
+        .broadcast_event(api::AppEventKind::ShowChanged { show });
+    let shared = events.recv().await?;
+    assert!(shared.reaches(alice) && shared.reaches(root));
+
+    let mut kind = shared.event.kind;
+    crate::ws::personalize(db, alice, &mut kind).await?;
+    let api::AppEventKind::ShowChanged { show } = &kind else {
+        panic!("expected a show change");
+    };
+    assert!(!show.tracked, "alice does not track the show");
+
+    crate::ws::personalize(db, root, &mut kind).await?;
+    let api::AppEventKind::ShowChanged { show } = &kind else {
+        panic!("expected a show change");
+    };
+    assert!(show.tracked, "root does");
     Ok(())
 }

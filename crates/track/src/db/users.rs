@@ -110,6 +110,9 @@ pub(super) struct Read {
     by_session: TypedStatement<(String, Timestamp), UserRow>,
     #[sql = "SELECT user_id, expires_at, used_at FROM login_tokens WHERE id = ?"]
     login_token: TypedStatement<(String,), LoginTokenRow>,
+    // Root, or the first administrator if root was renamed.
+    #[sql = "SELECT id FROM users WHERE role = 'admin' ORDER BY login <> 'root', id LIMIT 1"]
+    default_owner: TypedStatement<(), UserId>,
 }
 
 impl Read {
@@ -217,6 +220,24 @@ impl Database {
     pub(crate) async fn user_by_id(&self, id: UserId) -> Result<Option<UserRecord>> {
         let mut s = self.inner.clone().shared().await?;
         spawn_blocking(move || s.users.by_id(id)).await?
+    }
+
+    /// The owner of data that names no user: root, or the first administrator
+    /// if root was renamed.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn default_owner(&self) -> Result<UserId> {
+        let mut s = self.inner.clone().shared().await?;
+        let result = spawn_blocking(move || s.users.default_owner.query()?.first());
+        result
+            .await??
+            .ok_or_else(|| anyhow!("There is no administrator"))
+    }
+
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn user_by_login(&self, login: &str) -> Result<Option<UserRecord>> {
+        let mut s = self.inner.clone().shared().await?;
+        let login = login.to_owned();
+        spawn_blocking(move || s.users.by_login(&login)).await?
     }
 
     /// Looks up a user by login name, or failing that by email.

@@ -8,7 +8,6 @@ CREATE TABLE
     shows (
         id INTEGER PRIMARY KEY,
         first_air INTEGER,
-        tracked INTEGER NOT NULL DEFAULT 1,
         sync_source INTEGER,
         language INTEGER NOT NULL DEFAULT 0,
         default_language INTEGER NOT NULL DEFAULT 0,
@@ -67,7 +66,6 @@ CREATE TABLE
     movies (
         id INTEGER PRIMARY KEY,
         release_date INTEGER,
-        tracked INTEGER NOT NULL DEFAULT 1,
         sync_source INTEGER,
         language INTEGER NOT NULL DEFAULT 0,
         default_language INTEGER NOT NULL DEFAULT 0,
@@ -93,29 +91,51 @@ CREATE TABLE
 
 CREATE INDEX idx_movie_releases_movie ON movie_releases (movie_id, release_type, timestamp);
 
+-- Tracking, watch history and pending are per user; everything else is shared.
+CREATE TABLE
+    user_tracked_shows (
+        user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+        show_id INTEGER NOT NULL REFERENCES shows (id) ON DELETE CASCADE,
+        PRIMARY KEY (user_id, show_id)
+    );
+
+CREATE INDEX idx_user_tracked_shows_show ON user_tracked_shows (show_id);
+
+CREATE TABLE
+    user_tracked_movies (
+        user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+        movie_id INTEGER NOT NULL REFERENCES movies (id) ON DELETE CASCADE,
+        PRIMARY KEY (user_id, movie_id)
+    );
+
+CREATE INDEX idx_user_tracked_movies_movie ON user_tracked_movies (movie_id);
+
 CREATE TABLE
     watched_episodes (
         id INTEGER PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
         timestamp INTEGER NOT NULL,
         show_id INTEGER,
         season INTEGER NOT NULL,
         episode INTEGER NOT NULL
     );
 
-CREATE INDEX idx_watched_episodes_show ON watched_episodes (show_id, season, episode);
+CREATE INDEX idx_watched_episodes_show ON watched_episodes (user_id, show_id, season, episode);
 
 CREATE TABLE
     watched_movies (
         id INTEGER PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
         timestamp INTEGER NOT NULL,
         movie_id INTEGER
     );
 
-CREATE INDEX idx_watched_movies_movie ON watched_movies (movie_id);
+CREATE INDEX idx_watched_movies_movie ON watched_movies (user_id, movie_id);
 
 CREATE TABLE
     pending (
         id INTEGER PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
         timestamp INTEGER NOT NULL,
         show_id INTEGER REFERENCES shows (id) ON DELETE CASCADE,
         episode_id INTEGER REFERENCES episodes (id) ON DELETE CASCADE,
@@ -129,13 +149,13 @@ CREATE TABLE
         )
     );
 
-CREATE INDEX idx_pending_timestamp ON pending (timestamp);
+CREATE INDEX idx_pending_timestamp ON pending (user_id, timestamp);
 
-CREATE UNIQUE INDEX idx_pending_show ON pending (show_id)
+CREATE UNIQUE INDEX idx_pending_show ON pending (user_id, show_id)
 WHERE
     show_id IS NOT NULL;
 
-CREATE UNIQUE INDEX idx_pending_movie ON pending (movie_id)
+CREATE UNIQUE INDEX idx_pending_movie ON pending (user_id, movie_id)
 WHERE
     movie_id IS NOT NULL;
 

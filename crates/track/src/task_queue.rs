@@ -378,7 +378,7 @@ impl TaskQueue {
 
                     match &task.kind {
                         api::TaskKind::SyncShow { show_id, .. } => {
-                            if let Ok(Some(show)) = db.show_by_id(*show_id).await {
+                            if let Ok(Some(show)) = db.show_by_id(None, *show_id).await {
                                 broadcast.emit(
                                     ChannelId::NONE,
                                     api::AppEventKind::ShowChanged { show },
@@ -393,7 +393,7 @@ impl TaskQueue {
                             );
                         }
                         api::TaskKind::SyncMovie { movie_id, .. } => {
-                            if let Ok(Some(movie)) = db.movie_by_id(*movie_id).await {
+                            if let Ok(Some(movie)) = db.movie_by_id(None, *movie_id).await {
                                 broadcast.emit(
                                     ChannelId::NONE,
                                     api::AppEventKind::MovieChanged { movie },
@@ -578,7 +578,8 @@ mod tests {
 
         let completed = tokio::time::timeout(Duration::from_secs(10), async {
             loop {
-                if let api::AppEventKind::TaskCompleted { task } = events.recv().await.unwrap().kind
+                if let api::AppEventKind::TaskCompleted { task } =
+                    events.recv().await.unwrap().event.kind
                 {
                     break task;
                 }

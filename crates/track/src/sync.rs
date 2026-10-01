@@ -298,7 +298,7 @@ pub(crate) async fn sync_show(
     shutdown: &Shutdown,
 ) -> Result<()> {
     let show = db
-        .show_by_id(show_id)
+        .show_by_id(None, show_id)
         .await?
         .context("Expected show to exist")?;
 
@@ -315,7 +315,7 @@ pub(crate) async fn sync_show(
 
     // Re-read so a freshly stored TVmaze remote is included in the order.
     let show = db
-        .show_by_id(show_id)
+        .show_by_id(None, show_id)
         .await?
         .context("Expected show to exist")?;
 
@@ -507,7 +507,7 @@ pub(crate) async fn sync_show(
         // A non-base source may have merged fresh graphics (or a slug); push the
         // refreshed show so clients update without a manual reload.
         if !draft.graphics_sources.is_empty()
-            && let Some(show) = db.show_by_id(show_id).await?
+            && let Some(show) = db.show_by_id(None, show_id).await?
         {
             broadcast.broadcast_event(api::AppEventKind::ShowChanged { show });
         }
@@ -533,7 +533,7 @@ pub(crate) async fn sync_show(
         db.prune_seasons(show_id, &HashSet::new()).await?;
 
         let show = db
-            .show_by_id(show_id)
+            .show_by_id(None, show_id)
             .await?
             .context("Expected show to exist after clearing episodes")?;
         broadcast.broadcast_event(api::AppEventKind::ShowChanged { show });
@@ -548,7 +548,7 @@ pub(crate) async fn sync_show(
     db.recompute_episode_aired_for_show(show_id, config.air_date_filters.clone())
         .await?;
 
-    for season in db.seasons(show_id).await? {
+    for season in db.seasons(None, show_id).await? {
         broadcast.broadcast_event(api::AppEventKind::EpisodesChanged {
             show_id,
             season: season.season,
@@ -1912,12 +1912,8 @@ async fn persist_show_draft(
     db: &Database,
     broadcast: &Broadcaster,
 ) -> Result<()> {
-    db.update_show(
-        show_id,
-        draft.first_air_date.or(show.first_air_date),
-        show.tracked,
-    )
-    .await?;
+    db.update_show(show_id, draft.first_air_date.or(show.first_air_date))
+        .await?;
 
     if !draft.original_language.is_default() {
         db.set_show_default_language(show_id, draft.original_language)
@@ -2097,12 +2093,12 @@ async fn persist_show_draft(
     }
 
     let updated = db
-        .show_by_id(show_id)
+        .show_by_id(None, show_id)
         .await?
         .context("Expected show to exist after update")?;
     broadcast.broadcast_event(api::AppEventKind::ShowChanged { show: updated });
 
-    let seasons = db.seasons(show_id).await?;
+    let seasons = db.seasons(None, show_id).await?;
     broadcast.broadcast_event(api::AppEventKind::SeasonsChanged { show_id, seasons });
 
     broadcast.broadcast_event(api::AppEventKind::TranslationsChanged {
@@ -2264,12 +2260,12 @@ pub(crate) async fn sync_episode(
     shutdown: &Shutdown,
 ) -> Result<()> {
     let show = db
-        .show_by_id(show_id)
+        .show_by_id(None, show_id)
         .await?
         .context("Expected show to exist")?;
 
     let episode = db
-        .episode_by_id(episode_id)
+        .episode_by_id(None, episode_id)
         .await?
         .context("Expected episode to exist")?;
 
@@ -2468,7 +2464,7 @@ pub(crate) async fn sync_episode(
         .await?;
     db.set_episode_synced_at(episode_id, now).await?;
 
-    if let Some(episode) = db.episode_by_id(episode_id).await? {
+    if let Some(episode) = db.episode_by_id(None, episode_id).await? {
         broadcast.broadcast_event(api::AppEventKind::EpisodeChanged { episode });
     }
 
@@ -2897,7 +2893,7 @@ pub(crate) async fn sync_movie(
     shutdown: &Shutdown,
 ) -> Result<()> {
     let movie = db
-        .movie_by_id(movie_id)
+        .movie_by_id(None, movie_id)
         .await?
         .context("Expected movie to exist")?;
 
@@ -3046,7 +3042,7 @@ pub(crate) async fn sync_movie(
         .await?;
 
     let updated = db
-        .movie_by_id(movie_id)
+        .movie_by_id(None, movie_id)
         .await?
         .context("Expected movie to exist after update")?;
 
