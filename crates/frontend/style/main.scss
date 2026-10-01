@@ -888,6 +888,23 @@ a.search-title:hover {
     }
 }
 
+// How to set up what a settings page configures, above its rows.
+.settings-intro {
+    display: flex;
+    flex-direction: column;
+    gap: v.$gap-xs;
+    max-width: 70ch;
+    color: v.$text-muted;
+    font-size: v.$font-sm;
+
+    ol {
+        display: flex;
+        flex-direction: column;
+        gap: v.$padding;
+        padding-left: v.$gap * 1.5;
+    }
+}
+
 // Back to the list of pages, which only phones need.
 .settings-back {
     color: v.$link-color;

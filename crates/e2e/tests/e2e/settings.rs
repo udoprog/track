@@ -123,6 +123,20 @@ pub async fn configures_cloudflare_access(driver: &mut TestDriver, _: &mut Track
     open_settings(driver).await?;
     open_page(driver, "Cloudflare Access").await?;
 
+    // The page says where the values come from.
+    let intro = driver.find_one_by(".settings-intro").await?.text().await?;
+    for needle in [
+        "Access → Applications",
+        "cloudflareaccess.com",
+        "(AUD) Tag",
+        "Users page",
+    ] {
+        ensure!(
+            intro.contains(needle),
+            "the setup steps do not mention {needle:?}"
+        );
+    }
+
     let enabled = "[role='switch'][title='Sign in through Access']";
     driver.find_one_by(enabled).await?.click().await?;
 

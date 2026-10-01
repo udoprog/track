@@ -458,6 +458,17 @@ impl Component for Settings {
                         <section>
                             <h2>{"Cloudflare Access"}</h2>
 
+                            <div class="settings-intro">
+                                <p>{"Signs people in with their Cloudflare Zero Trust login when track sits behind Cloudflare Access. To set it up:"}</p>
+                                <ol>
+                                    <li>{"In the Zero Trust dashboard, protect track with a self-hosted application under Access → Applications."}</li>
+                                    <li>{"Enter your team domain below: the "}<code>{"<team>.cloudflareaccess.com"}</code>{" host. Track fetches Cloudflare's signing keys from it and checks that tokens were issued by it."}</li>
+                                    <li>{"Copy the application's Application Audience (AUD) Tag from its overview into Audience. Every application in your team is signed with the same keys, so the tag is what stops a token for another application from signing in here."}</li>
+                                    <li>{"Give each person's account the email they sign in to Cloudflare with, on the Users page. Access only signs in existing users; it never creates them."}</li>
+                                    <li>{"Turn on Sign in through Access."}</li>
+                                </ol>
+                            </div>
+
                             <div class="form-rows">
                                 <FormRow label="Sign in through Access" hint="Signs in the existing user whose email Cloudflare Access reports. Users are never created.">
                                     { system("", html! {
@@ -468,13 +479,13 @@ impl Component for Settings {
                                     }) }
                                 </FormRow>
 
-                                <FormRow label="Team domain" hint="Your Zero Trust team's host.">
+                                <FormRow label="Team domain" hint="The host of your Zero Trust team, such as yourteam.cloudflareaccess.com.">
                                     { system("", html! {
                                         <input class="input-text fill" type="text" title="Team domain" placeholder="yourteam.cloudflareaccess.com" value={cloudflare.team_domain.clone()} onchange={on_cloudflare_team_domain} autocomplete="off" spellcheck="false" />
                                     }) }
                                 </FormRow>
 
-                                <FormRow label="Audience" hint="The Access application's AUD tag.">
+                                <FormRow label="Audience" hint="The Application Audience (AUD) Tag from the Access application protecting track: a long hex string.">
                                     { system("", html! {
                                         <input class="input-text fill" type="text" title="Audience" value={cloudflare.audience.clone()} onchange={on_cloudflare_audience} autocomplete="off" spellcheck="false" />
                                     }) }
