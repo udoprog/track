@@ -112,9 +112,16 @@ pub async fn partly_watched_shows_are_marked(driver: &mut TestDriver, _: &mut Tr
         .click()
         .await?;
 
-    let badge = driver.find_one_by(".media-card .media-badge").await?;
-    ensure!(badge.attr("class").await?.contains("partial"));
-    ensure!(badge.attr("title").await? == "Partly watched: 2 episodes to go");
+    const BADGE: &str = ".media-card .media-badge";
+
+    driver
+        .wait_until("the partly watched badge", async || {
+            let titles = driver.find_all_attrs(BADGE, "title").await?;
+            let classes = driver.find_all_attrs(BADGE, "class").await?;
+            Ok(titles == ["Partly watched: 2 episodes to go"]
+                && classes.iter().all(|c| c.contains("partial")))
+        })
+        .await?;
     Ok(())
 }
 
