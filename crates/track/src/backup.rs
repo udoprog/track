@@ -1,7 +1,9 @@
-//! Backup of the irreplaceable data in the service: the remotes and each user's
-//! watched history. Everything else (titles, episodes, images, release
-//! dates) is reproducible by re-syncing from the remotes, so it is deliberately
-//! not exported.
+//! Backup of the irreplaceable data in the service: the remotes, the users and
+//! each user's tracking, watched history and preferences. Everything else
+//! (titles, episodes, images, release dates) is reproducible by re-syncing from
+//! the remotes, so it is deliberately not exported. Neither are password hashes,
+//! sessions, login links or system config; imported users sign in through a new
+//! login link. The watch-next queue is rebuilt on import rather than exported.
 //!
 //! The format is newline-delimited JSON: one [`BackupRow`] per line, tagged by
 //! a `type` field. Lines whose first non-whitespace character is `#` are
@@ -10,10 +12,11 @@
 //! and skipped.
 //!
 //! Identifiers are exported as their canonical string form and timestamps as UTC
-//! ISO-8601 strings. The id columns in the database are intentionally not foreign
-//! keys, so a backup can be inserted (or removed) without touching the associated
-//! `shows`/`movies` rows. Watched entries name their owner by login, which must
-//! exist when importing; entries without one belong to root.
+//! ISO-8601 strings. Shows and movies referenced by tracking or preferences
+//! are created as placeholders for sync to fill in; remotes and watched entries
+//! are not foreign keys, so they never create one. Rows name their user by
+//! login; users come first in a backup so import can create them, and watched
+//! entries from before there were users belong to root.
 
 use std::collections::HashMap;
 use std::io::{BufRead, Write};
@@ -24,6 +27,7 @@ use clap::Subcommand;
 use serde::{Deserialize, Serialize};
 use tracing::Level;
 
+use crate::db::users::Conflict;
 use crate::db::{Database, OpenMode};
 
 /// (De)serialize a value via its `Display`/`FromStr` string form rather than its
@@ -112,6 +116,51 @@ enum BackupRow {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         sync_kinds: Option<api::SyncKindSet>,
     },
+    /// A user account, without credentials.
+    User {
+        login: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        email: Option<String>,
+        #[serde(with = "as_string")]
+        role: auth::UserRole,
+    },
+    /// A show a user tracks.
+    TrackedShow {
+        user: String,
+        #[serde(with = "as_string")]
+        show: api::ShowId,
+    },
+    /// A movie a user tracks.
+    TrackedMovie {
+        user: String,
+        #[serde(with = "as_string")]
+        movie: api::MovieId,
+    },
+    /// One of a user's own preferences.
+    UserPreference {
+        user: String,
+        #[serde(with = "as_string")]
+        key: api::PreferenceKey,
+        value: serde_json::Value,
+    },
+    /// A user's preference for one show.
+    ShowPreference {
+        user: String,
+        #[serde(with = "as_string")]
+        show: api::ShowId,
+        #[serde(with = "as_string")]
+        key: api::PreferenceKey,
+        value: serde_json::Value,
+    },
+    /// A user's preference for one movie.
+    MoviePreference {
+        user: String,
+        #[serde(with = "as_string")]
+        movie: api::MovieId,
+        #[serde(with = "as_string")]
+        key: api::PreferenceKey,
+        value: serde_json::Value,
+    },
     /// A single watched episode, keyed by show + season + episode (not episode id,
     /// so it survives a re-sync).
     WatchedEpisode {
@@ -157,8 +206,34 @@ impl ImportStats {
     }
 }
 
-/// Write every remote and watched entry as a JSON line to `out`.
+/// A stored preference key, or `None` (with a warning) for one this version
+/// does not know, which is left out of the backup.
+fn preference_key(user: &str, key: &str) -> Option<api::PreferenceKey> {
+    match key.parse() {
+        Ok(key) => Some(key),
+        Err(error) => {
+            tracing::warn!("Skipping preference {key:?} of {user}: {error}");
+            None
+        }
+    }
+}
+
+/// Write every user, remote, tracking, preference and watched entry as a JSON
+/// line to `out`. Users come first so import can create them before their rows.
 async fn export(db: &Database, mut out: impl Write) -> Result<()> {
+    let mut write = |row: BackupRow| -> Result<()> {
+        writeln!(out, "{}", serde_json::to_string(&row)?)?;
+        Ok(())
+    };
+
+    for user in db.list_users().await? {
+        write(BackupRow::User {
+            login: user.login,
+            email: user.email,
+            role: user.role,
+        })?;
+    }
+
     for r in db.export_show_remotes().await? {
         let row = BackupRow::ShowRemote {
             id: r.id,
@@ -170,7 +245,7 @@ async fn export(db: &Database, mut out: impl Write) -> Result<()> {
             priority: r.priority,
             sync_kinds: r.sync_kinds,
         };
-        writeln!(out, "{}", serde_json::to_string(&row)?)?;
+        write(row)?;
     }
 
     for r in db.export_movie_remotes().await? {
@@ -184,7 +259,48 @@ async fn export(db: &Database, mut out: impl Write) -> Result<()> {
             priority: r.priority,
             sync_kinds: r.sync_kinds,
         };
-        writeln!(out, "{}", serde_json::to_string(&row)?)?;
+        write(row)?;
+    }
+
+    let data = db.export_user_data().await?;
+
+    for (user, show) in data.tracked_shows {
+        write(BackupRow::TrackedShow { user, show })?;
+    }
+
+    for (user, movie) in data.tracked_movies {
+        write(BackupRow::TrackedMovie { user, movie })?;
+    }
+
+    for (user, key, value) in data.user_config {
+        if let Some(key) = preference_key(&user, &key) {
+            let value = serde_json::from_str(&value)?;
+            write(BackupRow::UserPreference { user, key, value })?;
+        }
+    }
+
+    for (user, show, key, value) in data.show_config {
+        if let Some(key) = preference_key(&user, &key) {
+            let value = serde_json::from_str(&value)?;
+            write(BackupRow::ShowPreference {
+                user,
+                show,
+                key,
+                value,
+            })?;
+        }
+    }
+
+    for (user, movie, key, value) in data.movie_config {
+        if let Some(key) = preference_key(&user, &key) {
+            let value = serde_json::from_str(&value)?;
+            write(BackupRow::MoviePreference {
+                user,
+                movie,
+                key,
+                value,
+            })?;
+        }
     }
 
     for (id, user, timestamp, show, season, episode) in db.export_watched_episodes().await? {
@@ -196,7 +312,7 @@ async fn export(db: &Database, mut out: impl Write) -> Result<()> {
             episode,
             timestamp,
         };
-        writeln!(out, "{}", serde_json::to_string(&row)?)?;
+        write(row)?;
     }
 
     for (id, user, timestamp, movie) in db.export_watched_movies().await? {
@@ -206,9 +322,10 @@ async fn export(db: &Database, mut out: impl Write) -> Result<()> {
             movie,
             timestamp,
         };
-        writeln!(out, "{}", serde_json::to_string(&row)?)?;
+        write(row)?;
     }
 
+    drop(write);
     out.flush()?;
     Ok(())
 }
@@ -219,20 +336,60 @@ fn is_skippable(line: &str) -> bool {
     trimmed.is_empty() || trimmed.starts_with('#')
 }
 
-/// Resolves the owners named by watched entries, once per login.
-struct Owners<'a> {
+/// Totals for each category an import touched.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct ImportReport {
+    users: ImportStats,
+    remotes: ImportStats,
+    tracked: ImportStats,
+    preferences: ImportStats,
+    watched: ImportStats,
+}
+
+/// Resolves the users named by rows, once per login.
+struct Users<'a> {
     db: &'a Database,
     by_login: HashMap<String, api::UserId>,
     default: Option<api::UserId>,
 }
 
-impl<'a> Owners<'a> {
+impl<'a> Users<'a> {
     fn new(db: &'a Database) -> Self {
         Self {
             db,
             by_login: HashMap::new(),
             default: None,
         }
+    }
+
+    /// Create a user without a password unless the login is taken. Returns
+    /// whether it was created.
+    async fn create(
+        &mut self,
+        login: String,
+        email: Option<String>,
+        role: auth::UserRole,
+    ) -> Result<bool> {
+        if let Some(user) = self.db.user_by_login(&login).await? {
+            self.by_login.insert(login, user.id);
+            return Ok(false);
+        }
+
+        let user = self
+            .db
+            .create_user(&login, email.as_deref(), role, api::Timestamp::now())
+            .await?
+            .map_err(|conflict| {
+                let field = match conflict {
+                    Conflict::Login => "login",
+                    Conflict::Email => "email",
+                };
+
+                anyhow!("Cannot create the user {login:?}: its {field} is taken")
+            })?;
+
+        self.by_login.insert(login, user.id);
+        Ok(true)
     }
 
     async fn get(&mut self, login: Option<String>) -> Result<api::UserId> {
@@ -261,12 +418,27 @@ impl<'a> Owners<'a> {
     }
 }
 
-/// Read JSON lines from `input` and apply them idempotently. Returns the totals
-/// for remotes and watched entries.
-async fn import(db: &Database, input: impl BufRead) -> Result<(ImportStats, ImportStats)> {
-    let mut remotes = ImportStats::default();
-    let mut watched = ImportStats::default();
-    let mut owners = Owners::new(db);
+/// A preference key checked against the scope it is imported into, with its
+/// value as stored JSON text.
+fn preference(
+    key: api::PreferenceKey,
+    scope: api::PreferenceScope,
+    value: serde_json::Value,
+) -> Result<(api::PreferenceKey, String)> {
+    if !key.allowed_in(scope) {
+        return Err(anyhow!("The preference {key} is not allowed for {scope:?}"));
+    }
+
+    Ok((key, value.to_string()))
+}
+
+/// Read JSON lines from `input` and apply them idempotently, then rebuild the
+/// watch-next queue for the imported tracking.
+async fn import(db: &Database, input: impl BufRead) -> Result<ImportReport> {
+    let mut report = ImportReport::default();
+    let mut users = Users::new(db);
+    let mut tracked_shows = Vec::new();
+    let mut tracked_movies = false;
 
     for (n, line) in input.lines().enumerate() {
         let line = line.with_context(|| anyhow!("Reading line {}", n + 1))?;
@@ -279,6 +451,10 @@ async fn import(db: &Database, input: impl BufRead) -> Result<(ImportStats, Impo
             .with_context(|| anyhow!("Parsing line {}: {line}", n + 1))?;
 
         match row {
+            BackupRow::User { login, email, role } => {
+                let inserted = users.create(login, email, role).await?;
+                report.users.record(inserted);
+            }
             BackupRow::ShowRemote {
                 id,
                 show,
@@ -301,7 +477,7 @@ async fn import(db: &Database, input: impl BufRead) -> Result<(ImportStats, Impo
                         sync_kinds,
                     })
                     .await?;
-                remotes.record(inserted);
+                report.remotes.record(inserted);
             }
             BackupRow::MovieRemote {
                 id,
@@ -325,7 +501,47 @@ async fn import(db: &Database, input: impl BufRead) -> Result<(ImportStats, Impo
                         sync_kinds,
                     })
                     .await?;
-                remotes.record(inserted);
+                report.remotes.record(inserted);
+            }
+            BackupRow::TrackedShow { user, show } => {
+                let user = users.get(Some(user)).await?;
+                let inserted = db.import_tracked_show(user, show).await?;
+                report.tracked.record(inserted);
+                tracked_shows.push((user, show));
+            }
+            BackupRow::TrackedMovie { user, movie } => {
+                let user = users.get(Some(user)).await?;
+                let inserted = db.import_tracked_movie(user, movie).await?;
+                report.tracked.record(inserted);
+                tracked_movies = true;
+            }
+            BackupRow::UserPreference { user, key, value } => {
+                let user = users.get(Some(user)).await?;
+                let (key, value) = preference(key, api::PreferenceScope::User, value)?;
+                let inserted = db.import_user_preference(user, key, value).await?;
+                report.preferences.record(inserted);
+            }
+            BackupRow::ShowPreference {
+                user,
+                show,
+                key,
+                value,
+            } => {
+                let user = users.get(Some(user)).await?;
+                let (key, value) = preference(key, api::PreferenceScope::Show, value)?;
+                let inserted = db.import_show_preference(user, show, key, value).await?;
+                report.preferences.record(inserted);
+            }
+            BackupRow::MoviePreference {
+                user,
+                movie,
+                key,
+                value,
+            } => {
+                let user = users.get(Some(user)).await?;
+                let (key, value) = preference(key, api::PreferenceScope::Movie, value)?;
+                let inserted = db.import_movie_preference(user, movie, key, value).await?;
+                report.preferences.record(inserted);
             }
             BackupRow::WatchedEpisode {
                 id,
@@ -335,11 +551,11 @@ async fn import(db: &Database, input: impl BufRead) -> Result<(ImportStats, Impo
                 episode,
                 timestamp,
             } => {
-                let user = owners.get(user).await?;
+                let user = users.get(user).await?;
                 let inserted = db
                     .import_watched_episode(user, id, timestamp, show, season, episode)
                     .await?;
-                watched.record(inserted);
+                report.watched.record(inserted);
             }
             BackupRow::WatchedMovie {
                 id,
@@ -347,20 +563,31 @@ async fn import(db: &Database, input: impl BufRead) -> Result<(ImportStats, Impo
                 movie,
                 timestamp,
             } => {
-                let user = owners.get(user).await?;
+                let user = users.get(user).await?;
                 let inserted = db.import_watched_movie(user, id, timestamp, movie).await?;
-                watched.record(inserted);
+                report.watched.record(inserted);
             }
         }
     }
 
-    Ok((remotes, watched))
+    // Shows without episodes yet (placeholders) get their queue after sync.
+    let now = api::Timestamp::now();
+
+    for (user, show) in tracked_shows {
+        db.fill_pending_for_user_show(user, show, now).await?;
+    }
+
+    if tracked_movies {
+        crate::background::discover_pending_movies(db).await?;
+    }
+
+    Ok(report)
 }
 
 /// Subcommands of the `track` binary that back up the irreplaceable data.
 #[derive(Subcommand)]
 pub enum BackupCommand {
-    /// Write remotes and watched history as JSON lines.
+    /// Write users, remotes, tracking, preferences and watched history as JSON lines.
     Export {
         /// Output file; defaults to stdout.
         #[arg(long)]
@@ -406,7 +633,7 @@ pub async fn backup(db: &Path, log: &[String], command: BackupCommand) -> Result
             let database = Database::open(db, OpenMode::Bulk, 1)
                 .with_context(|| anyhow!("Opening database at {}", db.display()))?;
 
-            let (remotes, watched) = match input {
+            let report = match input {
                 Some(path) => {
                     let file = std::fs::File::open(&path)
                         .with_context(|| anyhow!("Opening {}", path.display()))?;
@@ -415,16 +642,19 @@ pub async fn backup(db: &Path, log: &[String], command: BackupCommand) -> Result
                 None => import(&database, std::io::stdin().lock()).await?,
             };
 
-            tracing::info!(
-                "Remotes: imported {}, ignored {} duplicates",
-                remotes.inserted,
-                remotes.ignored
-            );
-            tracing::info!(
-                "Watched: imported {}, ignored {} duplicates",
-                watched.inserted,
-                watched.ignored
-            );
+            for (name, stats) in [
+                ("Users", report.users),
+                ("Remotes", report.remotes),
+                ("Tracked", report.tracked),
+                ("Preferences", report.preferences),
+                ("Watched", report.watched),
+            ] {
+                tracing::info!(
+                    "{name}: imported {}, ignored {} duplicates",
+                    stats.inserted,
+                    stats.ignored
+                );
+            }
         }
     }
 
@@ -493,6 +723,44 @@ mod tests {
         db.insert_watched_movie(root, api::WatchedId::new(6001), ts(), movie)
             .await
             .unwrap();
+
+        let alice = db
+            .create_user(
+                "alice",
+                Some("alice@example.com"),
+                auth::UserRole::Regular,
+                api::Timestamp::now(),
+            )
+            .await
+            .unwrap()
+            .unwrap()
+            .id;
+        db.insert_watched_movie(alice, api::WatchedId::new(6002), ts(), movie)
+            .await
+            .unwrap();
+
+        db.set_show_tracked(root, show, true).await.unwrap();
+        db.set_show_tracked(alice, show, true).await.unwrap();
+        db.set_movie_tracked(alice, movie, true).await.unwrap();
+
+        let preferences = api::Preferences {
+            theme: api::ThemeType::Light,
+            ..api::Preferences::default()
+        };
+        db.save_preferences(root, &preferences).await.unwrap();
+        db.set_show_language(alice, show, api::Locale::EN_US)
+            .await
+            .unwrap();
+        db.set_show_include_specials(alice, show, api::IncludeSpecials::Include)
+            .await
+            .unwrap();
+        db.set_movie_language(alice, movie, api::Locale::EN_US)
+            .await
+            .unwrap();
+    }
+
+    fn counts(stats: ImportStats) -> (u64, u64) {
+        (stats.inserted, stats.ignored)
     }
 
     async fn export_to_vec(db: &Database) -> Vec<u8> {
@@ -514,10 +782,108 @@ mod tests {
 
         // Re-exporting the destination yields a byte-identical backup.
         let re_exported = export_to_vec(&dst).await;
-        assert_eq!(
-            String::from_utf8(exported).unwrap(),
-            String::from_utf8(re_exported).unwrap()
+        let exported = String::from_utf8(exported).unwrap();
+        assert_eq!(exported, String::from_utf8(re_exported).unwrap());
+
+        for kind in [
+            "user",
+            "show_remote",
+            "movie_remote",
+            "tracked_show",
+            "tracked_movie",
+            "user_preference",
+            "show_preference",
+            "movie_preference",
+            "watched_episode",
+            "watched_movie",
+        ] {
+            let tag = format!(r#""type":"{kind}""#);
+            assert!(exported.contains(&tag), "{tag} in {exported}");
+        }
+
+        // Users are restored without a password.
+        let alice = dst.user_by_login("alice").await.unwrap().unwrap();
+        assert_eq!(alice.email.as_deref(), Some("alice@example.com"));
+        assert_eq!(alice.role, auth::UserRole::Regular);
+        assert!(alice.password_hash.is_none());
+
+        let root = dst.default_owner().await.unwrap();
+        let show = api::ShowId::new(1001);
+        let movie = api::MovieId::new(2001);
+        assert!(
+            dst.show_by_id(Some(alice.id), show)
+                .await
+                .unwrap()
+                .unwrap()
+                .tracked
         );
+        assert!(
+            dst.show_by_id(Some(root), show)
+                .await
+                .unwrap()
+                .unwrap()
+                .tracked
+        );
+        assert!(
+            dst.movie_by_id(Some(alice.id), movie)
+                .await
+                .unwrap()
+                .unwrap()
+                .tracked
+        );
+        assert!(
+            !dst.movie_by_id(Some(root), movie)
+                .await
+                .unwrap()
+                .unwrap()
+                .tracked
+        );
+        assert_eq!(
+            dst.load_preferences(root).await.unwrap().theme,
+            api::ThemeType::Light
+        );
+    }
+
+    /// The watch-next queue is not exported but rebuilt from the imported
+    /// tracking and watch history.
+    #[tokio::test]
+    async fn import_rebuilds_pending() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = temp_db(&dir, "src.db");
+        seed(&src).await;
+        let exported = export_to_vec(&src).await;
+
+        let dst = temp_db(&dir, "dst.db");
+        let show = api::ShowId::new(1001);
+        let season = api::SeasonNumber::from_ordinal(1);
+        let e1 = api::EpisodeId::new(11);
+        let e2 = api::EpisodeId::new(12);
+        dst.create_show(show, "", None, "").await.unwrap();
+        dst.upsert_episode(e1, show, season, 1, None, Some(ts()))
+            .await
+            .unwrap();
+        dst.upsert_episode(e2, show, season, 2, None, Some(ts()))
+            .await
+            .unwrap();
+
+        import(&dst, exported.as_slice()).await.unwrap();
+
+        let pending = |pending: Vec<api::Pending>| {
+            pending
+                .into_iter()
+                .filter_map(|p| match p.info {
+                    api::PendingInfo::Episode { episode_id, .. } => Some(episode_id),
+                    api::PendingInfo::Movie { .. } => None,
+                })
+                .collect::<Vec<_>>()
+        };
+
+        // Root watched E1 in the backup; alice has not.
+        let now = api::Timestamp::now();
+        let root = dst.default_owner().await.unwrap();
+        let alice = dst.user_by_login("alice").await.unwrap().unwrap().id;
+        assert_eq!(pending(dst.pending(root, now).await.unwrap()), [e2]);
+        assert_eq!(pending(dst.pending(alice, now).await.unwrap()), [e1]);
     }
 
     #[tokio::test]
@@ -529,14 +895,21 @@ mod tests {
 
         let dst = temp_db(&dir, "dst.db");
 
-        let (r1, w1) = import(&dst, exported.as_slice()).await.unwrap();
-        assert_eq!((r1.inserted, r1.ignored), (2, 0));
-        assert_eq!((w1.inserted, w1.ignored), (2, 0));
+        // Root exists in every database; alice is created.
+        let first = import(&dst, exported.as_slice()).await.unwrap();
+        assert_eq!(counts(first.users), (1, 1));
+        assert_eq!(counts(first.remotes), (2, 0));
+        assert_eq!(counts(first.tracked), (3, 0));
+        assert_eq!(counts(first.preferences), (4, 0));
+        assert_eq!(counts(first.watched), (3, 0));
 
         // Second run inserts nothing; every entry is explicitly ignored.
-        let (r2, w2) = import(&dst, exported.as_slice()).await.unwrap();
-        assert_eq!((r2.inserted, r2.ignored), (0, 2));
-        assert_eq!((w2.inserted, w2.ignored), (0, 2));
+        let second = import(&dst, exported.as_slice()).await.unwrap();
+        assert_eq!(counts(second.users), (0, 2));
+        assert_eq!(counts(second.remotes), (0, 2));
+        assert_eq!(counts(second.tracked), (0, 3));
+        assert_eq!(counts(second.preferences), (0, 4));
+        assert_eq!(counts(second.watched), (0, 3));
     }
 
     #[tokio::test]
@@ -555,8 +928,8 @@ mod tests {
         }
 
         let dst = temp_db(&dir, "dst.db");
-        let (remotes, watched) = import(&dst, annotated.as_bytes()).await.unwrap();
-        assert_eq!((remotes.inserted, watched.inserted), (2, 2));
+        let report = import(&dst, annotated.as_bytes()).await.unwrap();
+        assert_eq!((report.remotes.inserted, report.watched.inserted), (2, 3));
     }
 
     #[tokio::test]
@@ -565,17 +938,24 @@ mod tests {
         let src = temp_db(&dir, "src.db");
         seed(&src).await;
         let exported = String::from_utf8(export_to_vec(&src).await).unwrap();
-        assert!(exported.contains(r#""user":"root""#), "{exported}");
+        let watched = exported
+            .lines()
+            .filter(|line| {
+                line.contains(r#""user":"root""#) && line.contains(r#""type":"watched_"#)
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_eq!(watched.lines().count(), 2, "{exported}");
 
         // An entry naming a missing user is refused rather than reassigned.
         let dst = temp_db(&dir, "dst.db");
-        let to_bob = exported.replace(r#""user":"root""#, r#""user":"bob""#);
+        let to_bob = watched.replace(r#""user":"root""#, r#""user":"bob""#);
         assert!(import(&dst, to_bob.as_bytes()).await.is_err());
 
         // Entries from before there were users belong to root.
-        let unowned = exported.replace(r#""user":"root","#, "");
-        let (_, watched) = import(&dst, unowned.as_bytes()).await.unwrap();
-        assert_eq!(watched.inserted, 2);
+        let unowned = watched.replace(r#""user":"root","#, "");
+        let report = import(&dst, unowned.as_bytes()).await.unwrap();
+        assert_eq!(report.watched.inserted, 2);
         assert_eq!(dst.export_watched_episodes().await.unwrap()[0].1, "root");
     }
 }

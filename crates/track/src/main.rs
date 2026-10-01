@@ -10,7 +10,8 @@ use tokio::runtime::Builder;
 const TEN: Duration = Duration::from_secs(10);
 
 /// ontv-musli-web tracking service. With no subcommand it runs the server;
-/// the subcommands back up the irreplaceable data (remotes + watched history).
+/// the subcommands back up the irreplaceable data (users, remotes, tracking,
+/// preferences and watched history).
 #[derive(Parser)]
 struct Cli {
     #[command(subcommand)]

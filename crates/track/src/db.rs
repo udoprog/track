@@ -489,6 +489,32 @@ pub(crate) struct ExportRemote<Owner> {
     pub sync_kinds: Option<api::SyncKindSet>,
 }
 
+/// Per-user tracking and preferences for backup export, each row naming its
+/// user by login. Preference keys and values are left as stored.
+#[derive(Debug, Default)]
+pub(crate) struct ExportUserData {
+    pub tracked_shows: Vec<(String, ShowId)>,
+    pub tracked_movies: Vec<(String, MovieId)>,
+    pub user_config: Vec<(String, String, String)>,
+    pub show_config: Vec<(String, ShowId, String, String)>,
+    pub movie_config: Vec<(String, MovieId, String, String)>,
+}
+
+fn all_rows<O>(stmt: &mut TypedStatement<(), O>) -> Result<Vec<O>>
+where
+    O: for<'stmt> Row<'stmt>,
+{
+    let mut out = Vec::new();
+    let mut rows = stmt.query()?;
+
+    while let Some(row) = rows.next()? {
+        out.push(row);
+    }
+
+    rows.reset()?;
+    Ok(out)
+}
+
 /// A watched-episode row for backup export (`list_all_watched_episodes`). The
 /// `show_id` is nullable in the table; orphaned rows are skipped on export.
 #[derive(Row)]
@@ -1131,6 +1157,21 @@ struct InnerRead {
     show_remote_exists: TypedStatement<(RemoteId,), (i64,)>,
     #[sql = "SELECT 1 FROM movie_remotes WHERE id = ? LIMIT 1"]
     movie_remote_exists: TypedStatement<(RemoteId,), (i64,)>,
+    #[sql = "SELECT u.login, t.show_id FROM user_tracked_shows t"]
+    #[sql = "JOIN users u ON u.id = t.user_id ORDER BY u.login, t.show_id"]
+    list_all_tracked_shows: TypedStatement<(), (String, ShowId)>,
+    #[sql = "SELECT u.login, t.movie_id FROM user_tracked_movies t"]
+    #[sql = "JOIN users u ON u.id = t.user_id ORDER BY u.login, t.movie_id"]
+    list_all_tracked_movies: TypedStatement<(), (String, MovieId)>,
+    #[sql = "SELECT u.login, c.key, c.value FROM user_config c"]
+    #[sql = "JOIN users u ON u.id = c.user_id ORDER BY u.login, c.key"]
+    list_all_user_config: TypedStatement<(), (String, String, String)>,
+    #[sql = "SELECT u.login, c.show_id, c.key, c.value FROM user_show_config c"]
+    #[sql = "JOIN users u ON u.id = c.user_id ORDER BY u.login, c.show_id, c.key"]
+    list_all_user_show_config: TypedStatement<(), (String, ShowId, String, String)>,
+    #[sql = "SELECT u.login, c.movie_id, c.key, c.value FROM user_movie_config c"]
+    #[sql = "JOIN users u ON u.id = c.user_id ORDER BY u.login, c.movie_id, c.key"]
+    list_all_user_movie_config: TypedStatement<(), (String, MovieId, String, String)>,
 
     // config
     #[sql = "SELECT value FROM config WHERE key = ?"]
@@ -1628,6 +1669,22 @@ struct InnerWrite {
     #[sql = "INSERT OR IGNORE INTO watched_movies (id, user_id, timestamp, movie_id)"]
     #[sql = "VALUES (?, ?, ?, ?)"]
     insert_watched_movie: TypedStatement<(WatchedId, UserId, Timestamp, MovieId), ()>,
+
+    // backup import; RETURNING yields a row only when the insert happened
+    #[sql = "INSERT OR IGNORE INTO shows (id) VALUES (?)"]
+    ensure_show: TypedStatement<(ShowId,), ()>,
+    #[sql = "INSERT OR IGNORE INTO movies (id) VALUES (?)"]
+    ensure_movie: TypedStatement<(MovieId,), ()>,
+    #[sql = "INSERT OR IGNORE INTO user_tracked_shows (user_id, show_id) VALUES (?, ?) RETURNING 1"]
+    import_tracked_show: TypedStatement<(UserId, ShowId), (i64,)>,
+    #[sql = "INSERT OR IGNORE INTO user_tracked_movies (user_id, movie_id) VALUES (?, ?) RETURNING 1"]
+    import_tracked_movie: TypedStatement<(UserId, MovieId), (i64,)>,
+    #[sql = "INSERT OR IGNORE INTO user_config (user_id, key, value) VALUES (?, ?, ?) RETURNING 1"]
+    import_user_config: TypedStatement<(UserId, PreferenceKey, String), (i64,)>,
+    #[sql = "INSERT OR IGNORE INTO user_show_config (user_id, show_id, key, value) VALUES (?, ?, ?, ?) RETURNING 1"]
+    import_user_show_config: TypedStatement<(UserId, ShowId, PreferenceKey, String), (i64,)>,
+    #[sql = "INSERT OR IGNORE INTO user_movie_config (user_id, movie_id, key, value) VALUES (?, ?, ?, ?) RETURNING 1"]
+    import_user_movie_config: TypedStatement<(UserId, MovieId, PreferenceKey, String), (i64,)>,
     #[sql = "DELETE FROM watched_episodes WHERE user_id = ? AND id = ?"]
     delete_watched_episode: TypedStatement<(UserId, WatchedId), ()>,
     #[sql = "DELETE FROM watched_movies WHERE user_id = ? AND id = ?"]
@@ -5601,7 +5658,121 @@ impl Database {
         result.await?
     }
 
+    /// Every user's tracking and preferences for backup export.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn export_user_data(&self) -> Result<ExportUserData> {
+        let mut s = self.inner.clone().shared().await?;
+
+        let result = spawn_blocking(move || {
+            Ok(ExportUserData {
+                tracked_shows: all_rows(&mut s.list_all_tracked_shows)?,
+                tracked_movies: all_rows(&mut s.list_all_tracked_movies)?,
+                user_config: all_rows(&mut s.list_all_user_config)?,
+                show_config: all_rows(&mut s.list_all_user_show_config)?,
+                movie_config: all_rows(&mut s.list_all_user_movie_config)?,
+            })
+        });
+
+        result.await?
+    }
+
     // --- backup import (idempotent; bool = inserted vs. ignored duplicate) ---
+
+    /// Track a show for a user, creating a placeholder show for sync to fill in
+    /// when it does not exist yet.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn import_tracked_show(&self, user: UserId, show: ShowId) -> Result<bool> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.ensure_show.execute((show,))?;
+            Ok(s.import_tracked_show.bind((user, show))?.first()?.is_some())
+        });
+
+        result.await?
+    }
+
+    /// Track a movie for a user, creating a placeholder movie when missing.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn import_tracked_movie(&self, user: UserId, movie: MovieId) -> Result<bool> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.ensure_movie.execute((movie,))?;
+            Ok(s.import_tracked_movie
+                .bind((user, movie))?
+                .first()?
+                .is_some())
+        });
+
+        result.await?
+    }
+
+    /// Store a user's own preference unless the user already has one for `key`.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn import_user_preference(
+        &self,
+        user: UserId,
+        key: PreferenceKey,
+        value: String,
+    ) -> Result<bool> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            Ok(s.import_user_config
+                .bind((user, key, value))?
+                .first()?
+                .is_some())
+        });
+
+        result.await?
+    }
+
+    /// Store a user's preference for a show unless one exists for `key`,
+    /// creating a placeholder show when missing.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn import_show_preference(
+        &self,
+        user: UserId,
+        show: ShowId,
+        key: PreferenceKey,
+        value: String,
+    ) -> Result<bool> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.ensure_show.execute((show,))?;
+            Ok(s.import_user_show_config
+                .bind((user, show, key, value))?
+                .first()?
+                .is_some())
+        });
+
+        result.await?
+    }
+
+    /// Store a user's preference for a movie unless one exists for `key`,
+    /// creating a placeholder movie when missing.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn import_movie_preference(
+        &self,
+        user: UserId,
+        movie: MovieId,
+        key: PreferenceKey,
+        value: String,
+    ) -> Result<bool> {
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.ensure_movie.execute((movie,))?;
+            Ok(s.import_user_movie_config
+                .bind((user, movie, key, value))?
+                .first()?
+                .is_some())
+        });
+
+        result.await?
+    }
 
     /// Insert a show remote under its original identifier, preserving its
     /// structure. Idempotent: an existing identifier is left untouched.
