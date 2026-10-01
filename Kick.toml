@@ -1,10 +1,13 @@
 [deploy]
-host = "integration@moore"
 binary = "track"
 pre_build = ["trunk build --release"]
 build_features = ["bundle"]
 
-# Mirrors moore's existing track.service, so an unchanged unit is left alone.
+# The host is left to the command line: `kick deploy --to remote --host moore`.
+[deploy.profiles.remote]
+user = "integration"
+
+# Mirrors the track.service already installed on moore, so an unchanged unit is left alone.
 [deploy.systemd]
 description = "Track Service"
 user = "track"

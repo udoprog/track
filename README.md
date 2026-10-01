@@ -91,21 +91,21 @@ $ cargo test -p e2e -- --headed --last-session
 
 ## Deploying
 
-The `[deploy]` section in `Kick.toml` deploys track to `integration@moore`
-over ssh with [kick]. It builds the frontend, builds the server with the
-frontend bundled into it, installs it as `/usr/local/bin/track`, and restarts
-the `track` service:
+The `remote` profile in `Kick.toml` deploys track over ssh with [kick] as
+`integration`, and leaves the host to the command line. It builds the frontend,
+builds the server with the frontend bundled into it, installs it as
+`/usr/local/bin/track`, and restarts the `track` service:
 
 ```text
-$ kick deploy
+$ kick deploy --to remote --host moore
 ```
 
-Pass `--host` to deploy somewhere else, and `--dry-run` to print the unit and
-every command without running them:
+Pass `--host` more than once to deploy to several hosts, and `--dry-run` to
+print the unit and every command without running them:
 
 ```text
-$ kick deploy --host someone@otherhost
-$ kick deploy --dry-run
+$ kick deploy --to remote --host moore --host otherhost
+$ kick deploy --to remote --host moore --dry-run
 ```
 
 Kick also manages `/etc/systemd/system/track.service`, which it renders from
