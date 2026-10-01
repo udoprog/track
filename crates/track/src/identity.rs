@@ -1,6 +1,8 @@
 //! Who is making a request: a signed session cookie, or Cloudflare Access.
 
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use api::{Timestamp, UserId};
@@ -9,7 +11,7 @@ use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use cookie::Cookie;
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use tokio::sync::broadcast;
 
 use crate::db::Database;
@@ -51,7 +53,13 @@ struct Inner {
     http: reqwest::Client,
     cloudflare: RwLock<CloudflareState>,
     revoke: broadcast::Sender<Revoke>,
+    /// When each Access warning was last logged, so a client retrying every
+    /// few seconds does not flood the log.
+    warned: Mutex<HashMap<String, Instant>>,
 }
+
+/// How often the same Access warning may be logged.
+const WARN_INTERVAL: Duration = Duration::from_secs(60);
 
 #[derive(Clone)]
 pub(crate) struct Auth {
@@ -71,23 +79,29 @@ impl Auth {
                     access: None,
                 }),
                 revoke,
+                warned: Mutex::new(HashMap::new()),
             }),
         };
 
-        auth.configure(config);
+        auth.apply(config, true);
         auth
     }
 
     /// Applies changed Cloudflare Access settings.
     pub(crate) fn configure(&self, config: &api::Config) {
+        self.apply(config, false);
+    }
+
+    fn apply(&self, config: &api::Config, initial: bool) {
         let config = &config.cloudflare_access;
         let mut state = self.inner.cloudflare.write();
 
-        if state.config == *config {
+        if !initial && state.config == *config {
             return;
         }
 
         state.config = config.clone();
+        log_access_settings(config);
 
         state.access = config.enabled.then(|| {
             Arc::new(Access::with_fetcher(
@@ -120,12 +134,27 @@ impl Auth {
 
         let access = self.inner.cloudflare.read().access.clone();
 
+        // Without anything from Access the request is simply signed out, which
+        // is not worth a warning.
+        let presented = presents_access(headers);
+
         let Some(access) = access else {
+            if presented {
+                self.warn("Cloudflare Access sign-in is disabled in Settings, so its credentials on this request were ignored".to_owned());
+            }
+
             return Ok(None);
         };
 
         let email = match access.email(headers).await {
             Ok(email) => email,
+            Err(error) if presented => {
+                self.warn(format!(
+                    "Cloudflare Access sign-in failed: {}",
+                    chain(&error)
+                ));
+                return Ok(None);
+            }
             Err(error) => {
                 tracing::debug!(%error, "Cloudflare Access did not identify the request");
                 return Ok(None);
@@ -133,9 +162,13 @@ impl Auth {
         };
 
         let Some(user) = db.user_by_email(&email).await? else {
-            tracing::debug!(email, "No user has the Cloudflare Access email");
+            self.warn(format!(
+                "Cloudflare Access sign-in failed: no user has the email {email}"
+            ));
             return Ok(None);
         };
+
+        tracing::debug!(email, user = %user.id, "Signed in through Cloudflare Access");
 
         Ok(Some(AuthUser {
             id: user.id,
@@ -171,6 +204,26 @@ impl Auth {
         HeaderValue::try_from(cookie.to_string()).expect("session cookies are valid header values")
     }
 
+    /// Logs an Access warning unless the same one was logged recently.
+    fn warn(&self, message: String) {
+        let now = Instant::now();
+        let mut warned = self.inner.warned.lock();
+        warned.retain(|_, at| now.duration_since(*at) < WARN_INTERVAL);
+
+        if warned.contains_key(&message) {
+            return;
+        }
+
+        tracing::warn!("{message}");
+        warned.insert(message, now);
+    }
+
+    /// The Access warnings logged within the last minute.
+    #[cfg(test)]
+    pub(crate) fn warnings(&self) -> Vec<String> {
+        self.inner.warned.lock().keys().cloned().collect()
+    }
+
     pub(crate) fn revoke(&self, revoke: Revoke) {
         _ = self.inner.revoke.send(revoke);
     }
@@ -178,6 +231,57 @@ impl Auth {
     pub(crate) fn subscribe_revocations(&self) -> broadcast::Receiver<Revoke> {
         self.inner.revoke.subscribe()
     }
+}
+
+fn log_access_settings(config: &api::CloudflareAccess) {
+    if !config.enabled {
+        tracing::info!("Cloudflare Access sign-in is disabled");
+        return;
+    }
+
+    if config.team_domain.trim().is_empty() || config.audience.trim().is_empty() {
+        tracing::warn!(
+            "Cloudflare Access sign-in is enabled, but its team domain or audience is empty, so no one can sign in through it"
+        );
+        return;
+    }
+
+    tracing::info!(
+        team_domain = config.team_domain.trim(),
+        verify_jwt = config.verify_jwt,
+        trust_email_header = config.trust_email_header,
+        "Cloudflare Access sign-in is enabled"
+    );
+}
+
+/// Whether the request carries anything Cloudflare Access adds: its email
+/// header, its token header or its cookie.
+fn presents_access(headers: &HeaderMap) -> bool {
+    use auth::cloudflare::{EMAIL_HEADER, JWT_COOKIE, JWT_HEADER};
+
+    headers.contains_key(EMAIL_HEADER)
+        || headers.contains_key(JWT_HEADER)
+        || headers
+            .get_all(header::COOKIE)
+            .iter()
+            .filter_map(|v| v.to_str().ok())
+            .flat_map(Cookie::split_parse)
+            .filter_map(Result::ok)
+            .any(|c| c.name() == JWT_COOKIE)
+}
+
+/// An error with its causes, such as why the signing keys could not be fetched.
+fn chain(error: &dyn std::error::Error) -> String {
+    let mut out = error.to_string();
+    let mut source = error.source();
+
+    while let Some(error) = source {
+        out.push_str(": ");
+        out.push_str(&error.to_string());
+        source = error.source();
+    }
+
+    out
 }
 
 /// Rejects requests without a signed-in user.

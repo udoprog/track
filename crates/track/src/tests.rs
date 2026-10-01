@@ -501,6 +501,92 @@ async fn cloudflare_matches_email_only() -> Result<()> {
     Ok(())
 }
 
+/// Loading the sign-in page with Cloudflare Access credentials warns why they
+/// did not sign anyone in, once per minute; a plain signed-out request warns
+/// about nothing.
+#[tokio::test]
+async fn access_failures_are_logged() -> Result<()> {
+    let cookie = |value: &'static str| {
+        let mut headers = HeaderMap::new();
+        headers.insert(COOKIE, HeaderValue::from_static(value));
+        headers
+    };
+
+    // Disabled: the credentials are ignored, and the log says so.
+    let server = Server::start(api::Config::default()).await?;
+
+    let me = server.get("/api/auth/me", HeaderMap::new()).await?;
+    assert_eq!(me.status, StatusCode::UNAUTHORIZED);
+    assert!(server.state.auth.warnings().is_empty());
+
+    for _ in 0..2 {
+        let me = server
+            .get("/api/auth/me", cookie("CF_Authorization=a.b.c"))
+            .await?;
+        assert_eq!(me.status, StatusCode::UNAUTHORIZED);
+    }
+
+    let warnings = server.state.auth.warnings();
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(warnings[0].contains("sign-in is disabled in Settings"));
+
+    // Enabled: a token that does not verify, and an email no one has.
+    let server = Server::start(api::Config {
+        cloudflare_access: api::CloudflareAccess {
+            enabled: true,
+            team_domain: "example.cloudflareaccess.com".to_owned(),
+            audience: "aud".to_owned(),
+            trust_email_header: true,
+            verify_jwt: false,
+        },
+        ..api::Config::default()
+    })
+    .await?;
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        auth::cloudflare::EMAIL_HEADER,
+        HeaderValue::from_static("carol@example.com"),
+    );
+    server.get("/api/auth/me", headers).await?;
+    assert!(
+        server
+            .state
+            .auth
+            .warnings()
+            .iter()
+            .any(|w| w.contains("no user has the email carol@example.com")),
+        "{:?}",
+        server.state.auth.warnings()
+    );
+
+    let server = Server::start(api::Config {
+        cloudflare_access: api::CloudflareAccess {
+            enabled: true,
+            team_domain: "example.cloudflareaccess.com".to_owned(),
+            audience: "aud".to_owned(),
+            trust_email_header: false,
+            verify_jwt: true,
+        },
+        ..api::Config::default()
+    })
+    .await?;
+    server
+        .get("/api/auth/me", cookie("CF_Authorization=a.b.c"))
+        .await?;
+    assert!(
+        server
+            .state
+            .auth
+            .warnings()
+            .iter()
+            .any(|w| w.contains("Cloudflare Access sign-in failed: malformed Access JWT")),
+        "{:?}",
+        server.state.auth.warnings()
+    );
+    Ok(())
+}
+
 /// Events about a user's own data reach only that user's sockets, and events
 /// about shared data carry each recipient's own tracked state.
 #[tokio::test]
