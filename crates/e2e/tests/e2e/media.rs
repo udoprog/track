@@ -459,9 +459,25 @@ pub async fn picked_items_track_and_untrack(
     }
 
     driver
+        .wait_texts(
+            ".media-title",
+            [
+                "Finished Show",
+                "Rewatch Show",
+                "Seeded Movie",
+                "Seeded Show",
+                "Specials Show",
+            ],
+        )
+        .await?;
+
+    driver
         .find_one_by("[title='Select Finished Show']")
         .await?
         .click()
+        .await?;
+    driver
+        .wait_texts(".selection-count", ["1 show selected"])
         .await?;
     ensure!(driver.count(TRACK).await? == 1);
     ensure!(driver.count(UNTRACK).await? == 0);
