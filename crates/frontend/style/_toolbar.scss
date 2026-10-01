@@ -47,6 +47,10 @@
 
     @include g.on-mobile {
         flex-direction: column;
+        align-items: stretch;
+        width: fit-content;
+        max-width: 100%;
+        justify-self: center;
         grid-column: 1 / -1;
     }
 }

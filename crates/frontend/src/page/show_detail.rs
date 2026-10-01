@@ -2328,7 +2328,7 @@ impl ShowDetail {
                             <Button icon="photo" title="Season Graphics" text="Graphics" onclick={link.callback(|_| Msg::OpenSeasonImageModal)} />
 
                             if let Some((label, on_remove_next)) = pending_episode {
-                                <a class="button primary" href={format!("#{label}")} onclick={toggle_menu} title="Jump to pending episode">
+                                <a class="button primary mobile-has-text" href={format!("#{label}")} onclick={toggle_menu} title="Jump to pending episode">
                                     <span class="icon chevron-down" aria-hidden="true" />
                                     <span class="mobile-only">{format!("Jump to next episode {label}")}</span>
                                 </a>

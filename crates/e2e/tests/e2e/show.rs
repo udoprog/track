@@ -919,3 +919,30 @@ pub async fn picked_episodes_clear(driver: &mut TestDriver, _: &mut Track) -> Re
     );
     Ok(())
 }
+
+/// Expanded phone action menus share icon and label columns.
+pub async fn phone_action_rows_align(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_show(driver).await?;
+    driver.set_window_size(400, 850).await?;
+    for title in ["Actions", "Season actions"] {
+        driver
+            .find_one_by(&format!("button[title='{title}']"))
+            .await?
+            .click()
+            .await?;
+    }
+    for selector in [
+        "#page > .toolbar .toolbar-dropdown > button",
+        ".detail-content .toolbar-dropdown > :is(button, a)",
+    ] {
+        super::navigation::ensure_menu_rows_align(driver, selector).await?;
+    }
+    driver.snapshot("phone-show-actions").await?;
+    driver
+        .find_first("[title='More actions']")
+        .await?
+        .click()
+        .await?;
+    super::navigation::ensure_menu_rows_align(driver, ".menu-list > button").await?;
+    driver.snapshot("phone-episode-actions").await
+}

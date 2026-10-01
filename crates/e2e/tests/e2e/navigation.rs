@@ -302,3 +302,58 @@ pub async fn errors_show_as_a_card(driver: &mut TestDriver, track: &mut Track) -
         .await?;
     driver.wait_count("#error", 0).await
 }
+
+/// Phone navigation keeps short and long labels in the same columns.
+pub async fn phone_menu_rows_align(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    driver.set_window_size(400, 850).await?;
+    driver
+        .find_one_by("[title='Navigation']")
+        .await?
+        .click()
+        .await?;
+    ensure_menu_rows_align(driver, "#toolbar .toolbar-item").await?;
+    driver.snapshot("phone-navigation").await?;
+    driver
+        .find_one_by("#toolbar [title='Media']")
+        .await?
+        .click()
+        .await?;
+    wait_heading(driver, "Media").await?;
+    ensure!(
+        driver
+            .find_one_by("[title='Navigation']")
+            .await?
+            .attr("aria-expanded")
+            .await?
+            == "false"
+    );
+    driver.set_window_size(1250, 900).await?;
+    driver.snapshot("desktop-navigation").await
+}
+
+pub(crate) async fn ensure_menu_rows_align(driver: &TestDriver, selector: &str) -> Result<()> {
+    let positions = driver
+        .webdriver()
+        .execute(
+            "return [...document.querySelectorAll(arguments[0])].map(row => {
+            const icon = row.querySelector(':scope > .icon');
+            const label = row.querySelector(':scope > span:not(.icon)');
+            return [icon.getBoundingClientRect().left, label.getBoundingClientRect().left];
+        });",
+            vec![selector.into()],
+        )
+        .await?
+        .convert::<Vec<[f64; 2]>>()?;
+    ensure!(
+        positions.len() > 1,
+        "no menu rows to compare for {selector}"
+    );
+    for position in &positions[1..] {
+        ensure!(
+            (position[0] - positions[0][0]).abs() < 1.0
+                && (position[1] - positions[0][1]).abs() < 1.0,
+            "menu icons and labels do not line up: {positions:?}"
+        );
+    }
+    Ok(())
+}
