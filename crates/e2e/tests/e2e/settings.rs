@@ -177,6 +177,61 @@ pub async fn configures_cloudflare_access(driver: &mut TestDriver, _: &mut Track
         .await
 }
 
+/// Trusting the email header without verifying the token is flagged as a risk.
+pub async fn warns_about_trusting_only_the_email_header(
+    driver: &mut TestDriver,
+    _: &mut Track,
+) -> Result<()> {
+    open_settings(driver).await?;
+    open_page(driver, "Cloudflare Access").await?;
+
+    let warning = async || -> Result<Option<String>> {
+        match driver
+            .find_all(By::Css(".settings .field-error"))
+            .await?
+            .first()
+        {
+            Some(warning) => Ok(Some(warning.text().await?)),
+            None => Ok(None),
+        }
+    };
+
+    let switch = async |title: &str, on: bool| -> Result<()> {
+        let selector = format!("[role='switch'][title='{title}']");
+        driver.find_one_by(&selector).await?.click().await?;
+        let want = if on { "true" } else { "false" };
+
+        driver
+            .wait_until("the switch to flip", async || {
+                Ok(driver
+                    .find_one_by(&selector)
+                    .await?
+                    .attr("aria-checked")
+                    .await?
+                    == want)
+            })
+            .await
+    };
+
+    switch("Sign in through Access", true).await?;
+    switch("Trust email header", true).await?;
+    ensure!(warning().await?.is_none(), "warned with the token verified");
+
+    switch("Verify token", false).await?;
+    driver
+        .wait_until("the warning to show", async || {
+            Ok(warning()
+                .await?
+                .is_some_and(|text| text.contains("sign in as any user")))
+        })
+        .await?;
+
+    switch("Verify token", true).await?;
+    driver
+        .wait_until("the warning to go", async || Ok(warning().await?.is_none()))
+        .await
+}
+
 /// Every setting is a labelled row, and across all sections the controls
 /// start on one line.
 pub async fn settings_are_labelled_rows(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
