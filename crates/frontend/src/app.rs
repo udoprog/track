@@ -62,6 +62,8 @@ pub(super) struct App {
     onclearerror: Callback<()>,
     /// Whether the session is being checked after losing the websocket.
     checking_session: bool,
+    /// Keys the page, so a resync remounts it and it reloads everything.
+    generation: u32,
 }
 
 pub(super) enum Msg {
@@ -166,6 +168,7 @@ impl Component for App {
             _tick_minute_interval,
             onclearerror,
             checking_session: false,
+            generation: 0,
         }
     }
 
@@ -209,7 +212,7 @@ impl Component for App {
                         <Toolbar site_title={self.site_title.clone()} connected={self.ws_state.is_open()} section={Section::of(&self.router_state.route)} login={ctx.props().user.login.clone()} admin={ctx.props().user.role == api::UserRole::Admin} />
 
                         <main id="content">
-                            <div id="page">
+                            <div id="page" key={self.generation}>
                                 { self.view_page(ctx) }
                             </div>
 
@@ -246,29 +249,33 @@ impl Component for App {
 }
 
 impl App {
-    fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
+    fn load(&mut self, ctx: &Context<Self>) {
+        if self.channel.id() == ws::ChannelId::NONE {
+            return;
+        }
+
         let link = ctx.link();
 
+        self._config_req = self
+            .channel
+            .request()
+            .body(api::GetPreferencesRequest)
+            .on_packet(link.callback(Msg::PreferencesLoaded))
+            .send();
+
+        self._top_languages_req = self
+            .channel
+            .request()
+            .body(api::GetTopLanguagesRequest)
+            .on_packet(link.callback(Msg::TopLanguagesLoaded))
+            .send();
+    }
+
+    fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
             Msg::Channel(result) => {
                 self.channel = result?;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._config_req = self
-                        .channel
-                        .request()
-                        .body(api::GetPreferencesRequest)
-                        .on_packet(link.callback(Msg::PreferencesLoaded))
-                        .send();
-
-                    self._top_languages_req = self
-                        .channel
-                        .request()
-                        .body(api::GetTopLanguagesRequest)
-                        .on_packet(link.callback(Msg::TopLanguagesLoaded))
-                        .send();
-                }
-
+                self.load(ctx);
                 Ok(true)
             }
             Msg::WsState(state) => {
@@ -301,6 +308,11 @@ impl App {
                             self.top_languages = next;
                             return Ok(true);
                         }
+                    }
+                    api::AppEventKind::Resync => {
+                        self.generation = self.generation.wrapping_add(1);
+                        self.load(ctx);
+                        return Ok(true);
                     }
                     _ => {}
                 }

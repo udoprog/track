@@ -2598,8 +2598,6 @@ impl WsHandler {
     }
 }
 
-/// Rewrites the per-user parts of an event about shared data (tracked, pending,
-/// watched counts) for the user receiving it.
 /// Whether the user is an administrator now; a lookup failure counts as not.
 async fn is_admin(db: &Database, user: api::UserId) -> bool {
     match db.user_by_id(user).await {
@@ -2611,26 +2609,37 @@ async fn is_admin(db: &Database, user: api::UserId) -> bool {
     }
 }
 
+/// Rewrites the per-user parts of an event about shared data (tracked, pending,
+/// watched counts) for the user receiving it.
+///
+/// Returns whether the event may be sent: one whose entity is gone can only
+/// carry the sender's view of it, so it is not.
 pub(crate) async fn personalize(
     db: &Database,
     user: api::UserId,
     kind: &mut api::AppEventKind,
-) -> Result<()> {
+) -> Result<bool> {
     match kind {
         api::AppEventKind::ShowCreated { show } | api::AppEventKind::ShowChanged { show } => {
-            if let Some(mine) = db.show_by_id(Some(user), show.id).await? {
-                *show = mine;
-            }
+            let Some(mine) = db.show_by_id(Some(user), show.id).await? else {
+                return Ok(false);
+            };
+
+            *show = mine;
         }
         api::AppEventKind::MovieCreated { movie } | api::AppEventKind::MovieChanged { movie } => {
-            if let Some(mine) = db.movie_by_id(Some(user), movie.id).await? {
-                *movie = mine;
-            }
+            let Some(mine) = db.movie_by_id(Some(user), movie.id).await? else {
+                return Ok(false);
+            };
+
+            *movie = mine;
         }
         api::AppEventKind::EpisodeChanged { episode } => {
-            if let Some(mine) = db.episode_by_id(Some(user), episode.id).await? {
-                *episode = mine;
-            }
+            let Some(mine) = db.episode_by_id(Some(user), episode.id).await? else {
+                return Ok(false);
+            };
+
+            *episode = mine;
         }
         api::AppEventKind::SeasonsChanged { show_id, seasons } if !seasons.is_empty() => {
             *seasons = db.seasons(Some(user), *show_id).await?;
@@ -2638,7 +2647,14 @@ pub(crate) async fn personalize(
         _ => {}
     }
 
-    Ok(())
+    Ok(true)
+}
+
+fn resync() -> api::AppEvent {
+    api::AppEvent {
+        channel: musli_web::api::ChannelId::NONE,
+        kind: api::AppEventKind::Resync,
+    }
 }
 
 /// How often an open socket checks that its session is still valid.
@@ -2704,7 +2720,18 @@ pub(super) async fn ws_handler(
                 m = subscribe.recv() => {
                     let msg = match m {
                         Ok(msg) => msg,
-                        Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                        Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                            tracing::warn!(skipped, "Socket fell behind on broadcasts, resyncing it");
+                            // The client reloads everything, so the backlog is moot.
+                            subscribe = subscribe.resubscribe();
+
+                            if let Err(error) = server.broadcast(resync()) {
+                                tracing::error!("Broadcast Error: {error}");
+                                break;
+                            }
+
+                            continue;
+                        }
                         Err(_) => break,
                     };
 
@@ -2717,8 +2744,15 @@ pub(super) async fn ws_handler(
 
                     let mut event = msg.event;
 
-                    if let Err(error) = personalize(&state.db, user.id, &mut event.kind).await {
-                        tracing::error!("Personalizing broadcast: {error:#}");
+                    // An event left unpersonalized may carry another user's
+                    // state, so it is never sent.
+                    match personalize(&state.db, user.id, &mut event.kind).await {
+                        Ok(true) => {}
+                        Ok(false) => continue,
+                        Err(error) => {
+                            tracing::error!("Personalizing broadcast, resyncing instead: {error:#}");
+                            event = resync();
+                        }
                     }
 
                     if let Err(error) = server.broadcast(event) {

@@ -26,6 +26,9 @@ use crate::web::{self, AppState};
 use crate::ws::RandomDelay;
 
 const READ_CONCURRENCY: usize = 16;
+/// Events a socket can fall behind by before it is told to resync; sized for
+/// bursts such as a sync of everything.
+const BROADCAST_CAPACITY: usize = 1024;
 /// Bounds every remote request, so one hung connection cannot stall the
 /// single-worker task queue.
 const HTTP_TIMEOUT: Duration = Duration::from_secs(60);
@@ -139,7 +142,7 @@ async fn run(
 
     let cache = ImageCache::new(cache_dir);
 
-    let (broadcast_tx, _) = broadcast::channel(64);
+    let (broadcast_tx, _) = broadcast::channel(BROADCAST_CAPACITY);
     let broadcast = Broadcaster::new(broadcast_tx);
 
     let queue = TaskQueue::new();

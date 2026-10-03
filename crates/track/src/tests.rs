@@ -919,7 +919,7 @@ async fn broadcasts_are_per_user() -> Result<()> {
     assert!(shared.reaches(alice, false) && shared.reaches(root, true));
 
     let mut kind = shared.event.kind;
-    crate::ws::personalize(db, alice, &mut kind).await?;
+    assert!(crate::ws::personalize(db, alice, &mut kind).await?);
     let api::AppEventKind::ShowChanged { show } = &kind else {
         panic!("expected a show change");
     };
@@ -944,6 +944,10 @@ async fn broadcasts_are_per_user() -> Result<()> {
         panic!("expected a show change");
     };
     assert_eq!(show.language, swedish);
+
+    // An event about a show that is gone can only carry the sender's view.
+    db.delete_show(show.id).await?;
+    assert!(!crate::ws::personalize(db, alice, &mut kind).await?);
 
     // The system configuration reaches administrators only.
     server.state.broadcast.emit_to_admins(

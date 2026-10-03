@@ -3580,6 +3580,8 @@ pub enum AppEventKind {
     TaskRemoved {
         task_id: TaskId,
     },
+    /// Events for this socket were lost, so its client reloads what it shows.
+    Resync,
 }
 
 api::define! {
