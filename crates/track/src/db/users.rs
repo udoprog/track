@@ -451,11 +451,10 @@ impl Database {
         hash: &str,
         keep: Option<&str>,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
         let hash = hash.to_owned();
         let keep = keep.map(str::to_owned);
 
-        let result = spawn_blocking(move || {
+        let result = self.transaction(move |s| {
             s.users_write
                 .set_password_hash
                 .execute((hash.as_str(), id))?;
@@ -465,7 +464,7 @@ impl Database {
             Ok(())
         });
 
-        result.await?
+        result.await
     }
 
     /// Stores a new session, pruning expired ones.
@@ -529,10 +528,9 @@ impl Database {
         user_id: UserId,
         expires_at: Timestamp,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
         let token = token.to_owned();
 
-        let result = spawn_blocking(move || {
+        let result = self.transaction(move |s| {
             s.users_write
                 .delete_pending_login_tokens
                 .execute((user_id,))?;
@@ -542,7 +540,7 @@ impl Database {
             Ok(())
         });
 
-        result.await?
+        result.await
     }
 
     #[tracing::instrument(skip(self))]
@@ -594,13 +592,12 @@ impl Database {
         session_id: &str,
         now: Timestamp,
     ) -> Result<Result<UserRecord, TokenError>> {
-        let mut s = self.inner.clone().exclusive().await?;
         let token = token.to_owned();
         let password_hash = password_hash.to_owned();
         let session_id = session_id.to_owned();
         let expires_at = Timestamp::from_jiff(auth::session_expiry(now.into_jiff()));
 
-        let result = spawn_blocking(move || {
+        let result = self.transaction(move |s| {
             let Some(row) = s.users.login_token.bind((token.as_str(),))?.first()? else {
                 return Ok(Err(TokenError::NotFound));
             };
@@ -633,7 +630,7 @@ impl Database {
             }))
         });
 
-        result.await?
+        result.await
     }
 
     /// The key that signs session cookies, generated and stored on first use.

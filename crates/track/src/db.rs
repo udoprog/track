@@ -4,6 +4,7 @@
 use core::ops::{Deref, DerefMut};
 use core::str;
 
+use std::panic::{self, AssertUnwindSafe};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -770,7 +771,7 @@ impl InnerEpisodes {
 
 #[derive(Statements)]
 #[sql(read_only)]
-struct InnerRead {
+pub(crate) struct InnerRead {
     #[sql(statements)]
     image: InnerImage,
     #[sql(statements)]
@@ -1305,11 +1306,16 @@ struct InnerRead {
 }
 
 #[derive(Statements)]
-struct InnerWrite {
+pub(crate) struct InnerWrite {
     #[sql(statements)]
     read: InnerRead,
     #[sql(statements)]
     users_write: users::Write,
+
+    #[sql = "BEGIN IMMEDIATE"]
+    begin_immediate: TypedStatement<(), ()>,
+    #[sql = "ROLLBACK"]
+    rollback: TypedStatement<(), ()>,
 
     // shows
     #[sql = "INSERT INTO shows (id, first_air)"]
@@ -1839,6 +1845,55 @@ impl InnerRead {
 }
 
 impl InnerWrite {
+    /// Run `f` inside `BEGIN IMMEDIATE` / `COMMIT`, rolling back when it fails
+    /// or panics so the connection is never left inside a transaction.
+    fn transaction<T>(&mut self, f: impl FnOnce(&mut Self) -> Result<T>) -> Result<T> {
+        self.begin_immediate.execute(())?;
+
+        let result = panic::catch_unwind(AssertUnwindSafe(|| f(self)));
+
+        let result = match result {
+            Ok(Ok(value)) => match self.commit.execute(()) {
+                Ok(()) => return Ok(value),
+                Err(e) => Err(e.into()),
+            },
+            Ok(Err(e)) => Err(e),
+            Err(payload) => {
+                _ = self.rollback.execute(());
+                panic::resume_unwind(payload);
+            }
+        };
+
+        // Fails only when SQLite already rolled the transaction back itself.
+        _ = self.rollback.execute(());
+        result
+    }
+
+    /// Delete the show's seasons not in `kept`, with their episodes.
+    pub(crate) fn prune_seasons(
+        &mut self,
+        show_id: ShowId,
+        kept: &HashSet<SeasonNumber>,
+    ) -> Result<Vec<SeasonNumber>> {
+        let mut removed = Vec::new();
+        let mut stmt = self.list_seasons.bind((None::<UserId>, show_id))?;
+
+        while let Some(r) = stmt.next()? {
+            if !kept.contains(&r.season) {
+                removed.push(r.season);
+            }
+        }
+
+        stmt.reset()?;
+
+        for &n in &removed {
+            self.delete_season_episodes.execute((show_id, n))?;
+            self.delete_season.execute((show_id, n))?;
+        }
+
+        Ok(removed)
+    }
+
     /// Store the user's preference for a show; the default removes the row.
     fn set_show_pref<T>(
         &mut self,
@@ -2109,6 +2164,17 @@ impl Database {
         })
     }
 
+    /// Run `f` on the write connection in one transaction (see
+    /// [`InnerWrite::transaction`]).
+    pub(crate) async fn transaction<T, F>(&self, f: F) -> Result<T>
+    where
+        F: FnOnce(&mut InnerWrite) -> Result<T> + Send + 'static,
+        T: Send + 'static,
+    {
+        let mut s = self.inner.clone().exclusive().await?;
+        spawn_blocking(move || s.transaction(f)).await?
+    }
+
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn create_show(
         &self,
@@ -2119,9 +2185,8 @@ impl Database {
     ) -> Result<()> {
         let title = title.to_owned();
         let overview = overview.to_owned();
-        let mut s = self.inner.clone().exclusive().await?;
 
-        let result = spawn_blocking(move || {
+        let result = self.transaction(move |s| {
             s.insert_show.execute((id, first_air.as_ref()))?;
 
             // Store the placeholder title/overview under the default locale so the
@@ -2145,7 +2210,7 @@ impl Database {
             Ok(())
         });
 
-        result.await?
+        result.await
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -2491,16 +2556,14 @@ impl Database {
     /// Set remote priority to match the given order (first = highest priority).
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn reorder_show_remotes(&self, remote_ids: Vec<RemoteId>) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.transaction(move |s| {
             for (idx, id) in remote_ids.iter().enumerate() {
                 s.set_show_remote_priority.execute((idx as i32, *id))?;
             }
             Ok(())
         });
 
-        result.await?
+        result.await
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -2673,28 +2736,9 @@ impl Database {
         show_id: ShowId,
         kept: &HashSet<SeasonNumber>,
     ) -> Result<Vec<SeasonNumber>> {
-        let existing = self.seasons(None, show_id).await?;
-        let mut removed = Vec::new();
-
-        for season in existing {
-            if kept.contains(&season.season) {
-                continue;
-            }
-
-            let n = season.season;
-            let mut s = self.inner.clone().exclusive().await?;
-
-            let result = spawn_blocking(move || {
-                s.delete_season_episodes.execute((show_id, n))?;
-                s.delete_season.execute((show_id, n))?;
-                Ok::<_, anyhow::Error>(())
-            });
-
-            result.await??;
-            removed.push(season.season);
-        }
-
-        Ok(removed)
+        let kept = kept.clone();
+        self.transaction(move |s| s.prune_seasons(show_id, &kept))
+            .await
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -2705,9 +2749,8 @@ impl Database {
         kept: &HashSet<u32>,
     ) -> Result<()> {
         let kept = kept.clone();
-        let mut s = self.inner.clone().exclusive().await?;
 
-        let result = spawn_blocking(move || {
+        let result = self.transaction(move |s| {
             let mut to_delete = Vec::new();
 
             let mut stmt = s.episode_numbers_for_season.bind((show_id, season))?;
@@ -2728,7 +2771,7 @@ impl Database {
             Ok(())
         });
 
-        result.await?
+        result.await
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -3048,9 +3091,7 @@ impl Database {
         mark_time: MarkTime,
         now: Timestamp,
     ) -> Result<Option<EpisodeId>> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.transaction(move |s| {
             let s = &mut *s;
             let read = &mut s.read;
 
@@ -3081,7 +3122,7 @@ impl Database {
             Ok(last.map(|(_, id)| id))
         });
 
-        result.await?
+        result.await
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -3169,9 +3210,8 @@ impl Database {
 
         let kept = kept.clone();
         let ran = ran.clone();
-        let mut s = self.inner.clone().exclusive().await?;
 
-        let result = spawn_blocking(move || {
+        let result = self.transaction(move |s| {
             let mut to_delete = Vec::new();
 
             let mut stmt = s.list_episode_releases_for_show.bind((show_id,))?;
@@ -3201,7 +3241,7 @@ impl Database {
             Ok(())
         });
 
-        result.await?
+        result.await
     }
 
     /// The single-episode counterpart of [`Self::prune_episode_releases`], with the
@@ -3227,9 +3267,8 @@ impl Database {
 
         let kept = kept.clone();
         let ran = ran.clone();
-        let mut s = self.inner.clone().exclusive().await?;
 
-        let result = spawn_blocking(move || {
+        let result = self.transaction(move |s| {
             let mut to_delete = Vec::new();
 
             let mut stmt = s.list_episode_releases.bind((episode_id,))?;
@@ -3259,7 +3298,7 @@ impl Database {
             Ok(())
         });
 
-        result.await?
+        result.await
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -3299,9 +3338,7 @@ impl Database {
         let priority = api::air_date_sources_by_priority(&show.remotes, &config);
         let filters = show.air_date_filters.unwrap_or(default_filters);
 
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.transaction(move |s| {
             // No eligible source: drop every air date so excluded dates are no
             // longer shown (stale releases may remain stored, ready to be restored
             // if a source is re-enabled and the show recomputed).
@@ -3339,7 +3376,7 @@ impl Database {
             Ok(())
         });
 
-        result.await?
+        result.await
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -3352,9 +3389,8 @@ impl Database {
     ) -> Result<()> {
         let title = title.to_owned();
         let overview = overview.to_owned();
-        let mut s = self.inner.clone().exclusive().await?;
 
-        let result = spawn_blocking(move || {
+        let result = self.transaction(move |s| {
             s.insert_movie.execute((id, release_date))?;
 
             // Store the placeholder title/overview under the default locale so the
@@ -3378,7 +3414,7 @@ impl Database {
             Ok(())
         });
 
-        result.await?
+        result.await
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -4063,16 +4099,14 @@ impl Database {
     /// Set remote priority to match the given order (first = highest priority).
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn reorder_movie_remotes(&self, remote_ids: Vec<RemoteId>) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.transaction(move |s| {
             for (idx, id) in remote_ids.iter().enumerate() {
                 s.set_movie_remote_priority.execute((idx as i32, *id))?;
             }
             Ok(())
         });
 
-        result.await?
+        result.await
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -4183,9 +4217,7 @@ impl Database {
         show_id: ShowId,
         strings: Vec<(api::Locale, api::StringKind, String)>,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.transaction(move |s| {
             s.clear_show_strings.execute((show_id,))?;
             for (language, kind, text) in strings {
                 s.insert_show_string
@@ -4194,7 +4226,7 @@ impl Database {
             Ok(())
         });
 
-        result.await?
+        result.await
     }
 
     #[tracing::instrument(skip(self, strings), ret(level = "trace"))]
@@ -4203,9 +4235,7 @@ impl Database {
         movie_id: MovieId,
         strings: Vec<(api::Locale, api::StringKind, String)>,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.transaction(move |s| {
             s.clear_movie_strings.execute((movie_id,))?;
             for (language, kind, text) in strings {
                 s.insert_movie_string
@@ -4214,7 +4244,7 @@ impl Database {
             Ok(())
         });
 
-        result.await?
+        result.await
     }
 
     /// Find-or-create the bare person for a `(source, remote_id)`, returning the
@@ -4227,9 +4257,8 @@ impl Database {
         remote_id: u32,
     ) -> Result<(PersonId, Option<Timestamp>)> {
         let value = RemoteValue::Int(remote_id);
-        let mut s = self.inner.clone().exclusive().await?;
 
-        let result = spawn_blocking(move || {
+        let result = self.transaction(move |s| {
             let existing = s.person_by_remote.bind((source, value.clone()))?.first()?;
 
             if let Some((id, last_synced)) = existing {
@@ -4256,7 +4285,7 @@ impl Database {
             }
         });
 
-        result.await?
+        result.await
     }
 
     /// Seed a placeholder person string (name) without overwriting an existing
@@ -4434,9 +4463,7 @@ impl Database {
         images: Vec<(f64, Image)>,
         now: Timestamp,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.transaction(move |s| {
             s.update_person
                 .execute((department, default_language, person_id))?;
 
@@ -4465,7 +4492,7 @@ impl Database {
             Ok(())
         });
 
-        result.await?
+        result.await
     }
 
     /// Mark a person synced without changing its data (unchanged / skipped path).
@@ -4601,16 +4628,14 @@ impl Database {
     /// Set person remote priority to match the given order (first = highest).
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn reorder_person_remotes(&self, remote_ids: Vec<RemoteId>) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.transaction(move |s| {
             for (idx, id) in remote_ids.iter().enumerate() {
                 s.set_person_remote_priority.execute((idx as i32, *id))?;
             }
             Ok(())
         });
 
-        result.await?
+        result.await
     }
 
     /// Delete a person and everything derived from it: its remotes (no owner FK, so
@@ -4618,15 +4643,13 @@ impl Database {
     /// and credits. The person re-seeds on the next credited show/movie sync.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn delete_person(&self, person_id: PersonId) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.transaction(move |s| {
             s.delete_person_remotes.execute((person_id,))?;
             s.delete_person.execute((person_id,))?;
             Ok(())
         });
 
-        result.await?
+        result.await
     }
 
     /// The people list view: name, profile, department and total credit count.
@@ -5030,9 +5053,7 @@ impl Database {
         episode_id: EpisodeId,
         strings: Vec<(api::Locale, api::StringKind, String)>,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.transaction(move |s| {
             s.clear_episode_strings.execute((episode_id,))?;
             for (language, kind, text) in strings {
                 s.insert_episode_string
@@ -5041,7 +5062,7 @@ impl Database {
             Ok(())
         });
 
-        result.await?
+        result.await
     }
 
     #[tracing::instrument(skip(self, strings), ret(level = "trace"))]
@@ -5050,9 +5071,7 @@ impl Database {
         season_id: SeasonId,
         strings: Vec<(api::Locale, api::StringKind, String)>,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.transaction(move |s| {
             s.clear_season_strings.execute((season_id,))?;
 
             for (language, kind, text) in strings {
@@ -5063,7 +5082,7 @@ impl Database {
             Ok(())
         });
 
-        result.await?
+        result.await
     }
 
     /// Read the translated strings stored for a show.
@@ -5495,9 +5514,7 @@ impl Database {
         kind: Option<ImageKind>,
         user_selected: bool,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.transaction(move |s| {
             let kinds = match kind {
                 Some(kind) => vec![kind],
                 None => {
@@ -5523,7 +5540,7 @@ impl Database {
             Ok(())
         });
 
-        result.await?
+        result.await
     }
 
     /// Same as [`pick_best_show_image`], for a movie.
@@ -5534,9 +5551,7 @@ impl Database {
         kind: Option<ImageKind>,
         user_selected: bool,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.transaction(move |s| {
             let kinds = match kind {
                 Some(kind) => vec![kind],
                 None => {
@@ -5566,7 +5581,7 @@ impl Database {
             Ok(())
         });
 
-        result.await?
+        result.await
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -6204,9 +6219,7 @@ impl Database {
         movie_id: MovieId,
         default_filters: api::FilterRules,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.transaction(move |s| {
             // Resolve the current release date, which also confirms the movie exists.
             let Some(current_release_date) = s.movie_released_by_id.bind((movie_id,))?.first()?
             else {
@@ -6274,7 +6287,7 @@ impl Database {
             Ok(())
         });
 
-        result.await?
+        result.await
     }
 
     /// Fill the pending slot for a show for every user tracking it, but ONLY for
@@ -6285,9 +6298,7 @@ impl Database {
         show_id: api::ShowId,
         now: Timestamp,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.transaction(move |s| {
             for user in s.trackers_of_show(show_id)? {
                 s.fill_pending_for_show(user, show_id, now)?;
             }
@@ -6295,7 +6306,7 @@ impl Database {
             Ok(())
         });
 
-        result.await?
+        result.await
     }
 
     /// Fill one user's pending slot for a show, as [`Self::fill_pending_for_show`]
@@ -7242,9 +7253,7 @@ impl Database {
     pub(crate) async fn save_config(&self, config: &Config) -> Result<()> {
         let config = config.clone();
 
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.transaction(move |s| {
             s.set_config("tvdb_api_key", config.tvdb_api_key)?;
 
             if let Some(ref pin) = config.tvdb_pin {
@@ -7297,7 +7306,7 @@ impl Database {
             Ok(())
         });
 
-        result.await?
+        result.await
     }
 
     /// The locales users who track the show, or picked a language for it, see
@@ -7375,9 +7384,8 @@ impl Database {
         preferences: &api::Preferences,
     ) -> Result<()> {
         let rows = preferences.encode();
-        let mut s = self.inner.clone().exclusive().await?;
 
-        let result = spawn_blocking(move || {
+        let result = self.transaction(move |s| {
             s.clear_user_config.execute((user,))?;
 
             for (key, value) in rows {
@@ -7387,7 +7395,7 @@ impl Database {
             Ok(())
         });
 
-        result.await?
+        result.await
     }
 
     /// The most-used per-show/per-movie custom language overrides, ordered

@@ -74,6 +74,52 @@ fn read_only_open_neither_creates_nor_migrates() -> Result<()> {
 
     Ok(())
 }
+/// A failed or panicking transaction leaves none of its writes behind, and the
+/// write connection is usable afterwards.
+#[tokio::test]
+async fn transaction_rolls_back_on_error_and_panic() -> Result<()> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("test.db");
+    let db = Database::open(&path, OpenMode::Normal, 1)?;
+
+    let failed = db
+        .transaction(|s| -> Result<()> {
+            s.set_config("first", "1")?;
+            s.set_config("second", "2")?;
+            anyhow::bail!("fails after both writes")
+        })
+        .await;
+
+    assert!(failed.is_err());
+    assert_eq!(
+        count(
+            &path,
+            "SELECT COUNT(*) FROM config WHERE key IN ('first', 'second')"
+        )?,
+        0
+    );
+
+    let panicked = db
+        .transaction(|s| -> Result<()> {
+            s.set_config("first", "1")?;
+            panic!("panics after a write")
+        })
+        .await;
+
+    assert!(panicked.is_err());
+    assert_eq!(
+        count(&path, "SELECT COUNT(*) FROM config WHERE key = 'first'")?,
+        0
+    );
+
+    db.transaction(|s| s.set_config("first", "1")).await?;
+    assert_eq!(
+        count(&path, "SELECT COUNT(*) FROM config WHERE key = 'first'")?,
+        1
+    );
+    Ok(())
+}
+
 fn ms(millis: i64) -> Timestamp {
     Timestamp::from_jiff(jiff::Timestamp::from_millisecond(millis).unwrap())
 }
