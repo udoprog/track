@@ -6,6 +6,7 @@ use rust_embed::RustEmbed;
 
 #[derive(RustEmbed)]
 #[folder = "../../dist"]
+#[allow_missing = true]
 struct Asset;
 
 pub(super) async fn handler(uri: Uri) -> impl IntoResponse {
