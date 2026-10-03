@@ -3533,3 +3533,189 @@ mod tests {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod cache_tests {
+    use super::*;
+
+    fn at(ms: i64) -> api::Timestamp {
+        api::Timestamp::from_jiff(jiff::Timestamp::from_millisecond(ms).unwrap())
+    }
+
+    const NOW: i64 = 1_700_000_000_000;
+    const HOUR: i64 = 3_600_000;
+
+    fn error(key: &str, kind: api::RemoteErrorKind, age_ms: i64) -> api::RemoteError {
+        api::RemoteError {
+            key: key.to_owned(),
+            message: "failed".to_owned(),
+            kind,
+            at: at(NOW - age_ms),
+        }
+    }
+
+    fn kinds(kinds: &[SyncKind]) -> SyncKindSet {
+        let mut set = SyncKindSet::empty();
+
+        for kind in kinds {
+            set.insert(*kind);
+        }
+
+        set
+    }
+
+    fn cache(etag: &str, covered: &[SyncKind], errors: Vec<api::RemoteError>) -> api::RemoteCache {
+        api::RemoteCache {
+            etag: Some(etag.to_owned()),
+            last_updated: None,
+            kinds: kinds(covered),
+            errors,
+        }
+    }
+
+    #[test]
+    fn usable_cache_requires_skip_kinds_and_no_expired_errors() {
+        let now = at(NOW);
+        let base = kinds(&[SyncKind::Base]);
+
+        let covering = cache("a", &[SyncKind::Base, SyncKind::Dates], Vec::new());
+        assert!(usable_cache(&covering, base, true, now));
+        assert!(!usable_cache(&covering, base, false, now));
+
+        // An air-date-only validator must not short-circuit a Base fetch.
+        let dates_only = cache("a", &[SyncKind::Dates], Vec::new());
+        assert!(!usable_cache(&dates_only, base, true, now));
+        assert!(usable_cache(&dates_only, SyncKindSet::empty(), true, now));
+
+        // A live error keeps short-circuiting; an expired one forces the full fetch.
+        let live = cache(
+            "a",
+            &[SyncKind::Base],
+            vec![error("k", api::RemoteErrorKind::Transient, HOUR - 1)],
+        );
+        assert!(usable_cache(&live, base, true, now));
+
+        let expired = cache(
+            "a",
+            &[SyncKind::Base],
+            vec![error("k", api::RemoteErrorKind::Transient, HOUR)],
+        );
+        assert!(!usable_cache(&expired, base, true, now));
+    }
+
+    #[test]
+    fn error_ttl_depends_on_kind() {
+        let missing = error("k", api::RemoteErrorKind::Missing, 2 * HOUR);
+        let transient = error("k", api::RemoteErrorKind::Transient, 2 * HOUR);
+
+        assert!(missing.is_live(at(NOW)));
+        assert!(!transient.is_live(at(NOW)));
+    }
+
+    #[test]
+    fn needed_kinds_maps_flags() {
+        assert_eq!(needed_kinds(false, false, false), SyncKindSet::empty());
+        assert_eq!(
+            needed_kinds(true, false, true),
+            kinds(&[SyncKind::Base, SyncKind::Credits])
+        );
+        assert_eq!(needed_kinds(false, true, false), kinds(&[SyncKind::Dates]));
+    }
+
+    #[test]
+    fn cache_json_omits_empty_cache() {
+        let empty = cache("", &[], Vec::new());
+        let empty = api::RemoteCache {
+            etag: None,
+            ..empty
+        };
+        assert_eq!(cache_json(&empty), None);
+
+        let with_etag = cache("abc", &[], Vec::new());
+        let json = cache_json(&with_etag).unwrap();
+        let back: api::RemoteCache = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, with_etag);
+    }
+
+    #[test]
+    fn suppressed_skips_live_errors_and_keeps_original_timestamp() {
+        let live = error("live", api::RemoteErrorKind::Missing, HOUR);
+        let stale = error("stale", api::RemoteErrorKind::Transient, 2 * HOUR);
+        let prior = cache("a", &[SyncKind::Base], vec![live.clone(), stale]);
+
+        let mut state = CacheState::new(Some(&prior), at(NOW));
+
+        assert!(state.suppressed("live"));
+        assert!(!state.suppressed("stale"));
+        assert!(!state.suppressed("unknown"));
+
+        // Only the live error is carried forward, with its original timestamp.
+        assert_eq!(state.errors, vec![live]);
+        assert!(state.degraded());
+    }
+
+    #[test]
+    fn finish_keeps_validator_only_as_persisted() {
+        let prior = cache("old", &[SyncKind::Base], Vec::new());
+        let earned = cache("new", &[SyncKind::Base, SyncKind::Credits], Vec::new());
+
+        let mut state = CacheState::new(Some(&prior), at(NOW));
+        assert!(!state.degraded());
+
+        // Nothing earned (a 304): the prior validator survives.
+        assert_eq!(state.finish(true), prior);
+
+        state.earn(earned.clone());
+        assert_eq!(state.finish(true), earned);
+
+        // Not persisted: the earned validator must not claim data that never landed.
+        assert_eq!(state.finish(false), prior);
+    }
+
+    #[test]
+    fn finish_carries_errors_and_defaults_without_validator() {
+        let mut state = CacheState::new(None, at(NOW));
+        state.record_missing("translations", "none");
+
+        let finished = state.finish(true);
+        assert_eq!(finished.etag, None);
+        assert_eq!(finished.kinds, SyncKindSet::empty());
+        assert_eq!(finished.errors.len(), 1);
+        assert_eq!(finished.errors[0].key, "translations");
+        assert_eq!(finished.errors[0].kind, api::RemoteErrorKind::Missing);
+        assert_eq!(finished.errors[0].at, at(NOW));
+        assert!(state.degraded());
+
+        // Errors survive even when the layer's data was not persisted.
+        assert_eq!(state.finish(false).errors.len(), 1);
+    }
+
+    #[test]
+    fn classify_error_treats_non_http_failures_as_transient() {
+        let error = anyhow::anyhow!("connection reset");
+        assert_eq!(classify_error(&error), api::RemoteErrorKind::Transient);
+    }
+
+    #[tokio::test]
+    async fn recover_records_failure_and_suppresses_retry() {
+        let mut state = CacheState::new(None, at(NOW));
+
+        let value = recover(&mut state, "k", async { Ok::<_, anyhow::Error>(7) }).await;
+        assert_eq!(value, Some(7));
+        assert!(!state.degraded());
+
+        let failed: Option<i32> =
+            recover(&mut state, "k", async { Err(anyhow::anyhow!("boom")) }).await;
+        assert_eq!(failed, None);
+        assert_eq!(state.errors.len(), 1);
+        assert_eq!(state.errors[0].key, "k");
+
+        // The next run sees the recorded failure and does not call at all.
+        let prior = state.finish(true);
+        let mut next = CacheState::new(Some(&prior), at(NOW + 1000));
+        let skipped: Option<i32> =
+            recover(&mut next, "k", async { panic!("must not be polled") }).await;
+        assert_eq!(skipped, None);
+        assert_eq!(next.errors.len(), 1);
+    }
+}

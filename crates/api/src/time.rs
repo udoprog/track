@@ -903,4 +903,109 @@ mod tests {
             "2 years ago"
         );
     }
+
+    fn zone(name: &str) -> TimeZone {
+        TimeZone::get(name).unwrap()
+    }
+
+    fn utc(s: &str) -> Timestamp {
+        Timestamp(s.parse().unwrap())
+    }
+
+    fn date(year: i16, month: i8, day: i8) -> Date {
+        Date::new(year, month, day).unwrap()
+    }
+
+    #[test]
+    fn human_date_depends_on_timezone() {
+        // 2026-06-15 23:30 UTC is already the 16th in Tokyo and still the 15th in New York (19:30).
+        let now = utc("2026-06-15T23:30:00Z");
+        let target = utc("2026-06-16T01:00:00Z");
+
+        let human = |tz: &str| target.human_date(TimeInfo::new(zone(tz), now)).kind;
+
+        assert_eq!(human("UTC"), HumanDateKind::Special(Special::Tomorrow));
+        assert_eq!(human("Asia/Tokyo"), HumanDateKind::Special(Special::Today));
+        assert_eq!(
+            human("America/New_York"),
+            HumanDateKind::Special(Special::Today)
+        );
+    }
+
+    #[test]
+    fn human_date_kinds_and_same_year() {
+        let tz = zone("Europe/Stockholm");
+        let now = utc("2026-12-31T22:30:00Z");
+        let info = TimeInfo::new(tz, now);
+
+        // 23:30 local on Dec 31; one hour later is already Jan 1 locally.
+        let today = now.human_date(info.clone());
+        assert_eq!(today.kind, HumanDateKind::Special(Special::Today));
+        assert!(today.same_year);
+
+        let tomorrow = utc("2026-12-31T23:30:00Z").human_date(info.clone());
+        assert_eq!(tomorrow.kind, HumanDateKind::Special(Special::Tomorrow));
+        assert!(!tomorrow.same_year);
+
+        let yesterday = utc("2026-12-30T12:00:00Z").human_date(info.clone());
+        assert_eq!(yesterday.kind, HumanDateKind::Special(Special::Yesterday));
+
+        let other = utc("2026-12-20T12:00:00Z").human_date(info);
+        assert_eq!(other.kind, HumanDateKind::Date(date(2026, 12, 20)));
+        assert!(other.same_year);
+    }
+
+    #[test]
+    fn to_timestamp_at_zoned_across_dst() {
+        let ny = zone("America/New_York");
+
+        // Ordinary winter (EST, -05:00) and summer (EDT, -04:00) days.
+        assert_eq!(
+            date(2026, 1, 15)
+                .to_timestamp_at_zoned(9, 30, ny.clone())
+                .unwrap(),
+            utc("2026-01-15T14:30:00Z")
+        );
+        assert_eq!(
+            date(2026, 7, 15)
+                .to_timestamp_at_zoned(9, 30, ny.clone())
+                .unwrap(),
+            utc("2026-07-15T13:30:00Z")
+        );
+
+        // Spring forward 2026-03-08: 02:30 does not exist and resolves forward
+        // by the length of the gap, to 03:30 EDT.
+        assert_eq!(
+            date(2026, 3, 8)
+                .to_timestamp_at_zoned(2, 30, ny.clone())
+                .unwrap(),
+            utc("2026-03-08T07:30:00Z")
+        );
+
+        // Fall back 2026-11-01: 01:30 happens twice and resolves to the first (EDT).
+        assert_eq!(
+            date(2026, 11, 1)
+                .to_timestamp_at_zoned(1, 30, ny.clone())
+                .unwrap(),
+            utc("2026-11-01T05:30:00Z")
+        );
+
+        // Midnight on the day clocks change is still before the transition.
+        assert_eq!(
+            date(2026, 3, 8).to_timestamp_at_midnight_zoned(ny).unwrap(),
+            utc("2026-03-08T05:00:00Z")
+        );
+        assert_eq!(
+            date(2026, 3, 8).to_timestamp_at_midnight_utc().unwrap(),
+            utc("2026-03-08T00:00:00Z")
+        );
+    }
+
+    #[test]
+    fn date_rejects_invalid_calendar_dates() {
+        assert!(Date::new(2026, 2, 29).is_none());
+        assert!(Date::new(2024, 2, 29).is_some());
+        assert!(Date::new(2026, 13, 1).is_none());
+        assert!(Date::new(2026, 4, 31).is_none());
+    }
 }

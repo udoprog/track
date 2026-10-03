@@ -1098,3 +1098,160 @@ fn invalid_stored_language_and_country_are_rejected() -> Result<()> {
     assert_eq!(read(&format!("SELECT {us}")).1?, Some(api::Country::US));
     Ok(())
 }
+
+#[test]
+fn date_round_trips_through_yyyymmdd_integer() -> Result<()> {
+    let c = OpenOptions::new()
+        .read_write()
+        .no_mutex()
+        .open_in_memory()?;
+
+    for (year, month, day, n) in [
+        (2026, 1, 5, 20260105),
+        (2024, 2, 29, 20240229),
+        (2026, 12, 31, 20261231),
+        (999, 7, 4, 9990704),
+    ] {
+        let date = api::Date::new(year, month, day).unwrap();
+
+        let mut q = c.prepare("SELECT ?")?;
+        q.bind((date,))?;
+        assert_eq!(q.next::<i64>()?, Some(n));
+
+        let mut q = c.prepare("SELECT ?")?;
+        q.bind(n)?;
+        assert_eq!(q.next::<api::Date>()?, Some(date));
+    }
+
+    for n in [20260230_i64, 20261301, 20260100, 0] {
+        let mut q = c.prepare("SELECT ?")?;
+        q.bind(n)?;
+        assert!(q.next::<api::Date>().is_err(), "{n} is not a valid date");
+    }
+
+    Ok(())
+}
+
+/// The schedule covers `[start-of-day, start-of-day + days)` in the caller's timezone,
+/// groups episodes per show per local day, merges movies into the same days, and only
+/// includes what the user tracks.
+#[tokio::test]
+async fn schedule_groups_by_local_day_and_respects_window() -> Result<()> {
+    let dir = tempfile::tempdir()?;
+    let db = Database::open(dir.path().join("test.db"), OpenMode::Bulk, 1)?;
+    let root = db.default_owner().await?;
+
+    let tracked = api::ShowId::new(1);
+    let untracked = api::ShowId::new(2);
+    db.create_show(tracked, "Tracked", None, "").await?;
+    db.create_show(untracked, "Untracked", None, "").await?;
+    db.set_show_tracked(root, tracked, true).await?;
+
+    let season = api::SeasonNumber::from_ordinal(1);
+    let tz = api::TimeZone::get("Asia/Tokyo").unwrap();
+    let local = |s: &str| -> Timestamp {
+        Timestamp::from_jiff(
+            s.parse::<jiff::civil::DateTime>()
+                .unwrap()
+                .to_zoned(jiff::tz::TimeZone::get("Asia/Tokyo").unwrap())
+                .unwrap()
+                .timestamp(),
+        )
+    };
+
+    // Today is 2026-06-15 in Tokyo (2026-06-14 22:00 UTC is already the 15th there).
+    let now = local("2026-06-15T07:00:00");
+    let info = api::TimeInfo::new(tz, now);
+
+    let episodes = [
+        // Before today's midnight: out of the window.
+        (1, tracked, 1, "2026-06-14T23:59:59"),
+        (2, tracked, 2, "2026-06-15T00:00:01"),
+        (3, tracked, 3, "2026-06-15T00:30:00"),
+        (4, tracked, 4, "2026-06-15T20:00:00"),
+        (5, tracked, 5, "2026-06-16T09:00:00"),
+        (6, tracked, 6, "2026-06-16T23:59:59"),
+        (7, tracked, 7, "2026-06-17T00:00:01"),
+        (8, untracked, 1, "2026-06-15T12:00:00"),
+    ];
+
+    for (id, show, number, aired) in episodes {
+        db.upsert_episode(
+            api::EpisodeId::new(id),
+            show,
+            season,
+            number,
+            None,
+            Some(local(aired)),
+        )
+        .await?;
+    }
+
+    let movie = api::MovieId::new(1);
+    db.create_movie(movie, "Movie", Some(local("2026-06-16T21:00:00")), "")
+        .await?;
+    db.set_movie_tracked(root, movie, true).await?;
+
+    let movie_only = api::MovieId::new(2);
+    db.create_movie(movie_only, "Later", Some(local("2026-06-16T22:00:00")), "")
+        .await?;
+    db.set_movie_tracked(root, movie_only, true).await?;
+
+    let untracked_movie = api::MovieId::new(3);
+    db.create_movie(
+        untracked_movie,
+        "Nope",
+        Some(local("2026-06-16T10:00:00")),
+        "",
+    )
+    .await?;
+
+    let days = db.schedule(root, 0, 2, info.clone()).await?;
+
+    let summary: Vec<_> = days
+        .iter()
+        .map(|d| {
+            (
+                d.date,
+                d.shows
+                    .iter()
+                    .map(|s| {
+                        (
+                            s.show_id,
+                            s.episodes.iter().map(|e| e.episode).collect::<Vec<_>>(),
+                        )
+                    })
+                    .collect::<Vec<_>>(),
+                d.movies.iter().map(|m| m.movie_id).collect::<Vec<_>>(),
+            )
+        })
+        .collect();
+
+    assert_eq!(
+        summary,
+        vec![
+            (
+                api::Date::new(2026, 6, 15).unwrap(),
+                vec![(tracked, vec![2, 3, 4])],
+                vec![]
+            ),
+            (
+                api::Date::new(2026, 6, 16).unwrap(),
+                vec![(tracked, vec![5, 6])],
+                vec![movie, movie_only]
+            ),
+        ]
+    );
+    assert_eq!(days[0].shows[0].show_title, "Tracked");
+
+    // A negative offset looks backwards, and a window with no entries is empty.
+    let past = db.schedule(root, -1, 1, info.clone()).await?;
+    assert_eq!(past.len(), 1);
+    assert_eq!(past[0].date, api::Date::new(2026, 6, 14).unwrap());
+    assert_eq!(past[0].shows[0].episodes[0].episode, 1);
+
+    assert!(db.schedule(root, 30, 3, info.clone()).await?.is_empty());
+    assert!(db.schedule(root, 0, 0, info).await?.is_empty());
+
+    Ok(())
+}
