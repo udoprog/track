@@ -1815,6 +1815,135 @@ impl DerefMut for InnerWrite {
 }
 
 impl InnerRead {
+    /// A show's remotes, in priority order.
+    fn show_remotes(&mut self, show_id: ShowId) -> Result<Vec<api::RemoteEntry>> {
+        let mut out = Vec::new();
+        let mut stmt = self.list_show_remotes.bind((show_id,))?;
+
+        while let Some(r) = stmt.next()? {
+            out.push(remote_entry(r));
+        }
+
+        stmt.reset()?;
+        Ok(out)
+    }
+
+    /// A movie's remotes, in priority order.
+    fn movie_remotes(&mut self, movie_id: MovieId) -> Result<Vec<api::RemoteEntry>> {
+        let mut out = Vec::new();
+        let mut stmt = self.list_movie_remotes.bind((movie_id,))?;
+
+        while let Some(r) = stmt.next()? {
+            out.push(remote_entry(r));
+        }
+
+        stmt.reset()?;
+        Ok(out)
+    }
+
+    /// Map of `(season, number)` to the existing episode id for a show, so a
+    /// re-sync can reuse stable ids rather than allocating new ones.
+    pub(crate) fn episode_ids(
+        &mut self,
+        show_id: ShowId,
+    ) -> Result<HashMap<(SeasonNumber, u32), EpisodeId>> {
+        let mut out = HashMap::new();
+
+        let mut stmt = self.list_episode_ids_for_show.bind((show_id,))?;
+
+        while let Some(r) = stmt.next()? {
+            out.insert((r.season, r.number), r.id);
+        }
+
+        stmt.reset()?;
+        Ok(out)
+    }
+
+    pub(crate) fn load_config(&mut self) -> Result<Config> {
+        let default = Config::default();
+
+        let tvdb_api_key = self
+            .get_config("tvdb_api_key")?
+            .unwrap_or_default()
+            .to_owned();
+
+        let tvdb_pin = self.get_config("tvdb_pin")?;
+
+        let tmdb_api_key = self
+            .get_config("tmdb_api_key")?
+            .unwrap_or_default()
+            .to_owned();
+
+        let auto_sync_enabled = self
+            .get_config("auto_sync_enabled")?
+            .map(|v| v == "true")
+            .unwrap_or(default.auto_sync_enabled);
+
+        let auto_sync_interval_hours = self
+            .get_config("auto_sync_interval_hours")?
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(default.auto_sync_interval_hours);
+
+        let page_title = self
+            .get_config("page_title")?
+            .unwrap_or_default()
+            .to_owned();
+
+        let release_filters = self
+            .get_config("release_filters")?
+            .as_deref()
+            .and_then(config::decode_filter_rules)
+            .unwrap_or(default.release_filters);
+
+        let air_date_filters = self
+            .get_config("air_date_filters")?
+            .as_deref()
+            .and_then(config::decode_filter_rules)
+            .unwrap_or(default.air_date_filters);
+
+        let sync_kinds = self
+            .get_config("sync_kinds")?
+            .as_deref()
+            .and_then(config::decode_sync_kinds)
+            .unwrap_or(default.sync_kinds);
+
+        let sync_languages = self
+            .get_config("sync_languages")?
+            .as_deref()
+            .and_then(config::decode_sync_languages)
+            .unwrap_or(default.sync_languages);
+
+        let cloudflare_access = api::CloudflareAccess {
+            enabled: self
+                .get_config("cloudflare_access_enabled")?
+                .is_some_and(|v| v == "true"),
+            team_domain: self
+                .get_config("cloudflare_team_domain")?
+                .unwrap_or_default(),
+            audience: self.get_config("cloudflare_audience")?.unwrap_or_default(),
+            trust_email_header: self
+                .get_config("cloudflare_trust_email_header")?
+                .is_some_and(|v| v == "true"),
+            verify_jwt: self
+                .get_config("cloudflare_verify_jwt")?
+                .is_none_or(|v| v == "true"),
+        };
+
+        Ok(Config {
+            tvdb_api_key,
+            tvdb_pin,
+            tmdb_api_key,
+            auto_sync_enabled,
+            auto_sync_interval_hours,
+            page_title,
+            release_filters,
+            air_date_filters,
+            sync_kinds,
+            sync_languages,
+            cloudflare_access,
+        })
+    }
+
     fn get_config(&mut self, key: &str) -> Result<Option<String>> {
         Ok(self.get_config.bind((key,))?.first()?)
     }
@@ -1892,6 +2021,782 @@ impl InnerWrite {
         }
 
         Ok(removed)
+    }
+
+    pub(crate) fn update_show(&mut self, id: ShowId, first_air: Option<Timestamp>) -> Result<()> {
+        self.update_show.execute((first_air.as_ref(), id))?;
+        Ok(())
+    }
+
+    pub(crate) fn set_show_default_language(
+        &mut self,
+        show_id: ShowId,
+        language: api::Locale,
+    ) -> Result<()> {
+        self.set_show_default_language
+            .execute((language, show_id))?;
+        Ok(())
+    }
+
+    /// Replace the owner's translated strings with `strings` (clear then insert),
+    /// so languages no longer produced by the sync don't linger.
+    pub(crate) fn replace_show_strings(
+        &mut self,
+        show_id: ShowId,
+        strings: Vec<(api::Locale, api::StringKind, String)>,
+    ) -> Result<()> {
+        self.clear_show_strings.execute((show_id,))?;
+        for (language, kind, text) in strings {
+            self.insert_show_string
+                .execute((show_id, language, kind, text))?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn clear_show_images(&mut self, show_id: ShowId) -> Result<()> {
+        self.delete_show_images.execute((show_id,))?;
+        Ok(())
+    }
+
+    pub(crate) fn upsert_show_image(
+        &mut self,
+        id: ImageId,
+        show_id: ShowId,
+        kind: ImageKind,
+        rank: u32,
+        image: &Image,
+        score: Option<f64>,
+    ) -> Result<()> {
+        self.insert_show_image.execute((
+            id,
+            show_id,
+            kind,
+            image.key().source(),
+            image.key().path(),
+            image.width(),
+            image.height(),
+            rank,
+            score,
+        ))?;
+
+        Ok(())
+    }
+
+    pub(crate) fn set_show_image_selection(
+        &mut self,
+        show_id: ShowId,
+        kind: ImageKind,
+        image_id: ImageId,
+        user_selected: bool,
+    ) -> Result<()> {
+        self.set_show_image_selection
+            .execute((show_id, kind, image_id, user_selected))?;
+        Ok(())
+    }
+
+    pub(crate) fn clear_episode_images(&mut self, show_id: ShowId) -> Result<()> {
+        self.delete_episode_images_for_show.execute((show_id,))?;
+        Ok(())
+    }
+
+    pub(crate) fn upsert_episode(
+        &mut self,
+        id: EpisodeId,
+        show_id: ShowId,
+        season: SeasonNumber,
+        number: u32,
+        absolute_number: Option<u32>,
+        aired: Option<Timestamp>,
+    ) -> Result<()> {
+        self.upsert_episode.execute((
+            id,
+            show_id,
+            season,
+            number,
+            absolute_number,
+            aired.as_ref(),
+        ))?;
+
+        Ok(())
+    }
+
+    pub(crate) fn replace_episode_strings(
+        &mut self,
+        episode_id: EpisodeId,
+        strings: Vec<(api::Locale, api::StringKind, String)>,
+    ) -> Result<()> {
+        self.clear_episode_strings.execute((episode_id,))?;
+        for (language, kind, text) in strings {
+            self.insert_episode_string
+                .execute((episode_id, language, kind, text))?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn upsert_episode_image(
+        &mut self,
+        id: ImageId,
+        episode_id: EpisodeId,
+        kind: ImageKind,
+        image: &Image,
+    ) -> Result<()> {
+        self.insert_episode_image.execute((
+            id,
+            episode_id,
+            kind,
+            image.key().source(),
+            image.key().path(),
+            image.width(),
+            image.height(),
+        ))?;
+        Ok(())
+    }
+
+    pub(crate) fn set_episode_image_selection(
+        &mut self,
+        episode_id: EpisodeId,
+        kind: ImageKind,
+        image_id: ImageId,
+    ) -> Result<()> {
+        self.set_episode_image_selection
+            .execute((episode_id, kind, image_id))?;
+        Ok(())
+    }
+
+    pub(crate) fn upsert_season(
+        &mut self,
+        show_id: ShowId,
+        number: SeasonNumber,
+        air_date: Option<Timestamp>,
+    ) -> Result<SeasonId> {
+        self.upsert_season
+            .execute((SeasonId::random(), show_id, number, air_date.as_ref()))?;
+        let id = self
+            .season_id_for
+            .bind((show_id, number))?
+            .first()?
+            .context("Season missing after upsert")?;
+        Ok(id)
+    }
+
+    pub(crate) fn replace_season_strings(
+        &mut self,
+        season_id: SeasonId,
+        strings: Vec<(api::Locale, api::StringKind, String)>,
+    ) -> Result<()> {
+        self.clear_season_strings.execute((season_id,))?;
+
+        for (language, kind, text) in strings {
+            self.insert_season_string
+                .execute((season_id, language, kind, text))?;
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn clear_season_images(&mut self, season_id: SeasonId) -> Result<()> {
+        self.delete_season_images.execute((season_id,))?;
+        Ok(())
+    }
+
+    pub(crate) fn upsert_season_image(
+        &mut self,
+        id: ImageId,
+        season_id: SeasonId,
+        kind: ImageKind,
+        image: &api::Image,
+    ) -> Result<()> {
+        self.insert_season_image.execute((
+            id,
+            season_id,
+            kind,
+            image.key().source(),
+            image.key().path(),
+            image.width(),
+            image.height(),
+            0u32,
+        ))?;
+
+        Ok(())
+    }
+
+    pub(crate) fn set_season_image_selection(
+        &mut self,
+        season_id: SeasonId,
+        kind: ImageKind,
+        image_id: ImageId,
+    ) -> Result<()> {
+        self.set_season_image_selection
+            .execute((season_id, kind, image_id))?;
+        Ok(())
+    }
+
+    pub(crate) fn prune_season_episodes(
+        &mut self,
+        show_id: ShowId,
+        season: SeasonNumber,
+        kept: &HashSet<u32>,
+    ) -> Result<()> {
+        let mut to_delete = Vec::new();
+
+        let mut stmt = self.episode_numbers_for_season.bind((show_id, season))?;
+
+        while let Some(number) = stmt.next()? {
+            if !kept.contains(&number) {
+                to_delete.push(number);
+            }
+        }
+
+        stmt.reset()?;
+
+        for number in to_delete {
+            self.delete_episode_by_place
+                .execute((show_id, season, number))?;
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn upsert_episode_release(
+        &mut self,
+        episode_id: EpisodeId,
+        source: RemoteSource,
+        country: Country,
+        network: &str,
+        timestamp: Timestamp,
+    ) -> Result<()> {
+        self.upsert_episode_release
+            .execute((episode_id, source, country, network, timestamp))?;
+        Ok(())
+    }
+
+    pub(crate) fn clear_show_credits(&mut self, show_id: ShowId) -> Result<()> {
+        self.clear_show_credits.execute((show_id,))?;
+        Ok(())
+    }
+
+    /// Find-or-create the bare person for a `(source, remote_id)`, returning the
+    /// stable [`PersonId`] and its `last_synced_at` (`None` when never synced, so
+    /// the caller can seed placeholder data). The person's own data is filled in
+    /// by [`sync_person`](crate::sync::sync_person).
+    pub(crate) fn upsert_person(
+        &mut self,
+        source: RemoteSource,
+        remote_id: u32,
+    ) -> Result<(PersonId, Option<Timestamp>)> {
+        let value = RemoteValue::Int(remote_id);
+        let existing = self
+            .person_by_remote
+            .bind((source, value.clone()))?
+            .first()?;
+
+        if let Some((id, last_synced)) = existing {
+            Ok((id, last_synced))
+        } else {
+            let id = PersonId::random();
+            self.insert_person.execute((id,))?;
+
+            // Seed the person's identity as its primary remote, mirroring how a
+            // show/movie's base remote is created.
+            let remote_id = RemoteId::random();
+            self.insert_person_remote.execute((
+                remote_id,
+                None::<String>,
+                id,
+                source,
+                value,
+                true,
+                0i32,
+                None::<api::SyncKindSet>,
+            ))?;
+            self.set_person_primary_remote.execute((remote_id, id))?;
+            Ok((id, None))
+        }
+    }
+
+    /// Seed a placeholder person string (name) without overwriting an existing
+    /// one - used from the credit sync so the cast grid is populated before the
+    /// person's own sync runs.
+    pub(crate) fn seed_person_string(
+        &mut self,
+        person_id: PersonId,
+        language: api::Locale,
+        kind: api::StringKind,
+        text: &str,
+    ) -> Result<()> {
+        self.insert_person_string
+            .execute((person_id, language, kind, text))?;
+        Ok(())
+    }
+
+    /// Seed a credit-created person's display language, used so the seeded name
+    /// resolves on the person page/list before the person's own sync sets the
+    /// authoritative value. A no-op once a real sync has set the language.
+    pub(crate) fn seed_person_default_language(
+        &mut self,
+        person_id: PersonId,
+        language: api::Locale,
+    ) -> Result<()> {
+        self.seed_person_default_language
+            .execute((language, person_id))?;
+        Ok(())
+    }
+
+    /// Seed a placeholder profile image (rank 0), ignored if the person already
+    /// has that image. Cleared and replaced by the person's own sync.
+    pub(crate) fn seed_person_image(
+        &mut self,
+        person_id: PersonId,
+        kind: ImageKind,
+        image: &Image,
+    ) -> Result<()> {
+        self.insert_person_image.execute((
+            ImageId::random(),
+            person_id,
+            kind,
+            image.key().source(),
+            image.key().path(),
+            image.width(),
+            image.height(),
+            0,
+            None::<f64>,
+        ))?;
+        Ok(())
+    }
+
+    pub(crate) fn insert_show_credit(
+        &mut self,
+        credit_id: CreditId,
+        show_id: ShowId,
+        person_id: PersonId,
+        kind: CreditKind,
+        department: Option<&str>,
+        job: Option<&str>,
+        order: Option<u32>,
+        episode_count: Option<u32>,
+    ) -> Result<()> {
+        self.insert_show_credit.execute((
+            credit_id,
+            show_id,
+            person_id,
+            kind,
+            department,
+            job,
+            order,
+            episode_count,
+        ))?;
+        Ok(())
+    }
+
+    pub(crate) fn insert_show_credit_string(
+        &mut self,
+        credit_id: CreditId,
+        language: api::Locale,
+        kind: api::StringKind,
+        text: &str,
+    ) -> Result<()> {
+        self.insert_show_credit_string
+            .execute((credit_id, language, kind, text))?;
+        Ok(())
+    }
+
+    /// Delete people no longer referenced by any credit (their profile images
+    /// cascade). Run after rewriting an owner's credits.
+    pub(crate) fn prune_orphan_people(&mut self) -> Result<()> {
+        self.prune_orphan_people.execute(())?;
+        Ok(())
+    }
+
+    /// Delete a show's images from a single source, leaving other sources'
+    /// images (and the show's overall selection rows) intact.
+    pub(crate) fn delete_show_images_for_source(
+        &mut self,
+        show_id: ShowId,
+        source: ImageSource,
+    ) -> Result<()> {
+        self.delete_show_images_for_source
+            .execute((show_id, source))?;
+        Ok(())
+    }
+
+    /// Drop every image attached to a single episode. The show-scoped
+    /// [`Self::clear_episode_images`] would wipe every *other* episode's screenshot
+    /// too, which a single-episode sync must not do.
+    pub(crate) fn clear_images_for_episode(&mut self, id: EpisodeId) -> Result<()> {
+        self.delete_images_for_episode.execute((id,))?;
+        Ok(())
+    }
+
+    pub(crate) fn set_movie_default_language(
+        &mut self,
+        movie_id: MovieId,
+        language: api::Locale,
+    ) -> Result<()> {
+        self.set_movie_default_language
+            .execute((language, movie_id))?;
+        Ok(())
+    }
+
+    pub(crate) fn replace_movie_strings(
+        &mut self,
+        movie_id: MovieId,
+        strings: Vec<(api::Locale, api::StringKind, String)>,
+    ) -> Result<()> {
+        self.clear_movie_strings.execute((movie_id,))?;
+        for (language, kind, text) in strings {
+            self.insert_movie_string
+                .execute((movie_id, language, kind, text))?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn clear_movie_images(&mut self, movie_id: MovieId) -> Result<()> {
+        self.delete_movie_images.execute((movie_id,))?;
+        Ok(())
+    }
+
+    pub(crate) fn upsert_movie_image(
+        &mut self,
+        id: ImageId,
+        movie_id: MovieId,
+        kind: ImageKind,
+        rank: u32,
+        image: &Image,
+        score: Option<f64>,
+    ) -> Result<()> {
+        self.insert_movie_image.execute((
+            id,
+            movie_id,
+            kind,
+            image.key().source(),
+            image.key().path(),
+            image.width(),
+            image.height(),
+            rank,
+            score,
+        ))?;
+        Ok(())
+    }
+
+    pub(crate) fn set_movie_image_selection(
+        &mut self,
+        movie_id: MovieId,
+        kind: ImageKind,
+        image_id: ImageId,
+        user_selected: bool,
+    ) -> Result<()> {
+        self.set_movie_image_selection
+            .execute((movie_id, kind, image_id, user_selected))?;
+        Ok(())
+    }
+
+    pub(crate) fn clear_movie_credits(&mut self, movie_id: MovieId) -> Result<()> {
+        self.clear_movie_credits.execute((movie_id,))?;
+        Ok(())
+    }
+
+    pub(crate) fn insert_movie_credit(
+        &mut self,
+        credit_id: CreditId,
+        movie_id: MovieId,
+        person_id: PersonId,
+        kind: CreditKind,
+        department: Option<&str>,
+        job: Option<&str>,
+        order: Option<u32>,
+        episode_count: Option<u32>,
+    ) -> Result<()> {
+        self.insert_movie_credit.execute((
+            credit_id,
+            movie_id,
+            person_id,
+            kind,
+            department,
+            job,
+            order,
+            episode_count,
+        ))?;
+        Ok(())
+    }
+
+    pub(crate) fn insert_movie_credit_string(
+        &mut self,
+        credit_id: CreditId,
+        language: api::Locale,
+        kind: api::StringKind,
+        text: &str,
+    ) -> Result<()> {
+        self.insert_movie_credit_string
+            .execute((credit_id, language, kind, text))?;
+        Ok(())
+    }
+
+    pub(crate) fn upsert_movie_release(
+        &mut self,
+        movie_id: MovieId,
+        source: RemoteSource,
+        country: Country,
+        release_type: ReleaseType,
+        timestamp: &Timestamp,
+    ) -> Result<()> {
+        self.upsert_movie_release
+            .execute((movie_id, source, country, release_type, timestamp))?;
+
+        Ok(())
+    }
+    /// The next free rank per kind for a show's images (current max + 1), so
+    /// freshly merged images append after the ones already stored.
+    pub(crate) fn next_show_image_ranks(
+        &mut self,
+        show_id: ShowId,
+    ) -> Result<HashMap<ImageKind, u32>> {
+        let mut out = HashMap::new();
+        let mut stmt = self.show_image_max_ranks.bind((show_id,))?;
+
+        while let Some(r) = stmt.next()? {
+            out.insert(r.kind, r.rank + 1);
+        }
+
+        stmt.reset()?;
+        Ok(out)
+    }
+
+    /// The kinds a show currently has a selected image for.
+    pub(crate) fn show_selected_image_kinds(
+        &mut self,
+        show_id: ShowId,
+    ) -> Result<HashSet<ImageKind>> {
+        let mut out = HashSet::new();
+        let mut stmt = self.show_selected_image_kinds.bind((show_id,))?;
+
+        while let Some(kind) = stmt.next()? {
+            out.insert(kind);
+        }
+
+        stmt.reset()?;
+        Ok(out)
+    }
+
+    /// Same as [`user_selected_show_image_keys`], for a movie.
+    pub(crate) fn user_selected_movie_image_keys(
+        &mut self,
+        movie_id: MovieId,
+    ) -> Result<HashMap<ImageKind, ImageKey>> {
+        let mut out = HashMap::new();
+        let mut stmt = self.user_selected_movie_images.bind((movie_id,))?;
+
+        while let Some(r) = stmt.next()? {
+            out.insert(r.kind, ImageKey::new(r.source, &r.path));
+        }
+
+        stmt.reset()?;
+        Ok(out)
+    }
+
+    /// Kind + key of the show's user-chosen selections, so a sync that clears
+    /// and rebuilds image rows can re-attach them.
+    pub(crate) fn user_selected_show_image_keys(
+        &mut self,
+        show_id: ShowId,
+    ) -> Result<HashMap<ImageKind, ImageKey>> {
+        let mut out = HashMap::new();
+        let mut stmt = self.user_selected_show_images.bind((show_id,))?;
+
+        while let Some(r) = stmt.next()? {
+            out.insert(r.kind, ImageKey::new(r.source, &r.path));
+        }
+
+        stmt.reset()?;
+        Ok(out)
+    }
+
+    pub(crate) fn add_show_remote(
+        &mut self,
+        show_id: ShowId,
+        slug: Option<&str>,
+        remote: &Remote,
+    ) -> Result<()> {
+        let config = self.load_config()?;
+        let priority = default_remote_priority(*remote.source(), &config);
+
+        self.insert_show_remote.execute((
+            RemoteId::random(),
+            slug,
+            show_id,
+            remote.source(),
+            remote.value(),
+            true,
+            priority,
+            // NULL = inherit the global per-source sync-kinds default.
+            None::<api::SyncKindSet>,
+        ))?;
+        Ok(())
+    }
+
+    pub(crate) fn add_movie_remote(
+        &mut self,
+        movie_id: MovieId,
+        slug: Option<&str>,
+        remote: &Remote,
+    ) -> Result<()> {
+        let config = self.load_config()?;
+        let priority = default_remote_priority(*remote.source(), &config);
+
+        self.insert_movie_remote.execute((
+            RemoteId::random(),
+            slug,
+            movie_id,
+            remote.source(),
+            remote.value(),
+            true,
+            priority,
+            // NULL = inherit the global per-source sync-kinds default.
+            None::<api::SyncKindSet>,
+        ))?;
+        Ok(())
+    }
+
+    /// Drop stored releases that are no longer current. A release is retained only
+    /// while its source is an *eligible* air-date source (an enabled remote
+    /// configured to contribute air dates): such a source that ran this sync keeps
+    /// the releases it just reported (`kept`) and loses any stale ones, while one
+    /// that didn't run keeps all of its releases so a transient fetch failure
+    /// doesn't wipe them. Releases from any other source — disabled, or `Unknown`
+    /// (e.g. the legacy air-date backfill) — can never be contributed again and are
+    /// always pruned. `ran` is the set of sources whose air-date layer ran this
+    /// sync; `kept` is the `(episode_id, source, country, network)` tuples just
+    /// upserted.
+    pub(crate) fn prune_episode_releases(
+        &mut self,
+        show_id: ShowId,
+        kept: &HashSet<(EpisodeId, RemoteSource, Country, String)>,
+        ran: &HashSet<RemoteSource>,
+    ) -> Result<()> {
+        let config = self.load_config()?;
+        let eligible: HashSet<RemoteSource> =
+            api::air_date_sources_by_priority(&self.show_remotes(show_id)?, &config)
+                .into_iter()
+                .collect();
+
+        let mut to_delete = Vec::new();
+
+        let mut stmt = self.list_episode_releases_for_show.bind((show_id,))?;
+
+        while let Some(r) = stmt.next()? {
+            // An eligible source that didn't run this sync keeps its releases (a
+            // transient fetch failure); every other source is pruned down to what
+            // it just reported, so disabled and `Unknown` sources are dropped.
+            if eligible.contains(&r.source) && !ran.contains(&r.source) {
+                continue;
+            }
+
+            let key = (r.episode_id, r.source, r.country, r.network);
+
+            if !kept.contains(&key) {
+                to_delete.push(key);
+            }
+        }
+
+        stmt.reset()?;
+
+        for (episode_id, source, country, network) in to_delete {
+            self.delete_episode_release
+                .execute((episode_id, source, country, network))?;
+        }
+
+        Ok(())
+    }
+
+    /// The single-episode counterpart of [`Self::prune_episode_releases`], with the
+    /// same eligibility rule. Scoping matters: the show-wide version walks every
+    /// episode of the show, so using it after a single-episode sync would delete
+    /// every *other* episode's releases from the sources that just ran.
+    pub(crate) fn prune_episode_releases_for_episode(
+        &mut self,
+        show_id: ShowId,
+        episode_id: EpisodeId,
+        kept: &HashSet<(RemoteSource, Country, String)>,
+        ran: &HashSet<RemoteSource>,
+    ) -> Result<()> {
+        let config = self.load_config()?;
+        let eligible: HashSet<RemoteSource> =
+            api::air_date_sources_by_priority(&self.show_remotes(show_id)?, &config)
+                .into_iter()
+                .collect();
+
+        let mut to_delete = Vec::new();
+
+        let mut stmt = self.list_episode_releases.bind((episode_id,))?;
+
+        while let Some((source, country, network, _)) = stmt.next()? {
+            // An eligible source that didn't run keeps its releases (a transient
+            // fetch failure); every other source is pruned down to what it just
+            // reported.
+            if eligible.contains(&source) && !ran.contains(&source) {
+                continue;
+            }
+
+            let key = (source, country, network);
+
+            if !kept.contains(&key) {
+                to_delete.push(key);
+            }
+        }
+
+        stmt.reset()?;
+
+        for (source, country, network) in to_delete {
+            self.delete_episode_release
+                .execute((episode_id, source, country, network))?;
+        }
+
+        Ok(())
+    }
+
+    /// Drop stored releases that a fresh sync no longer reports. `kept` is the set
+    /// of `(source, country, release_type)` keys just upserted for the movie; `ran`
+    /// is the set of sources whose release layer actually ran this sync. Mirrors
+    /// [`Self::prune_episode_releases`]: a release-eligible source that didn't run
+    /// keeps its stored releases (a transient fetch failure or a cache hit), so the
+    /// caller can prune safely even when only some sources ran.
+    pub(crate) fn prune_movie_releases(
+        &mut self,
+        movie_id: MovieId,
+        kept: &HashSet<(RemoteSource, Country, ReleaseType)>,
+        ran: &HashSet<RemoteSource>,
+    ) -> Result<()> {
+        let config = self.load_config()?;
+        let eligible: HashSet<RemoteSource> =
+            api::air_date_sources_by_priority(&self.movie_remotes(movie_id)?, &config)
+                .into_iter()
+                .collect();
+
+        let mut to_delete = Vec::new();
+
+        let mut stmt = self.list_movie_releases.bind((movie_id,))?;
+
+        while let Some(r) = stmt.next()? {
+            // An eligible source that didn't run this sync keeps its releases;
+            // every other source is pruned down to what it just reported.
+            if eligible.contains(&r.source) && !ran.contains(&r.source) {
+                continue;
+            }
+
+            let key = (r.source, r.country, r.release_type);
+
+            if !kept.contains(&key) {
+                to_delete.push(key);
+            }
+        }
+
+        stmt.reset()?;
+
+        for (source, country, release_type) in to_delete {
+            self.delete_movie_release
+                .execute((movie_id, source, country, release_type))?;
+        }
+
+        Ok(())
     }
 
     /// Store the user's preference for a show; the default removes the row.
@@ -2175,6 +3080,22 @@ impl Database {
         spawn_blocking(move || s.transaction(f)).await?
     }
 
+    #[cfg(test)]
+    pub(crate) async fn upsert_episode(
+        &self,
+        id: EpisodeId,
+        show_id: ShowId,
+        season: SeasonNumber,
+        number: u32,
+        absolute_number: Option<u32>,
+        aired: Option<Timestamp>,
+    ) -> Result<()> {
+        self.transaction(move |s| {
+            s.upsert_episode(id, show_id, season, number, absolute_number, aired)
+        })
+        .await
+    }
+
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn create_show(
         &self,
@@ -2234,27 +3155,11 @@ impl Database {
         slug: Option<&str>,
         remote: &Remote,
     ) -> Result<()> {
-        let remote = remote.clone();
         let slug = slug.map(str::to_owned);
-        let priority = default_remote_priority(*remote.source(), &self.load_config().await?);
-        let mut s = self.inner.clone().exclusive().await?;
+        let remote = remote.clone();
 
-        let result = spawn_blocking(move || {
-            s.insert_show_remote.execute((
-                RemoteId::random(),
-                slug,
-                show_id,
-                remote.source(),
-                remote.value(),
-                true,
-                priority,
-                // NULL = inherit the global per-source sync-kinds default.
-                None::<api::SyncKindSet>,
-            ))
-        });
-
-        result.await??;
-        Ok(())
+        self.transaction(move |s| s.add_show_remote(show_id, slug.as_deref(), &remote))
+            .await
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -2404,21 +3309,7 @@ impl Database {
             let strings = s.translations.show(user, id, config)?;
             let mut show = show_from_row(r, strings);
 
-            let mut stmt = s.list_show_remotes.bind((id,))?;
-
-            while let Some(r) = stmt.next()? {
-                show.remotes.push(api::RemoteEntry {
-                    id: r.id,
-                    slug: r.slug,
-                    remote: Remote::new(r.source, r.value),
-                    enabled: r.enabled,
-                    priority: r.priority,
-                    sync_kinds: r.sync_kinds,
-                    cache: parse_remote_cache(r.cache),
-                });
-            }
-
-            stmt.reset()?;
+            show.remotes = s.show_remotes(id)?;
 
             let mut stmt = s.list_show_images.bind((id,))?;
 
@@ -2439,18 +3330,6 @@ impl Database {
             show.poster = s.image.image_for_show(show.id, ImageKind::Poster)?;
             show.banner = s.image.image_for_show(show.id, ImageKind::Banner)?;
             Ok(Some(show))
-        });
-
-        result.await?
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn update_show(&self, id: ShowId, first_air: Option<Timestamp>) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.update_show.execute((first_air.as_ref(), id))?;
-            Ok(())
         });
 
         result.await?
@@ -2598,88 +3477,6 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn upsert_season(
-        &self,
-        show_id: ShowId,
-        number: SeasonNumber,
-        air_date: Option<Timestamp>,
-    ) -> Result<SeasonId> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.upsert_season
-                .execute((SeasonId::random(), show_id, number, air_date.as_ref()))?;
-            let id = s
-                .season_id_for
-                .bind((show_id, number))?
-                .first()?
-                .context("Season missing after upsert")?;
-            Ok(id)
-        });
-
-        result.await?
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn upsert_season_image(
-        &self,
-        id: ImageId,
-        season_id: SeasonId,
-        kind: ImageKind,
-        image: &api::Image,
-    ) -> Result<()> {
-        let image = image.clone();
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.insert_season_image.execute((
-                id,
-                season_id,
-                kind,
-                image.key().source(),
-                image.key().path(),
-                image.width(),
-                image.height(),
-                0u32,
-            ))?;
-
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn set_season_image_selection(
-        &self,
-        season_id: SeasonId,
-        kind: ImageKind,
-        image_id: ImageId,
-    ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.set_season_image_selection
-                .execute((season_id, kind, image_id))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn clear_season_images(&self, season_id: SeasonId) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.delete_season_images.execute((season_id,))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn seasons(
         &self,
         user: Option<UserId>,
@@ -2739,92 +3536,6 @@ impl Database {
         let kept = kept.clone();
         self.transaction(move |s| s.prune_seasons(show_id, &kept))
             .await
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn prune_season_episodes(
-        &self,
-        show_id: ShowId,
-        season: SeasonNumber,
-        kept: &HashSet<u32>,
-    ) -> Result<()> {
-        let kept = kept.clone();
-
-        let result = self.transaction(move |s| {
-            let mut to_delete = Vec::new();
-
-            let mut stmt = s.episode_numbers_for_season.bind((show_id, season))?;
-
-            while let Some(number) = stmt.next()? {
-                if !kept.contains(&number) {
-                    to_delete.push(number);
-                }
-            }
-
-            stmt.reset()?;
-
-            for number in to_delete {
-                s.delete_episode_by_place
-                    .execute((show_id, season, number))?;
-            }
-
-            Ok(())
-        });
-
-        result.await
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn upsert_episode(
-        &self,
-        id: EpisodeId,
-        show_id: ShowId,
-        season: SeasonNumber,
-        number: u32,
-        absolute_number: Option<u32>,
-        aired: Option<Timestamp>,
-    ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.upsert_episode.execute((
-                id,
-                show_id,
-                season,
-                number,
-                absolute_number,
-                aired.as_ref(),
-            ))?;
-
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    /// Map of `(season, number)` to the existing episode id for a show, so a
-    /// re-sync can reuse stable ids rather than allocating new ones.
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn episode_ids(
-        &self,
-        show_id: ShowId,
-    ) -> Result<HashMap<(SeasonNumber, u32), EpisodeId>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
-            let mut out = HashMap::new();
-
-            let mut stmt = s.list_episode_ids_for_show.bind((show_id,))?;
-
-            while let Some(r) = stmt.next()? {
-                out.insert((r.season, r.number), r.id);
-            }
-
-            stmt.reset()?;
-            Ok(out)
-        });
-
-        result.await?
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -3068,20 +3779,6 @@ impl Database {
         result.await?
     }
 
-    /// Drop every image attached to a single episode. The show-scoped
-    /// [`Self::clear_episode_images`] would wipe every *other* episode's screenshot
-    /// too, which a single-episode sync must not do.
-    pub(crate) async fn clear_images_for_episode(&self, id: EpisodeId) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.delete_images_for_episode.execute((id,))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn mark_watched_remaining(
         &self,
@@ -3158,147 +3855,6 @@ impl Database {
         });
 
         result.await?
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn upsert_episode_release(
-        &self,
-        episode_id: EpisodeId,
-        source: RemoteSource,
-        country: Country,
-        network: &str,
-        timestamp: Timestamp,
-    ) -> Result<()> {
-        let network = network.to_owned();
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.upsert_episode_release
-                .execute((episode_id, source, country, network, timestamp))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    /// Drop stored releases that are no longer current. A release is retained only
-    /// while its source is an *eligible* air-date source (an enabled remote
-    /// configured to contribute air dates): such a source that ran this sync keeps
-    /// the releases it just reported (`kept`) and loses any stale ones, while one
-    /// that didn't run keeps all of its releases so a transient fetch failure
-    /// doesn't wipe them. Releases from any other source — disabled, or `Unknown`
-    /// (e.g. the legacy air-date backfill) — can never be contributed again and are
-    /// always pruned. `ran` is the set of sources whose air-date layer ran this
-    /// sync; `kept` is the `(episode_id, source, country, network)` tuples just
-    /// upserted.
-    #[tracing::instrument(skip(self, kept, ran), ret(level = "trace"))]
-    pub(crate) async fn prune_episode_releases(
-        &self,
-        show_id: ShowId,
-        kept: &HashSet<(EpisodeId, RemoteSource, Country, String)>,
-        ran: &HashSet<RemoteSource>,
-    ) -> Result<()> {
-        let Some(show) = self.show_by_id(None, show_id).await? else {
-            return Ok(());
-        };
-
-        let config = self.load_config().await?;
-        let eligible: HashSet<RemoteSource> =
-            api::air_date_sources_by_priority(&show.remotes, &config)
-                .into_iter()
-                .collect();
-
-        let kept = kept.clone();
-        let ran = ran.clone();
-
-        let result = self.transaction(move |s| {
-            let mut to_delete = Vec::new();
-
-            let mut stmt = s.list_episode_releases_for_show.bind((show_id,))?;
-
-            while let Some(r) = stmt.next()? {
-                // An eligible source that didn't run this sync keeps its releases (a
-                // transient fetch failure); every other source is pruned down to what
-                // it just reported, so disabled and `Unknown` sources are dropped.
-                if eligible.contains(&r.source) && !ran.contains(&r.source) {
-                    continue;
-                }
-
-                let key = (r.episode_id, r.source, r.country, r.network);
-
-                if !kept.contains(&key) {
-                    to_delete.push(key);
-                }
-            }
-
-            stmt.reset()?;
-
-            for (episode_id, source, country, network) in to_delete {
-                s.delete_episode_release
-                    .execute((episode_id, source, country, network))?;
-            }
-
-            Ok(())
-        });
-
-        result.await
-    }
-
-    /// The single-episode counterpart of [`Self::prune_episode_releases`], with the
-    /// same eligibility rule. Scoping matters: the show-wide version walks every
-    /// episode of the show, so using it after a single-episode sync would delete
-    /// every *other* episode's releases from the sources that just ran.
-    pub(crate) async fn prune_episode_releases_for_episode(
-        &self,
-        show_id: ShowId,
-        episode_id: EpisodeId,
-        kept: &HashSet<(RemoteSource, Country, String)>,
-        ran: &HashSet<RemoteSource>,
-    ) -> Result<()> {
-        let Some(show) = self.show_by_id(None, show_id).await? else {
-            return Ok(());
-        };
-
-        let config = self.load_config().await?;
-        let eligible: HashSet<RemoteSource> =
-            api::air_date_sources_by_priority(&show.remotes, &config)
-                .into_iter()
-                .collect();
-
-        let kept = kept.clone();
-        let ran = ran.clone();
-
-        let result = self.transaction(move |s| {
-            let mut to_delete = Vec::new();
-
-            let mut stmt = s.list_episode_releases.bind((episode_id,))?;
-
-            while let Some((source, country, network, _)) = stmt.next()? {
-                // An eligible source that didn't run keeps its releases (a transient
-                // fetch failure); every other source is pruned down to what it just
-                // reported.
-                if eligible.contains(&source) && !ran.contains(&source) {
-                    continue;
-                }
-
-                let key = (source, country, network);
-
-                if !kept.contains(&key) {
-                    to_delete.push(key);
-                }
-            }
-
-            stmt.reset()?;
-
-            for (source, country, network) in to_delete {
-                s.delete_episode_release
-                    .execute((episode_id, source, country, network))?;
-            }
-
-            Ok(())
-        });
-
-        result.await
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -3439,27 +3995,11 @@ impl Database {
         slug: Option<&str>,
         remote: &Remote,
     ) -> Result<()> {
-        let remote = remote.clone();
         let slug = slug.map(str::to_owned);
-        let priority = default_remote_priority(*remote.source(), &self.load_config().await?);
-        let mut s = self.inner.clone().exclusive().await?;
+        let remote = remote.clone();
 
-        let result = spawn_blocking(move || {
-            s.insert_movie_remote.execute((
-                RemoteId::random(),
-                slug,
-                movie_id,
-                remote.source(),
-                remote.value(),
-                true,
-                priority,
-                // NULL = inherit the global per-source sync-kinds default.
-                None::<api::SyncKindSet>,
-            ))?;
-            Ok(())
-        });
-
-        result.await?
+        self.transaction(move |s| s.add_movie_remote(movie_id, slug.as_deref(), &remote))
+            .await
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -3796,21 +4336,7 @@ impl Database {
             let strings = s.translations.movie(user, movie_id, cfg)?;
             let mut movie = movie_from_row(r, strings);
 
-            let mut stmt = s.list_movie_remotes.bind((movie_id,))?;
-
-            while let Some(r) = stmt.next()? {
-                movie.remotes.push(api::RemoteEntry {
-                    id: r.id,
-                    slug: r.slug,
-                    remote: Remote::new(r.source, r.value),
-                    enabled: r.enabled,
-                    priority: r.priority,
-                    sync_kinds: r.sync_kinds,
-                    cache: parse_remote_cache(r.cache),
-                });
-            }
-
-            stmt.reset()?;
+            movie.remotes = s.movie_remotes(movie_id)?;
 
             let mut stmt = s.list_movie_images.bind((movie_id,))?;
 
@@ -3895,21 +4421,7 @@ impl Database {
             let strings = s.translations.show(user, show_id, config)?;
             let mut show = show_from_row(row, strings);
 
-            let mut stmt = s.list_show_remotes.bind((show_id,))?;
-
-            while let Some(r) = stmt.next()? {
-                show.remotes.push(api::RemoteEntry {
-                    id: r.id,
-                    slug: r.slug,
-                    remote: Remote::new(r.source, r.value),
-                    enabled: r.enabled,
-                    priority: r.priority,
-                    sync_kinds: r.sync_kinds,
-                    cache: parse_remote_cache(r.cache),
-                });
-            }
-
-            stmt.reset()?;
+            show.remotes = s.show_remotes(show_id)?;
 
             let mut stmt = s.list_show_images.bind((show_id,))?;
 
@@ -3958,21 +4470,7 @@ impl Database {
             let strings = s.translations.movie(user, movie_id, cfg)?;
             let mut movie = movie_from_row(row, strings);
 
-            let mut stmt = s.list_movie_remotes.bind((movie_id,))?;
-
-            while let Some(r) = stmt.next()? {
-                movie.remotes.push(api::RemoteEntry {
-                    id: r.id,
-                    slug: r.slug,
-                    remote: Remote::new(r.source, r.value),
-                    enabled: r.enabled,
-                    priority: r.priority,
-                    sync_kinds: r.sync_kinds,
-                    cache: parse_remote_cache(r.cache),
-                });
-            }
-
-            stmt.reset()?;
+            movie.remotes = s.movie_remotes(movie_id)?;
 
             let mut stmt = s.list_movie_images.bind((movie_id,))?;
 
@@ -4135,223 +4633,6 @@ impl Database {
         let result = spawn_blocking(move || {
             let text = release_filters.as_ref().map(config::encode_filter_rules);
             s.set_movie_release_filters.execute((text, id))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn clear_show_images(&self, show_id: ShowId) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.delete_show_images.execute((show_id,))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn clear_movie_images(&self, movie_id: MovieId) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.delete_movie_images.execute((movie_id,))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn clear_episode_images(&self, show_id: ShowId) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.delete_episode_images_for_show.execute((show_id,))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn set_show_default_language(
-        &self,
-        show_id: ShowId,
-        language: api::Locale,
-    ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.set_show_default_language.execute((language, show_id))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn set_movie_default_language(
-        &self,
-        movie_id: MovieId,
-        language: api::Locale,
-    ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.set_movie_default_language.execute((language, movie_id))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    /// Replace the owner's translated strings with `strings` (clear then insert),
-    /// so languages no longer produced by the sync don't linger.
-    #[tracing::instrument(skip(self, strings), ret(level = "trace"))]
-    pub(crate) async fn replace_show_strings(
-        &self,
-        show_id: ShowId,
-        strings: Vec<(api::Locale, api::StringKind, String)>,
-    ) -> Result<()> {
-        let result = self.transaction(move |s| {
-            s.clear_show_strings.execute((show_id,))?;
-            for (language, kind, text) in strings {
-                s.insert_show_string
-                    .execute((show_id, language, kind, text))?;
-            }
-            Ok(())
-        });
-
-        result.await
-    }
-
-    #[tracing::instrument(skip(self, strings), ret(level = "trace"))]
-    pub(crate) async fn replace_movie_strings(
-        &self,
-        movie_id: MovieId,
-        strings: Vec<(api::Locale, api::StringKind, String)>,
-    ) -> Result<()> {
-        let result = self.transaction(move |s| {
-            s.clear_movie_strings.execute((movie_id,))?;
-            for (language, kind, text) in strings {
-                s.insert_movie_string
-                    .execute((movie_id, language, kind, text))?;
-            }
-            Ok(())
-        });
-
-        result.await
-    }
-
-    /// Find-or-create the bare person for a `(source, remote_id)`, returning the
-    /// stable [`PersonId`] and its `last_synced_at` (`None` when never synced, so
-    /// the caller can seed placeholder data). The person's own data is filled in
-    /// by [`sync_person`](crate::sync::sync_person).
-    pub(crate) async fn upsert_person(
-        &self,
-        source: RemoteSource,
-        remote_id: u32,
-    ) -> Result<(PersonId, Option<Timestamp>)> {
-        let value = RemoteValue::Int(remote_id);
-
-        let result = self.transaction(move |s| {
-            let existing = s.person_by_remote.bind((source, value.clone()))?.first()?;
-
-            if let Some((id, last_synced)) = existing {
-                Ok((id, last_synced))
-            } else {
-                let id = PersonId::random();
-                s.insert_person.execute((id,))?;
-
-                // Seed the person's identity as its primary remote, mirroring how a
-                // show/movie's base remote is created.
-                let remote_id = RemoteId::random();
-                s.insert_person_remote.execute((
-                    remote_id,
-                    None::<String>,
-                    id,
-                    source,
-                    value,
-                    true,
-                    0i32,
-                    None::<api::SyncKindSet>,
-                ))?;
-                s.set_person_primary_remote.execute((remote_id, id))?;
-                Ok((id, None))
-            }
-        });
-
-        result.await
-    }
-
-    /// Seed a placeholder person string (name) without overwriting an existing
-    /// one - used from the credit sync so the cast grid is populated before the
-    /// person's own sync runs.
-    pub(crate) async fn seed_person_string(
-        &self,
-        person_id: PersonId,
-        language: api::Locale,
-        kind: api::StringKind,
-        text: &str,
-    ) -> Result<()> {
-        let text = text.to_owned();
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.insert_person_string
-                .execute((person_id, language, kind, text))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    /// Seed a credit-created person's display language, used so the seeded name
-    /// resolves on the person page/list before the person's own sync sets the
-    /// authoritative value. A no-op once a real sync has set the language.
-    pub(crate) async fn seed_person_default_language(
-        &self,
-        person_id: PersonId,
-        language: api::Locale,
-    ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.seed_person_default_language
-                .execute((language, person_id))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    /// Seed a placeholder profile image (rank 0), ignored if the person already
-    /// has that image. Cleared and replaced by the person's own sync.
-    pub(crate) async fn seed_person_image(
-        &self,
-        person_id: PersonId,
-        kind: ImageKind,
-        image: &Image,
-    ) -> Result<()> {
-        let image = image.clone();
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.insert_person_image.execute((
-                ImageId::random(),
-                person_id,
-                kind,
-                image.key().source(),
-                image.key().path(),
-                image.width(),
-                image.height(),
-                0,
-                None::<f64>,
-            ))?;
             Ok(())
         });
 
@@ -4798,143 +5079,6 @@ impl Database {
         result.await?
     }
 
-    pub(crate) async fn clear_show_credits(&self, show_id: ShowId) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.clear_show_credits.execute((show_id,))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    pub(crate) async fn insert_show_credit(
-        &self,
-        credit_id: CreditId,
-        show_id: ShowId,
-        person_id: PersonId,
-        kind: CreditKind,
-        department: Option<&str>,
-        job: Option<&str>,
-        order: Option<u32>,
-        episode_count: Option<u32>,
-    ) -> Result<()> {
-        let department = department.map(str::to_owned);
-        let job = job.map(str::to_owned);
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.insert_show_credit.execute((
-                credit_id,
-                show_id,
-                person_id,
-                kind,
-                department,
-                job,
-                order,
-                episode_count,
-            ))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    pub(crate) async fn insert_show_credit_string(
-        &self,
-        credit_id: CreditId,
-        language: api::Locale,
-        kind: api::StringKind,
-        text: &str,
-    ) -> Result<()> {
-        let text = text.to_owned();
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.insert_show_credit_string
-                .execute((credit_id, language, kind, text))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    pub(crate) async fn clear_movie_credits(&self, movie_id: MovieId) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.clear_movie_credits.execute((movie_id,))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    pub(crate) async fn insert_movie_credit(
-        &self,
-        credit_id: CreditId,
-        movie_id: MovieId,
-        person_id: PersonId,
-        kind: CreditKind,
-        department: Option<&str>,
-        job: Option<&str>,
-        order: Option<u32>,
-        episode_count: Option<u32>,
-    ) -> Result<()> {
-        let department = department.map(str::to_owned);
-        let job = job.map(str::to_owned);
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.insert_movie_credit.execute((
-                credit_id,
-                movie_id,
-                person_id,
-                kind,
-                department,
-                job,
-                order,
-                episode_count,
-            ))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    pub(crate) async fn insert_movie_credit_string(
-        &self,
-        credit_id: CreditId,
-        language: api::Locale,
-        kind: api::StringKind,
-        text: &str,
-    ) -> Result<()> {
-        let text = text.to_owned();
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.insert_movie_credit_string
-                .execute((credit_id, language, kind, text))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    /// Delete people no longer referenced by any credit (their profile images
-    /// cascade). Run after rewriting an owner's credits.
-    pub(crate) async fn prune_orphan_people(&self) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.prune_orphan_people.execute(())?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
     pub(crate) async fn list_show_credits(
         &self,
         user: UserId,
@@ -5047,44 +5191,6 @@ impl Database {
         result.await?
     }
 
-    #[tracing::instrument(skip(self, strings), ret(level = "trace"))]
-    pub(crate) async fn replace_episode_strings(
-        &self,
-        episode_id: EpisodeId,
-        strings: Vec<(api::Locale, api::StringKind, String)>,
-    ) -> Result<()> {
-        let result = self.transaction(move |s| {
-            s.clear_episode_strings.execute((episode_id,))?;
-            for (language, kind, text) in strings {
-                s.insert_episode_string
-                    .execute((episode_id, language, kind, text))?;
-            }
-            Ok(())
-        });
-
-        result.await
-    }
-
-    #[tracing::instrument(skip(self, strings), ret(level = "trace"))]
-    pub(crate) async fn replace_season_strings(
-        &self,
-        season_id: SeasonId,
-        strings: Vec<(api::Locale, api::StringKind, String)>,
-    ) -> Result<()> {
-        let result = self.transaction(move |s| {
-            s.clear_season_strings.execute((season_id,))?;
-
-            for (language, kind, text) in strings {
-                s.insert_season_string
-                    .execute((season_id, language, kind, text))?;
-            }
-
-            Ok(())
-        });
-
-        result.await
-    }
-
     /// Read the translated strings stored for a show.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn show_translations(&self, id: ShowId) -> Result<Vec<api::Translation>> {
@@ -5184,217 +5290,6 @@ impl Database {
         result.await?
     }
 
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn upsert_episode_image(
-        &self,
-        id: ImageId,
-        episode_id: EpisodeId,
-        kind: ImageKind,
-        image: &Image,
-    ) -> Result<()> {
-        let image = image.clone();
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.insert_episode_image.execute((
-                id,
-                episode_id,
-                kind,
-                image.key().source(),
-                image.key().path(),
-                image.width(),
-                image.height(),
-            ))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn set_episode_image_selection(
-        &self,
-        episode_id: EpisodeId,
-        kind: ImageKind,
-        image_id: ImageId,
-    ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.set_episode_image_selection
-                .execute((episode_id, kind, image_id))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    /// Delete a show's images from a single source, leaving other sources'
-    /// images (and the show's overall selection rows) intact.
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn delete_show_images_for_source(
-        &self,
-        show_id: ShowId,
-        source: ImageSource,
-    ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.delete_show_images_for_source.execute((show_id, source))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    /// The next free rank per kind for a show's images (current max + 1), so
-    /// freshly merged images append after the ones already stored.
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn next_show_image_ranks(
-        &self,
-        show_id: ShowId,
-    ) -> Result<HashMap<ImageKind, u32>> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            let mut out = HashMap::new();
-            let mut stmt = s.show_image_max_ranks.bind((show_id,))?;
-
-            while let Some(r) = stmt.next()? {
-                out.insert(r.kind, r.rank + 1);
-            }
-
-            stmt.reset()?;
-            Ok(out)
-        });
-
-        result.await?
-    }
-
-    /// The kinds a show currently has a selected image for.
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn show_selected_image_kinds(
-        &self,
-        show_id: ShowId,
-    ) -> Result<HashSet<ImageKind>> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            let mut out = HashSet::new();
-            let mut stmt = s.show_selected_image_kinds.bind((show_id,))?;
-
-            while let Some(kind) = stmt.next()? {
-                out.insert(kind);
-            }
-
-            stmt.reset()?;
-            Ok(out)
-        });
-
-        result.await?
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn upsert_show_image(
-        &self,
-        id: ImageId,
-        show_id: ShowId,
-        kind: ImageKind,
-        rank: u32,
-        image: &Image,
-        score: Option<f64>,
-    ) -> Result<()> {
-        let image = image.clone();
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.insert_show_image.execute((
-                id,
-                show_id,
-                kind,
-                image.key().source(),
-                image.key().path(),
-                image.width(),
-                image.height(),
-                rank,
-                score,
-            ))?;
-
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn upsert_movie_image(
-        &self,
-        id: ImageId,
-        movie_id: MovieId,
-        kind: ImageKind,
-        rank: u32,
-        image: &Image,
-        score: Option<f64>,
-    ) -> Result<()> {
-        let image = image.clone();
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.insert_movie_image.execute((
-                id,
-                movie_id,
-                kind,
-                image.key().source(),
-                image.key().path(),
-                image.width(),
-                image.height(),
-                rank,
-                score,
-            ))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn set_show_image_selection(
-        &self,
-        show_id: ShowId,
-        kind: ImageKind,
-        image_id: ImageId,
-        user_selected: bool,
-    ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.set_show_image_selection
-                .execute((show_id, kind, image_id, user_selected))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn set_movie_image_selection(
-        &self,
-        movie_id: MovieId,
-        kind: ImageKind,
-        image_id: ImageId,
-        user_selected: bool,
-    ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.set_movie_image_selection
-                .execute((movie_id, kind, image_id, user_selected))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
     /// Selects the given image for its owning entity + kind, replacing any
     /// prior selection. Returns which entity owns the image.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -5453,51 +5348,6 @@ impl Database {
             }
 
             Ok(())
-        });
-
-        result.await?
-    }
-
-    /// Kind + key of the show's user-chosen selections, so a sync that clears
-    /// and rebuilds image rows can re-attach them.
-    pub(crate) async fn user_selected_show_image_keys(
-        &self,
-        show_id: ShowId,
-    ) -> Result<HashMap<ImageKind, ImageKey>> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            let mut out = HashMap::new();
-            let mut stmt = s.user_selected_show_images.bind((show_id,))?;
-
-            while let Some(r) = stmt.next()? {
-                out.insert(r.kind, ImageKey::new(r.source, &r.path));
-            }
-
-            stmt.reset()?;
-            Ok(out)
-        });
-
-        result.await?
-    }
-
-    /// Same as [`user_selected_show_image_keys`], for a movie.
-    pub(crate) async fn user_selected_movie_image_keys(
-        &self,
-        movie_id: MovieId,
-    ) -> Result<HashMap<ImageKind, ImageKey>> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            let mut out = HashMap::new();
-            let mut stmt = s.user_selected_movie_images.bind((movie_id,))?;
-
-            while let Some(r) = stmt.next()? {
-                out.insert(r.kind, ImageKey::new(r.source, &r.path));
-            }
-
-            stmt.reset()?;
-            Ok(out)
         });
 
         result.await?
@@ -6616,87 +6466,6 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn upsert_movie_release(
-        &self,
-        movie_id: MovieId,
-        source: RemoteSource,
-        country: Country,
-        release_type: ReleaseType,
-        timestamp: &Timestamp,
-    ) -> Result<()> {
-        let timestamp = *timestamp;
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.upsert_movie_release
-                .execute((movie_id, source, country, release_type, timestamp))?;
-
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    /// Drop stored releases that a fresh sync no longer reports. `kept` is the set
-    /// of `(source, country, release_type)` keys just upserted for the movie; `ran`
-    /// is the set of sources whose release layer actually ran this sync. Mirrors
-    /// [`Self::prune_episode_releases`]: a release-eligible source that didn't run
-    /// keeps its stored releases (a transient fetch failure or a cache hit), so the
-    /// caller can prune safely even when only some sources ran.
-    #[tracing::instrument(skip(self, kept), ret(level = "trace"))]
-    pub(crate) async fn prune_movie_releases(
-        &self,
-        movie_id: MovieId,
-        kept: &HashSet<(RemoteSource, Country, ReleaseType)>,
-        ran: &HashSet<RemoteSource>,
-    ) -> Result<()> {
-        let Some(movie) = self.movie_by_id(None, movie_id).await? else {
-            return Ok(());
-        };
-
-        let config = self.load_config().await?;
-        let eligible: HashSet<RemoteSource> =
-            api::air_date_sources_by_priority(&movie.remotes, &config)
-                .into_iter()
-                .collect();
-
-        let kept = kept.clone();
-        let ran = ran.clone();
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            let mut to_delete = Vec::new();
-
-            let mut stmt = s.list_movie_releases.bind((movie_id,))?;
-
-            while let Some(r) = stmt.next()? {
-                // An eligible source that didn't run this sync keeps its releases;
-                // every other source is pruned down to what it just reported.
-                if eligible.contains(&r.source) && !ran.contains(&r.source) {
-                    continue;
-                }
-
-                let key = (r.source, r.country, r.release_type);
-
-                if !kept.contains(&key) {
-                    to_delete.push(key);
-                }
-            }
-
-            stmt.reset()?;
-
-            for (source, country, release_type) in to_delete {
-                s.delete_movie_release
-                    .execute((movie_id, source, country, release_type))?;
-            }
-
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn shows_needing_sync(&self, interval_hours: u32) -> Result<Vec<api::Show>> {
         let cutoff = cutoff_timestamp(interval_hours);
         let mut s = self.inner.clone().shared().await?;
@@ -7171,82 +6940,7 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn load_config(&self) -> Result<Config> {
         let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
-            let default = Config::default();
-
-            let tvdb_api_key = s.get_config("tvdb_api_key")?.unwrap_or_default().to_owned();
-
-            let tvdb_pin = s.get_config("tvdb_pin")?;
-
-            let tmdb_api_key = s.get_config("tmdb_api_key")?.unwrap_or_default().to_owned();
-
-            let auto_sync_enabled = s
-                .get_config("auto_sync_enabled")?
-                .map(|v| v == "true")
-                .unwrap_or(default.auto_sync_enabled);
-
-            let auto_sync_interval_hours = s
-                .get_config("auto_sync_interval_hours")?
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(default.auto_sync_interval_hours);
-
-            let page_title = s.get_config("page_title")?.unwrap_or_default().to_owned();
-
-            let release_filters = s
-                .get_config("release_filters")?
-                .as_deref()
-                .and_then(config::decode_filter_rules)
-                .unwrap_or(default.release_filters);
-
-            let air_date_filters = s
-                .get_config("air_date_filters")?
-                .as_deref()
-                .and_then(config::decode_filter_rules)
-                .unwrap_or(default.air_date_filters);
-
-            let sync_kinds = s
-                .get_config("sync_kinds")?
-                .as_deref()
-                .and_then(config::decode_sync_kinds)
-                .unwrap_or(default.sync_kinds);
-
-            let sync_languages = s
-                .get_config("sync_languages")?
-                .as_deref()
-                .and_then(config::decode_sync_languages)
-                .unwrap_or(default.sync_languages);
-
-            let cloudflare_access = api::CloudflareAccess {
-                enabled: s
-                    .get_config("cloudflare_access_enabled")?
-                    .is_some_and(|v| v == "true"),
-                team_domain: s.get_config("cloudflare_team_domain")?.unwrap_or_default(),
-                audience: s.get_config("cloudflare_audience")?.unwrap_or_default(),
-                trust_email_header: s
-                    .get_config("cloudflare_trust_email_header")?
-                    .is_some_and(|v| v == "true"),
-                verify_jwt: s
-                    .get_config("cloudflare_verify_jwt")?
-                    .is_none_or(|v| v == "true"),
-            };
-
-            Ok(Config {
-                tvdb_api_key,
-                tvdb_pin,
-                tmdb_api_key,
-                auto_sync_enabled,
-                auto_sync_interval_hours,
-                page_title,
-                release_filters,
-                air_date_filters,
-                sync_kinds,
-                sync_languages,
-                cloudflare_access,
-            })
-        });
-
-        result.await?
+        spawn_blocking(move || s.load_config()).await?
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -7526,6 +7220,18 @@ fn show_from_row(row: ShowRow, strings: api::Translations) -> api::Show {
 /// show's own remote order (set by reordering its remotes) overrides this
 /// default and is preserved. Sources absent from the global list rank after the
 /// listed ones, keeping the built-in TVmaze < TMDB < TVDB < IMDb < Unknown order.
+fn remote_entry(r: RemoteRow) -> api::RemoteEntry {
+    api::RemoteEntry {
+        id: r.id,
+        slug: r.slug,
+        remote: Remote::new(r.source, r.value),
+        enabled: r.enabled,
+        priority: r.priority,
+        sync_kinds: r.sync_kinds,
+        cache: parse_remote_cache(r.cache),
+    }
+}
+
 fn default_remote_priority(source: RemoteSource, config: &Config) -> i32 {
     if let Some(idx) = config.sync_kinds.iter().position(|s| s.source == source) {
         return idx as i32;

@@ -8,7 +8,7 @@ use api::{
 };
 
 use crate::app_broadcast::Broadcaster;
-use crate::db::Database;
+use crate::db::{Database, InnerWrite};
 use crate::remote::RemoteClients;
 use crate::shutdown::Shutdown;
 use crate::tmdb;
@@ -498,6 +498,8 @@ pub(crate) async fn sync_show(
     //                           keep the existing show rather than wiping it;
     //   - not eligible        → no enabled remote contributes Base, so the
     //                           seasons/episodes are orphaned and get cleared.
+    let draft = Arc::new(draft);
+
     if draft.provided.contains(SyncKind::Base) && !draft.base_unchanged {
         persist_show_draft(show_id, &show, &draft, db, broadcast).await?;
         flush_show_cache_writes(&draft.cache_writes, db, true).await?;
@@ -505,7 +507,9 @@ pub(crate) async fn sync_show(
         // The Base source was unchanged (cache hit): keep the stored
         // seasons/episodes/strings and only persist air dates other sources
         // produced this run.
-        persist_air_dates_only(show_id, &draft, db).await?;
+        let air_dates = Arc::clone(&draft);
+        db.transaction(move |s| persist_air_dates_only(show_id, &air_dates, s))
+            .await?;
         flush_show_cache_writes(&draft.cache_writes, db, true).await?;
 
         // A non-base source may have merged fresh graphics (or a slug); push the
@@ -1832,15 +1836,12 @@ async fn tmdb_person_layer(
 /// profile from the credit response only while the person has never been synced
 /// (so the cast grid is populated before the person's own sync runs). Returns the
 /// stable [`api::PersonId`].
-async fn seed_person(db: &Database, credit: &CreditDraft) -> Result<api::PersonId> {
-    let (person_id, last_synced) = db
-        .upsert_person(credit.source, credit.remote_person_id)
-        .await?;
+fn seed_person(s: &mut InnerWrite, credit: &CreditDraft) -> Result<api::PersonId> {
+    let (person_id, last_synced) = s.upsert_person(credit.source, credit.remote_person_id)?;
 
     if last_synced.is_none() {
         for (locale, name) in &credit.names {
-            db.seed_person_string(person_id, *locale, api::StringKind::Title, name)
-                .await?;
+            s.seed_person_string(person_id, *locale, api::StringKind::Title, name)?;
         }
 
         // Anchor the display language to a locale we actually seeded a name under,
@@ -1848,12 +1849,11 @@ async fn seed_person(db: &Database, credit: &CreditDraft) -> Result<api::PersonI
         // runs. The person's original language isn't known from the credit response
         // and may not even be among the fetched locales, so it can't be used here.
         if let Some((locale, _)) = credit.names.first() {
-            db.seed_person_default_language(person_id, *locale).await?;
+            s.seed_person_default_language(person_id, *locale)?;
         }
 
         if let Some(profile) = &credit.profile {
-            db.seed_person_image(person_id, ImageKind::Profile, profile)
-                .await?;
+            s.seed_person_image(person_id, ImageKind::Profile, profile)?;
         }
     }
 
@@ -1861,18 +1861,18 @@ async fn seed_person(db: &Database, credit: &CreditDraft) -> Result<api::PersonI
 }
 
 /// Clear and rebuild a show's credits from the draft, then prune orphaned people.
-async fn persist_show_credits(
-    db: &Database,
+fn persist_show_credits(
+    s: &mut InnerWrite,
     show_id: api::ShowId,
     credits: &[CreditDraft],
 ) -> Result<()> {
-    db.clear_show_credits(show_id).await?;
+    s.clear_show_credits(show_id)?;
 
     for credit in credits {
-        let person_id = seed_person(db, credit).await?;
+        let person_id = seed_person(s, credit)?;
         let credit_id = api::CreditId::random();
 
-        db.insert_show_credit(
+        s.insert_show_credit(
             credit_id,
             show_id,
             person_id,
@@ -1881,205 +1881,31 @@ async fn persist_show_credits(
             credit.job.as_deref(),
             credit.order,
             credit.episode_count,
-        )
-        .await?;
+        )?;
 
         for (locale, character) in &credit.characters {
-            db.insert_show_credit_string(credit_id, *locale, api::StringKind::Character, character)
-                .await?;
+            s.insert_show_credit_string(credit_id, *locale, api::StringKind::Character, character)?;
         }
     }
 
-    db.prune_orphan_people().await?;
+    s.prune_orphan_people()?;
     Ok(())
 }
 
+/// Write the draft in one transaction, so a failure leaves the stored show
+/// untouched and no image selection made meanwhile is lost, then announce it.
 async fn persist_show_draft(
     show_id: api::ShowId,
     show: &api::Show,
-    draft: &ShowDraft,
+    draft: &Arc<ShowDraft>,
     db: &Database,
     broadcast: &Broadcaster,
 ) -> Result<()> {
-    db.update_show(show_id, draft.first_air_date.or(show.first_air_date))
+    let first_air = draft.first_air_date.or(show.first_air_date);
+    let draft = Arc::clone(draft);
+
+    db.transaction(move |s| write_show_draft(s, show_id, first_air, &draft))
         .await?;
-
-    if !draft.original_language.is_default() {
-        db.set_show_default_language(show_id, draft.original_language)
-            .await?;
-    }
-
-    db.replace_show_strings(show_id, draft.show_strings.clone())
-        .await?;
-
-    for (slug, remote) in &draft.remotes {
-        db.add_show_remote(show_id, slug.as_deref(), remote).await?;
-    }
-
-    // Graphics: replace all show images with the accumulated set, ranked in
-    // source-priority (accumulation) order. Preserve the user's explicit pick
-    // per kind if that image still exists; otherwise fall back to the
-    // highest-priority default.
-    let preserved = db.user_selected_show_image_keys(show_id).await?;
-
-    db.clear_show_images(show_id).await?;
-
-    let mut ranks: HashMap<ImageKind, u32> = HashMap::new();
-    let mut user_ids: HashMap<ImageKind, ImageId> = HashMap::new();
-    let mut default_ids: HashMap<ImageKind, ImageId> = HashMap::new();
-
-    for draft_image in &draft.images {
-        let id = ImageId::random();
-        let rank = ranks.entry(draft_image.kind).or_default();
-
-        db.upsert_show_image(
-            id,
-            show_id,
-            draft_image.kind,
-            *rank,
-            &draft_image.image,
-            Some(draft_image.score),
-        )
-        .await?;
-        *rank += 1;
-
-        if preserved.get(&draft_image.kind) == Some(draft_image.image.key()) {
-            user_ids.entry(draft_image.kind).or_insert(id);
-        }
-
-        if draft.selected.get(&draft_image.kind) == Some(draft_image.image.key()) {
-            default_ids.entry(draft_image.kind).or_insert(id);
-        }
-    }
-
-    let kinds: HashSet<ImageKind> = user_ids.keys().chain(default_ids.keys()).copied().collect();
-
-    for kind in kinds {
-        if let Some(&id) = user_ids.get(&kind) {
-            db.set_show_image_selection(show_id, kind, id, true).await?;
-        } else if let Some(&id) = default_ids.get(&kind) {
-            db.set_show_image_selection(show_id, kind, id, false)
-                .await?;
-        }
-    }
-
-    // Episodes: assign stable ids (reuse existing) so air-date releases
-    // attribute to the right row.
-    let existing_episode_ids = db.episode_ids(show_id).await?;
-
-    db.clear_episode_images(show_id).await?;
-
-    let mut episode_ids: HashMap<(SeasonNumber, u32), EpisodeId> = HashMap::new();
-    let mut season_episode_numbers: HashMap<SeasonNumber, HashSet<u32>> = HashMap::new();
-
-    for ((season, number), ep) in &draft.episodes {
-        let episode_id = existing_episode_ids
-            .get(&(*season, *number))
-            .copied()
-            .unwrap_or_else(EpisodeId::random);
-
-        episode_ids.insert((*season, *number), episode_id);
-
-        season_episode_numbers
-            .entry(*season)
-            .or_default()
-            .insert(*number);
-
-        db.upsert_episode(
-            episode_id,
-            show_id,
-            *season,
-            *number,
-            ep.absolute_number,
-            ep.aired,
-        )
-        .await?;
-
-        let strings = draft
-            .episode_strings
-            .get(&(*season, *number))
-            .cloned()
-            .unwrap_or_default();
-        db.replace_episode_strings(episode_id, strings).await?;
-
-        if let Some(screenshot) = &ep.screenshot {
-            let image_id = ImageId::random();
-            db.upsert_episode_image(image_id, episode_id, ImageKind::Screenshot, screenshot)
-                .await?;
-            db.set_episode_image_selection(episode_id, ImageKind::Screenshot, image_id)
-                .await?;
-        }
-    }
-
-    // Seasons.
-    let mut synced_seasons = HashSet::new();
-
-    for (number, season) in &draft.seasons {
-        let season_id = db.upsert_season(show_id, *number, season.air_date).await?;
-
-        let strings = draft
-            .season_strings
-            .get(number)
-            .cloned()
-            .unwrap_or_default();
-        db.replace_season_strings(season_id, strings).await?;
-
-        db.clear_season_images(season_id).await?;
-
-        if let Some(poster) = &season.poster {
-            let image_id = ImageId::random();
-            db.upsert_season_image(image_id, season_id, ImageKind::Poster, poster)
-                .await?;
-            db.set_season_image_selection(season_id, ImageKind::Poster, image_id)
-                .await?;
-        }
-
-        synced_seasons.insert(*number);
-    }
-
-    // Pruning treats absence from the draft as evidence of removal upstream. That only
-    // holds if every layer reported everything it has: when one recovered from a failed
-    // sub-request (a season whose episodes 5xx'd, say), those episodes are missing from
-    // the draft because we never fetched them, not because they are gone. Pruning then
-    // would delete real data over a transient blip, so a degraded run prunes nothing and
-    // waits for a clean one.
-    if draft.degraded_sources.is_empty() {
-        for (season, kept) in &season_episode_numbers {
-            db.prune_season_episodes(show_id, *season, kept).await?;
-        }
-
-        db.prune_seasons(show_id, &synced_seasons).await?;
-    } else {
-        tracing::warn!(
-            sources = ?draft.degraded_sources,
-            "Skipping prune: a sync layer recovered from a failed sub-request, so the draft is incomplete"
-        );
-    }
-
-    // Air-date releases, attributed per source; skip episodes we didn't persist.
-    // Track what we wrote so stale releases can be pruned afterwards, scoped to the
-    // sources whose air-date layer actually ran this sync (`draft.air_date_sources`).
-    let mut kept_releases = HashSet::new();
-
-    for r in &draft.releases {
-        let Some(&episode_id) = episode_ids.get(&(r.season, r.number)) else {
-            continue;
-        };
-
-        db.upsert_episode_release(episode_id, r.source, r.country, &r.network, r.timestamp)
-            .await?;
-
-        kept_releases.insert((episode_id, r.source, r.country, r.network.clone()));
-    }
-
-    db.prune_episode_releases(show_id, &kept_releases, &draft.air_date_sources)
-        .await?;
-
-    // Credits: rebuild from the draft. Skip on a degraded run so a transient
-    // credit-fetch failure doesn't wipe stored credits.
-    if draft.degraded_sources.is_empty() {
-        persist_show_credits(db, show_id, &draft.credits).await?;
-    }
 
     let updated = db
         .show_by_id(None, show_id)
@@ -2101,23 +1927,200 @@ async fn persist_show_draft(
     Ok(())
 }
 
+fn write_show_draft(
+    s: &mut InnerWrite,
+    show_id: api::ShowId,
+    first_air: Option<api::Timestamp>,
+    draft: &ShowDraft,
+) -> Result<()> {
+    s.update_show(show_id, first_air)?;
+
+    if !draft.original_language.is_default() {
+        s.set_show_default_language(show_id, draft.original_language)?;
+    }
+
+    s.replace_show_strings(show_id, draft.show_strings.clone())?;
+
+    for (slug, remote) in &draft.remotes {
+        s.add_show_remote(show_id, slug.as_deref(), remote)?;
+    }
+
+    // Graphics: replace all show images with the accumulated set, ranked in
+    // source-priority (accumulation) order. Preserve the user's explicit pick
+    // per kind if that image still exists; otherwise fall back to the
+    // highest-priority default.
+    let preserved = s.user_selected_show_image_keys(show_id)?;
+
+    s.clear_show_images(show_id)?;
+
+    let mut ranks: HashMap<ImageKind, u32> = HashMap::new();
+    let mut user_ids: HashMap<ImageKind, ImageId> = HashMap::new();
+    let mut default_ids: HashMap<ImageKind, ImageId> = HashMap::new();
+
+    for draft_image in &draft.images {
+        let id = ImageId::random();
+        let rank = ranks.entry(draft_image.kind).or_default();
+
+        s.upsert_show_image(
+            id,
+            show_id,
+            draft_image.kind,
+            *rank,
+            &draft_image.image,
+            Some(draft_image.score),
+        )?;
+        *rank += 1;
+
+        if preserved.get(&draft_image.kind) == Some(draft_image.image.key()) {
+            user_ids.entry(draft_image.kind).or_insert(id);
+        }
+
+        if draft.selected.get(&draft_image.kind) == Some(draft_image.image.key()) {
+            default_ids.entry(draft_image.kind).or_insert(id);
+        }
+    }
+
+    let kinds: HashSet<ImageKind> = user_ids.keys().chain(default_ids.keys()).copied().collect();
+
+    for kind in kinds {
+        if let Some(&id) = user_ids.get(&kind) {
+            s.set_show_image_selection(show_id, kind, id, true)?;
+        } else if let Some(&id) = default_ids.get(&kind) {
+            s.set_show_image_selection(show_id, kind, id, false)?;
+        }
+    }
+
+    // Episodes: assign stable ids (reuse existing) so air-date releases
+    // attribute to the right row.
+    let existing_episode_ids = s.episode_ids(show_id)?;
+
+    s.clear_episode_images(show_id)?;
+
+    let mut episode_ids: HashMap<(SeasonNumber, u32), EpisodeId> = HashMap::new();
+    let mut season_episode_numbers: HashMap<SeasonNumber, HashSet<u32>> = HashMap::new();
+
+    for ((season, number), ep) in &draft.episodes {
+        let episode_id = existing_episode_ids
+            .get(&(*season, *number))
+            .copied()
+            .unwrap_or_else(EpisodeId::random);
+
+        episode_ids.insert((*season, *number), episode_id);
+
+        season_episode_numbers
+            .entry(*season)
+            .or_default()
+            .insert(*number);
+
+        s.upsert_episode(
+            episode_id,
+            show_id,
+            *season,
+            *number,
+            ep.absolute_number,
+            ep.aired,
+        )?;
+
+        let strings = draft
+            .episode_strings
+            .get(&(*season, *number))
+            .cloned()
+            .unwrap_or_default();
+        s.replace_episode_strings(episode_id, strings)?;
+
+        if let Some(screenshot) = &ep.screenshot {
+            let image_id = ImageId::random();
+            s.upsert_episode_image(image_id, episode_id, ImageKind::Screenshot, screenshot)?;
+            s.set_episode_image_selection(episode_id, ImageKind::Screenshot, image_id)?;
+        }
+    }
+
+    // Seasons.
+    let mut synced_seasons = HashSet::new();
+
+    for (number, season) in &draft.seasons {
+        let season_id = s.upsert_season(show_id, *number, season.air_date)?;
+
+        let strings = draft
+            .season_strings
+            .get(number)
+            .cloned()
+            .unwrap_or_default();
+        s.replace_season_strings(season_id, strings)?;
+
+        s.clear_season_images(season_id)?;
+
+        if let Some(poster) = &season.poster {
+            let image_id = ImageId::random();
+            s.upsert_season_image(image_id, season_id, ImageKind::Poster, poster)?;
+            s.set_season_image_selection(season_id, ImageKind::Poster, image_id)?;
+        }
+
+        synced_seasons.insert(*number);
+    }
+
+    // Pruning treats absence from the draft as evidence of removal upstream. That only
+    // holds if every layer reported everything it has: when one recovered from a failed
+    // sub-request (a season whose episodes 5xx'd, say), those episodes are missing from
+    // the draft because we never fetched them, not because they are gone. Pruning then
+    // would delete real data over a transient blip, so a degraded run prunes nothing and
+    // waits for a clean one.
+    if draft.degraded_sources.is_empty() {
+        for (season, kept) in &season_episode_numbers {
+            s.prune_season_episodes(show_id, *season, kept)?;
+        }
+
+        s.prune_seasons(show_id, &synced_seasons)?;
+    } else {
+        tracing::warn!(
+            sources = ?draft.degraded_sources,
+            "Skipping prune: a sync layer recovered from a failed sub-request, so the draft is incomplete"
+        );
+    }
+
+    // Air-date releases, attributed per source; skip episodes we didn't persist.
+    // Track what we wrote so stale releases can be pruned afterwards, scoped to the
+    // sources whose air-date layer actually ran this sync (`draft.air_date_sources`).
+    let mut kept_releases = HashSet::new();
+
+    for r in &draft.releases {
+        let Some(&episode_id) = episode_ids.get(&(r.season, r.number)) else {
+            continue;
+        };
+
+        s.upsert_episode_release(episode_id, r.source, r.country, &r.network, r.timestamp)?;
+
+        kept_releases.insert((episode_id, r.source, r.country, r.network.clone()));
+    }
+
+    s.prune_episode_releases(show_id, &kept_releases, &draft.air_date_sources)?;
+
+    // Credits: rebuild from the draft. Skip on a degraded run so a transient
+    // credit-fetch failure doesn't wipe stored credits.
+    if draft.degraded_sources.is_empty() {
+        persist_show_credits(s, show_id, &draft.credits)?;
+    }
+
+    Ok(())
+}
+
 /// Persist only air-date releases when the Base layer was unchanged (cache hit):
 /// the stored seasons/episodes/strings are kept, and we just upsert the releases
 /// other sources produced this run (attributed to existing episodes) and prune
 /// stale ones, scoped to the sources that actually ran. The caller's downstream
 /// `recompute_episode_aired_for_show` + `EpisodesChanged` broadcasts surface any
 /// resulting change.
-async fn persist_air_dates_only(
+fn persist_air_dates_only(
     show_id: api::ShowId,
     draft: &ShowDraft,
-    db: &Database,
+    s: &mut InnerWrite,
 ) -> Result<()> {
     // Even when the Base layer is unchanged, a non-base layer (e.g. TVDB running
     // only to accumulate graphics) may have discovered remote metadata such as a
     // slug that external links depend on. `add_show_remote` only fills in the
     // slug on conflict, so persisting the accumulated remotes here is idempotent.
     for (slug, remote) in &draft.remotes {
-        db.add_show_remote(show_id, slug.as_deref(), remote).await?;
+        s.add_show_remote(show_id, slug.as_deref(), remote)?;
     }
 
     // The base-unchanged path keeps the base source's stored images (the base
@@ -2127,14 +2130,13 @@ async fn persist_air_dates_only(
     // appending them after the retained (higher-priority base) images per kind,
     // and re-attach any user pick that pointed at a replaced image.
     if !draft.graphics_sources.is_empty() {
-        let preserved = db.user_selected_show_image_keys(show_id).await?;
+        let preserved = s.user_selected_show_image_keys(show_id)?;
 
         for source in &draft.graphics_sources {
-            db.delete_show_images_for_source(show_id, image_source(*source))
-                .await?;
+            s.delete_show_images_for_source(show_id, image_source(*source))?;
         }
 
-        let mut ranks = db.next_show_image_ranks(show_id).await?;
+        let mut ranks = s.next_show_image_ranks(show_id)?;
         let mut user_ids: HashMap<ImageKind, ImageId> = HashMap::new();
         let mut default_ids: HashMap<ImageKind, ImageId> = HashMap::new();
 
@@ -2142,15 +2144,14 @@ async fn persist_air_dates_only(
             let id = ImageId::random();
             let rank = ranks.entry(draft_image.kind).or_default();
 
-            db.upsert_show_image(
+            s.upsert_show_image(
                 id,
                 show_id,
                 draft_image.kind,
                 *rank,
                 &draft_image.image,
                 Some(draft_image.score),
-            )
-            .await?;
+            )?;
             *rank += 1;
 
             if preserved.get(&draft_image.kind) == Some(draft_image.image.key()) {
@@ -2163,23 +2164,22 @@ async fn persist_air_dates_only(
         }
 
         for (kind, id) in user_ids {
-            db.set_show_image_selection(show_id, kind, id, true).await?;
+            s.set_show_image_selection(show_id, kind, id, true)?;
         }
 
         // Re-attach a default only for a kind whose selection was cascaded away
         // with a replaced image (leaving it unselected). Kinds still selected by
         // a surviving higher-priority source - or a user pick just set - keep it.
-        let selected = db.show_selected_image_kinds(show_id).await?;
+        let selected = s.show_selected_image_kinds(show_id)?;
 
         for (kind, id) in default_ids {
             if !selected.contains(&kind) {
-                db.set_show_image_selection(show_id, kind, id, false)
-                    .await?;
+                s.set_show_image_selection(show_id, kind, id, false)?;
             }
         }
     }
 
-    let episode_ids = db.episode_ids(show_id).await?;
+    let episode_ids = s.episode_ids(show_id)?;
     let mut kept_releases = HashSet::new();
 
     for r in &draft.releases {
@@ -2187,14 +2187,12 @@ async fn persist_air_dates_only(
             continue;
         };
 
-        db.upsert_episode_release(episode_id, r.source, r.country, &r.network, r.timestamp)
-            .await?;
+        s.upsert_episode_release(episode_id, r.source, r.country, &r.network, r.timestamp)?;
 
         kept_releases.insert((episode_id, r.source, r.country, r.network.clone()));
     }
 
-    db.prune_episode_releases(show_id, &kept_releases, &draft.air_date_sources)
-        .await?;
+    s.prune_episode_releases(show_id, &kept_releases, &draft.air_date_sources)?;
 
     Ok(())
 }
@@ -2416,9 +2414,14 @@ pub(crate) async fn sync_episode(
     let eligible = api::eligible_sync_kinds(&show.remotes, &config);
 
     let persisted = draft.provided.contains(SyncKind::Base) && !draft.base_unchanged;
+    let draft = Arc::new(draft);
 
     if persisted {
-        persist_episode_draft(show_id, episode_id, season, number, &draft, db).await?;
+        let base = Arc::clone(&draft);
+        db.transaction(move |s| {
+            persist_episode_draft(show_id, episode_id, season, number, &base, s)
+        })
+        .await?;
     } else if !draft.base_unchanged
         && eligible.contains(SyncKind::Base)
         && draft.degraded_sources.is_empty()
@@ -2436,7 +2439,9 @@ pub(crate) async fn sync_episode(
         );
     }
 
-    persist_episode_releases(show_id, episode_id, &draft, db).await?;
+    let releases = Arc::clone(&draft);
+    db.transaction(move |s| persist_episode_releases(show_id, episode_id, &releases, s))
+        .await?;
 
     // Written even when nothing above persisted: these carry the recorded failures, and
     // caching those is exactly what stops a missing episode being re-probed every sync.
@@ -2757,37 +2762,33 @@ async fn tvmaze_episode_layer(
 /// Write the Base layer's contribution: the episode row, its strings, and its
 /// screenshot. Releases are persisted separately, since they are written on the
 /// base-unchanged path too.
-async fn persist_episode_draft(
+fn persist_episode_draft(
     show_id: api::ShowId,
     episode_id: EpisodeId,
     season: SeasonNumber,
     number: u32,
     draft: &EpisodeDraftModel,
-    db: &Database,
+    s: &mut InnerWrite,
 ) -> Result<()> {
-    db.upsert_episode(
+    s.upsert_episode(
         episode_id,
         show_id,
         season,
         number,
         draft.absolute_number,
         draft.aired,
-    )
-    .await?;
+    )?;
 
-    db.replace_episode_strings(episode_id, draft.strings.clone())
-        .await?;
+    s.replace_episode_strings(episode_id, draft.strings.clone())?;
 
     // Scoped to this episode: the show-wide image clear would drop every other
     // episode's screenshot.
-    db.clear_images_for_episode(episode_id).await?;
+    s.clear_images_for_episode(episode_id)?;
 
     if let Some(screenshot) = &draft.screenshot {
         let image_id = ImageId::random();
-        db.upsert_episode_image(image_id, episode_id, ImageKind::Screenshot, screenshot)
-            .await?;
-        db.set_episode_image_selection(episode_id, ImageKind::Screenshot, image_id)
-            .await?;
+        s.upsert_episode_image(image_id, episode_id, ImageKind::Screenshot, screenshot)?;
+        s.set_episode_image_selection(episode_id, ImageKind::Screenshot, image_id)?;
     }
 
     Ok(())
@@ -2795,23 +2796,21 @@ async fn persist_episode_draft(
 
 /// Upsert the draft's air dates and prune the stale ones, scoped to this episode and
 /// to the sources whose layer actually ran.
-async fn persist_episode_releases(
+fn persist_episode_releases(
     show_id: api::ShowId,
     episode_id: EpisodeId,
     draft: &EpisodeDraftModel,
-    db: &Database,
+    s: &mut InnerWrite,
 ) -> Result<()> {
     let mut kept = HashSet::new();
 
     for r in &draft.releases {
-        db.upsert_episode_release(episode_id, r.source, r.country, &r.network, r.timestamp)
-            .await?;
+        s.upsert_episode_release(episode_id, r.source, r.country, &r.network, r.timestamp)?;
 
         kept.insert((r.source, r.country, r.network.clone()));
     }
 
-    db.prune_episode_releases_for_episode(show_id, episode_id, &kept, &draft.air_date_sources)
-        .await?;
+    s.prune_episode_releases_for_episode(show_id, episode_id, &kept, &draft.air_date_sources)?;
 
     Ok(())
 }
@@ -2999,13 +2998,19 @@ pub(crate) async fn sync_movie(
         anyhow::bail!("Sync aborted: service is shutting down");
     }
 
+    let draft = Arc::new(draft);
+
     if draft.provided.contains(SyncKind::Base) && !draft.base_unchanged {
-        persist_movie_draft(movie_id, &draft, db).await?;
+        let base = Arc::clone(&draft);
+        db.transaction(move |s| persist_movie_draft(movie_id, &base, s))
+            .await?;
         flush_movie_cache_writes(&draft.cache_writes, db, true).await?;
     } else if draft.base_unchanged {
         // Base source unchanged (cache hit): keep stored metadata/strings/images,
         // persist only other sources' fresh releases.
-        persist_movie_releases_only(movie_id, &draft, db).await?;
+        let releases = Arc::clone(&draft);
+        db.transaction(move |s| persist_movie_releases_only(movie_id, &releases, s))
+            .await?;
         flush_movie_cache_writes(&draft.cache_writes, db, true).await?;
     } else if eligible.contains(SyncKind::Base) {
         flush_movie_cache_writes(&draft.cache_writes, db, false).await?;
@@ -3025,9 +3030,11 @@ pub(crate) async fn sync_movie(
 
         // No enabled remote contributes Base: the movie's derived metadata is
         // orphaned, so clear it (mirrors the show clear branch).
-        db.replace_movie_strings(movie_id, Vec::new()).await?;
-        db.prune_movie_releases(movie_id, &HashSet::new(), &HashSet::new())
-            .await?;
+        db.transaction(move |s| {
+            s.replace_movie_strings(movie_id, Vec::new())?;
+            s.prune_movie_releases(movie_id, &HashSet::new(), &HashSet::new())
+        })
+        .await?;
     }
 
     // Recompute the effective release date + pending entry from the movie's release filters before
@@ -3197,30 +3204,27 @@ async fn tmdb_movie_layer(
 /// Write the accumulated [`MovieDraft`] in one pass: base language, strings,
 /// discovered remotes, accumulated graphics (ranked, with selection) and
 /// per-source releases; prune releases no longer reported.
-async fn persist_movie_draft(
+fn persist_movie_draft(
     movie_id: api::MovieId,
     draft: &MovieDraft,
-    db: &Database,
+    s: &mut InnerWrite,
 ) -> Result<()> {
     if !draft.original_language.is_default() {
-        db.set_movie_default_language(movie_id, draft.original_language)
-            .await?;
+        s.set_movie_default_language(movie_id, draft.original_language)?;
     }
 
-    db.replace_movie_strings(movie_id, draft.strings.clone())
-        .await?;
+    s.replace_movie_strings(movie_id, draft.strings.clone())?;
 
     for (slug, remote) in &draft.remotes {
-        db.add_movie_remote(movie_id, slug.as_deref(), remote)
-            .await?;
+        s.add_movie_remote(movie_id, slug.as_deref(), remote)?;
     }
 
     // Graphics: replace all movie images with the accumulated set, ranked in
     // source-priority order. Preserve the user's explicit pick per kind if that
     // image still exists; otherwise fall back to the highest-priority default.
-    let preserved = db.user_selected_movie_image_keys(movie_id).await?;
+    let preserved = s.user_selected_movie_image_keys(movie_id)?;
 
-    db.clear_movie_images(movie_id).await?;
+    s.clear_movie_images(movie_id)?;
 
     let mut ranks: HashMap<ImageKind, u32> = HashMap::new();
     let mut user_ids: HashMap<ImageKind, ImageId> = HashMap::new();
@@ -3230,15 +3234,14 @@ async fn persist_movie_draft(
         let id = ImageId::random();
         let rank = ranks.entry(draft_image.kind).or_default();
 
-        db.upsert_movie_image(
+        s.upsert_movie_image(
             id,
             movie_id,
             draft_image.kind,
             *rank,
             &draft_image.image,
             Some(draft_image.score),
-        )
-        .await?;
+        )?;
         *rank += 1;
 
         if preserved.get(&draft_image.kind) == Some(draft_image.image.key()) {
@@ -3264,23 +3267,21 @@ async fn persist_movie_draft(
     }
 
     for (kind, (id, user_selected)) in &resolved {
-        db.set_movie_image_selection(movie_id, *kind, *id, *user_selected)
-            .await?;
+        s.set_movie_image_selection(movie_id, *kind, *id, *user_selected)?;
     }
 
     // A movie has no banner artwork of its own; mirror the backdrop selection so
     // banner slots display the backdrop (as the previous inline sync did).
     if let Some(&(id, user_selected)) = resolved.get(&ImageKind::Backdrop) {
-        db.set_movie_image_selection(movie_id, ImageKind::Banner, id, user_selected)
-            .await?;
+        s.set_movie_image_selection(movie_id, ImageKind::Banner, id, user_selected)?;
     }
 
-    persist_movie_releases(movie_id, draft, db).await?;
+    persist_movie_releases(movie_id, draft, s)?;
 
     // Credits: rebuild from the draft. Skip on a degraded run so a transient
     // credit-fetch failure doesn't wipe stored credits.
     if draft.degraded_sources.is_empty() {
-        persist_movie_credits(db, movie_id, &draft.credits).await?;
+        persist_movie_credits(s, movie_id, &draft.credits)?;
     }
 
     Ok(())
@@ -3315,18 +3316,18 @@ async fn collect_tmdb_movie_credits(
 }
 
 /// Clear and rebuild a movie's credits from the draft, then prune orphaned people.
-async fn persist_movie_credits(
-    db: &Database,
+fn persist_movie_credits(
+    s: &mut InnerWrite,
     movie_id: api::MovieId,
     credits: &[CreditDraft],
 ) -> Result<()> {
-    db.clear_movie_credits(movie_id).await?;
+    s.clear_movie_credits(movie_id)?;
 
     for credit in credits {
-        let person_id = seed_person(db, credit).await?;
+        let person_id = seed_person(s, credit)?;
         let credit_id = api::CreditId::random();
 
-        db.insert_movie_credit(
+        s.insert_movie_credit(
             credit_id,
             movie_id,
             person_id,
@@ -3335,53 +3336,49 @@ async fn persist_movie_credits(
             credit.job.as_deref(),
             credit.order,
             credit.episode_count,
-        )
-        .await?;
+        )?;
 
         for (locale, character) in &credit.characters {
-            db.insert_movie_credit_string(
+            s.insert_movie_credit_string(
                 credit_id,
                 *locale,
                 api::StringKind::Character,
                 character,
-            )
-            .await?;
+            )?;
         }
     }
 
-    db.prune_orphan_people().await?;
+    s.prune_orphan_people()?;
     Ok(())
 }
 
 /// Persist only the releases from a cache-hit movie sync: the base layer reported
 /// unchanged, so stored metadata/strings/images are kept and only releases other
 /// sources produced this run are written.
-async fn persist_movie_releases_only(
+fn persist_movie_releases_only(
     movie_id: api::MovieId,
     draft: &MovieDraft,
-    db: &Database,
+    s: &mut InnerWrite,
 ) -> Result<()> {
-    persist_movie_releases(movie_id, draft, db).await
+    persist_movie_releases(movie_id, draft, s)
 }
 
 /// Upsert the draft's releases and prune stale ones, scoped to the sources whose
 /// release layer ran this sync. Shared by the full and cache-hit persist paths.
-async fn persist_movie_releases(
+fn persist_movie_releases(
     movie_id: api::MovieId,
     draft: &MovieDraft,
-    db: &Database,
+    s: &mut InnerWrite,
 ) -> Result<()> {
     let mut kept = HashSet::new();
 
     for r in &draft.releases {
-        db.upsert_movie_release(movie_id, r.source, r.country, r.release_type, &r.timestamp)
-            .await?;
+        s.upsert_movie_release(movie_id, r.source, r.country, r.release_type, &r.timestamp)?;
 
         kept.insert((r.source, r.country, r.release_type));
     }
 
-    db.prune_movie_releases(movie_id, &kept, &draft.release_sources)
-        .await?;
+    s.prune_movie_releases(movie_id, &kept, &draft.release_sources)?;
 
     Ok(())
 }
@@ -3449,4 +3446,90 @@ async fn collect_tmdb_movie_strings(
     }
 
     Ok(rows)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::db::OpenMode;
+
+    fn draft(season: u32, poster: &str) -> ShowDraft {
+        let number = SeasonNumber::from_ordinal(season);
+        let mut draft = ShowDraft::default();
+
+        draft.seasons.insert(
+            number,
+            SeasonDraft {
+                tvdb_id: None,
+                air_date: None,
+                poster: None,
+                tvdb_translations: Arc::default(),
+            },
+        );
+
+        draft.episodes.insert(
+            (number, 1),
+            EpisodeDraft {
+                tvdb_id: None,
+                original_name: None,
+                absolute_number: None,
+                aired: None,
+                screenshot: None,
+                tvdb_translations: Arc::default(),
+            },
+        );
+
+        draft.images.push(DraftImage {
+            kind: ImageKind::Poster,
+            image: Image::tmdb(poster),
+            score: 1.0,
+        });
+
+        draft
+            .selected
+            .insert(ImageKind::Poster, Image::tmdb(poster).key().clone());
+
+        draft
+    }
+
+    /// Every write of a show draft belongs to the caller's transaction: when
+    /// it fails after the draft is written, the show keeps what it had.
+    #[tokio::test]
+    async fn show_draft_is_written_in_one_transaction() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let db = Database::open(dir.path().join("test.db"), OpenMode::Normal, 1)?;
+        let show_id = api::ShowId::new(1);
+        db.create_show(show_id, "Show", None, "").await?;
+
+        let first = draft(1, "/first.jpg");
+        db.transaction(move |s| write_show_draft(s, show_id, None, &first))
+            .await?;
+
+        let second = draft(2, "/second.jpg");
+        let failed = db
+            .transaction(move |s| -> Result<()> {
+                write_show_draft(s, show_id, None, &second)?;
+                anyhow::bail!("fails after the draft is written")
+            })
+            .await;
+
+        assert!(failed.is_err());
+
+        let seasons: Vec<_> = db
+            .seasons(None, show_id)
+            .await?
+            .into_iter()
+            .map(|s| s.season)
+            .collect();
+        assert_eq!(seasons, [SeasonNumber::from_ordinal(1)]);
+
+        let show = db.show_by_id(None, show_id).await?.context("show")?;
+        assert_eq!(
+            show.poster.map(|p| p.key().clone()),
+            Some(Image::tmdb("/first.jpg").key().clone())
+        );
+        assert_eq!(show.images.len(), 1);
+        Ok(())
+    }
 }

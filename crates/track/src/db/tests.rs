@@ -924,7 +924,7 @@ fn migrations_convert_a_database_from_before_users() -> Result<()> {
     {
         let c = before_users_db(&old)?;
 
-        c.execute(&format!(
+        c.execute(format!(
             "INSERT INTO shows (id, tracked, language, include_specials) VALUES
                 (1, 1, {en_us}, 1),
                 (2, 0, 0, NULL);

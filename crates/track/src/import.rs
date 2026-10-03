@@ -175,10 +175,13 @@ async fn import_show_image(
     img: &api::Image,
 ) -> Result<()> {
     let id = api::ImageId::random();
-    db.upsert_show_image(id, show_id, kind, 0, img, None)
-        .await?;
-    db.set_show_image_selection(show_id, kind, id, true).await?;
-    Ok(())
+    let img = img.clone();
+
+    db.transaction(move |s| {
+        s.upsert_show_image(id, show_id, kind, 0, &img, None)?;
+        s.set_show_image_selection(show_id, kind, id, true)
+    })
+    .await
 }
 
 async fn import_show_images(
@@ -208,11 +211,13 @@ async fn import_movie_image(
     img: &api::Image,
 ) -> Result<()> {
     let id = api::ImageId::random();
-    db.upsert_movie_image(id, movie_id, kind, 0, img, None)
-        .await?;
-    db.set_movie_image_selection(movie_id, kind, id, true)
-        .await?;
-    Ok(())
+    let img = img.clone();
+
+    db.transaction(move |s| {
+        s.upsert_movie_image(id, movie_id, kind, 0, &img, None)?;
+        s.set_movie_image_selection(movie_id, kind, id, true)
+    })
+    .await
 }
 
 async fn import_movie_images(
@@ -454,11 +459,6 @@ pub async fn import() -> Result<()> {
                     .map(|d| naive_to_date(*d).to_timestamp_at_midnight_utc())
                     .transpose()?;
 
-                let season_id = db
-                    .upsert_season(show_id, season.number.into(), air_date)
-                    .await
-                    .with_context(|| anyhow!("Inserting season for show {}", s.id))?;
-
                 let mut rows = Vec::new();
                 if let Some(name) = season.name.as_deref().filter(|s| !s.trim().is_empty()) {
                     rows.push((
@@ -475,9 +475,19 @@ pub async fn import() -> Result<()> {
                         overview.to_owned(),
                     ));
                 }
-                if !rows.is_empty() {
-                    db.replace_season_strings(season_id, rows).await?;
-                }
+                let number = season.number.into();
+
+                db.transaction(move |tx| {
+                    let season_id = tx.upsert_season(show_id, number, air_date)?;
+
+                    if !rows.is_empty() {
+                        tx.replace_season_strings(season_id, rows)?;
+                    }
+
+                    Ok(())
+                })
+                .await
+                .with_context(|| anyhow!("Inserting season for show {}", s.id))?;
             }
         }
 
@@ -495,17 +505,6 @@ pub async fn import() -> Result<()> {
 
                 let episode_id = api::EpisodeId::new(uuid_to_u64(ep.id));
 
-                db.upsert_episode(
-                    episode_id,
-                    show_id,
-                    ep.season.into(),
-                    ep.number,
-                    ep.absolute_number,
-                    aired,
-                )
-                .await
-                .with_context(|| anyhow!("Inserting episode {} for show {}", ep.number, s.id))?;
-
                 let mut rows = Vec::new();
                 if let Some(name) = ep.name.as_deref().filter(|s| !s.trim().is_empty()) {
                     rows.push((
@@ -521,9 +520,20 @@ pub async fn import() -> Result<()> {
                         overview.to_owned(),
                     ));
                 }
-                if !rows.is_empty() {
-                    db.replace_episode_strings(episode_id, rows).await?;
-                }
+                let (season, number, absolute_number) =
+                    (ep.season.into(), ep.number, ep.absolute_number);
+
+                db.transaction(move |tx| {
+                    tx.upsert_episode(episode_id, show_id, season, number, absolute_number, aired)?;
+
+                    if !rows.is_empty() {
+                        tx.replace_episode_strings(episode_id, rows)?;
+                    }
+
+                    Ok(())
+                })
+                .await
+                .with_context(|| anyhow!("Inserting episode {} for show {}", ep.number, s.id))?;
             }
         }
 
