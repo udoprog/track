@@ -3060,7 +3060,7 @@ impl Database {
         let mut options = OpenOptions::new();
         options.no_mutex();
 
-        let builder = PoolBuilder::new(options, 16)
+        let builder = PoolBuilder::new(options, read_concurrency)
             .with_write_setup(move |c| ensure_mode(c, mode))
             .with_read_setup(move |c| ensure_mode(c, mode));
 
