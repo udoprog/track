@@ -28,11 +28,12 @@ pub(crate) struct AuthUser {
     pub(crate) session: Option<String>,
 }
 
-/// Ends the sockets of a user or of one session.
+/// Ends the sockets of a user, of one session, or of a user's sessions but one.
 #[derive(Debug, Clone)]
 pub(crate) enum Revoke {
     User(UserId),
     Session(String),
+    OtherSessions { user: UserId, keep: Option<String> },
 }
 
 impl Revoke {
@@ -40,6 +41,7 @@ impl Revoke {
         match self {
             Revoke::User(id) => *id == user.id,
             Revoke::Session(id) => user.session.as_deref() == Some(id.as_str()),
+            Revoke::OtherSessions { user: id, keep } => *id == user.id && user.session != *keep,
         }
     }
 }

@@ -17,13 +17,13 @@ use tokio::sync::{Notify, broadcast};
 use crate::app_broadcast::Broadcaster;
 use crate::cache::ImageCache;
 use crate::db::{Database, OpenMode};
-use crate::identity::{Auth, AuthUser, SESSION_COOKIE};
+use crate::identity::{Auth, AuthUser, Revoke, SESSION_COOKIE};
 use crate::pending::PendingSystem;
 use crate::remote::RemoteClients;
 use crate::shutdown::Shutdown;
 use crate::task_queue::TaskQueue;
 use crate::web::{self, AppState};
-use crate::ws::{Refused, WsHandler};
+use crate::ws::{Refused, WsHandler, session_valid};
 
 struct Server {
     url: String,
@@ -223,7 +223,11 @@ async fn login_by_email() -> Result<()> {
         .create_user("alice", Some("alice@example.com"))
         .await?;
     let hash = auth::hash_password("alice password")?;
-    server.state.db.set_user_password_hash(id, &hash).await?;
+    server
+        .state
+        .db
+        .set_user_password_hash(id, &hash, None)
+        .await?;
 
     let cookie = server.login("Alice@Example.com", "alice password").await?;
     let me = server.me(&cookie).await?;
@@ -454,6 +458,69 @@ async fn login_token_is_single_use() -> Result<()> {
     assert!(db.pending_login_links(Timestamp::now()).await?.is_empty());
 
     server.login("alice", "new password").await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn password_change_ends_other_sessions() -> Result<()> {
+    let server = Server::start(api::Config::default()).await?;
+    let db = &server.state.db;
+    let root = db.user_by_login_or_email("root").await?.unwrap();
+
+    let current = server.login("root", "root").await?;
+    let other = server.login("root", "root").await?;
+    let current_id = server.state.auth.session_id(&cookie_header(&current));
+    let other_id = server.state.auth.session_id(&cookie_header(&other));
+
+    let hash = auth::hash_password("new password")?;
+    db.set_user_password_hash(root.id, &hash, current_id.as_deref())
+        .await?;
+
+    assert_eq!(server.me(&current).await?.status, StatusCode::OK);
+    assert_eq!(server.me(&other).await?.status, StatusCode::UNAUTHORIZED);
+
+    let socket = |session: &Option<String>| AuthUser {
+        id: root.id,
+        session: session.clone(),
+    };
+
+    // Open sockets of the ended session close on the revocation, or on their
+    // next check if they missed it.
+    let revoke = Revoke::OtherSessions {
+        user: root.id,
+        keep: current_id.clone(),
+    };
+    assert!(!revoke.applies_to(&socket(&current_id)));
+    assert!(revoke.applies_to(&socket(&other_id)));
+    assert!(session_valid(db, &socket(&current_id)).await);
+    assert!(!session_valid(db, &socket(&other_id)).await);
+    Ok(())
+}
+
+#[tokio::test]
+async fn login_link_ends_existing_sessions() -> Result<()> {
+    let server = Server::start(api::Config::default()).await?;
+    let db = &server.state.db;
+    let alice = server.create_user("alice", None).await?;
+    let hash = auth::hash_password("old password")?;
+    db.set_user_password_hash(alice, &hash, None).await?;
+    let old = server.login("alice", "old password").await?;
+
+    let expires = Timestamp::from_jiff(auth::login_token_expiry(Timestamp::now().into_jiff()));
+    db.create_login_token("reset", alice, expires).await?;
+
+    let register = server
+        .post(
+            "/api/register/reset",
+            json!({"password": "new password"}),
+            None,
+        )
+        .await?;
+    assert_eq!(register.status, StatusCode::OK);
+    let new = register.cookie.expect("registering signs in");
+
+    assert_eq!(server.me(&old).await?.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(server.me(&new).await?.status, StatusCode::OK);
     Ok(())
 }
 

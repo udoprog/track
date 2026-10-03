@@ -2581,7 +2581,12 @@ impl WsHandler {
 
                 let new_password = req.new_password;
                 let hash = spawn_blocking(move || auth::hash_password(&new_password)).await??;
-                self.db.set_user_password_hash(user.id, &hash).await?;
+                let keep = self.user.session.as_deref();
+                self.db.set_user_password_hash(user.id, &hash, keep).await?;
+                self.auth.revoke(Revoke::OtherSessions {
+                    user: user.id,
+                    keep: keep.map(str::to_owned),
+                });
                 outgoing.write(api::Empty);
             }
             api::Request::Unknown(id) => {
@@ -2636,6 +2641,25 @@ pub(crate) async fn personalize(
     Ok(())
 }
 
+/// How often an open socket checks that its session is still valid.
+const SESSION_CHECK_INTERVAL: Duration = Duration::from_secs(5 * 60);
+
+/// Whether the socket's session still exists, is unexpired and belongs to its
+/// user. A lookup failure counts as not.
+pub(crate) async fn session_valid(db: &Database, user: &AuthUser) -> bool {
+    let Some(session) = &user.session else {
+        return true;
+    };
+
+    match db.session_user(session, api::Timestamp::now()).await {
+        Ok(found) => found.is_some_and(|u| u.id == user.id),
+        Err(error) => {
+            tracing::error!("Checking session: {error:#}");
+            false
+        }
+    }
+}
+
 /// Upgrades only signed-in users; others get 401 before the upgrade.
 pub(super) async fn ws_handler(
     State(state): State<AppState>,
@@ -2659,6 +2683,10 @@ pub(super) async fn ws_handler(
 
         let mut subscribe = state.broadcast.subscribe();
         let mut revocations = state.auth.subscribe_revocations();
+        let mut session_check = time::interval_at(
+            time::Instant::now() + SESSION_CHECK_INTERVAL,
+            SESSION_CHECK_INTERVAL,
+        );
 
         let connect =
             axum08::server(socket, handler).with_channel_allocator(state.channels.clone());
@@ -2710,8 +2738,19 @@ pub(super) async fn ws_handler(
                 revoke = revocations.recv() => {
                     match revoke {
                         Ok(revoke) if revoke.applies_to(&user) => break,
-                        Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                        Ok(_) => continue,
+                        // A dropped revocation may have been for this socket.
+                        Err(broadcast::error::RecvError::Lagged(_)) => {
+                            if !session_valid(&state.db, &user).await {
+                                break;
+                            }
+                        }
                         Err(_) => break,
+                    }
+                }
+                _ = session_check.tick() => {
+                    if !session_valid(&state.db, &user).await {
+                        break;
                     }
                 }
                 // Upgraded connections outlive the server's graceful shutdown.

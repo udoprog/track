@@ -224,6 +224,8 @@ pub(crate) async fn post_register(
         .redeem_login_token(&token, &hash, &session_id, Timestamp::now())
         .await??;
 
+    state.auth.revoke(Revoke::User(user.id));
+
     Ok((
         [(header::SET_COOKIE, state.auth.set_cookie(&session_id))],
         Json(user.to_api()),

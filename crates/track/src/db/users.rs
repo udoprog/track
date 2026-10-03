@@ -197,6 +197,8 @@ pub(super) struct Write {
     delete_session: TypedStatement<(String,), ()>,
     #[sql = "DELETE FROM sessions WHERE user_id = ?"]
     delete_user_sessions: TypedStatement<(UserId,), ()>,
+    #[sql = "DELETE FROM sessions WHERE user_id = ? AND id IS NOT ?"]
+    delete_other_sessions: TypedStatement<(UserId, Option<String>), ()>,
 
     #[sql = "INSERT INTO login_tokens (id, user_id, expires_at) VALUES (?, ?, ?)"]
     insert_login_token: TypedStatement<(String, UserId, Timestamp), ()>,
@@ -425,15 +427,25 @@ impl Database {
         result.await?
     }
 
-    #[tracing::instrument(skip(self, hash))]
-    pub(crate) async fn set_user_password_hash(&self, id: UserId, hash: &str) -> Result<()> {
+    /// Sets a user's password and ends their sessions other than `keep`.
+    #[tracing::instrument(skip(self, hash, keep))]
+    pub(crate) async fn set_user_password_hash(
+        &self,
+        id: UserId,
+        hash: &str,
+        keep: Option<&str>,
+    ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
         let hash = hash.to_owned();
+        let keep = keep.map(str::to_owned);
 
         let result = spawn_blocking(move || {
             s.users_write
                 .set_password_hash
                 .execute((hash.as_str(), id))?;
+            s.users_write
+                .delete_other_sessions
+                .execute((id, keep.as_deref()))?;
             Ok(())
         });
 
@@ -556,7 +568,8 @@ impl Database {
         result.await?
     }
 
-    /// Uses up a login token: sets the user's password and starts a session.
+    /// Uses up a login token: sets the user's password and replaces their
+    /// sessions with a new one.
     #[tracing::instrument(skip(self, token, password_hash, session_id))]
     pub(crate) async fn redeem_login_token(
         &self,
@@ -590,6 +603,7 @@ impl Database {
             s.users_write
                 .set_password_hash
                 .execute((password_hash.as_str(), user.id))?;
+            s.users_write.delete_user_sessions.execute((user.id,))?;
             s.users_write.insert_session.execute((
                 session_id.as_str(),
                 user.id,
