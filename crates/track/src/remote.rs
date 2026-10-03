@@ -2,7 +2,7 @@ use core::time::Duration;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, Result, ensure};
 use api::{Image, ImageKey};
 use parking_lot::Mutex;
 
@@ -20,6 +20,33 @@ pub(crate) fn best_image(images: &[(f64, Image)], selected: Option<ImageKey>) ->
     }
 
     images.first().map(|(_, image)| image.key().clone())
+}
+
+/// Whether `path` is relative and made only of plain segments, so that it can
+/// neither replace the image base when joined nor escape the cache directory.
+pub(crate) fn is_plain_image_path(path: &str) -> bool {
+    !path.is_empty()
+        && path.split('/').all(|segment| {
+            !segment.is_empty()
+                && segment != "."
+                && segment != ".."
+                && !segment.contains([':', '\\'])
+                && !segment.contains(char::is_control)
+        })
+}
+
+/// Join an image path onto `base`, refusing any URL outside the base.
+pub(crate) fn join_image_url(base: &reqwest::Url, path: &str) -> Result<reqwest::Url> {
+    ensure!(is_plain_image_path(path), "Invalid image path {path:?}");
+    let url = base.join(path)?;
+    ensure!(
+        url.scheme() == base.scheme()
+            && url.host() == base.host()
+            && url.port_or_known_default() == base.port_or_known_default()
+            && url.path().starts_with(base.path()),
+        "Image path {path:?} resolves outside {base}"
+    );
+    Ok(url)
 }
 
 /// Holds tmdb and tvdb clients, constructed only when the relevant API key is
@@ -501,5 +528,53 @@ impl RemoteClients {
             .context("Expected a configured TVmaze client")?
             .fetch_show_network(tvmaze_id)
             .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{is_plain_image_path, join_image_url};
+
+    const BAD: &[&str] = &[
+        "",
+        "https://evil.example/x",
+        "http:169.254.169.254/latest/meta-data",
+        "//evil.example/x",
+        "a//b.jpg",
+        "/abc.jpg",
+        "../abc.jpg",
+        "a/../../abc.jpg",
+        "./abc.jpg",
+        "\\\\evil.example/x",
+        "a\\..\\b.jpg",
+        "/\t/evil.example/x",
+        "\t//evil.example/x",
+    ];
+
+    #[test]
+    fn plain_image_paths() {
+        assert!(is_plain_image_path("abc.jpg"));
+        assert!(is_plain_image_path(
+            "banners/v4/series/81189/posters/5f.jpg"
+        ));
+        assert!(is_plain_image_path("a..b.jpg"));
+
+        for path in BAD {
+            assert!(!is_plain_image_path(path), "{path:?}");
+        }
+    }
+
+    #[test]
+    fn join_stays_under_base() {
+        let base = reqwest::Url::parse("https://image.tmdb.org/t/p/original/").unwrap();
+
+        assert_eq!(
+            join_image_url(&base, "abc.jpg").unwrap().as_str(),
+            "https://image.tmdb.org/t/p/original/abc.jpg"
+        );
+
+        for path in BAD.iter().chain(&["%2e%2e/abc.jpg", "%2E%2e/%2e%2e/x.jpg"]) {
+            assert!(join_image_url(&base, path).is_err(), "{path:?}");
+        }
     }
 }

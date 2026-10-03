@@ -62,7 +62,8 @@ impl Client {
     /// Fetch a v4 artwork image. Image paths are stored host-relative (the host is
     /// stripped on ingest); the public artwork CDN requires no authentication.
     pub(crate) async fn fetch_image(&self, path: &str) -> Result<Option<bytes::Bytes>> {
-        let url = self.inner.image_base.join(path.trim_start_matches('/'))?;
+        let url =
+            crate::remote::join_image_url(&self.inner.image_base, path.trim_start_matches('/'))?;
 
         let resp = self.inner.http.get(url).send().await?;
 

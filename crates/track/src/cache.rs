@@ -41,7 +41,7 @@ impl ImageCache {
     }
 
     fn disk_path(&self, source: ImageSource, path: &str) -> Option<PathBuf> {
-        if path.contains("..") || path.starts_with('/') {
+        if !crate::remote::is_plain_image_path(path) {
             return None;
         }
 
@@ -136,5 +136,48 @@ impl ImageCache {
 
         self.inner.memory.lock().put(key, data.clone());
         Ok(Some(data))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use api::ImageSource;
+
+    use super::ImageCache;
+
+    #[test]
+    fn disk_path_stays_under_root() {
+        let cache = ImageCache::new("/cache");
+
+        assert_eq!(
+            cache.disk_path(ImageSource::Tmdb, "abc.jpg"),
+            Some("/cache/tmdb/abc.jpg".into())
+        );
+
+        for path in [
+            "",
+            "/etc/passwd",
+            "../abc.jpg",
+            "a/../../abc.jpg",
+            "https://evil.example/x",
+            "http:169.254.169.254/latest/meta-data",
+            "//evil.example/x",
+        ] {
+            assert_eq!(cache.disk_path(ImageSource::Tmdb, path), None, "{path:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn invalid_path_is_never_fetched() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = ImageCache::new(dir.path());
+
+        let result = cache
+            .get_or_fetch(ImageSource::Tmdb, "https://evil.example/x", async || {
+                panic!("fetched an invalid path")
+            })
+            .await;
+
+        assert!(result.is_err());
     }
 }

@@ -145,7 +145,7 @@ impl Client {
     }
 
     pub(crate) async fn fetch_image(&self, path: &str) -> Result<Option<bytes::Bytes>> {
-        let url = self.inner.image_base.join(path)?;
+        let url = crate::remote::join_image_url(&self.inner.image_base, path)?;
         let resp = self.inner.http.get(url).send().await?;
 
         if resp.status() == reqwest::StatusCode::NOT_FOUND {

@@ -5,6 +5,7 @@ use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
 
 use crate::identity::AuthUser;
+use crate::remote::is_plain_image_path;
 use crate::web::AppState;
 
 pub(super) async fn image_handler(
@@ -16,6 +17,10 @@ pub(super) async fn image_handler(
     let remote = state.remote.clone();
 
     let path = path.trim_start_matches('/');
+
+    if !is_plain_image_path(path) {
+        return StatusCode::BAD_REQUEST.into_response();
+    }
 
     let result = cache
         .get_or_fetch(source, path, async || match source {
