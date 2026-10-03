@@ -48,7 +48,7 @@ impl Server {
             channels: Channels::default(),
             cache: ImageCache::new(dir.path().join("image-cache")),
             queue: TaskQueue::new(),
-            remote: RemoteClients::new(http.clone()),
+            remote: RemoteClients::new(http.clone(), http.clone()),
             pending: PendingSystem::new(db),
             config_changed: Arc::new(Notify::new()),
             delay: None,

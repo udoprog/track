@@ -566,7 +566,7 @@ mod tests {
 
             let worker = tokio::spawn(queue.clone().run(
                 db.clone(),
-                RemoteClients::new(reqwest::Client::new()),
+                RemoteClients::new(reqwest::Client::new(), reqwest::Client::new()),
                 broadcast.clone(),
                 PendingSystem::new(db),
                 shutdown.clone(),

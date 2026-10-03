@@ -140,6 +140,14 @@ async fn run(
         .build()
         .context("Building HTTP client")?;
 
+    let image_http = reqwest::Client::builder()
+        .user_agent("ontv/0.1.0")
+        .connect_timeout(HTTP_CONNECT_TIMEOUT)
+        .timeout(HTTP_TIMEOUT)
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .context("Building image HTTP client")?;
+
     let cache = ImageCache::new(cache_dir);
 
     let (broadcast_tx, _) = broadcast::channel(BROADCAST_CAPACITY);
@@ -148,7 +156,7 @@ async fn run(
     let queue = TaskQueue::new();
     let shutdown = Shutdown::new();
 
-    let remote = RemoteClients::new(http.clone());
+    let remote = RemoteClients::new(http.clone(), image_http);
 
     let config = db.load_config().await.context("Loading config")?;
     remote.configure(&config)?;

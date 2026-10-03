@@ -15,6 +15,7 @@ struct Inner {
     base: reqwest::Url,
     image_base: reqwest::Url,
     http: reqwest::Client,
+    image_http: reqwest::Client,
     api_key: String,
 }
 
@@ -24,12 +25,17 @@ pub(crate) struct Client {
 }
 
 impl Client {
-    pub(crate) fn new(http: reqwest::Client, api_key: String) -> Result<Self> {
+    pub(crate) fn new(
+        http: reqwest::Client,
+        image_http: reqwest::Client,
+        api_key: String,
+    ) -> Result<Self> {
         Ok(Self {
             inner: Arc::new(Inner {
                 base: reqwest::Url::parse(BASE)?,
                 image_base: reqwest::Url::parse(IMAGE_BASE)?,
                 http,
+                image_http,
                 api_key,
             }),
         })
@@ -146,13 +152,7 @@ impl Client {
 
     pub(crate) async fn fetch_image(&self, path: &str) -> Result<Option<bytes::Bytes>> {
         let url = crate::remote::join_image_url(&self.inner.image_base, path)?;
-        let resp = self.inner.http.get(url).send().await?;
-
-        if resp.status() == reqwest::StatusCode::NOT_FOUND {
-            return Ok(None);
-        }
-
-        Ok(Some(resp.error_for_status()?.bytes().await?))
+        crate::remote::fetch_image_bytes(&self.inner.image_http, url).await
     }
 
     /// Search show, returning the results for `page` and the total number of

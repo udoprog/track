@@ -49,11 +49,33 @@ pub(crate) fn join_image_url(base: &reqwest::Url, path: &str) -> Result<reqwest:
     Ok(url)
 }
 
+/// Fetch an image from `url` with a client that does not follow redirects.
+/// A missing image is `None`; a redirect or any other failure is an error.
+pub(crate) async fn fetch_image_bytes(
+    http: &reqwest::Client,
+    url: reqwest::Url,
+) -> Result<Option<bytes::Bytes>> {
+    let resp = http.get(url).send().await?;
+
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+
+    ensure!(
+        !resp.status().is_redirection(),
+        "Unexpected redirect ({}) fetching image",
+        resp.status()
+    );
+
+    Ok(Some(resp.error_for_status()?.bytes().await?))
+}
+
 /// Holds tmdb and tvdb clients, constructed only when the relevant API key is
 /// configured. Call `configure` on startup and whenever `SetConfig` is handled.
 #[derive(Clone)]
 pub(crate) struct RemoteClients {
     http: reqwest::Client,
+    image_http: reqwest::Client,
     rate_limiter: Arc<leaky_bucket::RateLimiter>,
     inner: Arc<Mutex<Inner>>,
 }
@@ -66,7 +88,7 @@ struct Inner {
 }
 
 impl RemoteClients {
-    pub(crate) fn new(http: reqwest::Client) -> Self {
+    pub(crate) fn new(http: reqwest::Client, image_http: reqwest::Client) -> Self {
         let inner = Inner {
             tvmaze: Some(crate::tvmaze::Client::new(http.clone())),
             ..Inner::default()
@@ -80,6 +102,7 @@ impl RemoteClients {
 
         Self {
             http,
+            image_http,
             rate_limiter: Arc::new(rate_limiter),
             inner: Arc::new(Mutex::new(inner)),
         }
@@ -93,6 +116,7 @@ impl RemoteClients {
         } else {
             Some(tmdb::Client::new(
                 self.http.clone(),
+                self.image_http.clone(),
                 config.tmdb_api_key.clone(),
             )?)
         };
@@ -102,6 +126,7 @@ impl RemoteClients {
         } else {
             Some(tvdb::Client::new(
                 self.http.clone(),
+                self.image_http.clone(),
                 config.tvdb_api_key.clone(),
                 config.tvdb_pin.clone(),
             )?)
@@ -541,7 +566,7 @@ pub(crate) fn interleave<T>(a: Vec<T>, b: Vec<T>) -> Vec<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::{interleave, is_plain_image_path, join_image_url};
+    use super::{fetch_image_bytes, interleave, is_plain_image_path, join_image_url};
 
     #[test]
     fn interleave_keeps_leftovers_of_either_side() {
@@ -592,5 +617,31 @@ mod tests {
         for path in BAD.iter().chain(&["%2e%2e/abc.jpg", "%2E%2e/%2e%2e/x.jpg"]) {
             assert!(join_image_url(&base, path).is_err(), "{path:?}");
         }
+    }
+
+    #[tokio::test]
+    async fn image_redirect_is_an_error() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        tokio::spawn(async move {
+            let (mut s, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 1024];
+            _ = s.read(&mut buf).await;
+            s.write_all(
+                b"HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:1/x\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            )
+            .await
+            .unwrap();
+        });
+
+        let http = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .unwrap();
+        let url = reqwest::Url::parse(&format!("http://{addr}/a.jpg")).unwrap();
+        assert!(fetch_image_bytes(&http, url).await.is_err());
     }
 }
