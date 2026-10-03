@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use aws_lc_rs::rand::SystemRandom;
 use aws_lc_rs::rsa::{KeyPair, KeySize};
@@ -60,12 +60,20 @@ impl Signer {
 struct FixedKeys {
     keys: Mutex<Vec<Jwk>>,
     fetches: AtomicUsize,
+    failing: AtomicBool,
 }
 
 impl KeyFetcher for &FixedKeys {
     async fn fetch(&self, team_domain: &str) -> Result<Vec<Jwk>, Box<dyn StdError + Send + Sync>> {
         assert_eq!(team_domain, TEAM);
         self.fetches.fetch_add(1, Ordering::SeqCst);
+        // Lets concurrent requests run while this fetch is in flight.
+        tokio::task::yield_now().await;
+
+        if self.failing.load(Ordering::SeqCst) {
+            return Err("certs endpoint unavailable".into());
+        }
+
         Ok(self.keys.lock().unwrap().clone())
     }
 }
@@ -317,7 +325,7 @@ async fn caches_and_refetches_on_unknown_kid() {
 
     // Rotation: an unknown kid is refetched, but not more than once per interval.
     keys.keys.lock().unwrap().push(new.jwk());
-    access.cache.lock().unwrap().fetched_at = None;
+    access.cache.lock().unwrap().attempted_at = None;
     let jwt = new.sign(&claims());
     access
         .email_at(&headers(None, Some(&jwt)), now())
@@ -331,6 +339,71 @@ async fn caches_and_refetches_on_unknown_kid() {
         Err(AccessError::UnknownKey)
     ));
     assert_eq!(keys.fetches.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn not_yet_valid_within_leeway() {
+    let signer = Signer::new("k1");
+    let mut claims = claims();
+    claims["nbf"] = json!(now().as_second() + LEEWAY_SECONDS - 1);
+    assert_eq!(check(&signer, claims).await.unwrap(), "user@example.com");
+
+    let mut claims = self::claims();
+    claims.as_object_mut().unwrap().remove("nbf");
+    assert_eq!(check(&signer, claims).await.unwrap(), "user@example.com");
+}
+
+#[tokio::test]
+async fn failed_fetch_is_not_retried_at_once() {
+    let signer = Signer::new("k1");
+    let keys = FixedKeys::default();
+    keys.keys.lock().unwrap().push(signer.jwk());
+    keys.failing.store(true, Ordering::SeqCst);
+    let access = Access::with_fetcher(config(false, true), &keys);
+
+    let jwt = signer.sign(&claims());
+    assert!(matches!(
+        access.email_at(&headers(None, Some(&jwt)), now()).await,
+        Err(AccessError::Fetch(_))
+    ));
+
+    // Any kid, even a forged one, waits out the interval.
+    let forged = Signer::new("forged").sign(&claims());
+    for jwt in [&jwt, &forged] {
+        assert!(matches!(
+            access.email_at(&headers(None, Some(jwt)), now()).await,
+            Err(AccessError::FetchFailedRecently)
+        ));
+    }
+    assert_eq!(keys.fetches.load(Ordering::SeqCst), 1);
+
+    keys.failing.store(false, Ordering::SeqCst);
+    access.cache.lock().unwrap().attempted_at = None;
+    access
+        .email_at(&headers(None, Some(&jwt)), now())
+        .await
+        .unwrap();
+    assert_eq!(keys.fetches.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn concurrent_requests_share_a_fetch() {
+    let signer = Signer::new("k1");
+    let keys = FixedKeys::default();
+    keys.keys.lock().unwrap().push(signer.jwk());
+    let access = Access::with_fetcher(config(false, true), &keys);
+
+    let headers = headers(None, Some(&signer.sign(&claims())));
+    let (a, b, c) = tokio::join!(
+        access.email_at(&headers, now()),
+        access.email_at(&headers, now()),
+        access.email_at(&headers, now()),
+    );
+
+    for email in [a, b, c] {
+        assert_eq!(email.unwrap(), "user@example.com");
+    }
+    assert_eq!(keys.fetches.load(Ordering::SeqCst), 1);
 }
 
 #[test]

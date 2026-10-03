@@ -250,6 +250,21 @@ fn log_access_settings(config: &api::CloudflareAccess) {
         return;
     }
 
+    if !config.verify_jwt {
+        if config.trust_email_header {
+            tracing::warn!(
+                "SECURITY: Cloudflare Access sign-in trusts the {} header without verifying the Access token, so anyone who can reach this server without going through Cloudflare can sign in as any user by sending that header. Turn on Verify token unless the server is only reachable through Cloudflare.",
+                auth::cloudflare::EMAIL_HEADER
+            );
+        } else {
+            tracing::warn!(
+                "Cloudflare Access sign-in is enabled, but neither Verify token nor Trust email header is, so no one can sign in through it"
+            );
+        }
+
+        return;
+    }
+
     if config.team_domain.trim().is_empty() || config.audience.trim().is_empty() {
         tracing::warn!(
             "Cloudflare Access sign-in is enabled, but its team domain or audience is empty, so no one can sign in through it"

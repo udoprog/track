@@ -507,6 +507,10 @@ impl Component for Settings {
                                             <span>{if cloudflare.trust_email_header { "Enabled" } else { "Disabled" }}</span>
                                         </Button>
                                     }) }
+
+                                    if cloudflare.enabled && cloudflare.trust_email_header && !cloudflare.verify_jwt {
+                                        <span class="field-error" role="alert">{"Without Verify token, anyone who can reach the server without going through Cloudflare can sign in as any user by sending this header."}</span>
+                                    }
                                 </FormRow>
                             </div>
                         </section>

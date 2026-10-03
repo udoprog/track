@@ -29,9 +29,12 @@ pub const JWT_COOKIE: &str = "CF_Authorization";
 /// Tolerated clock skew when checking `exp` and `nbf`.
 const LEEWAY_SECONDS: i64 = 60;
 
-/// Unknown key ids trigger a refetch at most this often, so forged tokens
-/// cannot make every request fetch the keys.
+/// Unknown key ids trigger a refetch at most this often, failed or not, so
+/// forged tokens cannot make every request fetch the keys.
 const MIN_REFETCH_INTERVAL: Duration = Duration::from_secs(60);
+
+/// How long fetching the signing keys may take.
+const FETCH_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -75,6 +78,8 @@ pub enum AccessError {
     EmailMismatch,
     #[error("failed to fetch Access signing keys")]
     Fetch(#[source] Box<dyn StdError + Send + Sync>),
+    #[error("fetching Access signing keys failed recently; retrying within a minute")]
+    FetchFailedRecently,
 }
 
 /// An RSA signing key, with `n` and `e` as big-endian bytes.
@@ -111,6 +116,7 @@ impl KeyFetcher for HttpKeyFetcher {
         let body = self
             .client
             .get(url)
+            .timeout(FETCH_TIMEOUT)
             .send()
             .await?
             .error_for_status()?
@@ -168,7 +174,9 @@ pub fn parse_jwks(body: &[u8]) -> Result<Vec<Jwk>, JwksError> {
 #[derive(Default)]
 struct KeyCache {
     keys: HashMap<String, PublicKeyComponents<Vec<u8>>>,
-    fetched_at: Option<Instant>,
+    /// When the keys were last fetched or a fetch was last attempted.
+    attempted_at: Option<Instant>,
+    failed: bool,
 }
 
 /// Identifies the user of a request that came through Cloudflare Access.
@@ -176,6 +184,8 @@ pub struct Access<F = HttpKeyFetcher> {
     config: Config,
     fetcher: F,
     cache: Mutex<KeyCache>,
+    /// Held while fetching, so concurrent requests share one fetch.
+    fetching: tokio::sync::Mutex<()>,
 }
 
 impl Access<HttpKeyFetcher> {
@@ -193,6 +203,7 @@ where
             config,
             fetcher,
             cache: Mutex::new(KeyCache::default()),
+            fetching: tokio::sync::Mutex::new(()),
         }
     }
 
@@ -316,29 +327,24 @@ where
 
     /// Looks up a signing key, refetching the key set when `kid` is unknown.
     async fn key(&self, kid: &str) -> Result<PublicKeyComponents<Vec<u8>>, AccessError> {
-        {
-            let cache = self.cache.lock().unwrap();
-
-            if let Some(key) = cache.keys.get(kid) {
-                return Ok(key.clone());
-            }
-
-            if cache
-                .fetched_at
-                .is_some_and(|at| at.elapsed() < MIN_REFETCH_INTERVAL)
-            {
-                return Err(AccessError::UnknownKey);
-            }
+        if let Some(key) = self.cache.lock().unwrap().keys.get(kid) {
+            return Ok(key.clone());
         }
 
-        let keys = self
-            .fetcher
-            .fetch(&self.config.team_domain)
-            .await
-            .map_err(AccessError::Fetch)?;
+        let _fetching = self.fetching.lock().await;
+
+        // Another request may have fetched while this one waited.
+        if let Some(key) = self.cached_key(kid)? {
+            return Ok(key);
+        }
+
+        self.cache.lock().unwrap().attempted_at = Some(Instant::now());
+        let result = self.fetcher.fetch(&self.config.team_domain).await;
 
         let mut cache = self.cache.lock().unwrap();
-        cache.fetched_at = Some(Instant::now());
+        cache.failed = result.is_err();
+        let keys = result.map_err(AccessError::Fetch)?;
+
         cache.keys = keys
             .into_iter()
             .map(|k| {
@@ -353,6 +359,29 @@ where
             .collect();
 
         cache.keys.get(kid).cloned().ok_or(AccessError::UnknownKey)
+    }
+
+    /// A cached key, `None` when the keys may be refetched, or an error when
+    /// they were fetched too recently to try again.
+    fn cached_key(&self, kid: &str) -> Result<Option<PublicKeyComponents<Vec<u8>>>, AccessError> {
+        let cache = self.cache.lock().unwrap();
+
+        if let Some(key) = cache.keys.get(kid) {
+            return Ok(Some(key.clone()));
+        }
+
+        if cache
+            .attempted_at
+            .is_some_and(|at| at.elapsed() < MIN_REFETCH_INTERVAL)
+        {
+            return Err(if cache.failed {
+                AccessError::FetchFailedRecently
+            } else {
+                AccessError::UnknownKey
+            });
+        }
+
+        Ok(None)
     }
 }
 
