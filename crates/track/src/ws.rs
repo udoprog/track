@@ -19,7 +19,7 @@ use crate::db::Database;
 use crate::db::users::{Conflict, UserRecord};
 use crate::identity::{Auth, AuthUser, Revoke};
 use crate::pending::PendingSystem;
-use crate::remote::RemoteClients;
+use crate::remote::{RemoteClients, interleave};
 use crate::task_queue::TaskQueue;
 use crate::web::AppState;
 
@@ -1215,26 +1215,10 @@ impl WsHandler {
 
                 // Interleave the two kinds round-robin so results are mixed
                 // through the list, while preserving each source's own order.
-                let mut results = Vec::with_capacity(shows.len() + movies.len());
-                let mut shows = shows.into_iter();
-                let mut movies = movies.into_iter();
-
-                loop {
-                    let show = shows.next();
-                    let movie = movies.next();
-
-                    if show.is_none() && movie.is_none() {
-                        break;
-                    }
-
-                    if let Some(show) = show {
-                        results.push(api::SearchResult::Show(show));
-                    }
-
-                    if let Some(movie) = movie {
-                        results.push(api::SearchResult::Movie(movie));
-                    }
-                }
+                let results = interleave(
+                    shows.into_iter().map(api::SearchResult::Show).collect(),
+                    movies.into_iter().map(api::SearchResult::Movie).collect(),
+                );
 
                 outgoing.write(api::SearchResponse { results, total });
             }

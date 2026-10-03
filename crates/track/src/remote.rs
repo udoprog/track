@@ -206,17 +206,7 @@ impl RemoteClients {
             }
         }
 
-        let mut out = Vec::new();
-
-        let mut b = b.into_iter();
-
-        for a in a {
-            out.push(a);
-
-            if let Some(b) = b.next() {
-                out.push(b);
-            }
-        }
+        let out = interleave(a, b);
 
         Ok((out, total))
     }
@@ -530,9 +520,36 @@ impl RemoteClients {
     }
 }
 
+/// Alternate items from `a` and `b`, then append whatever is left of the longer.
+pub(crate) fn interleave<T>(a: Vec<T>, b: Vec<T>) -> Vec<T> {
+    let mut out = Vec::with_capacity(a.len() + b.len());
+    let mut a = a.into_iter();
+    let mut b = b.into_iter();
+
+    loop {
+        let x = a.next();
+        let y = b.next();
+
+        if x.is_none() && y.is_none() {
+            return out;
+        }
+
+        out.extend(x);
+        out.extend(y);
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{is_plain_image_path, join_image_url};
+    use super::{interleave, is_plain_image_path, join_image_url};
+
+    #[test]
+    fn interleave_keeps_leftovers_of_either_side() {
+        assert_eq!(interleave(vec![1, 3], vec![2, 4, 6, 8]), [1, 2, 3, 4, 6, 8]);
+        assert_eq!(interleave(vec![1, 3, 5, 7], vec![2]), [1, 2, 3, 5, 7]);
+        assert_eq!(interleave(Vec::new(), vec![2, 4]), [2, 4]);
+        assert_eq!(interleave(vec![1], Vec::new()), [1]);
+    }
 
     const BAD: &[&str] = &[
         "",
