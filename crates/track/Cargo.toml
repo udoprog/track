@@ -16,7 +16,6 @@ required-features = ["import"]
 
 [dependencies]
 api = { path = "../api", features = ["rand", "sqll"] }
-iso639 = { path = "../iso639" }
 auth = { path = "../auth" }
 
 anyhow = "1.0.104"
