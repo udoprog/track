@@ -1163,16 +1163,16 @@ pub(crate) struct InnerRead {
     #[sql = "FROM episodes e"]
     #[sql = "JOIN user_tracked_shows t ON t.show_id = e.show_id"]
     #[sql = "WHERE t.user_id = ?"]
-    #[sql = "    AND e.aired > ?"]
-    #[sql = "    AND e.aired <= ?"]
+    #[sql = "    AND e.aired >= ?"]
+    #[sql = "    AND e.aired < ?"]
     #[sql = "ORDER BY e.aired, e.show_id, e.season, e.episode"]
     list_schedule: TypedStatement<(UserId, Timestamp, Timestamp), ScheduleRow>,
     #[sql = "SELECT m.id, m.release_date"]
     #[sql = "FROM movies m"]
     #[sql = "JOIN user_tracked_movies t ON t.movie_id = m.id"]
     #[sql = "WHERE t.user_id = ?"]
-    #[sql = "    AND m.release_date > ?"]
-    #[sql = "    AND m.release_date <= ?"]
+    #[sql = "    AND m.release_date >= ?"]
+    #[sql = "    AND m.release_date < ?"]
     #[sql = "ORDER BY m.release_date, m.id"]
     list_schedule_movies: TypedStatement<(UserId, Timestamp, Timestamp), ScheduleMovieRow>,
 

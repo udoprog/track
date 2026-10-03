@@ -1173,6 +1173,9 @@ async fn schedule_groups_by_local_day_and_respects_window() -> Result<()> {
         (6, tracked, 6, "2026-06-16T23:59:59"),
         (7, tracked, 7, "2026-06-17T00:00:01"),
         (8, untracked, 1, "2026-06-15T12:00:00"),
+        // Exactly the first midnight is in the window, exactly the end midnight is not.
+        (9, tracked, 8, "2026-06-15T00:00:00"),
+        (10, tracked, 9, "2026-06-17T00:00:00"),
     ];
 
     for (id, show, number, aired) in episodes {
@@ -1196,6 +1199,13 @@ async fn schedule_groups_by_local_day_and_respects_window() -> Result<()> {
     db.create_movie(movie_only, "Later", Some(local("2026-06-16T22:00:00")), "")
         .await?;
     db.set_movie_tracked(root, movie_only, true).await?;
+
+    for (id, released) in [(4, "2026-06-15T00:00:00"), (5, "2026-06-17T00:00:00")] {
+        let id = api::MovieId::new(id);
+        db.create_movie(id, "Edge", Some(local(released)), "")
+            .await?;
+        db.set_movie_tracked(root, id, true).await?;
+    }
 
     let untracked_movie = api::MovieId::new(3);
     db.create_movie(
@@ -1232,8 +1242,8 @@ async fn schedule_groups_by_local_day_and_respects_window() -> Result<()> {
         vec![
             (
                 api::Date::new(2026, 6, 15).unwrap(),
-                vec![(tracked, vec![2, 3, 4])],
-                vec![]
+                vec![(tracked, vec![8, 2, 3, 4])],
+                vec![api::MovieId::new(4)]
             ),
             (
                 api::Date::new(2026, 6, 16).unwrap(),
