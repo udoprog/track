@@ -656,7 +656,7 @@ impl fmt::Debug for DateError {
     }
 }
 
-/// Calendar date stored as TEXT "YYYY-MM-DD".
+/// Calendar date, stored in SQLite as the integer `YYYYMMDD`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Date(JiffDate);
 

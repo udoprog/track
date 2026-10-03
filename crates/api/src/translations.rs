@@ -43,8 +43,8 @@ pub struct Translations {
 }
 
 impl Translations {
-    /// Create an empty set for the configured display `locale` and the entity's
-    /// `default` (original) language. Fill it with [`insert`](Self::insert).
+    /// Create an empty set for the configured display `locale`. Fill it with
+    /// [`insert`](Self::insert).
     pub fn new(locale: Locale) -> Self {
         Self {
             locale,

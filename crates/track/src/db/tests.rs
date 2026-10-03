@@ -1041,3 +1041,40 @@ fn migrations_convert_a_database_from_before_users() -> Result<()> {
     );
     Ok(())
 }
+
+/// A stored integer that is not a valid code is rejected instead of producing
+/// a `Language` or `Country`.
+#[test]
+fn invalid_stored_language_and_country_are_rejected() -> Result<()> {
+    let c = OpenOptions::new()
+        .read_write()
+        .create()
+        .no_mutex()
+        .open_in_memory()?;
+
+    let read = |sql: &str| -> (
+        sqll::Result<Option<api::Language>>,
+        sqll::Result<Option<api::Country>>,
+    ) {
+        let language = c.prepare(sql).and_then(|mut q| q.next::<api::Language>());
+        let country = c.prepare(sql).and_then(|mut q| q.next::<api::Country>());
+        (language, country)
+    };
+
+    for value in [0xFFFF_FFFFi64, 0xC328_0000, -1, 1 << 32] {
+        let (language, country) = read(&format!("SELECT {value}"));
+        assert!(language.is_err(), "language {value:#x} was accepted");
+        assert!(country.is_err(), "country {value:#x} was accepted");
+    }
+
+    let (language, country) = read("SELECT 0");
+    assert_eq!(language?, Some(api::Language::DEFAULT));
+    assert_eq!(country?, Some(api::Country::DEFAULT));
+
+    let eng = i64::from(u32::from_be_bytes(api::Language::ENG.to_raw()));
+    assert_eq!(read(&format!("SELECT {eng}")).0?, Some(api::Language::ENG));
+
+    let us = i64::from(u32::from_be_bytes(api::Country::US.to_raw()));
+    assert_eq!(read(&format!("SELECT {us}")).1?, Some(api::Country::US));
+    Ok(())
+}

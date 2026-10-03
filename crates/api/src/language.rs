@@ -280,7 +280,19 @@ impl ::sqll::FromColumn<'_> for Language {
     #[inline]
     fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Integer) -> ::sqll::Result<Self> {
         let value = i64::from_column(stmt, index)?;
-        Ok(Language((value as u32).to_be_bytes()))
+
+        if let Ok(value) = u32::try_from(value) {
+            let bytes = value.to_be_bytes();
+
+            if Language::new(&bytes).0 == bytes {
+                return Ok(Language(bytes));
+            }
+        }
+
+        Err(::sqll::Error::new(
+            ::sqll::Code::MISMATCH,
+            "invalid stored language code",
+        ))
     }
 }
 
