@@ -1061,11 +1061,31 @@ fn invalid_stored_language_and_country_are_rejected() -> Result<()> {
         (language, country)
     };
 
-    for value in [0xFFFF_FFFFi64, 0xC328_0000, -1, 1 << 32] {
+    for value in [
+        0xFFFF_FFFFi64,
+        0xC328_0000,
+        -1,
+        1 << 32,
+        0x6500_6700,
+        0x4500_4700,
+    ] {
         let (language, country) = read(&format!("SELECT {value}"));
         assert!(language.is_err(), "language {value:#x} was accepted");
         assert!(country.is_err(), "country {value:#x} was accepted");
     }
+
+    let upper_eng = i64::from(u32::from_be_bytes(*b"ENG\0"));
+    assert!(read(&format!("SELECT {upper_eng}")).0.is_err());
+    let lower_us = i64::from(u32::from_be_bytes(*b"us\0\0"));
+    assert!(read(&format!("SELECT {lower_us}")).1.is_err());
+
+    // Well-formed codes missing from the iso tables still read.
+    let zzz = i64::from(u32::from_be_bytes(*b"zzz\0"));
+    let language = read(&format!("SELECT {zzz}")).0?.context("zzz")?;
+    assert_eq!(language.to_raw(), *b"zzz\0");
+    let zz = i64::from(u32::from_be_bytes(*b"ZZ\0\0"));
+    let country = read(&format!("SELECT {zz}")).1?.context("ZZ")?;
+    assert_eq!(country.to_raw(), *b"ZZ\0\0");
 
     let (language, country) = read("SELECT 0");
     assert_eq!(language?, Some(api::Language::DEFAULT));

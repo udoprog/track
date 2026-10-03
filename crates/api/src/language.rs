@@ -283,8 +283,13 @@ impl ::sqll::FromColumn<'_> for Language {
 
         if let Ok(value) = u32::try_from(value) {
             let bytes = value.to_be_bytes();
+            let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
 
-            if Language::new(&bytes).0 == bytes {
+            // Only the shape is checked so that a code missing from the current
+            // tables still reads; `as_raw_code` relies on it being ASCII.
+            if bytes[..end].iter().all(u8::is_ascii_lowercase)
+                && bytes[end..].iter().all(|&b| b == 0)
+            {
                 return Ok(Language(bytes));
             }
         }
