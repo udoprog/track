@@ -1,3 +1,5 @@
+use std::sync::LazyLock;
+
 pub const MIN_PASSWORD_LEN: usize = 8;
 
 #[derive(Debug, thiserror::Error)]
@@ -13,6 +15,17 @@ pub fn hash_password(password: &str) -> Result<String, PasswordError> {
 /// A malformed hash verifies as false.
 pub fn verify_password(password: &str, hash: &str) -> bool {
     bcrypt::verify(password, hash).unwrap_or(false)
+}
+
+/// A hash of a random password, to verify against when there is no real hash
+/// so that a missing account takes as long as a wrong password.
+pub fn dummy_hash() -> &'static str {
+    static HASH: LazyLock<String> = LazyLock::new(|| {
+        let password: [u8; 16] = rand::random();
+        bcrypt::hash(password, bcrypt::DEFAULT_COST).expect("hashing a random password")
+    });
+
+    &HASH
 }
 
 /// Returns a message for the user when the password is not acceptable.
@@ -34,6 +47,7 @@ mod tests {
         assert!(verify_password("correct horse", &hash));
         assert!(!verify_password("wrong horse", &hash));
         assert!(!verify_password("correct horse", "not a hash"));
+        assert!(!verify_password("", dummy_hash()));
     }
 
     #[test]

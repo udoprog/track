@@ -15,6 +15,7 @@ use parking_lot::{Mutex, RwLock};
 use tokio::sync::broadcast;
 
 use crate::db::Database;
+use crate::login_throttle::LoginThrottle;
 use crate::web::AppState;
 
 pub(crate) const SESSION_COOKIE: &str = "track_session";
@@ -56,6 +57,7 @@ struct Inner {
     /// When each Access warning was last logged, so a client retrying every
     /// few seconds does not flood the log.
     warned: Mutex<HashMap<String, Instant>>,
+    throttle: LoginThrottle,
 }
 
 /// How often the same Access warning may be logged.
@@ -80,6 +82,7 @@ impl Auth {
                 }),
                 revoke,
                 warned: Mutex::new(HashMap::new()),
+                throttle: LoginThrottle::default(),
             }),
         };
 
@@ -224,6 +227,10 @@ impl Auth {
     #[cfg(test)]
     pub(crate) fn warnings(&self) -> Vec<String> {
         self.inner.warned.lock().keys().cloned().collect()
+    }
+
+    pub(crate) fn throttle(&self) -> &LoginThrottle {
+        &self.inner.throttle
     }
 
     pub(crate) fn revoke(&self, revoke: Revoke) {

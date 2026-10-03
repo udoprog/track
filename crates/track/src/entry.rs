@@ -183,8 +183,11 @@ async fn run(
         let shutdown = shutdown.clone();
 
         async move {
-            let serve = axum::serve(listener, web::router(state, dist))
-                .with_graceful_shutdown(async move { shutdown.cancelled().await });
+            let serve = axum::serve(
+                listener,
+                web::router(state, dist).into_make_service_with_connect_info::<SocketAddr>(),
+            )
+            .with_graceful_shutdown(async move { shutdown.cancelled().await });
 
             serve.await?;
             Ok::<_, anyhow::Error>(())

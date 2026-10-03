@@ -59,7 +59,13 @@ impl Server {
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let addr: SocketAddr = listener.local_addr()?;
         let router = web::router(state.clone(), Some(dir.path()));
-        tokio::spawn(async move { axum::serve(listener, router).await });
+        tokio::spawn(async move {
+            axum::serve(
+                listener,
+                router.into_make_service_with_connect_info::<SocketAddr>(),
+            )
+            .await
+        });
 
         Ok(Self {
             url: format!("http://{addr}"),
@@ -255,6 +261,43 @@ async fn bad_password() -> Result<()> {
     // A forged cookie is not a session.
     let forged = format!("{SESSION_COOKIE}=abc.def");
     assert_eq!(server.me(&forged).await?.status, StatusCode::UNAUTHORIZED);
+    Ok(())
+}
+
+#[tokio::test]
+async fn failed_logins_are_throttled() -> Result<()> {
+    let server = Server::start(api::Config::default()).await?;
+
+    let mut statuses = Vec::new();
+
+    for _ in 0..11 {
+        let response = server
+            .post(
+                "/api/auth/login",
+                json!({"login": "root", "password": "wrong"}),
+                None,
+            )
+            .await?;
+        statuses.push(response.status);
+    }
+
+    assert!(
+        statuses[..10]
+            .iter()
+            .all(|s| *s == StatusCode::UNAUTHORIZED)
+    );
+    assert_eq!(statuses[10], StatusCode::TOO_MANY_REQUESTS);
+
+    // Even the right password is refused while the login is throttled.
+    let response = server
+        .post(
+            "/api/auth/login",
+            json!({"login": "root", "password": "root"}),
+            None,
+        )
+        .await?;
+    assert_eq!(response.status, StatusCode::TOO_MANY_REQUESTS);
+    assert!(response.cookie.is_none());
     Ok(())
 }
 

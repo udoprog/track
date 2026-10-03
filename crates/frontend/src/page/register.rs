@@ -162,6 +162,8 @@ fn link_error(error: &HttpError) -> AttrValue {
         HttpError::Status(status) => {
             format!("The login link could not be checked (HTTP {status}).").into()
         }
-        HttpError::Unauthorized => AttrValue::from("The login link could not be checked."),
+        HttpError::Unauthorized | HttpError::TooManyRequests => {
+            AttrValue::from("The login link could not be checked.")
+        }
     }
 }

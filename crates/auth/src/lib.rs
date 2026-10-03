@@ -8,7 +8,7 @@ mod session;
 
 pub use self::cookie::{generate_session_key, session_cookie, verify_session_cookie};
 pub use self::password::{
-    MIN_PASSWORD_LEN, PasswordError, hash_password, validate_password, verify_password,
+    MIN_PASSWORD_LEN, PasswordError, dummy_hash, hash_password, validate_password, verify_password,
 };
 pub use self::session::{
     LOGIN_TOKEN_LIFETIME, SESSION_LIFETIME, SESSION_LIFETIME_DAYS, is_expired, login_token_expiry,

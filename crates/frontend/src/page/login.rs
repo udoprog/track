@@ -149,6 +149,9 @@ pub(crate) fn Login(props: &Props) -> Html {
 fn login_error(error: &HttpError) -> AttrValue {
     match error {
         HttpError::Unauthorized => AttrValue::from("Wrong login or password."),
+        HttpError::TooManyRequests => {
+            AttrValue::from("Too many failed sign-ins. Try again in a few minutes.")
+        }
         HttpError::Request(error) => format!("Could not reach the server: {error}").into(),
         HttpError::BadRequest(message) => AttrValue::from(message.clone()),
         HttpError::Status(status) => format!("Signing in failed (HTTP {status}).").into(),

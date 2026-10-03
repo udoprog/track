@@ -13,6 +13,8 @@ pub(crate) enum HttpError {
     NotFound,
     /// The login link was used or has expired.
     Gone,
+    /// Too many failed sign-ins; try again later.
+    TooManyRequests,
     /// The server refused the input and says why.
     BadRequest(String),
     Status(u16),
@@ -51,6 +53,7 @@ async fn check(response: Response) -> Result<Response, HttpError> {
         401 => Err(HttpError::Unauthorized),
         404 => Err(HttpError::NotFound),
         410 => Err(HttpError::Gone),
+        429 => Err(HttpError::TooManyRequests),
         status => Err(HttpError::Status(status)),
     }
 }

@@ -1,11 +1,15 @@
 //! Signing in and out, and redeeming login links.
 
+use std::net::SocketAddr;
+use std::time::Instant;
+
 use api::Timestamp;
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::extract::{ConnectInfo, Path, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use serde::{Deserialize, Serialize};
+use tokio::task::spawn_blocking;
 
 use crate::db::users::TokenError;
 use crate::identity::{AuthUser, Revoke};
@@ -13,6 +17,7 @@ use crate::web::AppState;
 
 pub(crate) enum Error {
     Unauthorized,
+    TooManyRequests,
     NotFound,
     /// The login link was used or has expired.
     Gone,
@@ -39,6 +44,7 @@ impl IntoResponse for Error {
     fn into_response(self) -> Response {
         match self {
             Self::Unauthorized => StatusCode::UNAUTHORIZED.into_response(),
+            Self::TooManyRequests => StatusCode::TOO_MANY_REQUESTS.into_response(),
             Self::NotFound => StatusCode::NOT_FOUND.into_response(),
             Self::Gone => StatusCode::GONE.into_response(),
             Self::BadRequest(message) => (StatusCode::BAD_REQUEST, message).into_response(),
@@ -70,21 +76,35 @@ pub(crate) struct RegisterInfo {
 
 pub(crate) async fn login(
     State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
     Json(body): Json<LoginBody>,
 ) -> Result<Response, Error> {
-    let user = state
-        .db
-        .user_by_login_or_email(&body.login)
-        .await?
-        .ok_or(Error::Unauthorized)?;
+    let throttle = state.auth.throttle();
 
-    let Some(hash) = &user.password_hash else {
+    if !throttle.allows(peer.ip(), &body.login, Instant::now()) {
+        return Err(Error::TooManyRequests);
+    }
+
+    let user = state.db.user_by_login_or_email(&body.login).await?;
+
+    // An unknown login or a user without a password is checked against a
+    // dummy hash, so the response time does not tell whether the account exists.
+    let hash = user.as_ref().and_then(|u| u.password_hash.clone());
+    let password = body.password;
+
+    let verified = spawn_blocking(move || match &hash {
+        Some(hash) => auth::verify_password(&password, hash),
+        None => auth::verify_password(&password, auth::dummy_hash()),
+    })
+    .await
+    .map_err(anyhow::Error::from)?;
+
+    let Some(user) = user.filter(|_| verified) else {
+        throttle.fail(peer.ip(), &body.login, Instant::now());
         return Err(Error::Unauthorized);
     };
 
-    if !auth::verify_password(&body.password, hash) {
-        return Err(Error::Unauthorized);
-    }
+    throttle.succeed(&body.login);
 
     let session_id = auth::new_session_id();
     state
@@ -187,7 +207,16 @@ pub(crate) async fn post_register(
         return Err(Error::BadRequest(message));
     }
 
-    let hash = auth::hash_password(&body.password).map_err(anyhow::Error::from)?;
+    // Checked before hashing, so an invalid link costs no hashing work.
+    state
+        .db
+        .login_token_user(&token, Timestamp::now())
+        .await??;
+
+    let hash = spawn_blocking(move || auth::hash_password(&body.password))
+        .await
+        .map_err(anyhow::Error::from)?
+        .map_err(anyhow::Error::from)?;
     let session_id = auth::new_session_id();
 
     let user = state

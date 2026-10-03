@@ -11,6 +11,7 @@ use axum::extract::WebSocketUpgrade;
 use musli_web::axum08;
 use musli_web::ws;
 use tokio::sync::broadcast;
+use tokio::task::spawn_blocking;
 use tokio::time;
 
 use crate::app_broadcast::{Audience, Broadcaster};
@@ -2563,17 +2564,23 @@ impl WsHandler {
 
                 let user = self.current_user().await?;
 
-                if let Some(hash) = &user.password_hash
-                    && !auth::verify_password(&req.old_password, hash)
-                {
-                    return Err(Refused::WrongPassword.into());
+                if let Some(hash) = user.password_hash.clone() {
+                    let old_password = req.old_password;
+
+                    let verified =
+                        spawn_blocking(move || auth::verify_password(&old_password, &hash)).await?;
+
+                    if !verified {
+                        return Err(Refused::WrongPassword.into());
+                    }
                 }
 
                 if let Some(message) = auth::validate_password(&req.new_password) {
                     return Err(Refused::WeakPassword(message).into());
                 }
 
-                let hash = auth::hash_password(&req.new_password)?;
+                let new_password = req.new_password;
+                let hash = spawn_blocking(move || auth::hash_password(&new_password)).await??;
                 self.db.set_user_password_hash(user.id, &hash).await?;
                 outgoing.write(api::Empty);
             }
