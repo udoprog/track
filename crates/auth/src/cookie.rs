@@ -18,13 +18,20 @@ fn mac(key: &[u8; 32], session_id: &str) -> Hmac<Sha256> {
 }
 
 /// Builds the session cookie named `name`, whose value is
-/// `{session_id}.{base64url(HMAC-SHA256(key, session_id))}`.
-pub fn session_cookie(name: &str, key: &[u8; 32], session_id: &str) -> Cookie<'static> {
+/// `{session_id}.{base64url(HMAC-SHA256(key, session_id))}`. `secure` limits
+/// it to HTTPS.
+pub fn session_cookie(
+    name: &str,
+    key: &[u8; 32],
+    session_id: &str,
+    secure: bool,
+) -> Cookie<'static> {
     let signature = URL_SAFE_NO_PAD.encode(mac(key, session_id).finalize().into_bytes());
 
     Cookie::build((name.to_owned(), format!("{session_id}.{signature}")))
         .http_only(true)
         .same_site(SameSite::Strict)
+        .secure(secure)
         .path("/")
         .max_age(cookie::time::Duration::days(SESSION_LIFETIME_DAYS))
         .build()
@@ -48,10 +55,11 @@ mod tests {
     #[test]
     fn sign_and_verify() {
         let key = generate_session_key();
-        let cookie = session_cookie("track_session", &key, "abc_-123");
+        let cookie = session_cookie("track_session", &key, "abc_-123", false);
 
         assert_eq!(cookie.name(), "track_session");
         assert_eq!(cookie.http_only(), Some(true));
+        assert_eq!(cookie.secure(), Some(false));
         assert_eq!(cookie.same_site(), Some(SameSite::Strict));
         assert_eq!(cookie.path(), Some("/"));
         assert_eq!(cookie.max_age(), Some(cookie::time::Duration::days(30)));
@@ -60,12 +68,15 @@ mod tests {
             verify_session_cookie(&key, cookie.value()),
             Some("abc_-123")
         );
+
+        let cookie = session_cookie("track_session", &key, "abc_-123", true);
+        assert_eq!(cookie.secure(), Some(true));
     }
 
     #[test]
     fn rejects_tampering() {
         let key = generate_session_key();
-        let cookie = session_cookie("s", &key, "abc");
+        let cookie = session_cookie("s", &key, "abc", false);
         let (_, signature) = cookie.value().split_once('.').unwrap();
 
         assert_eq!(

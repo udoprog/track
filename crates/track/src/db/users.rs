@@ -6,7 +6,7 @@ use tokio::task::spawn_blocking;
 
 use super::Database;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct UserRecord {
     pub(crate) id: UserId,
     pub(crate) login: String,
@@ -14,6 +14,20 @@ pub(crate) struct UserRecord {
     pub(crate) role: UserRole,
     pub(crate) password_hash: Option<String>,
     pub(crate) created_at: Timestamp,
+}
+
+/// Leaves out the password hash, which spans and logs must not record.
+impl std::fmt::Debug for UserRecord {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UserRecord")
+            .field("id", &self.id)
+            .field("login", &self.login)
+            .field("email", &self.email)
+            .field("role", &self.role)
+            .field("has_password", &self.password_hash.is_some())
+            .field("created_at", &self.created_at)
+            .finish()
+    }
 }
 
 impl UserRecord {
@@ -300,7 +314,7 @@ impl Database {
     }
 
     /// The user owning an unexpired session.
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    #[tracing::instrument(skip(self, session_id), ret(level = "trace"))]
     pub(crate) async fn session_user(
         &self,
         session_id: &str,

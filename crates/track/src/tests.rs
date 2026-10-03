@@ -269,6 +269,72 @@ async fn bad_password() -> Result<()> {
 }
 
 #[tokio::test]
+async fn session_cookie_is_secure_behind_https() -> Result<()> {
+    let server = Server::start(api::Config::default()).await?;
+
+    let set_cookies = |response: &reqwest::Response| -> Vec<cookie::Cookie<'static>> {
+        response
+            .headers()
+            .get_all(SET_COOKIE)
+            .iter()
+            .filter_map(|v| cookie::Cookie::parse(v.to_str().ok()?.to_owned()).ok())
+            .collect()
+    };
+
+    for (proto, secure) in [
+        (None, None),
+        (Some("http"), None),
+        (Some("https"), Some(true)),
+    ] {
+        let mut req = server
+            .client
+            .post(format!("{}/api/auth/login", server.url))
+            .header("content-type", "application/json")
+            .body(serde_json::to_vec(
+                &json!({"login": "root", "password": "root"}),
+            )?);
+
+        if let Some(proto) = proto {
+            req = req.header("x-forwarded-proto", proto);
+        }
+
+        let response = req.send().await?;
+        assert_eq!(response.status(), StatusCode::OK);
+        let cookies = set_cookies(&response);
+        assert_eq!(cookies.len(), 1);
+        assert_eq!(cookies[0].secure(), secure, "{proto:?}");
+
+        let mut req = server
+            .client
+            .post(format!("{}/api/auth/logout", server.url))
+            .header(
+                COOKIE,
+                format!("{}={}", cookies[0].name(), cookies[0].value()),
+            );
+
+        if let Some(proto) = proto {
+            req = req.header("x-forwarded-proto", proto);
+        }
+
+        let cleared = set_cookies(&req.send().await?);
+        assert_eq!(cleared.len(), 1);
+        assert_eq!(cleared[0].value(), "");
+        assert_eq!(cleared[0].same_site(), Some(cookie::SameSite::Strict));
+        assert_eq!(cleared[0].secure(), secure, "{proto:?}");
+    }
+
+    let root = server
+        .state
+        .db
+        .user_by_login_or_email("root")
+        .await?
+        .unwrap();
+    let hash = root.password_hash.as_deref().unwrap();
+    assert!(!format!("{root:?}").contains(hash));
+    Ok(())
+}
+
+#[tokio::test]
 async fn failed_logins_are_throttled() -> Result<()> {
     let server = Server::start(api::Config::default()).await?;
 

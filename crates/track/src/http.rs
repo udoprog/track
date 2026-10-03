@@ -77,6 +77,7 @@ pub(crate) struct RegisterInfo {
 pub(crate) async fn login(
     State(state): State<AppState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(body): Json<LoginBody>,
 ) -> Result<Response, Error> {
     let throttle = state.auth.throttle();
@@ -113,7 +114,10 @@ pub(crate) async fn login(
         .await?;
 
     Ok((
-        [(header::SET_COOKIE, state.auth.set_cookie(&session_id))],
+        [(
+            header::SET_COOKIE,
+            state.auth.set_cookie(&headers, &session_id),
+        )],
         Json(user.to_api()),
     )
         .into_response())
@@ -147,7 +151,10 @@ pub(crate) async fn cloudflare_login(
         .create_session(&session_id, user.id, Timestamp::now())
         .await?;
     Ok((
-        [(header::SET_COOKIE, state.auth.set_cookie(&session_id))],
+        [(
+            header::SET_COOKIE,
+            state.auth.set_cookie(&headers, &session_id),
+        )],
         Json(user.to_api()),
     )
         .into_response())
@@ -165,7 +172,7 @@ pub(crate) async fn logout(State(state): State<AppState>, headers: HeaderMap) ->
 
     (
         StatusCode::NO_CONTENT,
-        [(header::SET_COOKIE, state.auth.clear_cookie())],
+        [(header::SET_COOKIE, state.auth.clear_cookie(&headers))],
     )
         .into_response()
 }
@@ -201,6 +208,7 @@ pub(crate) async fn get_register(
 pub(crate) async fn post_register(
     State(state): State<AppState>,
     Path(token): Path<String>,
+    headers: HeaderMap,
     Json(body): Json<RegisterBody>,
 ) -> Result<Response, Error> {
     if let Some(message) = auth::validate_password(&body.password) {
@@ -227,7 +235,10 @@ pub(crate) async fn post_register(
     state.auth.revoke(Revoke::User(user.id));
 
     Ok((
-        [(header::SET_COOKIE, state.auth.set_cookie(&session_id))],
+        [(
+            header::SET_COOKIE,
+            state.auth.set_cookie(&headers, &session_id),
+        )],
         Json(user.to_api()),
     )
         .into_response())

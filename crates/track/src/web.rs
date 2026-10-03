@@ -5,7 +5,6 @@ use axum::Router;
 use axum::routing::{get, post};
 use musli_web::ws::Channels;
 use tokio::sync::Notify;
-use tower_http::cors::CorsLayer;
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::app_broadcast::Broadcaster;
@@ -63,5 +62,5 @@ pub(crate) fn router(state: AppState, dist: Option<&Path>) -> Router {
         None => app,
     };
 
-    app.layer(CorsLayer::permissive()).with_state(state)
+    app.with_state(state)
 }

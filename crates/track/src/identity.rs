@@ -10,7 +10,7 @@ use auth::cloudflare::{Access, HttpKeyFetcher};
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
-use cookie::Cookie;
+use cookie::{Cookie, SameSite};
 use parking_lot::{Mutex, RwLock};
 use tokio::sync::broadcast;
 
@@ -197,14 +197,22 @@ impl Auth {
             })
     }
 
-    pub(crate) fn set_cookie(&self, session_id: &str) -> HeaderValue {
-        let cookie = auth::session_cookie(SESSION_COOKIE, &self.inner.key, session_id);
+    /// The session cookie for a response to a request with `headers`.
+    pub(crate) fn set_cookie(&self, headers: &HeaderMap, session_id: &str) -> HeaderValue {
+        let cookie = auth::session_cookie(
+            SESSION_COOKIE,
+            &self.inner.key,
+            session_id,
+            is_https(headers),
+        );
         HeaderValue::try_from(cookie.to_string()).expect("session cookies are valid header values")
     }
 
-    pub(crate) fn clear_cookie(&self) -> HeaderValue {
+    pub(crate) fn clear_cookie(&self, headers: &HeaderMap) -> HeaderValue {
         let cookie = Cookie::build((SESSION_COOKIE, ""))
             .http_only(true)
+            .same_site(SameSite::Strict)
+            .secure(is_https(headers))
             .path("/")
             .max_age(cookie::time::Duration::ZERO)
             .build();
@@ -278,6 +286,16 @@ fn log_access_settings(config: &api::CloudflareAccess) {
         trust_email_header = config.trust_email_header,
         "Cloudflare Access sign-in is enabled"
     );
+}
+
+/// Whether the client reached the proxy in front of the server over HTTPS,
+/// which then limits the session cookie to HTTPS.
+fn is_https(headers: &HeaderMap) -> bool {
+    headers
+        .get("x-forwarded-proto")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(',').next())
+        .is_some_and(|proto| proto.trim().eq_ignore_ascii_case("https"))
 }
 
 /// Whether the request carries anything Cloudflare Access adds: its email
