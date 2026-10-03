@@ -752,3 +752,292 @@ async fn next_episode_follows_the_most_recent_watch_in_scope() -> Result<()> {
 
     Ok(())
 }
+
+/// The base schema of databases created before users, frozen.
+const BEFORE_USERS_SCHEMA: &str = include_str!("testdata/2026-06-05-before-users.sql");
+
+/// One text column of every row `sql` returns.
+fn texts(c: &sqll::Connection, sql: &str) -> Result<Vec<String>> {
+    let mut q = c.prepare(sql)?;
+    let mut out = Vec::new();
+
+    while let Some(text) = q.next::<String>()? {
+        out.push(text);
+    }
+
+    Ok(out)
+}
+
+/// Tables, columns, indexes, foreign keys and normalized SQL of a schema, one
+/// line each, ignoring the order objects were created in.
+fn schema(c: &sqll::Connection) -> Result<Vec<String>> {
+    const OBJECTS: &str =
+        "SELECT name, type, tbl_name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'";
+
+    let mut out = Vec::new();
+
+    out.extend(texts(
+        c,
+        &format!(
+            "SELECT m.name || '.' || p.cid || ' ' || p.name || ' ' || p.type || ' notnull=' || p.\"notnull\" || ' default=' || coalesce(p.dflt_value, 'NULL') || ' pk=' || p.pk
+            FROM ({OBJECTS}) m JOIN pragma_table_info(m.name) p WHERE m.type = 'table'"
+        ),
+    )?);
+
+    out.extend(texts(
+        c,
+        &format!(
+            "SELECT m.name || ' index ' || l.name || ' unique=' || l.\"unique\" || ' partial=' || l.partial || ' (' || (SELECT group_concat(coalesce(i.name, '<expr>'), ', ' ORDER BY i.seqno) FROM pragma_index_info(l.name) i) || ')'
+            FROM ({OBJECTS}) m JOIN pragma_index_list(m.name) l WHERE m.type = 'table'"
+        ),
+    )?);
+
+    out.extend(texts(
+        c,
+        &format!(
+            "SELECT m.name || ' fk ' || f.\"from\" || ' -> ' || f.\"table\" || '.' || coalesce(f.\"to\", '<pk>') || ' on delete ' || f.on_delete
+            FROM ({OBJECTS}) m JOIN pragma_foreign_key_list(m.name) f WHERE m.type = 'table'"
+        ),
+    )?);
+
+    // Renames and dropped columns rewrite stored SQL, so compare it with
+    // quoting and whitespace removed.
+    out.extend(texts(
+        c,
+        &format!(
+            "SELECT type || ' ' || name || ' on ' || tbl_name || ': ' || coalesce(sql, '') FROM ({OBJECTS})"
+        ),
+    )?
+    .into_iter()
+    .map(|line| {
+        line.replace('"', "")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .replace("( ", "(")
+            .replace(" )", ")")
+            .replace(" ,", ",")
+    }));
+
+    out.sort();
+    Ok(out)
+}
+
+/// A database created before users, with its base schema recorded as applied.
+fn before_users_db(path: &Path) -> Result<sqll::Connection> {
+    let c = OpenOptions::new()
+        .read_write()
+        .create()
+        .no_mutex()
+        .open(path)?;
+
+    c.execute(BEFORE_USERS_SCHEMA)?;
+    c.execute(MIGRATIONS_INIT)?;
+    c.execute(
+        "INSERT INTO migrations (id, applied_at) VALUES ('2026-06-05.sql', '2026-06-05T00:00:00Z')",
+    )?;
+    Ok(c)
+}
+
+/// A migration that fails partway leaves none of its changes and is not
+/// recorded, so it applies cleanly once the cause is gone; the migrations
+/// before it stay applied.
+#[test]
+fn failed_migration_is_rolled_back() -> Result<()> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("test.db");
+
+    // Makes 2026-10-02-user-preferences.sql fail at its second CREATE TABLE.
+    before_users_db(&path)?.execute("CREATE TABLE user_show_config (x)")?;
+
+    assert!(Database::open(&path, OpenMode::Normal, 1).is_err());
+
+    let c = OpenOptions::new().read_write().no_mutex().open(&path)?;
+
+    assert_eq!(
+        texts(&c, "SELECT id FROM migrations ORDER BY id")?,
+        [
+            "2026-06-05.sql",
+            "2026-10-01-users.sql",
+            "2026-10-01-watch-history-per-user.sql"
+        ]
+    );
+    assert_eq!(
+        texts(
+            &c,
+            "SELECT name FROM sqlite_master WHERE name = 'user_config'"
+        )?,
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        texts(
+            &c,
+            "SELECT name FROM pragma_table_info('shows') WHERE name = 'language'"
+        )?,
+        ["language"]
+    );
+
+    c.execute("DROP TABLE user_show_config")?;
+    drop(c);
+
+    drop(Database::open(&path, OpenMode::Normal, 1)?);
+    Ok(())
+}
+
+/// An empty database whose base schema fails to apply is left empty, so the
+/// next open builds it from the base again.
+#[test]
+fn failed_base_schema_leaves_the_database_empty() -> Result<()> {
+    let c = OpenOptions::new()
+        .read_write()
+        .create()
+        .no_mutex()
+        .open_in_memory()?;
+
+    // A view is not a table, so the database still reads as empty, but it
+    // takes a name the base schema creates.
+    c.execute("CREATE VIEW shows AS SELECT 1")?;
+
+    assert!(do_migrations(&c).is_err());
+    assert_eq!(
+        texts(&c, "SELECT name FROM sqlite_master WHERE type = 'table'")?,
+        Vec::<String>::new()
+    );
+
+    c.execute("DROP VIEW shows")?;
+    do_migrations(&c)?;
+    Ok(())
+}
+
+/// A database created before users migrates to exactly the schema a fresh one
+/// gets, with its tracking, watch history, pending and preferences handed to
+/// root.
+#[test]
+fn migrations_convert_a_database_from_before_users() -> Result<()> {
+    let dir = tempfile::tempdir()?;
+    let old = dir.path().join("old.db");
+    let fresh = dir.path().join("fresh.db");
+
+    let en_us = api::Locale::from_iso("en-US").context("en-US")?;
+    let sv = api::Locale::from_iso("sv").context("sv")?;
+
+    {
+        let c = before_users_db(&old)?;
+
+        c.execute(&format!(
+            "INSERT INTO shows (id, tracked, language, include_specials) VALUES
+                (1, 1, {en_us}, 1),
+                (2, 0, 0, NULL);
+            INSERT INTO movies (id, tracked, language) VALUES
+                (10, 1, {sv}),
+                (11, 0, 0);
+            INSERT INTO episodes (id, show_id, season, episode) VALUES (100, 1, 1, 1);
+            INSERT INTO watched_episodes (id, timestamp, show_id, season, episode) VALUES (1000, 5, 1, 1, 1);
+            INSERT INTO watched_movies (id, timestamp, movie_id) VALUES (1001, 6, 10);
+            INSERT INTO pending (id, timestamp, show_id, episode_id, movie_id) VALUES
+                (2000, 7, 1, 100, NULL),
+                (2001, 8, NULL, NULL, 10);
+            INSERT INTO config (key, value) VALUES
+                ('theme', 'light'),
+                ('dashboard_page', '7'),
+                ('dashboard_lookahead', '86400000'),
+                ('schedule_weeks', 'many'),
+                ('timezone', 'Europe/Stockholm'),
+                ('language', 'sv'),
+                ('include_specials', 'true'),
+                ('tvdb_api_key', 'key');",
+            en_us = en_us.to_u64(),
+            sv = sv.to_u64(),
+        ))?;
+    }
+
+    drop(Database::open(&old, OpenMode::Bulk, 1)?);
+    drop(Database::open(&fresh, OpenMode::Bulk, 1)?);
+
+    let old = OpenOptions::new().read_write().no_mutex().open(&old)?;
+    let fresh = OpenOptions::new().read_write().no_mutex().open(&fresh)?;
+
+    assert_eq!(schema(&old)?, schema(&fresh)?);
+    assert_eq!(
+        texts(&old, "SELECT id FROM migrations ORDER BY id")?,
+        texts(&fresh, "SELECT id FROM migrations ORDER BY id")?
+    );
+
+    assert_eq!(
+        texts(&old, "SELECT login || ' ' || role FROM users")?,
+        ["root admin"]
+    );
+    let root = "(SELECT id FROM users WHERE login = 'root')";
+
+    let rows = |sql: &str| texts(&old, &sql.replace("$root", root));
+
+    assert_eq!(
+        rows("SELECT CAST(show_id AS TEXT) FROM user_tracked_shows WHERE user_id = $root")?,
+        ["1"]
+    );
+    assert_eq!(
+        rows("SELECT CAST(movie_id AS TEXT) FROM user_tracked_movies WHERE user_id = $root")?,
+        ["10"]
+    );
+    assert_eq!(
+        rows(
+            "SELECT id || ' ' || timestamp || ' ' || show_id || ' ' || season || ' ' || episode FROM watched_episodes WHERE user_id = $root"
+        )?,
+        ["1000 5 1 1 1"]
+    );
+    assert_eq!(
+        rows(
+            "SELECT id || ' ' || timestamp || ' ' || movie_id FROM watched_movies WHERE user_id = $root"
+        )?,
+        ["1001 6 10"]
+    );
+    assert_eq!(
+        rows("SELECT id || ' ' || timestamp FROM pending WHERE user_id = $root ORDER BY id")?,
+        ["2000 7", "2001 8"]
+    );
+    assert_eq!(
+        rows("SELECT key || '=' || value FROM user_config WHERE user_id = $root ORDER BY key")?,
+        [
+            "dashboard-page=7",
+            "include-specials=true",
+            "language=\"sv\"",
+            "theme=\"light\"",
+            "timezone=\"Europe/Stockholm\"",
+        ]
+    );
+    assert_eq!(
+        rows(
+            "SELECT show_id || ' ' || key FROM user_show_config WHERE user_id = $root ORDER BY show_id, key"
+        )?,
+        ["1 include-specials", "1 language"]
+    );
+    assert_eq!(
+        rows("SELECT value FROM user_show_config WHERE key = 'include-specials'")?,
+        ["true"]
+    );
+
+    let language = |sql: &str| -> Result<Vec<Option<api::Locale>>> {
+        Ok(rows(sql)?
+            .iter()
+            .map(|json| api::Locale::from_json(json))
+            .collect())
+    };
+
+    assert_eq!(
+        language("SELECT value FROM user_show_config WHERE key = 'language'")?,
+        [Some(en_us)]
+    );
+    assert_eq!(
+        rows("SELECT movie_id || ' ' || key FROM user_movie_config WHERE user_id = $root")?,
+        ["10 language"]
+    );
+    assert_eq!(
+        language("SELECT value FROM user_movie_config WHERE key = 'language'")?,
+        [Some(sv)]
+    );
+    assert_eq!(
+        rows("SELECT key FROM config ORDER BY key")?,
+        ["tvdb_api_key"]
+    );
+    Ok(())
+}

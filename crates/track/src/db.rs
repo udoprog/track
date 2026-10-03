@@ -7784,29 +7784,37 @@ fn is_empty(c: &sqll::Connection) -> Result<bool> {
 /// Bring the schema up to date. An empty database is built from the base
 /// schema (the first migration) alone, with every later migration recorded
 /// without running; any other database applies each unrecorded migration in
-/// order.
+/// order. Each migration runs and is recorded in one transaction, so a failed
+/// one leaves the database as it was.
 fn do_migrations(c: &sqll::Connection) -> Result<()> {
     let empty = is_empty(c).context("Checking whether the database is empty")?;
-
-    c.execute(MIGRATIONS_INIT)
-        .context("Creating migrations table")?;
 
     let mut ids: Vec<_> = Migrations::iter().collect();
     ids.sort();
 
-    let Some((base, rest)) = ids.split_first() else {
-        return Ok(());
-    };
-
     if empty {
-        apply(c, base.as_ref()).with_context(|| anyhow!("Migration {base}"))?;
+        // The migrations table is created in the same transaction: left behind
+        // alone, it would make the database read as not empty.
+        return in_transaction(c, || {
+            c.execute(MIGRATIONS_INIT)
+                .context("Creating migrations table")?;
 
-        for id in rest {
-            record(c, id.as_ref()).with_context(|| anyhow!("Recording migration {id}"))?;
-        }
+            let Some((base, rest)) = ids.split_first() else {
+                return Ok(());
+            };
 
-        return Ok(());
+            apply(c, base.as_ref()).with_context(|| anyhow!("Migration {base}"))?;
+
+            for id in rest {
+                record(c, id.as_ref()).with_context(|| anyhow!("Recording migration {id}"))?;
+            }
+
+            Ok(())
+        });
     }
+
+    c.execute(MIGRATIONS_INIT)
+        .context("Creating migrations table")?;
 
     let mut select = c.prepare("SELECT applied_at FROM migrations WHERE id = ?")?;
 
@@ -7822,13 +7830,28 @@ fn do_migrations(c: &sqll::Connection) -> Result<()> {
                 return Ok(());
             }
 
-            apply(c, id)
+            in_transaction(c, || apply(c, id))
         })();
 
         result.with_context(|| anyhow!("Migration {id}"))?;
     }
 
     Ok(())
+}
+
+/// Run `f` inside `BEGIN IMMEDIATE` / `COMMIT` on `c`, rolling back when it
+/// fails.
+fn in_transaction(c: &sqll::Connection, f: impl FnOnce() -> Result<()>) -> Result<()> {
+    c.execute("BEGIN IMMEDIATE")?;
+
+    let result = f().and_then(|()| Ok(c.execute("COMMIT")?));
+
+    if result.is_err() {
+        // Fails only when SQLite already rolled the transaction back itself.
+        _ = c.execute("ROLLBACK");
+    }
+
+    result
 }
 
 /// Fail unless the database has every migration applied.
