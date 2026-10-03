@@ -4,6 +4,7 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{Context as _, Result, anyhow};
 use clap::Parser;
@@ -25,6 +26,10 @@ use crate::web::{self, AppState};
 use crate::ws::RandomDelay;
 
 const READ_CONCURRENCY: usize = 16;
+/// Bounds every remote request, so one hung connection cannot stall the
+/// single-worker task queue.
+const HTTP_TIMEOUT: Duration = Duration::from_secs(60);
+const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Parser)]
 #[command(version, about = "Track web server")]
@@ -127,6 +132,8 @@ async fn run(
 
     let http = reqwest::Client::builder()
         .user_agent("ontv/0.1.0")
+        .connect_timeout(HTTP_CONNECT_TIMEOUT)
+        .timeout(HTTP_TIMEOUT)
         .build()
         .context("Building HTTP client")?;
 

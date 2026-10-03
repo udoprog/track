@@ -369,7 +369,13 @@ impl TaskQueue {
 
             info!(task_id = ?task.id, task_kind = ?task.kind, "Task started");
             let start = Instant::now();
-            let result = execute(&task, &db, &remote, &broadcast, &pending, &shutdown).await;
+            let result = tokio::select! {
+                result = execute(&task, &db, &remote, &broadcast, &pending, &shutdown) => result,
+                _ = shutdown.cancelled() => {
+                    info!(task_id = ?task.id, "Task interrupted by shutdown");
+                    break;
+                }
+            };
             let elapsed = start.elapsed();
 
             let error = match result {
