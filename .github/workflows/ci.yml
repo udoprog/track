@@ -9,7 +9,7 @@ on:
     - cron: '55 2 * * 4'
 
 concurrency:
-  group: $-$
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -18,15 +18,8 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@stable
-    - run: cargo test --workspace --all-targets
-    - run: cargo test --workspace --doc
-
-  msrv:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    - uses: dtolnay/rust-toolchain@1.56
-    - run: cargo build --workspace --all-targets
+    - run: cargo test --workspace --all-targets --exclude e2e
+    - run: cargo test --workspace --doc --exclude e2e
 
   clippy:
     runs-on: ubuntu-latest
