@@ -9,7 +9,7 @@ use lru::LruCache;
 use parking_lot::Mutex;
 use tokio::fs;
 use tokio::io;
-use tokio::sync::{RwLock, Semaphore};
+use tokio::sync::Semaphore;
 use tokio::task::spawn_blocking;
 
 const SHARDS: usize = 64;
@@ -18,7 +18,9 @@ const MEMORY_CAPACITY: NonZeroUsize = NonZeroUsize::new(256).unwrap();
 
 struct Inner {
     root: PathBuf,
-    locks: Box<[RwLock<()>]>,
+    /// Serializes fetches per shard so an image is fetched once. Reads take no
+    /// lock: files are written by atomic rename, so a read sees all or nothing.
+    fetches: Box<[tokio::sync::Mutex<()>]>,
     semaphore: Semaphore,
     memory: Mutex<LruCache<String, Bytes>>,
 }
@@ -33,7 +35,7 @@ impl ImageCache {
         Self {
             inner: Arc::new(Inner {
                 root: root.as_ref().to_owned(),
-                locks: (0..SHARDS).map(|_| RwLock::new(())).collect(),
+                fetches: (0..SHARDS).map(|_| tokio::sync::Mutex::new(())).collect(),
                 semaphore: Semaphore::new(FETCH_LIMIT),
                 memory: Mutex::new(LruCache::new(MEMORY_CAPACITY)),
             }),
@@ -74,31 +76,14 @@ impl ImageCache {
             .disk_path(source, path)
             .context("Expected a valid image path")?;
 
-        let shard = Self::shard(&key);
-        let lock = &self.inner.locks[shard];
-
-        {
-            let _guard = lock.read().await;
-            match fs::read(&disk_path).await {
-                Ok(data) => {
-                    let bytes = Bytes::from(data);
-                    self.inner.memory.lock().put(key.clone(), bytes.clone());
-                    return Ok(Some(bytes));
-                }
-                Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-                Err(e) => tracing::warn!(%key, error = %e, "Cache read error"),
-            }
+        if let Some(bytes) = self.read_disk(&key, &disk_path).await {
+            return Ok(Some(bytes));
         }
 
-        let _guard = lock.write().await;
-        match fs::read(&disk_path).await {
-            Ok(data) => {
-                let bytes = Bytes::from(data);
-                self.inner.memory.lock().put(key.clone(), bytes.clone());
-                return Ok(Some(bytes));
-            }
-            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-            Err(e) => tracing::warn!(%key, error = %e, "Cache read error"),
+        let _guard = self.inner.fetches[Self::shard(&key)].lock().await;
+
+        if let Some(bytes) = self.read_disk(&key, &disk_path).await {
+            return Ok(Some(bytes));
         }
 
         let _permit = self
@@ -136,6 +121,21 @@ impl ImageCache {
 
         self.inner.memory.lock().put(key, data.clone());
         Ok(Some(data))
+    }
+
+    async fn read_disk(&self, key: &str, disk_path: &Path) -> Option<Bytes> {
+        match fs::read(disk_path).await {
+            Ok(data) => {
+                let bytes = Bytes::from(data);
+                self.inner.memory.lock().put(key.to_owned(), bytes.clone());
+                Some(bytes)
+            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => None,
+            Err(e) => {
+                tracing::warn!(%key, error = %e, "Cache read error");
+                None
+            }
+        }
     }
 }
 
@@ -179,5 +179,50 @@ mod tests {
             .await;
 
         assert!(result.is_err());
+    }
+
+    /// A stalled fetch does not hold up reads of images already on disk, even
+    /// in the same shard.
+    #[tokio::test]
+    async fn cached_read_is_not_blocked_by_a_fetch() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = ImageCache::new(dir.path());
+
+        let missing = "missing.jpg";
+        let shard = ImageCache::shard(&format!("{}/{missing}", ImageSource::Tmdb));
+        let cached = (0..)
+            .map(|n| format!("cached{n}.jpg"))
+            .find(|p| ImageCache::shard(&format!("{}/{p}", ImageSource::Tmdb)) == shard)
+            .unwrap();
+
+        std::fs::create_dir_all(dir.path().join("tmdb")).unwrap();
+        std::fs::write(dir.path().join("tmdb").join(&cached), b"image").unwrap();
+
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let stalled = tokio::spawn({
+            let cache = cache.clone();
+            async move {
+                cache
+                    .get_or_fetch(ImageSource::Tmdb, missing, async || {
+                        started_tx.send(()).unwrap();
+                        std::future::pending().await
+                    })
+                    .await
+            }
+        });
+        started_rx.await.unwrap();
+
+        let data = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            cache.get_or_fetch(ImageSource::Tmdb, &cached, async || {
+                panic!("fetched a cached image")
+            }),
+        )
+        .await
+        .expect("the cached read is not blocked")
+        .unwrap();
+
+        assert_eq!(data.as_deref(), Some(&b"image"[..]));
+        stalled.abort();
     }
 }

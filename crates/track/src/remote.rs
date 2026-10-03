@@ -126,18 +126,17 @@ impl RemoteClients {
         Some(tvdb)
     }
 
+    // Images come from the CDNs, so they skip the API rate limiter.
     pub(crate) async fn fetch_tmdb_image(&self, path: &str) -> Result<Option<bytes::Bytes>> {
-        self.tmdb()
-            .await
-            .context("Expected a configured TMDB client")?
+        let tmdb = self.inner.lock().tmdb.clone();
+        tmdb.context("Expected a configured TMDB client")?
             .fetch_image(path)
             .await
     }
 
     pub(crate) async fn fetch_tvdb_image(&self, path: &str) -> Result<Option<bytes::Bytes>> {
-        self.tvdb()
-            .await
-            .context("Expected a configured TVDB client")?
+        let tvdb = self.inner.lock().tvdb.clone();
+        tvdb.context("Expected a configured TVDB client")?
             .fetch_image(path)
             .await
     }
