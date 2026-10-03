@@ -38,6 +38,10 @@ impl ScheduledTask {
 struct Inner {
     pending: VecDeque<ScheduledTask>,
     running: Option<api::Task>,
+    /// An immediate request for the running task arrived while it ran, so it
+    /// runs again once it finishes: the request may follow an edit the
+    /// running sync has not seen.
+    rerun: bool,
     completed: VecDeque<api::CompletedTask>,
     show_pending: HashMap<api::ShowId, api::TaskId>,
     movie_pending: HashMap<api::MovieId, api::TaskId>,
@@ -58,6 +62,7 @@ impl TaskQueue {
             inner: Arc::new(Mutex::new(Inner {
                 pending: VecDeque::new(),
                 running: None,
+                rerun: false,
                 completed: VecDeque::new(),
                 show_pending: HashMap::new(),
                 movie_pending: HashMap::new(),
@@ -125,35 +130,23 @@ impl TaskQueue {
 
         if already_queued {
             // A user-initiated (immediate) request for an already-queued task
-            // bumps the existing pending entry to the top so it runs next. A
-            // task that is only running (not in the pending deque) is already
-            // executing, so there is nothing to bump.
+            // bumps the existing pending entry to the top so it runs next, or,
+            // if the task is only running, runs it again after it finishes.
             if immediate {
                 let pos = inner
                     .pending
                     .iter()
-                    .position(|s| match (&s.task.kind, &kind) {
-                        (
-                            api::TaskKind::SyncShow { show_id: a, .. },
-                            api::TaskKind::SyncShow { show_id: b, .. },
-                        ) => a == b,
-                        (
-                            api::TaskKind::SyncMovie { movie_id: a, .. },
-                            api::TaskKind::SyncMovie { movie_id: b, .. },
-                        ) => a == b,
-                        (
-                            api::TaskKind::SyncEpisode { episode_id: a, .. },
-                            api::TaskKind::SyncEpisode { episode_id: b, .. },
-                        ) => a == b,
-                        (
-                            api::TaskKind::SyncPerson { person_id: a, .. },
-                            api::TaskKind::SyncPerson { person_id: b, .. },
-                        ) => a == b,
-                        _ => false,
-                    });
+                    .position(|s| same_target(&s.task.kind, &kind));
 
                 if let Some(pos) = pos {
                     self.bump_at(&mut inner, pos, broadcast);
+                } else if inner
+                    .running
+                    .as_ref()
+                    .is_some_and(|t| same_target(&t.kind, &kind))
+                {
+                    info!(task_kind = ?kind, "Task re-run after the running one");
+                    inner.rerun = true;
                 }
             }
 
@@ -437,7 +430,7 @@ impl TaskQueue {
                 error,
             };
 
-            {
+            let rerun = {
                 let mut inner = self.inner.lock().await;
                 inner.running = None;
                 match &task.kind {
@@ -457,7 +450,8 @@ impl TaskQueue {
                 }
                 inner.completed.push_front(completed.clone());
                 inner.completed.truncate(COMPLETED_HISTORY);
-            }
+                std::mem::take(&mut inner.rerun)
+            };
 
             broadcast.emit(
                 ChannelId::NONE,
@@ -465,10 +459,38 @@ impl TaskQueue {
                 "task queue task completed",
             );
 
+            if rerun {
+                self.push(task.kind, true, &broadcast).await;
+            }
+
             if shutdown.is_cancelled() {
                 break;
             }
         }
+    }
+}
+
+/// Whether two tasks sync the same thing.
+fn same_target(a: &api::TaskKind, b: &api::TaskKind) -> bool {
+    match (a, b) {
+        (
+            api::TaskKind::SyncShow { show_id: a, .. },
+            api::TaskKind::SyncShow { show_id: b, .. },
+        ) => a == b,
+        (
+            api::TaskKind::SyncMovie { movie_id: a, .. },
+            api::TaskKind::SyncMovie { movie_id: b, .. },
+        ) => a == b,
+        (
+            api::TaskKind::SyncEpisode { episode_id: a, .. },
+            api::TaskKind::SyncEpisode { episode_id: b, .. },
+        ) => a == b,
+        (
+            api::TaskKind::SyncPerson { person_id: a, .. },
+            api::TaskKind::SyncPerson { person_id: b, .. },
+        ) => a == b,
+        (api::TaskKind::RefreshTopLanguages, api::TaskKind::RefreshTopLanguages) => true,
+        _ => false,
     }
 }
 
@@ -656,5 +678,35 @@ mod tests {
             COMPLETED_HISTORY
         );
         running.stop().await;
+    }
+
+    /// A user's request for the running task schedules it again for after the
+    /// current run, since it may follow an edit the run has not seen; the
+    /// background poll's request does not.
+    #[tokio::test]
+    async fn immediate_request_for_running_task_reruns_it() {
+        let queue = TaskQueue::new();
+        let (tx, _) = broadcast::channel(16);
+        let broadcast = Broadcaster::new(tx);
+
+        let kind = api::TaskKind::SyncShow {
+            show_id: api::ShowId::random(),
+            title: None,
+        };
+
+        queue.inner.lock().await.running = Some(api::Task {
+            id: api::TaskId::new(0),
+            kind: kind.clone(),
+            status: api::TaskStatus::Running,
+            run_at: None,
+        });
+
+        assert!(!queue.push(kind.clone(), false, &broadcast).await);
+        assert!(!queue.inner.lock().await.rerun);
+
+        assert!(!queue.push(kind, true, &broadcast).await);
+        let inner = queue.inner.lock().await;
+        assert!(inner.rerun);
+        assert!(inner.pending.is_empty());
     }
 }
