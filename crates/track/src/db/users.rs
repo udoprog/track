@@ -139,6 +139,17 @@ pub(super) struct Read {
 }
 
 impl Read {
+    pub(super) fn list(&mut self) -> Result<Vec<UserRecord>> {
+        let mut out = Vec::new();
+        let mut stmt = self.list.bind(())?;
+
+        while let Some(row) = stmt.next()? {
+            out.push(row.into_record()?);
+        }
+
+        Ok(out)
+    }
+
     fn by_id(&mut self, id: UserId) -> Result<Option<UserRecord>> {
         self.by_id
             .bind((id,))?
@@ -227,16 +238,7 @@ impl Database {
     pub(crate) async fn list_users(&self) -> Result<Vec<UserRecord>> {
         let mut s = self.inner.clone().shared().await?;
 
-        let result = spawn_blocking(move || {
-            let mut out = Vec::new();
-            let mut stmt = s.users.list.bind(())?;
-
-            while let Some(row) = stmt.next()? {
-                out.push(row.into_record()?);
-            }
-
-            Ok(out)
-        });
+        let result = spawn_blocking(move || s.users.list());
 
         result.await?
     }

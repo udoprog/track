@@ -40,6 +40,40 @@ fn migrations_are_recorded_and_idempotent() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn read_only_open_neither_creates_nor_migrates() -> Result<()> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("test.db");
+
+    assert!(Database::open(&path, OpenMode::ReadOnly, 1).is_err());
+    assert!(!path.exists());
+
+    drop(Database::open(&path, OpenMode::Bulk, 1)?);
+    drop(Database::open(&path, OpenMode::ReadOnly, 1)?);
+
+    let mut ids: Vec<String> = Migrations::iter().map(|id| id.to_string()).collect();
+    ids.sort();
+    let last = ids.last().unwrap();
+
+    let c = OpenOptions::new().read_write().no_mutex().open(&path)?;
+    c.prepare("DELETE FROM migrations WHERE id = ?")?
+        .execute((last.as_str(),))?;
+    drop(c);
+
+    let error = Database::open(&path, OpenMode::ReadOnly, 1).err().unwrap();
+    assert!(error.to_string().contains(last.as_str()), "{error:#}");
+
+    let c = OpenOptions::new().read_write().no_mutex().open(&path)?;
+    let mut q = c.prepare("SELECT 1 FROM migrations WHERE id = ?")?;
+    q.bind(last.as_str())?;
+    assert!(
+        q.next::<i64>()?.is_none(),
+        "the pending migration was not applied"
+    );
+
+    Ok(())
+}
 fn ms(millis: i64) -> Timestamp {
     Timestamp::from_jiff(jiff::Timestamp::from_millisecond(millis).unwrap())
 }

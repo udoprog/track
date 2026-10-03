@@ -507,6 +507,17 @@ pub(crate) struct ExportUserData {
     pub movie_config: Vec<(String, MovieId, String, String)>,
 }
 
+/// Everything a backup holds, read from one snapshot of the database.
+#[derive(Debug)]
+pub(crate) struct ExportSnapshot {
+    pub users: Vec<users::UserRecord>,
+    pub show_remotes: Vec<ExportRemote<ShowId>>,
+    pub movie_remotes: Vec<ExportRemote<MovieId>>,
+    pub user_data: ExportUserData,
+    pub watched_episodes: Vec<(WatchedId, String, Timestamp, ShowId, SeasonNumber, u32)>,
+    pub watched_movies: Vec<(WatchedId, String, Timestamp, MovieId)>,
+}
+
 fn all_rows<O>(stmt: &mut TypedStatement<(), O>) -> Result<Vec<O>>
 where
     O: for<'stmt> Row<'stmt>,
@@ -1177,10 +1188,14 @@ struct InnerRead {
     watched_episode_exists: TypedStatement<(WatchedId,), (i64,)>,
     #[sql = "SELECT 1 FROM watched_movies WHERE id = ? LIMIT 1"]
     watched_movie_exists: TypedStatement<(WatchedId,), (i64,)>,
-    #[sql = "SELECT 1 FROM show_remotes WHERE id = ? LIMIT 1"]
-    show_remote_exists: TypedStatement<(RemoteId,), (i64,)>,
-    #[sql = "SELECT 1 FROM movie_remotes WHERE id = ? LIMIT 1"]
-    movie_remote_exists: TypedStatement<(RemoteId,), (i64,)>,
+    #[sql = "BEGIN"]
+    begin: TypedStatement<(), ()>,
+    #[sql = "COMMIT"]
+    commit: TypedStatement<(), ()>,
+    #[sql = "SELECT 1 FROM show_remotes WHERE id = ? OR (show_id = ? AND source = ? AND value = ?) LIMIT 1"]
+    show_remote_exists: TypedStatement<(RemoteId, ShowId, RemoteSource, RemoteValue), (i64,)>,
+    #[sql = "SELECT 1 FROM movie_remotes WHERE id = ? OR (movie_id = ? AND source = ? AND value = ?) LIMIT 1"]
+    movie_remote_exists: TypedStatement<(RemoteId, MovieId, RemoteSource, RemoteValue), (i64,)>,
     #[sql = "SELECT u.login, t.show_id FROM user_tracked_shows t"]
     #[sql = "JOIN users u ON u.id = t.user_id ORDER BY u.login, t.show_id"]
     list_all_tracked_shows: TypedStatement<(), (String, ShowId)>,
@@ -1937,6 +1952,87 @@ impl InnerWrite {
 }
 
 impl InnerRead {
+    fn export_snapshot(&mut self) -> Result<ExportSnapshot> {
+        let users = self.users.list()?;
+
+        let mut show_remotes = Vec::new();
+        let mut stmt = self.list_all_show_remotes.query()?;
+
+        while let Some(r) = stmt.next()? {
+            show_remotes.push(ExportRemote {
+                id: r.id,
+                owner: r.show_id,
+                source: r.source,
+                value: r.value,
+                slug: r.slug,
+                enabled: r.enabled,
+                priority: r.priority,
+                sync_kinds: r.sync_kinds,
+            });
+        }
+
+        stmt.reset()?;
+
+        let mut movie_remotes = Vec::new();
+        let mut stmt = self.list_all_movie_remotes.query()?;
+
+        while let Some(r) = stmt.next()? {
+            movie_remotes.push(ExportRemote {
+                id: r.id,
+                owner: r.movie_id,
+                source: r.source,
+                value: r.value,
+                slug: r.slug,
+                enabled: r.enabled,
+                priority: r.priority,
+                sync_kinds: r.sync_kinds,
+            });
+        }
+
+        stmt.reset()?;
+
+        let user_data = ExportUserData {
+            tracked_shows: all_rows(&mut self.list_all_tracked_shows)?,
+            tracked_movies: all_rows(&mut self.list_all_tracked_movies)?,
+            user_config: all_rows(&mut self.list_all_user_config)?,
+            show_config: all_rows(&mut self.list_all_user_show_config)?,
+            movie_config: all_rows(&mut self.list_all_user_movie_config)?,
+        };
+
+        // Orphaned watched rows (NULL show or movie) can't be attributed and are
+        // skipped.
+        let mut watched_episodes = Vec::new();
+        let mut stmt = self.list_all_watched_episodes.query()?;
+
+        while let Some(r) = stmt.next()? {
+            if let Some(show_id) = r.show_id {
+                watched_episodes.push((r.id, r.login, r.timestamp, show_id, r.season, r.episode));
+            }
+        }
+
+        stmt.reset()?;
+
+        let mut watched_movies = Vec::new();
+        let mut stmt = self.list_all_watched_movies.query()?;
+
+        while let Some(r) = stmt.next()? {
+            if let Some(movie_id) = r.movie_id {
+                watched_movies.push((r.id, r.login, r.timestamp, movie_id));
+            }
+        }
+
+        stmt.reset()?;
+
+        Ok(ExportSnapshot {
+            users,
+            show_remotes,
+            movie_remotes,
+            user_data,
+            watched_episodes,
+            watched_movies,
+        })
+    }
+
     /// The user's display locale ([`Locale::DEFAULT`] for nobody or when unset).
     fn user_language(&mut self, user: impl Into<Option<UserId>>) -> Result<api::Locale> {
         let language = self.user_language.bind((user.into(),))?.first()?;
@@ -1950,6 +2046,9 @@ pub(crate) enum OpenMode {
     Normal,
     /// No journaling or fsync fast for bulk import; not crash-safe.
     Bulk,
+    /// Only reads an existing database: never creates the file, and refuses one
+    /// with pending migrations instead of migrating it.
+    ReadOnly,
 }
 
 pub(crate) struct Database {
@@ -1977,7 +2076,16 @@ impl Database {
 
         let path = path.as_ref();
 
-        {
+        if let OpenMode::ReadOnly = mode {
+            let c = OpenOptions::new()
+                .extended_result_codes()
+                .read_only()
+                .no_mutex()
+                .open(path.as_os_str())
+                .with_context(|| anyhow!("Opening database at {}", path.display()))?;
+
+            ensure_migrated(&c)?;
+        } else {
             let c = OpenOptions::new()
                 .extended_result_codes()
                 .read_write()
@@ -5621,132 +5729,19 @@ impl Database {
 
     // --- backup export (read-only) ---
 
-    /// Every show remote, flattened for backup export: its stable identifier, the
-    /// owning show, and its structure.
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn export_show_remotes(&self) -> Result<Vec<ExportRemote<ShowId>>> {
+    /// Everything a backup holds, read inside one read transaction so rows
+    /// written meanwhile cannot leave it inconsistent.
+    #[tracing::instrument(skip(self))]
+    pub(crate) async fn export_snapshot(&self) -> Result<ExportSnapshot> {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
-            let mut out = Vec::new();
-            let mut stmt = s.list_all_show_remotes.query()?;
-
-            while let Some(r) = stmt.next()? {
-                out.push(ExportRemote {
-                    id: r.id,
-                    owner: r.show_id,
-                    source: r.source,
-                    value: r.value,
-                    slug: r.slug,
-                    enabled: r.enabled,
-                    priority: r.priority,
-                    sync_kinds: r.sync_kinds,
-                });
-            }
-
-            stmt.reset()?;
-            Ok(out)
-        });
-
-        result.await?
-    }
-
-    /// Every movie remote, flattened for backup export.
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn export_movie_remotes(&self) -> Result<Vec<ExportRemote<MovieId>>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
-            let mut out = Vec::new();
-            let mut stmt = s.list_all_movie_remotes.query()?;
-
-            while let Some(r) = stmt.next()? {
-                out.push(ExportRemote {
-                    id: r.id,
-                    owner: r.movie_id,
-                    source: r.source,
-                    value: r.value,
-                    slug: r.slug,
-                    enabled: r.enabled,
-                    priority: r.priority,
-                    sync_kinds: r.sync_kinds,
-                });
-            }
-
-            stmt.reset()?;
-            Ok(out)
-        });
-
-        result.await?
-    }
-
-    /// Every watched episode for backup export, with its owner's login. Orphaned
-    /// rows (NULL `show_id`) can't be attributed to a show and are skipped.
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn export_watched_episodes(
-        &self,
-    ) -> Result<Vec<(WatchedId, String, Timestamp, ShowId, SeasonNumber, u32)>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
-            let mut out = Vec::new();
-            let mut stmt = s.list_all_watched_episodes.query()?;
-
-            while let Some(r) = stmt.next()? {
-                let Some(show_id) = r.show_id else {
-                    continue;
-                };
-
-                out.push((r.id, r.login, r.timestamp, show_id, r.season, r.episode));
-            }
-
-            stmt.reset()?;
-            Ok(out)
-        });
-
-        result.await?
-    }
-
-    /// Every watched movie for backup export, with its owner's login. Orphaned
-    /// rows (NULL `movie_id`) are skipped.
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn export_watched_movies(
-        &self,
-    ) -> Result<Vec<(WatchedId, String, Timestamp, MovieId)>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
-            let mut out = Vec::new();
-            let mut stmt = s.list_all_watched_movies.query()?;
-
-            while let Some(r) = stmt.next()? {
-                let Some(movie_id) = r.movie_id else {
-                    continue;
-                };
-
-                out.push((r.id, r.login, r.timestamp, movie_id));
-            }
-
-            stmt.reset()?;
-            Ok(out)
-        });
-
-        result.await?
-    }
-
-    /// Every user's tracking and preferences for backup export.
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn export_user_data(&self) -> Result<ExportUserData> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
-            Ok(ExportUserData {
-                tracked_shows: all_rows(&mut s.list_all_tracked_shows)?,
-                tracked_movies: all_rows(&mut s.list_all_tracked_movies)?,
-                user_config: all_rows(&mut s.list_all_user_config)?,
-                show_config: all_rows(&mut s.list_all_user_show_config)?,
-                movie_config: all_rows(&mut s.list_all_user_movie_config)?,
-            })
+            s.begin.execute(())?;
+            let snapshot = s.export_snapshot();
+            // Ends the read transaction even when a read failed, so the pooled
+            // connection is not left pinned to this snapshot.
+            s.commit.execute(())?;
+            snapshot
         });
 
         result.await?
@@ -5851,13 +5846,18 @@ impl Database {
     }
 
     /// Insert a show remote under its original identifier, preserving its
-    /// structure. Idempotent: an existing identifier is left untouched.
+    /// structure. Idempotent: a remote with the same identifier, or the same
+    /// show, source and value, is left untouched.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn import_show_remote(&self, remote: ExportRemote<ShowId>) -> Result<bool> {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            let exists = s.show_remote_exists.bind((remote.id,))?.first()?.is_some();
+            let exists = s
+                .show_remote_exists
+                .bind((remote.id, remote.owner, remote.source, &remote.value))?
+                .first()?
+                .is_some();
 
             if exists {
                 return Ok(false);
@@ -5881,13 +5881,17 @@ impl Database {
     }
 
     /// Insert a movie remote under its original identifier, preserving its
-    /// structure. Idempotent.
+    /// structure. Idempotent, as for shows.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn import_movie_remote(&self, remote: ExportRemote<MovieId>) -> Result<bool> {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            let exists = s.movie_remote_exists.bind((remote.id,))?.first()?.is_some();
+            let exists = s
+                .movie_remote_exists
+                .bind((remote.id, remote.owner, remote.source, &remote.value))?
+                .first()?
+                .is_some();
 
             if exists {
                 return Ok(false);
@@ -7819,6 +7823,39 @@ fn do_migrations(c: &sqll::Connection) -> Result<()> {
     Ok(())
 }
 
+/// Fail unless the database has every migration applied.
+fn ensure_migrated(c: &sqll::Connection) -> Result<()> {
+    anyhow::ensure!(
+        !is_empty(c).context("Checking whether the database is empty")?,
+        "The database is empty"
+    );
+
+    let mut select = c
+        .prepare("SELECT 1 FROM migrations WHERE id = ?")
+        .context("Reading the migrations table")?;
+
+    let mut pending = Vec::new();
+
+    for file in Migrations::iter() {
+        select.reset()?;
+        select.bind(file.as_ref())?;
+
+        if select.next::<i64>()?.is_none() {
+            pending.push(file);
+        }
+    }
+
+    pending.sort();
+
+    anyhow::ensure!(
+        pending.is_empty(),
+        "The database has pending migrations ({}); start the current server against it once to migrate it",
+        pending.join(", ")
+    );
+
+    Ok(())
+}
+
 /// Run one migration and record it.
 fn apply(c: &sqll::Connection, id: &str) -> Result<()> {
     let asset = Migrations::get(id).with_context(|| anyhow!("Migration file not found: {id}"))?;
@@ -7871,6 +7908,9 @@ fn ensure_mode(c: &mut sqll::Connection, mode: OpenMode) -> Result<(), sqll::Err
         OpenMode::Bulk => {
             c.execute("PRAGMA journal_mode = off;")?;
             c.execute("PRAGMA synchronous = off;")?;
+        }
+        OpenMode::ReadOnly => {
+            c.execute("PRAGMA busy_timeout = 5000;")?;
         }
     }
 

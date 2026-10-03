@@ -125,8 +125,11 @@ If you have been using [ontv], its YAML database can be imported like this:
 $ cargo run --bin import -- --source ~/.config/ontv --db track.db
 ```
 
-The process is incremental, so don't worry if you have to abort it. Shows,
-movies, and watches that already exist are skipped.
+Run it once, into a fresh database; it is not safe to rerun. Shows and movies
+are only matched by remote id, so a second run can fail or duplicate entries,
+and the settings from `config.yaml` (API keys, theme, dashboard page) replace
+the current configuration and preferences on every run. If an import is
+aborted, start over with a fresh database.
 
 This will take a while, so go get a ☕.
 
@@ -135,8 +138,10 @@ This will take a while, so go get a ☕.
 ## Backing up your data
 
 Most of the data in the database can be recovered by syncing it again from
-the remotes. What can't be recovered is which remotes you track and your
-watch history, so those are what the backup covers.
+the remotes. What can't be recovered is the users, the remotes of each show and
+movie, what each user tracks, their preferences and their watch history, so
+those are what the backup covers. Passwords, sessions and login links are not
+exported, so a restored user needs a new login link to sign in.
 
 ```text
 $ track export --output backup.jsonl
@@ -146,3 +151,8 @@ $ track import --input backup.jsonl
 A backup is newline-delimited JSON. Lines starting with `#` are comments, so
 you can annotate a backup by hand. Importing is idempotent, so entries which
 already exist are skipped.
+
+Export only reads: it refuses a database that does not exist or has pending
+migrations, and reads everything from one snapshot, so it can run while the
+server is up. Stop the server before importing: import writes without
+journaling, so it must not run alongside the server and is not crash-safe.

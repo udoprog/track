@@ -309,7 +309,10 @@ pub async fn import() -> Result<()> {
         filter = filter.add_directive(directive.parse()?);
     }
 
-    tracing_subscriber::fmt().with_env_filter(filter).init();
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_writer(std::io::stderr)
+        .init();
 
     let source = expand_tilde(&args.source);
 

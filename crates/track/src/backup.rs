@@ -226,7 +226,9 @@ async fn export(db: &Database, mut out: impl Write) -> Result<()> {
         Ok(())
     };
 
-    for user in db.list_users().await? {
+    let snapshot = db.export_snapshot().await?;
+
+    for user in snapshot.users {
         write(BackupRow::User {
             login: user.login,
             email: user.email,
@@ -234,7 +236,7 @@ async fn export(db: &Database, mut out: impl Write) -> Result<()> {
         })?;
     }
 
-    for r in db.export_show_remotes().await? {
+    for r in snapshot.show_remotes {
         let row = BackupRow::ShowRemote {
             id: r.id,
             show: r.owner,
@@ -248,7 +250,7 @@ async fn export(db: &Database, mut out: impl Write) -> Result<()> {
         write(row)?;
     }
 
-    for r in db.export_movie_remotes().await? {
+    for r in snapshot.movie_remotes {
         let row = BackupRow::MovieRemote {
             id: r.id,
             movie: r.owner,
@@ -262,24 +264,22 @@ async fn export(db: &Database, mut out: impl Write) -> Result<()> {
         write(row)?;
     }
 
-    let data = db.export_user_data().await?;
-
-    for (user, show) in data.tracked_shows {
+    for (user, show) in snapshot.user_data.tracked_shows {
         write(BackupRow::TrackedShow { user, show })?;
     }
 
-    for (user, movie) in data.tracked_movies {
+    for (user, movie) in snapshot.user_data.tracked_movies {
         write(BackupRow::TrackedMovie { user, movie })?;
     }
 
-    for (user, key, value) in data.user_config {
+    for (user, key, value) in snapshot.user_data.user_config {
         if let Some(key) = preference_key(&user, &key) {
             let value = serde_json::from_str(&value)?;
             write(BackupRow::UserPreference { user, key, value })?;
         }
     }
 
-    for (user, show, key, value) in data.show_config {
+    for (user, show, key, value) in snapshot.user_data.show_config {
         if let Some(key) = preference_key(&user, &key) {
             let value = serde_json::from_str(&value)?;
             write(BackupRow::ShowPreference {
@@ -291,7 +291,7 @@ async fn export(db: &Database, mut out: impl Write) -> Result<()> {
         }
     }
 
-    for (user, movie, key, value) in data.movie_config {
+    for (user, movie, key, value) in snapshot.user_data.movie_config {
         if let Some(key) = preference_key(&user, &key) {
             let value = serde_json::from_str(&value)?;
             write(BackupRow::MoviePreference {
@@ -303,7 +303,7 @@ async fn export(db: &Database, mut out: impl Write) -> Result<()> {
         }
     }
 
-    for (id, user, timestamp, show, season, episode) in db.export_watched_episodes().await? {
+    for (id, user, timestamp, show, season, episode) in snapshot.watched_episodes {
         let row = BackupRow::WatchedEpisode {
             id,
             user: Some(user),
@@ -315,7 +315,7 @@ async fn export(db: &Database, mut out: impl Write) -> Result<()> {
         write(row)?;
     }
 
-    for (id, user, timestamp, movie) in db.export_watched_movies().await? {
+    for (id, user, timestamp, movie) in snapshot.watched_movies {
         let row = BackupRow::WatchedMovie {
             id,
             user: Some(user),
@@ -611,12 +611,15 @@ pub async fn backup(db: &Path, log: &[String], command: BackupCommand) -> Result
         filter = filter.add_directive(directive.parse()?);
     }
 
-    tracing_subscriber::fmt().with_env_filter(filter).init();
+    // Logs go to stderr: an export without --output writes the backup to stdout.
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_writer(std::io::stderr)
+        .init();
 
     match command {
         BackupCommand::Export { output } => {
-            // Export only reads, via the database's shared (read-only) side.
-            let database = Database::open(db, OpenMode::Normal, 1)
+            let database = Database::open(db, OpenMode::ReadOnly, 1)
                 .with_context(|| anyhow!("Opening database at {}", db.display()))?;
 
             match output {
@@ -912,6 +915,31 @@ mod tests {
         assert_eq!(counts(second.watched), (0, 3));
     }
 
+    /// A remote the destination already has under another identifier is
+    /// ignored rather than counted as inserted, and keeps its own settings.
+    #[tokio::test]
+    async fn import_matches_remotes_by_structure() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = temp_db(&dir, "src.db");
+        seed(&src).await;
+        let exported = export_to_vec(&src).await;
+
+        let dst = temp_db(&dir, "dst.db");
+        let show = api::ShowId::new(1001);
+        dst.create_show(show, "", None, "").await.unwrap();
+        dst.add_show_remote(show, None, &api::Remote::tmdb(1399))
+            .await
+            .unwrap();
+
+        let report = import(&dst, exported.as_slice()).await.unwrap();
+        assert_eq!(counts(report.remotes), (1, 1));
+
+        let remotes = dst.export_snapshot().await.unwrap().show_remotes;
+        assert_eq!(remotes.len(), 1);
+        assert_ne!(remotes[0].id, api::RemoteId::new(9001));
+        assert!(remotes[0].enabled);
+    }
+
     #[tokio::test]
     async fn import_skips_comments_and_blanks() {
         let dir = tempfile::tempdir().unwrap();
@@ -956,6 +984,9 @@ mod tests {
         let unowned = watched.replace(r#""user":"root","#, "");
         let report = import(&dst, unowned.as_bytes()).await.unwrap();
         assert_eq!(report.watched.inserted, 2);
-        assert_eq!(dst.export_watched_episodes().await.unwrap()[0].1, "root");
+        assert_eq!(
+            dst.export_snapshot().await.unwrap().watched_episodes[0].1,
+            "root"
+        );
     }
 }
