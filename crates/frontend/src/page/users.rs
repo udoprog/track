@@ -188,7 +188,7 @@ impl Component for Users {
                 true
             }
             Msg::Listed(result) => {
-                match result.and_then(|p| Ok(p.decode()?)) {
+                match result.and_then(|p| p.decode()) {
                     Ok(response) => {
                         self.users = response.users;
                         self.pending = response
@@ -282,7 +282,7 @@ impl Component for Users {
                 false
             }
             Msg::LinkGenerated(id, result) => {
-                match result.and_then(|p| Ok(p.decode()?)) {
+                match result.and_then(|p| p.decode()) {
                     Ok(response) => {
                         let origin = web_sys::window()
                             .and_then(|w| w.location().origin().ok())

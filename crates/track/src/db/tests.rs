@@ -210,7 +210,7 @@ async fn episodes_needing_air_sync_respects_window_and_interval() {
 #[tokio::test]
 async fn skip_pending_episode_uses_next_air_date() {
     let dir = tempfile::tempdir().unwrap();
-    let db = Database::open(&dir.path().join("test.db"), OpenMode::Bulk, 1).unwrap();
+    let db = Database::open(dir.path().join("test.db"), OpenMode::Bulk, 1).unwrap();
 
     let root = db.default_owner().await.unwrap();
     let show = api::ShowId::new(1);

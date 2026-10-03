@@ -325,7 +325,6 @@ async fn export(db: &Database, mut out: impl Write) -> Result<()> {
         write(row)?;
     }
 
-    drop(write);
     out.flush()?;
     Ok(())
 }
