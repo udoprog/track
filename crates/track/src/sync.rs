@@ -283,7 +283,7 @@ async fn flush_show_cache_writes(
     persisted: bool,
 ) -> Result<()> {
     for (remote_id, state) in writes {
-        db.set_show_remote_cache(show_id, *remote_id, cache_json(&state.finish(persisted)))
+        db.set_remote_cache(show_id, *remote_id, cache_json(&state.finish(persisted)))
             .await?;
     }
 
@@ -610,7 +610,7 @@ async fn ensure_tvmaze_remote(
     };
 
     // Idempotent via INSERT OR IGNORE.
-    db.add_show_remote(show_id, None, &api::Remote::tvmaze(tvmaze_id))
+    db.add_remote(show_id, None, &api::Remote::tvmaze(tvmaze_id))
         .await?;
 
     Ok(())
@@ -1677,18 +1677,17 @@ pub(crate) async fn sync_person(
         )
         .await?;
 
-        // Store remotes discovered from the source (e.g. IMDb). `add_person_remote`
+        // Store remotes discovered from the source (e.g. IMDb). `add_remote`
         // upserts, so re-running a sync is idempotent.
         for (slug, remote) in &draft.remotes {
-            db.add_person_remote(person_id, slug.as_deref(), remote)
-                .await?;
+            db.add_remote(person_id, slug.as_deref(), remote).await?;
         }
     } else if !errored {
         db.mark_person_synced(person_id, now).await?;
     }
 
     for (remote_id, state) in &cache_writes {
-        db.set_person_remote_cache(person_id, *remote_id, cache_json(&state.finish(persisted)))
+        db.set_remote_cache(person_id, *remote_id, cache_json(&state.finish(persisted)))
             .await?;
     }
 
@@ -1934,7 +1933,7 @@ fn write_show_draft(
     s.replace_show_strings(show_id, draft.show_strings.clone())?;
 
     for (slug, remote) in &draft.remotes {
-        s.add_show_remote(show_id, slug.as_deref(), remote)?;
+        s.add_remote(show_id, slug.as_deref(), remote)?;
     }
 
     // Graphics: replace all show images with the accumulated set, ranked in
@@ -2109,10 +2108,10 @@ fn persist_air_dates_only(
 ) -> Result<()> {
     // Even when the Base layer is unchanged, a non-base layer (e.g. TVDB running
     // only to accumulate graphics) may have discovered remote metadata such as a
-    // slug that external links depend on. `add_show_remote` only fills in the
+    // slug that external links depend on. `add_remote` only fills in the
     // slug on conflict, so persisting the accumulated remotes here is idempotent.
     for (slug, remote) in &draft.remotes {
-        s.add_show_remote(show_id, slug.as_deref(), remote)?;
+        s.add_remote(show_id, slug.as_deref(), remote)?;
     }
 
     // The base-unchanged path keeps the base source's stored images (the base
@@ -3064,7 +3063,7 @@ async fn flush_movie_cache_writes(
     persisted: bool,
 ) -> Result<()> {
     for (remote_id, state) in writes {
-        db.set_movie_remote_cache(movie_id, *remote_id, cache_json(&state.finish(persisted)))
+        db.set_remote_cache(movie_id, *remote_id, cache_json(&state.finish(persisted)))
             .await?;
     }
 
@@ -3209,7 +3208,7 @@ fn persist_movie_draft(
     s.replace_movie_strings(movie_id, draft.strings.clone())?;
 
     for (slug, remote) in &draft.remotes {
-        s.add_movie_remote(movie_id, slug.as_deref(), remote)?;
+        s.add_remote(movie_id, slug.as_deref(), remote)?;
     }
 
     // Graphics: replace all movie images with the accumulated set, ranked in

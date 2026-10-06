@@ -1826,6 +1826,87 @@ impl DerefMut for InnerWrite {
     }
 }
 
+/// The write statements of one owner's remotes table. Every statement but
+/// `insert` matches on the owner too, so a remote id from another owner is
+/// left untouched.
+pub(crate) struct RemoteWrite<'a, O> {
+    insert: &'a mut TypedStatement<
+        (
+            RemoteId,
+            Option<String>,
+            O,
+            RemoteSource,
+            RemoteValue,
+            bool,
+            i32,
+            Option<api::SyncKindSet>,
+        ),
+        (),
+    >,
+    delete: &'a mut TypedStatement<(RemoteId, O), ()>,
+    update: &'a mut TypedStatement<(Option<String>, RemoteSource, RemoteValue, RemoteId, O), ()>,
+    set_enabled: &'a mut TypedStatement<(bool, RemoteId, O), ()>,
+    set_priority: &'a mut TypedStatement<(i32, RemoteId, O), ()>,
+    set_sync_kinds: &'a mut TypedStatement<(Option<api::SyncKindSet>, RemoteId, O), ()>,
+    set_cache: &'a mut TypedStatement<(Option<String>, RemoteId, O), ()>,
+}
+
+/// A show, movie or person: the owner of a remotes table.
+pub(crate) trait RemoteOwner:
+    Copy + core::fmt::Debug + Send + sqll::BindValue + 'static
+{
+    fn remotes(s: &mut InnerWrite) -> RemoteWrite<'_, Self>;
+}
+
+macro_rules! remote_owner {
+    ($ty:ty, $insert:ident, $delete:ident, $update:ident, $enabled:ident, $priority:ident, $sync_kinds:ident, $cache:ident) => {
+        impl RemoteOwner for $ty {
+            fn remotes(s: &mut InnerWrite) -> RemoteWrite<'_, Self> {
+                RemoteWrite {
+                    insert: &mut s.$insert,
+                    delete: &mut s.$delete,
+                    update: &mut s.$update,
+                    set_enabled: &mut s.$enabled,
+                    set_priority: &mut s.$priority,
+                    set_sync_kinds: &mut s.$sync_kinds,
+                    set_cache: &mut s.$cache,
+                }
+            }
+        }
+    };
+}
+
+remote_owner!(
+    ShowId,
+    insert_show_remote,
+    delete_show_remote,
+    update_show_remote,
+    set_show_remote_enabled,
+    set_show_remote_priority,
+    set_show_remote_sync_kinds,
+    set_show_remote_cache
+);
+remote_owner!(
+    MovieId,
+    insert_movie_remote,
+    delete_movie_remote,
+    update_movie_remote,
+    set_movie_remote_enabled,
+    set_movie_remote_priority,
+    set_movie_remote_sync_kinds,
+    set_movie_remote_cache
+);
+remote_owner!(
+    PersonId,
+    insert_person_remote,
+    delete_person_remote,
+    update_person_remote,
+    set_person_remote_enabled,
+    set_person_remote_priority,
+    set_person_remote_sync_kinds,
+    set_person_remote_cache
+);
+
 impl InnerRead {
     /// A show's remotes, in priority order.
     fn show_remotes(&mut self, show_id: ShowId) -> Result<Vec<api::RemoteEntry>> {
@@ -2622,42 +2703,19 @@ impl InnerWrite {
         Ok(out)
     }
 
-    pub(crate) fn add_show_remote(
+    pub(crate) fn add_remote<O: RemoteOwner>(
         &mut self,
-        show_id: ShowId,
+        owner: O,
         slug: Option<&str>,
         remote: &Remote,
     ) -> Result<()> {
         let config = self.load_config()?;
         let priority = default_remote_priority(*remote.source(), &config);
 
-        self.insert_show_remote.execute((
+        O::remotes(self).insert.execute((
             RemoteId::random(),
             slug,
-            show_id,
-            remote.source(),
-            remote.value(),
-            true,
-            priority,
-            // NULL = inherit the global per-source sync-kinds default.
-            None::<api::SyncKindSet>,
-        ))?;
-        Ok(())
-    }
-
-    pub(crate) fn add_movie_remote(
-        &mut self,
-        movie_id: MovieId,
-        slug: Option<&str>,
-        remote: &Remote,
-    ) -> Result<()> {
-        let config = self.load_config()?;
-        let priority = default_remote_priority(*remote.source(), &config);
-
-        self.insert_movie_remote.execute((
-            RemoteId::random(),
-            slug,
-            movie_id,
+            owner,
             remote.source(),
             remote.value(),
             true,
@@ -3160,58 +3218,120 @@ impl Database {
         Ok(result.await??)
     }
 
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn add_show_remote(
+    /// Run one write against `O`'s remotes table.
+    async fn write_remotes<O: RemoteOwner>(
         &self,
-        show_id: ShowId,
+        f: impl FnOnce(RemoteWrite<'_, O>) -> Result<()> + Send + 'static,
+    ) -> Result<()> {
+        let mut s = self.inner.clone().exclusive().await?;
+        spawn_blocking(move || f(O::remotes(&mut s))).await?
+    }
+
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn add_remote<O: RemoteOwner>(
+        &self,
+        owner: O,
         slug: Option<&str>,
         remote: &Remote,
     ) -> Result<()> {
         let slug = slug.map(str::to_owned);
         let remote = remote.clone();
 
-        self.transaction(move |s| s.add_show_remote(show_id, slug.as_deref(), &remote))
+        self.transaction(move |s| s.add_remote(owner, slug.as_deref(), &remote))
             .await
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn remove_show_remote(
+    pub(crate) async fn remove_remote<O: RemoteOwner>(
         &self,
-        show_id: ShowId,
+        owner: O,
         remote_id: RemoteId,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || s.delete_show_remote.execute((remote_id, show_id)));
-
-        result.await??;
-        Ok(())
+        self.write_remotes(move |r: RemoteWrite<'_, O>| Ok(r.delete.execute((remote_id, owner))?))
+            .await
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn update_show_remote(
+    pub(crate) async fn update_remote<O: RemoteOwner>(
         &self,
-        show_id: ShowId,
+        owner: O,
         remote_id: RemoteId,
         slug: Option<&str>,
         remote: &Remote,
     ) -> Result<()> {
         let slug = slug.map(str::to_owned);
         let remote = remote.clone();
-        let mut s = self.inner.clone().exclusive().await?;
 
-        let result = spawn_blocking(move || {
-            s.update_show_remote.execute((
+        self.write_remotes(move |r: RemoteWrite<'_, O>| {
+            Ok(r.update.execute((
                 slug.as_deref(),
                 remote.source(),
                 remote.value(),
                 remote_id,
-                show_id,
-            ))
-        });
+                owner,
+            ))?)
+        })
+        .await
+    }
 
-        result.await??;
-        Ok(())
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn set_remote_enabled<O: RemoteOwner>(
+        &self,
+        owner: O,
+        remote_id: RemoteId,
+        enabled: bool,
+    ) -> Result<()> {
+        self.write_remotes(move |r: RemoteWrite<'_, O>| {
+            Ok(r.set_enabled.execute((enabled, remote_id, owner))?)
+        })
+        .await
+    }
+
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn set_remote_sync_kinds<O: RemoteOwner>(
+        &self,
+        owner: O,
+        remote_id: RemoteId,
+        sync_kinds: Option<api::SyncKindSet>,
+    ) -> Result<()> {
+        self.write_remotes(move |r: RemoteWrite<'_, O>| {
+            Ok(r.set_sync_kinds.execute((sync_kinds, remote_id, owner))?)
+        })
+        .await
+    }
+
+    /// Replace a remote's cached conditional-request state (JSON), or clear it
+    /// with `None`.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn set_remote_cache<O: RemoteOwner>(
+        &self,
+        owner: O,
+        remote_id: RemoteId,
+        cache: Option<String>,
+    ) -> Result<()> {
+        self.write_remotes(move |r: RemoteWrite<'_, O>| {
+            Ok(r.set_cache.execute((cache, remote_id, owner))?)
+        })
+        .await
+    }
+
+    /// Set remote priority to match the given order (first = highest priority).
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn reorder_remotes<O: RemoteOwner>(
+        &self,
+        owner: O,
+        remote_ids: Vec<RemoteId>,
+    ) -> Result<()> {
+        self.transaction(move |s| {
+            let r = O::remotes(s);
+
+            for (idx, id) in remote_ids.iter().enumerate() {
+                r.set_priority.execute((idx as i32, *id, owner))?;
+            }
+
+            Ok(())
+        })
+        .await
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -3397,80 +3517,6 @@ impl Database {
         });
 
         result.await?
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn set_show_remote_enabled(
-        &self,
-        show_id: ShowId,
-        remote_id: RemoteId,
-        enabled: bool,
-    ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.set_show_remote_enabled
-                .execute((enabled, remote_id, show_id))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn set_show_remote_sync_kinds(
-        &self,
-        show_id: ShowId,
-        remote_id: RemoteId,
-        sync_kinds: Option<api::SyncKindSet>,
-    ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.set_show_remote_sync_kinds
-                .execute((sync_kinds, remote_id, show_id))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    /// Replace a show remote's cached conditional-request state (JSON), or clear
-    /// it with `None`.
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn set_show_remote_cache(
-        &self,
-        show_id: ShowId,
-        remote_id: RemoteId,
-        cache: Option<String>,
-    ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.set_show_remote_cache
-                .execute((cache, remote_id, show_id))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    /// Set remote priority to match the given order (first = highest priority).
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn reorder_show_remotes(
-        &self,
-        show_id: ShowId,
-        remote_ids: Vec<RemoteId>,
-    ) -> Result<()> {
-        let result = self.transaction(move |s| {
-            for (idx, id) in remote_ids.iter().enumerate() {
-                s.set_show_remote_priority
-                    .execute((idx as i32, *id, show_id))?;
-            }
-            Ok(())
-        });
-
-        result.await
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -4006,62 +4052,6 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn add_movie_remote(
-        &self,
-        movie_id: MovieId,
-        slug: Option<&str>,
-        remote: &Remote,
-    ) -> Result<()> {
-        let slug = slug.map(str::to_owned);
-        let remote = remote.clone();
-
-        self.transaction(move |s| s.add_movie_remote(movie_id, slug.as_deref(), &remote))
-            .await
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn remove_movie_remote(
-        &self,
-        movie_id: MovieId,
-        remote_id: RemoteId,
-    ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.delete_movie_remote.execute((remote_id, movie_id))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn update_movie_remote(
-        &self,
-        movie_id: MovieId,
-        remote_id: RemoteId,
-        slug: Option<&str>,
-        remote: &Remote,
-    ) -> Result<()> {
-        let slug = slug.map(str::to_owned);
-        let remote = remote.clone();
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.update_movie_remote.execute((
-                slug.as_deref(),
-                remote.source(),
-                remote.value(),
-                remote_id,
-                movie_id,
-            ))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
     /// List every show and movie as slim [`api::MediaItem`]s, each tagged with
     /// its [`api::MediaKind`]. The frontend filters and sorts client-side.
     pub(crate) async fn media_items(&self, user: UserId) -> Result<Vec<api::MediaItem>> {
@@ -4567,80 +4557,6 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn set_movie_remote_enabled(
-        &self,
-        movie_id: MovieId,
-        remote_id: RemoteId,
-        enabled: bool,
-    ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.set_movie_remote_enabled
-                .execute((enabled, remote_id, movie_id))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn set_movie_remote_sync_kinds(
-        &self,
-        movie_id: MovieId,
-        remote_id: RemoteId,
-        sync_kinds: Option<api::SyncKindSet>,
-    ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.set_movie_remote_sync_kinds
-                .execute((sync_kinds, remote_id, movie_id))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    /// Replace a movie remote's cached conditional-request state (JSON), or clear
-    /// it with `None`.
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn set_movie_remote_cache(
-        &self,
-        movie_id: MovieId,
-        remote_id: RemoteId,
-        cache: Option<String>,
-    ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.set_movie_remote_cache
-                .execute((cache, remote_id, movie_id))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    /// Set remote priority to match the given order (first = highest priority).
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn reorder_movie_remotes(
-        &self,
-        movie_id: MovieId,
-        remote_ids: Vec<RemoteId>,
-    ) -> Result<()> {
-        let result = self.transaction(move |s| {
-            for (idx, id) in remote_ids.iter().enumerate() {
-                s.set_movie_remote_priority
-                    .execute((idx as i32, *id, movie_id))?;
-            }
-            Ok(())
-        });
-
-        result.await
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn set_movie_language(
         &self,
         user: UserId,
@@ -4767,7 +4683,7 @@ impl Database {
     /// name+biography, ranked profile images, then mark synced and store the ETag.
     /// Replace a person's own data from its sync: department/imdb, per-language
     /// name+biography, ranked profile images, then mark synced. The per-remote
-    /// [`api::RemoteCache`] is flushed separately via [`Self::set_person_remote_cache`].
+    /// [`api::RemoteCache`] is flushed separately via [`Self::set_remote_cache`].
     pub(crate) async fn persist_person_sync(
         &self,
         person_id: PersonId,
@@ -4823,149 +4739,6 @@ impl Database {
         });
 
         result.await?
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn add_person_remote(
-        &self,
-        person_id: PersonId,
-        slug: Option<&str>,
-        remote: &Remote,
-    ) -> Result<()> {
-        let remote = remote.clone();
-        let slug = slug.map(str::to_owned);
-        let priority = default_remote_priority(*remote.source(), &self.load_config().await?);
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.insert_person_remote.execute((
-                RemoteId::random(),
-                slug,
-                person_id,
-                remote.source(),
-                remote.value(),
-                true,
-                priority,
-                None::<api::SyncKindSet>,
-            ))
-        });
-
-        result.await??;
-        Ok(())
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn remove_person_remote(
-        &self,
-        person_id: PersonId,
-        remote_id: RemoteId,
-    ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || s.delete_person_remote.execute((remote_id, person_id)));
-
-        result.await??;
-        Ok(())
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn update_person_remote(
-        &self,
-        person_id: PersonId,
-        remote_id: RemoteId,
-        slug: Option<&str>,
-        remote: &Remote,
-    ) -> Result<()> {
-        let slug = slug.map(str::to_owned);
-        let remote = remote.clone();
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.update_person_remote.execute((
-                slug.as_deref(),
-                remote.source(),
-                remote.value(),
-                remote_id,
-                person_id,
-            ))
-        });
-
-        result.await??;
-        Ok(())
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn set_person_remote_enabled(
-        &self,
-        person_id: PersonId,
-        remote_id: RemoteId,
-        enabled: bool,
-    ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.set_person_remote_enabled
-                .execute((enabled, remote_id, person_id))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn set_person_remote_sync_kinds(
-        &self,
-        person_id: PersonId,
-        remote_id: RemoteId,
-        sync_kinds: Option<api::SyncKindSet>,
-    ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.set_person_remote_sync_kinds
-                .execute((sync_kinds, remote_id, person_id))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    /// Replace a person remote's cached conditional-request state (JSON), or clear
-    /// it with `None`.
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn set_person_remote_cache(
-        &self,
-        person_id: PersonId,
-        remote_id: RemoteId,
-        cache: Option<String>,
-    ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            s.set_person_remote_cache
-                .execute((cache, remote_id, person_id))?;
-            Ok(())
-        });
-
-        result.await?
-    }
-
-    /// Set person remote priority to match the given order (first = highest).
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn reorder_person_remotes(
-        &self,
-        person_id: PersonId,
-        remote_ids: Vec<RemoteId>,
-    ) -> Result<()> {
-        let result = self.transaction(move |s| {
-            for (idx, id) in remote_ids.iter().enumerate() {
-                s.set_person_remote_priority
-                    .execute((idx as i32, *id, person_id))?;
-            }
-            Ok(())
-        });
-
-        result.await
     }
 
     /// Delete a person and everything derived from it: its remotes (no owner FK, so

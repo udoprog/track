@@ -1,672 +1,243 @@
 use anyhow::{Context as _, Result};
+use musli_web::api::ChannelId;
 use musli_web::ws;
+
+use crate::db::RemoteOwner;
 
 use super::WsHandler;
 
-impl WsHandler {
-    pub(super) async fn add_show_remote(
-        &self,
-        incoming: &mut ws::Incoming<'_>,
-        outgoing: &mut ws::Outgoing<'_>,
-    ) -> Result<()> {
-        let req = incoming
-            .read::<api::AddShowRemoteRequest>()
-            .context("Expected a request payload")?;
+/// A change to one owner's remotes, read from its per-owner request.
+enum Edit {
+    Add {
+        slug: Option<String>,
+        remote: api::Remote,
+    },
+    Remove {
+        remote_id: api::RemoteId,
+    },
+    Update {
+        remote_id: api::RemoteId,
+        slug: Option<String>,
+        remote: api::Remote,
+    },
+    SetEnabled {
+        remote_id: api::RemoteId,
+        enabled: bool,
+    },
+    SetSyncKinds {
+        remote_id: api::RemoteId,
+        sync_kinds: Option<api::SyncKindSet>,
+    },
+    Reorder {
+        remote_ids: Vec<api::RemoteId>,
+    },
+    PurgeCache {
+        remote_id: api::RemoteId,
+    },
+}
 
-        self.db
-            .show_by_id(Some(self.user.id), req.id)
-            .await?
-            .context("Expected show to exist")?;
+trait Owner: RemoteOwner {
+    /// Shows and movies must exist before a remote is added, removed, updated
+    /// or purged, and adding, removing or updating one changes the pending list.
+    const MEDIA: bool;
 
-        self.db
-            .add_show_remote(req.id, req.slug.as_deref(), &req.remote)
-            .await?;
+    /// The owner's changed event and its title.
+    async fn load(self, h: &WsHandler) -> Result<(api::AppEventKind, Option<String>)>;
 
-        let show = self
-            .db
-            .show_by_id(Some(self.user.id), req.id)
-            .await?
-            .context("Expected show to exist")?;
+    async fn enqueue_sync(self, h: &WsHandler, title: Option<String>);
 
-        self.broadcast.emit(
-            incoming.channel(),
-            api::AppEventKind::ShowChanged { show: show.clone() },
-            "ws add show remote changed",
-        );
-
-        self.broadcast.emit(
-            incoming.channel(),
-            api::AppEventKind::PendingChanged,
-            "ws add show remote pending changed",
-        );
-
-        outgoing.write(api::Empty);
+    /// Clear validators the remote also holds below the owner.
+    async fn purge_nested_cache(self, _: &WsHandler, _: api::RemoteId) -> Result<()> {
         Ok(())
     }
+}
 
-    pub(super) async fn remove_show_remote(
-        &self,
-        incoming: &mut ws::Incoming<'_>,
-        outgoing: &mut ws::Outgoing<'_>,
-    ) -> Result<()> {
-        let req = incoming
-            .read::<api::RemoveShowRemoteRequest>()
-            .context("Expected a request payload")?;
+impl Owner for api::ShowId {
+    const MEDIA: bool = true;
 
-        self.db
-            .show_by_id(Some(self.user.id), req.id)
-            .await?
-            .context("Expected show to exist")?;
+    async fn load(self, h: &WsHandler) -> Result<(api::AppEventKind, Option<String>)> {
+        let show =
+            h.db.show_by_id(Some(h.user.id), self)
+                .await?
+                .context("Expected show to exist")?;
 
-        self.db.remove_show_remote(req.id, req.remote_id).await?;
-
-        let show = self
-            .db
-            .show_by_id(Some(self.user.id), req.id)
-            .await?
-            .context("Expected show to exist")?;
-
-        self.broadcast.emit(
-            incoming.channel(),
-            api::AppEventKind::ShowChanged { show: show.clone() },
-            "ws remove show remote changed",
-        );
-
-        self.broadcast.emit(
-            incoming.channel(),
-            api::AppEventKind::PendingChanged,
-            "ws remove show remote pending changed",
-        );
-
-        outgoing.write(api::Empty);
-        Ok(())
+        let title = show.strings.title().map(str::to_owned);
+        Ok((api::AppEventKind::ShowChanged { show }, title))
     }
 
-    pub(super) async fn update_show_remote(
-        &self,
-        incoming: &mut ws::Incoming<'_>,
-        outgoing: &mut ws::Outgoing<'_>,
-    ) -> Result<()> {
-        let req = incoming
-            .read::<api::UpdateShowRemoteRequest>()
-            .context("Expected a request payload")?;
-
-        self.db
-            .show_by_id(Some(self.user.id), req.id)
-            .await?
-            .context("Expected show to exist")?;
-
-        self.db
-            .update_show_remote(req.id, req.remote_id, req.slug.as_deref(), &req.remote)
-            .await?;
-
-        let show = self
-            .db
-            .show_by_id(Some(self.user.id), req.id)
-            .await?
-            .context("Expected show to exist")?;
-
-        self.broadcast.emit(
-            incoming.channel(),
-            api::AppEventKind::ShowChanged { show: show.clone() },
-            "ws update show remote changed",
-        );
-
-        self.broadcast.emit(
-            incoming.channel(),
-            api::AppEventKind::PendingChanged,
-            "ws update show remote pending changed",
-        );
-
-        outgoing.write(api::Empty);
-        Ok(())
+    async fn enqueue_sync(self, h: &WsHandler, title: Option<String>) {
+        h.enqueue_show_sync(self, title, true).await;
     }
 
-    pub(super) async fn set_show_remote_enabled(
-        &self,
-        incoming: &mut ws::Incoming<'_>,
-        outgoing: &mut ws::Outgoing<'_>,
-    ) -> Result<()> {
-        let req = incoming
-            .read::<api::SetShowRemoteEnabledRequest>()
-            .context("Expected a request payload")?;
+    // The remote also holds a validator on each of the show's episodes;
+    // leaving those behind would let a "force resync" still be answered from
+    // cache at the episode level.
+    async fn purge_nested_cache(self, h: &WsHandler, remote_id: api::RemoteId) -> Result<()> {
+        let show =
+            h.db.show_by_id(Some(h.user.id), self)
+                .await?
+                .context("Expected show to exist")?;
 
-        self.db
-            .set_show_remote_enabled(req.id, req.remote_id, req.enabled)
-            .await?;
-
-        let show = self
-            .db
-            .show_by_id(Some(self.user.id), req.id)
-            .await?
-            .context("Expected show to exist")?;
-
-        self.broadcast.emit(
-            incoming.channel(),
-            api::AppEventKind::ShowChanged { show: show.clone() },
-            "ws set show remote enabled changed",
-        );
-
-        self.enqueue_show_sync(show.id, show.strings.title().map(str::to_owned), true)
-            .await;
-
-        outgoing.write(api::Empty);
-        Ok(())
-    }
-
-    pub(super) async fn set_show_remote_sync_kinds(
-        &self,
-        incoming: &mut ws::Incoming<'_>,
-        outgoing: &mut ws::Outgoing<'_>,
-    ) -> Result<()> {
-        let req = incoming
-            .read::<api::SetShowRemoteSyncKindsRequest>()
-            .context("Expected a request payload")?;
-
-        self.db
-            .set_show_remote_sync_kinds(req.id, req.remote_id, req.sync_kinds)
-            .await?;
-
-        let show = self
-            .db
-            .show_by_id(Some(self.user.id), req.id)
-            .await?
-            .context("Expected show to exist")?;
-
-        self.broadcast.emit(
-            incoming.channel(),
-            api::AppEventKind::ShowChanged { show: show.clone() },
-            "ws set show remote sync kinds changed",
-        );
-
-        self.enqueue_show_sync(show.id, show.strings.title().map(str::to_owned), true)
-            .await;
-
-        outgoing.write(api::Empty);
-        Ok(())
-    }
-
-    pub(super) async fn reorder_show_remotes(
-        &self,
-        incoming: &mut ws::Incoming<'_>,
-        outgoing: &mut ws::Outgoing<'_>,
-    ) -> Result<()> {
-        let req = incoming
-            .read::<api::ReorderShowRemotesRequest>()
-            .context("Expected a request payload")?;
-
-        self.db.reorder_show_remotes(req.id, req.remote_ids).await?;
-
-        let show = self
-            .db
-            .show_by_id(Some(self.user.id), req.id)
-            .await?
-            .context("Expected show to exist")?;
-
-        self.broadcast.emit(
-            incoming.channel(),
-            api::AppEventKind::ShowChanged { show: show.clone() },
-            "ws reorder show remotes changed",
-        );
-
-        self.enqueue_show_sync(show.id, show.strings.title().map(str::to_owned), true)
-            .await;
-
-        outgoing.write(api::Empty);
-        Ok(())
-    }
-
-    pub(super) async fn purge_show_remote_cache(
-        &self,
-        incoming: &mut ws::Incoming<'_>,
-        outgoing: &mut ws::Outgoing<'_>,
-    ) -> Result<()> {
-        let req = incoming
-            .read::<api::PurgeShowRemoteCacheRequest>()
-            .context("Expected a request payload")?;
-
-        let show = self
-            .db
-            .show_by_id(Some(self.user.id), req.id)
-            .await?
-            .context("Expected show to exist")?;
-
-        self.db
-            .set_show_remote_cache(req.id, req.remote_id, None)
-            .await?;
-
-        // The same remote also holds a validator on each of the show's
-        // episodes; leaving those behind would let a "force resync" still be
-        // answered from cache at the episode level.
-        if let Some(entry) = show.remotes.iter().find(|e| e.id == req.remote_id) {
-            self.db
-                .clear_episode_cache_for_show_source(show.id, *entry.remote.source())
+        if let Some(entry) = show.remotes.iter().find(|e| e.id == remote_id) {
+            h.db.clear_episode_cache_for_show_source(self, *entry.remote.source())
                 .await?;
         }
 
-        // Force a fresh sync now that the cached validator is gone.
-        self.enqueue_show_sync(show.id, show.strings.title().map(str::to_owned), true)
-            .await;
-
-        let show = self
-            .db
-            .show_by_id(Some(self.user.id), req.id)
-            .await?
-            .context("Expected show to exist")?;
-
-        self.broadcast.emit(
-            incoming.channel(),
-            api::AppEventKind::ShowChanged { show },
-            "ws purge show remote cache",
-        );
-
-        outgoing.write(api::Empty);
         Ok(())
     }
+}
 
-    pub(super) async fn add_movie_remote(
-        &self,
-        incoming: &mut ws::Incoming<'_>,
-        outgoing: &mut ws::Outgoing<'_>,
-    ) -> Result<()> {
-        let req = incoming
-            .read::<api::AddMovieRemoteRequest>()
-            .context("Expected a request payload")?;
+impl Owner for api::MovieId {
+    const MEDIA: bool = true;
 
-        self.db
-            .movie_by_id(Some(self.user.id), req.id)
-            .await?
-            .context("Expected movie to exist")?;
+    async fn load(self, h: &WsHandler) -> Result<(api::AppEventKind, Option<String>)> {
+        let movie =
+            h.db.movie_by_id(Some(h.user.id), self)
+                .await?
+                .context("Expected movie to exist")?;
 
-        self.db
-            .add_movie_remote(req.id, req.slug.as_deref(), &req.remote)
-            .await?;
-
-        let movie = self
-            .db
-            .movie_by_id(Some(self.user.id), req.id)
-            .await?
-            .context("Expected movie to exist")?;
-
-        self.broadcast.emit(
-            incoming.channel(),
-            api::AppEventKind::MovieChanged {
-                movie: movie.clone(),
-            },
-            "ws add movie remote changed",
-        );
-
-        self.broadcast.emit(
-            incoming.channel(),
-            api::AppEventKind::PendingChanged,
-            "ws add movie remote pending changed",
-        );
-
-        outgoing.write(api::Empty);
-        Ok(())
+        let title = movie.strings.title().map(str::to_owned);
+        Ok((api::AppEventKind::MovieChanged { movie }, title))
     }
 
-    pub(super) async fn remove_movie_remote(
-        &self,
-        incoming: &mut ws::Incoming<'_>,
-        outgoing: &mut ws::Outgoing<'_>,
-    ) -> Result<()> {
-        let req = incoming
-            .read::<api::RemoveMovieRemoteRequest>()
-            .context("Expected a request payload")?;
+    async fn enqueue_sync(self, h: &WsHandler, title: Option<String>) {
+        h.enqueue_movie_sync(self, title, true).await;
+    }
+}
 
-        self.db
-            .movie_by_id(Some(self.user.id), req.id)
-            .await?
-            .context("Expected movie to exist")?;
+impl Owner for api::PersonId {
+    const MEDIA: bool = false;
 
-        self.db.remove_movie_remote(req.id, req.remote_id).await?;
+    async fn load(self, h: &WsHandler) -> Result<(api::AppEventKind, Option<String>)> {
+        let person =
+            h.db.person_by_id(None, self)
+                .await?
+                .context("Expected person to exist")?;
 
-        let movie = self
-            .db
-            .movie_by_id(Some(self.user.id), req.id)
-            .await?
-            .context("Expected movie to exist")?;
-
-        self.broadcast.emit(
-            incoming.channel(),
-            api::AppEventKind::MovieChanged {
-                movie: movie.clone(),
-            },
-            "ws remove movie remote changed",
-        );
-
-        self.broadcast.emit(
-            incoming.channel(),
-            api::AppEventKind::PendingChanged,
-            "ws remove movie remote pending changed",
-        );
-
-        outgoing.write(api::Empty);
-        Ok(())
+        let title = person.name.title().map(str::to_owned);
+        Ok((api::AppEventKind::PersonChanged { person_id: self }, title))
     }
 
-    pub(super) async fn update_movie_remote(
-        &self,
-        incoming: &mut ws::Incoming<'_>,
-        outgoing: &mut ws::Outgoing<'_>,
-    ) -> Result<()> {
-        let req = incoming
-            .read::<api::UpdateMovieRemoteRequest>()
-            .context("Expected a request payload")?;
+    async fn enqueue_sync(self, h: &WsHandler, title: Option<String>) {
+        h.enqueue_person_sync(self, title, true).await;
+    }
+}
 
-        self.db
-            .movie_by_id(Some(self.user.id), req.id)
-            .await?
-            .context("Expected movie to exist")?;
+macro_rules! handlers {
+    ($($name:ident($request:ty) => |$req:ident| $edit:expr;)*) => {
+        $(
+            pub(super) async fn $name(
+                &self,
+                incoming: &mut ws::Incoming<'_>,
+                outgoing: &mut ws::Outgoing<'_>,
+            ) -> Result<()> {
+                let $req = incoming
+                    .read::<$request>()
+                    .context("Expected a request payload")?;
 
-        self.db
-            .update_movie_remote(req.id, req.remote_id, req.slug.as_deref(), &req.remote)
-            .await?;
+                self.edit_remote(incoming.channel(), $req.id, $edit).await?;
+                outgoing.write(api::Empty);
+                Ok(())
+            }
+        )*
+    };
+}
 
-        let movie = self
-            .db
-            .movie_by_id(Some(self.user.id), req.id)
-            .await?
-            .context("Expected movie to exist")?;
+impl WsHandler {
+    handlers! {
+        add_show_remote(api::AddShowRemoteRequest) => |req| Edit::Add { slug: req.slug, remote: req.remote };
+        remove_show_remote(api::RemoveShowRemoteRequest) => |req| Edit::Remove { remote_id: req.remote_id };
+        update_show_remote(api::UpdateShowRemoteRequest) => |req| Edit::Update { remote_id: req.remote_id, slug: req.slug, remote: req.remote };
+        set_show_remote_enabled(api::SetShowRemoteEnabledRequest) => |req| Edit::SetEnabled { remote_id: req.remote_id, enabled: req.enabled };
+        set_show_remote_sync_kinds(api::SetShowRemoteSyncKindsRequest) => |req| Edit::SetSyncKinds { remote_id: req.remote_id, sync_kinds: req.sync_kinds };
+        reorder_show_remotes(api::ReorderShowRemotesRequest) => |req| Edit::Reorder { remote_ids: req.remote_ids };
+        purge_show_remote_cache(api::PurgeShowRemoteCacheRequest) => |req| Edit::PurgeCache { remote_id: req.remote_id };
 
-        self.broadcast.emit(
-            incoming.channel(),
-            api::AppEventKind::MovieChanged {
-                movie: movie.clone(),
-            },
-            "ws update movie remote changed",
-        );
+        add_movie_remote(api::AddMovieRemoteRequest) => |req| Edit::Add { slug: req.slug, remote: req.remote };
+        remove_movie_remote(api::RemoveMovieRemoteRequest) => |req| Edit::Remove { remote_id: req.remote_id };
+        update_movie_remote(api::UpdateMovieRemoteRequest) => |req| Edit::Update { remote_id: req.remote_id, slug: req.slug, remote: req.remote };
+        set_movie_remote_enabled(api::SetMovieRemoteEnabledRequest) => |req| Edit::SetEnabled { remote_id: req.remote_id, enabled: req.enabled };
+        set_movie_remote_sync_kinds(api::SetMovieRemoteSyncKindsRequest) => |req| Edit::SetSyncKinds { remote_id: req.remote_id, sync_kinds: req.sync_kinds };
+        reorder_movie_remotes(api::ReorderMovieRemotesRequest) => |req| Edit::Reorder { remote_ids: req.remote_ids };
+        purge_movie_remote_cache(api::PurgeMovieRemoteCacheRequest) => |req| Edit::PurgeCache { remote_id: req.remote_id };
 
-        self.broadcast.emit(
-            incoming.channel(),
-            api::AppEventKind::PendingChanged,
-            "ws update movie remote pending changed",
-        );
-
-        outgoing.write(api::Empty);
-        Ok(())
+        add_person_remote(api::AddPersonRemoteRequest) => |req| Edit::Add { slug: req.slug, remote: req.remote };
+        remove_person_remote(api::RemovePersonRemoteRequest) => |req| Edit::Remove { remote_id: req.remote_id };
+        update_person_remote(api::UpdatePersonRemoteRequest) => |req| Edit::Update { remote_id: req.remote_id, slug: req.slug, remote: req.remote };
+        set_person_remote_enabled(api::SetPersonRemoteEnabledRequest) => |req| Edit::SetEnabled { remote_id: req.remote_id, enabled: req.enabled };
+        set_person_remote_sync_kinds(api::SetPersonRemoteSyncKindsRequest) => |req| Edit::SetSyncKinds { remote_id: req.remote_id, sync_kinds: req.sync_kinds };
+        reorder_person_remotes(api::ReorderPersonRemotesRequest) => |req| Edit::Reorder { remote_ids: req.remote_ids };
+        purge_person_remote_cache(api::PurgePersonRemoteCacheRequest) => |req| Edit::PurgeCache { remote_id: req.remote_id };
     }
 
-    pub(super) async fn set_movie_remote_enabled(
-        &self,
-        incoming: &mut ws::Incoming<'_>,
-        outgoing: &mut ws::Outgoing<'_>,
-    ) -> Result<()> {
-        let req = incoming
-            .read::<api::SetMovieRemoteEnabledRequest>()
-            .context("Expected a request payload")?;
+    /// Apply `edit`, broadcast the owner, then either resync it or (for shows
+    /// and movies) announce a pending-list change.
+    async fn edit_remote<O: Owner>(&self, channel: ChannelId, owner: O, edit: Edit) -> Result<()> {
+        if O::MEDIA
+            && !matches!(
+                edit,
+                Edit::SetEnabled { .. } | Edit::SetSyncKinds { .. } | Edit::Reorder { .. }
+            )
+        {
+            owner.load(self).await?;
+        }
 
-        self.db
-            .set_movie_remote_enabled(req.id, req.remote_id, req.enabled)
-            .await?;
+        let db = &self.db;
 
-        let movie = self
-            .db
-            .movie_by_id(Some(self.user.id), req.id)
-            .await?
-            .context("Expected movie to exist")?;
+        let resync = match edit {
+            Edit::Add { slug, remote } => {
+                db.add_remote(owner, slug.as_deref(), &remote).await?;
+                false
+            }
+            Edit::Remove { remote_id } => {
+                db.remove_remote(owner, remote_id).await?;
+                false
+            }
+            Edit::Update {
+                remote_id,
+                slug,
+                remote,
+            } => {
+                db.update_remote(owner, remote_id, slug.as_deref(), &remote)
+                    .await?;
+                false
+            }
+            Edit::SetEnabled { remote_id, enabled } => {
+                db.set_remote_enabled(owner, remote_id, enabled).await?;
+                true
+            }
+            Edit::SetSyncKinds {
+                remote_id,
+                sync_kinds,
+            } => {
+                db.set_remote_sync_kinds(owner, remote_id, sync_kinds)
+                    .await?;
+                true
+            }
+            Edit::Reorder { remote_ids } => {
+                db.reorder_remotes(owner, remote_ids).await?;
+                true
+            }
+            Edit::PurgeCache { remote_id } => {
+                db.set_remote_cache(owner, remote_id, None).await?;
+                owner.purge_nested_cache(self, remote_id).await?;
+                true
+            }
+        };
 
-        self.broadcast.emit(
-            incoming.channel(),
-            api::AppEventKind::MovieChanged {
-                movie: movie.clone(),
-            },
-            "ws set movie remote enabled changed",
-        );
+        let (event, title) = owner.load(self).await?;
+        self.broadcast.emit(channel, event, "ws remote changed");
 
-        self.enqueue_movie_sync(movie.id, movie.strings.title().map(str::to_owned), true)
-            .await;
+        if resync {
+            owner.enqueue_sync(self, title).await;
+        } else if O::MEDIA {
+            self.broadcast.emit(
+                channel,
+                api::AppEventKind::PendingChanged,
+                "ws remote pending changed",
+            );
+        }
 
-        outgoing.write(api::Empty);
-        Ok(())
-    }
-
-    pub(super) async fn set_movie_remote_sync_kinds(
-        &self,
-        incoming: &mut ws::Incoming<'_>,
-        outgoing: &mut ws::Outgoing<'_>,
-    ) -> Result<()> {
-        let req = incoming
-            .read::<api::SetMovieRemoteSyncKindsRequest>()
-            .context("Expected a request payload")?;
-
-        self.db
-            .set_movie_remote_sync_kinds(req.id, req.remote_id, req.sync_kinds)
-            .await?;
-
-        let movie = self
-            .db
-            .movie_by_id(Some(self.user.id), req.id)
-            .await?
-            .context("Expected movie to exist")?;
-
-        self.broadcast.emit(
-            incoming.channel(),
-            api::AppEventKind::MovieChanged {
-                movie: movie.clone(),
-            },
-            "ws set movie remote sync kinds changed",
-        );
-
-        self.enqueue_movie_sync(movie.id, movie.strings.title().map(str::to_owned), true)
-            .await;
-
-        outgoing.write(api::Empty);
-        Ok(())
-    }
-
-    pub(super) async fn reorder_movie_remotes(
-        &self,
-        incoming: &mut ws::Incoming<'_>,
-        outgoing: &mut ws::Outgoing<'_>,
-    ) -> Result<()> {
-        let req = incoming
-            .read::<api::ReorderMovieRemotesRequest>()
-            .context("Expected a request payload")?;
-
-        self.db
-            .reorder_movie_remotes(req.id, req.remote_ids)
-            .await?;
-
-        let movie = self
-            .db
-            .movie_by_id(Some(self.user.id), req.id)
-            .await?
-            .context("Expected movie to exist")?;
-
-        self.broadcast.emit(
-            incoming.channel(),
-            api::AppEventKind::MovieChanged {
-                movie: movie.clone(),
-            },
-            "ws reorder movie remotes changed",
-        );
-
-        self.enqueue_movie_sync(movie.id, movie.strings.title().map(str::to_owned), true)
-            .await;
-
-        outgoing.write(api::Empty);
-        Ok(())
-    }
-
-    pub(super) async fn purge_movie_remote_cache(
-        &self,
-        incoming: &mut ws::Incoming<'_>,
-        outgoing: &mut ws::Outgoing<'_>,
-    ) -> Result<()> {
-        let req = incoming
-            .read::<api::PurgeMovieRemoteCacheRequest>()
-            .context("Expected a request payload")?;
-
-        let movie = self
-            .db
-            .movie_by_id(Some(self.user.id), req.id)
-            .await?
-            .context("Expected movie to exist")?;
-
-        self.db
-            .set_movie_remote_cache(req.id, req.remote_id, None)
-            .await?;
-
-        self.enqueue_movie_sync(movie.id, movie.strings.title().map(str::to_owned), true)
-            .await;
-
-        let movie = self
-            .db
-            .movie_by_id(Some(self.user.id), req.id)
-            .await?
-            .context("Expected movie to exist")?;
-
-        self.broadcast.emit(
-            incoming.channel(),
-            api::AppEventKind::MovieChanged { movie },
-            "ws purge movie remote cache",
-        );
-
-        outgoing.write(api::Empty);
-        Ok(())
-    }
-
-    pub(super) async fn add_person_remote(
-        &self,
-        incoming: &mut ws::Incoming<'_>,
-        outgoing: &mut ws::Outgoing<'_>,
-    ) -> Result<()> {
-        let req = incoming
-            .read::<api::AddPersonRemoteRequest>()
-            .context("Expected a request payload")?;
-
-        self.db
-            .add_person_remote(req.id, req.slug.as_deref(), &req.remote)
-            .await?;
-
-        self.broadcast_person_changed(incoming.channel(), req.id, "ws add person remote")
-            .await?;
-
-        outgoing.write(api::Empty);
-        Ok(())
-    }
-
-    pub(super) async fn remove_person_remote(
-        &self,
-        incoming: &mut ws::Incoming<'_>,
-        outgoing: &mut ws::Outgoing<'_>,
-    ) -> Result<()> {
-        let req = incoming
-            .read::<api::RemovePersonRemoteRequest>()
-            .context("Expected a request payload")?;
-
-        self.db.remove_person_remote(req.id, req.remote_id).await?;
-
-        self.broadcast_person_changed(incoming.channel(), req.id, "ws remove person remote")
-            .await?;
-
-        outgoing.write(api::Empty);
-        Ok(())
-    }
-
-    pub(super) async fn update_person_remote(
-        &self,
-        incoming: &mut ws::Incoming<'_>,
-        outgoing: &mut ws::Outgoing<'_>,
-    ) -> Result<()> {
-        let req = incoming
-            .read::<api::UpdatePersonRemoteRequest>()
-            .context("Expected a request payload")?;
-
-        self.db
-            .update_person_remote(req.id, req.remote_id, req.slug.as_deref(), &req.remote)
-            .await?;
-
-        self.broadcast_person_changed(incoming.channel(), req.id, "ws update person remote")
-            .await?;
-
-        outgoing.write(api::Empty);
-        Ok(())
-    }
-
-    pub(super) async fn set_person_remote_enabled(
-        &self,
-        incoming: &mut ws::Incoming<'_>,
-        outgoing: &mut ws::Outgoing<'_>,
-    ) -> Result<()> {
-        let req = incoming
-            .read::<api::SetPersonRemoteEnabledRequest>()
-            .context("Expected a request payload")?;
-
-        self.db
-            .set_person_remote_enabled(req.id, req.remote_id, req.enabled)
-            .await?;
-
-        self.resync_person(incoming.channel(), req.id, "ws set person remote enabled")
-            .await?;
-
-        outgoing.write(api::Empty);
-        Ok(())
-    }
-
-    pub(super) async fn set_person_remote_sync_kinds(
-        &self,
-        incoming: &mut ws::Incoming<'_>,
-        outgoing: &mut ws::Outgoing<'_>,
-    ) -> Result<()> {
-        let req = incoming
-            .read::<api::SetPersonRemoteSyncKindsRequest>()
-            .context("Expected a request payload")?;
-
-        self.db
-            .set_person_remote_sync_kinds(req.id, req.remote_id, req.sync_kinds)
-            .await?;
-
-        self.resync_person(
-            incoming.channel(),
-            req.id,
-            "ws set person remote sync kinds",
-        )
-        .await?;
-
-        outgoing.write(api::Empty);
-        Ok(())
-    }
-
-    pub(super) async fn reorder_person_remotes(
-        &self,
-        incoming: &mut ws::Incoming<'_>,
-        outgoing: &mut ws::Outgoing<'_>,
-    ) -> Result<()> {
-        let req = incoming
-            .read::<api::ReorderPersonRemotesRequest>()
-            .context("Expected a request payload")?;
-
-        self.db
-            .reorder_person_remotes(req.id, req.remote_ids)
-            .await?;
-
-        self.resync_person(incoming.channel(), req.id, "ws reorder person remotes")
-            .await?;
-
-        outgoing.write(api::Empty);
-        Ok(())
-    }
-
-    pub(super) async fn purge_person_remote_cache(
-        &self,
-        incoming: &mut ws::Incoming<'_>,
-        outgoing: &mut ws::Outgoing<'_>,
-    ) -> Result<()> {
-        let req = incoming
-            .read::<api::PurgePersonRemoteCacheRequest>()
-            .context("Expected a request payload")?;
-
-        self.db
-            .set_person_remote_cache(req.id, req.remote_id, None)
-            .await?;
-
-        self.resync_person(incoming.channel(), req.id, "ws purge person remote cache")
-            .await?;
-
-        outgoing.write(api::Empty);
         Ok(())
     }
 }

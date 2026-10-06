@@ -65,7 +65,7 @@ impl WsHandler {
         }
 
         self.db
-            .add_show_remote(show_id, req.slug.as_deref(), &req.remote)
+            .add_remote(show_id, req.slug.as_deref(), &req.remote)
             .await?;
 
         self.db

@@ -345,54 +345,6 @@ impl WsHandler {
         })
     }
 
-    /// Broadcast that a person changed, after a mutation that does not warrant a
-    /// resync (add/remove/update remote).
-    async fn broadcast_person_changed(
-        &self,
-        channel: musli_web::api::ChannelId,
-        person_id: api::PersonId,
-        reason: &'static str,
-    ) -> Result<()> {
-        self.db
-            .person_by_id(None, person_id)
-            .await?
-            .context("Expected person to exist")?;
-
-        self.broadcast.emit(
-            channel,
-            api::AppEventKind::PersonChanged { person_id },
-            reason,
-        );
-
-        Ok(())
-    }
-
-    /// Broadcast a person change and force a fresh sync (enable/reorder/sync-kinds/
-    /// purge), mirroring the show/movie remote handlers.
-    async fn resync_person(
-        &self,
-        channel: musli_web::api::ChannelId,
-        person_id: api::PersonId,
-        reason: &'static str,
-    ) -> Result<()> {
-        let person = self
-            .db
-            .person_by_id(None, person_id)
-            .await?
-            .context("Expected person to exist")?;
-
-        self.broadcast.emit(
-            channel,
-            api::AppEventKind::PersonChanged { person_id },
-            reason,
-        );
-
-        self.enqueue_person_sync(person_id, person.name.title().map(str::to_owned), true)
-            .await;
-
-        Ok(())
-    }
-
     /// The cutoff pending items are listed up to: now shifted forward by the
     /// configured dashboard lookahead, so items surface before they air.
     async fn pending_cutoff(&self) -> Result<api::Timestamp> {

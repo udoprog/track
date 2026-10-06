@@ -85,15 +85,6 @@ impl Client {
         Self::send_json(req).await
     }
 
-    #[tracing::instrument(skip(self, url))]
-    async fn get_images<T>(&self, url: impl AsRef<str>) -> Result<T>
-    where
-        T: DeserializeOwned,
-    {
-        let req = self.request(Method::GET, url.as_ref())?;
-        Self::send_json(req).await
-    }
-
     async fn send_json<T>(req: RequestBuilder) -> Result<T>
     where
         T: DeserializeOwned,
@@ -330,7 +321,7 @@ impl Client {
         };
 
         let images: Images = self
-            .get_images(format!("tv/{id}/images"))
+            .get_json(format!("tv/{id}/images"))
             .await
             .context("Fetching images")?;
 
@@ -941,7 +932,7 @@ impl Client {
         };
 
         let images: Images = self
-            .get_images(format!("movie/{id}/images"))
+            .get_json(format!("movie/{id}/images"))
             .await
             .context("Fetching images")?;
 

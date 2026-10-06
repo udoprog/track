@@ -926,7 +926,7 @@ mod tests {
         let dst = temp_db(&dir, "dst.db");
         let show = api::ShowId::new(1001);
         dst.create_show(show, "", None, "").await.unwrap();
-        dst.add_show_remote(show, None, &api::Remote::tmdb(1399))
+        dst.add_remote(show, None, &api::Remote::tmdb(1399))
             .await
             .unwrap();
 

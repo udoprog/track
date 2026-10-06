@@ -50,7 +50,7 @@ impl WsHandler {
         }
 
         self.db
-            .add_movie_remote(movie_id, req.slug.as_deref(), &req.remote)
+            .add_remote(movie_id, req.slug.as_deref(), &req.remote)
             .await?;
 
         self.db

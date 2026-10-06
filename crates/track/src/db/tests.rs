@@ -1276,8 +1276,8 @@ async fn show_remote_changes_require_the_owning_show() -> Result<()> {
     let b = api::ShowId::new(2);
     db.create_show(a, "A", None, "").await?;
     db.create_show(b, "B", None, "").await?;
-    db.add_show_remote(a, None, &Remote::tmdb(1)).await?;
-    db.add_show_remote(b, None, &Remote::tmdb(2)).await?;
+    db.add_remote(a, None, &Remote::tmdb(1)).await?;
+    db.add_remote(b, None, &Remote::tmdb(2)).await?;
 
     let remotes = |id| {
         let db = &db;
@@ -1287,19 +1287,18 @@ async fn show_remote_changes_require_the_owning_show() -> Result<()> {
     let before = remotes(b).await?;
     let foreign = before[0].id;
 
-    db.set_show_remote_enabled(a, foreign, false).await?;
-    db.set_show_remote_sync_kinds(a, foreign, Some(api::SyncKindSet::empty()))
+    db.set_remote_enabled(a, foreign, false).await?;
+    db.set_remote_sync_kinds(a, foreign, Some(api::SyncKindSet::empty()))
         .await?;
-    db.set_show_remote_cache(a, foreign, None).await?;
-    db.reorder_show_remotes(a, vec![RemoteId::random(), foreign])
+    db.set_remote_cache(a, foreign, None).await?;
+    db.reorder_remotes(a, vec![RemoteId::random(), foreign])
         .await?;
-    db.update_show_remote(a, foreign, None, &Remote::tmdb(3))
-        .await?;
-    db.remove_show_remote(a, foreign).await?;
+    db.update_remote(a, foreign, None, &Remote::tmdb(3)).await?;
+    db.remove_remote(a, foreign).await?;
 
     assert_eq!(remotes(b).await?, before);
 
-    db.remove_show_remote(b, foreign).await?;
+    db.remove_remote(b, foreign).await?;
     assert!(remotes(b).await?.is_empty());
     assert_eq!(remotes(a).await?.len(), 1);
     Ok(())

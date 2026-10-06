@@ -6,7 +6,7 @@ use anyhow::{Context as _, Result, ensure};
 use api::{Image, ImageKey};
 use parking_lot::Mutex;
 
-use crate::{tmdb, tvdb};
+use crate::{tmdb, tvdb, tvmaze};
 
 /// Choose the primary image for a kind: prefer the API's `selected` image when
 /// it's present in the gallery, otherwise fall back to the first entry.
@@ -68,6 +68,18 @@ pub(crate) async fn fetch_image_bytes(
     );
 
     Ok(Some(resp.error_for_status()?.bytes().await?))
+}
+
+/// Forward each listed method to the client `$client` returns, failing with
+/// `$missing` when it is not configured.
+macro_rules! forward {
+    ($client:ident, $missing:literal; $(fn $name:ident = $method:ident($($arg:ident: $ty:ty),*) -> $ret:ty;)*) => {
+        $(
+            pub(crate) async fn $name(&self, $($arg: $ty),*) -> Result<$ret> {
+                self.$client().await.context($missing)?.$method($($arg),*).await
+            }
+        )*
+    };
 }
 
 /// Holds tmdb and tvdb clients, constructed only when the relevant API key is
@@ -166,7 +178,7 @@ impl RemoteClients {
             .await
     }
 
-    fn tvmaze(&self) -> Option<crate::tvmaze::Client> {
+    async fn tvmaze(&self) -> Option<tvmaze::Client> {
         self.inner.lock().tvmaze.clone()
     }
 
@@ -267,281 +279,41 @@ impl RemoteClients {
         Ok((out, total))
     }
 
-    pub(crate) async fn fetch_tmdb_show(
-        &self,
-        id: u32,
-        etag: Option<&str>,
-    ) -> Result<tmdb::Conditional<tmdb::ShowInfo>> {
-        self.tmdb()
-            .await
-            .context("Expected a configured TMDB client")?
-            .fetch_show(id, etag)
-            .await
+    forward! {
+        tmdb, "Expected a configured TMDB client";
+        fn fetch_tmdb_show = fetch_show(id: u32, etag: Option<&str>) -> tmdb::Conditional<tmdb::ShowInfo>;
+        fn fetch_tmdb_season_episodes = fetch_season_episodes(show_id: u32, season: api::SeasonNumber) -> Vec<tmdb::EpisodeInfo>;
+        fn fetch_tmdb_episode = fetch_episode(show_id: u32, season: api::SeasonNumber, number: u32, etag: Option<&str>) -> tmdb::Conditional<tmdb::EpisodeInfo>;
+        fn fetch_tmdb_movie = fetch_movie(id: u32, etag: Option<&str>) -> tmdb::Conditional<tmdb::MovieInfo>;
+        fn fetch_tmdb_movie_releases = fetch_movie_releases(id: u32) -> Vec<tmdb::MovieReleaseInfo>;
+        fn fetch_tmdb_show_translations = fetch_show_translations(id: u32) -> Vec<tmdb::Translation>;
+        fn fetch_tmdb_person = fetch_person(id: u32, etag: Option<&str>) -> tmdb::Conditional<tmdb::PersonInfo>;
+        fn fetch_tmdb_person_translations = fetch_person_translations(id: u32) -> Vec<tmdb::PersonTranslation>;
+        fn fetch_tmdb_person_images = fetch_person_images(id: u32) -> Vec<(f64, api::Image)>;
+        fn fetch_tmdb_show_credits = fetch_show_credits(id: u32, language: &str) -> Vec<tmdb::CreditInfo>;
+        fn fetch_tmdb_movie_credits = fetch_movie_credits(id: u32, language: &str) -> Vec<tmdb::CreditInfo>;
+        fn fetch_tmdb_season_translations = fetch_season_translations(show_id: u32, season: api::SeasonNumber) -> Vec<tmdb::Translation>;
+        fn fetch_tmdb_episode_translations = fetch_episode_translations(show_id: u32, season: api::SeasonNumber, episode: u32) -> Vec<tmdb::Translation>;
+        fn fetch_tmdb_movie_translations = fetch_movie_translations(id: u32) -> Vec<tmdb::Translation>;
     }
 
-    pub(crate) async fn fetch_tmdb_season_episodes(
-        &self,
-        show_id: u32,
-        season: api::SeasonNumber,
-    ) -> Result<Vec<tmdb::EpisodeInfo>> {
-        self.tmdb()
-            .await
-            .context("Expected a configured TMDB client")?
-            .fetch_season_episodes(show_id, season)
-            .await
+    forward! {
+        tvdb, "Expected a configured TVDB client";
+        fn fetch_tvdb_show = fetch_show(tvdb_id: u32) -> tvdb::SeriesInfo;
+        fn fetch_tvdb_episodes = fetch_episodes(tvdb_id: u32) -> Vec<tvdb::EpisodeInfo>;
+        fn fetch_tvdb_episode = fetch_episode(tvdb_id: u32, season: api::SeasonNumber, number: u32) -> Option<tvdb::EpisodeInfo>;
+        fn fetch_tvdb_show_translation = fetch_show_translation(tvdb_id: u32, language: api::Locale, available: &HashSet<String>) -> Option<tvdb::Translation>;
+        fn fetch_tvdb_season_translation = fetch_season_translation(season_id: u32, language: api::Locale, available: &HashSet<String>) -> Option<tvdb::Translation>;
+        fn fetch_tvdb_episode_translation = fetch_episode_translation(episode_id: u32, language: api::Locale, available: &HashSet<String>) -> Option<tvdb::Translation>;
     }
 
-    pub(crate) async fn fetch_tmdb_episode(
-        &self,
-        show_id: u32,
-        season: api::SeasonNumber,
-        number: u32,
-        etag: Option<&str>,
-    ) -> Result<tmdb::Conditional<tmdb::EpisodeInfo>> {
-        self.tmdb()
-            .await
-            .context("Expected a configured TMDB client")?
-            .fetch_episode(show_id, season, number, etag)
-            .await
-    }
-
-    pub(crate) async fn fetch_tmdb_movie(
-        &self,
-        id: u32,
-        etag: Option<&str>,
-    ) -> Result<tmdb::Conditional<tmdb::MovieInfo>> {
-        self.tmdb()
-            .await
-            .context("Expected a configured TMDB client")?
-            .fetch_movie(id, etag)
-            .await
-    }
-
-    pub(crate) async fn fetch_tmdb_movie_releases(
-        &self,
-        id: u32,
-    ) -> Result<Vec<tmdb::MovieReleaseInfo>> {
-        self.tmdb()
-            .await
-            .context("Expected a configured TMDB client")?
-            .fetch_movie_releases(id)
-            .await
-    }
-
-    pub(crate) async fn fetch_tmdb_show_translations(
-        &self,
-        id: u32,
-    ) -> Result<Vec<tmdb::Translation>> {
-        self.tmdb()
-            .await
-            .context("Expected a configured TMDB client")?
-            .fetch_show_translations(id)
-            .await
-    }
-
-    pub(crate) async fn fetch_tmdb_person(
-        &self,
-        id: u32,
-        etag: Option<&str>,
-    ) -> Result<tmdb::Conditional<tmdb::PersonInfo>> {
-        self.tmdb()
-            .await
-            .context("Expected a configured TMDB client")?
-            .fetch_person(id, etag)
-            .await
-    }
-
-    pub(crate) async fn fetch_tmdb_person_translations(
-        &self,
-        id: u32,
-    ) -> Result<Vec<tmdb::PersonTranslation>> {
-        self.tmdb()
-            .await
-            .context("Expected a configured TMDB client")?
-            .fetch_person_translations(id)
-            .await
-    }
-
-    pub(crate) async fn fetch_tmdb_person_images(&self, id: u32) -> Result<Vec<(f64, api::Image)>> {
-        self.tmdb()
-            .await
-            .context("Expected a configured TMDB client")?
-            .fetch_person_images(id)
-            .await
-    }
-
-    pub(crate) async fn fetch_tmdb_show_credits(
-        &self,
-        id: u32,
-        language: &str,
-    ) -> Result<Vec<tmdb::CreditInfo>> {
-        self.tmdb()
-            .await
-            .context("Expected a configured TMDB client")?
-            .fetch_show_credits(id, language)
-            .await
-    }
-
-    pub(crate) async fn fetch_tmdb_movie_credits(
-        &self,
-        id: u32,
-        language: &str,
-    ) -> Result<Vec<tmdb::CreditInfo>> {
-        self.tmdb()
-            .await
-            .context("Expected a configured TMDB client")?
-            .fetch_movie_credits(id, language)
-            .await
-    }
-
-    pub(crate) async fn fetch_tmdb_season_translations(
-        &self,
-        show_id: u32,
-        season: api::SeasonNumber,
-    ) -> Result<Vec<tmdb::Translation>> {
-        self.tmdb()
-            .await
-            .context("Expected a configured TMDB client")?
-            .fetch_season_translations(show_id, season)
-            .await
-    }
-
-    pub(crate) async fn fetch_tmdb_episode_translations(
-        &self,
-        show_id: u32,
-        season: api::SeasonNumber,
-        episode: u32,
-    ) -> Result<Vec<tmdb::Translation>> {
-        self.tmdb()
-            .await
-            .context("Expected a configured TMDB client")?
-            .fetch_episode_translations(show_id, season, episode)
-            .await
-    }
-
-    pub(crate) async fn fetch_tmdb_movie_translations(
-        &self,
-        tvdb_id: u32,
-    ) -> Result<Vec<tmdb::Translation>> {
-        self.tmdb()
-            .await
-            .context("Expected a configured TMDB client")?
-            .fetch_movie_translations(tvdb_id)
-            .await
-    }
-
-    pub(crate) async fn fetch_tvdb_show(&self, tvdb_id: u32) -> Result<tvdb::SeriesInfo> {
-        self.tvdb()
-            .await
-            .context("Expected a configured TVDB client")?
-            .fetch_show(tvdb_id)
-            .await
-    }
-
-    pub(crate) async fn fetch_tvdb_episodes(&self, tvdb_id: u32) -> Result<Vec<tvdb::EpisodeInfo>> {
-        self.tvdb()
-            .await
-            .context("Expected a configured TVDB client")?
-            .fetch_episodes(tvdb_id)
-            .await
-    }
-
-    pub(crate) async fn fetch_tvdb_episode(
-        &self,
-        tvdb_id: u32,
-        season: api::SeasonNumber,
-        number: u32,
-    ) -> Result<Option<tvdb::EpisodeInfo>> {
-        self.tvdb()
-            .await
-            .context("Expected a configured TVDB client")?
-            .fetch_episode(tvdb_id, season, number)
-            .await
-    }
-
-    pub(crate) async fn fetch_tvdb_show_translation(
-        &self,
-        tvdb_id: u32,
-        language: api::Locale,
-        available: &HashSet<String>,
-    ) -> Result<Option<tvdb::Translation>> {
-        self.tvdb()
-            .await
-            .context("Expected a configured TVDB client")?
-            .fetch_show_translation(tvdb_id, language, available)
-            .await
-    }
-
-    pub(crate) async fn fetch_tvdb_season_translation(
-        &self,
-        season_id: u32,
-        language: api::Locale,
-        available: &HashSet<String>,
-    ) -> Result<Option<tvdb::Translation>> {
-        self.tvdb()
-            .await
-            .context("Expected a configured TVDB client")?
-            .fetch_season_translation(season_id, language, available)
-            .await
-    }
-
-    pub(crate) async fn fetch_tvdb_episode_translation(
-        &self,
-        episode_id: u32,
-        language: api::Locale,
-        available: &HashSet<String>,
-    ) -> Result<Option<tvdb::Translation>> {
-        self.tvdb()
-            .await
-            .context("Expected a configured TVDB client")?
-            .fetch_episode_translation(episode_id, language, available)
-            .await
-    }
-
-    pub(crate) async fn lookup_tvmaze_by_tvdb(&self, tvdb_id: u32) -> Result<Option<u32>> {
-        self.tvmaze()
-            .context("Expected a configured TVmaze client")?
-            .lookup_by_tvdb(tvdb_id)
-            .await
-    }
-
-    pub(crate) async fn lookup_tvmaze_by_imdb(&self, imdb_id: &str) -> Result<Option<u32>> {
-        self.tvmaze()
-            .context("Expected a configured TVmaze client")?
-            .lookup_by_imdb(imdb_id)
-            .await
-    }
-
-    pub(crate) async fn fetch_tvmaze_episodes(
-        &self,
-        tvmaze_id: u32,
-    ) -> Result<Vec<crate::tvmaze::EpisodeInfo>> {
-        self.tvmaze()
-            .context("Expected a configured TVmaze client")?
-            .fetch_episodes(tvmaze_id)
-            .await
-    }
-
-    pub(crate) async fn fetch_tvmaze_episode(
-        &self,
-        tvmaze_id: u32,
-        season: api::SeasonNumber,
-        number: u32,
-    ) -> Result<Option<crate::tvmaze::EpisodeInfo>> {
-        self.tvmaze()
-            .context("Expected a configured TVmaze client")?
-            .fetch_episode(tvmaze_id, season, number)
-            .await
-    }
-
-    pub(crate) async fn fetch_tvmaze_show_network(
-        &self,
-        tvmaze_id: u32,
-    ) -> Result<crate::tvmaze::ShowNetwork> {
-        self.tvmaze()
-            .context("Expected a configured TVmaze client")?
-            .fetch_show_network(tvmaze_id)
-            .await
+    forward! {
+        tvmaze, "Expected a configured TVmaze client";
+        fn lookup_tvmaze_by_tvdb = lookup_by_tvdb(tvdb_id: u32) -> Option<u32>;
+        fn lookup_tvmaze_by_imdb = lookup_by_imdb(imdb_id: &str) -> Option<u32>;
+        fn fetch_tvmaze_episodes = fetch_episodes(tvmaze_id: u32) -> Vec<tvmaze::EpisodeInfo>;
+        fn fetch_tvmaze_episode = fetch_episode(tvmaze_id: u32, season: api::SeasonNumber, number: u32) -> Option<tvmaze::EpisodeInfo>;
+        fn fetch_tvmaze_show_network = fetch_show_network(tvmaze_id: u32) -> tvmaze::ShowNetwork;
     }
 }
 
