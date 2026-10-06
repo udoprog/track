@@ -298,6 +298,29 @@ pub(crate) async fn sync_show(
     pending: &crate::pending::PendingSystem,
     shutdown: &Shutdown,
 ) -> Result<()> {
+    let (show, config) = load_show_for_sync(show_id, db, remote).await?;
+
+    tracing::info!(show_id = %show_id, title = show.strings.title(), "Syncing show");
+
+    let draft = run_show_layers(&show, &config, remote, shutdown).await;
+
+    // Don't persist a half-fetched draft: aborting here leaves the stored
+    // strings/seasons untouched rather than truncating them via `replace_*`.
+    if shutdown.is_cancelled() {
+        anyhow::bail!("Sync aborted: service is shutting down");
+    }
+
+    persist_show_sync(&show, &config, draft, db, broadcast).await?;
+    finish_show_sync(show_id, &config, db, broadcast, pending).await
+}
+
+/// Load the show and the sync config for its viewers, first storing a TVmaze
+/// remote when the show has none yet.
+async fn load_show_for_sync(
+    show_id: api::ShowId,
+    db: &Database,
+    remote: &RemoteClients,
+) -> Result<(api::Show, api::Config)> {
     let show = db
         .show_by_id(None, show_id)
         .await?
@@ -324,15 +347,22 @@ pub(crate) async fn sync_show(
         .await?
         .context("Expected show to exist")?;
 
-    tracing::info!(show_id = %show_id, title = show.strings.title(), "Syncing show");
+    Ok((show, config))
+}
 
+/// Visit enabled remotes in priority order, one layer per source (the
+/// highest-priority entry of each source wins), each contributing the kinds it's
+/// configured for (global default, or its own override) to a shared draft.
+async fn run_show_layers(
+    show: &api::Show,
+    config: &api::Config,
+    remote: &RemoteClients,
+    shutdown: &Shutdown,
+) -> ShowDraft {
     // One clock for the whole sync, so every error recorded this run shares a timestamp
     // and expires together.
     let now = api::Timestamp::now();
 
-    // Visit enabled remotes in priority order, one layer per source (the
-    // highest-priority entry of each source wins). Each layer contributes the
-    // kinds it's configured for (global default, or its own override).
     let mut entries = show
         .remotes
         .iter()
@@ -341,7 +371,6 @@ pub(crate) async fn sync_show(
 
     entries.sort_by_key(|e| e.priority);
 
-    // The shared model every layer contributes to.
     let mut draft = ShowDraft::default();
     let mut seen = HashSet::new();
 
@@ -358,7 +387,7 @@ pub(crate) async fn sync_show(
 
         // The kinds this remote should still contribute: exclusive kinds only
         // until a higher-priority layer took them, non-exclusive kinds always.
-        let configured = api::effective_remote_sync_kinds(entry, &config);
+        let configured = api::effective_remote_sync_kinds(entry, config);
         let kinds: SyncKindSet = configured.iter().filter(|k| draft.needs(*k)).collect();
 
         // Run the source if it still owes a kind, or just to accumulate graphics.
@@ -367,62 +396,25 @@ pub(crate) async fn sync_show(
         }
 
         let do_base = kinds.contains(SyncKind::Base);
-        let do_air_date = kinds.contains(SyncKind::Dates);
-        let do_credits = kinds.contains(SyncKind::Credits);
 
-        // A short-circuit is only rebuild-safe when this layer is the Base
-        // provider (skipping it routes to `persist_air_dates_only`, no rebuild) or
-        // the Base provider already reported unchanged. Otherwise a fresh Base
-        // elsewhere triggers a full rebuild that would wipe a skipped layer's data.
-        let allow_skip = do_base || draft.base_unchanged;
+        let cx = ShowLayer {
+            config,
+            remote,
+            shutdown,
+            do_base,
+            do_air_date: kinds.contains(SyncKind::Dates),
+            do_credits: kinds.contains(SyncKind::Credits),
+            // A short-circuit is only rebuild-safe when this layer is the Base
+            // provider (skipping it routes to `persist_air_dates_only`, no rebuild) or
+            // the Base provider already reported unchanged. Otherwise a fresh Base
+            // elsewhere triggers a full rebuild that would wipe a skipped layer's data.
+            allow_skip: do_base || draft.base_unchanged,
+        };
 
         let mut state = CacheState::new(entry.cache.as_ref(), now);
 
-        let result = match source {
-            RemoteSource::Tmdb => match entry.remote.value().as_u32() {
-                Some(tmdb_id) => {
-                    tmdb_show_layer(
-                        &mut draft,
-                        &mut state,
-                        &config,
-                        &show,
-                        tmdb_id,
-                        do_base,
-                        do_air_date,
-                        do_credits,
-                        remote,
-                        shutdown,
-                        allow_skip,
-                    )
-                    .await
-                }
-                None => continue,
-            },
-            RemoteSource::Tvdb => match entry.remote.value().as_u32() {
-                Some(tvdb_id) => {
-                    tvdb_show_layer(
-                        &mut draft,
-                        &mut state,
-                        &config,
-                        tvdb_id,
-                        do_base,
-                        do_air_date,
-                        remote,
-                        shutdown,
-                        allow_skip,
-                    )
-                    .await
-                }
-                None => continue,
-            },
-            RemoteSource::Tvmaze => match entry.remote.value().as_u32() {
-                // TVmaze offers no conditional request, so it never earns a validator.
-                Some(tvmaze_id) => tvmaze_layer(&mut draft, &mut state, show_id, tvmaze_id, remote)
-                    .await
-                    .map(|()| LayerOutcome::Updated),
-                None => continue,
-            },
-            _ => continue,
+        let Some(result) = run_show_layer(cx, &mut draft, &mut state, show, entry).await else {
+            continue;
         };
 
         // Whatever the layer learned about this remote is recorded either way: a
@@ -439,59 +431,57 @@ pub(crate) async fn sync_show(
         // A failing layer shouldn't abort the sync: lower-priority layers and the
         // data already collected still persist, and the kind stays unclaimed so a
         // later layer can fill it.
-        let outcome = match result {
-            Ok(outcome) => outcome,
+        match result {
+            Ok(outcome) => draft.claim(source, kinds, outcome, degraded),
             Err(e) => {
-                tracing::warn!(?source, "Sync layer failed for show {show_id}: {e:#}");
-                continue;
+                tracing::warn!(?source, "Sync layer failed for show {}: {e:#}", show.id);
             }
-        };
-
-        match outcome {
-            // Contributed nothing, so claims nothing - a lower-priority source may
-            // still provide the kinds this one owed.
-            LayerOutcome::Absent => continue,
-            // Cache hit: claim the kinds so lower-priority layers skip the
-            // exclusive Base kind (this source stays the owner), but keep the
-            // existing data - don't record an air-date source (its stored
-            // releases are preserved) and flag base so persist doesn't rebuild.
-            LayerOutcome::Unchanged => {
-                if kinds.contains(SyncKind::Base) {
-                    draft.base_unchanged = true;
-                }
-            }
-            LayerOutcome::Updated => {
-                // A degraded layer didn't report everything it has, so its stored air
-                // dates must not be pruned against this run's partial view.
-                if do_air_date && !degraded {
-                    draft.air_date_sources.insert(source);
-                }
-
-                // A source that ran fully re-supplied its graphics into the
-                // draft; mark it so the base-unchanged path can refresh just
-                // this source's stored images.
-                if source.has_graphics() {
-                    draft.graphics_sources.insert(source);
-                }
-            }
-        }
-
-        for k in kinds {
-            draft.provided.insert(k);
         }
     }
+
+    draft
+}
+
+/// Run the layer for one remote entry, or `None` when its source has no show
+/// layer or its id is unusable.
+async fn run_show_layer(
+    cx: ShowLayer<'_>,
+    draft: &mut ShowDraft,
+    state: &mut CacheState,
+    show: &api::Show,
+    entry: &api::RemoteEntry,
+) -> Option<Result<LayerOutcome>> {
+    let id = entry.remote.value().as_u32()?;
+
+    let result = match *entry.remote.source() {
+        RemoteSource::Tmdb => tmdb_show_layer(cx, draft, state, show, id).await,
+        RemoteSource::Tvdb => tvdb_show_layer(cx, draft, state, id).await,
+        // TVmaze offers no conditional request, so it never earns a validator.
+        RemoteSource::Tvmaze => tvmaze_layer(draft, state, show.id, id, cx.remote)
+            .await
+            .map(|()| LayerOutcome::Updated),
+        _ => return None,
+    };
+
+    Some(result)
+}
+
+/// Persist the draft according to how its Base kind was (or wasn't) provided,
+/// flushing every layer's cache state alongside.
+async fn persist_show_sync(
+    show: &api::Show,
+    config: &api::Config,
+    draft: ShowDraft,
+    db: &Database,
+    broadcast: &Broadcaster,
+) -> Result<()> {
+    let show_id = show.id;
 
     // The kinds at least one enabled remote is configured to contribute. This
     // tells a deliberately-excluded kind (clear its derived data) apart from a
     // transient fetch failure (keep what's already stored), mirroring how air
     // dates use eligibility in `recompute_episode_aired_for_show`.
-    let eligible = api::eligible_sync_kinds(&show.remotes, &config);
-
-    // Don't persist a half-fetched draft: aborting here leaves the stored
-    // strings/seasons untouched rather than truncating them via `replace_*`.
-    if shutdown.is_cancelled() {
-        anyhow::bail!("Sync aborted: service is shutting down");
-    }
+    let eligible = api::eligible_sync_kinds(&show.remotes, config);
 
     // Base drives the show's seasons and episodes:
     //   - provided           → persist the fresh draft;
@@ -503,7 +493,7 @@ pub(crate) async fn sync_show(
     let draft = Arc::new(draft);
 
     if draft.provided.contains(SyncKind::Base) && !draft.base_unchanged {
-        persist_show_draft(show_id, &show, &draft, db, broadcast).await?;
+        persist_show_draft(show_id, show, &draft, db, broadcast).await?;
         flush_show_cache_writes(show_id, &draft.cache_writes, db, true).await?;
     } else if draft.base_unchanged {
         // The Base source was unchanged (cache hit): keep the stored
@@ -543,6 +533,17 @@ pub(crate) async fn sync_show(
         tracing::warn!(show_id = %show_id, "No enabled remote provides Base; keeping the stored seasons");
     }
 
+    Ok(())
+}
+
+/// Recompute effective air dates and pending rows after a sync, and tell clients.
+async fn finish_show_sync(
+    show_id: api::ShowId,
+    config: &api::Config,
+    db: &Database,
+    broadcast: &Broadcaster,
+    pending: &crate::pending::PendingSystem,
+) -> Result<()> {
     // Merge all sources' air dates into the effective episodes.aired by priority,
     // then broadcast each season so clients pick up the recomputed dates.
     db.recompute_episode_aired_for_show(show_id, config.air_date_filters.clone())
@@ -810,23 +811,82 @@ impl ShowDraft {
 
         self.images.push(DraftImage { kind, image, score });
     }
+
+    /// Record what a layer that ran contributed, claiming the kinds it owed
+    /// unless it was absent.
+    fn claim(
+        &mut self,
+        source: RemoteSource,
+        kinds: SyncKindSet,
+        outcome: LayerOutcome,
+        degraded: bool,
+    ) {
+        match outcome {
+            // Contributed nothing, so claims nothing - a lower-priority source may
+            // still provide the kinds this one owed.
+            LayerOutcome::Absent => return,
+            // Cache hit: claim the kinds so lower-priority layers skip the
+            // exclusive Base kind (this source stays the owner), but keep the
+            // existing data - don't record an air-date source (its stored
+            // releases are preserved) and flag base so persist doesn't rebuild.
+            LayerOutcome::Unchanged => {
+                if kinds.contains(SyncKind::Base) {
+                    self.base_unchanged = true;
+                }
+            }
+            LayerOutcome::Updated => {
+                // A degraded layer didn't report everything it has, so its stored air
+                // dates must not be pruned against this run's partial view.
+                if kinds.contains(SyncKind::Dates) && !degraded {
+                    self.air_date_sources.insert(source);
+                }
+
+                // A source that ran fully re-supplied its graphics into the
+                // draft; mark it so the base-unchanged path can refresh just
+                // this source's stored images.
+                if source.has_graphics() {
+                    self.graphics_sources.insert(source);
+                }
+            }
+        }
+
+        for k in kinds {
+            self.provided.insert(k);
+        }
+    }
 }
 
-#[tracing::instrument(skip_all, fields(tmdb_id, do_base, do_air_date))]
-#[allow(clippy::too_many_arguments)]
-async fn tmdb_show_layer(
-    draft: &mut ShowDraft,
-    state: &mut CacheState,
-    config: &api::Config,
-    show: &api::Show,
-    tmdb_id: u32,
+/// What a show layer owes this run, and the shared services it fetches with.
+#[derive(Clone, Copy)]
+struct ShowLayer<'a> {
+    config: &'a api::Config,
+    remote: &'a RemoteClients,
+    shutdown: &'a Shutdown,
     do_base: bool,
     do_air_date: bool,
     do_credits: bool,
-    remote: &RemoteClients,
-    shutdown: &Shutdown,
+    /// Whether a cached validator may short-circuit the layer; see `run_show_layers`.
     allow_skip: bool,
+}
+
+#[tracing::instrument(skip_all, fields(tmdb_id, do_base, do_air_date))]
+async fn tmdb_show_layer(
+    cx: ShowLayer<'_>,
+    draft: &mut ShowDraft,
+    state: &mut CacheState,
+    show: &api::Show,
+    tmdb_id: u32,
 ) -> Result<LayerOutcome> {
+    let ShowLayer {
+        config,
+        remote,
+        shutdown,
+        do_base,
+        do_air_date,
+        do_credits,
+        allow_skip,
+    } = cx;
+
     tracing::info!(tmdb_id, do_base, do_air_date, do_credits, "Show");
 
     let needed = needed_kinds(do_base, do_air_date, do_credits);
@@ -971,18 +1031,22 @@ async fn tmdb_show_layer(
 }
 
 #[tracing::instrument(skip_all, fields(tvdb_id, do_base, do_air_date))]
-#[allow(clippy::too_many_arguments)]
 async fn tvdb_show_layer(
+    cx: ShowLayer<'_>,
     draft: &mut ShowDraft,
     state: &mut CacheState,
-    config: &api::Config,
     tvdb_id: u32,
-    do_base: bool,
-    do_air_date: bool,
-    remote: &RemoteClients,
-    shutdown: &Shutdown,
-    allow_skip: bool,
 ) -> Result<LayerOutcome> {
+    let ShowLayer {
+        config,
+        remote,
+        shutdown,
+        do_base,
+        do_air_date,
+        allow_skip,
+        ..
+    } = cx;
+
     tracing::info!(tvdb_id, do_base, do_air_date, "Show");
 
     let needed = needed_kinds(do_base, do_air_date, false);
