@@ -6,16 +6,17 @@ use yew::prelude::*;
 
 use api::{TimeInfo, Timed};
 
+use super::detail::{Graphics, ImageMsg, ImageUpdate, RemoteMsg, RemoteUpdate, Remotes};
 use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaQuery, Route, Router, ShowDetailQuery};
 use crate::ui::{
     Button, ConfirmDanger, ContextMenu, DetailHero, DetailSkeleton, EpisodeCacheModal,
-    EpisodePicker, GraphicsSourceFilter, Image, ImageGallery, ImageItem, Link, MarkTimeMenu,
-    MediaSettingsModal, Modal, OutlineControl, OutlineEntry, OutlineHandle, ReleaseModal,
-    ReleaseTarget, RemoteEditor, RemoteSourceKind, SettingsTarget, TimePreset, Tracked,
-    TranslatedText, TranslationsModal, Variant,
+    EpisodePicker, Image, ImageGallery, ImageItem, Link, MarkTimeMenu, MediaSettingsModal, Modal,
+    OutlineControl, OutlineEntry, OutlineHandle, ReleaseModal, ReleaseTarget, RemoteEditor,
+    RemoteSourceKind, SettingsTarget, TimePreset, Tracked, TranslatedText, TranslationsModal,
+    Variant,
 };
 
 const ORPHAN_HINT: &str = r#"
@@ -52,9 +53,8 @@ enum ShowState {
 pub(crate) struct ShowDetail {
     channel: ws::Channel,
     show: ShowState,
-    graphics: BTreeMap<api::ImageKind, Vec<ImageItem>>,
-    present: BTreeSet<api::ImageSource>,
-    graphics_hidden_sources: HashSet<api::ImageSource>,
+    graphics: Graphics,
+    remotes: Remotes,
     season_graphics: BTreeMap<api::ImageKind, Vec<ImageItem>>,
     seasons: Vec<api::Season>,
     credits: Vec<api::Credit>,
@@ -134,38 +134,41 @@ pub(crate) struct ShowDetail {
     _watch_remaining_reqs: ws::Request,
     _watched_req: ws::Request,
     _set_next_req: ws::Request,
-    _select_image_req: ws::Request,
-    _clear_image_req: ws::Request,
-    _pick_best_image_req: ws::Request,
-    _reset_image_req: ws::Request,
     _season_images_req: ws::Request,
     _select_season_image_req: ws::Request,
     _clear_season_image_req: ws::Request,
-    _set_remote_enabled_req: ws::Request,
-    _reorder_remotes_req: ws::Request,
-    _set_remote_sync_kinds_req: ws::Request,
     _config_req: ws::Request,
     _orphaned_req: ws::Request,
     _move_req: ws::Request,
-    _remote_req: ws::Request,
 }
 
 pub(crate) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
-    ShowLoaded(Result<ws::Packet<api::GetShow>, ws::Error>),
-    SeasonsLoaded(Result<ws::Packet<api::ListSeasons>, ws::Error>),
-    CreditsLoaded(Result<ws::Packet<api::ListCredits>, ws::Error>),
-    ToggleCreditsExpanded,
-    /// Pick or unpick an episode; with shift, pick the range from the last one.
-    TogglePick(api::EpisodeId, bool),
-    ClearPicked,
-    BulkMark(api::MarkTime),
-    BulkMarkDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
-    BulkSync,
-    BulkSyncDone(Result<ws::Packet<api::SyncEpisode>, ws::Error>),
-    SelectSeason(api::SeasonNumber),
-    EpisodesLoaded(Result<ws::Packet<api::ListEpisodes>, ws::Error>),
+    SetTime(TimeInfo),
+    Image(ImageMsg),
+    Remote(RemoteMsg),
+    Load(LoadMsg),
+    Watch(WatchMsg),
+    Pick(PickMsg),
+    Action(ActionMsg),
+    SeasonImage(SeasonImageMsg),
+    Ui(UiMsg),
+}
+
+/// Responses loading the page's data.
+pub(crate) enum LoadMsg {
+    Show(Result<ws::Packet<api::GetShow>, ws::Error>),
+    Seasons(Result<ws::Packet<api::ListSeasons>, ws::Error>),
+    Credits(Result<ws::Packet<api::ListCredits>, ws::Error>),
+    Episodes(Result<ws::Packet<api::ListEpisodes>, ws::Error>),
+    Watched(Result<ws::Packet<api::ListEpisodesWatched>, ws::Error>),
+    Config(Result<ws::Packet<api::GetPreferences>, ws::Error>),
+    Orphaned(Result<ws::Packet<api::ListOrphanedWatched>, ws::Error>),
+}
+
+/// Marking episodes watched, fixing orphaned watches, and the pending (watch next) episode.
+pub(crate) enum WatchMsg {
     MarkWatched(api::ShowId, api::EpisodeId, api::MarkTime),
     MarkWatchedDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
     RemoveWatched(api::WatchedId, api::WatchedKind),
@@ -174,6 +177,29 @@ pub(crate) enum Msg {
     CancelRemoveWatch,
     WatchRemaining(api::SeasonNumber, api::MarkTime),
     WatchRemainingDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
+    OnWatchNext(api::EpisodeId, api::MarkTime),
+    AddPendingDone(Result<ws::Packet<api::AddPending>, ws::Error>),
+    OnRemoveNext(api::EpisodeId),
+    RemovePendingDone(Result<ws::Packet<api::RemovePending>, ws::Error>),
+    FixWatched(api::WatchedId),
+    CancelFixWatched,
+    MoveWatched(api::WatchedId, api::SeasonNumber, u32),
+    MoveWatchedDone(Result<ws::Packet<api::MoveWatchedEpisode>, ws::Error>),
+}
+
+/// Picking episodes and acting on them in bulk.
+pub(crate) enum PickMsg {
+    /// Pick or unpick an episode; with shift, pick the range from the last one.
+    TogglePick(api::EpisodeId, bool),
+    ClearPicked,
+    BulkMark(api::MarkTime),
+    BulkMarkDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
+    BulkSync,
+    BulkSyncDone(Result<ws::Packet<api::SyncEpisode>, ws::Error>),
+}
+
+/// Tracking, syncing and removing the show.
+pub(crate) enum ActionMsg {
     SetTracked(bool),
     SetTrackedDone(bool, Result<ws::Packet<api::UntrackShow>, ws::Error>),
     ConfirmRemove,
@@ -184,30 +210,10 @@ pub(crate) enum Msg {
     SyncDone(Result<ws::Packet<api::SyncShow>, ws::Error>),
     SyncEpisode(api::EpisodeId),
     SyncEpisodeDone(Result<ws::Packet<api::SyncEpisode>, ws::Error>),
-    ToggleHistory(api::EpisodeId),
-    WatchedLoaded(Result<ws::Packet<api::ListEpisodesWatched>, ws::Error>),
-    OnWatchNext(api::EpisodeId, api::MarkTime),
-    AddPendingDone(Result<ws::Packet<api::AddPending>, ws::Error>),
-    OnRemoveNext(api::EpisodeId),
-    RemovePendingDone(Result<ws::Packet<api::RemovePending>, ws::Error>),
-    SelectImage(api::ImageKind, api::ImageId),
-    ClearSelectedImage(api::ImageKind),
-    SelectImageDone(Result<ws::Packet<api::SelectImage>, ws::Error>),
-    ClearSelectedImageDone(Result<ws::Packet<api::ClearSelectedImage>, ws::Error>),
-    PickBestImage(Option<api::ImageKind>),
-    ResetImageSelection(api::ImageKind),
-    PickBestImageDone(Result<ws::Packet<api::PickBestImages>, ws::Error>),
-    ResetImageSelectionDone(Result<ws::Packet<api::ResetImageSelection>, ws::Error>),
-    ToggleGraphicsSource(api::ImageSource),
-    SetRemoteEnabled(api::RemoteId, bool),
-    SetRemoteEnabledDone(Result<ws::Packet<api::SetShowRemoteEnabled>, ws::Error>),
-    SetRemoteSyncKinds(api::RemoteId, Option<api::SyncKindSet>),
-    SetRemoteSyncKindsDone(Result<ws::Packet<api::SetShowRemoteSyncKinds>, ws::Error>),
-    ReorderRemotes(Vec<api::RemoteId>),
-    ReorderRemotesDone(Result<ws::Packet<api::ReorderShowRemotes>, ws::Error>),
-    ConfigLoaded(Result<ws::Packet<api::GetPreferences>, ws::Error>),
-    OpenImageModal,
-    CloseImageModal,
+}
+
+/// The selected season's graphics.
+pub(crate) enum SeasonImageMsg {
     OpenSeasonImageModal,
     CloseSeasonImageModal,
     SeasonImagesLoaded(Result<ws::Packet<api::GetSeasonImages>, ws::Error>),
@@ -215,6 +221,15 @@ pub(crate) enum Msg {
     SelectSeasonImageDone(Result<ws::Packet<api::SelectImage>, ws::Error>),
     ClearSelectedSeasonImage(api::ImageKind),
     ClearSelectedSeasonImageDone(Result<ws::Packet<api::ClearSelectedImage>, ws::Error>),
+}
+
+/// Navigation, modals and expandable sections.
+pub(crate) enum UiMsg {
+    ToggleCreditsExpanded,
+    SelectSeason(api::SeasonNumber),
+    ToggleHistory(api::EpisodeId),
+    OpenImageModal,
+    CloseImageModal,
     OpenSettingsModal,
     CloseSettingsModal,
     OpenShowTranslations,
@@ -229,21 +244,66 @@ pub(crate) enum Msg {
     CloseEpisodeCache,
     OpenRemoteEditor,
     CloseRemoteEditor,
-    AddRemote(Option<String>, api::Remote),
-    EditRemote(api::RemoteId, Option<String>, api::Remote),
-    RemoveRemote(api::RemoteId),
-    PurgeRemoteCache(api::RemoteId),
-    RemoteDone(Result<(), ws::Error>),
-    SetTime(TimeInfo),
-    FixWatched(api::WatchedId),
-    CancelFixWatched,
-    MoveWatched(api::WatchedId, api::SeasonNumber, u32),
-    MoveWatchedDone(Result<ws::Packet<api::MoveWatchedEpisode>, ws::Error>),
-    OrphanedLoaded(Result<ws::Packet<api::ListOrphanedWatched>, ws::Error>),
     ToggleActionsExpanded,
     ToggleEpisodeMenu(api::EpisodeId),
     ToggleSeasonActionsExpanded(api::SeasonNumber),
     ToggleOrphaned,
+}
+
+impl From<ImageMsg> for Msg {
+    #[inline]
+    fn from(msg: ImageMsg) -> Self {
+        Msg::Image(msg)
+    }
+}
+
+impl From<RemoteMsg> for Msg {
+    #[inline]
+    fn from(msg: RemoteMsg) -> Self {
+        Msg::Remote(msg)
+    }
+}
+
+impl From<LoadMsg> for Msg {
+    #[inline]
+    fn from(msg: LoadMsg) -> Self {
+        Msg::Load(msg)
+    }
+}
+
+impl From<WatchMsg> for Msg {
+    #[inline]
+    fn from(msg: WatchMsg) -> Self {
+        Msg::Watch(msg)
+    }
+}
+
+impl From<PickMsg> for Msg {
+    #[inline]
+    fn from(msg: PickMsg) -> Self {
+        Msg::Pick(msg)
+    }
+}
+
+impl From<ActionMsg> for Msg {
+    #[inline]
+    fn from(msg: ActionMsg) -> Self {
+        Msg::Action(msg)
+    }
+}
+
+impl From<SeasonImageMsg> for Msg {
+    #[inline]
+    fn from(msg: SeasonImageMsg) -> Self {
+        Msg::SeasonImage(msg)
+    }
+}
+
+impl From<UiMsg> for Msg {
+    #[inline]
+    fn from(msg: UiMsg) -> Self {
+        Msg::Ui(msg)
+    }
 }
 
 #[derive(Properties, PartialEq)]
@@ -292,9 +352,8 @@ impl Component for ShowDetail {
         Self {
             channel: ws::Channel::default(),
             show: ShowState::Loading,
-            graphics: BTreeMap::new(),
-            present: BTreeSet::new(),
-            graphics_hidden_sources: HashSet::new(),
+            graphics: Graphics::default(),
+            remotes: Remotes::default(),
             season_graphics: BTreeMap::new(),
             seasons: Vec::new(),
             credits: Vec::new(),
@@ -355,20 +414,12 @@ impl Component for ShowDetail {
             _watch_remaining_reqs: ws::Request::default(),
             _watched_req: ws::Request::default(),
             _set_next_req: ws::Request::default(),
-            _select_image_req: ws::Request::default(),
-            _clear_image_req: ws::Request::default(),
-            _pick_best_image_req: ws::Request::default(),
-            _reset_image_req: ws::Request::default(),
             _season_images_req: ws::Request::default(),
             _select_season_image_req: ws::Request::default(),
             _clear_season_image_req: ws::Request::default(),
-            _set_remote_enabled_req: ws::Request::default(),
-            _reorder_remotes_req: ws::Request::default(),
-            _set_remote_sync_kinds_req: ws::Request::default(),
             _config_req: ws::Request::default(),
             _orphaned_req: ws::Request::default(),
             _move_req: ws::Request::default(),
-            _remote_req: ws::Request::default(),
         }
     }
 
@@ -454,7 +505,7 @@ impl Component for ShowDetail {
                     </div>
 
                     <div class="toolbar-toggle">
-                        <Button icon={if self.actions_expanded { "ellipsis-horizontal" } else { "bars-2" }} title="Actions" expanded={Some(self.actions_expanded)} onclick={link.callback(|_| Msg::ToggleActionsExpanded)} />
+                        <Button icon={if self.actions_expanded { "ellipsis-horizontal" } else { "bars-2" }} title="Actions" expanded={Some(self.actions_expanded)} onclick={link.callback(|_| UiMsg::ToggleActionsExpanded)} />
                     </div>
 
                     <div class={classes!("toolbar-dropdown", "desktop-input-group", (!self.actions_expanded).then_some("desktop-only"))}>
@@ -464,26 +515,26 @@ impl Component for ShowDetail {
                                 variant={Variant::Danger}
                                 title={if props.orphaned { "View orphaned watches" } else { "Hide orphaned watches" }}
                                 text="Orphaned watches"
-                                onclick={link.callback(|_| Msg::ToggleOrphaned)}
+                                onclick={link.callback(|_| UiMsg::ToggleOrphaned)}
                             />
                         }
 
-                        <Tracked kind="show" tracked={show.tracked} ontoggle={link.callback(Msg::SetTracked)} />
+                        <Tracked kind="show" tracked={show.tracked} ontoggle={link.callback(ActionMsg::SetTracked)} />
 
                         if !show.remotes.is_empty() {
-                            <Button icon="arrow-path" spin={self.syncing} onclick={link.callback(|_| Msg::SyncShow)} title="Sync now" text="Sync" />
+                            <Button icon="arrow-path" spin={self.syncing} onclick={link.callback(|_| ActionMsg::SyncShow)} title="Sync now" text="Sync" />
                         }
 
-                        <Button icon="language" title="Translations" text="Translations" onclick={link.callback(|_| Msg::OpenShowTranslations)} />
+                        <Button icon="language" title="Translations" text="Translations" onclick={link.callback(|_| UiMsg::OpenShowTranslations)} />
 
-                        <Button icon="cog-6-tooth" title="Settings" text="Settings" onclick={link.callback(|_| Msg::OpenSettingsModal)} />
+                        <Button icon="cog-6-tooth" title="Settings" text="Settings" onclick={link.callback(|_| UiMsg::OpenSettingsModal)} />
 
                         if crate::is_admin(ctx) {
-                            <Button node_ref={self.remove_anchor.clone()} icon="trash" variant={Variant::Danger} class="detached" title="Remove show" text="Remove" expanded={Some(self.confirm_remove)} haspopup="dialog" onclick={link.callback(|_| Msg::ConfirmRemove)} />
+                            <Button node_ref={self.remove_anchor.clone()} icon="trash" variant={Variant::Danger} class="detached" title="Remove show" text="Remove" expanded={Some(self.confirm_remove)} haspopup="dialog" onclick={link.callback(|_| ActionMsg::ConfirmRemove)} />
 
                             if self.confirm_remove {
-                                <ContextMenu prompt="Remove show" label={show.strings.title().map(str::to_owned)} anchor={self.remove_anchor.clone()} on_close={ctx.link().callback(|_| Msg::CancelRemove)}>
-                                    <ConfirmDanger on_confirm={link.callback(|_| Msg::RemoveShow)} on_cancel={link.callback(|_| Msg::CancelRemove)} />
+                                <ContextMenu prompt="Remove show" label={show.strings.title().map(str::to_owned)} anchor={self.remove_anchor.clone()} on_close={ctx.link().callback(|_| ActionMsg::CancelRemove)}>
+                                    <ConfirmDanger on_confirm={link.callback(|_| ActionMsg::RemoveShow)} on_cancel={link.callback(|_| ActionMsg::CancelRemove)} />
                                 </ContextMenu>
                             }
                         }
@@ -533,9 +584,9 @@ impl Component for ShowDetail {
                 if self.settings_modal {
                     <MediaSettingsModal
                         target={SettingsTarget::Show(show.id)}
-                        on_edit_graphics={link.callback(|_| Msg::OpenImageModal)}
-                        on_edit_remotes={link.callback(|_| Msg::OpenRemoteEditor)}
-                        on_close={link.callback(|_| Msg::CloseSettingsModal)}
+                        on_edit_graphics={link.callback(|_| UiMsg::OpenImageModal)}
+                        on_edit_remotes={link.callback(|_| UiMsg::OpenRemoteEditor)}
+                        on_close={link.callback(|_| UiMsg::CloseSettingsModal)}
                     />
                 }
 
@@ -544,22 +595,22 @@ impl Component for ShowDetail {
                         title={show.strings.title().unwrap_or("Untitled Show").to_owned()}
                         kind={RemoteSourceKind::Show}
                         remotes={show.remotes.clone()}
-                        on_add={link.callback(|(slug, remote)| Msg::AddRemote(slug, remote))}
-                        on_edit={link.callback(|(id, slug, remote)| Msg::EditRemote(id, slug, remote))}
-                        on_remove={link.callback(Msg::RemoveRemote)}
-                        on_purge_cache={link.callback(Msg::PurgeRemoteCache)}
-                        on_set_enabled={link.callback(|(id, enabled)| Msg::SetRemoteEnabled(id, enabled))}
-                        on_reorder={link.callback(Msg::ReorderRemotes)}
-                        on_set_sync_kinds={link.callback(|(id, kinds)| Msg::SetRemoteSyncKinds(id, kinds))}
+                        on_add={link.callback(|(slug, remote)| RemoteMsg::AddRemote(slug, remote))}
+                        on_edit={link.callback(|(id, slug, remote)| RemoteMsg::EditRemote(id, slug, remote))}
+                        on_remove={link.callback(RemoteMsg::RemoveRemote)}
+                        on_purge_cache={link.callback(RemoteMsg::PurgeRemoteCache)}
+                        on_set_enabled={link.callback(|(id, enabled)| RemoteMsg::SetRemoteEnabled(id, enabled))}
+                        on_reorder={link.callback(RemoteMsg::ReorderRemotes)}
+                        on_set_sync_kinds={link.callback(|(id, kinds)| RemoteMsg::SetRemoteSyncKinds(id, kinds))}
                         global_sync_kinds={self.global_sync_kinds.clone()}
-                        on_close={link.callback(|_| Msg::CloseRemoteEditor)}
+                        on_close={link.callback(|_| UiMsg::CloseRemoteEditor)}
                     />
                 }
 
                 if self.show_translations_modal {
                     <TranslationsModal
                         target={api::TranslationTarget::Show(show.id)}
-                        on_close={link.callback(|_| Msg::CloseShowTranslations)}
+                        on_close={link.callback(|_| UiMsg::CloseShowTranslations)}
                     />
                 }
 
@@ -567,7 +618,7 @@ impl Component for ShowDetail {
                     if let Some(season) = self.selected() {
                         <TranslationsModal
                             target={api::TranslationTarget::Season(season.id)}
-                            on_close={link.callback(|_| Msg::CloseSeasonTranslations)}
+                            on_close={link.callback(|_| UiMsg::CloseSeasonTranslations)}
                         />
                     }
                 }
@@ -575,7 +626,7 @@ impl Component for ShowDetail {
                 if let Some(episode_id) = self.episode_translations {
                     <TranslationsModal
                         target={api::TranslationTarget::Episode(episode_id)}
-                        on_close={link.callback(|_| Msg::CloseEpisodeTranslations)}
+                        on_close={link.callback(|_| UiMsg::CloseEpisodeTranslations)}
                     />
                 }
             </>
@@ -638,8 +689,6 @@ impl Component for ShowDetail {
 
 impl ShowDetail {
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
-        let props = ctx.props();
-
         match msg {
             Msg::Channel(result) => {
                 self.channel = result?;
@@ -661,133 +710,189 @@ impl ShowDetail {
 
                 Ok(true)
             }
-            Msg::AppBroadcast(packet) => {
-                let event = packet?.decode_event()?;
-                if event.channel == self.channel.id() {
-                    return Ok(false);
-                }
-                match &event.kind {
-                    api::AppEventKind::ShowChanged { show }
-                    | api::AppEventKind::ShowCreated { show }
-                        if show.id == props.show_id =>
-                    {
-                        self.background
-                            .background(show.backdrop.as_ref().map(|i| i.proxy_url()));
-                        self.show = ShowState::Loaded(Box::new(show.clone()));
-                        self.update_graphics();
-                        Ok(true)
-                    }
-                    api::AppEventKind::SeasonsChanged { show_id, .. }
-                        if *show_id == props.show_id =>
-                    {
-                        if self.channel.id() != ws::ChannelId::NONE {
-                            self.load_seasons(ctx);
-                        }
-
-                        Ok(false)
-                    }
-                    api::AppEventKind::CreditsChanged {
-                        target: api::TranslationTarget::Show(show_id),
-                    } if *show_id == props.show_id => {
-                        if self.channel.id() != ws::ChannelId::NONE {
-                            self.load_credits(ctx);
-                        }
-
-                        Ok(false)
-                    }
-                    api::AppEventKind::PersonChanged { person_id }
-                        if self.credits.iter().any(|c| c.person_id == *person_id) =>
-                    {
-                        if self.channel.id() != ws::ChannelId::NONE {
-                            self.load_credits(ctx);
-                        }
-
-                        Ok(false)
-                    }
-                    api::AppEventKind::EpisodesChanged { show_id, season }
-                        if *show_id == props.show_id =>
-                    {
-                        if props.season == *season {
-                            self.load_episodes(ctx);
-                        }
-
-                        self.load_orphaned(ctx);
-                        Ok(false)
-                    }
-                    api::AppEventKind::PendingChanged
-                    | api::AppEventKind::PendingEntryChanged { .. } => {
-                        self.load_episodes(ctx);
-                        self.load_orphaned(ctx);
-                        Ok(false)
-                    }
-                    api::AppEventKind::TaskAdded { task }
-                    | api::AppEventKind::TaskStarted { task } => {
-                        if matches!(&task.kind, api::TaskKind::SyncShow { show_id, .. } if *show_id == props.show_id)
-                        {
-                            self.syncing = true;
-                            return Ok(true);
-                        }
-
-                        if let api::TaskKind::SyncEpisode {
-                            show_id,
-                            episode_id,
-                            ..
-                        } = &task.kind
-                            && *show_id == props.show_id
-                        {
-                            self.syncing_episodes.insert(*episode_id);
-                            return Ok(true);
-                        }
-
-                        Ok(false)
-                    }
-                    api::AppEventKind::TaskCompleted { task } => {
-                        if matches!(&task.kind, api::TaskKind::SyncShow { show_id, .. } if *show_id == props.show_id)
-                        {
-                            self.syncing = false;
-                            self.load_episodes(ctx);
-                            self.load_show(ctx);
-                            self.load_seasons(ctx);
-                            self.load_orphaned(ctx);
-                            return Ok(true);
-                        }
-
-                        // The episode itself arrives via EpisodesChanged; this just
-                        // stops the button spinning.
-                        if let api::TaskKind::SyncEpisode {
-                            show_id,
-                            episode_id,
-                            ..
-                        } = &task.kind
-                            && *show_id == props.show_id
-                        {
-                            self.syncing_episodes.remove(episode_id);
-                            return Ok(true);
-                        }
-
-                        Ok(false)
-                    }
-                    api::AppEventKind::WatchedChanged { event: kind } => {
-                        let relevant = match kind {
-                            api::WatchedEvent::Episode { show, .. } => *show == props.show_id,
-                            api::WatchedEvent::RemainingSeason { show, .. } => {
-                                *show == props.show_id
-                            }
-                            api::WatchedEvent::Movie { .. } => false,
-                        };
-
-                        if relevant {
-                            self.load_episodes(ctx);
-                            self.load_orphaned(ctx);
-                            self.load_history(ctx);
-                        }
-
-                        Ok(false)
-                    }
-                    _ => Ok(false),
-                }
+            Msg::AppBroadcast(packet) => self.on_broadcast(ctx, packet),
+            Msg::SetTime(time) => {
+                self.time = time;
+                Ok(true)
             }
-            Msg::ShowLoaded(result) => {
+            Msg::Image(msg) => self.update_image(ctx, msg),
+            Msg::Remote(msg) => self.update_remote(ctx, msg),
+            Msg::Load(msg) => self.update_load(ctx, msg),
+            Msg::Watch(msg) => self.update_watch(ctx, msg),
+            Msg::Pick(msg) => self.update_pick(ctx, msg),
+            Msg::Action(msg) => self.update_action(ctx, msg),
+            Msg::SeasonImage(msg) => self.update_season_image(ctx, msg),
+            Msg::Ui(msg) => self.update_ui(ctx, msg),
+        }
+    }
+
+    fn on_broadcast(
+        &mut self,
+        ctx: &Context<Self>,
+        packet: Result<ws::Packet<api::AppBroadcast>, ws::Error>,
+    ) -> Result<bool, Error> {
+        let props = ctx.props();
+
+        let event = packet?.decode_event()?;
+        if event.channel == self.channel.id() {
+            return Ok(false);
+        }
+        match &event.kind {
+            api::AppEventKind::ShowChanged { show } | api::AppEventKind::ShowCreated { show }
+                if show.id == props.show_id =>
+            {
+                self.background
+                    .background(show.backdrop.as_ref().map(|i| i.proxy_url()));
+                self.show = ShowState::Loaded(Box::new(show.clone()));
+                self.update_graphics();
+                Ok(true)
+            }
+            api::AppEventKind::SeasonsChanged { show_id, .. } if *show_id == props.show_id => {
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self.load_seasons(ctx);
+                }
+
+                Ok(false)
+            }
+            api::AppEventKind::CreditsChanged {
+                target: api::TranslationTarget::Show(show_id),
+            } if *show_id == props.show_id => {
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self.load_credits(ctx);
+                }
+
+                Ok(false)
+            }
+            api::AppEventKind::PersonChanged { person_id }
+                if self.credits.iter().any(|c| c.person_id == *person_id) =>
+            {
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self.load_credits(ctx);
+                }
+
+                Ok(false)
+            }
+            api::AppEventKind::EpisodesChanged { show_id, season } if *show_id == props.show_id => {
+                if props.season == *season {
+                    self.load_episodes(ctx);
+                }
+
+                self.load_orphaned(ctx);
+                Ok(false)
+            }
+            api::AppEventKind::PendingChanged | api::AppEventKind::PendingEntryChanged { .. } => {
+                self.load_episodes(ctx);
+                self.load_orphaned(ctx);
+                Ok(false)
+            }
+            api::AppEventKind::TaskAdded { task } | api::AppEventKind::TaskStarted { task } => {
+                if matches!(&task.kind, api::TaskKind::SyncShow { show_id, .. } if *show_id == props.show_id)
+                {
+                    self.syncing = true;
+                    return Ok(true);
+                }
+
+                if let api::TaskKind::SyncEpisode {
+                    show_id,
+                    episode_id,
+                    ..
+                } = &task.kind
+                    && *show_id == props.show_id
+                {
+                    self.syncing_episodes.insert(*episode_id);
+                    return Ok(true);
+                }
+
+                Ok(false)
+            }
+            api::AppEventKind::TaskCompleted { task } => {
+                if matches!(&task.kind, api::TaskKind::SyncShow { show_id, .. } if *show_id == props.show_id)
+                {
+                    self.syncing = false;
+                    self.load_episodes(ctx);
+                    self.load_show(ctx);
+                    self.load_seasons(ctx);
+                    self.load_orphaned(ctx);
+                    return Ok(true);
+                }
+
+                // The episode itself arrives via EpisodesChanged; this just
+                // stops the button spinning.
+                if let api::TaskKind::SyncEpisode {
+                    show_id,
+                    episode_id,
+                    ..
+                } = &task.kind
+                    && *show_id == props.show_id
+                {
+                    self.syncing_episodes.remove(episode_id);
+                    return Ok(true);
+                }
+
+                Ok(false)
+            }
+            api::AppEventKind::WatchedChanged { event: kind } => {
+                let relevant = match kind {
+                    api::WatchedEvent::Episode { show, .. } => *show == props.show_id,
+                    api::WatchedEvent::RemainingSeason { show, .. } => *show == props.show_id,
+                    api::WatchedEvent::Movie { .. } => false,
+                };
+
+                if relevant {
+                    self.load_episodes(ctx);
+                    self.load_orphaned(ctx);
+                    self.load_history(ctx);
+                }
+
+                Ok(false)
+            }
+            _ => Ok(false),
+        }
+    }
+
+    fn update_image(&mut self, ctx: &Context<Self>, msg: ImageMsg) -> Result<bool, Error> {
+        let owner = api::ImageOwner::Show(ctx.props().show_id);
+
+        match self
+            .graphics
+            .update(ctx.link(), &self.channel, owner, msg)?
+        {
+            ImageUpdate::Render(render) => Ok(render),
+            ImageUpdate::Reload => {
+                self.load_show(ctx);
+                Ok(true)
+            }
+            ImageUpdate::Cleared => {
+                self.image_modal = false;
+                self.load_show(ctx);
+                Ok(true)
+            }
+        }
+    }
+
+    fn update_remote(&mut self, ctx: &Context<Self>, msg: RemoteMsg) -> Result<bool, Error> {
+        let remotes = match &mut self.show {
+            ShowState::Loaded(show) => Some(&mut show.remotes),
+            _ => None,
+        };
+
+        match self
+            .remotes
+            .update(ctx.link(), &self.channel, ctx.props().show_id, remotes, msg)?
+        {
+            RemoteUpdate::Render(render) => Ok(render),
+            RemoteUpdate::Reload => {
+                self.load_show(ctx);
+                Ok(false)
+            }
+        }
+    }
+
+    fn update_load(&mut self, ctx: &Context<Self>, msg: LoadMsg) -> Result<bool, Error> {
+        let props = ctx.props();
+
+        match msg {
+            LoadMsg::Show(result) => {
                 let show = result
                     .context(Message::LoadingShow)?
                     .decode()
@@ -812,7 +917,7 @@ impl ShowDetail {
 
                 Ok(true)
             }
-            Msg::SeasonsLoaded(result) => {
+            LoadMsg::Seasons(result) => {
                 self.seasons = result
                     .context(Message::LoadingSeasons)?
                     .decode()
@@ -846,7 +951,7 @@ impl ShowDetail {
 
                 Ok(true)
             }
-            Msg::CreditsLoaded(result) => {
+            LoadMsg::Credits(result) => {
                 self.credits = result
                     .context(Message::LoadingCredits)?
                     .decode()
@@ -855,27 +960,7 @@ impl ShowDetail {
 
                 Ok(true)
             }
-            Msg::ToggleCreditsExpanded => {
-                self.credits_expanded = !self.credits_expanded;
-                Ok(true)
-            }
-            Msg::SelectSeason(season) => {
-                if self.selected().map(|s| s.season) != Some(season) || props.orphaned {
-                    let id = props.show_id;
-
-                    self.router.push(Route::ShowDetail(
-                        id,
-                        ShowDetailQuery {
-                            season,
-                            episode: None,
-                            orphaned: false,
-                        },
-                    ));
-                }
-
-                Ok(false)
-            }
-            Msg::EpisodesLoaded(result) => {
+            LoadMsg::Episodes(result) => {
                 let result = result
                     .context(Message::LoadingEpisodes)?
                     .decode()
@@ -917,330 +1002,7 @@ impl ShowDetail {
 
                 Ok(true)
             }
-            Msg::MarkWatched(show, episode, mark_time) => {
-                self.episode_menu = None;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._mark_req = self
-                        .channel
-                        .request()
-                        .body(api::MarkWatchedRequest {
-                            kind: api::WatchedKind::Episode { show, episode },
-                            mark_time,
-                        })
-                        .on_packet(ctx.link().callback(Msg::MarkWatchedDone))
-                        .send();
-                }
-
-                Ok(true)
-            }
-            Msg::MarkWatchedDone(result) => {
-                let response = result
-                    .context(Message::MarkingWatched)?
-                    .decode()
-                    .context(Message::MarkingWatched)?;
-
-                self.background.offer_undo(&response);
-
-                // Refresh season counts so the progress bars reflect the mark.
-                self.load_episodes(ctx);
-                self.load_seasons(ctx);
-                self.load_history(ctx);
-                self.load_orphaned(ctx);
-                Ok(false)
-            }
-            Msg::RemoveWatched(id, kind) => {
-                self.orphaned.retain(|w| w.watched.id != id);
-
-                self.actions_expanded = false;
-
-                if let api::WatchedKind::Episode { .. } = kind {
-                    self.episode_menu = None;
-                }
-
-                if self.orphaned.is_empty() && props.orphaned {
-                    self.router.push(Route::ShowDetail(
-                        props.show_id,
-                        ShowDetailQuery {
-                            season: props.season,
-                            episode: None,
-                            orphaned: false,
-                        },
-                    ));
-                }
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._remove_watch_req = self
-                        .channel
-                        .request()
-                        .body(api::RemoveWatchedRequest { id, kind })
-                        .on_packet(ctx.link().callback(Msg::RemoveWatchedDone))
-                        .send();
-                }
-
-                Ok(false)
-            }
-            Msg::RemoveWatchedDone(result) => {
-                result.context(Message::RemovingWatched)?;
-                self.confirm_remove_watch = None;
-
-                // Refresh season counts so the progress bars reflect the change.
-                self.load_episodes(ctx);
-                self.load_seasons(ctx);
-                self.load_history(ctx);
-                self.load_orphaned(ctx);
-                Ok(false)
-            }
-            Msg::ConfirmRemoveWatch(episode_id) => {
-                self.confirm_remove_watch = Some(episode_id);
-                Ok(true)
-            }
-            Msg::CancelRemoveWatch => {
-                self.confirm_remove_watch = None;
-                Ok(true)
-            }
-            Msg::WatchRemaining(season, mark_time) => {
-                let show_id = props.show_id;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._watch_remaining_reqs = self
-                        .channel
-                        .request()
-                        .body(api::MarkWatchedRemainingRequest {
-                            show_id,
-                            season,
-                            mark_time,
-                        })
-                        .on_packet(ctx.link().callback(Msg::WatchRemainingDone))
-                        .send();
-                }
-
-                Ok(false)
-            }
-            Msg::WatchRemainingDone(result) => {
-                result.context(Message::MarkingWatched)?;
-
-                // Refresh season counts so the progress bars reflect the marks.
-                self.load_episodes(ctx);
-                self.load_seasons(ctx);
-                self.load_history(ctx);
-                self.load_orphaned(ctx);
-                Ok(false)
-            }
-            Msg::SetTracked(tracked) => {
-                self.actions_expanded = false;
-
-                let id = props.show_id;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._untrack_req = self
-                        .channel
-                        .request()
-                        .body(api::UntrackShowRequest { id, tracked })
-                        .on_packet(
-                            ctx.link()
-                                .callback(move |r| Msg::SetTrackedDone(tracked, r)),
-                        )
-                        .send();
-                }
-
-                Ok(false)
-            }
-            Msg::SetTrackedDone(tracked, result) => {
-                result.context(Message::UntrackingShow)?;
-                if let ShowState::Loaded(show) = &mut self.show {
-                    show.tracked = tracked;
-                }
-                Ok(true)
-            }
-            Msg::ConfirmRemove => {
-                self.confirm_remove = true;
-                Ok(true)
-            }
-            Msg::CancelRemove => {
-                self.confirm_remove = false;
-                Ok(true)
-            }
-            Msg::RemoveShow => {
-                let id = props.show_id;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._remove_req = self
-                        .channel
-                        .request()
-                        .body(api::RemoveShowRequest { id })
-                        .on_packet(ctx.link().callback(Msg::RemoveDone))
-                        .send();
-                }
-
-                Ok(false)
-            }
-            Msg::RemoveDone(result) => {
-                result.context(Message::RemovingShow)?;
-                self.router.push(Route::Media(MediaQuery::default()));
-                Ok(false)
-            }
-            Msg::SyncShow => {
-                let id = props.show_id;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._sync_req = self
-                        .channel
-                        .request()
-                        .body(api::SyncShowRequest { id })
-                        .on_packet(ctx.link().callback(Msg::SyncDone))
-                        .send();
-                }
-
-                Ok(true)
-            }
-            Msg::SyncDone(result) => {
-                result.context(Message::SyncingShow)?;
-                Ok(false)
-            }
-            Msg::TogglePick(episode_id, range) => {
-                let position = |id| self.episodes.iter().position(|e| e.id == id);
-
-                match (
-                    range,
-                    self.pick_anchor.and_then(position),
-                    position(episode_id),
-                ) {
-                    (true, Some(from), Some(to)) => {
-                        let (from, to) = (from.min(to), from.max(to));
-                        self.picked
-                            .extend(self.episodes[from..=to].iter().map(|e| e.id));
-                    }
-                    _ => {
-                        if !self.picked.remove(&episode_id) {
-                            self.picked.insert(episode_id);
-                        }
-                    }
-                }
-
-                self.pick_anchor = Some(episode_id);
-
-                if self.picked.is_empty() {
-                    self.clear_picked();
-                } else if self._pick_escape.is_none() {
-                    let clear = ctx.link().callback(|()| Msg::ClearPicked);
-
-                    self._pick_escape = web_sys::window().map(|window| {
-                        gloo::events::EventListener::new(&window, "keydown", move |e| {
-                            if let Some(e) = e.dyn_ref::<web_sys::KeyboardEvent>()
-                                && e.key() == "Escape"
-                            {
-                                clear.emit(());
-                            }
-                        })
-                    });
-                }
-
-                Ok(true)
-            }
-            Msg::ClearPicked => {
-                self.clear_picked();
-                Ok(true)
-            }
-            Msg::BulkMark(mark_time) => {
-                let show = props.show_id;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._bulk_reqs = self
-                        .picked
-                        .iter()
-                        .map(|&episode| {
-                            self.channel
-                                .request()
-                                .body(api::MarkWatchedRequest {
-                                    kind: api::WatchedKind::Episode { show, episode },
-                                    mark_time,
-                                })
-                                .on_packet(ctx.link().callback(Msg::BulkMarkDone))
-                                .send()
-                        })
-                        .collect();
-                    self.bulk_pending = self._bulk_reqs.len();
-                }
-
-                self.clear_picked();
-                Ok(true)
-            }
-            Msg::BulkMarkDone(result) => {
-                self.bulk_pending = self.bulk_pending.saturating_sub(1);
-                result
-                    .context(Message::MarkingWatched)?
-                    .decode()
-                    .context(Message::MarkingWatched)?;
-
-                // Refresh once every mark has answered.
-                if self.bulk_pending == 0 {
-                    self.load_episodes(ctx);
-                    self.load_seasons(ctx);
-                    self.load_history(ctx);
-                    self.load_orphaned(ctx);
-                }
-
-                Ok(false)
-            }
-            Msg::BulkSync => {
-                let show_id = props.show_id;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._bulk_reqs = self
-                        .picked
-                        .iter()
-                        .map(|&episode_id| {
-                            self.channel
-                                .request()
-                                .body(api::SyncEpisodeRequest {
-                                    show_id,
-                                    episode_id,
-                                })
-                                .on_packet(ctx.link().callback(Msg::BulkSyncDone))
-                                .send()
-                        })
-                        .collect();
-                }
-
-                self.clear_picked();
-                Ok(true)
-            }
-            Msg::BulkSyncDone(result) => {
-                result.context(Message::SyncingEpisode)?;
-                Ok(false)
-            }
-            Msg::SyncEpisode(episode_id) => {
-                self.episode_menu = None;
-                let show_id = props.show_id;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._sync_episode_req = self
-                        .channel
-                        .request()
-                        .body(api::SyncEpisodeRequest {
-                            show_id,
-                            episode_id,
-                        })
-                        .on_packet(ctx.link().callback(Msg::SyncEpisodeDone))
-                        .send();
-                }
-
-                Ok(true)
-            }
-            Msg::SyncEpisodeDone(result) => {
-                result.context(Message::SyncingEpisode)?;
-                Ok(false)
-            }
-            Msg::ToggleHistory(id) => {
-                self.episode_menu = None;
-                if !self.history_expanded.insert(id) {
-                    self.history_expanded.remove(&id);
-                }
-
-                Ok(true)
-            }
-            Msg::WatchedLoaded(result) => {
+            LoadMsg::Watched(result) => {
                 let watched = result
                     .context(Message::LoadingWatched)?
                     .decode()
@@ -1267,7 +1029,151 @@ impl ShowDetail {
 
                 Ok(true)
             }
-            Msg::OnWatchNext(episode_id, mark_time) => {
+            LoadMsg::Config(result) => {
+                self.global_sync_kinds = result
+                    .context(Message::LoadingConfig)?
+                    .decode()
+                    .context(Message::LoadingConfig)?
+                    .site
+                    .sync_kinds;
+                Ok(true)
+            }
+            LoadMsg::Orphaned(result) => {
+                let orphaned = result
+                    .context(Message::LoadingWatched)?
+                    .decode()
+                    .context(Message::LoadingWatched)?
+                    .watched;
+
+                self.orphaned.clear();
+
+                for watched in orphaned {
+                    self.orphaned.push(OrphanedWatchedState {
+                        watched,
+                        context_anchor: NodeRef::default(),
+                    });
+                }
+
+                Ok(true)
+            }
+        }
+    }
+
+    fn update_watch(&mut self, ctx: &Context<Self>, msg: WatchMsg) -> Result<bool, Error> {
+        let props = ctx.props();
+
+        match msg {
+            WatchMsg::MarkWatched(show, episode, mark_time) => {
+                self.episode_menu = None;
+
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._mark_req = self
+                        .channel
+                        .request()
+                        .body(api::MarkWatchedRequest {
+                            kind: api::WatchedKind::Episode { show, episode },
+                            mark_time,
+                        })
+                        .on_packet(ctx.link().callback(WatchMsg::MarkWatchedDone))
+                        .send();
+                }
+
+                Ok(true)
+            }
+            WatchMsg::MarkWatchedDone(result) => {
+                let response = result
+                    .context(Message::MarkingWatched)?
+                    .decode()
+                    .context(Message::MarkingWatched)?;
+
+                self.background.offer_undo(&response);
+
+                // Refresh season counts so the progress bars reflect the mark.
+                self.load_episodes(ctx);
+                self.load_seasons(ctx);
+                self.load_history(ctx);
+                self.load_orphaned(ctx);
+                Ok(false)
+            }
+            WatchMsg::RemoveWatched(id, kind) => {
+                self.orphaned.retain(|w| w.watched.id != id);
+
+                self.actions_expanded = false;
+
+                if let api::WatchedKind::Episode { .. } = kind {
+                    self.episode_menu = None;
+                }
+
+                if self.orphaned.is_empty() && props.orphaned {
+                    self.router.push(Route::ShowDetail(
+                        props.show_id,
+                        ShowDetailQuery {
+                            season: props.season,
+                            episode: None,
+                            orphaned: false,
+                        },
+                    ));
+                }
+
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._remove_watch_req = self
+                        .channel
+                        .request()
+                        .body(api::RemoveWatchedRequest { id, kind })
+                        .on_packet(ctx.link().callback(WatchMsg::RemoveWatchedDone))
+                        .send();
+                }
+
+                Ok(false)
+            }
+            WatchMsg::RemoveWatchedDone(result) => {
+                result.context(Message::RemovingWatched)?;
+                self.confirm_remove_watch = None;
+
+                // Refresh season counts so the progress bars reflect the change.
+                self.load_episodes(ctx);
+                self.load_seasons(ctx);
+                self.load_history(ctx);
+                self.load_orphaned(ctx);
+                Ok(false)
+            }
+            WatchMsg::ConfirmRemoveWatch(episode_id) => {
+                self.confirm_remove_watch = Some(episode_id);
+                Ok(true)
+            }
+            WatchMsg::CancelRemoveWatch => {
+                self.confirm_remove_watch = None;
+                Ok(true)
+            }
+            WatchMsg::WatchRemaining(season, mark_time) => {
+                let show_id = props.show_id;
+
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._watch_remaining_reqs = self
+                        .channel
+                        .request()
+                        .body(api::MarkWatchedRemainingRequest {
+                            show_id,
+                            season,
+                            mark_time,
+                        })
+                        .on_packet(ctx.link().callback(WatchMsg::WatchRemainingDone))
+                        .send();
+                }
+
+                Ok(false)
+            }
+            WatchMsg::WatchRemainingDone(result) => {
+                result.context(Message::MarkingWatched)?;
+
+                // Refresh season counts so the progress bars reflect the marks.
+                self.load_episodes(ctx);
+                self.load_seasons(ctx);
+                self.load_history(ctx);
+                self.load_orphaned(ctx);
+                Ok(false)
+            }
+            WatchMsg::OnWatchNext(episode_id, mark_time) => {
                 self.episode_menu = None;
 
                 let show_id = props.show_id;
@@ -1283,13 +1189,13 @@ impl ShowDetail {
                             },
                             mark_time,
                         })
-                        .on_packet(ctx.link().callback(Msg::AddPendingDone))
+                        .on_packet(ctx.link().callback(WatchMsg::AddPendingDone))
                         .send();
                 }
 
                 Ok(true)
             }
-            Msg::AddPendingDone(result) => {
+            WatchMsg::AddPendingDone(result) => {
                 result
                     .context(Message::AddingPending)?
                     .decode()
@@ -1298,7 +1204,7 @@ impl ShowDetail {
                 self.load_orphaned(ctx);
                 Ok(false)
             }
-            Msg::OnRemoveNext(episode_id) => {
+            WatchMsg::OnRemoveNext(episode_id) => {
                 self.episode_menu = None;
                 let show_id = props.show_id;
 
@@ -1312,13 +1218,13 @@ impl ShowDetail {
                                 episode: episode_id,
                             },
                         })
-                        .on_packet(ctx.link().callback(Msg::RemovePendingDone))
+                        .on_packet(ctx.link().callback(WatchMsg::RemovePendingDone))
                         .send();
                 }
 
                 Ok(false)
             }
-            Msg::RemovePendingDone(result) => {
+            WatchMsg::RemovePendingDone(result) => {
                 result
                     .context(Message::RemovingPending)?
                     .decode()
@@ -1326,203 +1232,277 @@ impl ShowDetail {
                 self.load_episodes(ctx);
                 Ok(false)
             }
-            Msg::SelectImage(kind, id) => {
-                if let Some(images) = self.graphics.get_mut(&kind) {
-                    for image in images {
-                        image.selected = image.id == id;
-                    }
-                }
+            WatchMsg::FixWatched(id) => {
+                self.fixing_watched = Some(id);
+                self.confirm_remove_watch = None;
+                Ok(true)
+            }
+            WatchMsg::CancelFixWatched => {
+                self.fixing_watched = None;
+                Ok(true)
+            }
+            WatchMsg::MoveWatched(id, season, episode) => {
+                self.fixing_watched = None;
+                let show_id = props.show_id;
 
                 if self.channel.id() != ws::ChannelId::NONE {
-                    self._select_image_req = self
+                    self._move_req = self
                         .channel
                         .request()
-                        .body(api::SelectImageRequest { id })
-                        .on_packet(ctx.link().callback(Msg::SelectImageDone))
-                        .send();
-                }
-
-                Ok(true)
-            }
-            Msg::ClearSelectedImage(kind) => {
-                if let Some(images) = self.graphics.get_mut(&kind) {
-                    for image in images {
-                        image.selected = false;
-                    }
-                }
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._clear_image_req = self
-                        .channel
-                        .request()
-                        .body(api::ClearSelectedImageRequest {
-                            owner: api::ImageOwner::Show(props.show_id),
-                            kind,
-                        })
-                        .on_packet(ctx.link().callback(Msg::ClearSelectedImageDone))
-                        .send();
-                }
-
-                Ok(false)
-            }
-            Msg::SelectImageDone(result) => {
-                result.context(Message::SelectingImage)?;
-                self.load_show(ctx);
-                Ok(true)
-            }
-            Msg::ClearSelectedImageDone(result) => {
-                result.context(Message::ClearingImage)?;
-                self.image_modal = false;
-                self.load_show(ctx);
-                Ok(true)
-            }
-            Msg::PickBestImage(kind) => {
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._pick_best_image_req = self
-                        .channel
-                        .request()
-                        .body(api::PickBestImagesRequest {
-                            owner: api::ImageOwner::Show(props.show_id),
-                            kind,
-                        })
-                        .on_packet(ctx.link().callback(Msg::PickBestImageDone))
-                        .send();
-                }
-
-                Ok(false)
-            }
-            Msg::ResetImageSelection(kind) => {
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._reset_image_req = self
-                        .channel
-                        .request()
-                        .body(api::ResetImageSelectionRequest {
-                            owner: api::ImageOwner::Show(props.show_id),
-                            kind,
-                        })
-                        .on_packet(ctx.link().callback(Msg::ResetImageSelectionDone))
-                        .send();
-                }
-
-                Ok(false)
-            }
-            Msg::PickBestImageDone(result) => {
-                result.context(Message::SelectingImage)?;
-                self.load_show(ctx);
-                Ok(true)
-            }
-            Msg::ResetImageSelectionDone(result) => {
-                result.context(Message::SelectingImage)?;
-                self.load_show(ctx);
-                Ok(true)
-            }
-            Msg::ToggleGraphicsSource(source) => {
-                if !self.graphics_hidden_sources.remove(&source) {
-                    self.graphics_hidden_sources.insert(source);
-                }
-
-                Ok(true)
-            }
-            Msg::SetRemoteEnabled(remote_id, enabled) => {
-                if let ShowState::Loaded(show) = &mut self.show
-                    && let Some(entry) = show.remotes.iter_mut().find(|e| e.id == remote_id)
-                {
-                    entry.enabled = enabled;
-                }
-
-                let id = props.show_id;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._set_remote_enabled_req = self
-                        .channel
-                        .request()
-                        .body(api::SetShowRemoteEnabledRequest {
+                        .body(api::MoveWatchedEpisodeRequest {
                             id,
-                            remote_id,
-                            enabled,
+                            show_id,
+                            season,
+                            episode,
                         })
-                        .on_packet(ctx.link().callback(Msg::SetRemoteEnabledDone))
+                        .on_packet(ctx.link().callback(WatchMsg::MoveWatchedDone))
                         .send();
                 }
 
-                Ok(true)
+                Ok(false)
             }
-            Msg::SetRemoteEnabledDone(result) => {
-                result.context(Message::SettingRemoteEnabled)?;
-                Ok(true)
-            }
-            Msg::SetRemoteSyncKinds(remote_id, sync_kinds) => {
-                if let ShowState::Loaded(show) = &mut self.show
-                    && let Some(entry) = show.remotes.iter_mut().find(|e| e.id == remote_id)
-                {
-                    entry.sync_kinds = sync_kinds;
-                }
-
-                let id = props.show_id;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._set_remote_sync_kinds_req = self
-                        .channel
-                        .request()
-                        .body(api::SetShowRemoteSyncKindsRequest {
-                            id,
-                            remote_id,
-                            sync_kinds,
-                        })
-                        .on_packet(ctx.link().callback(Msg::SetRemoteSyncKindsDone))
-                        .send();
-                }
-
-                Ok(true)
-            }
-            Msg::SetRemoteSyncKindsDone(result) => {
-                result.context(Message::SettingRemoteSyncKinds)?;
-                Ok(true)
-            }
-            Msg::ConfigLoaded(result) => {
-                self.global_sync_kinds = result
-                    .context(Message::LoadingConfig)?
+            WatchMsg::MoveWatchedDone(result) => {
+                result
+                    .context(Message::MovingWatched)?
                     .decode()
-                    .context(Message::LoadingConfig)?
-                    .site
-                    .sync_kinds;
+                    .context(Message::MovingWatched)?;
+
+                // Refresh season counts so the progress bars reflect the move.
+                self.load_episodes(ctx);
+                self.load_history(ctx);
+                self.load_seasons(ctx);
+                self.load_orphaned(ctx);
+                Ok(false)
+            }
+        }
+    }
+
+    fn update_pick(&mut self, ctx: &Context<Self>, msg: PickMsg) -> Result<bool, Error> {
+        let props = ctx.props();
+
+        match msg {
+            PickMsg::TogglePick(episode_id, range) => {
+                let position = |id| self.episodes.iter().position(|e| e.id == id);
+
+                match (
+                    range,
+                    self.pick_anchor.and_then(position),
+                    position(episode_id),
+                ) {
+                    (true, Some(from), Some(to)) => {
+                        let (from, to) = (from.min(to), from.max(to));
+                        self.picked
+                            .extend(self.episodes[from..=to].iter().map(|e| e.id));
+                    }
+                    _ => {
+                        if !self.picked.remove(&episode_id) {
+                            self.picked.insert(episode_id);
+                        }
+                    }
+                }
+
+                self.pick_anchor = Some(episode_id);
+
+                if self.picked.is_empty() {
+                    self.clear_picked();
+                } else if self._pick_escape.is_none() {
+                    let clear = ctx.link().callback(|()| PickMsg::ClearPicked);
+
+                    self._pick_escape = web_sys::window().map(|window| {
+                        gloo::events::EventListener::new(&window, "keydown", move |e| {
+                            if let Some(e) = e.dyn_ref::<web_sys::KeyboardEvent>()
+                                && e.key() == "Escape"
+                            {
+                                clear.emit(());
+                            }
+                        })
+                    });
+                }
+
                 Ok(true)
             }
-            Msg::ReorderRemotes(remote_ids) => {
-                if let ShowState::Loaded(show) = &mut self.show {
-                    show.remotes
-                        .sort_by_key(|e| remote_ids.iter().position(|id| *id == e.id));
+            PickMsg::ClearPicked => {
+                self.clear_picked();
+                Ok(true)
+            }
+            PickMsg::BulkMark(mark_time) => {
+                let show = props.show_id;
+
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._bulk_reqs = self
+                        .picked
+                        .iter()
+                        .map(|&episode| {
+                            self.channel
+                                .request()
+                                .body(api::MarkWatchedRequest {
+                                    kind: api::WatchedKind::Episode { show, episode },
+                                    mark_time,
+                                })
+                                .on_packet(ctx.link().callback(PickMsg::BulkMarkDone))
+                                .send()
+                        })
+                        .collect();
+                    self.bulk_pending = self._bulk_reqs.len();
                 }
+
+                self.clear_picked();
+                Ok(true)
+            }
+            PickMsg::BulkMarkDone(result) => {
+                self.bulk_pending = self.bulk_pending.saturating_sub(1);
+                result
+                    .context(Message::MarkingWatched)?
+                    .decode()
+                    .context(Message::MarkingWatched)?;
+
+                // Refresh once every mark has answered.
+                if self.bulk_pending == 0 {
+                    self.load_episodes(ctx);
+                    self.load_seasons(ctx);
+                    self.load_history(ctx);
+                    self.load_orphaned(ctx);
+                }
+
+                Ok(false)
+            }
+            PickMsg::BulkSync => {
+                let show_id = props.show_id;
+
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._bulk_reqs = self
+                        .picked
+                        .iter()
+                        .map(|&episode_id| {
+                            self.channel
+                                .request()
+                                .body(api::SyncEpisodeRequest {
+                                    show_id,
+                                    episode_id,
+                                })
+                                .on_packet(ctx.link().callback(PickMsg::BulkSyncDone))
+                                .send()
+                        })
+                        .collect();
+                }
+
+                self.clear_picked();
+                Ok(true)
+            }
+            PickMsg::BulkSyncDone(result) => {
+                result.context(Message::SyncingEpisode)?;
+                Ok(false)
+            }
+        }
+    }
+
+    fn update_action(&mut self, ctx: &Context<Self>, msg: ActionMsg) -> Result<bool, Error> {
+        let props = ctx.props();
+
+        match msg {
+            ActionMsg::SetTracked(tracked) => {
+                self.actions_expanded = false;
 
                 let id = props.show_id;
 
                 if self.channel.id() != ws::ChannelId::NONE {
-                    self._reorder_remotes_req = self
+                    self._untrack_req = self
                         .channel
                         .request()
-                        .body(api::ReorderShowRemotesRequest { id, remote_ids })
-                        .on_packet(ctx.link().callback(Msg::ReorderRemotesDone))
+                        .body(api::UntrackShowRequest { id, tracked })
+                        .on_packet(
+                            ctx.link()
+                                .callback(move |r| ActionMsg::SetTrackedDone(tracked, r)),
+                        )
+                        .send();
+                }
+
+                Ok(false)
+            }
+            ActionMsg::SetTrackedDone(tracked, result) => {
+                result.context(Message::UntrackingShow)?;
+                if let ShowState::Loaded(show) = &mut self.show {
+                    show.tracked = tracked;
+                }
+                Ok(true)
+            }
+            ActionMsg::ConfirmRemove => {
+                self.confirm_remove = true;
+                Ok(true)
+            }
+            ActionMsg::CancelRemove => {
+                self.confirm_remove = false;
+                Ok(true)
+            }
+            ActionMsg::RemoveShow => {
+                let id = props.show_id;
+
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._remove_req = self
+                        .channel
+                        .request()
+                        .body(api::RemoveShowRequest { id })
+                        .on_packet(ctx.link().callback(ActionMsg::RemoveDone))
+                        .send();
+                }
+
+                Ok(false)
+            }
+            ActionMsg::RemoveDone(result) => {
+                result.context(Message::RemovingShow)?;
+                self.router.push(Route::Media(MediaQuery::default()));
+                Ok(false)
+            }
+            ActionMsg::SyncShow => {
+                let id = props.show_id;
+
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._sync_req = self
+                        .channel
+                        .request()
+                        .body(api::SyncShowRequest { id })
+                        .on_packet(ctx.link().callback(ActionMsg::SyncDone))
                         .send();
                 }
 
                 Ok(true)
             }
-            Msg::ReorderRemotesDone(result) => {
-                result.context(Message::ReorderingRemotes)?;
+            ActionMsg::SyncDone(result) => {
+                result.context(Message::SyncingShow)?;
+                Ok(false)
+            }
+            ActionMsg::SyncEpisode(episode_id) => {
+                self.episode_menu = None;
+                let show_id = props.show_id;
+
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._sync_episode_req = self
+                        .channel
+                        .request()
+                        .body(api::SyncEpisodeRequest {
+                            show_id,
+                            episode_id,
+                        })
+                        .on_packet(ctx.link().callback(ActionMsg::SyncEpisodeDone))
+                        .send();
+                }
+
                 Ok(true)
             }
-            Msg::OpenImageModal => {
-                self.image_modal = true;
-                self.settings_modal = false;
-                Ok(true)
+            ActionMsg::SyncEpisodeDone(result) => {
+                result.context(Message::SyncingEpisode)?;
+                Ok(false)
             }
-            Msg::CloseImageModal => {
-                self.image_modal = false;
-                // Opened from Settings, so closing goes back there.
-                self.settings_modal = true;
-                Ok(true)
-            }
-            Msg::OpenSeasonImageModal => {
+        }
+    }
+
+    fn update_season_image(
+        &mut self,
+        ctx: &Context<Self>,
+        msg: SeasonImageMsg,
+    ) -> Result<bool, Error> {
+        match msg {
+            SeasonImageMsg::OpenSeasonImageModal => {
                 if let Some(id) = self.selected().map(|s| s.id) {
                     self.season_image_modal = true;
                     self.load_season_images(ctx, id);
@@ -1530,11 +1510,11 @@ impl ShowDetail {
 
                 Ok(true)
             }
-            Msg::CloseSeasonImageModal => {
+            SeasonImageMsg::CloseSeasonImageModal => {
                 self.season_image_modal = false;
                 Ok(true)
             }
-            Msg::SeasonImagesLoaded(result) => {
+            SeasonImageMsg::SeasonImagesLoaded(result) => {
                 let packet = result
                     .context(Message::LoadingSeasonImages)?
                     .decode()
@@ -1562,7 +1542,7 @@ impl ShowDetail {
 
                 Ok(true)
             }
-            Msg::SelectSeasonImage(kind, id) => {
+            SeasonImageMsg::SelectSeasonImage(kind, id) => {
                 if let Some(items) = self.season_graphics.get_mut(&kind) {
                     for item in items {
                         item.selected = item.id == id;
@@ -1574,17 +1554,17 @@ impl ShowDetail {
                         .channel
                         .request()
                         .body(api::SelectImageRequest { id })
-                        .on_packet(ctx.link().callback(Msg::SelectSeasonImageDone))
+                        .on_packet(ctx.link().callback(SeasonImageMsg::SelectSeasonImageDone))
                         .send();
                 }
 
                 Ok(true)
             }
-            Msg::SelectSeasonImageDone(result) => {
+            SeasonImageMsg::SelectSeasonImageDone(result) => {
                 result.context(Message::SelectingImage)?;
                 Ok(true)
             }
-            Msg::ClearSelectedSeasonImage(kind) => {
+            SeasonImageMsg::ClearSelectedSeasonImage(kind) => {
                 if let Some(items) = self.season_graphics.get_mut(&kind) {
                     for item in items {
                         item.selected = false;
@@ -1601,243 +1581,146 @@ impl ShowDetail {
                             owner: api::ImageOwner::Season(season.id),
                             kind,
                         })
-                        .on_packet(ctx.link().callback(Msg::ClearSelectedSeasonImageDone))
+                        .on_packet(
+                            ctx.link()
+                                .callback(SeasonImageMsg::ClearSelectedSeasonImageDone),
+                        )
                         .send();
                 }
 
                 Ok(true)
             }
-            Msg::ClearSelectedSeasonImageDone(result) => {
+            SeasonImageMsg::ClearSelectedSeasonImageDone(result) => {
                 result.context(Message::ClearingImage)?;
                 self.season_image_modal = false;
                 Ok(true)
             }
-            Msg::OpenSettingsModal => {
+        }
+    }
+
+    fn update_ui(&mut self, ctx: &Context<Self>, msg: UiMsg) -> Result<bool, Error> {
+        let props = ctx.props();
+
+        match msg {
+            UiMsg::ToggleCreditsExpanded => {
+                self.credits_expanded = !self.credits_expanded;
+                Ok(true)
+            }
+            UiMsg::SelectSeason(season) => {
+                if self.selected().map(|s| s.season) != Some(season) || props.orphaned {
+                    let id = props.show_id;
+
+                    self.router.push(Route::ShowDetail(
+                        id,
+                        ShowDetailQuery {
+                            season,
+                            episode: None,
+                            orphaned: false,
+                        },
+                    ));
+                }
+
+                Ok(false)
+            }
+            UiMsg::ToggleHistory(id) => {
+                self.episode_menu = None;
+                if !self.history_expanded.insert(id) {
+                    self.history_expanded.remove(&id);
+                }
+
+                Ok(true)
+            }
+            UiMsg::OpenImageModal => {
+                self.image_modal = true;
+                self.settings_modal = false;
+                Ok(true)
+            }
+            UiMsg::CloseImageModal => {
+                self.image_modal = false;
+                // Opened from Settings, so closing goes back there.
+                self.settings_modal = true;
+                Ok(true)
+            }
+            UiMsg::OpenSettingsModal => {
                 self.settings_modal = true;
                 self.actions_expanded = false;
                 Ok(true)
             }
-            Msg::CloseSettingsModal => {
+            UiMsg::CloseSettingsModal => {
                 self.settings_modal = false;
                 Ok(true)
             }
-            Msg::OpenShowTranslations => {
+            UiMsg::OpenShowTranslations => {
                 self.show_translations_modal = true;
                 self.actions_expanded = false;
                 Ok(true)
             }
-            Msg::CloseShowTranslations => {
+            UiMsg::CloseShowTranslations => {
                 self.show_translations_modal = false;
                 Ok(true)
             }
-            Msg::OpenSeasonTranslations => {
+            UiMsg::OpenSeasonTranslations => {
                 self.season_translations_modal = true;
                 Ok(true)
             }
-            Msg::CloseSeasonTranslations => {
+            UiMsg::CloseSeasonTranslations => {
                 self.season_translations_modal = false;
                 Ok(true)
             }
-            Msg::OpenEpisodeTranslations(episode_id) => {
+            UiMsg::OpenEpisodeTranslations(episode_id) => {
                 self.episode_menu = None;
                 self.episode_translations = Some(episode_id);
                 Ok(true)
             }
-            Msg::CloseEpisodeTranslations => {
+            UiMsg::CloseEpisodeTranslations => {
                 self.episode_translations = None;
                 Ok(true)
             }
-            Msg::OpenEpisodeReleases(episode_id) => {
+            UiMsg::OpenEpisodeReleases(episode_id) => {
                 self.episode_menu = None;
                 self.episode_releases_modal = Some(episode_id);
                 Ok(true)
             }
-            Msg::CloseEpisodeReleases => {
+            UiMsg::CloseEpisodeReleases => {
                 self.episode_releases_modal = None;
                 Ok(true)
             }
-            Msg::OpenEpisodeCache(episode_id) => {
+            UiMsg::OpenEpisodeCache(episode_id) => {
                 self.episode_menu = None;
                 self.episode_cache_modal = Some(episode_id);
                 Ok(true)
             }
-            Msg::CloseEpisodeCache => {
+            UiMsg::CloseEpisodeCache => {
                 self.episode_cache_modal = None;
                 Ok(true)
             }
-            Msg::OpenRemoteEditor => {
+            UiMsg::OpenRemoteEditor => {
                 self.remote_editor = true;
                 self.settings_modal = false;
                 Ok(true)
             }
-            Msg::CloseRemoteEditor => {
+            UiMsg::CloseRemoteEditor => {
                 self.remote_editor = false;
                 // Opened from Settings, so closing goes back there.
                 self.settings_modal = true;
                 Ok(true)
             }
-            Msg::AddRemote(slug, remote) => {
-                let id = props.show_id;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._remote_req = self
-                        .channel
-                        .request()
-                        .body(api::AddShowRemoteRequest { id, slug, remote })
-                        .on_packet(ctx.link().callback(
-                            |r: Result<ws::Packet<api::AddShowRemote>, ws::Error>| {
-                                Msg::RemoteDone(r.map(|_| ()))
-                            },
-                        ))
-                        .send();
-                }
-
-                Ok(false)
-            }
-            Msg::EditRemote(remote_id, slug, remote) => {
-                let id = props.show_id;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._remote_req = self
-                        .channel
-                        .request()
-                        .body(api::UpdateShowRemoteRequest {
-                            id,
-                            remote_id,
-                            slug,
-                            remote,
-                        })
-                        .on_packet(ctx.link().callback(
-                            |r: Result<ws::Packet<api::UpdateShowRemote>, ws::Error>| {
-                                Msg::RemoteDone(r.map(|_| ()))
-                            },
-                        ))
-                        .send();
-                }
-
-                Ok(false)
-            }
-            Msg::RemoveRemote(remote_id) => {
-                let id = props.show_id;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._remote_req = self
-                        .channel
-                        .request()
-                        .body(api::RemoveShowRemoteRequest { id, remote_id })
-                        .on_packet(ctx.link().callback(
-                            |r: Result<ws::Packet<api::RemoveShowRemote>, ws::Error>| {
-                                Msg::RemoteDone(r.map(|_| ()))
-                            },
-                        ))
-                        .send();
-                }
-
-                Ok(false)
-            }
-            Msg::PurgeRemoteCache(remote_id) => {
-                let id = props.show_id;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._remote_req = self
-                        .channel
-                        .request()
-                        .body(api::PurgeShowRemoteCacheRequest { id, remote_id })
-                        .on_packet(ctx.link().callback(
-                            |r: Result<ws::Packet<api::PurgeShowRemoteCache>, ws::Error>| {
-                                Msg::RemoteDone(r.map(|_| ()))
-                            },
-                        ))
-                        .send();
-                }
-
-                Ok(false)
-            }
-            Msg::RemoteDone(result) => {
-                result.context(Message::EditingRemotes)?;
-                self.load_show(ctx);
-                Ok(false)
-            }
-            Msg::SetTime(time) => {
-                self.time = time;
-                Ok(true)
-            }
-            Msg::FixWatched(id) => {
-                self.fixing_watched = Some(id);
-                self.confirm_remove_watch = None;
-                Ok(true)
-            }
-            Msg::CancelFixWatched => {
-                self.fixing_watched = None;
-                Ok(true)
-            }
-            Msg::MoveWatched(id, season, episode) => {
-                self.fixing_watched = None;
-                let show_id = props.show_id;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._move_req = self
-                        .channel
-                        .request()
-                        .body(api::MoveWatchedEpisodeRequest {
-                            id,
-                            show_id,
-                            season,
-                            episode,
-                        })
-                        .on_packet(ctx.link().callback(Msg::MoveWatchedDone))
-                        .send();
-                }
-
-                Ok(false)
-            }
-            Msg::MoveWatchedDone(result) => {
-                result
-                    .context(Message::MovingWatched)?
-                    .decode()
-                    .context(Message::MovingWatched)?;
-
-                // Refresh season counts so the progress bars reflect the move.
-                self.load_episodes(ctx);
-                self.load_history(ctx);
-                self.load_seasons(ctx);
-                self.load_orphaned(ctx);
-                Ok(false)
-            }
-            Msg::OrphanedLoaded(result) => {
-                let orphaned = result
-                    .context(Message::LoadingWatched)?
-                    .decode()
-                    .context(Message::LoadingWatched)?
-                    .watched;
-
-                self.orphaned.clear();
-
-                for watched in orphaned {
-                    self.orphaned.push(OrphanedWatchedState {
-                        watched,
-                        context_anchor: NodeRef::default(),
-                    });
-                }
-
-                Ok(true)
-            }
-            Msg::ToggleActionsExpanded => {
+            UiMsg::ToggleActionsExpanded => {
                 self.actions_expanded = !self.actions_expanded;
                 Ok(true)
             }
-            Msg::ToggleEpisodeMenu(episode_id) => {
+            UiMsg::ToggleEpisodeMenu(episode_id) => {
                 self.episode_menu = (self.episode_menu != Some(episode_id)).then_some(episode_id);
                 Ok(true)
             }
-            Msg::ToggleSeasonActionsExpanded(season) => {
+            UiMsg::ToggleSeasonActionsExpanded(season) => {
                 if !self.season_actions_expanded.insert(season) {
                     self.season_actions_expanded.remove(&season);
                 }
 
                 Ok(true)
             }
-            Msg::ToggleOrphaned => {
+            UiMsg::ToggleOrphaned => {
                 self.router.push(Route::ShowDetail(
                     props.show_id,
                     ShowDetailQuery {
@@ -1873,7 +1756,7 @@ impl ShowDetail {
             .channel
             .request()
             .body(api::GetShowRequest { id: show_id })
-            .on_packet(ctx.link().callback(Msg::ShowLoaded))
+            .on_packet(ctx.link().callback(LoadMsg::Show))
             .send();
     }
 
@@ -1902,7 +1785,7 @@ impl ShowDetail {
                 }
 
                 if self.credits.len() > CAP {
-                    <Button icon={if self.credits_expanded { "chevron-up" } else { "chevron-down" }} label={if self.credits_expanded { "Show fewer" } else { "Show all cast" }} title={if self.credits_expanded { "Show fewer cast" } else { "Show all cast" }} class="credits-toggle" expanded={Some(self.credits_expanded)} onclick={ctx.link().callback(|_| Msg::ToggleCreditsExpanded)} />
+                    <Button icon={if self.credits_expanded { "chevron-up" } else { "chevron-down" }} label={if self.credits_expanded { "Show fewer" } else { "Show all cast" }} title={if self.credits_expanded { "Show fewer cast" } else { "Show all cast" }} class="credits-toggle" expanded={Some(self.credits_expanded)} onclick={ctx.link().callback(|_| UiMsg::ToggleCreditsExpanded)} />
                 }
             </section>
         }
@@ -1930,21 +1813,11 @@ impl ShowDetail {
     }
 
     fn update_graphics(&mut self) {
-        self.graphics.clear();
-        self.present.clear();
-
-        if let ShowState::Loaded(show) = &self.show {
-            for i in &show.images {
-                self.graphics.entry(i.kind).or_default().push(ImageItem {
-                    selected: show.is_selected(i.kind, i.image.key()),
-                    id: i.id,
-                    kind: i.kind,
-                    source: i.source,
-                    image: i.image.clone(),
-                });
-
-                self.present.insert(i.source);
-            }
+        match &self.show {
+            ShowState::Loaded(show) => self
+                .graphics
+                .set(&show.images, |kind, key| show.is_selected(kind, key)),
+            _ => self.graphics.clear(),
         }
     }
 
@@ -1959,7 +1832,7 @@ impl ShowDetail {
             .channel
             .request()
             .body(api::ListSeasonsRequest { show_id })
-            .on_packet(ctx.link().callback(Msg::SeasonsLoaded))
+            .on_packet(ctx.link().callback(LoadMsg::Seasons))
             .send();
     }
 
@@ -1976,7 +1849,7 @@ impl ShowDetail {
             .body(api::ListCreditsRequest {
                 owner: api::CreditOwner::Show(show_id),
             })
-            .on_packet(ctx.link().callback(Msg::CreditsLoaded))
+            .on_packet(ctx.link().callback(LoadMsg::Credits))
             .send();
     }
 
@@ -1989,7 +1862,7 @@ impl ShowDetail {
             .channel
             .request()
             .body(api::GetSeasonImagesRequest { season_id })
-            .on_packet(ctx.link().callback(Msg::SeasonImagesLoaded))
+            .on_packet(ctx.link().callback(SeasonImageMsg::SeasonImagesLoaded))
             .send();
     }
 
@@ -2005,7 +1878,7 @@ impl ShowDetail {
             .channel
             .request()
             .body(api::ListEpisodesRequest { show_id, season })
-            .on_packet(ctx.link().callback(Msg::EpisodesLoaded))
+            .on_packet(ctx.link().callback(LoadMsg::Episodes))
             .send();
     }
 
@@ -2050,7 +1923,7 @@ impl ShowDetail {
             .channel
             .request()
             .body(api::ListEpisodesWatchedRequest { show_id })
-            .on_packet(ctx.link().callback(Msg::WatchedLoaded))
+            .on_packet(ctx.link().callback(LoadMsg::Watched))
             .send();
     }
 
@@ -2065,7 +1938,7 @@ impl ShowDetail {
             .channel
             .request()
             .body(api::ListOrphanedWatchedRequest { show_id })
-            .on_packet(ctx.link().callback(Msg::OrphanedLoaded))
+            .on_packet(ctx.link().callback(LoadMsg::Orphaned))
             .send();
     }
 
@@ -2080,7 +1953,7 @@ impl ShowDetail {
             .channel
             .request()
             .body(api::GetPreferencesRequest)
-            .on_packet(ctx.link().callback(Msg::ConfigLoaded))
+            .on_packet(ctx.link().callback(LoadMsg::Config))
             .send();
     }
 
@@ -2099,60 +1972,30 @@ impl ShowDetail {
     }
 
     fn view_image_modal(&self, ctx: &Context<Self>) -> Html {
-        let link = ctx.link();
-
         let user_selected = |kind: api::ImageKind| match &self.show {
             ShowState::Loaded(show) => show.is_user_selected(kind),
             _ => false,
         };
 
-        let hidden = self.graphics_hidden_sources.clone();
-
-        html! {
-            <Modal icon="photo" title="Graphics" on_close={link.callback(|_| Msg::CloseImageModal)}>
-                <div class="row desktop-align-end">
-                    <GraphicsSourceFilter present={self.present.clone()} hidden={hidden.clone()} on_toggle={link.callback(Msg::ToggleGraphicsSource)} />
-                    <Button icon="sparkles" variant={Variant::Primary} title="Pick the best graphic for every kind" label="Pick best (all)" onclick={link.callback(|_| Msg::PickBestImage(None))} />
-                </div>
-                {for self.graphics.iter().filter_map(|(&kind, items)| {
-                    let items: Vec<ImageItem> = items
-                        .iter()
-                        .filter(|item| !hidden.contains(&item.source))
-                        .cloned()
-                        .collect();
-
-                    if items.is_empty() {
-                        return None;
-                    }
-
-                    Some(html! {
-                        <ImageGallery
-                            {items}
-                            {kind}
-                            user_selected={user_selected(kind)}
-                            on_select={link.callback(move |id| Msg::SelectImage(kind, id))}
-                            on_clear={link.callback(move |_| Msg::ClearSelectedImage(kind))}
-                            on_pick_best={Some(link.callback(move |_| Msg::PickBestImage(Some(kind))))}
-                            on_reset={Some(link.callback(move |_| Msg::ResetImageSelection(kind)))}
-                        />
-                    })
-                })}
-            </Modal>
-        }
+        self.graphics.view_modal(
+            ctx.link(),
+            user_selected,
+            ctx.link().callback(|_| UiMsg::CloseImageModal),
+        )
     }
 
     fn view_season_image_modal(&self, ctx: &Context<Self>) -> Html {
         let link = ctx.link();
 
         html! {
-            <Modal icon="photo" title="Season Graphics" on_close={link.callback(|_| Msg::CloseSeasonImageModal)}>
+            <Modal icon="photo" title="Season Graphics" on_close={link.callback(|_| SeasonImageMsg::CloseSeasonImageModal)}>
                 {for self.season_graphics.iter().map(|(&kind, items)| {
                     html! {
                         <ImageGallery
                             items={items.clone()}
                             {kind}
-                            on_select={link.callback(move |id| Msg::SelectSeasonImage(kind, id))}
-                            on_clear={link.callback(move |_| Msg::ClearSelectedSeasonImage(kind))}
+                            on_select={link.callback(move |id| SeasonImageMsg::SelectSeasonImage(kind, id))}
+                            on_clear={link.callback(move |_| SeasonImageMsg::ClearSelectedSeasonImage(kind))}
                         />
                     }
                 })}
@@ -2205,7 +2048,7 @@ impl ShowDetail {
 
         if self.seasons.len() > 1 {
             html! {
-                <Button {class} title={format!("Show {name}")} {current} onclick={ctx.link().callback(move |_| Msg::SelectSeason(season))}>
+                <Button {class} title={format!("Show {name}")} {current} onclick={ctx.link().callback(move |_| UiMsg::SelectSeason(season))}>
                     {body}
                 </Button>
             }
@@ -2235,7 +2078,7 @@ impl ShowDetail {
                     let name = season_name(s);
 
                     html! {
-                        <Button class={classes!("chip", is_current.then_some("selected"))} title={format!("Show {name}")} current={is_current} onclick={ctx.link().callback(move |_| Msg::SelectSeason(season))}>
+                        <Button class={classes!("chip", is_current.then_some("selected"))} title={format!("Show {name}")} current={is_current} onclick={ctx.link().callback(move |_| UiMsg::SelectSeason(season))}>
                             <span>{name}</span>
 
                             if finished {
@@ -2272,13 +2115,13 @@ impl ShowDetail {
         let next_unwatched = self.next_unwatched;
 
         let pending_episode = self.pending_episode.as_ref().map(|&(label, episode_id)| {
-            let callback = link.callback(move |_| Msg::OnRemoveNext(episode_id));
+            let callback = link.callback(move |_| WatchMsg::OnRemoveNext(episode_id));
             (label, callback)
         });
 
         let season_expanded = self.season_actions_expanded.contains(&season_number);
         let toggle_menu =
-            link.callback(move |_: MouseEvent| Msg::ToggleSeasonActionsExpanded(season_number));
+            link.callback(move |_: MouseEvent| UiMsg::ToggleSeasonActionsExpanded(season_number));
 
         let next_episode_preset = next_unwatched.map(|(label, _)| {
             TimePreset::when_aired("calendar", "Aired", format!("When {label} aired"))
@@ -2291,7 +2134,7 @@ impl ShowDetail {
         let remaining_preset = TimePreset::when_aired("calendar", "Aired", remaining_description);
         let watch_remaining = link.callback({
             let season = season.season;
-            move |mark_time| Msg::WatchRemaining(season, mark_time)
+            move |mark_time| WatchMsg::WatchRemaining(season, mark_time)
         });
 
         html! {
@@ -2318,15 +2161,15 @@ impl ShowDetail {
                                     </a>
                                 }
 
-                                <Button icon={if season_expanded { "ellipsis-horizontal" } else { "bars-2" }} title="Season actions" expanded={Some(season_expanded)} onclick={link.callback(move |_| Msg::ToggleSeasonActionsExpanded(season_number))} />
+                                <Button icon={if season_expanded { "ellipsis-horizontal" } else { "bars-2" }} title="Season actions" expanded={Some(season_expanded)} onclick={link.callback(move |_| UiMsg::ToggleSeasonActionsExpanded(season_number))} />
                             </div>
                         </div>
 
                         <div class={classes!("toolbar-dropdown", "desktop-input-group", (!season_expanded).then_some("desktop-only"))}>
-                            <Button icon="language" title="Season Translations" text="Translations" onclick={link.callback(|_| Msg::OpenSeasonTranslations)} />
+                            <Button icon="language" title="Season Translations" text="Translations" onclick={link.callback(|_| UiMsg::OpenSeasonTranslations)} />
 
                             if crate::is_admin(ctx) {
-                                <Button icon="photo" title="Season Graphics" text="Graphics" onclick={link.callback(|_| Msg::OpenSeasonImageModal)} />
+                                <Button icon="photo" title="Season Graphics" text="Graphics" onclick={link.callback(|_| SeasonImageMsg::OpenSeasonImageModal)} />
                             }
 
                             if let Some((label, on_remove_next)) = pending_episode {
@@ -2337,7 +2180,7 @@ impl ShowDetail {
 
                                 <Button icon="bookmark" variant={Variant::Danger} title="Remove pending" text={format!("Clear next episode {label}")} onclick={on_remove_next} />
                             } else if let Some((label, episode_id)) = next_unwatched {
-                                <MarkTimeMenu class="mobile-has-text" title="Make next episode" prompt={format!("Pending {label} since when?")} preset={next_episode_preset.clone()} on_confirm={link.callback(move |mark_time| Msg::OnWatchNext(episode_id, mark_time))}>
+                                <MarkTimeMenu class="mobile-has-text" title="Make next episode" prompt={format!("Pending {label} since when?")} preset={next_episode_preset.clone()} on_confirm={link.callback(move |mark_time| WatchMsg::OnWatchNext(episode_id, mark_time))}>
                                     <span class="icon bookmark-slash" aria-hidden="true" />
                                     <span class="mobile-only">{label}</span>
                                 </MarkTimeMenu>
@@ -2397,13 +2240,13 @@ impl ShowDetail {
                 </span>
 
                 <div class="selection-actions">
-                    <MarkTimeMenu class="primary has-text" icon="check" title="Mark the selected episodes watched" prompt="When did you watch them?" preset={aired} on_confirm={link.callback(Msg::BulkMark)}>
+                    <MarkTimeMenu class="primary has-text" icon="check" title="Mark the selected episodes watched" prompt="When did you watch them?" preset={aired} on_confirm={link.callback(PickMsg::BulkMark)}>
                         <span class="icon check" aria-hidden="true" />
                         <span>{"Mark watched"}</span>
                     </MarkTimeMenu>
 
-                    <Button icon="arrow-path" label="Sync" title="Sync the selected episodes" onclick={link.callback(|_| Msg::BulkSync)} />
-                    <Button icon="x-mark" label="Clear" title="Clear the selection" onclick={link.callback(|_| Msg::ClearPicked)} />
+                    <Button icon="arrow-path" label="Sync" title="Sync the selected episodes" onclick={link.callback(|_| PickMsg::BulkSync)} />
+                    <Button icon="x-mark" label="Clear" title="Clear the selection" onclick={link.callback(|_| PickMsg::ClearPicked)} />
                 </div>
             </div>
         }
@@ -2424,19 +2267,20 @@ impl ShowDetail {
 
         let history_expanded = self.history_expanded.contains(&episode_id);
         let on_toggle_history =
-            (!watched.is_empty()).then(|| link.callback(move |_| Msg::ToggleHistory(episode_id)));
+            (!watched.is_empty()).then(|| link.callback(move |_| UiMsg::ToggleHistory(episode_id)));
 
         let menu_open = self.episode_menu == Some(episode_id);
         let picked = self.picked.contains(&episode_id);
-        let on_toggle_menu = link.callback(move |_: MouseEvent| Msg::ToggleEpisodeMenu(episode_id));
+        let on_toggle_menu =
+            link.callback(move |_: MouseEvent| UiMsg::ToggleEpisodeMenu(episode_id));
         let syncing = self.syncing_episodes.contains(&episode_id);
 
-        let on_remove_next = link.callback(move |_| Msg::OnRemoveNext(episode_id));
+        let on_remove_next = link.callback(move |_| WatchMsg::OnRemoveNext(episode_id));
         let on_next_episode =
-            link.callback(move |mark_time| Msg::OnWatchNext(episode_id, mark_time));
+            link.callback(move |mark_time| WatchMsg::OnWatchNext(episode_id, mark_time));
 
         let on_mark_confirm =
-            link.callback(move |mark_time| Msg::MarkWatched(show_id, episode_id, mark_time));
+            link.callback(move |mark_time| WatchMsg::MarkWatched(show_id, episode_id, mark_time));
 
         let preset = episode
             .aired
@@ -2444,7 +2288,7 @@ impl ShowDetail {
 
         html! {
             <div class={classes!("episode", (!watched.is_empty()).then_some("watched"))} id={episode.code()}>
-                <Button class={classes!("episode-pick", picked.then_some("picked"))} title={format!("Select {}", episode.code())} pressed={Some(picked)} onclick={link.callback(move |e: MouseEvent| Msg::TogglePick(episode_id, e.shift_key()))}>
+                <Button class={classes!("episode-pick", picked.then_some("picked"))} title={format!("Select {}", episode.code())} pressed={Some(picked)} onclick={link.callback(move |e: MouseEvent| PickMsg::TogglePick(episode_id, e.shift_key()))}>
                     <Image class="screenshot artwork" placeholder={true} placeholder_icon="photo" src={episode.screenshot.clone()} />
                     <span class="episode-pick-mark" aria-hidden="true">
                         <span class="icon sm check" />
@@ -2480,12 +2324,12 @@ impl ShowDetail {
                         </div>
 
                         if menu_open {
-                            <ContextMenu anchor={self.episode_menu_anchor.clone()} on_close={link.callback(move |()| Msg::ToggleEpisodeMenu(episode_id))}>
+                            <ContextMenu anchor={self.episode_menu_anchor.clone()} on_close={link.callback(move |()| UiMsg::ToggleEpisodeMenu(episode_id))}>
                                 <div class="menu-list" role="menu" aria-label="Episode actions">
-                                    <Button role="menuitem" icon="arrow-path" spin={syncing} label="Sync episode" title="Sync episode" onclick={link.callback(move |_| Msg::SyncEpisode(episode_id))} />
-                                    <Button role="menuitem" icon="language" label="Translations" title="Translations" onclick={link.callback(move |_| Msg::OpenEpisodeTranslations(episode_id))} />
-                                    <Button role="menuitem" icon="calendar" label="Air dates" title="Air dates" onclick={link.callback(move |_| Msg::OpenEpisodeReleases(episode_id))} />
-                                    <Button role="menuitem" icon="circle-stack" label="Cache" title="Cache" onclick={link.callback(move |_| Msg::OpenEpisodeCache(episode_id))} />
+                                    <Button role="menuitem" icon="arrow-path" spin={syncing} label="Sync episode" title="Sync episode" onclick={link.callback(move |_| ActionMsg::SyncEpisode(episode_id))} />
+                                    <Button role="menuitem" icon="language" label="Translations" title="Translations" onclick={link.callback(move |_| UiMsg::OpenEpisodeTranslations(episode_id))} />
+                                    <Button role="menuitem" icon="calendar" label="Air dates" title="Air dates" onclick={link.callback(move |_| UiMsg::OpenEpisodeReleases(episode_id))} />
+                                    <Button role="menuitem" icon="circle-stack" label="Cache" title="Cache" onclick={link.callback(move |_| UiMsg::OpenEpisodeCache(episode_id))} />
 
                                     if let Some(on_toggle) = on_toggle_history {
                                         <Button role="menuitem" icon="clock" label={if history_expanded { "Hide watch history" } else { "Watch history" }} title="Watch history" onclick={on_toggle} />
@@ -2555,7 +2399,7 @@ impl ShowDetail {
                 </div>
 
                 if history_expanded {
-                    <Modal icon="clock" title={format!("Watch history for {}", episode.code())} on_close={link.callback(move |_| Msg::ToggleHistory(episode_id))}>
+                    <Modal icon="clock" title={format!("Watch history for {}", episode.code())} on_close={link.callback(move |_| UiMsg::ToggleHistory(episode_id))}>
                         if let Some(moving) = watched.iter().find(|w| self.fixing_watched == Some(w.watched.id)) {
                             <p class="watch-move-lead">
                                 {"Move the watch from "}
@@ -2569,9 +2413,9 @@ impl ShowDetail {
                                 episode={episode.episode}
                                 on_confirm={link.callback({
                                     let wid = moving.watched.id;
-                                    move |(season, ep)| Msg::MoveWatched(wid, season, ep)
+                                    move |(season, ep)| WatchMsg::MoveWatched(wid, season, ep)
                                 })}
-                                on_cancel={link.callback(|_| Msg::CancelFixWatched)}
+                                on_cancel={link.callback(|_| WatchMsg::CancelFixWatched)}
                             />
                         } else {
                             <div key="history" class="watch-history">
@@ -2585,15 +2429,15 @@ impl ShowDetail {
                                             <span class="watch-age">{w.watched.timestamp.relative_to(self.time.now())}</span>
 
                                             <div class="watch-actions" ref={w.context_anchor.clone()}>
-                                                <Button icon="arrow-uturn-right" label="Move" title="Move to another episode" onclick={link.callback(move |_| Msg::FixWatched(wid))} />
+                                                <Button icon="arrow-uturn-right" label="Move" title="Move to another episode" onclick={link.callback(move |_| WatchMsg::FixWatched(wid))} />
 
-                                                <Button icon="trash" label="Remove" title="Remove" expanded={Some(self.confirm_remove_watch == Some(wid))} haspopup="dialog" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} />
+                                                <Button icon="trash" label="Remove" title="Remove" expanded={Some(self.confirm_remove_watch == Some(wid))} haspopup="dialog" onclick={link.callback(move |_| WatchMsg::ConfirmRemoveWatch(wid))} />
 
                                                 if self.confirm_remove_watch == Some(wid) {
-                                                    <ContextMenu prompt="Remove watch at" label={w.watched.timestamp.human_date_time(self.time.clone())} anchor={w.context_anchor.clone()} on_close={link.callback(|_| Msg::CancelRemoveWatch)}>
+                                                    <ContextMenu prompt="Remove watch at" label={w.watched.timestamp.human_date_time(self.time.clone())} anchor={w.context_anchor.clone()} on_close={link.callback(|_| WatchMsg::CancelRemoveWatch)}>
                                                         <ConfirmDanger
-                                                            on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, kind))}
-                                                            on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
+                                                            on_confirm={link.callback(move |_| WatchMsg::RemoveWatched(wid, kind))}
+                                                            on_cancel={link.callback(|_| WatchMsg::CancelRemoveWatch)}
                                                         />
                                                     </ContextMenu>
                                                 }
@@ -2610,7 +2454,7 @@ impl ShowDetail {
                     <ReleaseModal
                         target={ReleaseTarget::Episode(episode_id)}
                         title={format!("Air dates for {}", episode.code())}
-                        on_close={link.callback(|_| Msg::CloseEpisodeReleases)}
+                        on_close={link.callback(|_| UiMsg::CloseEpisodeReleases)}
                     />
                 }
 
@@ -2618,7 +2462,7 @@ impl ShowDetail {
                     <EpisodeCacheModal
                         episode_id={episode_id}
                         title={format!("Cache for {}", episode.code())}
-                        on_close={link.callback(|_| Msg::CloseEpisodeCache)}
+                        on_close={link.callback(|_| UiMsg::CloseEpisodeCache)}
                     />
                 }
             </div>
@@ -2650,29 +2494,29 @@ impl ShowDetail {
                                 </div>
 
                                 <div ref={w.context_anchor.clone()} class="input-group">
-                                    <Button icon="pencil-square" title="Move to episode" expanded={Some(self.fixing_watched == Some(id))} haspopup="dialog" onclick={link.callback(move |_| Msg::FixWatched(id))} />
+                                    <Button icon="pencil-square" title="Move to episode" expanded={Some(self.fixing_watched == Some(id))} haspopup="dialog" onclick={link.callback(move |_| WatchMsg::FixWatched(id))} />
 
-                                    <Button icon="trash" variant={Variant::Danger} title="Remove" text="Remove" expanded={Some(self.confirm_remove_watch == Some(id))} haspopup="dialog" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(id))} />
+                                    <Button icon="trash" variant={Variant::Danger} title="Remove" text="Remove" expanded={Some(self.confirm_remove_watch == Some(id))} haspopup="dialog" onclick={link.callback(move |_| WatchMsg::ConfirmRemoveWatch(id))} />
                                 </div>
 
                                 if self.fixing_watched == Some(id) {
-                                    <ContextMenu anchor={w.context_anchor.clone()} prompt="Where do you want to move orphaned watch at" label={w.watched.timestamp.human_date_time(self.time.clone())} on_close={ctx.link().callback(|_| Msg::CancelFixWatched)}>
+                                    <ContextMenu anchor={w.context_anchor.clone()} prompt="Where do you want to move orphaned watch at" label={w.watched.timestamp.human_date_time(self.time.clone())} on_close={ctx.link().callback(|_| WatchMsg::CancelFixWatched)}>
                                         <EpisodePicker
                                             {show_id}
                                             season={w.watched.season}
                                             episode={w.watched.episode}
                                             timestamp={w.watched.timestamp}
-                                            on_confirm={link.callback(move |(season, ep)| Msg::MoveWatched(id, season, ep))}
-                                            on_cancel={link.callback(|_| Msg::CancelFixWatched)}
+                                            on_confirm={link.callback(move |(season, ep)| WatchMsg::MoveWatched(id, season, ep))}
+                                            on_cancel={link.callback(|_| WatchMsg::CancelFixWatched)}
                                         />
                                     </ContextMenu>
                                 }
 
                                 if self.confirm_remove_watch == Some(id) {
-                                    <ContextMenu anchor={w.context_anchor.clone()} prompt="Remove orphaned watch at" label={w.watched.timestamp.human_date_time(self.time.clone())} on_close={ctx.link().callback(|_| Msg::CancelRemoveWatch)}>
+                                    <ContextMenu anchor={w.context_anchor.clone()} prompt="Remove orphaned watch at" label={w.watched.timestamp.human_date_time(self.time.clone())} on_close={ctx.link().callback(|_| WatchMsg::CancelRemoveWatch)}>
                                         <ConfirmDanger
-                                            on_confirm={link.callback(move |_| Msg::RemoveWatched(id, kind))}
-                                            on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
+                                            on_confirm={link.callback(move |_| WatchMsg::RemoveWatched(id, kind))}
+                                            on_cancel={link.callback(|_| WatchMsg::CancelRemoveWatch)}
                                         />
                                     </ContextMenu>
                                 }

@@ -1,17 +1,16 @@
 use api::TimeInfo;
 use musli_web::web03::prelude::*;
-use std::collections::{BTreeMap, BTreeSet, HashSet};
 use yew::prelude::*;
 
+use super::detail::{Graphics, ImageMsg, ImageUpdate, RemoteMsg, RemoteUpdate, Remotes};
 use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaQuery, Route, Router};
 use crate::ui::{
-    Button, ConfirmDanger, ContextMenu, DetailHero, DetailSkeleton, GraphicsSourceFilter, Image,
-    ImageGallery, ImageItem, Link, MarkTimeMenu, MediaSettingsModal, Modal, ReleaseModal,
-    ReleaseTarget, RemoteEditor, RemoteSourceKind, SettingsTarget, TimePreset, Tracked,
-    TranslatedText, TranslationsModal, Variant,
+    Button, ConfirmDanger, ContextMenu, DetailHero, DetailSkeleton, Image, Link, MarkTimeMenu,
+    MediaSettingsModal, Modal, ReleaseModal, ReleaseTarget, RemoteEditor, RemoteSourceKind,
+    SettingsTarget, TimePreset, Tracked, TranslatedText, TranslationsModal, Variant,
 };
 
 const CAP: usize = 8;
@@ -35,9 +34,8 @@ enum MovieState {
 pub(crate) struct MovieDetail {
     channel: ws::Channel,
     movie: MovieState,
-    graphics: BTreeMap<api::ImageKind, Vec<ImageItem>>,
-    present: BTreeSet<api::ImageSource>,
-    graphics_hidden_sources: HashSet<api::ImageSource>,
+    graphics: Graphics,
+    remotes: Remotes,
     credits: Vec<api::Credit>,
     /// Whether the full cast list is expanded past the initial cap.
     credits_expanded: bool,
@@ -71,39 +69,58 @@ pub(crate) struct MovieDetail {
     _sync_req: ws::Request,
     _untrack_req: ws::Request,
     _pending_req: ws::Request,
-    _select_image_req: ws::Request,
-    _clear_image_req: ws::Request,
-    _pick_best_image_req: ws::Request,
-    _reset_image_req: ws::Request,
-    _set_remote_enabled_req: ws::Request,
-    _reorder_remotes_req: ws::Request,
-    _set_remote_sync_kinds_req: ws::Request,
     _config_req: ws::Request,
-    _remote_req: ws::Request,
 }
 
 pub(crate) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
-    MovieLoaded(Result<ws::Packet<api::GetMovie>, ws::Error>),
-    CreditsLoaded(Result<ws::Packet<api::ListCredits>, ws::Error>),
-    ToggleCreditsExpanded,
-    WatchedLoaded(Result<ws::Packet<api::ListWatched>, ws::Error>),
+    SetTime(TimeInfo),
+    Image(ImageMsg),
+    Remote(RemoteMsg),
+    Load(LoadMsg),
+    Watch(WatchMsg),
+    Action(ActionMsg),
+    Ui(UiMsg),
+}
+
+/// Responses loading the page's data.
+pub(crate) enum LoadMsg {
+    Movie(Result<ws::Packet<api::GetMovie>, ws::Error>),
+    Credits(Result<ws::Packet<api::ListCredits>, ws::Error>),
+    Watched(Result<ws::Packet<api::ListWatched>, ws::Error>),
+    Config(Result<ws::Packet<api::GetPreferences>, ws::Error>),
+}
+
+/// Marking the movie watched, and its pending (watch next) entry.
+pub(crate) enum WatchMsg {
     MarkWatched(api::MarkTime),
     MarkWatchedDone(Result<ws::Packet<api::MarkWatched>, ws::Error>),
     RemoveWatched(api::WatchedId, api::WatchedKind),
     RemoveWatchedDone(Result<ws::Packet<api::RemoveWatched>, ws::Error>),
     ConfirmRemoveWatch(api::WatchedId),
     CancelRemoveWatch,
-    SelectImage(api::ImageKind, api::ImageId),
-    ClearSelectedImage(api::ImageKind),
-    SelectImageDone(Result<ws::Packet<api::SelectImage>, ws::Error>),
-    ClearSelectedImageDone(Result<ws::Packet<api::ClearSelectedImage>, ws::Error>),
-    PickBestImage(Option<api::ImageKind>),
-    ResetImageSelection(api::ImageKind),
-    PickBestImageDone(Result<ws::Packet<api::PickBestImages>, ws::Error>),
-    ResetImageSelectionDone(Result<ws::Packet<api::ResetImageSelection>, ws::Error>),
-    ToggleGraphicsSource(api::ImageSource),
+    OnWatchNext(api::MarkTime),
+    AddPendingDone(Result<ws::Packet<api::AddPending>, ws::Error>),
+    OnRemoveNext,
+    RemovePendingDone(Result<ws::Packet<api::RemovePending>, ws::Error>),
+}
+
+/// Tracking, syncing and removing the movie.
+pub(crate) enum ActionMsg {
+    ConfirmRemove,
+    CancelRemove,
+    RemoveMovie,
+    RemoveDone(Result<ws::Packet<api::RemoveMovie>, ws::Error>),
+    SyncMovie,
+    SyncDone(Result<ws::Packet<api::SyncMovie>, ws::Error>),
+    SetTracked(bool),
+    SetTrackedDone(bool, Result<ws::Packet<api::UntrackMovie>, ws::Error>),
+}
+
+/// Modals and expandable sections.
+pub(crate) enum UiMsg {
+    ToggleCreditsExpanded,
     OpenImageModal,
     CloseImageModal,
     OpenSettingsModal,
@@ -112,35 +129,52 @@ pub(crate) enum Msg {
     CloseTranslations,
     OpenRemoteEditor,
     CloseRemoteEditor,
-    AddRemote(Option<String>, api::Remote),
-    EditRemote(api::RemoteId, Option<String>, api::Remote),
-    RemoveRemote(api::RemoteId),
-    PurgeRemoteCache(api::RemoteId),
-    RemoteDone(Result<(), ws::Error>),
-    ConfirmRemove,
-    CancelRemove,
-    RemoveMovie,
-    RemoveDone(Result<ws::Packet<api::RemoveMovie>, ws::Error>),
-    SyncMovie,
-    SyncDone(Result<ws::Packet<api::SyncMovie>, ws::Error>),
-    SetRemoteEnabled(api::RemoteId, bool),
-    SetRemoteEnabledDone(Result<ws::Packet<api::SetMovieRemoteEnabled>, ws::Error>),
-    SetRemoteSyncKinds(api::RemoteId, Option<api::SyncKindSet>),
-    SetRemoteSyncKindsDone(Result<ws::Packet<api::SetMovieRemoteSyncKinds>, ws::Error>),
-    ReorderRemotes(Vec<api::RemoteId>),
-    ReorderRemotesDone(Result<ws::Packet<api::ReorderMovieRemotes>, ws::Error>),
-    ConfigLoaded(Result<ws::Packet<api::GetPreferences>, ws::Error>),
-    SetTracked(bool),
-    SetTrackedDone(bool, Result<ws::Packet<api::UntrackMovie>, ws::Error>),
-    OnWatchNext(api::MarkTime),
-    AddPendingDone(Result<ws::Packet<api::AddPending>, ws::Error>),
-    OnRemoveNext,
-    RemovePendingDone(Result<ws::Packet<api::RemovePending>, ws::Error>),
-    SetTime(TimeInfo),
     ToggleActionsExpanded,
     ToggleDetailedActionsExpanded,
     ToggleOpenWatched,
     ToggleOpenReleases,
+}
+
+impl From<ImageMsg> for Msg {
+    #[inline]
+    fn from(msg: ImageMsg) -> Self {
+        Msg::Image(msg)
+    }
+}
+
+impl From<RemoteMsg> for Msg {
+    #[inline]
+    fn from(msg: RemoteMsg) -> Self {
+        Msg::Remote(msg)
+    }
+}
+
+impl From<LoadMsg> for Msg {
+    #[inline]
+    fn from(msg: LoadMsg) -> Self {
+        Msg::Load(msg)
+    }
+}
+
+impl From<WatchMsg> for Msg {
+    #[inline]
+    fn from(msg: WatchMsg) -> Self {
+        Msg::Watch(msg)
+    }
+}
+
+impl From<ActionMsg> for Msg {
+    #[inline]
+    fn from(msg: ActionMsg) -> Self {
+        Msg::Action(msg)
+    }
+}
+
+impl From<UiMsg> for Msg {
+    #[inline]
+    fn from(msg: UiMsg) -> Self {
+        Msg::Ui(msg)
+    }
 }
 
 #[derive(Properties, PartialEq)]
@@ -179,9 +213,8 @@ impl Component for MovieDetail {
         Self {
             channel: ws::Channel::default(),
             movie: MovieState::Loading,
-            graphics: BTreeMap::new(),
-            present: BTreeSet::new(),
-            graphics_hidden_sources: HashSet::new(),
+            graphics: Graphics::default(),
+            remotes: Remotes::default(),
             credits: Vec::new(),
             credits_expanded: false,
             watched: Vec::new(),
@@ -214,15 +247,7 @@ impl Component for MovieDetail {
             _sync_req: ws::Request::default(),
             _untrack_req: ws::Request::default(),
             _pending_req: ws::Request::default(),
-            _select_image_req: ws::Request::default(),
-            _clear_image_req: ws::Request::default(),
-            _pick_best_image_req: ws::Request::default(),
-            _reset_image_req: ws::Request::default(),
-            _set_remote_enabled_req: ws::Request::default(),
-            _reorder_remotes_req: ws::Request::default(),
-            _set_remote_sync_kinds_req: ws::Request::default(),
             _config_req: ws::Request::default(),
-            _remote_req: ws::Request::default(),
         }
     }
 
@@ -297,80 +322,139 @@ impl MovieDetail {
                 }
                 Ok(true)
             }
-            Msg::AppBroadcast(packet) => {
-                let event = packet?.decode_event()?;
-
-                if event.channel == self.channel.id() {
-                    return Ok(false);
-                }
-
-                match &event.kind {
-                    api::AppEventKind::MovieChanged { movie }
-                    | api::AppEventKind::MovieCreated { movie }
-                        if movie.id == ctx.props().movie_id =>
-                    {
-                        self.set_movie(movie.clone());
-                        Ok(true)
-                    }
-                    api::AppEventKind::MovieDeleted { movie_id }
-                        if *movie_id == ctx.props().movie_id =>
-                    {
-                        self.router.push(Route::Media(MediaQuery::default()));
-                        Ok(false)
-                    }
-                    api::AppEventKind::CreditsChanged {
-                        target: api::TranslationTarget::Movie(movie_id),
-                    } if *movie_id == ctx.props().movie_id => {
-                        if self.channel.id() != ws::ChannelId::NONE {
-                            self.load_credits(ctx);
-                        }
-
-                        Ok(false)
-                    }
-                    api::AppEventKind::PersonChanged { person_id }
-                        if self.credits.iter().any(|c| c.person_id == *person_id) =>
-                    {
-                        if self.channel.id() != ws::ChannelId::NONE {
-                            self.load_credits(ctx);
-                        }
-
-                        Ok(false)
-                    }
-                    api::AppEventKind::WatchedChanged { event: kind } => {
-                        let relevant = matches!(
-                            kind,
-                            api::WatchedEvent::Movie { movie } if *movie == ctx.props().movie_id
-                        );
-
-                        if relevant && self.channel.id() != ws::ChannelId::NONE {
-                            self.load_movie(ctx);
-                            self.load_watched(ctx);
-                        }
-
-                        Ok(false)
-                    }
-                    api::AppEventKind::TaskAdded { task }
-                    | api::AppEventKind::TaskStarted { task } => {
-                        if matches!(&task.kind, api::TaskKind::SyncMovie { movie_id, .. } if *movie_id == ctx.props().movie_id)
-                        {
-                            self.syncing = true;
-                            return Ok(true);
-                        }
-                        Ok(false)
-                    }
-                    api::AppEventKind::TaskCompleted { task } => {
-                        if matches!(&task.kind, api::TaskKind::SyncMovie { movie_id, .. } if *movie_id == ctx.props().movie_id)
-                        {
-                            self.syncing = false;
-                            self.load_movie(ctx);
-                            return Ok(true);
-                        }
-                        Ok(false)
-                    }
-                    _ => Ok(false),
-                }
+            Msg::AppBroadcast(packet) => self.on_broadcast(ctx, packet),
+            Msg::SetTime(time) => {
+                self.time = time;
+                Ok(true)
             }
-            Msg::MovieLoaded(result) => {
+            Msg::Image(msg) => self.update_image(ctx, msg),
+            Msg::Remote(msg) => self.update_remote(ctx, msg),
+            Msg::Load(msg) => self.update_load(msg),
+            Msg::Watch(msg) => self.update_watch(ctx, msg),
+            Msg::Action(msg) => self.update_action(ctx, msg),
+            Msg::Ui(msg) => self.update_ui(msg),
+        }
+    }
+
+    fn on_broadcast(
+        &mut self,
+        ctx: &Context<Self>,
+        packet: Result<ws::Packet<api::AppBroadcast>, ws::Error>,
+    ) -> Result<bool, Error> {
+        let event = packet?.decode_event()?;
+
+        if event.channel == self.channel.id() {
+            return Ok(false);
+        }
+
+        match &event.kind {
+            api::AppEventKind::MovieChanged { movie }
+            | api::AppEventKind::MovieCreated { movie }
+                if movie.id == ctx.props().movie_id =>
+            {
+                self.set_movie(movie.clone());
+                Ok(true)
+            }
+            api::AppEventKind::MovieDeleted { movie_id } if *movie_id == ctx.props().movie_id => {
+                self.router.push(Route::Media(MediaQuery::default()));
+                Ok(false)
+            }
+            api::AppEventKind::CreditsChanged {
+                target: api::TranslationTarget::Movie(movie_id),
+            } if *movie_id == ctx.props().movie_id => {
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self.load_credits(ctx);
+                }
+
+                Ok(false)
+            }
+            api::AppEventKind::PersonChanged { person_id }
+                if self.credits.iter().any(|c| c.person_id == *person_id) =>
+            {
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self.load_credits(ctx);
+                }
+
+                Ok(false)
+            }
+            api::AppEventKind::WatchedChanged { event: kind } => {
+                let relevant = matches!(
+                    kind,
+                    api::WatchedEvent::Movie { movie } if *movie == ctx.props().movie_id
+                );
+
+                if relevant && self.channel.id() != ws::ChannelId::NONE {
+                    self.load_movie(ctx);
+                    self.load_watched(ctx);
+                }
+
+                Ok(false)
+            }
+            api::AppEventKind::TaskAdded { task } | api::AppEventKind::TaskStarted { task } => {
+                if matches!(&task.kind, api::TaskKind::SyncMovie { movie_id, .. } if *movie_id == ctx.props().movie_id)
+                {
+                    self.syncing = true;
+                    return Ok(true);
+                }
+                Ok(false)
+            }
+            api::AppEventKind::TaskCompleted { task } => {
+                if matches!(&task.kind, api::TaskKind::SyncMovie { movie_id, .. } if *movie_id == ctx.props().movie_id)
+                {
+                    self.syncing = false;
+                    self.load_movie(ctx);
+                    return Ok(true);
+                }
+                Ok(false)
+            }
+            _ => Ok(false),
+        }
+    }
+
+    fn update_image(&mut self, ctx: &Context<Self>, msg: ImageMsg) -> Result<bool, Error> {
+        let owner = api::ImageOwner::Movie(ctx.props().movie_id);
+
+        match self
+            .graphics
+            .update(ctx.link(), &self.channel, owner, msg)?
+        {
+            ImageUpdate::Render(render) => Ok(render),
+            ImageUpdate::Reload => {
+                self.load_movie(ctx);
+                Ok(true)
+            }
+            ImageUpdate::Cleared => {
+                self.image_modal = false;
+                self.load_movie(ctx);
+                Ok(true)
+            }
+        }
+    }
+
+    fn update_remote(&mut self, ctx: &Context<Self>, msg: RemoteMsg) -> Result<bool, Error> {
+        let remotes = match &mut self.movie {
+            MovieState::Loaded(movie) => Some(&mut movie.remotes),
+            _ => None,
+        };
+
+        match self.remotes.update(
+            ctx.link(),
+            &self.channel,
+            ctx.props().movie_id,
+            remotes,
+            msg,
+        )? {
+            RemoteUpdate::Render(render) => Ok(render),
+            RemoteUpdate::Reload => {
+                self.load_movie(ctx);
+                Ok(false)
+            }
+        }
+    }
+
+    fn update_load(&mut self, msg: LoadMsg) -> Result<bool, Error> {
+        match msg {
+            LoadMsg::Movie(result) => {
                 let movie = result
                     .context(Message::LoadingMovies)?
                     .decode()
@@ -388,7 +472,7 @@ impl MovieDetail {
 
                 Ok(true)
             }
-            Msg::CreditsLoaded(result) => {
+            LoadMsg::Credits(result) => {
                 self.credits = result
                     .context(Message::LoadingCredits)?
                     .decode()
@@ -397,11 +481,7 @@ impl MovieDetail {
 
                 Ok(true)
             }
-            Msg::ToggleCreditsExpanded => {
-                self.credits_expanded = !self.credits_expanded;
-                Ok(true)
-            }
-            Msg::WatchedLoaded(result) => {
+            LoadMsg::Watched(result) => {
                 let watched = result
                     .context(Message::LoadingWatched)?
                     .decode()
@@ -419,7 +499,22 @@ impl MovieDetail {
 
                 Ok(true)
             }
-            Msg::MarkWatched(mark_time) => {
+            LoadMsg::Config(result) => {
+                let site = result
+                    .context(Message::LoadingConfig)?
+                    .decode()
+                    .context(Message::LoadingConfig)?
+                    .site;
+                self.default_release_filters = site.release_filters;
+                self.global_sync_kinds = site.sync_kinds;
+                Ok(true)
+            }
+        }
+    }
+
+    fn update_watch(&mut self, ctx: &Context<Self>, msg: WatchMsg) -> Result<bool, Error> {
+        match msg {
+            WatchMsg::MarkWatched(mark_time) => {
                 let movie = ctx.props().movie_id;
 
                 if self.channel.id() != ws::ChannelId::NONE {
@@ -430,13 +525,13 @@ impl MovieDetail {
                             kind: api::WatchedKind::Movie { movie },
                             mark_time,
                         })
-                        .on_packet(ctx.link().callback(Msg::MarkWatchedDone))
+                        .on_packet(ctx.link().callback(WatchMsg::MarkWatchedDone))
                         .send();
                 }
 
                 Ok(true)
             }
-            Msg::MarkWatchedDone(result) => {
+            WatchMsg::MarkWatchedDone(result) => {
                 let response = result
                     .context(Message::MarkingWatched)?
                     .decode()
@@ -447,197 +542,34 @@ impl MovieDetail {
                 self.load_watched(ctx);
                 Ok(false)
             }
-            Msg::RemoveWatched(id, kind) => {
+            WatchMsg::RemoveWatched(id, kind) => {
                 if self.channel.id() != ws::ChannelId::NONE {
                     self._remove_watch_req = self
                         .channel
                         .request()
                         .body(api::RemoveWatchedRequest { id, kind })
-                        .on_packet(ctx.link().callback(Msg::RemoveWatchedDone))
+                        .on_packet(ctx.link().callback(WatchMsg::RemoveWatchedDone))
                         .send();
                 }
 
                 Ok(false)
             }
-            Msg::RemoveWatchedDone(result) => {
+            WatchMsg::RemoveWatchedDone(result) => {
                 result.context(Message::RemovingWatched)?;
                 self.confirm_remove_watch = None;
                 self.load_movie(ctx);
                 self.load_watched(ctx);
                 Ok(false)
             }
-            Msg::ConfirmRemoveWatch(watched_id) => {
+            WatchMsg::ConfirmRemoveWatch(watched_id) => {
                 self.confirm_remove_watch = Some(watched_id);
                 Ok(true)
             }
-            Msg::CancelRemoveWatch => {
+            WatchMsg::CancelRemoveWatch => {
                 self.confirm_remove_watch = None;
                 Ok(true)
             }
-            Msg::ConfirmRemove => {
-                self.confirm_remove = true;
-                Ok(true)
-            }
-            Msg::CancelRemove => {
-                self.confirm_remove = false;
-                Ok(true)
-            }
-            Msg::RemoveMovie => {
-                let id = ctx.props().movie_id;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._remove_req = self
-                        .channel
-                        .request()
-                        .body(api::RemoveMovieRequest { id })
-                        .on_packet(ctx.link().callback(Msg::RemoveDone))
-                        .send();
-                }
-
-                Ok(false)
-            }
-            Msg::RemoveDone(result) => {
-                result.context(Message::RemovingMovie)?;
-                self.router.push(Route::Media(MediaQuery::default()));
-                Ok(false)
-            }
-            Msg::SyncMovie => {
-                let id = ctx.props().movie_id;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._sync_req = self
-                        .channel
-                        .request()
-                        .body(api::SyncMovieRequest { id })
-                        .on_packet(ctx.link().callback(Msg::SyncDone))
-                        .send();
-                }
-
-                Ok(true)
-            }
-            Msg::SyncDone(result) => {
-                result.context(Message::SyncingMovie)?;
-                Ok(false)
-            }
-            Msg::SetRemoteEnabled(remote_id, enabled) => {
-                if let MovieState::Loaded(movie) = &mut self.movie
-                    && let Some(entry) = movie.remotes.iter_mut().find(|e| e.id == remote_id)
-                {
-                    entry.enabled = enabled;
-                }
-
-                let id = ctx.props().movie_id;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._set_remote_enabled_req = self
-                        .channel
-                        .request()
-                        .body(api::SetMovieRemoteEnabledRequest {
-                            id,
-                            remote_id,
-                            enabled,
-                        })
-                        .on_packet(ctx.link().callback(Msg::SetRemoteEnabledDone))
-                        .send();
-                }
-
-                Ok(true)
-            }
-            Msg::SetRemoteEnabledDone(result) => {
-                result.context(Message::SettingRemoteEnabled)?;
-                Ok(false)
-            }
-            Msg::SetRemoteSyncKinds(remote_id, sync_kinds) => {
-                if let MovieState::Loaded(movie) = &mut self.movie
-                    && let Some(entry) = movie.remotes.iter_mut().find(|e| e.id == remote_id)
-                {
-                    entry.sync_kinds = sync_kinds;
-                }
-
-                let id = ctx.props().movie_id;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._set_remote_sync_kinds_req = self
-                        .channel
-                        .request()
-                        .body(api::SetMovieRemoteSyncKindsRequest {
-                            id,
-                            remote_id,
-                            sync_kinds,
-                        })
-                        .on_packet(ctx.link().callback(Msg::SetRemoteSyncKindsDone))
-                        .send();
-                }
-
-                Ok(true)
-            }
-            Msg::SetRemoteSyncKindsDone(result) => {
-                result.context(Message::SettingRemoteSyncKinds)?;
-                Ok(false)
-            }
-            Msg::ReorderRemotes(remote_ids) => {
-                if let MovieState::Loaded(movie) = &mut self.movie {
-                    movie
-                        .remotes
-                        .sort_by_key(|e| remote_ids.iter().position(|id| *id == e.id));
-                }
-
-                let id = ctx.props().movie_id;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._reorder_remotes_req = self
-                        .channel
-                        .request()
-                        .body(api::ReorderMovieRemotesRequest { id, remote_ids })
-                        .on_packet(ctx.link().callback(Msg::ReorderRemotesDone))
-                        .send();
-                }
-
-                Ok(true)
-            }
-            Msg::ReorderRemotesDone(result) => {
-                result.context(Message::ReorderingRemotes)?;
-                Ok(false)
-            }
-            Msg::ConfigLoaded(result) => {
-                let site = result
-                    .context(Message::LoadingConfig)?
-                    .decode()
-                    .context(Message::LoadingConfig)?
-                    .site;
-                self.default_release_filters = site.release_filters;
-                self.global_sync_kinds = site.sync_kinds;
-                Ok(true)
-            }
-            Msg::SetTracked(tracked) => {
-                self.actions_expanded = false;
-
-                let id = ctx.props().movie_id;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._untrack_req = self
-                        .channel
-                        .request()
-                        .body(api::UntrackMovieRequest { id, tracked })
-                        .on_packet(
-                            ctx.link()
-                                .callback(move |r| Msg::SetTrackedDone(tracked, r)),
-                        )
-                        .send();
-                }
-
-                Ok(false)
-            }
-            Msg::SetTrackedDone(tracked, result) => {
-                result.context(Message::UntrackingMovie)?;
-
-                if let MovieState::Loaded(movie) = &mut self.movie {
-                    movie.tracked = tracked;
-                }
-
-                Ok(true)
-            }
-            Msg::OnWatchNext(mark_time) => {
+            WatchMsg::OnWatchNext(mark_time) => {
                 let movie = ctx.props().movie_id;
 
                 if self.channel.id() != ws::ChannelId::NONE {
@@ -648,13 +580,13 @@ impl MovieDetail {
                             kind: api::PendingKind::Movie { movie },
                             mark_time,
                         })
-                        .on_packet(ctx.link().callback(Msg::AddPendingDone))
+                        .on_packet(ctx.link().callback(WatchMsg::AddPendingDone))
                         .send();
                 }
 
                 Ok(true)
             }
-            Msg::AddPendingDone(result) => {
+            WatchMsg::AddPendingDone(result) => {
                 let packet = result
                     .context(Message::AddingPending)?
                     .decode()
@@ -666,7 +598,7 @@ impl MovieDetail {
 
                 Ok(true)
             }
-            Msg::OnRemoveNext => {
+            WatchMsg::OnRemoveNext => {
                 let movie = ctx.props().movie_id;
 
                 if self.channel.id() != ws::ChannelId::NONE {
@@ -676,13 +608,13 @@ impl MovieDetail {
                         .body(api::RemovePendingRequest {
                             kind: api::PendingKind::Movie { movie },
                         })
-                        .on_packet(ctx.link().callback(Msg::RemovePendingDone))
+                        .on_packet(ctx.link().callback(WatchMsg::RemovePendingDone))
                         .send();
                 }
 
                 Ok(false)
             }
-            Msg::RemovePendingDone(result) => {
+            WatchMsg::RemovePendingDone(result) => {
                 _ = result
                     .context(Message::RemovingPending)?
                     .decode()
@@ -694,243 +626,147 @@ impl MovieDetail {
 
                 Ok(true)
             }
-            Msg::SelectImage(kind, id) => {
-                if let Some(images) = self.graphics.get_mut(&kind) {
-                    for image in images {
-                        image.selected = image.id == id;
-                    }
-                }
+        }
+    }
 
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._select_image_req = self
-                        .channel
-                        .request()
-                        .body(api::SelectImageRequest { id })
-                        .on_packet(ctx.link().callback(Msg::SelectImageDone))
-                        .send();
-                }
-
+    fn update_action(&mut self, ctx: &Context<Self>, msg: ActionMsg) -> Result<bool, Error> {
+        match msg {
+            ActionMsg::ConfirmRemove => {
+                self.confirm_remove = true;
                 Ok(true)
             }
-            Msg::ClearSelectedImage(kind) => {
-                if let Some(images) = self.graphics.get_mut(&kind) {
-                    for image in images {
-                        image.selected = false;
-                    }
-                }
+            ActionMsg::CancelRemove => {
+                self.confirm_remove = false;
+                Ok(true)
+            }
+            ActionMsg::RemoveMovie => {
+                let id = ctx.props().movie_id;
 
                 if self.channel.id() != ws::ChannelId::NONE {
-                    self._clear_image_req = self
+                    self._remove_req = self
                         .channel
                         .request()
-                        .body(api::ClearSelectedImageRequest {
-                            owner: api::ImageOwner::Movie(ctx.props().movie_id),
-                            kind,
-                        })
-                        .on_packet(ctx.link().callback(Msg::ClearSelectedImageDone))
+                        .body(api::RemoveMovieRequest { id })
+                        .on_packet(ctx.link().callback(ActionMsg::RemoveDone))
                         .send();
                 }
 
                 Ok(false)
             }
-            Msg::SelectImageDone(result) => {
-                result.context(Message::SelectingImage)?;
-                self.load_movie(ctx);
-                Ok(true)
+            ActionMsg::RemoveDone(result) => {
+                result.context(Message::RemovingMovie)?;
+                self.router.push(Route::Media(MediaQuery::default()));
+                Ok(false)
             }
-            Msg::ClearSelectedImageDone(result) => {
-                result.context(Message::ClearingImage)?;
-                self.image_modal = false;
-                self.load_movie(ctx);
-                Ok(true)
-            }
-            Msg::PickBestImage(kind) => {
+            ActionMsg::SyncMovie => {
+                let id = ctx.props().movie_id;
+
                 if self.channel.id() != ws::ChannelId::NONE {
-                    self._pick_best_image_req = self
+                    self._sync_req = self
                         .channel
                         .request()
-                        .body(api::PickBestImagesRequest {
-                            owner: api::ImageOwner::Movie(ctx.props().movie_id),
-                            kind,
-                        })
-                        .on_packet(ctx.link().callback(Msg::PickBestImageDone))
+                        .body(api::SyncMovieRequest { id })
+                        .on_packet(ctx.link().callback(ActionMsg::SyncDone))
+                        .send();
+                }
+
+                Ok(true)
+            }
+            ActionMsg::SyncDone(result) => {
+                result.context(Message::SyncingMovie)?;
+                Ok(false)
+            }
+            ActionMsg::SetTracked(tracked) => {
+                self.actions_expanded = false;
+
+                let id = ctx.props().movie_id;
+
+                if self.channel.id() != ws::ChannelId::NONE {
+                    self._untrack_req = self
+                        .channel
+                        .request()
+                        .body(api::UntrackMovieRequest { id, tracked })
+                        .on_packet(
+                            ctx.link()
+                                .callback(move |r| ActionMsg::SetTrackedDone(tracked, r)),
+                        )
                         .send();
                 }
 
                 Ok(false)
             }
-            Msg::ResetImageSelection(kind) => {
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._reset_image_req = self
-                        .channel
-                        .request()
-                        .body(api::ResetImageSelectionRequest {
-                            owner: api::ImageOwner::Movie(ctx.props().movie_id),
-                            kind,
-                        })
-                        .on_packet(ctx.link().callback(Msg::ResetImageSelectionDone))
-                        .send();
-                }
+            ActionMsg::SetTrackedDone(tracked, result) => {
+                result.context(Message::UntrackingMovie)?;
 
-                Ok(false)
-            }
-            Msg::PickBestImageDone(result) => {
-                result.context(Message::SelectingImage)?;
-                self.load_movie(ctx);
-                Ok(true)
-            }
-            Msg::ResetImageSelectionDone(result) => {
-                result.context(Message::SelectingImage)?;
-                self.load_movie(ctx);
-                Ok(true)
-            }
-            Msg::ToggleGraphicsSource(source) => {
-                if !self.graphics_hidden_sources.remove(&source) {
-                    self.graphics_hidden_sources.insert(source);
+                if let MovieState::Loaded(movie) = &mut self.movie {
+                    movie.tracked = tracked;
                 }
 
                 Ok(true)
             }
-            Msg::OpenImageModal => {
+        }
+    }
+
+    fn update_ui(&mut self, msg: UiMsg) -> Result<bool, Error> {
+        match msg {
+            UiMsg::ToggleCreditsExpanded => {
+                self.credits_expanded = !self.credits_expanded;
+                Ok(true)
+            }
+            UiMsg::OpenImageModal => {
                 self.image_modal = true;
                 self.settings_modal = false;
                 Ok(true)
             }
-            Msg::CloseImageModal => {
+            UiMsg::CloseImageModal => {
                 self.image_modal = false;
                 // Opened from Settings, so closing goes back there.
                 self.settings_modal = true;
                 Ok(true)
             }
-            Msg::OpenSettingsModal => {
+            UiMsg::OpenSettingsModal => {
                 self.settings_modal = true;
                 self.actions_expanded = false;
                 Ok(true)
             }
-            Msg::CloseSettingsModal => {
+            UiMsg::CloseSettingsModal => {
                 self.settings_modal = false;
                 Ok(true)
             }
-            Msg::OpenTranslations => {
+            UiMsg::OpenTranslations => {
                 self.translations_modal = true;
                 self.actions_expanded = false;
                 Ok(true)
             }
-            Msg::CloseTranslations => {
+            UiMsg::CloseTranslations => {
                 self.translations_modal = false;
                 Ok(true)
             }
-            Msg::OpenRemoteEditor => {
+            UiMsg::OpenRemoteEditor => {
                 self.remote_editor = true;
                 self.settings_modal = false;
                 self.actions_expanded = false;
                 Ok(true)
             }
-            Msg::CloseRemoteEditor => {
+            UiMsg::CloseRemoteEditor => {
                 self.remote_editor = false;
                 // Opened from Settings, so closing goes back there.
                 self.settings_modal = true;
                 Ok(true)
             }
-            Msg::AddRemote(slug, remote) => {
-                let id = ctx.props().movie_id;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._remote_req = self
-                        .channel
-                        .request()
-                        .body(api::AddMovieRemoteRequest { id, slug, remote })
-                        .on_packet(ctx.link().callback(
-                            |r: Result<ws::Packet<api::AddMovieRemote>, ws::Error>| {
-                                Msg::RemoteDone(r.map(|_| ()))
-                            },
-                        ))
-                        .send();
-                }
-
-                Ok(false)
-            }
-            Msg::EditRemote(remote_id, slug, remote) => {
-                let id = ctx.props().movie_id;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._remote_req = self
-                        .channel
-                        .request()
-                        .body(api::UpdateMovieRemoteRequest {
-                            id,
-                            remote_id,
-                            slug,
-                            remote,
-                        })
-                        .on_packet(ctx.link().callback(
-                            |r: Result<ws::Packet<api::UpdateMovieRemote>, ws::Error>| {
-                                Msg::RemoteDone(r.map(|_| ()))
-                            },
-                        ))
-                        .send();
-                }
-
-                Ok(false)
-            }
-            Msg::RemoveRemote(remote_id) => {
-                let id = ctx.props().movie_id;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._remote_req = self
-                        .channel
-                        .request()
-                        .body(api::RemoveMovieRemoteRequest { id, remote_id })
-                        .on_packet(ctx.link().callback(
-                            |r: Result<ws::Packet<api::RemoveMovieRemote>, ws::Error>| {
-                                Msg::RemoteDone(r.map(|_| ()))
-                            },
-                        ))
-                        .send();
-                }
-
-                Ok(false)
-            }
-            Msg::PurgeRemoteCache(remote_id) => {
-                let id = ctx.props().movie_id;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._remote_req = self
-                        .channel
-                        .request()
-                        .body(api::PurgeMovieRemoteCacheRequest { id, remote_id })
-                        .on_packet(ctx.link().callback(
-                            |r: Result<ws::Packet<api::PurgeMovieRemoteCache>, ws::Error>| {
-                                Msg::RemoteDone(r.map(|_| ()))
-                            },
-                        ))
-                        .send();
-                }
-
-                Ok(false)
-            }
-            Msg::RemoteDone(result) => {
-                result.context(Message::EditingRemotes)?;
-                self.load_movie(ctx);
-                Ok(false)
-            }
-            Msg::SetTime(time) => {
-                self.time = time;
-                Ok(true)
-            }
-            Msg::ToggleActionsExpanded => {
+            UiMsg::ToggleActionsExpanded => {
                 self.actions_expanded = !self.actions_expanded;
                 Ok(true)
             }
-            Msg::ToggleDetailedActionsExpanded => {
+            UiMsg::ToggleDetailedActionsExpanded => {
                 self.detailed_expand = !self.detailed_expand;
                 Ok(true)
             }
-            Msg::ToggleOpenWatched => {
+            UiMsg::ToggleOpenWatched => {
                 self.open_watched = !self.open_watched;
                 Ok(true)
             }
-            Msg::ToggleOpenReleases => {
+            UiMsg::ToggleOpenReleases => {
                 self.open_releases = !self.open_releases;
                 Ok(true)
             }
@@ -947,21 +783,11 @@ impl MovieDetail {
     }
 
     fn update_graphics(&mut self) {
-        self.graphics.clear();
-        self.present.clear();
-
-        if let MovieState::Loaded(movie) = &self.movie {
-            for i in &movie.images {
-                self.graphics.entry(i.kind).or_default().push(ImageItem {
-                    selected: movie.is_selected(i.kind, i.image.key()),
-                    id: i.id,
-                    kind: i.kind,
-                    source: i.source,
-                    image: i.image.clone(),
-                });
-
-                self.present.insert(i.source);
-            }
+        match &self.movie {
+            MovieState::Loaded(movie) => self
+                .graphics
+                .set(&movie.images, |kind, key| movie.is_selected(kind, key)),
+            _ => self.graphics.clear(),
         }
     }
 
@@ -976,7 +802,7 @@ impl MovieDetail {
             .body(api::GetMovieRequest {
                 id: ctx.props().movie_id,
             })
-            .on_packet(ctx.link().callback(Msg::MovieLoaded))
+            .on_packet(ctx.link().callback(LoadMsg::Movie))
             .send();
     }
 
@@ -991,7 +817,7 @@ impl MovieDetail {
             .body(api::ListCreditsRequest {
                 owner: api::CreditOwner::Movie(ctx.props().movie_id),
             })
-            .on_packet(ctx.link().callback(Msg::CreditsLoaded))
+            .on_packet(ctx.link().callback(LoadMsg::Credits))
             .send();
     }
 
@@ -1020,7 +846,7 @@ impl MovieDetail {
                 }
 
                 if self.credits.len() > CAP {
-                    <Button icon={if self.credits_expanded { "chevron-up" } else { "chevron-down" }} label={if self.credits_expanded { "Show fewer" } else { "Show all cast" }} title={if self.credits_expanded { "Show fewer cast" } else { "Show all cast" }} class="credits-toggle" expanded={Some(self.credits_expanded)} onclick={ctx.link().callback(|_| Msg::ToggleCreditsExpanded)} />
+                    <Button icon={if self.credits_expanded { "chevron-up" } else { "chevron-down" }} label={if self.credits_expanded { "Show fewer" } else { "Show all cast" }} title={if self.credits_expanded { "Show fewer cast" } else { "Show all cast" }} class="credits-toggle" expanded={Some(self.credits_expanded)} onclick={ctx.link().callback(|_| UiMsg::ToggleCreditsExpanded)} />
                 }
             </section>
         }
@@ -1059,7 +885,7 @@ impl MovieDetail {
             .body(api::ListWatchedRequest {
                 kind: api::WatchedKind::Movie { movie },
             })
-            .on_packet(ctx.link().callback(Msg::WatchedLoaded))
+            .on_packet(ctx.link().callback(LoadMsg::Watched))
             .send();
     }
 
@@ -1072,7 +898,7 @@ impl MovieDetail {
             .channel
             .request()
             .body(api::GetPreferencesRequest)
-            .on_packet(ctx.link().callback(Msg::ConfigLoaded))
+            .on_packet(ctx.link().callback(LoadMsg::Config))
             .send();
     }
 
@@ -1112,29 +938,29 @@ impl MovieDetail {
                     </div>
 
                     <div class="toolbar-toggle">
-                        <Button icon={if self.actions_expanded { "ellipsis-horizontal" } else { "bars-3" }} title="Actions" expanded={Some(self.actions_expanded)} onclick={link.callback(|_| Msg::ToggleActionsExpanded)} />
+                        <Button icon={if self.actions_expanded { "ellipsis-horizontal" } else { "bars-3" }} title="Actions" expanded={Some(self.actions_expanded)} onclick={link.callback(|_| UiMsg::ToggleActionsExpanded)} />
                     </div>
 
                     <div class={classes!("toolbar-dropdown", (!self.actions_expanded).then_some("desktop-only"))}>
                         <div class="desktop-row mobile-column desktop-input-group">
-                            <Tracked kind="movie" tracked={movie.tracked} ontoggle={link.callback(Msg::SetTracked)} />
+                            <Tracked kind="movie" tracked={movie.tracked} ontoggle={link.callback(ActionMsg::SetTracked)} />
 
                             if !movie.remotes.is_empty() {
-                                <Button icon="arrow-path" spin={self.syncing} onclick={link.callback(|_| Msg::SyncMovie)} title="Sync now" text="Sync" />
+                                <Button icon="arrow-path" spin={self.syncing} onclick={link.callback(|_| ActionMsg::SyncMovie)} title="Sync now" text="Sync" />
                             }
 
-                            <Button icon="language" title="Translations" text="Translations" onclick={link.callback(|_| Msg::OpenTranslations)} />
+                            <Button icon="language" title="Translations" text="Translations" onclick={link.callback(|_| UiMsg::OpenTranslations)} />
 
-                            <Button icon="cog-6-tooth" title="Settings" text="Settings" onclick={link.callback(|_| Msg::OpenSettingsModal)} />
+                            <Button icon="cog-6-tooth" title="Settings" text="Settings" onclick={link.callback(|_| UiMsg::OpenSettingsModal)} />
 
                             if crate::is_admin(ctx) {
-                                <Button node_ref={self.remove_anchor.clone()} icon="trash" variant={Variant::Danger} class="detached" title="Remove movie" text="Remove" expanded={Some(self.confirm_remove)} haspopup="dialog" onclick={link.callback(|_| Msg::ConfirmRemove)} />
+                                <Button node_ref={self.remove_anchor.clone()} icon="trash" variant={Variant::Danger} class="detached" title="Remove movie" text="Remove" expanded={Some(self.confirm_remove)} haspopup="dialog" onclick={link.callback(|_| ActionMsg::ConfirmRemove)} />
 
                                 if self.confirm_remove {
-                                    <ContextMenu prompt="Remove movie" label={movie.strings.title().map(str::to_owned)} anchor={self.remove_anchor.clone()} on_close={link.callback(|_| Msg::CancelRemove)}>
+                                    <ContextMenu prompt="Remove movie" label={movie.strings.title().map(str::to_owned)} anchor={self.remove_anchor.clone()} on_close={link.callback(|_| ActionMsg::CancelRemove)}>
                                         <ConfirmDanger
-                                            on_confirm={link.callback(|_| Msg::RemoveMovie)}
-                                            on_cancel={link.callback(|_| Msg::CancelRemove)}
+                                            on_confirm={link.callback(|_| ActionMsg::RemoveMovie)}
+                                            on_cancel={link.callback(|_| ActionMsg::CancelRemove)}
                                         />
                                     </ContextMenu>
                                 }
@@ -1180,7 +1006,7 @@ impl MovieDetail {
 
         let release_preset = release_at.map(|ts| TimePreset::at("calendar", "Released", ts));
 
-        let on_remove_next = link.callback(move |_| Msg::OnRemoveNext);
+        let on_remove_next = link.callback(move |_| WatchMsg::OnRemoveNext);
 
         html! {
             <>
@@ -1243,31 +1069,31 @@ impl MovieDetail {
                                 </indicator>
 
                                 <div class="toolbar-toggle">
-                                    <Button icon={if self.detailed_expand { "ellipsis-horizontal" } else { "bars-3" }} title="Watch actions" onclick={link.callback(move |_| Msg::ToggleDetailedActionsExpanded)} />
+                                    <Button icon={if self.detailed_expand { "ellipsis-horizontal" } else { "bars-3" }} title="Watch actions" onclick={link.callback(move |_| UiMsg::ToggleDetailedActionsExpanded)} />
                                 </div>
 
                                 <div class={classes!("toolbar-dropdown", "desktop-input-group", (!self.detailed_expand).then_some("desktop-only"))}>
-                                    <MarkTimeMenu quick=true class="primary" icon="check" title="Mark watched" prompt="When did you watch the movie?" preset={watched_preset.clone()} on_confirm={link.callback(Msg::MarkWatched)} text="Mark watched" />
+                                    <MarkTimeMenu quick=true class="primary" icon="check" title="Mark watched" prompt="When did you watch the movie?" preset={watched_preset.clone()} on_confirm={link.callback(WatchMsg::MarkWatched)} text="Mark watched" />
 
                                     if movie.pending.is_some() {
                                         <Button icon="bookmark" variant={Variant::Primary} title="Next movie" text="Next movie" onclick={on_remove_next} />
                                     } else {
-                                        <MarkTimeMenu class="has-text" title="Not next movie" prompt="When do you want to watch the movie?" preset={release_preset.clone()} on_confirm={link.callback(Msg::OnWatchNext)}>
+                                        <MarkTimeMenu class="has-text" title="Not next movie" prompt="When do you want to watch the movie?" preset={release_preset.clone()} on_confirm={link.callback(WatchMsg::OnWatchNext)}>
                                             <span class="icon bookmark-slash" aria-hidden="true" />
                                             <span class="mobile-only">{"Not next movie"}</span>
                                         </MarkTimeMenu>
                                     }
 
-                                    <Button icon="clock" title="Watch history" text="Watch history" onclick={link.callback(|_| Msg::ToggleOpenWatched)} />
+                                    <Button icon="clock" title="Watch history" text="Watch history" onclick={link.callback(|_| UiMsg::ToggleOpenWatched)} />
 
-                                    <Button icon="calendar" title="Releases" text="Releases" onclick={link.callback(|_| Msg::ToggleOpenReleases)} />
+                                    <Button icon="calendar" title="Releases" text="Releases" onclick={link.callback(|_| UiMsg::ToggleOpenReleases)} />
                                 </div>
                             </div>
                         </div>
                     </div>
 
                     if self.open_watched {
-                        <Modal icon="clock" title="Watch history" on_close={link.callback(|_| Msg::ToggleOpenWatched)}>
+                        <Modal icon="clock" title="Watch history" on_close={link.callback(|_| UiMsg::ToggleOpenWatched)}>
                             {self.view_watched(ctx, movie.id)}
                         </Modal>
                     }
@@ -1276,7 +1102,7 @@ impl MovieDetail {
                         <ReleaseModal
                             target={ReleaseTarget::Movie(movie.id)}
                             title="Releases"
-                            on_close={link.callback(|_| Msg::ToggleOpenReleases)}
+                            on_close={link.callback(|_| UiMsg::ToggleOpenReleases)}
                         />
                     }
 
@@ -1291,16 +1117,16 @@ impl MovieDetail {
             if self.translations_modal {
                 <TranslationsModal
                     target={api::TranslationTarget::Movie(movie.id)}
-                    on_close={link.callback(|_| Msg::CloseTranslations)}
+                    on_close={link.callback(|_| UiMsg::CloseTranslations)}
                 />
             }
 
             if self.settings_modal {
                 <MediaSettingsModal
                     target={SettingsTarget::Movie(movie.id)}
-                    on_edit_graphics={link.callback(|_| Msg::OpenImageModal)}
-                    on_edit_remotes={link.callback(|_| Msg::OpenRemoteEditor)}
-                    on_close={link.callback(|_| Msg::CloseSettingsModal)}
+                    on_edit_graphics={link.callback(|_| UiMsg::OpenImageModal)}
+                    on_edit_remotes={link.callback(|_| UiMsg::OpenRemoteEditor)}
+                    on_close={link.callback(|_| UiMsg::CloseSettingsModal)}
                 />
             }
 
@@ -1309,15 +1135,15 @@ impl MovieDetail {
                     title={movie.strings.title().unwrap_or("Untitled Movie").to_owned()}
                     kind={RemoteSourceKind::Movie}
                     remotes={movie.remotes.clone()}
-                    on_add={link.callback(|(slug, remote)| Msg::AddRemote(slug, remote))}
-                    on_edit={link.callback(|(id, slug, remote)| Msg::EditRemote(id, slug, remote))}
-                    on_remove={link.callback(Msg::RemoveRemote)}
-                    on_purge_cache={link.callback(Msg::PurgeRemoteCache)}
-                    on_set_enabled={link.callback(|(id, enabled)| Msg::SetRemoteEnabled(id, enabled))}
-                    on_reorder={link.callback(Msg::ReorderRemotes)}
-                    on_set_sync_kinds={link.callback(|(id, kinds)| Msg::SetRemoteSyncKinds(id, kinds))}
+                    on_add={link.callback(|(slug, remote)| RemoteMsg::AddRemote(slug, remote))}
+                    on_edit={link.callback(|(id, slug, remote)| RemoteMsg::EditRemote(id, slug, remote))}
+                    on_remove={link.callback(RemoteMsg::RemoveRemote)}
+                    on_purge_cache={link.callback(RemoteMsg::PurgeRemoteCache)}
+                    on_set_enabled={link.callback(|(id, enabled)| RemoteMsg::SetRemoteEnabled(id, enabled))}
+                    on_reorder={link.callback(RemoteMsg::ReorderRemotes)}
+                    on_set_sync_kinds={link.callback(|(id, kinds)| RemoteMsg::SetRemoteSyncKinds(id, kinds))}
                     global_sync_kinds={self.global_sync_kinds.clone()}
-                    on_close={link.callback(|_| Msg::CloseRemoteEditor)}
+                    on_close={link.callback(|_| UiMsg::CloseRemoteEditor)}
                 />
             }
             </>
@@ -1339,13 +1165,13 @@ impl MovieDetail {
                             <span class="watch-age">{w.watched.timestamp.relative_to(self.time.now())}</span>
 
                             <div class="watch-actions">
-                            <Button node_ref={w.remove_watch_anchor.clone()} icon="trash" label="Remove" title="Remove" expanded={Some(self.confirm_remove_watch == Some(wid))} haspopup="dialog" onclick={link.callback(move |_| Msg::ConfirmRemoveWatch(wid))} />
+                            <Button node_ref={w.remove_watch_anchor.clone()} icon="trash" label="Remove" title="Remove" expanded={Some(self.confirm_remove_watch == Some(wid))} haspopup="dialog" onclick={link.callback(move |_| WatchMsg::ConfirmRemoveWatch(wid))} />
 
                             if self.confirm_remove_watch == Some(wid) {
-                                <ContextMenu prompt="Remove watch at" label={w.watched.timestamp.human_date_time(self.time.clone())} anchor={w.remove_watch_anchor.clone()} on_close={link.callback(|_| Msg::CancelRemoveWatch)}>
+                                <ContextMenu prompt="Remove watch at" label={w.watched.timestamp.human_date_time(self.time.clone())} anchor={w.remove_watch_anchor.clone()} on_close={link.callback(|_| WatchMsg::CancelRemoveWatch)}>
                                     <ConfirmDanger
-                                        on_confirm={link.callback(move |_| Msg::RemoveWatched(wid, kind))}
-                                        on_cancel={link.callback(|_| Msg::CancelRemoveWatch)}
+                                        on_confirm={link.callback(move |_| WatchMsg::RemoveWatched(wid, kind))}
+                                        on_cancel={link.callback(|_| WatchMsg::CancelRemoveWatch)}
                                     />
                                 </ContextMenu>
                             }
@@ -1358,45 +1184,15 @@ impl MovieDetail {
     }
 
     fn view_image_modal(&self, ctx: &Context<Self>) -> Html {
-        let link = ctx.link();
-
         let user_selected = |kind: api::ImageKind| match &self.movie {
             MovieState::Loaded(movie) => movie.is_user_selected(kind),
             _ => false,
         };
 
-        let hidden = self.graphics_hidden_sources.clone();
-
-        html! {
-            <Modal icon="photo" title="Graphics" on_close={link.callback(|_| Msg::CloseImageModal)}>
-                <div class="row desktop-align-end">
-                    <GraphicsSourceFilter present={self.present.clone()} hidden={hidden.clone()} on_toggle={link.callback(Msg::ToggleGraphicsSource)} />
-                    <Button icon="sparkles" variant={Variant::Primary} title="Pick the best graphic for every kind" label="Pick best (all)" onclick={link.callback(|_| Msg::PickBestImage(None))} />
-                </div>
-                {for self.graphics.iter().filter_map(|(&kind, items)| {
-                    let items: Vec<ImageItem> = items
-                        .iter()
-                        .filter(|item| !hidden.contains(&item.source))
-                        .cloned()
-                        .collect();
-
-                    if items.is_empty() {
-                        return None;
-                    }
-
-                    Some(html! {
-                        <ImageGallery
-                            {items}
-                            kind={kind}
-                            user_selected={user_selected(kind)}
-                            on_select={link.callback(move |id| Msg::SelectImage(kind, id))}
-                            on_clear={link.callback(move |_| Msg::ClearSelectedImage(kind))}
-                            on_pick_best={Some(link.callback(move |_| Msg::PickBestImage(Some(kind))))}
-                            on_reset={Some(link.callback(move |_| Msg::ResetImageSelection(kind)))}
-                        />
-                    })
-                })}
-            </Modal>
-        }
+        self.graphics.view_modal(
+            ctx.link(),
+            user_selected,
+            ctx.link().callback(|_| UiMsg::CloseImageModal),
+        )
     }
 }

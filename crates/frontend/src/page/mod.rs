@@ -6,6 +6,7 @@
 mod account;
 mod calendar;
 mod dashboard;
+mod detail;
 mod login;
 mod media_list;
 mod movie_detail;
