@@ -155,3 +155,61 @@ pub async fn known_for_lists_each_title_once(driver: &mut TestDriver, _: &mut Tr
         )
         .await
 }
+
+/// A person's remotes are added, switched off and removed in the Remotes
+/// editor, and the switch holds after the page reloads.
+pub async fn edits_a_persons_remotes(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    driver
+        .find_one_by(".toolbar-item[title=People]")
+        .await?
+        .click()
+        .await?;
+    driver.find_nth(".person-card", 0).await?.click().await?;
+    driver.find_one_by(".person-detail-info h1").await?;
+
+    open_remote_editor(driver).await?;
+
+    driver
+        .find_one_by(".modal input[aria-label=Identifier]")
+        .await?
+        .send_keys("12345")
+        .await?;
+    driver
+        .find_one_by(".modal [title='Add identifier']")
+        .await?
+        .click()
+        .await?;
+    driver.wait_texts(".modal .remote-id", ["12345"]).await?;
+
+    let switch = ".modal .remote [title='Enable this remote']";
+    driver.find_one_by(switch).await?.click().await?;
+    driver.wait_texts(switch, ["Disabled"]).await?;
+
+    let url = driver.webdriver().current_url().await?;
+    driver.webdriver().goto(url.as_str()).await?;
+    driver.find_one_by(".person-detail-info h1").await?;
+    open_remote_editor(driver).await?;
+    driver.wait_texts(switch, ["Disabled"]).await?;
+
+    driver
+        .find_one_by(".modal .remote [title='Remove identifier']")
+        .await?
+        .click()
+        .await?;
+    driver.find_one_by("[title='Yes']").await?.click().await?;
+    driver.wait_count(".modal .remote", 0).await
+}
+
+async fn open_remote_editor(driver: &mut TestDriver) -> Result<()> {
+    driver
+        .find_one_by("[title='Settings']:not(#toolbar *)")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by(".modal [title='Edit remotes']")
+        .await?
+        .click()
+        .await?;
+    driver.wait_texts(".modal h2", ["Remotes"]).await
+}

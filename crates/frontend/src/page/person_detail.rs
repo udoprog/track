@@ -2,6 +2,7 @@ use api::TimeInfo;
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
+use super::detail::{RemoteMsg, RemoteUpdate, Remotes};
 use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
@@ -22,6 +23,7 @@ pub(crate) struct PersonDetail {
     channel: ws::Channel,
     person: PersonState,
     credits: Vec<api::PersonCredit>,
+    remotes: Remotes,
     remote_editor: bool,
     settings: bool,
     confirming_delete: bool,
@@ -37,7 +39,6 @@ pub(crate) struct PersonDetail {
     _person_req: ws::Request,
     _credits_req: ws::Request,
     _config_req: ws::Request,
-    _remote_req: ws::Request,
     _sync_req: ws::Request,
     _delete_req: ws::Request,
 }
@@ -59,14 +60,14 @@ pub(crate) enum Msg {
     SetTime(TimeInfo),
     OpenRemoteEditor,
     CloseRemoteEditor,
-    AddRemote(Option<String>, api::Remote),
-    EditRemote(api::RemoteId, Option<String>, api::Remote),
-    RemoveRemote(api::RemoteId),
-    PurgeRemoteCache(api::RemoteId),
-    SetRemoteEnabled(api::RemoteId, bool),
-    SetRemoteSyncKinds(api::RemoteId, Option<api::SyncKindSet>),
-    ReorderRemotes(Vec<api::RemoteId>),
-    RemoteDone(Result<(), ws::Error>),
+    Remote(RemoteMsg),
+}
+
+impl From<RemoteMsg> for Msg {
+    #[inline]
+    fn from(msg: RemoteMsg) -> Self {
+        Msg::Remote(msg)
+    }
 }
 
 #[derive(Properties, PartialEq)]
@@ -106,6 +107,7 @@ impl Component for PersonDetail {
             channel: ws::Channel::default(),
             person: PersonState::Loading,
             credits: Vec::new(),
+            remotes: Remotes::default(),
             remote_editor: false,
             settings: false,
             confirming_delete: false,
@@ -121,7 +123,6 @@ impl Component for PersonDetail {
             _person_req: ws::Request::default(),
             _credits_req: ws::Request::default(),
             _config_req: ws::Request::default(),
-            _remote_req: ws::Request::default(),
             _sync_req: ws::Request::default(),
             _delete_req: ws::Request::default(),
         }
@@ -168,13 +169,13 @@ impl Component for PersonDetail {
                         title={person.name.title().unwrap_or("Unknown").to_owned()}
                         kind={RemoteSourceKind::Person}
                         remotes={person.remotes.clone()}
-                        on_add={ctx.link().callback(|(slug, remote)| Msg::AddRemote(slug, remote))}
-                        on_edit={ctx.link().callback(|(id, slug, remote)| Msg::EditRemote(id, slug, remote))}
-                        on_remove={ctx.link().callback(Msg::RemoveRemote)}
-                        on_purge_cache={ctx.link().callback(Msg::PurgeRemoteCache)}
-                        on_set_enabled={ctx.link().callback(|(id, enabled)| Msg::SetRemoteEnabled(id, enabled))}
-                        on_reorder={ctx.link().callback(Msg::ReorderRemotes)}
-                        on_set_sync_kinds={ctx.link().callback(|(id, kinds)| Msg::SetRemoteSyncKinds(id, kinds))}
+                        on_add={ctx.link().callback(|(slug, remote)| RemoteMsg::AddRemote(slug, remote))}
+                        on_edit={ctx.link().callback(|(id, slug, remote)| RemoteMsg::EditRemote(id, slug, remote))}
+                        on_remove={ctx.link().callback(RemoteMsg::RemoveRemote)}
+                        on_purge_cache={ctx.link().callback(RemoteMsg::PurgeRemoteCache)}
+                        on_set_enabled={ctx.link().callback(|(id, enabled)| RemoteMsg::SetRemoteEnabled(id, enabled))}
+                        on_reorder={ctx.link().callback(RemoteMsg::ReorderRemotes)}
+                        on_set_sync_kinds={ctx.link().callback(|(id, kinds)| RemoteMsg::SetRemoteSyncKinds(id, kinds))}
                         global_sync_kinds={self.global_sync_kinds.clone()}
                         on_close={ctx.link().callback(|_| Msg::CloseRemoteEditor)}
                     />
@@ -346,165 +347,25 @@ impl PersonDetail {
                 self.settings = true;
                 Ok(true)
             }
-            Msg::AddRemote(slug, remote) => {
-                let id = ctx.props().person_id;
+            Msg::Remote(msg) => self.update_remote(ctx, msg),
+        }
+    }
 
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._remote_req = self
-                        .channel
-                        .request()
-                        .body(api::AddPersonRemoteRequest { id, slug, remote })
-                        .on_packet(ctx.link().callback(
-                            |r: Result<ws::Packet<api::AddPersonRemote>, ws::Error>| {
-                                Msg::RemoteDone(r.map(|_| ()))
-                            },
-                        ))
-                        .send();
-                }
+    fn update_remote(&mut self, ctx: &Context<Self>, msg: RemoteMsg) -> Result<bool, Error> {
+        let remotes = match &mut self.person {
+            PersonState::Loaded(person) => Some(&mut person.remotes),
+            _ => None,
+        };
 
-                Ok(false)
-            }
-            Msg::EditRemote(remote_id, slug, remote) => {
-                let id = ctx.props().person_id;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._remote_req = self
-                        .channel
-                        .request()
-                        .body(api::UpdatePersonRemoteRequest {
-                            id,
-                            remote_id,
-                            slug,
-                            remote,
-                        })
-                        .on_packet(ctx.link().callback(
-                            |r: Result<ws::Packet<api::UpdatePersonRemote>, ws::Error>| {
-                                Msg::RemoteDone(r.map(|_| ()))
-                            },
-                        ))
-                        .send();
-                }
-
-                Ok(false)
-            }
-            Msg::RemoveRemote(remote_id) => {
-                let id = ctx.props().person_id;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._remote_req = self
-                        .channel
-                        .request()
-                        .body(api::RemovePersonRemoteRequest { id, remote_id })
-                        .on_packet(ctx.link().callback(
-                            |r: Result<ws::Packet<api::RemovePersonRemote>, ws::Error>| {
-                                Msg::RemoteDone(r.map(|_| ()))
-                            },
-                        ))
-                        .send();
-                }
-
-                Ok(false)
-            }
-            Msg::PurgeRemoteCache(remote_id) => {
-                let id = ctx.props().person_id;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._remote_req = self
-                        .channel
-                        .request()
-                        .body(api::PurgePersonRemoteCacheRequest { id, remote_id })
-                        .on_packet(ctx.link().callback(
-                            |r: Result<ws::Packet<api::PurgePersonRemoteCache>, ws::Error>| {
-                                Msg::RemoteDone(r.map(|_| ()))
-                            },
-                        ))
-                        .send();
-                }
-
-                Ok(false)
-            }
-            Msg::SetRemoteEnabled(remote_id, enabled) => {
-                if let PersonState::Loaded(person) = &mut self.person
-                    && let Some(entry) = person.remotes.iter_mut().find(|e| e.id == remote_id)
-                {
-                    entry.enabled = enabled;
-                }
-
-                let id = ctx.props().person_id;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._remote_req = self
-                        .channel
-                        .request()
-                        .body(api::SetPersonRemoteEnabledRequest {
-                            id,
-                            remote_id,
-                            enabled,
-                        })
-                        .on_packet(ctx.link().callback(
-                            |r: Result<ws::Packet<api::SetPersonRemoteEnabled>, ws::Error>| {
-                                Msg::RemoteDone(r.map(|_| ()))
-                            },
-                        ))
-                        .send();
-                }
-
-                Ok(true)
-            }
-            Msg::SetRemoteSyncKinds(remote_id, sync_kinds) => {
-                if let PersonState::Loaded(person) = &mut self.person
-                    && let Some(entry) = person.remotes.iter_mut().find(|e| e.id == remote_id)
-                {
-                    entry.sync_kinds = sync_kinds;
-                }
-
-                let id = ctx.props().person_id;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._remote_req = self
-                        .channel
-                        .request()
-                        .body(api::SetPersonRemoteSyncKindsRequest {
-                            id,
-                            remote_id,
-                            sync_kinds,
-                        })
-                        .on_packet(ctx.link().callback(
-                            |r: Result<ws::Packet<api::SetPersonRemoteSyncKinds>, ws::Error>| {
-                                Msg::RemoteDone(r.map(|_| ()))
-                            },
-                        ))
-                        .send();
-                }
-
-                Ok(true)
-            }
-            Msg::ReorderRemotes(remote_ids) => {
-                if let PersonState::Loaded(person) = &mut self.person {
-                    person
-                        .remotes
-                        .sort_by_key(|e| remote_ids.iter().position(|id| *id == e.id));
-                }
-
-                let id = ctx.props().person_id;
-
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._remote_req = self
-                        .channel
-                        .request()
-                        .body(api::ReorderPersonRemotesRequest { id, remote_ids })
-                        .on_packet(ctx.link().callback(
-                            |r: Result<ws::Packet<api::ReorderPersonRemotes>, ws::Error>| {
-                                Msg::RemoteDone(r.map(|_| ()))
-                            },
-                        ))
-                        .send();
-                }
-
-                Ok(true)
-            }
-            Msg::RemoteDone(result) => {
-                result.context(Message::EditingRemotes)?;
+        match self.remotes.update(
+            ctx.link(),
+            &self.channel,
+            ctx.props().person_id,
+            remotes,
+            msg,
+        )? {
+            RemoteUpdate::Render(render) => Ok(render),
+            RemoteUpdate::Reload => {
                 self.load(ctx);
                 Ok(false)
             }

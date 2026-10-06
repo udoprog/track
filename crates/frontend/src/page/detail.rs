@@ -1,5 +1,5 @@
 //! Message handling shared by the show and movie detail pages: the owner's
-//! image selection and its remotes.
+//! image selection and its remotes. The person detail page shares the remotes.
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
@@ -385,6 +385,68 @@ impl RemoteOwner for api::MovieId {
             RemoteOp::PurgeCache(remote_id) => send(
                 channel,
                 api::PurgeMovieRemoteCacheRequest { id, remote_id },
+                done,
+            ),
+        }
+    }
+}
+
+impl RemoteOwner for api::PersonId {
+    fn send(
+        self,
+        channel: &ws::Channel,
+        op: RemoteOp,
+        done: Callback<Result<(), ws::Error>>,
+    ) -> ws::Request {
+        let id = self;
+
+        match op {
+            RemoteOp::SetEnabled(remote_id, enabled) => send(
+                channel,
+                api::SetPersonRemoteEnabledRequest {
+                    id,
+                    remote_id,
+                    enabled,
+                },
+                done,
+            ),
+            RemoteOp::SetSyncKinds(remote_id, sync_kinds) => send(
+                channel,
+                api::SetPersonRemoteSyncKindsRequest {
+                    id,
+                    remote_id,
+                    sync_kinds,
+                },
+                done,
+            ),
+            RemoteOp::Reorder(remote_ids) => send(
+                channel,
+                api::ReorderPersonRemotesRequest { id, remote_ids },
+                done,
+            ),
+            RemoteOp::Add(slug, remote) => send(
+                channel,
+                api::AddPersonRemoteRequest { id, slug, remote },
+                done,
+            ),
+            RemoteOp::Edit(remote_id, slug, remote) => send(
+                channel,
+                api::UpdatePersonRemoteRequest {
+                    id,
+                    remote_id,
+                    slug,
+                    remote,
+                },
+                done,
+            ),
+            RemoteOp::Remove(remote_id) => send(
+                channel,
+                api::RemovePersonRemoteRequest { id, remote_id },
+                done,
+            ),
+            RemoteOp::PurgeCache(remote_id) => send(
+                channel,
+                api::PurgePersonRemoteCacheRequest { id, remote_id },
                 done,
             ),
         }
