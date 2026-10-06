@@ -1,6 +1,7 @@
 //! Session authentication and Cloudflare Access sign-in eligibility.
 
 use std::collections::HashMap;
+use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -71,7 +72,12 @@ pub(crate) struct Auth {
 }
 
 impl Auth {
-    pub(crate) fn new(key: [u8; 32], http: reqwest::Client, config: &api::Config) -> Self {
+    pub(crate) fn new(
+        key: [u8; 32],
+        http: reqwest::Client,
+        config: &api::Config,
+        trusted_proxies: &[IpAddr],
+    ) -> Self {
         let (revoke, _) = broadcast::channel(16);
 
         let auth = Self {
@@ -84,7 +90,7 @@ impl Auth {
                 }),
                 revoke,
                 warned: Mutex::new(HashMap::new()),
-                throttle: LoginThrottle::default(),
+                throttle: LoginThrottle::new(trusted_proxies),
             }),
         };
 

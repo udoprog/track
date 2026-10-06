@@ -1,7 +1,7 @@
 //! Signing in, sessions, login links and request authorization, against a
 //! server on a fresh database.
 
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -34,6 +34,10 @@ struct Server {
 
 impl Server {
     async fn start(config: api::Config) -> Result<Self> {
+        Self::start_trusting(config, &[]).await
+    }
+
+    async fn start_trusting(config: api::Config, trusted_proxies: &[IpAddr]) -> Result<Self> {
         let dir = tempfile::tempdir()?;
         let db = Database::open(dir.path().join("track.db"), OpenMode::Bulk, 1)?;
         db.save_config(&config).await?;
@@ -53,7 +57,7 @@ impl Server {
             config_changed: Arc::new(Notify::new()),
             delay: None,
             shutdown: Shutdown::new(),
-            auth: Auth::new(key, http, &config),
+            auth: Auth::new(key, http, &config, trusted_proxies),
         };
 
         let listener = TcpListener::bind("127.0.0.1:0").await?;
@@ -368,6 +372,41 @@ async fn failed_logins_are_throttled() -> Result<()> {
         .await?;
     assert_eq!(response.status, StatusCode::TOO_MANY_REQUESTS);
     assert!(response.cookie.is_none());
+    Ok(())
+}
+
+/// Fails 30 sign-ins as distinct logins, each claiming a distinct forwarded
+/// address, then returns the status of one more.
+async fn forwarded_attempts(server: &Server) -> Result<StatusCode> {
+    let mut status = StatusCode::OK;
+
+    for i in 0..=30 {
+        let response = server
+            .client
+            .post(format!("{}/api/auth/login", server.url))
+            .header("content-type", "application/json")
+            .header("x-forwarded-for", format!("198.51.100.{i}"))
+            .body(serde_json::to_vec(
+                &json!({"login": format!("user{i}"), "password": "wrong"}),
+            )?)
+            .send()
+            .await?;
+        status = response.status();
+    }
+
+    Ok(status)
+}
+
+#[tokio::test]
+async fn forwarded_addresses_need_a_trusted_proxy() -> Result<()> {
+    let server = Server::start(api::Config::default()).await?;
+    assert_eq!(
+        forwarded_attempts(&server).await?,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+
+    let server = Server::start_trusting(api::Config::default(), &["127.0.0.1".parse()?]).await?;
+    assert_eq!(forwarded_attempts(&server).await?, StatusCode::UNAUTHORIZED);
     Ok(())
 }
 

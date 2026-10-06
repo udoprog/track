@@ -81,8 +81,9 @@ pub(crate) async fn login(
     Json(body): Json<LoginBody>,
 ) -> Result<Response, Error> {
     let throttle = state.auth.throttle();
+    let address = throttle.client_address(peer.ip(), &headers);
 
-    if !throttle.allows(peer.ip(), &body.login, Instant::now()) {
+    if !throttle.allows(address, &body.login, Instant::now()) {
         return Err(Error::TooManyRequests);
     }
 
@@ -101,7 +102,7 @@ pub(crate) async fn login(
     .map_err(anyhow::Error::from)?;
 
     let Some(user) = user.filter(|_| verified) else {
-        throttle.fail(peer.ip(), &body.login, Instant::now());
+        throttle.fail(address, &body.login, Instant::now());
         return Err(Error::Unauthorized);
     };
 

@@ -1,6 +1,6 @@
 use core::pin::pin;
 
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -49,6 +49,12 @@ pub struct Args {
     #[arg(long, default_value = "127.0.0.1:3000")]
     bind: SocketAddr,
 
+    /// Address of a reverse proxy (such as a Cloudflare tunnel) whose
+    /// `CF-Connecting-IP` or `X-Forwarded-For` header names the client when
+    /// throttling failed sign-ins. Repeat for several proxies.
+    #[arg(long, value_name = "IP")]
+    trusted_proxy: Vec<IpAddr>,
+
     /// Inject an artificial random delay into every websocket request, given as
     /// a `MIN..MAX` millisecond range, to preview loading/skeleton states on a
     /// slow connection (e.g. `--delay 200..800`).
@@ -94,6 +100,7 @@ pub async fn server(args: Args, db: &Path, log: &[String]) -> Result<ExitCode> {
         &args.cache_dir,
         args.delay,
         args.dist.as_deref(),
+        &args.trusted_proxy,
         ctrl_c,
     )
     .await
@@ -116,6 +123,7 @@ pub async fn serve(
         cache_dir,
         None,
         dist,
+        &[],
         shutdown,
     )
     .await
@@ -128,6 +136,7 @@ async fn run(
     cache_dir: &Path,
     delay: Option<RandomDelay>,
     dist: Option<&Path>,
+    trusted_proxies: &[IpAddr],
     shutdown_signal: impl Future<Output = ()>,
 ) -> Result<ExitCode> {
     let db = Database::open(db, OpenMode::Normal, read_concurrency)
@@ -162,7 +171,7 @@ async fn run(
     remote.configure(&config)?;
 
     let session_key = db.session_key().await.context("Loading session key")?;
-    let auth = Auth::new(session_key, http.clone(), &config);
+    let auth = Auth::new(session_key, http.clone(), &config, trusted_proxies);
 
     let pending = PendingSystem::new(db.clone());
     let config_changed = Arc::new(Notify::new());

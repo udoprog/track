@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
 
+use axum::http::HeaderMap;
 use parking_lot::Mutex;
 
 /// Failures count for this long after the first one.
@@ -24,10 +25,49 @@ struct Failures {
 
 #[derive(Default)]
 pub(crate) struct LoginThrottle {
+    /// Peers whose forwarded client address headers are believed.
+    trusted_proxies: Vec<IpAddr>,
     failures: Mutex<HashMap<Key, Failures>>,
 }
 
 impl LoginThrottle {
+    pub(crate) fn new(trusted_proxies: &[IpAddr]) -> Self {
+        Self {
+            trusted_proxies: trusted_proxies.iter().map(|ip| ip.to_canonical()).collect(),
+            failures: Mutex::default(),
+        }
+    }
+
+    /// The address a request from `peer` is counted against: the forwarded
+    /// client address when `peer` is a trusted proxy, otherwise `peer` itself,
+    /// since anyone else can send these headers.
+    pub(crate) fn client_address(&self, peer: IpAddr, headers: &HeaderMap) -> IpAddr {
+        if !self.trusted_proxies.contains(&peer.to_canonical()) {
+            return peer;
+        }
+
+        let parse = |value: &str| value.trim().parse::<IpAddr>().ok();
+
+        let cloudflare = headers
+            .get("cf-connecting-ip")
+            .and_then(|v| v.to_str().ok())
+            .and_then(parse);
+
+        // The rightmost entry is the one the trusted proxy appended; entries
+        // to its left come from the client.
+        let forwarded = || {
+            headers
+                .get_all("x-forwarded-for")
+                .iter()
+                .next_back()
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.rsplit(',').next())
+                .and_then(parse)
+        };
+
+        cloudflare.or_else(forwarded).unwrap_or(peer)
+    }
+
     /// Whether a sign-in from `address` as `login` may be attempted.
     pub(crate) fn allows(&self, address: IpAddr, login: &str, now: Instant) -> bool {
         let failures = self.failures.lock();
@@ -121,5 +161,66 @@ mod tests {
         assert!(!throttle.allows(a, "x", now));
         assert!(!throttle.allows(b, "x", now));
         assert!(throttle.allows(c, "x", now));
+    }
+
+    fn headers(pairs: &[(&'static str, &'static str)]) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+
+        for (name, value) in pairs {
+            headers.append(*name, value.parse().unwrap());
+        }
+
+        headers
+    }
+
+    #[test]
+    fn untrusted_peer_headers_are_ignored() {
+        let peer: IpAddr = "192.0.2.1".parse().unwrap();
+        let spoofed = headers(&[
+            ("cf-connecting-ip", "198.51.100.7"),
+            ("x-forwarded-for", "198.51.100.8"),
+        ]);
+
+        let throttle = LoginThrottle::default();
+        assert_eq!(throttle.client_address(peer, &spoofed), peer);
+
+        let throttle = LoginThrottle::new(&["192.0.2.9".parse().unwrap()]);
+        assert_eq!(throttle.client_address(peer, &spoofed), peer);
+    }
+
+    #[test]
+    fn trusted_proxy_forwards_client_address() {
+        let proxy: IpAddr = "192.0.2.1".parse().unwrap();
+        let throttle = LoginThrottle::new(&[proxy]);
+        let ip = |s: &str| s.parse::<IpAddr>().unwrap();
+
+        let cf = headers(&[
+            ("cf-connecting-ip", " 198.51.100.7 "),
+            ("x-forwarded-for", "198.51.100.8"),
+        ]);
+        assert_eq!(throttle.client_address(proxy, &cf), ip("198.51.100.7"));
+
+        let xff = headers(&[
+            ("x-forwarded-for", "203.0.113.1, 198.51.100.8"),
+            ("x-forwarded-for", "203.0.113.2, 2001:db8::1"),
+        ]);
+        assert_eq!(throttle.client_address(proxy, &xff), ip("2001:db8::1"));
+
+        let invalid_cf = headers(&[
+            ("cf-connecting-ip", "nonsense"),
+            ("x-forwarded-for", "198.51.100.8"),
+        ]);
+        assert_eq!(
+            throttle.client_address(proxy, &invalid_cf),
+            ip("198.51.100.8")
+        );
+
+        let invalid = headers(&[("x-forwarded-for", "198.51.100.8, nonsense")]);
+        assert_eq!(throttle.client_address(proxy, &invalid), proxy);
+        assert_eq!(throttle.client_address(proxy, &HeaderMap::new()), proxy);
+
+        // A proxy connecting over IPv6 with a mapped IPv4 address still matches.
+        let mapped: IpAddr = "::ffff:192.0.2.1".parse().unwrap();
+        assert_eq!(throttle.client_address(mapped, &cf), ip("198.51.100.7"));
     }
 }
