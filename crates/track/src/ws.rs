@@ -130,6 +130,39 @@ fn requires_admin(id: api::Request) -> bool {
             | api::Request::GenerateLoginToken
             | api::Request::RevokeLoginToken
             | api::Request::RevokeUserAccess
+            | api::Request::AddShowRemote
+            | api::Request::RemoveShowRemote
+            | api::Request::UpdateShowRemote
+            | api::Request::SetShowRemoteEnabled
+            | api::Request::SetShowRemoteSyncKinds
+            | api::Request::ReorderShowRemotes
+            | api::Request::PurgeShowRemoteCache
+            | api::Request::PurgeEpisodeCache
+            | api::Request::SetShowAutoSync
+            | api::Request::SetShowAirDateFilters
+            | api::Request::AddMovieRemote
+            | api::Request::RemoveMovieRemote
+            | api::Request::UpdateMovieRemote
+            | api::Request::SetMovieRemoteEnabled
+            | api::Request::SetMovieRemoteSyncKinds
+            | api::Request::ReorderMovieRemotes
+            | api::Request::PurgeMovieRemoteCache
+            | api::Request::SetMovieAutoSync
+            | api::Request::SetMovieReleaseFilters
+            | api::Request::AddPersonRemote
+            | api::Request::RemovePersonRemote
+            | api::Request::UpdatePersonRemote
+            | api::Request::SetPersonRemoteEnabled
+            | api::Request::SetPersonRemoteSyncKinds
+            | api::Request::ReorderPersonRemotes
+            | api::Request::PurgePersonRemoteCache
+            | api::Request::SelectImage
+            | api::Request::ClearSelectedImage
+            | api::Request::PickBestImages
+            | api::Request::ResetImageSelection
+            | api::Request::SyncAll
+            | api::Request::RemoveTask
+            | api::Request::BumpTask
     )
 }
 
@@ -495,7 +528,7 @@ impl WsHandler {
                     .read::<api::RemovePersonRemoteRequest>()
                     .context("Expected a request payload")?;
 
-                self.db.remove_person_remote(req.remote_id).await?;
+                self.db.remove_person_remote(req.id, req.remote_id).await?;
 
                 self.broadcast_person_changed(
                     incoming.channel(),
@@ -512,7 +545,7 @@ impl WsHandler {
                     .context("Expected a request payload")?;
 
                 self.db
-                    .update_person_remote(req.remote_id, req.slug.as_deref(), &req.remote)
+                    .update_person_remote(req.id, req.remote_id, req.slug.as_deref(), &req.remote)
                     .await?;
 
                 self.broadcast_person_changed(
@@ -530,7 +563,7 @@ impl WsHandler {
                     .context("Expected a request payload")?;
 
                 self.db
-                    .set_person_remote_enabled(req.remote_id, req.enabled)
+                    .set_person_remote_enabled(req.id, req.remote_id, req.enabled)
                     .await?;
 
                 self.resync_person(incoming.channel(), req.id, "ws set person remote enabled")
@@ -543,7 +576,9 @@ impl WsHandler {
                     .read::<api::ReorderPersonRemotesRequest>()
                     .context("Expected a request payload")?;
 
-                self.db.reorder_person_remotes(req.remote_ids).await?;
+                self.db
+                    .reorder_person_remotes(req.id, req.remote_ids)
+                    .await?;
 
                 self.resync_person(incoming.channel(), req.id, "ws reorder person remotes")
                     .await?;
@@ -556,7 +591,7 @@ impl WsHandler {
                     .context("Expected a request payload")?;
 
                 self.db
-                    .set_person_remote_sync_kinds(req.remote_id, req.sync_kinds)
+                    .set_person_remote_sync_kinds(req.id, req.remote_id, req.sync_kinds)
                     .await?;
 
                 self.resync_person(
@@ -573,7 +608,9 @@ impl WsHandler {
                     .read::<api::PurgePersonRemoteCacheRequest>()
                     .context("Expected a request payload")?;
 
-                self.db.set_person_remote_cache(req.remote_id, None).await?;
+                self.db
+                    .set_person_remote_cache(req.id, req.remote_id, None)
+                    .await?;
 
                 self.resync_person(incoming.channel(), req.id, "ws purge person remote cache")
                     .await?;
@@ -1304,7 +1341,7 @@ impl WsHandler {
                     .context("Expected a request payload")?;
 
                 self.db
-                    .set_show_remote_enabled(req.remote_id, req.enabled)
+                    .set_show_remote_enabled(req.id, req.remote_id, req.enabled)
                     .await?;
 
                 let show = self
@@ -1329,7 +1366,7 @@ impl WsHandler {
                     .read::<api::ReorderShowRemotesRequest>()
                     .context("Expected a request payload")?;
 
-                self.db.reorder_show_remotes(req.remote_ids).await?;
+                self.db.reorder_show_remotes(req.id, req.remote_ids).await?;
 
                 let show = self
                     .db
@@ -1354,7 +1391,7 @@ impl WsHandler {
                     .context("Expected a request payload")?;
 
                 self.db
-                    .set_movie_remote_enabled(req.remote_id, req.enabled)
+                    .set_movie_remote_enabled(req.id, req.remote_id, req.enabled)
                     .await?;
 
                 let movie = self
@@ -1381,7 +1418,9 @@ impl WsHandler {
                     .read::<api::ReorderMovieRemotesRequest>()
                     .context("Expected a request payload")?;
 
-                self.db.reorder_movie_remotes(req.remote_ids).await?;
+                self.db
+                    .reorder_movie_remotes(req.id, req.remote_ids)
+                    .await?;
 
                 let movie = self
                     .db
@@ -1408,7 +1447,7 @@ impl WsHandler {
                     .context("Expected a request payload")?;
 
                 self.db
-                    .set_show_remote_sync_kinds(req.remote_id, req.sync_kinds)
+                    .set_show_remote_sync_kinds(req.id, req.remote_id, req.sync_kinds)
                     .await?;
 
                 let show = self
@@ -1434,7 +1473,7 @@ impl WsHandler {
                     .context("Expected a request payload")?;
 
                 self.db
-                    .set_movie_remote_sync_kinds(req.remote_id, req.sync_kinds)
+                    .set_movie_remote_sync_kinds(req.id, req.remote_id, req.sync_kinds)
                     .await?;
 
                 let movie = self
@@ -1500,7 +1539,7 @@ impl WsHandler {
                     .await?
                     .context("Expected show to exist")?;
 
-                self.db.remove_show_remote(req.remote_id).await?;
+                self.db.remove_show_remote(req.id, req.remote_id).await?;
 
                 let show = self
                     .db
@@ -1568,7 +1607,7 @@ impl WsHandler {
                     .await?
                     .context("Expected movie to exist")?;
 
-                self.db.remove_movie_remote(req.remote_id).await?;
+                self.db.remove_movie_remote(req.id, req.remote_id).await?;
 
                 let movie = self
                     .db
@@ -1603,7 +1642,9 @@ impl WsHandler {
                     .await?
                     .context("Expected show to exist")?;
 
-                self.db.set_show_remote_cache(req.remote_id, None).await?;
+                self.db
+                    .set_show_remote_cache(req.id, req.remote_id, None)
+                    .await?;
 
                 // The same remote also holds a validator on each of the show's
                 // episodes; leaving those behind would let a "force resync" still be
@@ -1643,7 +1684,9 @@ impl WsHandler {
                     .await?
                     .context("Expected movie to exist")?;
 
-                self.db.set_movie_remote_cache(req.remote_id, None).await?;
+                self.db
+                    .set_movie_remote_cache(req.id, req.remote_id, None)
+                    .await?;
 
                 self.enqueue_movie_sync(movie.id, movie.strings.title().map(str::to_owned), true)
                     .await;
@@ -1673,7 +1716,7 @@ impl WsHandler {
                     .context("Expected show to exist")?;
 
                 self.db
-                    .update_show_remote(req.remote_id, req.slug.as_deref(), &req.remote)
+                    .update_show_remote(req.id, req.remote_id, req.slug.as_deref(), &req.remote)
                     .await?;
 
                 let show = self
@@ -1707,7 +1750,7 @@ impl WsHandler {
                     .context("Expected movie to exist")?;
 
                 self.db
-                    .update_movie_remote(req.remote_id, req.slug.as_deref(), &req.remote)
+                    .update_movie_remote(req.id, req.remote_id, req.slug.as_deref(), &req.remote)
                     .await?;
 
                 let movie = self

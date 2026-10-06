@@ -1352,18 +1352,19 @@ pub(crate) struct InnerWrite {
         ),
         (),
     >,
-    #[sql = "DELETE FROM show_remotes WHERE id = ?"]
-    delete_show_remote: TypedStatement<(RemoteId,), ()>,
-    #[sql = "UPDATE show_remotes SET slug = ?, source = ?, value = ? WHERE id = ?"]
-    update_show_remote: TypedStatement<(Option<String>, RemoteSource, RemoteValue, RemoteId), ()>,
-    #[sql = "UPDATE show_remotes SET enabled = ? WHERE id = ?"]
-    set_show_remote_enabled: TypedStatement<(bool, RemoteId), ()>,
-    #[sql = "UPDATE show_remotes SET priority = ? WHERE id = ?"]
-    set_show_remote_priority: TypedStatement<(i32, RemoteId), ()>,
-    #[sql = "UPDATE show_remotes SET sync_kinds = ? WHERE id = ?"]
-    set_show_remote_sync_kinds: TypedStatement<(Option<api::SyncKindSet>, RemoteId), ()>,
-    #[sql = "UPDATE show_remotes SET cache = ? WHERE id = ?"]
-    set_show_remote_cache: TypedStatement<(Option<String>, RemoteId), ()>,
+    #[sql = "DELETE FROM show_remotes WHERE id = ? AND show_id = ?"]
+    delete_show_remote: TypedStatement<(RemoteId, ShowId), ()>,
+    #[sql = "UPDATE show_remotes SET slug = ?, source = ?, value = ? WHERE id = ? AND show_id = ?"]
+    update_show_remote:
+        TypedStatement<(Option<String>, RemoteSource, RemoteValue, RemoteId, ShowId), ()>,
+    #[sql = "UPDATE show_remotes SET enabled = ? WHERE id = ? AND show_id = ?"]
+    set_show_remote_enabled: TypedStatement<(bool, RemoteId, ShowId), ()>,
+    #[sql = "UPDATE show_remotes SET priority = ? WHERE id = ? AND show_id = ?"]
+    set_show_remote_priority: TypedStatement<(i32, RemoteId, ShowId), ()>,
+    #[sql = "UPDATE show_remotes SET sync_kinds = ? WHERE id = ? AND show_id = ?"]
+    set_show_remote_sync_kinds: TypedStatement<(Option<api::SyncKindSet>, RemoteId, ShowId), ()>,
+    #[sql = "UPDATE show_remotes SET cache = ? WHERE id = ? AND show_id = ?"]
+    set_show_remote_cache: TypedStatement<(Option<String>, RemoteId, ShowId), ()>,
 
     // images (shows and movies share one table)
     #[sql = "DELETE FROM show_image_candidates WHERE show_id = ?"]
@@ -1498,18 +1499,28 @@ pub(crate) struct InnerWrite {
         ),
         (),
     >,
-    #[sql = "DELETE FROM person_remotes WHERE id = ?"]
-    delete_person_remote: TypedStatement<(RemoteId,), ()>,
-    #[sql = "UPDATE person_remotes SET slug = ?, source = ?, value = ? WHERE id = ?"]
-    update_person_remote: TypedStatement<(Option<String>, RemoteSource, RemoteValue, RemoteId), ()>,
-    #[sql = "UPDATE person_remotes SET enabled = ? WHERE id = ?"]
-    set_person_remote_enabled: TypedStatement<(bool, RemoteId), ()>,
-    #[sql = "UPDATE person_remotes SET priority = ? WHERE id = ?"]
-    set_person_remote_priority: TypedStatement<(i32, RemoteId), ()>,
-    #[sql = "UPDATE person_remotes SET sync_kinds = ? WHERE id = ?"]
-    set_person_remote_sync_kinds: TypedStatement<(Option<api::SyncKindSet>, RemoteId), ()>,
-    #[sql = "UPDATE person_remotes SET cache = ? WHERE id = ?"]
-    set_person_remote_cache: TypedStatement<(Option<String>, RemoteId), ()>,
+    #[sql = "DELETE FROM person_remotes WHERE id = ? AND person_id = ?"]
+    delete_person_remote: TypedStatement<(RemoteId, PersonId), ()>,
+    #[sql = "UPDATE person_remotes SET slug = ?, source = ?, value = ? WHERE id = ? AND person_id = ?"]
+    update_person_remote: TypedStatement<
+        (
+            Option<String>,
+            RemoteSource,
+            RemoteValue,
+            RemoteId,
+            PersonId,
+        ),
+        (),
+    >,
+    #[sql = "UPDATE person_remotes SET enabled = ? WHERE id = ? AND person_id = ?"]
+    set_person_remote_enabled: TypedStatement<(bool, RemoteId, PersonId), ()>,
+    #[sql = "UPDATE person_remotes SET priority = ? WHERE id = ? AND person_id = ?"]
+    set_person_remote_priority: TypedStatement<(i32, RemoteId, PersonId), ()>,
+    #[sql = "UPDATE person_remotes SET sync_kinds = ? WHERE id = ? AND person_id = ?"]
+    set_person_remote_sync_kinds:
+        TypedStatement<(Option<api::SyncKindSet>, RemoteId, PersonId), ()>,
+    #[sql = "UPDATE person_remotes SET cache = ? WHERE id = ? AND person_id = ?"]
+    set_person_remote_cache: TypedStatement<(Option<String>, RemoteId, PersonId), ()>,
     #[sql = "DELETE FROM person_remotes WHERE person_id = ?"]
     delete_person_remotes: TypedStatement<(PersonId,), ()>,
     #[sql = "DELETE FROM people WHERE id = ?"]
@@ -1661,18 +1672,19 @@ pub(crate) struct InnerWrite {
         ),
         (),
     >,
-    #[sql = "DELETE FROM movie_remotes WHERE id = ?"]
-    delete_movie_remote: TypedStatement<(RemoteId,), ()>,
-    #[sql = "UPDATE movie_remotes SET slug = ?, source = ?, value = ? WHERE id = ?"]
-    update_movie_remote: TypedStatement<(Option<String>, RemoteSource, RemoteValue, RemoteId), ()>,
-    #[sql = "UPDATE movie_remotes SET enabled = ? WHERE id = ?"]
-    set_movie_remote_enabled: TypedStatement<(bool, RemoteId), ()>,
-    #[sql = "UPDATE movie_remotes SET priority = ? WHERE id = ?"]
-    set_movie_remote_priority: TypedStatement<(i32, RemoteId), ()>,
-    #[sql = "UPDATE movie_remotes SET sync_kinds = ? WHERE id = ?"]
-    set_movie_remote_sync_kinds: TypedStatement<(Option<api::SyncKindSet>, RemoteId), ()>,
-    #[sql = "UPDATE movie_remotes SET cache = ? WHERE id = ?"]
-    set_movie_remote_cache: TypedStatement<(Option<String>, RemoteId), ()>,
+    #[sql = "DELETE FROM movie_remotes WHERE id = ? AND movie_id = ?"]
+    delete_movie_remote: TypedStatement<(RemoteId, MovieId), ()>,
+    #[sql = "UPDATE movie_remotes SET slug = ?, source = ?, value = ? WHERE id = ? AND movie_id = ?"]
+    update_movie_remote:
+        TypedStatement<(Option<String>, RemoteSource, RemoteValue, RemoteId, MovieId), ()>,
+    #[sql = "UPDATE movie_remotes SET enabled = ? WHERE id = ? AND movie_id = ?"]
+    set_movie_remote_enabled: TypedStatement<(bool, RemoteId, MovieId), ()>,
+    #[sql = "UPDATE movie_remotes SET priority = ? WHERE id = ? AND movie_id = ?"]
+    set_movie_remote_priority: TypedStatement<(i32, RemoteId, MovieId), ()>,
+    #[sql = "UPDATE movie_remotes SET sync_kinds = ? WHERE id = ? AND movie_id = ?"]
+    set_movie_remote_sync_kinds: TypedStatement<(Option<api::SyncKindSet>, RemoteId, MovieId), ()>,
+    #[sql = "UPDATE movie_remotes SET cache = ? WHERE id = ? AND movie_id = ?"]
+    set_movie_remote_cache: TypedStatement<(Option<String>, RemoteId, MovieId), ()>,
     #[sql = "UPDATE movies SET release_filters = ? WHERE id = ?"]
     set_movie_release_filters: TypedStatement<(Option<String>, MovieId), ()>,
 
@@ -3163,10 +3175,14 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn remove_show_remote(&self, remote_id: RemoteId) -> Result<()> {
+    pub(crate) async fn remove_show_remote(
+        &self,
+        show_id: ShowId,
+        remote_id: RemoteId,
+    ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
-        let result = spawn_blocking(move || s.delete_show_remote.execute((remote_id,)));
+        let result = spawn_blocking(move || s.delete_show_remote.execute((remote_id, show_id)));
 
         result.await??;
         Ok(())
@@ -3175,6 +3191,7 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn update_show_remote(
         &self,
+        show_id: ShowId,
         remote_id: RemoteId,
         slug: Option<&str>,
         remote: &Remote,
@@ -3189,6 +3206,7 @@ impl Database {
                 remote.source(),
                 remote.value(),
                 remote_id,
+                show_id,
             ))
         });
 
@@ -3384,13 +3402,15 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn set_show_remote_enabled(
         &self,
+        show_id: ShowId,
         remote_id: RemoteId,
         enabled: bool,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            s.set_show_remote_enabled.execute((enabled, remote_id))?;
+            s.set_show_remote_enabled
+                .execute((enabled, remote_id, show_id))?;
             Ok(())
         });
 
@@ -3400,6 +3420,7 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn set_show_remote_sync_kinds(
         &self,
+        show_id: ShowId,
         remote_id: RemoteId,
         sync_kinds: Option<api::SyncKindSet>,
     ) -> Result<()> {
@@ -3407,7 +3428,7 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.set_show_remote_sync_kinds
-                .execute((sync_kinds, remote_id))?;
+                .execute((sync_kinds, remote_id, show_id))?;
             Ok(())
         });
 
@@ -3419,13 +3440,15 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn set_show_remote_cache(
         &self,
+        show_id: ShowId,
         remote_id: RemoteId,
         cache: Option<String>,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            s.set_show_remote_cache.execute((cache, remote_id))?;
+            s.set_show_remote_cache
+                .execute((cache, remote_id, show_id))?;
             Ok(())
         });
 
@@ -3434,10 +3457,15 @@ impl Database {
 
     /// Set remote priority to match the given order (first = highest priority).
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn reorder_show_remotes(&self, remote_ids: Vec<RemoteId>) -> Result<()> {
+    pub(crate) async fn reorder_show_remotes(
+        &self,
+        show_id: ShowId,
+        remote_ids: Vec<RemoteId>,
+    ) -> Result<()> {
         let result = self.transaction(move |s| {
             for (idx, id) in remote_ids.iter().enumerate() {
-                s.set_show_remote_priority.execute((idx as i32, *id))?;
+                s.set_show_remote_priority
+                    .execute((idx as i32, *id, show_id))?;
             }
             Ok(())
         });
@@ -3525,17 +3553,6 @@ impl Database {
         });
 
         result.await?
-    }
-
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn prune_seasons(
-        &self,
-        show_id: ShowId,
-        kept: &HashSet<SeasonNumber>,
-    ) -> Result<Vec<SeasonNumber>> {
-        let kept = kept.clone();
-        self.transaction(move |s| s.prune_seasons(show_id, &kept))
-            .await
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -4003,11 +4020,15 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn remove_movie_remote(&self, remote_id: RemoteId) -> Result<()> {
+    pub(crate) async fn remove_movie_remote(
+        &self,
+        movie_id: MovieId,
+        remote_id: RemoteId,
+    ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            s.delete_movie_remote.execute((remote_id,))?;
+            s.delete_movie_remote.execute((remote_id, movie_id))?;
             Ok(())
         });
 
@@ -4017,6 +4038,7 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn update_movie_remote(
         &self,
+        movie_id: MovieId,
         remote_id: RemoteId,
         slug: Option<&str>,
         remote: &Remote,
@@ -4031,6 +4053,7 @@ impl Database {
                 remote.source(),
                 remote.value(),
                 remote_id,
+                movie_id,
             ))?;
             Ok(())
         });
@@ -4546,13 +4569,15 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn set_movie_remote_enabled(
         &self,
+        movie_id: MovieId,
         remote_id: RemoteId,
         enabled: bool,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            s.set_movie_remote_enabled.execute((enabled, remote_id))?;
+            s.set_movie_remote_enabled
+                .execute((enabled, remote_id, movie_id))?;
             Ok(())
         });
 
@@ -4562,6 +4587,7 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn set_movie_remote_sync_kinds(
         &self,
+        movie_id: MovieId,
         remote_id: RemoteId,
         sync_kinds: Option<api::SyncKindSet>,
     ) -> Result<()> {
@@ -4569,7 +4595,7 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.set_movie_remote_sync_kinds
-                .execute((sync_kinds, remote_id))?;
+                .execute((sync_kinds, remote_id, movie_id))?;
             Ok(())
         });
 
@@ -4581,13 +4607,15 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn set_movie_remote_cache(
         &self,
+        movie_id: MovieId,
         remote_id: RemoteId,
         cache: Option<String>,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            s.set_movie_remote_cache.execute((cache, remote_id))?;
+            s.set_movie_remote_cache
+                .execute((cache, remote_id, movie_id))?;
             Ok(())
         });
 
@@ -4596,10 +4624,15 @@ impl Database {
 
     /// Set remote priority to match the given order (first = highest priority).
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn reorder_movie_remotes(&self, remote_ids: Vec<RemoteId>) -> Result<()> {
+    pub(crate) async fn reorder_movie_remotes(
+        &self,
+        movie_id: MovieId,
+        remote_ids: Vec<RemoteId>,
+    ) -> Result<()> {
         let result = self.transaction(move |s| {
             for (idx, id) in remote_ids.iter().enumerate() {
-                s.set_movie_remote_priority.execute((idx as i32, *id))?;
+                s.set_movie_remote_priority
+                    .execute((idx as i32, *id, movie_id))?;
             }
             Ok(())
         });
@@ -4822,10 +4855,14 @@ impl Database {
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn remove_person_remote(&self, remote_id: RemoteId) -> Result<()> {
+    pub(crate) async fn remove_person_remote(
+        &self,
+        person_id: PersonId,
+        remote_id: RemoteId,
+    ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
-        let result = spawn_blocking(move || s.delete_person_remote.execute((remote_id,)));
+        let result = spawn_blocking(move || s.delete_person_remote.execute((remote_id, person_id)));
 
         result.await??;
         Ok(())
@@ -4834,6 +4871,7 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn update_person_remote(
         &self,
+        person_id: PersonId,
         remote_id: RemoteId,
         slug: Option<&str>,
         remote: &Remote,
@@ -4848,6 +4886,7 @@ impl Database {
                 remote.source(),
                 remote.value(),
                 remote_id,
+                person_id,
             ))
         });
 
@@ -4858,13 +4897,15 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn set_person_remote_enabled(
         &self,
+        person_id: PersonId,
         remote_id: RemoteId,
         enabled: bool,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            s.set_person_remote_enabled.execute((enabled, remote_id))?;
+            s.set_person_remote_enabled
+                .execute((enabled, remote_id, person_id))?;
             Ok(())
         });
 
@@ -4874,6 +4915,7 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn set_person_remote_sync_kinds(
         &self,
+        person_id: PersonId,
         remote_id: RemoteId,
         sync_kinds: Option<api::SyncKindSet>,
     ) -> Result<()> {
@@ -4881,7 +4923,7 @@ impl Database {
 
         let result = spawn_blocking(move || {
             s.set_person_remote_sync_kinds
-                .execute((sync_kinds, remote_id))?;
+                .execute((sync_kinds, remote_id, person_id))?;
             Ok(())
         });
 
@@ -4893,13 +4935,15 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn set_person_remote_cache(
         &self,
+        person_id: PersonId,
         remote_id: RemoteId,
         cache: Option<String>,
     ) -> Result<()> {
         let mut s = self.inner.clone().exclusive().await?;
 
         let result = spawn_blocking(move || {
-            s.set_person_remote_cache.execute((cache, remote_id))?;
+            s.set_person_remote_cache
+                .execute((cache, remote_id, person_id))?;
             Ok(())
         });
 
@@ -4908,10 +4952,15 @@ impl Database {
 
     /// Set person remote priority to match the given order (first = highest).
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn reorder_person_remotes(&self, remote_ids: Vec<RemoteId>) -> Result<()> {
+    pub(crate) async fn reorder_person_remotes(
+        &self,
+        person_id: PersonId,
+        remote_ids: Vec<RemoteId>,
+    ) -> Result<()> {
         let result = self.transaction(move |s| {
             for (idx, id) in remote_ids.iter().enumerate() {
-                s.set_person_remote_priority.execute((idx as i32, *id))?;
+                s.set_person_remote_priority
+                    .execute((idx as i32, *id, person_id))?;
             }
             Ok(())
         });

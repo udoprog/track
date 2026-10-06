@@ -277,12 +277,13 @@ fn usable_cache(
 /// Flush what the show layers learned. `persisted` says whether the data they fetched
 /// actually landed; see [`CacheState::finish`] for what that changes.
 async fn flush_show_cache_writes(
+    show_id: api::ShowId,
     writes: &[(api::RemoteId, CacheState)],
     db: &Database,
     persisted: bool,
 ) -> Result<()> {
     for (remote_id, state) in writes {
-        db.set_show_remote_cache(*remote_id, cache_json(&state.finish(persisted)))
+        db.set_show_remote_cache(show_id, *remote_id, cache_json(&state.finish(persisted)))
             .await?;
     }
 
@@ -496,13 +497,14 @@ pub(crate) async fn sync_show(
     //   - provided           → persist the fresh draft;
     //   - eligible, missing   → a configured Base source failed this run, so
     //                           keep the existing show rather than wiping it;
-    //   - not eligible        → no enabled remote contributes Base, so the
-    //                           seasons/episodes are orphaned and get cleared.
+    //   - not eligible        → no enabled remote contributes Base; keep the
+    //                           stored seasons/episodes too, since deleting them
+    //                           would cascade to every user's pending rows.
     let draft = Arc::new(draft);
 
     if draft.provided.contains(SyncKind::Base) && !draft.base_unchanged {
         persist_show_draft(show_id, &show, &draft, db, broadcast).await?;
-        flush_show_cache_writes(&draft.cache_writes, db, true).await?;
+        flush_show_cache_writes(show_id, &draft.cache_writes, db, true).await?;
     } else if draft.base_unchanged {
         // The Base source was unchanged (cache hit): keep the stored
         // seasons/episodes/strings and only persist air dates other sources
@@ -510,7 +512,7 @@ pub(crate) async fn sync_show(
         let air_dates = Arc::clone(&draft);
         db.transaction(move |s| persist_air_dates_only(show_id, &air_dates, s))
             .await?;
-        flush_show_cache_writes(&draft.cache_writes, db, true).await?;
+        flush_show_cache_writes(show_id, &draft.cache_writes, db, true).await?;
 
         // A non-base source may have merged fresh graphics (or a slug); push the
         // refreshed show so clients update without a manual reload.
@@ -522,7 +524,7 @@ pub(crate) async fn sync_show(
     } else if eligible.contains(SyncKind::Base) {
         // Nothing persisted, so no validator may be stored - but the failures that got
         // us here must be, or we'd re-probe a dead remote on every sync.
-        flush_show_cache_writes(&draft.cache_writes, db, false).await?;
+        flush_show_cache_writes(show_id, &draft.cache_writes, db, false).await?;
 
         // A Base source that reported *why* it produced nothing (the remote 404s, its
         // episode list is unreachable) is an ordinary fact about the remote, already
@@ -536,19 +538,9 @@ pub(crate) async fn sync_show(
             "No Base source produced data; keeping the stored show"
         );
     } else {
-        flush_show_cache_writes(&draft.cache_writes, db, false).await?;
+        flush_show_cache_writes(show_id, &draft.cache_writes, db, false).await?;
 
-        db.prune_seasons(show_id, &HashSet::new()).await?;
-
-        let show = db
-            .show_by_id(None, show_id)
-            .await?
-            .context("Expected show to exist after clearing episodes")?;
-        broadcast.broadcast_event(api::AppEventKind::ShowChanged { show });
-        broadcast.broadcast_event(api::AppEventKind::SeasonsChanged {
-            show_id,
-            seasons: Vec::new(),
-        });
+        tracing::warn!(show_id = %show_id, "No enabled remote provides Base; keeping the stored seasons");
     }
 
     // Merge all sources' air dates into the effective episodes.aired by priority,
@@ -1696,7 +1688,7 @@ pub(crate) async fn sync_person(
     }
 
     for (remote_id, state) in &cache_writes {
-        db.set_person_remote_cache(*remote_id, cache_json(&state.finish(persisted)))
+        db.set_person_remote_cache(person_id, *remote_id, cache_json(&state.finish(persisted)))
             .await?;
     }
 
@@ -3004,16 +2996,16 @@ pub(crate) async fn sync_movie(
         let base = Arc::clone(&draft);
         db.transaction(move |s| persist_movie_draft(movie_id, &base, s))
             .await?;
-        flush_movie_cache_writes(&draft.cache_writes, db, true).await?;
+        flush_movie_cache_writes(movie_id, &draft.cache_writes, db, true).await?;
     } else if draft.base_unchanged {
         // Base source unchanged (cache hit): keep stored metadata/strings/images,
         // persist only other sources' fresh releases.
         let releases = Arc::clone(&draft);
         db.transaction(move |s| persist_movie_releases_only(movie_id, &releases, s))
             .await?;
-        flush_movie_cache_writes(&draft.cache_writes, db, true).await?;
+        flush_movie_cache_writes(movie_id, &draft.cache_writes, db, true).await?;
     } else if eligible.contains(SyncKind::Base) {
-        flush_movie_cache_writes(&draft.cache_writes, db, false).await?;
+        flush_movie_cache_writes(movie_id, &draft.cache_writes, db, false).await?;
 
         // As in `sync_show`: a remote that explained itself (a `404`, an unreachable
         // endpoint) has had that recorded and cached, and must not fail the task.
@@ -3026,7 +3018,7 @@ pub(crate) async fn sync_movie(
             "No Base source produced data; keeping the stored movie"
         );
     } else {
-        flush_movie_cache_writes(&draft.cache_writes, db, false).await?;
+        flush_movie_cache_writes(movie_id, &draft.cache_writes, db, false).await?;
 
         // No enabled remote contributes Base: the movie's derived metadata is
         // orphaned, so clear it (mirrors the show clear branch).
@@ -3066,12 +3058,13 @@ pub(crate) async fn sync_movie(
 
 /// Flush what the movie layers learned. See [`flush_show_cache_writes`].
 async fn flush_movie_cache_writes(
+    movie_id: api::MovieId,
     writes: &[(api::RemoteId, CacheState)],
     db: &Database,
     persisted: bool,
 ) -> Result<()> {
     for (remote_id, state) in writes {
-        db.set_movie_remote_cache(*remote_id, cache_json(&state.finish(persisted)))
+        db.set_movie_remote_cache(movie_id, *remote_id, cache_json(&state.finish(persisted)))
             .await?;
     }
 
@@ -3530,6 +3523,42 @@ mod tests {
             Some(Image::tmdb("/first.jpg").key().clone())
         );
         assert_eq!(show.images.len(), 1);
+        Ok(())
+    }
+
+    /// A show left without an enabled Base remote keeps its seasons and
+    /// episodes, since deleting them cascades to every user's pending rows.
+    #[tokio::test]
+    async fn sync_without_base_remote_keeps_seasons() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let db = Database::open(dir.path().join("test.db"), OpenMode::Normal, 1)?;
+        let show_id = api::ShowId::new(1);
+        db.create_show(show_id, "Show", None, "").await?;
+
+        let draft = draft(1, "/poster.jpg");
+        db.transaction(move |s| write_show_draft(s, show_id, None, &draft))
+            .await?;
+
+        let http = reqwest::Client::new();
+        let (tx, _) = tokio::sync::broadcast::channel(16);
+
+        sync_show(
+            show_id,
+            &db,
+            &RemoteClients::new(http.clone(), http),
+            &Broadcaster::new(tx),
+            &crate::pending::PendingSystem::new(db.clone()),
+            &Shutdown::new(),
+        )
+        .await?;
+
+        let seasons: Vec<_> = db
+            .seasons(None, show_id)
+            .await?
+            .into_iter()
+            .map(|s| s.season)
+            .collect();
+        assert_eq!(seasons, [SeasonNumber::from_ordinal(1)]);
         Ok(())
     }
 }
