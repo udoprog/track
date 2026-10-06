@@ -543,14 +543,17 @@ impl MediaSettingsModal {
             Loaded::Movie(_) => None,
         };
 
+        // Everything shared between users is for administrators to change.
+        let admin = crate::is_admin(ctx);
+
         let release = match data {
-            Loaded::Movie(m) => Some(self.view_release(ctx, m)),
-            Loaded::Show(_) => None,
+            Loaded::Movie(m) if admin => Some(self.view_release(ctx, m)),
+            _ => None,
         };
 
         let air_dates = match data {
-            Loaded::Show(s) => Some(self.view_air_dates(ctx, s)),
-            Loaded::Movie(_) => None,
+            Loaded::Show(s) if admin => Some(self.view_air_dates(ctx, s)),
+            _ => None,
         };
 
         let last_synced =
@@ -569,12 +572,14 @@ impl MediaSettingsModal {
                     />
                 </FormRow>
 
-                <FormRow label="Automatic sync">
-                    <Button class={classes!("input-checkbox", "has-text", auto_sync.then_some("checked"))} role="switch" checked={Some(auto_sync)} title="Sync automatically" onclick={on_auto_sync}>
-                        <span class="mark" />
-                        {if auto_sync { "Enabled" } else { "Disabled" }}
-                    </Button>
-                </FormRow>
+                if admin {
+                    <FormRow label="Automatic sync">
+                        <Button class={classes!("input-checkbox", "has-text", auto_sync.then_some("checked"))} role="switch" checked={Some(auto_sync)} title="Sync automatically" onclick={on_auto_sync}>
+                            <span class="mark" />
+                            {if auto_sync { "Enabled" } else { "Disabled" }}
+                        </Button>
+                    </FormRow>
+                }
 
                 {specials}
 
@@ -594,19 +599,21 @@ impl MediaSettingsModal {
                     }
                 </FormRow>
 
-                if has_images {
-                    <FormRow label="Graphics" hint="The poster, backdrop, banner and other artwork.">
-                        <Button icon="photo" label="Edit graphics" title="Edit graphics" onclick={on_edit_graphics} />
-                    </FormRow>
-                } else {
-                    <FormRow label="Graphics" hint="Sync to fetch artwork.">
-                        <span class="text-muted">{"None yet"}</span>
+                if admin {
+                    if has_images {
+                        <FormRow label="Graphics" hint="The poster, backdrop, banner and other artwork.">
+                            <Button icon="photo" label="Edit graphics" title="Edit graphics" onclick={on_edit_graphics} />
+                        </FormRow>
+                    } else {
+                        <FormRow label="Graphics" hint="Sync to fetch artwork.">
+                            <span class="text-muted">{"None yet"}</span>
+                        </FormRow>
+                    }
+
+                    <FormRow label="Remotes" hint="The TMDB, TVDB and other identifiers used to sync.">
+                        <Button icon="identification" label="Edit remotes" title="Edit remotes" onclick={on_edit_remotes} />
                     </FormRow>
                 }
-
-                <FormRow label="Remotes" hint="The TMDB, TVDB and other identifiers used to sync.">
-                    <Button icon="identification" label="Edit remotes" title="Edit remotes" onclick={on_edit_remotes} />
-                </FormRow>
             </div>
         }
     }

@@ -247,25 +247,7 @@ pub async fn regular_users_cannot_remove_media(
     driver.find_one_by("[title='Delete person']").await?;
     let person = driver.webdriver().current_url().await?;
 
-    let link = format!("{}/register/{LOGIN_LINK}", track.url());
-    driver.webdriver().goto(&link).await?;
-
-    for title in ["Password", "Confirm password"] {
-        driver
-            .find_one_by(&format!("input[title='{title}']"))
-            .await?
-            .send_keys("correct horse")
-            .await?;
-    }
-
-    driver
-        .find_one_by("input[title='Confirm password']")
-        .await?
-        .send_keys(ENTER)
-        .await?;
-    driver
-        .wait_texts(".toolbar-item[title=Account]", ["alice"])
-        .await?;
+    register_alice(driver, track).await?;
 
     driver.webdriver().goto(&show).await?;
     driver.wait_texts(".detail-title", ["Seeded Show"]).await?;
@@ -288,6 +270,183 @@ pub async fn regular_users_cannot_remove_media(
         driver.count("[title='Delete person']").await? == 0,
         "a regular user is offered Delete person"
     );
+    Ok(())
+}
+
+/// Remotes, graphics, sync settings, date rules and the queue are shared by
+/// every user, so only administrators are offered changing them.
+pub async fn regular_users_cannot_edit_shared_data(
+    driver: &mut TestDriver,
+    track: &mut Track,
+) -> Result<()> {
+    let movie = open_media(driver, 0, "Seeded Movie").await?;
+    let show = open_media(driver, 1, "Seeded Show").await?;
+
+    driver
+        .find_one_by(".toolbar-item[title=People]")
+        .await?
+        .click()
+        .await?;
+    driver.find_nth(".person-card", 0).await?.click().await?;
+    driver.find_one_by(".person-detail-info h1").await?;
+    let person = driver.webdriver().current_url().await?;
+    let queue = person.join("/queue")?;
+
+    check_shared_controls(driver, &show, &movie, person.as_str(), queue.as_str(), true).await?;
+    register_alice(driver, track).await?;
+    check_shared_controls(
+        driver,
+        &show,
+        &movie,
+        person.as_str(),
+        queue.as_str(),
+        false,
+    )
+    .await
+}
+
+/// Checks the controls for shared data on each page are offered exactly when
+/// `admin` is.
+async fn check_shared_controls(
+    driver: &TestDriver,
+    show: &str,
+    movie: &str,
+    person: &str,
+    queue: &str,
+    admin: bool,
+) -> Result<()> {
+    let present = |selector: &'static str| async move {
+        let found = driver.count(selector).await? > 0;
+        ensure!(
+            found == admin,
+            "{selector} offered: {found}, admin: {admin}"
+        );
+        Ok::<_, anyhow::Error>(())
+    };
+
+    driver.webdriver().goto(show).await?;
+    driver.find_first("[title='Season Translations']").await?;
+    present("[title='Season Graphics']").await?;
+
+    open_settings(driver).await?;
+    if admin {
+        driver
+            .wait_texts(
+                ".modal .form-label",
+                [
+                    "Language",
+                    "Automatic sync",
+                    "Specials",
+                    "Air dates",
+                    "Last synced",
+                    "Graphics",
+                    "Remotes",
+                ],
+            )
+            .await?;
+    } else {
+        driver
+            .wait_texts(
+                ".modal .form-label",
+                ["Language", "Specials", "Last synced"],
+            )
+            .await?;
+    }
+
+    driver.webdriver().goto(show).await?;
+    driver
+        .find_first("[title='More actions']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by(".menu-list [title='Air dates']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .wait_texts(".modal .text-muted", ["No releases recorded."])
+        .await?;
+    if admin {
+        driver
+            .find_one_by(".modal [title='Air date rules']")
+            .await?;
+    } else {
+        present(".modal [title='Air date rules']").await?;
+    }
+
+    driver.webdriver().goto(movie).await?;
+    driver.wait_texts(".detail-title", ["Seeded Movie"]).await?;
+    open_settings(driver).await?;
+    if admin {
+        driver
+            .wait_texts(
+                ".modal .form-label",
+                [
+                    "Language",
+                    "Automatic sync",
+                    "Release dates",
+                    "Last synced",
+                    "Graphics",
+                    "Remotes",
+                ],
+            )
+            .await?;
+    } else {
+        driver
+            .wait_texts(".modal .form-label", ["Language", "Last synced"])
+            .await?;
+    }
+
+    driver.webdriver().goto(person).await?;
+    driver.find_one_by(".person-detail-info h1").await?;
+    open_settings(driver).await?;
+    if admin {
+        driver
+            .wait_texts(".modal .form-label", ["Last synced", "Remotes"])
+            .await?;
+    } else {
+        driver
+            .wait_texts(".modal .form-label", ["Last synced"])
+            .await?;
+    }
+
+    driver.webdriver().goto(queue).await?;
+    driver.find_one_by(".queue-now-title").await?;
+    present("[title='Queue sync for all show and movies']").await
+}
+
+async fn open_settings(driver: &TestDriver) -> Result<()> {
+    driver
+        .find_one_by("[title='Settings']:not(#toolbar *)")
+        .await?
+        .click()
+        .await?;
+    driver.find_one_by(".modal").await?;
+    Ok(())
+}
+
+/// Registers `alice` through the login link and waits until she is signed in.
+async fn register_alice(driver: &TestDriver, track: &Track) -> Result<()> {
+    let link = format!("{}/register/{LOGIN_LINK}", track.url());
+    driver.webdriver().goto(&link).await?;
+
+    for title in ["Password", "Confirm password"] {
+        driver
+            .find_one_by(&format!("input[title='{title}']"))
+            .await?
+            .send_keys("correct horse")
+            .await?;
+    }
+
+    driver
+        .find_one_by("input[title='Confirm password']")
+        .await?
+        .send_keys(ENTER)
+        .await?;
+    driver
+        .wait_texts(".toolbar-item[title=Account]", ["alice"])
+        .await?;
     Ok(())
 }
 

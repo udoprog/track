@@ -614,9 +614,11 @@ impl PersonDetail {
                         }
                     </FormRow>
 
-                    <FormRow label="Remotes" hint="The TMDB, IMDb and other identifiers used to sync.">
-                        <Button icon="identification" label="Edit remotes" title="Edit remotes" onclick={link.callback(|_| Msg::OpenRemoteEditor)} />
-                    </FormRow>
+                    if crate::is_admin(ctx) {
+                        <FormRow label="Remotes" hint="The TMDB, IMDb and other identifiers used to sync.">
+                            <Button icon="identification" label="Edit remotes" title="Edit remotes" onclick={link.callback(|_| Msg::OpenRemoteEditor)} />
+                        </FormRow>
+                    }
                 </div>
             </Modal>
         }

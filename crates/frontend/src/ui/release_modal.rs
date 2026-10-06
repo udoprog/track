@@ -56,7 +56,7 @@ pub(crate) struct ReleaseModal {
     _mutate_req: ws::Request,
     /// `None` while loading, `Some` once the response has arrived.
     rows: Option<Vec<api::ReleaseRow>>,
-    /// Whether the user is an administrator, who alone edits the global default.
+    /// Whether the user is an administrator, who alone edits the filters.
     admin: bool,
     /// The site configuration, holding the default filters.
     site: Option<api::SiteConfig>,
@@ -382,6 +382,10 @@ impl ReleaseModal {
     /// The active filter shown above the list: a scope toggle, a warning when the
     /// global default is being edited, and the editor bound to the active rules.
     fn view_filters(&self, ctx: &Context<Self>) -> Html {
+        if !self.admin {
+            return html! {};
+        }
+
         let Some(global) = self.global_rules(ctx) else {
             return html! {};
         };
@@ -419,14 +423,6 @@ impl ReleaseModal {
             ),
         };
 
-        // Only administrators change the global default.
-        let editable = is_custom || self.admin;
-        let hint = if self.admin {
-            hint
-        } else {
-            "An administrator sets the global default."
-        };
-
         let link = ctx.link();
         let on_toggle = link.callback(|_| Msg::ToggleMode);
         let on_change = link.callback(Msg::EditFilters);
@@ -440,11 +436,9 @@ impl ReleaseModal {
                     </select>
                 </FormRow>
 
-                if editable {
-                    <div class="form-wide">
-                        <FiltersEditor rules={rules} on_change={on_change} kinds={kinds} sources={sources} />
-                    </div>
-                }
+                <div class="form-wide">
+                    <FiltersEditor rules={rules} on_change={on_change} kinds={kinds} sources={sources} />
+                </div>
             </div>
         }
     }

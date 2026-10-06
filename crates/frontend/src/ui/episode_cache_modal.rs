@@ -150,6 +150,7 @@ impl EpisodeCacheModal {
         }
 
         let link = ctx.link();
+        let admin = crate::is_admin(ctx);
 
         html! {
             <div class="column">
@@ -162,7 +163,9 @@ impl EpisodeCacheModal {
                             <div class="row-split align-top">
                                 <h4>{source.as_label()}</h4>
 
-                                <Button icon="arrow-path" variant={Variant::Danger} title="Clear cache" onclick={link.callback(move |_| Msg::Purge(source))} />
+                                if admin {
+                                    <Button icon="arrow-path" variant={Variant::Danger} title="Clear cache" onclick={link.callback(move |_| Msg::Purge(source))} />
+                                }
                             </div>
 
                             <div class="input-group">

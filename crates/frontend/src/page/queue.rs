@@ -436,7 +436,9 @@ impl Queue {
                     }
                 </div>
 
-                <Button icon="arrow-path" label="Sync all" title="Queue sync for all show and movies" onclick={ctx.link().callback(|_| Msg::SyncAll)} />
+                if crate::is_admin(ctx) {
+                    <Button icon="arrow-path" label="Sync all" title="Queue sync for all show and movies" onclick={ctx.link().callback(|_| Msg::SyncAll)} />
+                }
             </div>
         }
     }
@@ -586,7 +588,7 @@ impl Queue {
                 <span class="task-time">{time}</span>
 
                 <span class="task-actions">
-                    if entry.is_pending() {
+                    if entry.is_pending() && crate::is_admin(ctx) {
                         <div class="input-group">
                             <Button icon="forward" title="Run now" onclick={ctx.link().callback(move |_| Msg::Bump(id))} />
                             <Button icon="trash" variant={Variant::Danger} title="Remove from queue" onclick={ctx.link().callback(move |_| Msg::Remove(id))} />

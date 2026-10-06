@@ -2325,7 +2325,9 @@ impl ShowDetail {
                         <div class={classes!("toolbar-dropdown", "desktop-input-group", (!season_expanded).then_some("desktop-only"))}>
                             <Button icon="language" title="Season Translations" text="Translations" onclick={link.callback(|_| Msg::OpenSeasonTranslations)} />
 
-                            <Button icon="photo" title="Season Graphics" text="Graphics" onclick={link.callback(|_| Msg::OpenSeasonImageModal)} />
+                            if crate::is_admin(ctx) {
+                                <Button icon="photo" title="Season Graphics" text="Graphics" onclick={link.callback(|_| Msg::OpenSeasonImageModal)} />
+                            }
 
                             if let Some((label, on_remove_next)) = pending_episode {
                                 <a class="button primary mobile-has-text" href={format!("#{label}")} onclick={toggle_menu} title="Jump to pending episode">
