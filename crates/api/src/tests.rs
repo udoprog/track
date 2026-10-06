@@ -108,6 +108,38 @@ fn language_code_round_trip() {
 }
 
 #[test]
+fn country_code_round_trip() {
+    assert!(Country::DEFAULT.is_default());
+    assert_eq!(Country::DEFAULT.to_string(), "default");
+    assert_eq!(Country::from_iso("default"), Some(Country::DEFAULT));
+    assert_eq!(Country::from_iso(""), Some(Country::DEFAULT));
+
+    let gb = Country::from_iso("gb").unwrap();
+    assert_eq!(gb, Country::GB);
+    assert_eq!(gb.to_string(), "GB");
+    assert_eq!(format!("{gb:?}"), "Country(GB)");
+    assert_eq!(gb.to_string().parse::<Country>().unwrap(), gb);
+
+    let json = serde_json::to_string(&gb).unwrap();
+    assert_eq!(json, "\"GB\"");
+    assert_eq!(serde_json::from_str::<Country>(&json).unwrap(), gb);
+
+    assert_eq!(Country::from_iso("ZZ"), None);
+    assert_eq!(Country::from_iso("USA"), None);
+    assert_eq!(Country::from_iso("1A"), None);
+}
+
+#[test]
+fn code_stored_values() {
+    // The database stores the big-endian integer of the raw bytes.
+    let stored = |raw: [u8; 4]| u32::from_be_bytes(raw);
+    assert_eq!(stored(Language::DEFAULT.to_raw()), 0);
+    assert_eq!(stored(Language::ENG.to_raw()), 0x656e_6700);
+    assert_eq!(stored(Country::US.to_raw()), 0x5553_0000);
+    assert_eq!(format!("{:?}", Language::ENG), "eng");
+}
+
+#[test]
 fn expand_sync_languages_resolves_and_dedupes() {
     use std::collections::BTreeSet;
 
