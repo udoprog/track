@@ -582,19 +582,6 @@ pub fn enabled_sources_by_priority(remotes: &[RemoteEntry]) -> Vec<RemoteSource>
     out
 }
 
-/// The remote source that drives full metadata sync: the highest-priority enabled
-/// remote whose source supports full sync ([`RemoteSource::Tmdb`] or
-/// [`RemoteSource::Tvdb`]).
-pub fn primary_sync_source(remotes: &[RemoteEntry]) -> Option<RemoteSource> {
-    remotes
-        .iter()
-        .filter(|e| {
-            e.enabled && matches!(e.remote.source(), RemoteSource::Tmdb | RemoteSource::Tvdb)
-        })
-        .max_by_key(|e| e.priority)
-        .map(|r| *r.remote.source())
-}
-
 /// Image reference: "tvdb:/banners/abc.jpg", "tmdb:/xy.jpg".
 #[derive(Debug, Clone, PartialEq, Encode, Decode, serde::Serialize, serde::Deserialize)]
 #[musli(crate = musli_core)]
@@ -1680,11 +1667,6 @@ impl Show {
             .find(|r| *r.source() == source)
     }
 
-    /// The remote source that drives full metadata sync for this media.
-    pub fn primary_sync_source(&self) -> Option<RemoteSource> {
-        primary_sync_source(&self.remotes)
-    }
-
     pub fn is_selected(&self, kind: ImageKind, key: &ImageKey) -> bool {
         match kind {
             ImageKind::Poster => self
@@ -1855,11 +1837,6 @@ impl Movie {
             .iter()
             .map(|e| &e.remote)
             .find(|r| *r.source() == source)
-    }
-
-    /// The remote source that drives full metadata sync for this media.
-    pub fn primary_sync_source(&self) -> Option<RemoteSource> {
-        primary_sync_source(&self.remotes)
     }
 
     pub fn is_selected(&self, kind: ImageKind, key: &ImageKey) -> bool {
