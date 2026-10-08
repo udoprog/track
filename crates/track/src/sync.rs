@@ -4211,12 +4211,19 @@ mod xem_tests {
 
         /// Every system's (season, episode) for `system`'s episode, sorted.
         async fn entry(&self, system: &str, season: u32, episode: u32) -> Result<Vec<String>> {
-            let entry = self
+            let target = api::NumberingTarget {
+                system: system.to_owned(),
+                season,
+                episode,
+            };
+
+            let entries = self
                 .db
-                .xem_entry(self.show_id, system, season, episode)
+                .xem_entries(self.show_id, vec![Some(target)])
                 .await?;
 
-            Ok(entry
+            Ok(entries
+                .concat()
                 .iter()
                 .map(|n| format!("{} {}x{}", n.system, n.season, n.episode))
                 .collect())

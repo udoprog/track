@@ -256,8 +256,11 @@ pub async fn settings_are_labelled_rows(driver: &mut TestDriver, _: &mut Track) 
             _ => bail!("unexpected headings {headings:?}"),
         }
 
+        // From the column's edge, which a page tall enough to scroll moves.
+        let column = driver.find_one_by(".settings").await?.rect().await?.x;
+
         for control in driver.find_all(By::Css(".settings .form-control")).await? {
-            lefts.push(control.rect().await?.x);
+            lefts.push(control.rect().await?.x - column);
         }
     }
 
@@ -429,7 +432,7 @@ pub async fn reorders_sync_sources(driver: &mut TestDriver, _: &mut Track) -> Re
 
     let order = async |driver: &TestDriver| -> Result<Vec<String>> {
         driver
-            .find_all_attrs(".reorder:not(.xem-lookup) .logo", "class")
+            .find_all_attrs(".reorder:not(.xem-lookup, .numberings) .logo", "class")
             .await
     };
 
@@ -458,7 +461,9 @@ pub async fn reorders_sync_sources(driver: &mut TestDriver, _: &mut Track) -> Re
         .await?;
 
     driver.reload().await?;
-    driver.find_one_by(".reorder:not(.xem-lookup)").await?;
+    driver
+        .find_one_by(".reorder:not(.xem-lookup, .numberings)")
+        .await?;
 
     driver
         .wait_until("the dragged order to survive a reload", async || {
@@ -514,6 +519,70 @@ pub async fn reorders_xem_lookup(driver: &mut TestDriver, _: &mut Track) -> Resu
     driver
         .wait_until("the order to survive a reload", async || {
             Ok(order(driver).await? == [anidb.clone(), tvdb.clone()])
+        })
+        .await
+}
+
+/// The "Other numberings" setting starts with TheTVDB, scene and AniDB
+/// shown and Trakt and TVRage hidden; a numbering is hidden and moved, and
+/// both are saved.
+pub async fn shows_and_hides_numberings(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_settings(driver).await?;
+    open_page(driver, "Sources & dates").await?;
+
+    let order = async |driver: &TestDriver| -> Result<Vec<String>> {
+        driver
+            .find_all_attrs(".numberings>.row", "data-system")
+            .await
+    };
+    let hidden = async |driver: &TestDriver| -> Result<Vec<String>> {
+        driver
+            .find_all_attrs(".numberings>.numbering-hidden", "data-system")
+            .await
+    };
+
+    driver
+        .wait_until("the default order", async || {
+            Ok(order(driver).await? == ["tvdb", "scene", "anidb", "trakt", "rage"])
+        })
+        .await?;
+    ensure!(hidden(driver).await? == ["trakt", "rage"]);
+    driver
+        .wait_texts(
+            ".numberings button[aria-pressed]",
+            ["Shown", "Shown", "Shown", "Hidden", "Hidden"],
+        )
+        .await?;
+
+    driver
+        .find_one_by(".numberings>[data-system=scene] button[aria-pressed]")
+        .await?
+        .click()
+        .await?;
+    driver
+        .wait_until("scene to be hidden", async || {
+            Ok(hidden(driver).await? == ["scene", "trakt", "rage"])
+        })
+        .await?;
+
+    driver
+        .press_key_on(".numberings .drag-handle[data-index='2']", "ArrowUp")
+        .await?;
+    driver
+        .wait_until("AniDB to move up", async || {
+            Ok(order(driver).await? == ["tvdb", "anidb", "scene", "trakt", "rage"])
+        })
+        .await?;
+
+    driver.reload().await?;
+    driver.find_one_by(".numberings").await?;
+
+    driver
+        .wait_until("both to survive a reload", async || {
+            Ok(
+                order(driver).await? == ["tvdb", "anidb", "scene", "trakt", "rage"]
+                    && hidden(driver).await? == ["scene", "trakt", "rage"],
+            )
         })
         .await
 }

@@ -5,10 +5,11 @@ use super::Track;
 const ESCAPE: &str = "\u{E00C}";
 
 /// The sections the help lists, in order.
-const SECTIONS: [&str; 4] = [
+const SECTIONS: [&str; 5] = [
     "Finding and adding shows and movies",
     "Marking things watched",
     "Remotes and syncing",
+    "Other numberings and names",
     "Settings",
 ];
 
@@ -130,7 +131,7 @@ pub async fn inline_help_opens_its_section(driver: &mut TestDriver, _: &mut Trac
     super::settings::open_page(driver, "Sources & dates").await?;
 
     driver
-        .find_one_by(".form-label button.help-mark")
+        .find_first(".form-label button.help-mark")
         .await?
         .click()
         .await?;

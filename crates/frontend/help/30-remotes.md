@@ -2,8 +2,8 @@ id: remotes
 title: Remotes and syncing
 
 A *remote* is an identifier for a show, movie or person on another site:
-TMDB, TheTVDB, TVmaze or IMDb. Track keeps its own copy of everything and
-fills it in by syncing from the remotes.
+TMDB, TheTVDB, TVmaze, IMDb, AniDB, XEM or a scene name. Track keeps its own
+copy of everything and fills it in by syncing from the remotes.
 
 ## What comes from where
 
@@ -20,6 +20,18 @@ release dates, and *Credits* are the cast and crew. Base and credits come from
 the highest source in **Settings > Sources & dates > Sync sources**; dates are
 merged from every source.
 
+AniDB, XEM and scene remotes provide none of these:
+
+- **XEM** (thexem.info) maps a show's episodes between numberings and knows
+  other names for it and its seasons; see [Other numberings and
+  names](numberings). Syncing finds a show's XEM entry through its TheTVDB or
+  AniDB id and adds it as a remote; while it is turned on, syncing keeps the
+  mappings and names up to date.
+- **AniDB** links to the show's AniDB entry. A show can have several, one per
+  cour.
+- **Scene** is the name release groups use for the show. It has no page to
+  link to.
+
 ## Editing remotes
 
 Open a show or movie's ![Settings](button:cog-6-tooth) settings and choose
@@ -30,8 +42,9 @@ default** goes back to the order in Settings. ![Clear
 cache](icon:arrow-path) **Clear cache** forgets what was fetched and syncs it
 again.
 
-TMDB, TheTVDB and TVmaze identifiers are numbers; IMDb identifiers look like
-`tt1234567`.
+TMDB, TheTVDB, TVmaze and AniDB identifiers are numbers; IMDb identifiers
+look like `tt1234567`. An XEM identifier is where XEM was found and the id
+there, such as `tvdb/424536`.
 
 ## Syncing
 

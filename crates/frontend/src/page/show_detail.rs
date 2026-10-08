@@ -12,7 +12,7 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaQuery, Route, Router, ShowDetailQuery};
 use crate::ui::{
-    Button, ConfirmDanger, ContextMenu, DetailHero, DetailSkeleton, EpisodeCacheModal,
+    AlsoKnownAs, Button, ConfirmDanger, ContextMenu, DetailHero, DetailSkeleton, EpisodeCacheModal,
     EpisodePicker, Image, ImageGallery, ImageItem, Link, MarkTimeMenu, MediaSettingsModal, Modal,
     NumberingEditor, OutlineControl, OutlineEntry, OutlineHandle, ReleaseModal, ReleaseTarget,
     RemoteEditor, RemoteSourceKind, SettingsTarget, TimePreset, Tracked, TranslatedText,
@@ -492,7 +492,9 @@ impl Component for ShowDetail {
                     title={show.strings.title().unwrap_or("Untitled Show").to_owned()}
                     meta={show.first_air_date.map(|date| date.date(self.time.clone()).year().to_string())}
                     backdrop={show.backdrop.clone()}
-                />
+                >
+                    <AlsoKnownAs names={show.alt_names.clone()} />
+                </DetailHero>
 
                 <div class="toolbar">
                     <div class="row detail-sources">
@@ -754,6 +756,16 @@ impl ShowDetail {
             {
                 self.background
                     .background(show.backdrop.as_ref().map(|i| i.proxy_url()));
+
+                // Other numberings and season names follow the numbering.
+                if let ShowState::Loaded(old) = &self.show
+                    && old.numbering != show.numbering
+                    && self.channel.id() != ws::ChannelId::NONE
+                {
+                    self.load_seasons(ctx);
+                    self.load_episodes(ctx);
+                }
+
                 self.show = ShowState::Loaded(Box::new(show.clone()));
                 self.update_graphics();
                 Ok(true)
@@ -2037,6 +2049,10 @@ impl ShowDetail {
             <>
                 <span class="season-name">{name.clone()}</span>
 
+                if !s.alt_names.is_empty() {
+                    <span class="season-alt-names">{season_alt_names(s)}</span>
+                }
+
                 <span class="season-count" title="Episodes watched">
                     if finished {
                         <span class="icon sm check" aria-hidden="true" />
@@ -2064,7 +2080,8 @@ impl ShowDetail {
         let class = classes!(
             "season-row",
             current.then_some("current"),
-            finished.then_some("finished")
+            finished.then_some("finished"),
+            (!s.alt_names.is_empty()).then_some("has-alt")
         );
 
         if self.seasons.len() > 1 {
@@ -2134,6 +2151,25 @@ impl ShowDetail {
         let total = self.episodes.len();
 
         let next_unwatched = self.next_unwatched;
+
+        // A season linked to several seasons of another numbering marks where
+        // each starts.
+        let mut previous = None;
+
+        let mut starts = self
+            .episodes
+            .iter()
+            .map(|e| {
+                let link = e.link.as_ref()?;
+                let start = (previous != Some(link)).then_some(link);
+                previous = Some(link);
+                start
+            })
+            .collect::<Vec<_>>();
+
+        if starts.iter().flatten().count() < 2 {
+            starts.clear();
+        }
 
         let pending_episode = self.pending_episode.as_ref().map(|&(label, episode_id)| {
             let callback = link.callback(move |_| WatchMsg::OnRemoveNext(episode_id));
@@ -2216,6 +2252,10 @@ impl ShowDetail {
                         </div>
                     </div>
 
+                    if !season.alt_names.is_empty() {
+                        { view_season_names(season) }
+                    }
+
                     <TranslatedText strings={season.strings.clone()} />
 
                     if total > 0 {
@@ -2228,7 +2268,15 @@ impl ShowDetail {
                 }
 
                 <div class="episodes">
-                    { for self.episodes.iter().map(|ep| self.view_episode(ctx, ep)) }
+                    { for self.episodes.iter().enumerate().map(|(i, ep)| html! {
+                        <>
+                            if let Some(Some(link)) = starts.get(i) {
+                                { view_link_divider(season, link) }
+                            }
+
+                            { self.view_episode(ctx, ep) }
+                        </>
+                    }) }
                 </div>
 
                 if !self.picked.is_empty() {
@@ -2359,6 +2407,12 @@ impl ShowDetail {
                             </ContextMenu>
                         }
                     </div>
+
+                    if !episode.numberings.is_empty() {
+                        <div class="episode-numberings">
+                            { for episode.numberings.iter().map(view_numbering) }
+                        </div>
+                    }
 
                     <div class="episode-meta">
                         <indicator title="Air date">
@@ -2555,5 +2609,89 @@ fn season_name(s: &api::Season) -> String {
     match s.strings.title() {
         Some(name) => name.to_owned(),
         None => s.season.long().to_string(),
+    }
+}
+
+/// One of an episode's other numberings: the system's plate and the code,
+/// with the absolute number in the tooltip.
+fn view_numbering(n: &api::AltNumbering) -> Html {
+    let label = api::xem_system_label(&n.system);
+    let code = n.code();
+
+    let title = match n.absolute {
+        Some(absolute) => format!("{label} {code}, absolute {absolute}"),
+        None => format!("{label} {code}"),
+    };
+
+    html! {
+        <span class="numbering-chip" {title}>
+            <span class={classes!("logo", n.system.clone())} aria-hidden="true" />
+            <span class="numbering-chip-code">{code}</span>
+        </span>
+    }
+}
+
+/// The names of the seasons `s` covers, on one line.
+fn season_alt_names(s: &api::Season) -> String {
+    let mut names = Vec::new();
+
+    for group in &s.alt_names {
+        for n in &group.names {
+            names.push(n.name.as_str());
+        }
+    }
+
+    names.join(" · ")
+}
+
+/// A linked season's label, such as `TheTVDB S2`.
+fn linked_label(l: &api::LinkedSeason) -> String {
+    format!("{} S{}", api::xem_system_label(&l.system), l.season)
+}
+
+/// The names of the seasons a season covers under its heading, each with the
+/// season of the other numbering it names.
+fn view_season_names(s: &api::Season) -> Html {
+    html! {
+        <p class="season-names">
+            <span class="season-names-label">{"Season names"}</span>
+
+            { for s.alt_names.iter().map(|group| html! {
+                <span class="season-names-group">
+                    { for group.names.iter().map(|n| html! {
+                        <span class="alt-name">{n.name.clone()}</span>
+                    }) }
+
+                    <span class="text-muted">{format!("({})", linked_label(&group.target))}</span>
+                </span>
+            }) }
+        </p>
+    }
+}
+
+/// The line before the first episode linked to `link`, naming that season
+/// and its XEM names.
+fn view_link_divider(season: &api::Season, link: &api::LinkedSeason) -> Html {
+    let names = season
+        .alt_names
+        .iter()
+        .find(|g| g.target == *link)
+        .map(|g| {
+            g.names
+                .iter()
+                .map(|n| n.name.as_str())
+                .collect::<Vec<_>>()
+                .join(" · ")
+        });
+
+    html! {
+        <div class="numbering-divider" role="separator" aria-label={linked_label(link)}>
+            <span class={classes!("logo", link.system.clone())} title={api::xem_system_label(&link.system).to_owned()} />
+            <span class="numbering-divider-season">{format!("Season {}", link.season)}</span>
+
+            if let Some(names) = names {
+                <span class="text-muted">{format!("· {names}")}</span>
+            }
+        </div>
     }
 }

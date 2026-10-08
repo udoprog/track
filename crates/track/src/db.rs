@@ -2020,6 +2020,12 @@ impl InnerRead {
             .and_then(config::decode_xem_lookup)
             .unwrap_or(default.xem_lookup);
 
+        let numberings = self
+            .get_config("numberings")?
+            .as_deref()
+            .and_then(config::decode_numberings)
+            .unwrap_or(default.numberings);
+
         let cloudflare_access = api::CloudflareAccess {
             enabled: self
                 .get_config("cloudflare_access_enabled")?
@@ -2048,6 +2054,7 @@ impl InnerRead {
             sync_kinds,
             sync_languages,
             xem_lookup,
+            numberings,
             cloudflare_access,
         })
     }
@@ -3482,6 +3489,7 @@ impl Database {
 
             show.poster = s.image.image_for_show(show.id, ImageKind::Poster)?;
             show.banner = s.image.image_for_show(show.id, ImageKind::Banner)?;
+            show.alt_names = s.xem_show_names(&show)?;
             Ok(Some(show))
         });
 
@@ -6841,6 +6849,7 @@ impl Database {
                 config::encode_sync_languages(&config.sync_languages),
             )?;
             s.set_config("xem_lookup", config::encode_xem_lookup(&config.xem_lookup))?;
+            s.set_config("numberings", config::encode_numberings(&config.numberings))?;
 
             let bool_text = |v: bool| if v { "true" } else { "false" };
             let access = &config.cloudflare_access;
@@ -7070,6 +7079,7 @@ fn show_from_row(row: ShowRow, strings: api::Translations) -> api::Show {
             .numbering
             .as_deref()
             .and_then(|json| serde_json::from_str(json).ok()),
+        alt_names: Vec::new(),
     }
 }
 
@@ -7254,6 +7264,7 @@ fn season_from_row(r: SeasonRow, strings: api::Translations) -> api::Season {
         },
         watched_count: r.watched_count,
         total_count: r.total_count,
+        alt_names: Vec::new(),
     }
 }
 
@@ -7269,6 +7280,8 @@ fn episode_from_row(r: EpisodeRow, strings: api::Translations) -> api::Episode {
         pending: r.pending,
         watched_count: r.watched_count,
         screenshot: None,
+        link: None,
+        numberings: Vec::new(),
     }
 }
 

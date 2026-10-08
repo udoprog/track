@@ -1039,3 +1039,65 @@ fn mismatches_compare_regular_seasons_with_tvdb() {
     assert!(numbering_mismatches(&codes(&[(1, 12)]), &codes(&[(1, 12), (2, 12)])).is_empty());
     assert!(numbering_mismatches(&codes(&[(1, 12)]), &[]).is_empty());
 }
+
+#[test]
+fn numbering_order_keeps_known_systems_once_and_appends_the_rest() {
+    let pref = |system: &str, shown| NumberingPref {
+        system: system.to_owned(),
+        shown,
+    };
+
+    let defaults = default_numberings();
+    let shown = defaults
+        .iter()
+        .map(|p| (p.system.as_str(), p.shown))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        shown,
+        [
+            ("tvdb", true),
+            ("scene", true),
+            ("anidb", true),
+            ("trakt", false),
+            ("rage", false),
+        ]
+    );
+
+    let order = numbering_order(&[
+        pref("rage", true),
+        pref("unknown", true),
+        pref("rage", false),
+        pref("tvdb", false),
+    ]);
+    let order = order
+        .iter()
+        .map(|p| (p.system.as_str(), p.shown))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        order,
+        [
+            ("rage", true),
+            ("tvdb", false),
+            ("scene", true),
+            ("anidb", true),
+            ("trakt", false),
+        ]
+    );
+}
+
+#[test]
+fn alternative_codes_join_double_episodes() {
+    let code = |episode, last| {
+        AltNumbering {
+            system: "tvdb".to_owned(),
+            season: 1,
+            episode,
+            last,
+            absolute: None,
+        }
+        .code()
+    };
+
+    assert_eq!(code(3, None), "S01E03");
+    assert_eq!(code(3, Some(4)), "S01E03+04");
+}

@@ -1349,3 +1349,113 @@ pub async fn numbering_ranges_are_edited(driver: &mut TestDriver, track: &mut Tr
         .await?;
     Ok(())
 }
+
+/// XEM's other names for the show sit under its title, three at first and
+/// the rest a click away, without the show's own title; the season lists
+/// the names of the TheTVDB seasons it covers.
+pub async fn alternative_names_are_listed(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_show(driver).await?;
+
+    let names = ".also-known-as .alt-name>span:first-child";
+    driver
+        .wait_texts(names, ["Die Testserie", "La Série", "Shīdo Shō"])
+        .await?;
+    driver
+        .wait_texts(".also-known-as .alt-name-language", ["DE", "FR", "JP"])
+        .await?;
+
+    driver
+        .find_one_by(".also-known-as .link-button")
+        .await?
+        .click()
+        .await?;
+    driver
+        .wait_texts(names, ["Die Testserie", "La Série", "Shīdo Shō", "Seeded"])
+        .await?;
+    driver.wait_count(".also-known-as .link-button", 0).await?;
+
+    // Automatic numbering: TMDB Season 1 is TheTVDB Season 1.
+    driver
+        .wait_texts(".season-names .alt-name", ["Seeded First"])
+        .await?;
+    driver
+        .wait_texts(".season-names .text-muted", ["(TheTVDB S1)"])
+        .await
+}
+
+/// Linked to TheTVDB with ranges, an episode XEM numbers differently shows
+/// those numbers as chips, one that lines up shows none, and a line marks
+/// where TheTVDB's second season starts.
+pub async fn episodes_show_other_numberings(
+    driver: &mut TestDriver,
+    track: &mut Track,
+) -> Result<()> {
+    open_show(driver).await?;
+
+    // Automatic numbering puts S01E04 at TheTVDB S1E4, which XEM doesn't map.
+    driver.find_one_by("#S01E04").await?;
+    ensure!(driver.count(".numbering-chip").await? == 0);
+    ensure!(driver.count(".numbering-divider").await? == 0);
+
+    driver
+        .find_one_by("[title='Settings']:not(#toolbar *)")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by(".modal .numbering-warning .link-button")
+        .await?
+        .click()
+        .await?;
+    driver.find_one_by(".modal [title='Edit ranges']").await?;
+    ensure!(
+        track.query("SELECT CAST(numbering IS NOT NULL AS TEXT) FROM shows WHERE id = 1001")?
+            == ["1"]
+    );
+
+    driver
+        .find_one_by(".modal [title='Close']")
+        .await?
+        .click()
+        .await?;
+    driver.wait_count(".modal", 0).await?;
+
+    driver
+        .wait_texts("#S01E04 .numbering-chip", ["S02E01", "S02E01"])
+        .await?;
+    ensure!(
+        driver
+            .find_all_attrs("#S01E04 .numbering-chip", "title")
+            .await?
+            == ["TheTVDB S02E01, absolute 4", "Scene S02E01, absolute 4"],
+        "AniDB's S1E4 is the episode's own code"
+    );
+    driver
+        .wait_texts("#S01E05 .numbering-chip", ["S02E02+03", "S02E02"])
+        .await?;
+    ensure!(driver.count("#S01E01 .numbering-chip").await? == 0);
+
+    driver
+        .wait_texts(".numbering-divider-season", ["Season 1", "Season 2"])
+        .await?;
+    driver
+        .wait_texts(
+            ".numbering-divider .text-muted",
+            ["· Seeded First", "· Seeded Second"],
+        )
+        .await?;
+
+    // The divider comes right before the first episode of TheTVDB's season 2.
+    let before = driver
+        .webdriver()
+        .execute(
+            "return document.querySelectorAll('.numbering-divider')[1].nextElementSibling.id;",
+            Vec::new(),
+        )
+        .await?;
+    ensure!(before.convert::<String>()? == "S01E04");
+
+    driver
+        .wait_texts(".season-names .alt-name", ["Seeded First", "Seeded Second"])
+        .await
+}

@@ -8,8 +8,8 @@ use crate::help;
 use crate::router::{Route, SettingsPage};
 use crate::ui::{
     AIR_DATE_KINDS, AIR_DATE_SOURCES, Button, DurationInput, FiltersEditor, FormRow,
-    LanguagePicker, Link, RELEASE_KINDS, RELEASE_SOURCES, SecretInput, Skeleton, SyncKindsEditor,
-    SyncLanguagesEditor, XemLookupEditor,
+    LanguagePicker, Link, NumberingsEditor, RELEASE_KINDS, RELEASE_SOURCES, SecretInput, Skeleton,
+    SyncKindsEditor, SyncLanguagesEditor, XemLookupEditor,
 };
 
 fn tz_is_valid(name: &str) -> bool {
@@ -64,6 +64,7 @@ pub(crate) enum Msg {
     AirDateFiltersChanged(api::FilterRules),
     SyncKindsChanged(Vec<api::SourceSyncKinds>),
     XemLookupChanged(Vec<api::RemoteSource>),
+    NumberingsChanged(Vec<api::NumberingPref>),
     CloudflareEnabledToggle,
     CloudflareTeamDomainChanged(String),
     CloudflareAudienceChanged(String),
@@ -390,11 +391,20 @@ impl Component for Settings {
                                     }) }
                                 </FormRow>
 
-                                <FormRow label="Find XEM through" hint="Which of a show's remotes look its XEM entry up, top first. The first one XEM maps becomes the show's XEM remote.">
+                                <FormRow label="Find XEM through" help={help::NUMBERINGS} hint="Which of a show's remotes look its XEM entry up, top first. The first one XEM maps becomes the show's XEM remote.">
                                     { system("tall", html! {
                                         <XemLookupEditor
                                             sources={self.config.xem_lookup.clone()}
                                             on_change={link.callback(Msg::XemLookupChanged)}
+                                        />
+                                    }) }
+                                </FormRow>
+
+                                <FormRow label="Other numberings" help={help::NUMBERINGS} hint="Shown on each episode in this order. A numbering that matches the episode's own code is left out, so episodes that line up show nothing extra.">
+                                    { system("tall", html! {
+                                        <NumberingsEditor
+                                            prefs={self.config.numberings.clone()}
+                                            on_change={link.callback(Msg::NumberingsChanged)}
                                         />
                                     }) }
                                 </FormRow>
@@ -689,6 +699,11 @@ impl Settings {
             }
             Msg::XemLookupChanged(sources) => {
                 self.config.xem_lookup = sources;
+                self.save_config(ctx);
+                Ok(true)
+            }
+            Msg::NumberingsChanged(prefs) => {
+                self.config.numberings = prefs;
                 self.save_config(ctx);
                 Ok(true)
             }

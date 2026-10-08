@@ -38,7 +38,6 @@ pub(crate) struct Name {
 /// Where a show's episode `season`/`episode` sits in XEM: TheTVDB's same code
 /// when TheTVDB provides the episodes (`base`) or the show has no manual
 /// `numbering`, otherwise the range covering it, if any.
-#[allow(dead_code, reason = "the numbering display reads it")]
 pub(crate) fn link_target(
     base: Option<api::RemoteSource>,
     numbering: Option<&api::Numbering>,
@@ -53,6 +52,112 @@ pub(crate) fn link_target(
             episode,
         }),
     }
+}
+
+/// The seasons of other numberings the show's `season` is linked to: the
+/// targets of its ranges in episode order, or TheTVDB's same season.
+pub(crate) fn season_targets(
+    base: Option<api::RemoteSource>,
+    numbering: Option<&api::Numbering>,
+    season: u32,
+) -> Vec<api::LinkedSeason> {
+    let Some(n) = numbering.filter(|_| base != Some(api::RemoteSource::Tvdb)) else {
+        return vec![api::LinkedSeason {
+            system: "tvdb".to_owned(),
+            season,
+        }];
+    };
+
+    let mut ranges = n
+        .ranges
+        .iter()
+        .filter(|r| r.season == season)
+        .collect::<Vec<_>>();
+    ranges.sort_by_key(|r| r.first);
+
+    let mut out = Vec::<api::LinkedSeason>::new();
+
+    for r in ranges {
+        let target = api::LinkedSeason {
+            system: r.system.clone(),
+            season: r.target_season,
+        };
+
+        if !out.contains(&target) {
+            out.push(target);
+        }
+    }
+
+    out
+}
+
+/// The system XEM numbers a show's season names by: the origin of its XEM
+/// remote (`<origin>/<id>`), or TheTVDB without one.
+pub(crate) fn origin(remotes: &[api::RemoteEntry]) -> String {
+    remotes
+        .iter()
+        .filter(|e| *e.remote.source() == api::RemoteSource::Xem)
+        .find_map(|e| Some(e.remote.value().as_str()?.split_once('/')?.0.to_owned()))
+        .unwrap_or_else(|| "tvdb".to_owned())
+}
+
+/// The other numberings of the episode `season`/`episode`, read from every
+/// system's address of its XEM `entry`: the shown systems of `prefs` in their
+/// order, leaving out a code equal to the episode's own.
+pub(crate) fn alternatives(
+    prefs: &[api::NumberingPref],
+    season: u32,
+    episode: u32,
+    entry: &[Numbering],
+) -> Vec<api::AltNumbering> {
+    prefs
+        .iter()
+        .filter(|p| p.shown)
+        .filter_map(|p| {
+            let first = entry.iter().find(|n| n.system == p.system && n.part == 0)?;
+
+            // A double episode's second address, when it is in the same season.
+            let last = entry
+                .iter()
+                .find(|n| n.system == p.system && n.part == 1 && n.season == first.season)
+                .map(|n| n.episode);
+
+            if last.is_none() && (first.season, first.episode) == (season, episode) {
+                return None;
+            }
+
+            Some(api::AltNumbering {
+                system: p.system.clone(),
+                season: first.season,
+                episode: first.episode,
+                last,
+                absolute: first.absolute,
+            })
+        })
+        .collect()
+}
+
+/// The names in `names` for any of `seasons` (`None` for the whole show),
+/// each name once, ignoring case, and none of `titles`.
+pub(crate) fn names_for<'a>(
+    names: &[Name],
+    seasons: &[Option<u32>],
+    titles: impl IntoIterator<Item = &'a str>,
+) -> Vec<api::AltName> {
+    let mut seen = titles
+        .into_iter()
+        .map(str::to_lowercase)
+        .collect::<HashSet<_>>();
+
+    names
+        .iter()
+        .filter(|n| seasons.contains(&n.season))
+        .filter(|n| seen.insert(n.name.to_lowercase()))
+        .map(|n| api::AltName {
+            name: n.name.clone(),
+            language: n.language.clone(),
+        })
+        .collect()
 }
 
 /// The answer to one conditional request, with the `Last-Modified` it carried.
@@ -500,6 +605,133 @@ pub(crate) mod tests {
         assert_eq!(target(Some(api::RemoteSource::Tmdb), None, 1, 29), tvdb);
         assert_eq!(target(None, None, 1, 29), tvdb);
         assert_eq!(target(Some(api::RemoteSource::Tvdb), Some(&n), 1, 29), tvdb);
+    }
+
+    fn n(system: &str, part: u32, season: u32, episode: u32, absolute: u32) -> Numbering {
+        Numbering {
+            system: system.to_owned(),
+            part,
+            season,
+            episode,
+            absolute: Some(absolute),
+        }
+    }
+
+    fn codes(alts: &[api::AltNumbering]) -> Vec<(&str, String)> {
+        alts.iter().map(|a| (a.system.as_str(), a.code())).collect()
+    }
+
+    #[test]
+    fn alternatives_follow_the_order_and_leave_out_the_own_code() {
+        let prefs = api::default_numberings();
+        let all =
+            success(parse::<Vec<BTreeMap<String, RawNumbering>>>(FRIEREN_ALL.as_bytes()).unwrap());
+        let entries = all.into_iter().map(entry).collect::<Vec<_>>();
+
+        // TMDB's S1E29 is S2E1 everywhere else.
+        let alts = alternatives(&prefs, 1, 29, &entries[28]);
+        assert_eq!(
+            codes(&alts),
+            [
+                ("tvdb", "S02E01".to_owned()),
+                ("scene", "S02E01".to_owned()),
+                ("anidb", "S02E01".to_owned()),
+            ]
+        );
+        assert_eq!(alts[0].absolute, Some(29));
+
+        // S1E28 lines up, so it shows nothing.
+        assert!(alternatives(&prefs, 1, 28, &entries[27]).is_empty());
+
+        // Hidden systems are left out and the order is the setting's.
+        let prefs = api::numbering_order(&[
+            api::NumberingPref {
+                system: "anidb".to_owned(),
+                shown: true,
+            },
+            api::NumberingPref {
+                system: "tvdb".to_owned(),
+                shown: false,
+            },
+        ]);
+        assert_eq!(
+            codes(&alternatives(&prefs, 1, 29, &entries[28])),
+            [
+                ("anidb", "S02E01".to_owned()),
+                ("scene", "S02E01".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_double_episode_is_one_code() {
+        let prefs = api::default_numberings();
+        let entry = [
+            n("scene", 0, 1, 3, 3),
+            n("tvdb", 0, 1, 3, 3),
+            n("tvdb", 1, 1, 4, 4),
+        ];
+
+        // Its first half equals the episode's own code, but the pair does not.
+        assert_eq!(
+            codes(&alternatives(&prefs, 1, 3, &entry)),
+            [("tvdb", "S01E03+04".to_owned())]
+        );
+    }
+
+    #[test]
+    fn season_targets_follow_the_ranges() {
+        let tmdb = Some(api::RemoteSource::Tmdb);
+        let n = frieren();
+        let linked = |season| api::LinkedSeason {
+            system: "tvdb".to_owned(),
+            season,
+        };
+
+        assert_eq!(season_targets(tmdb, Some(&n), 1), [linked(1), linked(2)]);
+        assert!(season_targets(tmdb, Some(&n), 2).is_empty());
+        assert_eq!(season_targets(tmdb, None, 2), [linked(2)]);
+        assert_eq!(
+            season_targets(Some(api::RemoteSource::Tvdb), Some(&n), 1),
+            [linked(1)]
+        );
+    }
+
+    #[test]
+    fn origin_is_read_from_the_xem_remote() {
+        let entry = |remote| api::RemoteEntry {
+            id: api::RemoteId::new(1),
+            slug: None,
+            remote,
+            enabled: true,
+            priority: 0,
+            sync_kinds: None,
+            cache: None,
+        };
+
+        let xem = api::Remote::new(
+            api::RemoteSource::Xem,
+            api::RemoteValue::Str("anidb/17617".into()),
+        );
+
+        assert_eq!(origin(&[entry(api::Remote::tvdb(1)), entry(xem)]), "anidb");
+        assert_eq!(origin(&[entry(api::Remote::tvdb(1))]), "tvdb");
+    }
+
+    #[test]
+    fn names_leave_out_titles_and_repeats() {
+        let names = names(success(
+            parse::<RawNames>(OSHI_NO_KO_NAMES.as_bytes()).unwrap(),
+        ));
+
+        let show = names_for(&names, &[None], ["oshi no ko mein star"]);
+        assert_eq!(show.len(), 1);
+        assert_eq!(show[0].name, "Oshi no Ko (My Star)");
+        assert_eq!(show[0].language.as_deref(), Some("us"));
+
+        let season = names_for(&names, &[Some(3)], []);
+        let season = season.iter().map(|n| n.name.as_str()).collect::<Vec<_>>();
+        assert_eq!(season, ["Oshi no Ko 3rd Season", "Oshi no Ko S3"]);
     }
 
     #[test]

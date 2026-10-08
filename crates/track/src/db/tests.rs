@@ -1410,3 +1410,116 @@ async fn show_numbering_round_trip() -> Result<()> {
     );
     Ok(())
 }
+
+/// An episode's XEM entry is found through any system's address, the show's
+/// alternative names leave out its own title, and a season of another
+/// system finds its names through the origin's seasons.
+#[tokio::test]
+async fn xem_entries_and_names() -> Result<()> {
+    use crate::xem::{Name, Numbering};
+
+    let dir = tempfile::tempdir()?;
+    let db = Database::open(dir.path().join("test.db"), OpenMode::Bulk, 1)?;
+
+    let show = api::ShowId::new(1);
+    db.create_show(show, "Frieren", None, "").await?;
+
+    let n = |system: &str, part, season, episode| Numbering {
+        system: system.to_owned(),
+        part,
+        season,
+        episode,
+        absolute: None,
+    };
+
+    let entries = vec![
+        vec![n("anidb", 0, 1, 28), n("tvdb", 0, 1, 28)],
+        vec![n("anidb", 0, 3, 1), n("tvdb", 0, 2, 1), n("tvdb", 1, 2, 2)],
+    ];
+
+    let name = |season, language: &str, name: &str| Name {
+        season,
+        language: Some(language.to_owned()),
+        name: name.to_owned(),
+    };
+
+    let names = vec![
+        name(None, "us", "frieren"),
+        name(None, "jp", "Sousou no Frieren"),
+        name(Some(1), "jp", "Sousou no Frieren"),
+        name(Some(2), "jp", "Sousou no Frieren 2nd Season"),
+    ];
+
+    db.transaction(move |s| {
+        s.replace_xem_episodes(show, &entries)?;
+        s.replace_xem_names(show, &names)
+    })
+    .await?;
+
+    let target = |system: &str, season, episode| {
+        Some(api::NumberingTarget {
+            system: system.to_owned(),
+            season,
+            episode,
+        })
+    };
+
+    let found = db
+        .xem_entries(
+            show,
+            vec![
+                target("tvdb", 2, 1),
+                target("anidb", 3, 1),
+                target("tvdb", 9, 9),
+                None,
+            ],
+        )
+        .await?;
+
+    assert_eq!(found[0], found[1]);
+    assert_eq!(found[0].len(), 3);
+    assert!(found[2].is_empty() && found[3].is_empty());
+
+    let alt = |name: &str| api::AltName {
+        name: name.to_owned(),
+        language: Some("jp".to_owned()),
+    };
+
+    let show_names = db.show_by_id(None, show).await?.context("show")?.alt_names;
+    assert_eq!(show_names, [alt("Sousou no Frieren")]);
+
+    let linked = |system: &str, season| api::LinkedSeason {
+        system: system.to_owned(),
+        season,
+    };
+
+    let seasons = db
+        .xem_season_names(
+            show,
+            "tvdb".to_owned(),
+            vec![
+                vec![linked("tvdb", 1), linked("tvdb", 2)],
+                vec![linked("anidb", 3)],
+                vec![linked("tvdb", 5)],
+            ],
+        )
+        .await?;
+
+    let season = |target, name: &str| api::SeasonAltNames {
+        target,
+        names: vec![alt(name)],
+    };
+
+    assert_eq!(
+        seasons,
+        [
+            vec![
+                season(linked("tvdb", 1), "Sousou no Frieren"),
+                season(linked("tvdb", 2), "Sousou no Frieren 2nd Season"),
+            ],
+            vec![season(linked("anidb", 3), "Sousou no Frieren 2nd Season")],
+            vec![],
+        ]
+    );
+    Ok(())
+}

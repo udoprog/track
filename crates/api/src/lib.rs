@@ -35,8 +35,9 @@ pub use self::sync_kind::{SyncKind, SyncKindSet};
 
 mod numbering;
 pub use self::numbering::{
-    Numbering, NumberingRange, NumberingTarget, RangeError, SeasonMismatch, XEM_SYSTEMS,
-    numbering_mismatches, suggest_numbering, xem_system_label,
+    AltName, AltNumbering, LinkedSeason, Numbering, NumberingPref, NumberingRange, NumberingTarget,
+    RangeError, SeasonAltNames, SeasonMismatch, XEM_SYSTEMS, default_numberings,
+    numbering_mismatches, numbering_order, suggest_numbering, xem_system_label,
 };
 
 mod time;
@@ -818,6 +819,15 @@ impl SeasonNumber {
     #[inline]
     pub fn is_special(&self) -> bool {
         matches!(self, SeasonNumber::Specials)
+    }
+
+    /// The season's number, 0 for specials.
+    #[inline]
+    pub fn as_u32(&self) -> u32 {
+        match self {
+            Self::Specials => 0,
+            Self::Number(n) => n.get(),
+        }
     }
 }
 
@@ -1703,6 +1713,8 @@ pub struct Show {
     /// The manual link from the show's episodes to XEM's numberings; `None`
     /// numbers them like TheTVDB.
     pub numbering: Option<Numbering>,
+    /// XEM's names for the show that are not among its own titles.
+    pub alt_names: Vec<AltName>,
 }
 
 impl Show {
@@ -1760,6 +1772,8 @@ pub struct Season {
     pub poster: Option<Image>,
     pub watched_count: u32,
     pub total_count: u32,
+    /// The XEM names of the other numbering's seasons this season covers.
+    pub alt_names: Vec<SeasonAltNames>,
 }
 
 impl Season {
@@ -1788,6 +1802,12 @@ pub struct Episode {
     pub pending: Option<Timestamp>,
     pub watched_count: u32,
     pub screenshot: Option<Image>,
+    /// The other numbering's season the episode is linked to, when the show
+    /// has XEM numberings.
+    pub link: Option<LinkedSeason>,
+    /// The episode's codes in the other numberings shown, leaving out those
+    /// equal to its own.
+    pub numberings: Vec<AltNumbering>,
 }
 
 impl Episode {
@@ -2181,6 +2201,8 @@ pub struct Config {
     /// The remotes a show's XEM entry is looked up through, first match wins
     /// ("Find XEM through").
     pub xem_lookup: Vec<RemoteSource>,
+    /// The numberings episodes show besides their own ("Other numberings").
+    pub numberings: Vec<NumberingPref>,
     pub cloudflare_access: CloudflareAccess,
 }
 
@@ -2252,6 +2274,7 @@ impl Default for Config {
                 Locale::new(Language::ENG, Country::DEFAULT),
             ],
             xem_lookup: RemoteSource::XEM_LOOKUP.to_vec(),
+            numberings: default_numberings(),
             cloudflare_access: CloudflareAccess::default(),
         }
     }

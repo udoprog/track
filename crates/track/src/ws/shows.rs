@@ -3,6 +3,7 @@ use api::ShowId;
 use musli_web::ws;
 
 use super::WsHandler;
+use crate::xem;
 
 impl WsHandler {
     pub(super) async fn get_show(
@@ -28,7 +29,8 @@ impl WsHandler {
         let req = incoming
             .read::<api::ListSeasonsRequest>()
             .context("Expected a request payload")?;
-        let seasons = self.db.seasons(Some(self.user.id), req.show_id).await?;
+        let mut seasons = self.db.seasons(Some(self.user.id), req.show_id).await?;
+        self.add_season_names(req.show_id, &mut seasons).await?;
         outgoing.write(api::ListSeasonsResponse { seasons });
         Ok(())
     }
@@ -176,12 +178,77 @@ impl WsHandler {
         let req = incoming
             .read::<api::ListEpisodesRequest>()
             .context("Expected a request payload")?;
-        let episodes = self
+        let mut episodes = self
             .db
             .episodes(self.user.id, req.show_id, req.season)
             .await?;
+        self.add_numberings(req.show_id, &mut episodes).await?;
         let watched = self.db.episodes_watched(self.user.id, req.show_id).await?;
         outgoing.write(api::ListEpisodesResponse { episodes, watched });
+        Ok(())
+    }
+
+    /// Link each episode to XEM and fill in its other numberings.
+    async fn add_numberings(&self, show_id: ShowId, episodes: &mut [api::Episode]) -> Result<()> {
+        let Some(show) = self.db.show_by_id(None, show_id).await? else {
+            return Ok(());
+        };
+
+        let config = self.db.load_config().await?;
+        let base = api::base_source(&show.remotes, &config);
+
+        let targets = episodes
+            .iter()
+            .map(|e| xem::link_target(base, show.numbering.as_ref(), e.season.as_u32(), e.episode))
+            .collect::<Vec<_>>();
+
+        let entries = self.db.xem_entries(show_id, targets.clone()).await?;
+
+        for ((episode, target), entry) in episodes.iter_mut().zip(targets).zip(entries) {
+            // XEM doesn't map the episode: nothing to link or show.
+            let Some(target) = target.filter(|_| !entry.is_empty()) else {
+                continue;
+            };
+
+            episode.numberings = xem::alternatives(
+                &config.numberings,
+                episode.season.as_u32(),
+                episode.episode,
+                &entry,
+            );
+
+            episode.link = Some(api::LinkedSeason {
+                system: target.system,
+                season: target.season,
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Fill in the XEM names of the seasons each season is linked to.
+    async fn add_season_names(&self, show_id: ShowId, seasons: &mut [api::Season]) -> Result<()> {
+        let Some(show) = self.db.show_by_id(None, show_id).await? else {
+            return Ok(());
+        };
+
+        let config = self.db.load_config().await?;
+        let base = api::base_source(&show.remotes, &config);
+
+        let targets = seasons
+            .iter()
+            .map(|s| xem::season_targets(base, show.numbering.as_ref(), s.season.as_u32()))
+            .collect();
+
+        let names = self
+            .db
+            .xem_season_names(show_id, xem::origin(&show.remotes), targets)
+            .await?;
+
+        for (season, names) in seasons.iter_mut().zip(names) {
+            season.alt_names = names;
+        }
+
         Ok(())
     }
 

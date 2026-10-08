@@ -3,6 +3,7 @@
 //! after the component it exports, and is re-exported here so callers can refer
 //! to it as `crate::ui::<Name>`.
 
+mod also_known_as;
 mod button;
 mod confirm_danger;
 mod context_menu;
@@ -30,6 +31,7 @@ mod media_kind_toggle;
 mod media_settings_modal;
 mod modal;
 mod numbering_editor;
+mod numberings_editor;
 mod outline;
 mod pagination_buttons;
 mod release_modal;
@@ -45,6 +47,7 @@ mod translated_text;
 mod translations_modal;
 mod xem_lookup_editor;
 
+pub(crate) use self::also_known_as::AlsoKnownAs;
 pub(crate) use self::button::{Button, Variant};
 pub(crate) use self::confirm_danger::ConfirmDanger;
 pub(crate) use self::context_menu::ContextMenu;
@@ -72,6 +75,7 @@ pub(crate) use self::media_kind_toggle::MediaKindToggle;
 pub(crate) use self::media_settings_modal::{MediaSettingsModal, SettingsTarget};
 pub(crate) use self::modal::Modal;
 pub(crate) use self::numbering_editor::NumberingEditor;
+pub(crate) use self::numberings_editor::NumberingsEditor;
 pub(crate) use self::outline::{Outline, OutlineControl, OutlineEntry, OutlineHandle};
 pub(crate) use self::pagination_buttons::PaginationButtons;
 pub(crate) use self::release_modal::{ReleaseModal, ReleaseTarget};

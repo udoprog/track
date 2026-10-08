@@ -3,8 +3,8 @@ use api::ShowId;
 use sqll::{Row, Statements, TypedStatement};
 use tokio::task::spawn_blocking;
 
-use super::{Database, InnerWrite};
-use crate::xem::{Name, Numbering};
+use super::{Database, InnerRead, InnerWrite};
+use crate::xem::{self, Name, Numbering};
 
 #[derive(Statements)]
 #[sql(read_only)]
@@ -23,6 +23,16 @@ pub(super) struct Read {
     #[sql = "SELECT DISTINCT system, season, episode FROM xem_episodes WHERE show_id = ? AND part = 0"]
     #[sql = "ORDER BY system, season, episode"]
     system_codes: TypedStatement<(ShowId,), SystemCode>,
+    #[sql = "SELECT DISTINCT o.season AS season FROM xem_episodes t"]
+    #[sql = "JOIN xem_episodes o ON o.show_id = t.show_id AND o.entry = t.entry"]
+    #[sql = "WHERE t.show_id = ? AND t.system = ? AND t.season = ? AND o.system = ? AND o.part = 0"]
+    #[sql = "ORDER BY o.season"]
+    origin_seasons: TypedStatement<(ShowId, String, u32, String), Season>,
+}
+
+#[derive(Row)]
+struct Season {
+    season: u32,
 }
 
 #[derive(Row)]
@@ -93,31 +103,115 @@ impl InnerWrite {
     }
 }
 
-// The lookups the numbering display reads; nothing calls them yet.
-#[allow(dead_code)]
+impl InnerRead {
+    fn xem_names(&mut self, show_id: ShowId) -> Result<Vec<Name>> {
+        let mut out = Vec::new();
+        let mut stmt = self.xem.names.bind((show_id,))?;
+
+        while let Some(row) = stmt.next()? {
+            out.push(row);
+        }
+
+        Ok(out)
+    }
+
+    /// XEM's names for the whole show, leaving out its own titles.
+    pub(super) fn xem_show_names(&mut self, show: &api::Show) -> Result<Vec<api::AltName>> {
+        let names = self.xem_names(show.id)?;
+        let titles = show.strings.texts(api::StringKind::Title);
+        Ok(xem::names_for(&names, &[None], titles))
+    }
+}
+
 impl Database {
-    /// The XEM entry holding `system`'s (`season`, `episode`), as every
-    /// system's address of it; empty when XEM maps no such episode.
+    #[cfg(test)]
+    pub(crate) async fn xem_names(&self, show_id: ShowId) -> Result<Vec<Name>> {
+        let mut s = self.inner.clone().shared().await?;
+        spawn_blocking(move || s.xem_names(show_id)).await?
+    }
+
+    /// For each target, every system's address of the XEM entry holding it;
+    /// empty for no target or when XEM maps no such episode.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn xem_entry(
+    pub(crate) async fn xem_entries(
         &self,
         show_id: ShowId,
-        system: &str,
-        season: u32,
-        episode: u32,
-    ) -> Result<Vec<Numbering>> {
+        targets: Vec<Option<api::NumberingTarget>>,
+    ) -> Result<Vec<Vec<Numbering>>> {
         let mut s = self.inner.clone().shared().await?;
-        let system = system.to_owned();
 
         let result = spawn_blocking(move || {
-            let mut out = Vec::new();
-            let mut stmt = s
-                .xem
-                .entry
-                .bind((show_id, show_id, system, season, episode))?;
+            let mut out = Vec::with_capacity(targets.len());
 
-            while let Some(row) = stmt.next()? {
-                out.push(row);
+            for target in targets {
+                let mut entry = Vec::new();
+
+                if let Some(t) = target {
+                    let mut stmt = s
+                        .xem
+                        .entry
+                        .bind((show_id, show_id, t.system, t.season, t.episode))?;
+
+                    while let Some(row) = stmt.next()? {
+                        entry.push(row);
+                    }
+                }
+
+                out.push(entry);
+            }
+
+            Ok(out)
+        });
+
+        result.await?
+    }
+
+    /// The XEM names of each of `seasons`' target seasons, for those that have
+    /// any. XEM numbers season names by `origin`, so a target in another
+    /// system is read through the origin seasons its episodes are in.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn xem_season_names(
+        &self,
+        show_id: ShowId,
+        origin: String,
+        seasons: Vec<Vec<api::LinkedSeason>>,
+    ) -> Result<Vec<Vec<api::SeasonAltNames>>> {
+        let mut s = self.inner.clone().shared().await?;
+
+        let result = spawn_blocking(move || {
+            let names = s.xem_names(show_id)?;
+            let mut out = Vec::with_capacity(seasons.len());
+
+            for targets in seasons {
+                let mut season_names = Vec::new();
+
+                for target in targets {
+                    let origin_seasons = if target.system == origin {
+                        vec![Some(target.season)]
+                    } else {
+                        let mut out = Vec::new();
+                        let mut stmt = s.xem.origin_seasons.bind((
+                            show_id,
+                            target.system.as_str(),
+                            target.season,
+                            origin.as_str(),
+                        ))?;
+
+                        while let Some(row) = stmt.next()? {
+                            out.push(Some(row.season));
+                        }
+
+                        out
+                    };
+
+                    let names = xem::names_for(&names, &origin_seasons, []);
+
+                    if !names.is_empty() {
+                        season_names.push(api::SeasonAltNames { target, names });
+                    }
+                }
+
+                out.push(season_names);
             }
 
             Ok(out)
@@ -127,8 +221,7 @@ impl Database {
     }
 
     /// The show's episode codes, and XEM's codes for it by system, each in
-    /// episode order.
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    /// episode order.    #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn numbering_codes(
         &self,
         show_id: ShowId,
@@ -162,25 +255,6 @@ impl Database {
             }
 
             Ok((episodes, systems))
-        });
-
-        result.await?
-    }
-
-    /// The show's XEM names, the show's own (season `None`) first.
-    #[tracing::instrument(skip(self), ret(level = "trace"))]
-    pub(crate) async fn xem_names(&self, show_id: ShowId) -> Result<Vec<Name>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
-            let mut out = Vec::new();
-            let mut stmt = s.xem.names.bind((show_id,))?;
-
-            while let Some(row) = stmt.next()? {
-                out.push(row);
-            }
-
-            Ok(out)
         });
 
         result.await?

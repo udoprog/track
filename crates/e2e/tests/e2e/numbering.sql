@@ -1,5 +1,7 @@
 -- Two more episodes for the seeded show, which XEM numbers as TheTVDB S1 E1-3
--- and S2 E1-2, so its five-episode first season does not line up.
+-- and S2 E1-2, so its five-episode first season does not line up. Scene
+-- numbers like TheTVDB, TheTVDB's S2E2 is a double episode, and XEM knows
+-- other names for the show and both of TheTVDB's seasons.
 
 INSERT INTO episodes (id, show_id, season, episode, aired)
 VALUES
@@ -17,4 +19,20 @@ VALUES
     (1001, 1, 'anidb', 0, 1, 2, 2),
     (1001, 2, 'anidb', 0, 1, 3, 3),
     (1001, 3, 'anidb', 0, 1, 4, 4),
-    (1001, 4, 'anidb', 0, 1, 5, 5);
+    (1001, 4, 'anidb', 0, 1, 5, 5),
+    (1001, 4, 'tvdb', 1, 2, 3, 6),
+    (1001, 0, 'scene', 0, 1, 1, 1),
+    (1001, 1, 'scene', 0, 1, 2, 2),
+    (1001, 2, 'scene', 0, 1, 3, 3),
+    (1001, 3, 'scene', 0, 2, 1, 4),
+    (1001, 4, 'scene', 0, 2, 2, 5);
+
+INSERT INTO xem_names (show_id, season, language, name)
+VALUES
+    (1001, NULL, 'us', 'seeded show'),
+    (1001, NULL, 'jp', 'Shīdo Shō'),
+    (1001, NULL, 'de', 'Die Testserie'),
+    (1001, NULL, 'us', 'Seeded'),
+    (1001, NULL, 'fr', 'La Série'),
+    (1001, 1, 'jp', 'Seeded First'),
+    (1001, 2, 'jp', 'Seeded Second');

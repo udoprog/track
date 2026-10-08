@@ -1,4 +1,4 @@
-use api::{FilterRules, Locale, PreferenceValue, RemoteSource, SourceSyncKinds};
+use api::{FilterRules, Locale, NumberingPref, PreferenceValue, RemoteSource, SourceSyncKinds};
 use sqll::{FromColumn, Statement, ty};
 
 /// A preference read from a `*_config` table: the row's JSON value, NULL when
@@ -66,4 +66,15 @@ pub(super) fn encode_xem_lookup(sources: &[RemoteSource]) -> String {
 /// Parse the order written by [`encode_xem_lookup`].
 pub(super) fn decode_xem_lookup(s: &str) -> Option<Vec<RemoteSource>> {
     serde_json::from_str(s).ok()
+}
+
+/// Serialize the "Other numberings" setting for storage in a text column.
+pub(super) fn encode_numberings(prefs: &[NumberingPref]) -> String {
+    serde_json::to_string(prefs).unwrap_or_else(|_| "[]".to_string())
+}
+
+/// Parse the setting written by [`encode_numberings`], in full order.
+pub(super) fn decode_numberings(s: &str) -> Option<Vec<NumberingPref>> {
+    let prefs = serde_json::from_str::<Vec<NumberingPref>>(s).ok()?;
+    Some(api::numbering_order(&prefs))
 }

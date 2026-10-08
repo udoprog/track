@@ -824,7 +824,7 @@ impl MediaSettingsModal {
         let on_edit = ctx.props().on_edit_numbering.reform(|_: MouseEvent| ());
 
         Some(html! {
-            <FormRow label="Episode numbering" hint={hint.map(AttrValue::from)}>
+            <FormRow label="Episode numbering" help={crate::help::NUMBERINGS} hint={hint.map(AttrValue::from)}>
                 <select class="input-select" title="Episode numbering" onchange={on_mode}>
                     <option value="automatic" selected={!manual}>{"Automatic: same as TheTVDB"}</option>
                     <option value="manual" selected={manual}>{"Manual ranges"}</option>

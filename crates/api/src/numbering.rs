@@ -234,3 +234,95 @@ fn counts(codes: &[(u32, u32)]) -> BTreeMap<u32, u32> {
 
     out
 }
+
+/// Whether an XEM system's numbering is shown on episodes, in the order of
+/// the "Other numberings" setting.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize)]
+#[musli(crate = musli_core)]
+pub struct NumberingPref {
+    pub system: String,
+    pub shown: bool,
+}
+
+/// The systems shown by default; the rest of [`XEM_SYSTEMS`] start hidden.
+const SHOWN_NUMBERINGS: &[&str] = &["tvdb", "scene", "anidb"];
+
+/// The default "Other numberings" setting.
+pub fn default_numberings() -> Vec<NumberingPref> {
+    numbering_order(&[])
+}
+
+/// `prefs` with unknown systems left out and every known system missing from
+/// it appended with its default, so each system has one position.
+pub fn numbering_order(prefs: &[NumberingPref]) -> Vec<NumberingPref> {
+    let mut out = Vec::<NumberingPref>::new();
+
+    for p in prefs {
+        if XEM_SYSTEMS.iter().any(|(name, _)| *name == p.system)
+            && !out.iter().any(|o| o.system == p.system)
+        {
+            out.push(p.clone());
+        }
+    }
+
+    for (name, _) in XEM_SYSTEMS {
+        if !out.iter().any(|o| o.system == *name) {
+            out.push(NumberingPref {
+                system: (*name).to_owned(),
+                shown: SHOWN_NUMBERINGS.contains(name),
+            });
+        }
+    }
+
+    out
+}
+
+/// An episode's code in another numbering. `last` is the second episode of a
+/// double episode, which XEM gives as a second address in the same season.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct AltNumbering {
+    pub system: String,
+    pub season: u32,
+    pub episode: u32,
+    pub last: Option<u32>,
+    pub absolute: Option<u32>,
+}
+
+impl AltNumbering {
+    /// The code as shown, such as `S02E01` or `S01E03+04`.
+    pub fn code(&self) -> String {
+        let mut code = format!("S{:02}E{:02}", self.season, self.episode);
+
+        if let Some(last) = self.last {
+            code.push_str(&format!("+{last:02}"));
+        }
+
+        code
+    }
+}
+
+/// The season of another numbering an episode is linked to.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct LinkedSeason {
+    pub system: String,
+    pub season: u32,
+}
+
+/// An alternative name from XEM, with XEM's language code (`us`, `jp`, ...)
+/// when it has one.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct AltName {
+    pub name: String,
+    pub language: Option<String>,
+}
+
+/// The XEM names of a season of another numbering that a season covers.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct SeasonAltNames {
+    pub target: LinkedSeason,
+    pub names: Vec<AltName>,
+}

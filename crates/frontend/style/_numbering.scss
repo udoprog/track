@@ -171,3 +171,127 @@
         text-decoration: underline;
     }
 }
+
+// A show's other names under its title (ui/also_known_as.rs).
+.also-known-as {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 v.$gap-xs;
+    margin: 0;
+    font-size: v.$font-sm;
+
+    >.also-known-as-label {
+        color: v.$text-muted;
+    }
+}
+
+.alt-name-language {
+    margin-inline-start: v.$text-gap;
+    color: v.$text-muted;
+    font-size: 10px;
+}
+
+// The names of the seasons a season covers, under its heading.
+.season-names {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 v.$gap-xs;
+    margin: 0;
+    font-size: v.$font-sm;
+
+    >.season-names-label {
+        color: v.$text-muted;
+    }
+}
+
+.season-names-group {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0 v.$text-gap;
+
+    >.alt-name:not(:nth-last-child(2))::after {
+        content: ',';
+    }
+}
+
+.season-names-group+.season-names-group::before {
+    content: '·';
+    margin-inline-end: v.$text-gap;
+    color: v.$text-muted;
+}
+
+// An episode's codes in other numberings.
+.episode-numberings {
+    display: flex;
+    flex-wrap: wrap;
+    gap: v.$padding;
+}
+
+.numbering-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: v.$padding;
+    height: 20px;
+    padding: 0 v.$padding-md 0 2px;
+    border-radius: v.$radius-sm;
+    background: var(--neutral-bg);
+    font-size: v.$font-xs;
+    font-weight: v.$bold-weight;
+    font-variant-numeric: tabular-nums;
+
+    >.logo {
+        height: 16px;
+
+        &::before {
+            font-size: 9px;
+        }
+    }
+}
+
+// Where an episode list moves on to another season of the numbering it is
+// linked to.
+.numbering-divider {
+    display: flex;
+    align-items: center;
+    gap: v.$gap-xs;
+    padding-block: v.$padding-lg;
+    font-size: v.$font-sm;
+
+    &::before,
+    &::after {
+        content: '';
+        flex: 1;
+        min-width: v.$gap;
+        border-top: 1px dashed v.$border-input;
+    }
+
+    >.logo {
+        height: 16px;
+    }
+
+    >.numbering-divider-season {
+        font-weight: v.$bold-weight;
+    }
+}
+
+// The "Other numberings" setting: a hidden numbering's row is quieter.
+.numberings {
+    .numbering-name {
+        flex: 1;
+        gap: v.$gap-xs;
+        min-width: 0;
+        flex-wrap: wrap;
+    }
+
+    >.numbering-hidden>:not(button) {
+        opacity: 0.55;
+    }
+}
+
+.also-known-as>.alt-name+.alt-name::before {
+    content: '·';
+    margin-inline-end: v.$gap-xs;
+    color: v.$text-muted;
+}
