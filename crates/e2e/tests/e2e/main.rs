@@ -60,6 +60,8 @@ const GRAPHICS: &str = include_str!("graphics.sql");
 const BACKDROP: &str = include_str!("backdrop.sql");
 /// A backdrop for the movie in [`MOVIE`], with `(movie, movie_backdrop)`.
 const MOVIE_BACKDROP: &str = include_str!("movie_backdrop.sql");
+/// More cast for the movie in [`MOVIE`], with `(movie, movie_cast)`.
+const MOVIE_CAST: &str = include_str!("movie_cast.sql");
 /// A finished show, one with only a special left and one being rewatched,
 /// with `(next)`.
 const NEXT: &str = include_str!("next.sql");
@@ -93,6 +95,8 @@ struct Setup {
     backdrop: bool,
     /// Add the backdrop in `movie_backdrop.sql` to the movie from `(movie)`.
     movie_backdrop: bool,
+    /// Add the extra cast in `movie_cast.sql` to the movie from `(movie)`.
+    movie_cast: bool,
     /// Start with `seed.sql` and the shows in `next.sql`.
     next: bool,
     /// Start with `seed.sql` and the XEM numbering in `numbering.sql`.
@@ -215,6 +219,10 @@ impl Fixture for Track {
             if setup.movie_backdrop {
                 c.execute(MOVIE_BACKDROP)
                     .context("adding the movie backdrop")?;
+            }
+
+            if setup.movie_cast {
+                c.execute(MOVIE_CAST).context("adding the movie cast")?;
             }
 
             if setup.next {
@@ -453,7 +461,7 @@ async fn kept_marked(driver: &TestDriver, selector: &str) -> Result<usize> {
 
 yew_e2e::harness! {
     Track;
-    cast::{opens_the_full_cast_in_a_modal(cast), search_filters_by_person_and_character(cast), phone_cast_modal_fits_the_screen(cast)},
+    cast::{opens_the_full_cast_in_a_modal(cast), search_filters_by_person_and_character(cast), phone_cast_modal_fits_the_screen(cast), movie_opens_the_full_cast_in_a_modal(movie, movie_cast)},
     auth::{cloudflare_requires_a_click(cloudflare), cloudflare_is_unavailable(signed_out), signs_in(signed_out), rejects_a_wrong_password(signed_out), signs_out(signed_out), registers_with_a_login_link(signed_out, login_link), changes_the_password(signed_out), changes_the_login},
     dashboard::{fills_rows_with_relative_dates(seeded), labels_its_filters, keeps_view_options_in_a_menu, buttons_expose_their_state, secondary_actions_are_filled(seeded), mobile_cards_always_have_a_picture(seeded), schedule_names_its_days, upcoming_is_an_agenda, upcoming_times_open_their_episode(upcoming), upcoming_keeps_days_when_more_are_shown(upcoming), schedule_keeps_weeks_when_more_are_shown(upcoming), schedule_entries_sit_flush_left(upcoming), marks_watched_in_one_click(seeded), marks_watched_at_a_chosen_time(seeded)},
     help::{opens_from_the_toolbar, search_filters_sections, links_between_sections, inline_help_opens_its_section, phones_stack_the_sections},

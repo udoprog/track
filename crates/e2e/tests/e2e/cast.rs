@@ -138,3 +138,46 @@ pub async fn phone_cast_modal_fits_the_screen(
 
     Ok(())
 }
+
+/// The movie page's "Show all cast" opens the whole cast in the same modal,
+/// leaving the capped grid as it was.
+pub async fn movie_opens_the_full_cast_in_a_modal(
+    driver: &mut TestDriver,
+    _: &mut Track,
+) -> Result<()> {
+    driver
+        .find_one_by(".toolbar-item[title=Media]")
+        .await?
+        .click()
+        .await?;
+    driver
+        .wait_texts(".media-title", ["Seeded Movie", "Seeded Show"])
+        .await?;
+    driver
+        .find_nth(".media-card .media-poster", 0)
+        .await?
+        .click()
+        .await?;
+    driver.wait_texts(".detail-title", ["Seeded Movie"]).await?;
+
+    driver.find_one_by(".credits-toggle").await?.click().await?;
+    driver.find_one_by(".modal.cast-modal").await?;
+    driver.wait_count(".cast-modal .cast-card", 9).await?;
+    ensure!(
+        driver.count(".credits > .cast-grid .cast-card").await? == 8,
+        "the page's cast grid grew past its cap"
+    );
+    ensure!(
+        driver.focused_attr("data-test").await?.as_deref() == Some("cast-search"),
+        "the cast search is not focused"
+    );
+
+    let search = driver.find_one_by("[data-test=cast-search]").await?;
+    search.send_keys("compiler").await?;
+    driver
+        .wait_texts(".cast-modal .cast-name", ["Frances Allen"])
+        .await?;
+
+    search.send_keys(ESCAPE).await?;
+    driver.wait_count(".modal", 0).await
+}
