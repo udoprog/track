@@ -1303,3 +1303,40 @@ async fn show_remote_changes_require_the_owning_show() -> Result<()> {
     assert_eq!(remotes(a).await?.len(), 1);
     Ok(())
 }
+
+/// XEM, AniDB and scene remotes keep their values and a show can hold several
+/// AniDB remotes (one per cour).
+#[tokio::test]
+async fn xem_anidb_scene_remotes_round_trip() -> Result<()> {
+    let dir = tempfile::tempdir()?;
+    let db = Database::open(dir.path().join("test.db"), OpenMode::Bulk, 1)?;
+
+    let show = api::ShowId::new(1);
+    db.create_show(show, "Frieren", None, "").await?;
+
+    let added = [
+        Remote::new(RemoteSource::Anidb, api::RemoteValue::Int(17617)),
+        Remote::new(RemoteSource::Anidb, api::RemoteValue::Int(18603)),
+        Remote::new(
+            RemoteSource::Xem,
+            api::RemoteValue::Str("tvdb/424536".into()),
+        ),
+        Remote::new(
+            RemoteSource::Scene,
+            api::RemoteValue::Str("Sousou no Frieren".into()),
+        ),
+        Remote::new(RemoteSource::Scene, api::RemoteValue::Str("24".into())),
+    ];
+
+    for remote in &added {
+        db.add_remote(show, None, remote).await?;
+    }
+
+    let remotes = db.show_by_id(None, show).await?.context("show")?.remotes;
+    let mut stored = remotes.iter().map(|r| r.remote.clone()).collect::<Vec<_>>();
+    stored.sort_by_key(|r| r.to_string());
+    let mut expected = added.to_vec();
+    expected.sort_by_key(|r| r.to_string());
+    assert_eq!(stored, expected);
+    Ok(())
+}

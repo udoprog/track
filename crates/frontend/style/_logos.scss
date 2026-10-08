@@ -29,4 +29,43 @@
     @include logo('tmdb');
     @include logo('tvdb');
     @include logo('tvmaze');
+
+    // Sources without a vendored logo: a text plate sized to its label.
+    &.xem,
+    &.anidb,
+    &.scene {
+        display: inline-flex;
+        align-items: center;
+        aspect-ratio: auto;
+        background-color: transparent;
+        padding: 0;
+
+        &::before {
+            display: flex;
+            align-items: center;
+            height: 100%;
+            padding: 0 0.5em;
+            border-radius: v.$radius;
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1;
+            white-space: nowrap;
+        }
+    }
+
+    &.xem::before {
+        content: 'XEM';
+        background-color: #2f6fc4;
+    }
+
+    &.anidb::before {
+        content: 'AniDB';
+        background-color: #1d3a66;
+    }
+
+    &.scene::before {
+        content: 'Scene';
+        background-color: #3a3f47;
+    }
 }

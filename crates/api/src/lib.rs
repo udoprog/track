@@ -70,12 +70,23 @@ pub enum RemoteSource {
     Tmdb,
     Imdb,
     Tvmaze,
+    Xem,
+    Anidb,
+    Scene,
     Unknown,
 }
 
 impl RemoteSource {
     /// All known remote sources, in arbitrary but deterministic order.
-    pub const ALL: &[Self] = &[Self::Tvdb, Self::Tmdb, Self::Imdb, Self::Tvmaze];
+    pub const ALL: &[Self] = &[
+        Self::Tvdb,
+        Self::Tmdb,
+        Self::Imdb,
+        Self::Tvmaze,
+        Self::Xem,
+        Self::Anidb,
+        Self::Scene,
+    ];
 
     /// Whether this source is unknown.
     pub fn is_unknown(&self) -> bool {
@@ -88,6 +99,9 @@ impl RemoteSource {
             Self::Tmdb => "TMDB",
             Self::Imdb => "IMDb",
             Self::Tvmaze => "TVmaze",
+            Self::Xem => "XEM",
+            Self::Anidb => "AniDB",
+            Self::Scene => "Scene",
             Self::Unknown => "Unknown",
         }
     }
@@ -98,6 +112,9 @@ impl RemoteSource {
             Self::Tmdb => "tmdb",
             Self::Imdb => "imdb",
             Self::Tvmaze => "tvmaze",
+            Self::Xem => "xem",
+            Self::Anidb => "anidb",
+            Self::Scene => "scene",
             Self::Unknown => "unknown",
         }
     }
@@ -108,6 +125,9 @@ impl RemoteSource {
             "tmdb" => Self::Tmdb,
             "imdb" => Self::Imdb,
             "tvmaze" => Self::Tvmaze,
+            "xem" => Self::Xem,
+            "anidb" => Self::Anidb,
+            "scene" => Self::Scene,
             _ => Self::Unknown,
         }
     }
@@ -119,7 +139,7 @@ impl RemoteSource {
             Self::Tmdb => &[SyncKind::Base, SyncKind::Dates, SyncKind::Credits],
             Self::Tvdb => &[SyncKind::Base, SyncKind::Dates],
             Self::Tvmaze => &[SyncKind::Dates],
-            Self::Imdb | Self::Unknown => &[],
+            Self::Imdb | Self::Xem | Self::Anidb | Self::Scene | Self::Unknown => &[],
         }
     }
 
@@ -164,6 +184,9 @@ impl ::sqll::FromColumn<'_> for RemoteSource {
             2 => Ok(RemoteSource::Tmdb),
             3 => Ok(RemoteSource::Imdb),
             4 => Ok(RemoteSource::Tvmaze),
+            5 => Ok(RemoteSource::Xem),
+            6 => Ok(RemoteSource::Anidb),
+            7 => Ok(RemoteSource::Scene),
             _ => Ok(RemoteSource::Unknown),
         }
     }
@@ -178,6 +201,9 @@ impl ::sqll::BindValue for RemoteSource {
             RemoteSource::Tmdb => 2,
             RemoteSource::Imdb => 3,
             RemoteSource::Tvmaze => 4,
+            RemoteSource::Xem => 5,
+            RemoteSource::Anidb => 6,
+            RemoteSource::Scene => 7,
         };
 
         n.bind_value(stmt, index)
@@ -270,7 +296,16 @@ pub struct Remote {
 }
 
 impl Remote {
-    pub const fn new(source: RemoteSource, value: RemoteValue) -> Self {
+    pub fn new(source: RemoteSource, value: RemoteValue) -> Self {
+        // Scene names and XEM ids are always text, but a numeric-looking one
+        // reads back from the database (numeric column affinity) as an integer.
+        let value = match (source, value) {
+            (RemoteSource::Scene | RemoteSource::Xem, RemoteValue::Int(n)) => {
+                RemoteValue::Str(n.to_string())
+            }
+            (_, value) => value,
+        };
+
         Self { source, value }
     }
 
@@ -304,10 +339,7 @@ impl Remote {
 
     pub fn from_raw(s: &str) -> Self {
         match s.split_once(':') {
-            Some((src, val)) => Self {
-                source: RemoteSource::from_id(src),
-                value: RemoteValue::parse(val),
-            },
+            Some((src, val)) => Self::new(RemoteSource::from_id(src), RemoteValue::parse(val)),
             None => Self {
                 source: RemoteSource::Unknown,
                 value: RemoteValue::Str(s.to_owned()),
@@ -336,6 +368,7 @@ impl Remote {
             (RemoteSource::Tvmaze, _) => {
                 Some(format!("https://www.tvmaze.com/shows/{}", self.value))
             }
+            (RemoteSource::Anidb, _) => Some(format!("https://anidb.net/anime/{}", self.value)),
             _ => None,
         }
     }

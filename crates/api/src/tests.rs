@@ -257,6 +257,11 @@ fn sync_kinds_capabilities() {
     assert!(!Tvmaze.has_graphics());
     assert!(!Imdb.has_graphics());
 
+    for source in [Xem, Anidb, Scene] {
+        assert_eq!(source.sync_kinds(), &[]);
+        assert!(!source.has_graphics());
+    }
+
     // Base and Credits are exclusive (first source wins); air dates accumulate.
     assert!(SyncKind::Base.is_exclusive());
     assert!(!SyncKind::Dates.is_exclusive());
@@ -872,4 +877,32 @@ fn viewer_languages_join_a_default_sync_language() {
         sync_languages_for_viewers(&[english], &[swedish]),
         [english]
     );
+}
+
+#[test]
+fn xem_anidb_scene_sources() {
+    use RemoteSource::*;
+
+    for (source, id, label) in [
+        (Xem, "xem", "XEM"),
+        (Anidb, "anidb", "AniDB"),
+        (Scene, "scene", "Scene"),
+    ] {
+        assert!(RemoteSource::ALL.contains(&source));
+        assert_eq!(source.as_id(), id);
+        assert_eq!(source.as_label(), label);
+        assert_eq!(RemoteSource::from_id(id), source);
+    }
+
+    let anidb = Remote::new(Anidb, RemoteValue::Int(17617));
+    assert_eq!(
+        anidb.show_url(None).as_deref(),
+        Some("https://anidb.net/anime/17617")
+    );
+
+    let xem = Remote::new(Xem, RemoteValue::Str("tvdb/424536".to_owned()));
+    assert_eq!(xem.show_url(None), None);
+
+    let scene = Remote::new(Scene, RemoteValue::Str("Sousou no Frieren".to_owned()));
+    assert_eq!(scene.show_url(None), None);
 }

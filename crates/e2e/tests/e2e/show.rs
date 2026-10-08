@@ -869,6 +869,124 @@ pub async fn remotes_show_their_actions(driver: &mut TestDriver, _: &mut Track) 
     Ok(())
 }
 
+/// XEM, AniDB and scene remotes are added from the Remotes editor, each with
+/// its own hint and a text plate for a logo; only AniDB links out, both in the
+/// editor and in the show's sources row.
+pub async fn xem_anidb_and_scene_remotes_are_added(
+    driver: &mut TestDriver,
+    _: &mut Track,
+) -> Result<()> {
+    open_show(driver).await?;
+
+    driver
+        .find_one_by("[title='Settings']:not(#toolbar *)")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by(".modal [title='Edit remotes']")
+        .await?
+        .click()
+        .await?;
+
+    for (source, value, placeholder) in [
+        ("anidb", "17617", "Anime id"),
+        ("anidb", "18603", "Anime id"),
+        ("scene", "Sousou no Frieren", "Scene name"),
+        ("xem", "tvdb/424536", "tvdb/<id>"),
+    ] {
+        driver
+            .find_one_by(&format!(
+                ".modal select[title=Source] option[value={source}]"
+            ))
+            .await?
+            .click()
+            .await?;
+        driver.wait_count(".modal .form .hint", 1).await?;
+
+        let input = driver
+            .find_one_by(".modal input[aria-label=Identifier]")
+            .await?;
+        let shown = input.attr("placeholder").await?;
+        ensure!(shown == placeholder, "{source} asks for {shown:?}");
+
+        if source == "xem" {
+            input.send_keys("424536").await?;
+            driver
+                .find_one_by(".modal [title='Add identifier']")
+                .await?
+                .click()
+                .await?;
+            driver.wait_count(".modal .field-error", 1).await?;
+            input.clear().await?;
+        }
+
+        input.send_keys(value).await?;
+        driver
+            .find_one_by(".modal [title='Add identifier']")
+            .await?
+            .click()
+            .await?;
+        driver
+            .wait_count(
+                &format!(".modal .remote .logo.{source}"),
+                if value == "18603" { 2 } else { 1 },
+            )
+            .await?;
+    }
+
+    let mut ids = driver.find_all_texts(".modal .remote-id").await?;
+    ids.sort();
+    ensure!(
+        ids == ["17617", "18603", "Sousou no Frieren", "tvdb/424536"],
+        "the remotes read {ids:?}"
+    );
+
+    ensure!(
+        driver
+            .count(".modal a.remote-link[href='https://anidb.net/anime/17617'] .logo.anidb")
+            .await?
+            == 1
+    );
+    ensure!(driver.count(".modal a.remote-link .logo.scene").await? == 0);
+    ensure!(driver.count(".modal a.remote-link .logo.xem").await? == 0);
+
+    for source in ["anidb", "scene", "xem"] {
+        let width = driver
+            .find_first(&format!(".modal .remote .logo.{source}"))
+            .await?
+            .css("width")
+            .await?;
+        let px: f64 = width.trim_end_matches("px").parse()?;
+        ensure!(px > 20.0, "the {source} plate is {width} wide");
+    }
+
+    for heading in ["Remotes", "Settings"] {
+        driver.wait_texts(".modal h2", [heading]).await?;
+        driver
+            .find_one_by(".modal [title=Close]")
+            .await?
+            .click()
+            .await?;
+    }
+
+    driver.wait_count(".modal", 0).await?;
+
+    driver
+        .wait_count(
+            ".detail-sources a[href='https://anidb.net/anime/18603'] .logo.anidb",
+            1,
+        )
+        .await?;
+    ensure!(
+        driver
+            .count(".detail-sources .logo.scene, .detail-sources .logo.xem")
+            .await?
+            == 0
+    );
+    Ok(())
+}
+
 /// Clicking stills picks episodes (shift-click picks the range between), and
 /// the selection bar marks them all watched at once.
 pub async fn picked_episodes_are_marked_together(

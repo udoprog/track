@@ -7041,7 +7041,8 @@ fn show_from_row(row: ShowRow, strings: api::Translations) -> api::Show {
 /// sources in settings sets the default applied to remotes added afterward. A
 /// show's own remote order (set by reordering its remotes) overrides this
 /// default and is preserved. Sources absent from the global list rank after the
-/// listed ones, keeping the built-in TVmaze < TMDB < TVDB < IMDb < Unknown order.
+/// listed ones, keeping the built-in TVmaze < TMDB < TVDB < IMDb < AniDB < Scene
+/// < XEM < Unknown order.
 fn remote_entry(r: RemoteRow) -> api::RemoteEntry {
     api::RemoteEntry {
         id: r.id,
@@ -7066,7 +7067,10 @@ fn default_remote_priority(source: RemoteSource, config: &Config) -> i32 {
         RemoteSource::Tmdb => 1,
         RemoteSource::Tvdb => 2,
         RemoteSource::Imdb => 3,
-        RemoteSource::Unknown => 4,
+        RemoteSource::Anidb => 4,
+        RemoteSource::Scene => 5,
+        RemoteSource::Xem => 6,
+        RemoteSource::Unknown => 7,
     }
 }
 

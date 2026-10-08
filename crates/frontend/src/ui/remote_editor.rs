@@ -22,7 +22,7 @@ fn parse_remote(source: &api::RemoteSource, value: &str) -> Result<api::Remote, 
     }
 
     let value = match *source {
-        api::RemoteSource::Tvdb | api::RemoteSource::Tmdb => {
+        api::RemoteSource::Tvdb | api::RemoteSource::Tmdb | api::RemoteSource::Anidb => {
             let Ok(value) = value.parse::<u32>() else {
                 return Err(format!("{} identifier must be a number", source.as_label()));
             };
@@ -40,12 +40,61 @@ fn parse_remote(source: &api::RemoteSource, value: &str) -> Result<api::Remote, 
 
             api::RemoteValue::Str(value.to_string())
         }
+        api::RemoteSource::Xem => {
+            let valid = value.split_once('/').is_some_and(|(origin, id)| {
+                matches!(origin, "tvdb" | "anidb")
+                    && !id.is_empty()
+                    && id.bytes().all(|b| b.is_ascii_digit())
+            });
+
+            if !valid {
+                return Err("XEM identifier must look like tvdb/424536 or anidb/17617".to_string());
+            }
+
+            api::RemoteValue::Str(value.to_string())
+        }
+        api::RemoteSource::Scene => api::RemoteValue::Str(value.to_string()),
         _ => {
             return Err("Unknown remote source".to_string());
         }
     };
 
     Ok(api::Remote::new(*source, value))
+}
+
+/// The sources offered when adding a remote. XEM, AniDB and scene only number
+/// show episodes.
+fn addable_sources(kind: RemoteSourceKind) -> impl Iterator<Item = api::RemoteSource> {
+    api::RemoteSource::ALL
+        .iter()
+        .copied()
+        .filter(move |source| {
+            kind == RemoteSourceKind::Show
+                || !matches!(
+                    source,
+                    api::RemoteSource::Xem | api::RemoteSource::Anidb | api::RemoteSource::Scene
+                )
+        })
+}
+
+fn placeholder(source: api::RemoteSource) -> &'static str {
+    match source {
+        api::RemoteSource::Scene => "Scene name",
+        api::RemoteSource::Anidb => "Anime id",
+        api::RemoteSource::Xem => "tvdb/<id>",
+        _ => "Identifier",
+    }
+}
+
+fn hint(source: api::RemoteSource) -> Option<&'static str> {
+    match source {
+        api::RemoteSource::Scene => Some("Scene names have no link."),
+        api::RemoteSource::Anidb => Some(
+            "AniDB takes an anime id (anidb.net/anime/17617); a show split into cours can have one per cour.",
+        ),
+        api::RemoteSource::Xem => Some("XEM takes tvdb/<id> or anidb/<id>."),
+        _ => None,
+    }
 }
 
 /// Modal for adding, editing and removing remote identifiers (e.g. `tvdb:123`,
@@ -491,12 +540,12 @@ impl Component for RemoteEditor {
                     <div class={classes!("field", self.error.is_some().then_some("error"))}>
                         <div class="input-group fill">
                             <select ref={self.source_ref.clone()} class="input-select" onchange={on_source} title="Source">
-                                { for api::RemoteSource::ALL.iter().map(|source| html! {
-                                    <option value={source.as_id()} selected={self.source == *source}>{source.as_label()}</option>
+                                { for addable_sources(props.kind).map(|source| html! {
+                                    <option value={source.as_id()} selected={self.source == source}>{source.as_label()}</option>
                                 }) }
                             </select>
 
-                            <input class="input-text fill" type="text" placeholder="Identifier" aria-label="Identifier" value={self.value.clone()} oninput={on_value} />
+                            <input class="input-text fill" type="text" placeholder={placeholder(self.source)} aria-label="Identifier" value={self.value.clone()} oninput={on_value} />
 
                             <Button icon="link" label="Slug" title="Edit slug" class={classes!(self.show_slug.then_some("selected"))} pressed={Some(self.show_slug)} onclick={link.callback(|_| Msg::ToggleSlug)} />
 
@@ -520,6 +569,10 @@ impl Component for RemoteEditor {
 
                         if let Some(ref error) = self.error {
                             <span class="field-error" role="alert">{error}</span>
+                        }
+
+                        if let Some(hint) = hint(self.source) {
+                            <span class="hint">{hint}</span>
                         }
                     </div>
                 </div>
