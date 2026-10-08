@@ -14,6 +14,8 @@ pub(crate) struct Props {
     pub(crate) icon: Option<AttrValue>,
     #[prop_or_default]
     pub(crate) title: Option<Html>,
+    #[prop_or_default]
+    pub(crate) class: Classes,
     pub(crate) children: Children,
     pub(crate) on_close: Callback<()>,
 }
@@ -64,7 +66,7 @@ pub(crate) fn Modal(props: &Props) -> Html {
     html! {
         <div class="modal-background" onclick={on_close.clone()}>
             <div
-                class="modal"
+                class={classes!("modal", props.class.clone())}
                 ref={dialog}
                 role="dialog"
                 aria-modal="true"

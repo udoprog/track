@@ -347,7 +347,7 @@ pub async fn tab_completes_the_time_zone(driver: &mut TestDriver, _: &mut Track)
 }
 
 /// Opens a settings page from the list of pages.
-async fn open_page(driver: &TestDriver, title: &str) -> Result<()> {
+pub(super) async fn open_page(driver: &TestDriver, title: &str) -> Result<()> {
     driver
         .find_one_by(&format!(".settings-nav-item[title='{title}']"))
         .await?
@@ -365,7 +365,7 @@ async fn open_page(driver: &TestDriver, title: &str) -> Result<()> {
         .await
 }
 
-async fn open_settings(driver: &TestDriver) -> Result<()> {
+pub(super) async fn open_settings(driver: &TestDriver) -> Result<()> {
     driver
         .find_one_by(".toolbar-item[title=Settings]")
         .await?

@@ -2,8 +2,9 @@ use yew::prelude::*;
 
 use crate::background::Background;
 use crate::error::Error;
+use crate::help;
 use crate::router::{DashboardQuery, DashboardView, MediaSelection, Route, Router};
-use crate::ui::{Button, MediaKindToggle};
+use crate::ui::{Button, Help, MediaKindToggle};
 
 use super::{Calendar, ScheduleRange, WatchNext};
 
@@ -101,6 +102,7 @@ impl Component for Dashboard {
 
                     <div class="chips">
                         <MediaKindToggle selection={selection} on_change={link.callback(Msg::SetSelection)} />
+                        <Help section={help::WATCHING} />
                     </div>
                 </div>
 

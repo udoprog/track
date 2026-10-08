@@ -13,6 +13,18 @@
     }
 }
 
+// Narrow desktops hold every item on one line only with tighter spacing.
+@media (min-width: v.$mobile-limit) and (max-width: 999px) {
+    #toolbar {
+        gap: v.$gap-sm;
+        padding-inline: v.$gap-sm;
+
+        .toolbar-dropdown {
+            gap: v.$padding;
+        }
+    }
+}
+
 // The application's own toolbar stays at the top while the page scrolls.
 #toolbar {
     position: sticky;

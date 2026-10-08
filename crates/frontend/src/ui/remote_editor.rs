@@ -1,7 +1,8 @@
 use web_sys::{Event, InputEvent};
 use yew::prelude::*;
 
-use crate::ui::ContextMenu;
+use crate::help;
+use crate::ui::{ContextMenu, Help};
 
 use super::{Button, ConfirmDanger, DragHandle, Modal, Reorder, Variant};
 
@@ -414,6 +415,7 @@ impl Component for RemoteEditor {
                             let kind_toggles = (!capability.is_empty()).then(|| html! {
                                 <div class="remote-kinds" role="group" aria-label="Kinds synced from this source">
                                     <span class="remote-caption">{"Syncs"}</span>
+                                    <Help section={help::REMOTES} />
 
                                     { for capability.iter().map(|kind| {
                                         let on = effective.contains(kind);

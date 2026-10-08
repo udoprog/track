@@ -17,7 +17,10 @@ use crate::router::{
     DashboardQuery, MediaQuery, PersonQuery, QueueQuery, Route, Router, RouterState, SearchQuery,
 };
 use crate::setup_channel::SetupChannel;
-use crate::ui::{Button, ErrorBox, Link, Outline, OutlineControl, OutlineEntry, TopLanguages};
+use crate::ui::{
+    Button, ErrorBox, HelpControl, HelpModal, Link, Outline, OutlineControl, OutlineEntry,
+    TopLanguages,
+};
 
 #[derive(Properties, PartialEq)]
 pub(super) struct Props {
@@ -44,6 +47,10 @@ pub(super) struct App {
     outline_entries: Rc<[OutlineEntry]>,
     /// Control handed to consumers via context.
     outline_control: OutlineControl,
+    /// Opens the help modal from anywhere.
+    help_control: HelpControl,
+    /// The help modal, when open, and the section it opened at.
+    help: Option<Option<AttrValue>>,
     router_state: RouterState,
     router: Router,
     background_state: BackgroundState,
@@ -75,6 +82,8 @@ pub(super) enum Msg {
     TopLanguagesLoaded(Result<ws::Packet<api::GetTopLanguages>, ws::Error>),
     /// A consumer set (or cleared) the outline contents.
     SetOutline(Rc<[OutlineEntry]>),
+    OpenHelp(Option<AttrValue>),
+    CloseHelp,
     WsError(ws::Error),
     Navigate(Route),
     Replace(Route),
@@ -115,6 +124,7 @@ impl Component for App {
             .on_broadcast(link.callback(Msg::AppBroadcast));
 
         let outline_control = OutlineControl::new(link.callback(Msg::SetOutline));
+        let help_control = HelpControl::new(link.callback(Msg::OpenHelp));
 
         let _tick_minute_interval = Interval::new(10_000, {
             let link = link.clone();
@@ -152,6 +162,8 @@ impl Component for App {
             error: None,
             outline_entries: Rc::from([]),
             outline_control,
+            help_control,
+            help: None,
             router_state,
             router,
             _history_listener,
@@ -201,6 +213,7 @@ impl Component for App {
                 <ContextProvider<Router> context={self.router.clone()}>
                 <ContextProvider<Background> context={self.background.clone()}>
                 <ContextProvider<OutlineControl> context={self.outline_control.clone()}>
+                <ContextProvider<HelpControl> context={self.help_control.clone()}>
                 <ContextProvider<api::User> context={ctx.props().user.clone()}>
                     <div id="application">
                         if let Some(ref error) = self.error {
@@ -218,6 +231,10 @@ impl Component for App {
 
                             <Outline entries={self.outline_entries.clone()} />
                         </main>
+
+                        if let Some(section) = &self.help {
+                            <HelpModal section={section.clone()} on_close={ctx.link().callback(|()| Msg::CloseHelp)} />
+                        }
 
                         // Always present, so screen readers announce what appears in it.
                         <div class="toast-region" role="status">
@@ -237,6 +254,7 @@ impl Component for App {
                         </div>
                     </div>
                 </ContextProvider<api::User>>
+                </ContextProvider<HelpControl>>
                 </ContextProvider<OutlineControl>>
                 </ContextProvider<Background>>
                 </ContextProvider<Router>>
@@ -347,6 +365,11 @@ impl App {
                 self.outline_entries = entries;
                 Ok(true)
             }
+            Msg::OpenHelp(section) => {
+                self.help = Some(section);
+                Ok(true)
+            }
+            Msg::CloseHelp => Ok(self.help.take().is_some()),
             Msg::PreferencesLoaded(result) => {
                 let response = result
                     .context(Message::LoadingConfig)?
@@ -607,6 +630,7 @@ struct ToolbarProps {
 #[function_component]
 fn Toolbar(props: &ToolbarProps) -> Html {
     let menu_open = use_state(|| false);
+    let help = use_context::<HelpControl>();
 
     let on_menu_toggle = {
         let menu_open = menu_open.clone();
@@ -616,6 +640,18 @@ fn Toolbar(props: &ToolbarProps) -> Html {
     let close_menu = {
         let menu_open = menu_open.clone();
         Callback::from(move |()| menu_open.set(false))
+    };
+
+    let on_help = {
+        let menu_open = menu_open.clone();
+
+        Callback::from(move |_| {
+            menu_open.set(false);
+
+            if let Some(help) = &help {
+                help.open(None);
+            }
+        })
     };
 
     let (connection_icon, connection_style, connection_title) = if props.connected {
@@ -674,6 +710,8 @@ fn Toolbar(props: &ToolbarProps) -> Html {
                         <span>{"Users"}</span>
                     </Link>
                 }
+
+                <Button class="toolbar-item" icon="question-mark-circle" text="Help" title="Help" haspopup="dialog" onclick={on_help} />
 
                 <Link to={Route::Account} class={classes!("toolbar-item", "has-text", (props.section == Section::Account).then_some("active"))} title="Account" current={props.section == Section::Account} onclick={close_menu.clone()}>
                     <span class="icon user-circle" aria-hidden="true" />

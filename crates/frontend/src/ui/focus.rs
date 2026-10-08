@@ -35,6 +35,7 @@ fn focusables(root: &Element) -> Vec<HtmlElement> {
     (0..list.length())
         .filter_map(|i| list.item(i)?.dyn_into::<HtmlElement>().ok())
         .filter(|e| e.offset_parent().is_some())
+        .filter(|e| e.closest("[inert]").ok().flatten().is_none())
         .collect()
 }
 

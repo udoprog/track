@@ -2,6 +2,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use yew::prelude::*;
 
+use crate::ui::Help;
+
 static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Properties, PartialEq)]
@@ -9,6 +11,10 @@ pub(crate) struct Props {
     pub(crate) label: AttrValue,
     #[prop_or_default]
     pub(crate) hint: Option<AttrValue>,
+    /// The help section explaining this setting, opened from a mark beside
+    /// the label.
+    #[prop_or_default]
+    pub(crate) help: Option<&'static str>,
     pub(crate) children: Children,
 }
 
@@ -24,7 +30,13 @@ pub(crate) fn FormRow(props: &Props) -> Html {
 
     html! {
         <div class="form-row" role="group" aria-labelledby={(*id).clone()}>
-            <span class="form-label" id={(*id).clone()}>{props.label.clone()}</span>
+            <span class="form-label" id={(*id).clone()}>
+                {props.label.clone()}
+
+                if let Some(section) = props.help {
+                    <Help {section} />
+                }
+            </span>
 
             <div class="form-control">
                 <div class="form-inputs">

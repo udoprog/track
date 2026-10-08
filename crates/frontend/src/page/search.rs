@@ -5,8 +5,9 @@ use yew::prelude::*;
 use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
+use crate::help;
 use crate::router::{MediaSelection, Route, Router, SearchQuery, ShowDetailQuery};
-use crate::ui::{Button, Image, Link, MediaKindToggle, SEARCH, Skeleton, Variant};
+use crate::ui::{Button, Help, Image, Link, MediaKindToggle, SEARCH, Skeleton, Variant};
 
 pub(crate) struct Search {
     channel: ws::Channel,
@@ -329,7 +330,10 @@ impl Search {
     fn view_results(&self, ctx: &Context<Self>) -> Html {
         if self.query.is_empty() {
             return html! {
-                <p class="text-muted">{"Search TMDB and TVDB for shows and movies to track."}</p>
+                <p class="text-muted">
+                    {"Search TMDB and TVDB for shows and movies to track."}
+                    <Help section={help::FINDING} />
+                </p>
             };
         }
 

@@ -75,7 +75,7 @@ pub async fn shows_a_silhouette_without_a_photo(
 
     driver.wait_count(".person-photo .icon.user", 2).await?;
     ensure!(
-        driver.count(".icon.question-mark-circle").await? == 0,
+        driver.count("#page .icon.question-mark-circle").await? == 0,
         "a person still shows a question mark"
     );
     Ok(())

@@ -4,6 +4,7 @@ use yew::prelude::*;
 use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
+use crate::help;
 use crate::router::{Route, SettingsPage};
 use crate::ui::{
     AIR_DATE_KINDS, AIR_DATE_SOURCES, Button, DurationInput, FiltersEditor, FormRow,
@@ -335,7 +336,7 @@ impl Component for Settings {
                             <h2>{"Sync"}</h2>
 
                             <div class="form-rows">
-                                <FormRow label="Automatic sync">
+                                <FormRow label="Automatic sync" help={help::REMOTES}>
                                     { system("", html! {
                                         <Button class={classes!("input-checkbox", "has-text", auto_sync.then_some("checked"))} role="switch" checked={Some(auto_sync)} title="Automatic sync" onclick={on_auto_sync_toggle}>
                                             <span class="mark" />
@@ -379,7 +380,7 @@ impl Component for Settings {
                             <h2>{"Sources & dates"}</h2>
 
                             <div class="form-rows">
-                                <FormRow label="Sync sources" hint="What each source contributes by default, in priority order (top wins). Base covers titles, overviews and episodes; air dates merge in this order; graphics come from every source. Shows and movies can override this per remote.">
+                                <FormRow label="Sync sources" help={help::REMOTES} hint="What each source contributes by default, in priority order (top wins). Base covers titles, overviews and episodes; air dates merge in this order; graphics come from every source. Shows and movies can override this per remote.">
                                     { system("tall", html! {
                                         <SyncKindsEditor
                                             kinds={self.config.sync_kinds.clone()}

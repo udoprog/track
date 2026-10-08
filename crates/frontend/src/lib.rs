@@ -3,6 +3,7 @@
 mod app;
 mod background;
 mod error;
+mod help;
 mod http;
 mod page;
 mod root;
