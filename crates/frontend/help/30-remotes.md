@@ -30,7 +30,7 @@ default** goes back to the order in Settings. ![Clear
 cache](icon:arrow-path) **Clear cache** forgets what was fetched and syncs it
 again.
 
-TMDB and TheTVDB identifiers are numbers; IMDb identifiers look like
+TMDB, TheTVDB and TVmaze identifiers are numbers; IMDb identifiers look like
 `tt1234567`.
 
 ## Syncing
