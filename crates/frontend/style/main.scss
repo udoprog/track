@@ -2887,6 +2887,10 @@ button.media-pick {
         background: color-mix(in srgb, v.$color-primary 15%, transparent);
     }
 
+    &.focused {
+        box-shadow: inset 0 0 0 2px v.$color-primary;
+    }
+
     &.done>.task-icon {
         --icon-color: #{v.$color-success};
     }

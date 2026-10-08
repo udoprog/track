@@ -4,9 +4,10 @@ use web_sys::{Event, MouseEvent};
 use yew::prelude::*;
 
 use crate::SetupChannel;
+use crate::active_tasks::SyncTarget;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::ui::{Button, FormRow, mismatch_message};
+use crate::ui::{Button, FormRow, SyncButton, mismatch_message};
 
 use super::{
     AIR_DATE_KINDS, AIR_DATE_SOURCES, FiltersEditor, LanguagePicker, Modal, RELEASE_KINDS,
@@ -91,6 +92,7 @@ pub(crate) struct MediaSettingsModal {
     default_air_date_filters: api::FilterRules,
     /// What the episode numbering row needs; shows only.
     numbering: Option<api::ShowNumbering>,
+    /// A sync was requested and its task may not have been reported yet.
     syncing: bool,
     time: TimeInfo,
     _time_handle: ContextHandle<TimeInfo>,
@@ -188,19 +190,9 @@ impl MediaSettingsModal {
                         self.data = Some(Loaded::Show(show.clone()));
                         Ok(true)
                     }
-                    api::AppEventKind::TaskAdded { task }
-                    | api::AppEventKind::TaskStarted { task } => {
-                        if self.is_our_sync(ctx, &task.kind) {
-                            self.syncing = true;
-                            return Ok(true);
-                        }
-                        Ok(false)
-                    }
                     api::AppEventKind::TaskCompleted { task } => {
                         if self.is_our_sync(ctx, &task.kind) {
-                            self.syncing = false;
                             self.load(ctx);
-                            return Ok(true);
                         }
                         Ok(false)
                     }
@@ -425,8 +417,7 @@ impl MediaSettingsModal {
                     return Ok(false);
                 }
 
-                // Show the spinner immediately; the task broadcasts then keep it in
-                // sync (and clear it on completion).
+                // Spin until the queue reports the task.
                 self.syncing = true;
 
                 match ctx.props().target {
@@ -478,12 +469,14 @@ impl MediaSettingsModal {
                 Ok(false)
             }
             Msg::SyncMovieDone(result) => {
+                self.syncing = false;
                 result.context(Message::SyncingMovie)?;
-                Ok(false)
+                Ok(true)
             }
             Msg::SyncShowDone(result) => {
+                self.syncing = false;
                 result.context(Message::SyncingShow)?;
-                Ok(false)
+                Ok(true)
             }
             Msg::SetTime(time) => {
                 self.time = time;
@@ -635,6 +628,10 @@ impl MediaSettingsModal {
         let last_synced =
             last_synced_at.map(|ts| AttrValue::from(ts.human_date_time(self.time.clone())));
         let on_sync = link.callback(|_: MouseEvent| Msg::Sync);
+        let target = match ctx.props().target {
+            SettingsTarget::Movie(id) => SyncTarget::Movie(id),
+            SettingsTarget::Show(id) => SyncTarget::Show(id),
+        };
         let on_edit_graphics = ctx.props().on_edit_graphics.reform(|_: MouseEvent| ());
         let on_edit_remotes = ctx.props().on_edit_remotes.reform(|_: MouseEvent| ());
 
@@ -673,7 +670,7 @@ impl MediaSettingsModal {
                     }
 
                     if has_remotes {
-                        <Button icon="arrow-path" spin={self.syncing} onclick={on_sync} title="Sync now" label="Sync now" />
+                        <SyncButton {target} requested={self.syncing} onclick={on_sync} label="Sync now" />
                     }
                 </FormRow>
 

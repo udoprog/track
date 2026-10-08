@@ -8,6 +8,7 @@ use api::{TimeInfo, Timed};
 
 use super::detail::{Graphics, ImageMsg, ImageUpdate, RemoteMsg, RemoteUpdate, Remotes};
 use crate::SetupChannel;
+use crate::active_tasks::{ActiveTasks, SyncTarget};
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaQuery, Route, Router, ShowDetailQuery};
@@ -15,8 +16,8 @@ use crate::ui::{
     AlsoKnownAs, Button, ConfirmDanger, ContextMenu, DetailHero, DetailSkeleton, EpisodeCacheModal,
     EpisodePicker, Image, ImageGallery, ImageItem, Link, MarkTimeMenu, MediaSettingsModal, Modal,
     NumberingEditor, OutlineControl, OutlineEntry, OutlineHandle, ReleaseModal, ReleaseTarget,
-    RemoteEditor, RemoteSourceKind, SettingsTarget, TimePreset, Tracked, TranslatedText,
-    TranslationsModal, Variant,
+    RemoteEditor, RemoteSourceKind, SettingsTarget, SyncButton, TimePreset, Tracked,
+    TranslatedText, TranslationsModal, Variant,
 };
 
 const ORPHAN_HINT: &str = r#"
@@ -69,10 +70,9 @@ pub(crate) struct ShowDetail {
     next_unwatched: Option<(api::Code, api::EpisodeId)>,
     confirm_remove: bool,
     remove_anchor: NodeRef,
-    syncing: bool,
-    /// Episodes with a queued or running `SyncEpisode` task, so their sync button
-    /// spins. Driven entirely by the task broadcasts, like [`Self::syncing`].
-    syncing_episodes: HashSet<api::EpisodeId>,
+    /// Queued and running syncs, for the episode menu's sync spinner.
+    active_tasks: ActiveTasks,
+    _active_tasks_handle: ContextHandle<ActiveTasks>,
     /// Episodes picked for a bulk action, from the season shown only.
     picked: BTreeSet<api::EpisodeId>,
     /// The episode picked last, where a shift-click range starts.
@@ -148,6 +148,7 @@ pub(crate) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     SetTime(TimeInfo),
+    ActiveTasks(ActiveTasks),
     Image(ImageMsg),
     Remote(RemoteMsg),
     Load(LoadMsg),
@@ -341,6 +342,11 @@ impl Component for ShowDetail {
             .context::<Background>(Callback::noop())
             .expect("Expected background handle in context");
 
+        let (active_tasks, _active_tasks_handle) = ctx
+            .link()
+            .context::<ActiveTasks>(ctx.link().callback(Msg::ActiveTasks))
+            .expect("Expected active tasks in context");
+
         let (router, _) = ctx
             .link()
             .context::<Router>(Callback::noop())
@@ -370,8 +376,8 @@ impl Component for ShowDetail {
             next_unwatched: None,
             confirm_remove: false,
             remove_anchor: NodeRef::default(),
-            syncing: false,
-            syncing_episodes: HashSet::new(),
+            active_tasks,
+            _active_tasks_handle,
             picked: BTreeSet::new(),
             pick_anchor: None,
             _pick_escape: None,
@@ -530,7 +536,7 @@ impl Component for ShowDetail {
                         <Tracked kind="show" tracked={show.tracked} ontoggle={link.callback(ActionMsg::SetTracked)} />
 
                         if !show.remotes.is_empty() {
-                            <Button icon="arrow-path" spin={self.syncing} onclick={link.callback(|_| ActionMsg::SyncShow)} title="Sync now" text="Sync" />
+                            <SyncButton target={SyncTarget::Show(show.id)} onclick={link.callback(|_| ActionMsg::SyncShow)} text="Sync" />
                         }
 
                         <Button icon="language" title="Translations" text="Translations" onclick={link.callback(|_| UiMsg::OpenShowTranslations)} />
@@ -660,7 +666,6 @@ impl Component for ShowDetail {
             self.pending_episode = None;
             self.next_unwatched = None;
             self.confirm_remove = false;
-            self.syncing = false;
             self.confirm_remove_watch = None;
             self.watched_by_episode.clear();
             self.clear_picked();
@@ -730,6 +735,13 @@ impl ShowDetail {
             Msg::SetTime(time) => {
                 self.time = time;
                 Ok(true)
+            }
+            Msg::ActiveTasks(tasks) => {
+                let render = tasks.changed(|target| {
+                    matches!(target, SyncTarget::Episode(id) if self.episode_menu == Some(id))
+                });
+                self.active_tasks = tasks;
+                Ok(render)
             }
             Msg::Image(msg) => self.update_image(ctx, msg),
             Msg::Remote(msg) => self.update_remote(ctx, msg),
@@ -811,48 +823,13 @@ impl ShowDetail {
                 self.load_orphaned(ctx);
                 Ok(false)
             }
-            api::AppEventKind::TaskAdded { task } | api::AppEventKind::TaskStarted { task } => {
-                if matches!(&task.kind, api::TaskKind::SyncShow { show_id, .. } if *show_id == props.show_id)
-                {
-                    self.syncing = true;
-                    return Ok(true);
-                }
-
-                if let api::TaskKind::SyncEpisode {
-                    show_id,
-                    episode_id,
-                    ..
-                } = &task.kind
-                    && *show_id == props.show_id
-                {
-                    self.syncing_episodes.insert(*episode_id);
-                    return Ok(true);
-                }
-
-                Ok(false)
-            }
             api::AppEventKind::TaskCompleted { task } => {
                 if matches!(&task.kind, api::TaskKind::SyncShow { show_id, .. } if *show_id == props.show_id)
                 {
-                    self.syncing = false;
                     self.load_episodes(ctx);
                     self.load_show(ctx);
                     self.load_seasons(ctx);
                     self.load_orphaned(ctx);
-                    return Ok(true);
-                }
-
-                // The episode itself arrives via EpisodesChanged; this just
-                // stops the button spinning.
-                if let api::TaskKind::SyncEpisode {
-                    show_id,
-                    episode_id,
-                    ..
-                } = &task.kind
-                    && *show_id == props.show_id
-                {
-                    self.syncing_episodes.remove(episode_id);
-                    return Ok(true);
                 }
 
                 Ok(false)
@@ -2345,7 +2322,10 @@ impl ShowDetail {
         let picked = self.picked.contains(&episode_id);
         let on_toggle_menu =
             link.callback(move |_: MouseEvent| UiMsg::ToggleEpisodeMenu(episode_id));
-        let syncing = self.syncing_episodes.contains(&episode_id);
+        let syncing = self
+            .active_tasks
+            .task(SyncTarget::Episode(episode_id))
+            .is_some();
 
         let on_remove_next = link.callback(move |_| WatchMsg::OnRemoveNext(episode_id));
         let on_next_episode =

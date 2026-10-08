@@ -1,5 +1,6 @@
 #![allow(clippy::type_complexity)]
 
+mod active_tasks;
 mod app;
 mod background;
 mod error;

@@ -98,6 +98,8 @@ pub(crate) struct Props {
     pub(crate) filter: QueueFilter,
     /// The page shown, or `None` to follow the running task.
     pub(crate) page: Option<usize>,
+    /// A task to show and highlight instead of following the running one.
+    pub(crate) task: Option<api::TaskId>,
 }
 
 impl Component for Queue {
@@ -466,7 +468,13 @@ impl Queue {
             .position(|e| !e.is_done())
             .unwrap_or(entries.len().saturating_sub(1));
 
-        let following = ctx.props().page.is_none();
+        let followed = ctx
+            .props()
+            .task
+            .and_then(|id| entries.iter().position(|e| e.id == id))
+            .unwrap_or(followed);
+
+        let following = ctx.props().page.is_none() && ctx.props().task.is_none();
 
         let page = ctx
             .props()
@@ -479,6 +487,7 @@ impl Queue {
                 Msg::Query(QueueQuery {
                     filter: f,
                     page: None,
+                    task: None,
                 })
             });
 
@@ -493,10 +502,17 @@ impl Queue {
             Msg::Query(QueueQuery {
                 filter,
                 page: Some(page),
+                task: None,
             })
         });
 
-        let on_follow = link.callback(move |_| Msg::Query(QueueQuery { filter, page: None }));
+        let on_follow = link.callback(move |_| {
+            Msg::Query(QueueQuery {
+                filter,
+                page: None,
+                task: None,
+            })
+        });
 
         html! {
             <div class="column">
@@ -579,7 +595,7 @@ impl Queue {
         };
 
         html! {
-            <div key={id.get()} class={classes!("task-row", state)} data-task={id.get().to_string()} title={error.map(str::to_owned)}>
+            <div key={id.get()} class={classes!("task-row", state, (ctx.props().task == Some(id)).then_some("focused"))} data-task={id.get().to_string()} title={error.map(str::to_owned)}>
                 <span class="task-icon"><span class={icon} /></span>
 
                 { view_task_cells(&entry.kind, route, error) }

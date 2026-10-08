@@ -4,13 +4,14 @@ use yew::prelude::*;
 
 use super::detail::{Graphics, ImageMsg, ImageUpdate, RemoteMsg, RemoteUpdate, Remotes};
 use crate::SetupChannel;
+use crate::active_tasks::SyncTarget;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaQuery, Route, Router};
 use crate::ui::{
     Button, ConfirmDanger, ContextMenu, DetailHero, DetailSkeleton, Image, Link, MarkTimeMenu,
     MediaSettingsModal, Modal, ReleaseModal, ReleaseTarget, RemoteEditor, RemoteSourceKind,
-    SettingsTarget, TimePreset, Tracked, TranslatedText, TranslationsModal, Variant,
+    SettingsTarget, SyncButton, TimePreset, Tracked, TranslatedText, TranslationsModal, Variant,
 };
 
 const CAP: usize = 8;
@@ -43,7 +44,6 @@ pub(crate) struct MovieDetail {
     confirm_remove: bool,
     remove_anchor: NodeRef,
     confirm_remove_watch: Option<api::WatchedId>,
-    syncing: bool,
     actions_expanded: bool,
     detailed_expand: bool,
     open_watched: bool,
@@ -221,7 +221,6 @@ impl Component for MovieDetail {
             confirm_remove: false,
             remove_anchor: NodeRef::default(),
             confirm_remove_watch: None,
-            syncing: false,
             actions_expanded: false,
             detailed_expand: false,
             open_watched: false,
@@ -390,20 +389,10 @@ impl MovieDetail {
 
                 Ok(false)
             }
-            api::AppEventKind::TaskAdded { task } | api::AppEventKind::TaskStarted { task } => {
-                if matches!(&task.kind, api::TaskKind::SyncMovie { movie_id, .. } if *movie_id == ctx.props().movie_id)
-                {
-                    self.syncing = true;
-                    return Ok(true);
-                }
-                Ok(false)
-            }
             api::AppEventKind::TaskCompleted { task } => {
                 if matches!(&task.kind, api::TaskKind::SyncMovie { movie_id, .. } if *movie_id == ctx.props().movie_id)
                 {
-                    self.syncing = false;
                     self.load_movie(ctx);
-                    return Ok(true);
                 }
                 Ok(false)
             }
@@ -946,7 +935,7 @@ impl MovieDetail {
                             <Tracked kind="movie" tracked={movie.tracked} ontoggle={link.callback(ActionMsg::SetTracked)} />
 
                             if !movie.remotes.is_empty() {
-                                <Button icon="arrow-path" spin={self.syncing} onclick={link.callback(|_| ActionMsg::SyncMovie)} title="Sync now" text="Sync" />
+                                <SyncButton target={SyncTarget::Movie(movie.id)} onclick={link.callback(|_| ActionMsg::SyncMovie)} text="Sync" />
                             }
 
                             <Button icon="language" title="Translations" text="Translations" onclick={link.callback(|_| UiMsg::OpenTranslations)} />

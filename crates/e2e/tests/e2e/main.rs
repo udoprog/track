@@ -21,6 +21,7 @@ mod queue;
 mod search;
 mod settings;
 mod show;
+mod sync;
 mod users;
 
 use std::path::{Path, PathBuf};
@@ -60,6 +61,8 @@ const MOVIE_BACKDROP: &str = include_str!("movie_backdrop.sql");
 const NEXT: &str = include_str!("next.sql");
 /// XEM numbering for the seeded show that does not line up, with `(numbering)`.
 const NUMBERING: &str = include_str!("numbering.sql");
+/// A TMDB remote for every show, with `(remotes)`.
+const REMOTES: &str = include_str!("remotes.sql");
 
 /// What a test asks of its server.
 #[derive(Default)]
@@ -86,6 +89,8 @@ struct Setup {
     next: bool,
     /// Start with `seed.sql` and the XEM numbering in `numbering.sql`.
     numbering: bool,
+    /// Start with `seed.sql` and a TMDB remote for every show, added last.
+    remotes: bool,
     /// Start at the sign-in page instead of signed in as `root`.
     signed_out: bool,
     /// Supply trusted Cloudflare credentials on a scratch server.
@@ -145,7 +150,8 @@ impl Fixture for Track {
             || setup.graphics
             || setup.backdrop
             || setup.next
-            || setup.numbering;
+            || setup.numbering
+            || setup.remotes;
 
         if seeded || setup.login_link || setup.cloudflare {
             // The server creates the schema; the seed goes in while it is down.
@@ -199,6 +205,10 @@ impl Fixture for Track {
 
             if setup.numbering {
                 c.execute(NUMBERING).context("adding the XEM numbering")?;
+            }
+
+            if setup.remotes {
+                c.execute(REMOTES).context("adding the remotes")?;
             }
 
             if setup.cloudflare {
@@ -412,5 +422,6 @@ yew_e2e::harness! {
     search::{focuses_the_input, says_what_it_searches},
     settings::{reorders_sync_sources, reorders_xem_lookup, shows_and_hides_numberings, theme_applies_live, theme_is_remembered, adds_languages_and_rules, switches_work_from_the_keyboard, fields_follow_the_theme, settings_are_labelled_rows, tab_completes_the_time_zone, configures_cloudflare_access, warns_about_trusting_only_the_email_header, phones_list_the_settings_pages},
     users::{creates_a_user_who_registers, regular_users_do_not_see_users(login_link), changes_a_role(login_link), revokes_links_and_deletes(login_link), regular_users_cannot_remove_media(seeded, movie, login_link), regular_users_cannot_edit_shared_data(seeded, movie, login_link)},
+    sync::{spinner_survives_a_reload(crowded, remotes), spinner_opens_the_task_in_the_queue(crowded, remotes)},
     show::{rail_colours_watched_apart_from_pending(seeded), phone_action_rows_align(seeded), episode_menu_holds_the_other_actions(seeded), menus_close_on_an_outside_click(seeded), modals_close_from_button_and_backdrop(seeded), phone_modals_rise_from_the_bottom(seeded), settings_line_up_their_controls(seeded), modals_hold_keyboard_focus(seeded), menus_work_from_the_keyboard(seeded), mark_watched_is_one_colour(seeded), seasons_list_beside_the_episodes(seasons), phones_pick_seasons_from_chips(seasons), season_overview_switches_language(seasons), phone_popovers_are_sheets(seeded), watch_history_moves_and_removes(seeded), tracking_toggle_names_the_show(seeded), settings_pages_return_to_settings(seeded), translations_sit_beside_their_language(seeded), air_dates_explain_the_default_quietly(seeded), graphics_say_what_they_do(graphics), detail_poster_is_rounded(graphics), remotes_show_their_actions(seeded), xem_anidb_and_scene_remotes_are_added(seeded), tvmaze_remote_is_added(seeded), picked_episodes_are_marked_together(seeded), picked_episodes_clear(seasons), remaining_episodes_advance_pending(seasons), has_a_heading(seeded), phones_have_no_episode_rail(seeded), phones_do_not_scroll_sideways(seeded), phones_show_the_backdrop_once(backdrop), seasons_count_watched_episodes(seeded), episodes_show_their_details(seeded), numbering_ranges_are_edited(numbering), alternative_names_are_listed(numbering), episodes_show_other_numberings(numbering), xem_remote_links_to_its_page(numbering)},
 }

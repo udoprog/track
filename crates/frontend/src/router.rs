@@ -530,6 +530,8 @@ pub(super) struct QueueQuery {
     pub(super) filter: QueueFilter,
     /// The page shown, or `None` to follow the running task.
     pub(super) page: Option<usize>,
+    /// A task to show and highlight instead of following the running one.
+    pub(super) task: Option<api::TaskId>,
 }
 
 impl QueueQuery {
@@ -542,6 +544,10 @@ impl QueueQuery {
 
         if let Some(page) = self.page {
             s.append_pair("page", &page.to_string());
+        }
+
+        if let Some(task) = self.task {
+            s.append_pair("task", &task.get().to_string());
         }
 
         s.finish()
@@ -557,6 +563,9 @@ impl QueueQuery {
                 }
                 "page" => {
                     this.page = value.parse::<usize>().ok();
+                }
+                "task" => {
+                    this.task = value.parse::<u64>().ok().map(api::TaskId::new);
                 }
                 _ => continue,
             }

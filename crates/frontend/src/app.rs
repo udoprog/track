@@ -6,6 +6,7 @@ use gloo::timers::callback::{Interval, Timeout};
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
+use crate::active_tasks::ActiveTasksProvider;
 use crate::background::{Background, BackgroundState, UndoWatched};
 use crate::error::{CustomContext, Error, Message, RcError};
 use crate::http::{self, HttpError};
@@ -215,6 +216,7 @@ impl Component for App {
                 <ContextProvider<OutlineControl> context={self.outline_control.clone()}>
                 <ContextProvider<HelpControl> context={self.help_control.clone()}>
                 <ContextProvider<api::User> context={ctx.props().user.clone()}>
+                <ActiveTasksProvider>
                     <div id="application">
                         if let Some(ref error) = self.error {
                             <div id="error" role="alert">
@@ -253,6 +255,7 @@ impl Component for App {
                         }
                         </div>
                     </div>
+                </ActiveTasksProvider>
                 </ContextProvider<api::User>>
                 </ContextProvider<HelpControl>>
                 </ContextProvider<OutlineControl>>
@@ -535,7 +538,7 @@ impl App {
                 html! { <Dashboard page={q.page} week={q.week} week_start={q.week_start} range={q.range} view={q.view} selection={q.selection} /> }
             }
             Route::Queue(ref q) => html! {
-                <Queue filter={q.filter} page={q.page} />
+                <Queue filter={q.filter} page={q.page} task={q.task} />
             },
             Route::Media(ref q) => html! {
                 <MediaList page={q.page} filter={q.filter.clone()} sort={q.sort} desc={q.desc} tracked={q.tracked} next={q.next} selection={q.selection} />

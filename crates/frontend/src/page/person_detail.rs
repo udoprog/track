@@ -4,12 +4,13 @@ use yew::prelude::*;
 
 use super::detail::{RemoteMsg, RemoteUpdate, Remotes};
 use crate::SetupChannel;
+use crate::active_tasks::SyncTarget;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{PersonQuery, Route, Router, ShowDetailQuery};
 use crate::ui::{
     Button, ConfirmDanger, ContextMenu, DetailSkeleton, FormRow, Image, Link, Modal, RemoteEditor,
-    RemoteSourceKind, TranslatedText, Variant,
+    RemoteSourceKind, SyncButton, TranslatedText, Variant,
 };
 
 /// Load state for the person this page renders.
@@ -28,7 +29,6 @@ pub(crate) struct PersonDetail {
     settings: bool,
     confirming_delete: bool,
     remove_anchor: NodeRef,
-    syncing: bool,
     global_sync_kinds: Vec<api::SourceSyncKinds>,
     time: TimeInfo,
     _time_handle: ContextHandle<TimeInfo>,
@@ -112,7 +112,6 @@ impl Component for PersonDetail {
             settings: false,
             confirming_delete: false,
             remove_anchor: NodeRef::default(),
-            syncing: false,
             global_sync_kinds: Vec::new(),
             time,
             _time_handle,
@@ -220,21 +219,10 @@ impl PersonDetail {
                         }
                         Ok(false)
                     }
-                    api::AppEventKind::TaskAdded { task }
-                    | api::AppEventKind::TaskStarted { task } => {
-                        if matches!(&task.kind, api::TaskKind::SyncPerson { person_id, .. } if *person_id == id)
-                        {
-                            self.syncing = true;
-                            return Ok(true);
-                        }
-                        Ok(false)
-                    }
                     api::AppEventKind::TaskCompleted { task } => {
                         if matches!(&task.kind, api::TaskKind::SyncPerson { person_id, .. } if *person_id == id)
                         {
-                            self.syncing = false;
                             self.load(ctx);
-                            return Ok(true);
                         }
                         Ok(false)
                     }
@@ -413,7 +401,7 @@ impl PersonDetail {
                     <div class="row-split">
                         <h1>{ name }</h1>
                         <div class="input-group">
-                            <Button icon="arrow-path" spin={self.syncing} title="Sync now" text="Sync" onclick={link.callback(|_| Msg::SyncPerson)} />
+                            <SyncButton target={SyncTarget::Person(person.id)} text="Sync" onclick={link.callback(|_| Msg::SyncPerson)} />
                             <Button icon="cog-6-tooth" title="Settings" onclick={link.callback(|_| Msg::OpenSettings)} />
                             if crate::is_admin(ctx) {
                                 <Button node_ref={self.remove_anchor.clone()} icon="trash" variant={Variant::Danger} class="detached" title="Delete person" expanded={Some(self.confirming_delete)} haspopup="dialog" onclick={link.callback(|_| Msg::AskDelete)} />
@@ -471,7 +459,7 @@ impl PersonDetail {
                         }
 
                         if !person.remotes.is_empty() {
-                            <Button icon="arrow-path" spin={self.syncing} onclick={link.callback(|_| Msg::SyncPerson)} title="Sync now" label="Sync now" />
+                            <SyncButton target={SyncTarget::Person(person.id)} label="Sync now" onclick={link.callback(|_| Msg::SyncPerson)} />
                         }
                     </FormRow>
 
