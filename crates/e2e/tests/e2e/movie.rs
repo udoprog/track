@@ -104,3 +104,47 @@ pub async fn phone_release_line_stays_together(
     );
     Ok(())
 }
+
+/// On a phone the backdrop shows only behind the heading, not again under the
+/// overview.
+pub async fn phones_show_the_backdrop_once(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    driver.set_window_size(1250, 1000).await?;
+
+    driver
+        .find_one_by(".toolbar-item[title=Media]")
+        .await?
+        .click()
+        .await?;
+    driver
+        .wait_texts(".media-title", ["Seeded Movie", "Seeded Show"])
+        .await?;
+    driver
+        .find_nth(".media-card .media-poster", 0)
+        .await?
+        .click()
+        .await?;
+    driver.wait_texts(".detail-title", ["Seeded Movie"]).await?;
+    driver.find_one_by(".cast-card").await?;
+    driver.snapshot("wide-movie-backdrop").await?;
+
+    driver.set_window_size(400, 850).await?;
+
+    ensure!(
+        driver
+            .find_one_by(".detail-hero-image")
+            .await?
+            .visible()
+            .await?,
+        "the heading has no backdrop"
+    );
+
+    let copies = driver
+        .rendered_texts(".detail-layout .backdrop")
+        .await?
+        .len();
+    ensure!(
+        copies == 0,
+        "the backdrop shows {copies} more time(s) on a phone"
+    );
+    driver.snapshot("phone-movie-backdrop").await
+}

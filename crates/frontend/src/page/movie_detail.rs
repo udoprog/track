@@ -1016,8 +1016,6 @@ impl MovieDetail {
                 <div class="mobile-only">
                     if let Some(ref banner) = movie.banner {
                         <Image class="banner" src={banner.clone()} />
-                    } else if let Some(ref backdrop) = movie.backdrop {
-                        <Image class="backdrop" src={backdrop.clone()} />
                     }
                 </div>
 

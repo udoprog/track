@@ -19,10 +19,6 @@ pub(crate) fn DetailSkeleton() -> Html {
             </div>
 
             <div class="detail-layout">
-                <div class="mobile-only">
-                    <Skeleton class="backdrop" />
-                </div>
-
                 <div class="detail-sidebar">
                     <Skeleton class="poster desktop-only" />
                 </div>
