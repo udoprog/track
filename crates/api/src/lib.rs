@@ -33,6 +33,12 @@ pub use self::translations::Translations;
 mod sync_kind;
 pub use self::sync_kind::{SyncKind, SyncKindSet};
 
+mod numbering;
+pub use self::numbering::{
+    Numbering, NumberingRange, NumberingTarget, RangeError, SeasonMismatch, XEM_SYSTEMS,
+    numbering_mismatches, suggest_numbering, xem_system_label,
+};
+
 mod time;
 pub use self::time::{
     Date, HumanDate, HumanDateTime, TimeInfo, TimeOfDay, TimeZone, Timestamp, Weekday,
@@ -597,6 +603,16 @@ pub fn air_date_sources_by_priority(remotes: &[RemoteEntry], config: &Config) ->
     }
 
     out
+}
+
+/// The source that provides [`SyncKind::Base`], and so the show's episode
+/// numbering: the highest-priority enabled remote configured for it.
+pub fn base_source(remotes: &[RemoteEntry], config: &Config) -> Option<RemoteSource> {
+    remotes
+        .iter()
+        .filter(|e| e.enabled && effective_remote_sync_kinds(e, config).contains(SyncKind::Base))
+        .min_by_key(|e| e.priority)
+        .map(|e| *e.remote.source())
 }
 
 /// Sources of the enabled remotes ordered by priority (lowest number = highest
@@ -1684,6 +1700,9 @@ pub struct Show {
     pub language: Locale,
     pub include_specials: IncludeSpecials,
     pub air_date_filters: Option<FilterRules>,
+    /// The manual link from the show's episodes to XEM's numberings; `None`
+    /// numbers them like TheTVDB.
+    pub numbering: Option<Numbering>,
 }
 
 impl Show {
@@ -3184,6 +3203,56 @@ pub struct SetShowAirDateFiltersRequest {
 
 #[derive(Debug, Encode, Decode)]
 #[musli(crate = musli_core)]
+pub struct SetShowNumberingRequest {
+    pub id: ShowId,
+    pub numbering: Option<Numbering>,
+}
+
+/// The ranges' problems; empty when the numbering was saved.
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct SetShowNumberingResponse {
+    pub errors: Vec<RangeError>,
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct GetShowNumberingRequest {
+    pub id: ShowId,
+}
+
+/// What the numbering setting needs to suggest ranges and warn.
+#[derive(Debug, Clone, PartialEq, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct ShowNumbering {
+    /// TheTVDB provides the show's episodes, so they already are TheTVDB's
+    /// numbering and the setting does not apply.
+    pub tvdb_base: bool,
+    /// The show's episodes as `(season, episode)`, in order.
+    pub episodes: Vec<(u32, u32)>,
+    /// XEM's numberings of the show by system, each in episode order.
+    pub systems: Vec<XemSystemEpisodes>,
+}
+
+#[derive(Debug, Clone, PartialEq, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct XemSystemEpisodes {
+    pub system: String,
+    pub episodes: Vec<(u32, u32)>,
+}
+
+impl ShowNumbering {
+    /// XEM's episodes in `system`, empty when it has none.
+    pub fn system(&self, system: &str) -> &[(u32, u32)] {
+        self.systems
+            .iter()
+            .find(|s| s.system == system)
+            .map_or(&[], |s| &s.episodes)
+    }
+}
+
+#[derive(Debug, Encode, Decode)]
+#[musli(crate = musli_core)]
 pub struct SetMovieLanguageRequest {
     pub id: MovieId,
     pub language: Locale,
@@ -3948,6 +4017,18 @@ api::define! {
     impl Endpoint for SetShowAirDateFilters {
         impl Request for SetShowAirDateFiltersRequest;
         type Response<'de> = Empty;
+    }
+
+    pub type SetShowNumbering;
+    impl Endpoint for SetShowNumbering {
+        impl Request for SetShowNumberingRequest;
+        type Response<'de> = SetShowNumberingResponse;
+    }
+
+    pub type GetShowNumbering;
+    impl Endpoint for GetShowNumbering {
+        impl Request for GetShowNumberingRequest;
+        type Response<'de> = ShowNumbering;
     }
 
     pub type SetMovieLanguage;

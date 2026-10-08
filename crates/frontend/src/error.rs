@@ -153,6 +153,10 @@ pub(crate) enum Message {
     SettingIncludeSpecials(api::IncludeSpecials),
     #[display("Setting air dates")]
     SettingAirDateFilters,
+    #[display("Setting episode numbering")]
+    SettingNumbering,
+    #[display("Loading episode numbering")]
+    LoadingNumbering,
     #[display("Setting automatic sync to {_0}")]
     SettingAutoSync(bool),
     #[display("Loading tasks")]

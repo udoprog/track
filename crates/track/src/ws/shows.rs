@@ -402,6 +402,68 @@ impl WsHandler {
         Ok(())
     }
 
+    pub(super) async fn set_show_numbering(
+        &self,
+        incoming: &mut ws::Incoming<'_>,
+        outgoing: &mut ws::Outgoing<'_>,
+    ) -> Result<()> {
+        let req = incoming
+            .read::<api::SetShowNumberingRequest>()
+            .context("Expected a request payload")?;
+
+        let errors = req
+            .numbering
+            .as_ref()
+            .map(api::Numbering::validate)
+            .unwrap_or_default();
+
+        if errors.is_empty() {
+            self.db.set_show_numbering(req.id, req.numbering).await?;
+
+            let show = self
+                .db
+                .show_by_id(Some(self.user.id), req.id)
+                .await?
+                .context("Expected show to exist")?;
+
+            self.broadcast.emit(
+                incoming.channel(),
+                api::AppEventKind::ShowChanged { show },
+                "ws set show numbering changed",
+            );
+        }
+
+        outgoing.write(api::SetShowNumberingResponse { errors });
+        Ok(())
+    }
+
+    pub(super) async fn get_show_numbering(
+        &self,
+        incoming: &mut ws::Incoming<'_>,
+        outgoing: &mut ws::Outgoing<'_>,
+    ) -> Result<()> {
+        let req = incoming
+            .read::<api::GetShowNumberingRequest>()
+            .context("Expected a request payload")?;
+
+        let show = self
+            .db
+            .show_by_id(Some(self.user.id), req.id)
+            .await?
+            .context("Expected show to exist")?;
+
+        let config = self.db.load_config().await?;
+        let (episodes, systems) = self.db.numbering_codes(req.id).await?;
+
+        outgoing.write(api::ShowNumbering {
+            tvdb_base: api::base_source(&show.remotes, &config) == Some(api::RemoteSource::Tvdb),
+            episodes,
+            systems,
+        });
+
+        Ok(())
+    }
+
     pub(super) async fn set_show_air_date_filters(
         &self,
         incoming: &mut ws::Incoming<'_>,

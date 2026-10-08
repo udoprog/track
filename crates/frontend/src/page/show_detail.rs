@@ -14,9 +14,9 @@ use crate::router::{MediaQuery, Route, Router, ShowDetailQuery};
 use crate::ui::{
     Button, ConfirmDanger, ContextMenu, DetailHero, DetailSkeleton, EpisodeCacheModal,
     EpisodePicker, Image, ImageGallery, ImageItem, Link, MarkTimeMenu, MediaSettingsModal, Modal,
-    OutlineControl, OutlineEntry, OutlineHandle, ReleaseModal, ReleaseTarget, RemoteEditor,
-    RemoteSourceKind, SettingsTarget, TimePreset, Tracked, TranslatedText, TranslationsModal,
-    Variant,
+    NumberingEditor, OutlineControl, OutlineEntry, OutlineHandle, ReleaseModal, ReleaseTarget,
+    RemoteEditor, RemoteSourceKind, SettingsTarget, TimePreset, Tracked, TranslatedText,
+    TranslationsModal, Variant,
 };
 
 const ORPHAN_HINT: &str = r#"
@@ -96,6 +96,7 @@ pub(crate) struct ShowDetail {
     season_image_modal: bool,
     settings_modal: bool,
     remote_editor: bool,
+    numbering_editor: bool,
     show_translations_modal: bool,
     season_translations_modal: bool,
     episode_translations: Option<api::EpisodeId>,
@@ -244,6 +245,8 @@ pub(crate) enum UiMsg {
     CloseEpisodeCache,
     OpenRemoteEditor,
     CloseRemoteEditor,
+    OpenNumberingEditor,
+    CloseNumberingEditor,
     ToggleActionsExpanded,
     ToggleEpisodeMenu(api::EpisodeId),
     ToggleSeasonActionsExpanded(api::SeasonNumber),
@@ -386,6 +389,7 @@ impl Component for ShowDetail {
             season_image_modal: false,
             settings_modal: false,
             remote_editor: false,
+            numbering_editor: false,
             show_translations_modal: false,
             season_translations_modal: false,
             episode_translations: None,
@@ -584,7 +588,16 @@ impl Component for ShowDetail {
                         target={SettingsTarget::Show(show.id)}
                         on_edit_graphics={link.callback(|_| UiMsg::OpenImageModal)}
                         on_edit_remotes={link.callback(|_| UiMsg::OpenRemoteEditor)}
+                        on_edit_numbering={link.callback(|_| UiMsg::OpenNumberingEditor)}
                         on_close={link.callback(|_| UiMsg::CloseSettingsModal)}
+                    />
+                }
+
+                if self.numbering_editor {
+                    <NumberingEditor
+                        show_id={show.id}
+                        numbering={show.numbering.clone()}
+                        on_close={link.callback(|_| UiMsg::CloseNumberingEditor)}
                     />
                 }
 
@@ -1700,6 +1713,16 @@ impl ShowDetail {
             UiMsg::CloseRemoteEditor => {
                 self.remote_editor = false;
                 // Opened from Settings, so closing goes back there.
+                self.settings_modal = true;
+                Ok(true)
+            }
+            UiMsg::OpenNumberingEditor => {
+                self.numbering_editor = true;
+                self.settings_modal = false;
+                Ok(true)
+            }
+            UiMsg::CloseNumberingEditor => {
+                self.numbering_editor = false;
                 self.settings_modal = true;
                 Ok(true)
             }

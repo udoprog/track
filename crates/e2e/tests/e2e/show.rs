@@ -1211,3 +1211,141 @@ pub async fn tvmaze_remote_is_added(driver: &mut TestDriver, _: &mut Track) -> R
     ensure!(driver.count(".modal .field-error").await? == 0);
     Ok(())
 }
+
+/// The value of every element `selector` matches, in order.
+async fn values(driver: &TestDriver, selector: &str) -> Result<Vec<String>> {
+    let mut out = Vec::new();
+
+    for e in driver.find_all(By::Css(selector)).await? {
+        out.push(e.prop("value").await?);
+    }
+
+    Ok(out)
+}
+
+/// Replace a range field's text, as typed.
+async fn retype(driver: &TestDriver, title: &str, text: &str) -> Result<()> {
+    let input = driver
+        .find_one_by(&format!(".modal input[title='{title}']"))
+        .await?;
+    input.send_keys("\u{E009}a\u{E009}\u{E003}").await?;
+    input.send_keys(text).await?;
+    Ok(())
+}
+
+/// A show whose TMDB season doesn't line up with XEM warns in automatic
+/// mode; the range editor starts from suggested ranges, rejects overlapping
+/// ones, and saves; automatic mode clears them again.
+pub async fn numbering_ranges_are_edited(driver: &mut TestDriver, track: &mut Track) -> Result<()> {
+    let numbering =
+        || track.query("SELECT COALESCE(numbering, 'automatic') FROM shows WHERE id = 1001");
+
+    open_show(driver).await?;
+    driver
+        .find_one_by("[title='Settings']:not(#toolbar *)")
+        .await?
+        .click()
+        .await?;
+
+    driver
+        .wait_texts(
+            ".modal .numbering-warning",
+            ["TMDB Season 1 has 5 episodes but TheTVDB Season 1 has 3, so from S01E04 on, other numberings would be wrong. Switch to manual with suggested ranges"],
+        )
+        .await?;
+
+    driver
+        .find_one_by(".modal select[title='Episode numbering'] option[value=manual]")
+        .await?
+        .click()
+        .await?;
+
+    driver.wait_count(".modal .numbering-range", 2).await?;
+    ensure!(numbering()? == ["automatic"], "opening the editor saved");
+
+    let fields = ".modal .numbering-range input";
+    let suggested = values(driver, fields).await?;
+    ensure!(
+        suggested == ["1", "1", "3", "1", "1", "1", "4", "5", "2", "1"],
+        "suggested {suggested:?}"
+    );
+    driver
+        .wait_texts(
+            ".modal .numbering-segment",
+            ["TheTVDB S1 · 1–3", "S2 · 1–2"],
+        )
+        .await?;
+
+    retype(driver, "Range 2 first episode", "3").await?;
+    driver
+        .wait_texts(
+            ".modal .numbering-errors",
+            ["E3 is already in the range S1 E1–E3. TMDB ranges must not overlap."],
+        )
+        .await?;
+    driver
+        .wait_count(".modal [title='Save']:disabled", 1)
+        .await?;
+
+    retype(driver, "Range 2 first episode", "4").await?;
+    driver.wait_count(".modal .numbering-errors", 0).await?;
+
+    // A new range continues where the last one ends.
+    driver
+        .find_one_by(".modal [title='Add range']")
+        .await?
+        .click()
+        .await?;
+    driver.wait_count(".modal .numbering-range", 3).await?;
+    let added = values(driver, ".modal .numbering-range:nth-child(3) input").await?;
+    ensure!(added == ["1", "6", "6", "2", "3"], "added {added:?}");
+
+    driver
+        .find_one_by(".modal [title='Remove range 3']")
+        .await?
+        .click()
+        .await?;
+    driver.wait_count(".modal .numbering-range", 2).await?;
+
+    driver
+        .find_one_by(".modal [title='Save']")
+        .await?
+        .click()
+        .await?;
+    driver.find_one_by(".modal [title='Edit ranges']").await?;
+
+    let saved = numbering()?;
+    ensure!(
+        saved
+            == [
+                r#"{"ranges":[{"season":1,"first":1,"last":3,"system":"tvdb","target_season":1,"target_first":1},{"season":1,"first":4,"last":5,"system":"tvdb","target_season":2,"target_first":1}]}"#
+            ],
+        "saved {saved:?}"
+    );
+
+    driver
+        .find_one_by(".modal select[title='Episode numbering'] option[value=automatic]")
+        .await?
+        .click()
+        .await?;
+    driver.wait_count(".modal .numbering-warning", 1).await?;
+    driver
+        .wait_until("the ranges to be cleared", async || {
+            Ok(numbering()? == ["automatic"])
+        })
+        .await?;
+
+    // The warning's one click saves the suggestion.
+    driver
+        .find_one_by(".modal .numbering-warning .link-button")
+        .await?
+        .click()
+        .await?;
+    driver.find_one_by(".modal [title='Edit ranges']").await?;
+    driver
+        .wait_until("the suggested ranges to be saved", async || {
+            Ok(numbering()? == saved)
+        })
+        .await?;
+    Ok(())
+}

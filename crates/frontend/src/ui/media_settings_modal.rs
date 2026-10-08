@@ -28,6 +28,9 @@ pub(crate) struct Props {
     pub(crate) on_edit_graphics: Callback<()>,
     /// Open the parent-owned remote editor (which closes this one).
     pub(crate) on_edit_remotes: Callback<()>,
+    /// Open the parent-owned episode numbering editor (which closes this one).
+    #[prop_or_default]
+    pub(crate) on_edit_numbering: Callback<()>,
     pub(crate) on_close: Callback<()>,
 }
 
@@ -48,6 +51,9 @@ pub(crate) enum Msg {
     SetIncludeSpecials(IncludeSpecials),
     SetReleaseFilters(Option<api::FilterRules>),
     SetAirDateFilters(Option<api::FilterRules>),
+    NumberingLoaded(Result<ws::Packet<api::GetShowNumbering>, ws::Error>),
+    SetNumbering(Option<api::Numbering>),
+    SetNumberingDone(Result<ws::Packet<api::SetShowNumbering>, ws::Error>),
     Sync,
     SetMovieLanguageDone(
         api::Locale,
@@ -76,11 +82,14 @@ pub(crate) struct MediaSettingsModal {
     _broadcast: ws::Listener,
     _load_req: ws::Request,
     _config_req: ws::Request,
+    _numbering_req: ws::Request,
     _mutate_req: ws::Request,
     _sync_req: ws::Request,
     data: Option<Loaded>,
     default_release_filters: api::FilterRules,
     default_air_date_filters: api::FilterRules,
+    /// What the episode numbering row needs; shows only.
+    numbering: Option<api::ShowNumbering>,
     syncing: bool,
     time: TimeInfo,
     _time_handle: ContextHandle<TimeInfo>,
@@ -116,11 +125,13 @@ impl Component for MediaSettingsModal {
             _broadcast,
             _load_req: ws::Request::default(),
             _config_req: ws::Request::default(),
+            _numbering_req: ws::Request::default(),
             _mutate_req: ws::Request::default(),
             _sync_req: ws::Request::default(),
             data: None,
             default_release_filters: api::FilterRules::default_release_rules(),
             default_air_date_filters: api::FilterRules::default(),
+            numbering: None,
             syncing: false,
             time,
             _time_handle,
@@ -154,6 +165,7 @@ impl MediaSettingsModal {
                 self.channel = result?;
                 self.load(ctx);
                 self.load_config(ctx);
+                self.load_numbering(ctx);
                 Ok(true)
             }
             Msg::AppBroadcast(packet) => {
@@ -366,6 +378,47 @@ impl MediaSettingsModal {
                 }
                 Ok(true)
             }
+            Msg::NumberingLoaded(result) => {
+                let numbering = result
+                    .context(Message::LoadingNumbering)?
+                    .decode()
+                    .context(Message::LoadingNumbering)?;
+                self.numbering = Some(numbering);
+                Ok(true)
+            }
+            Msg::SetNumbering(numbering) => {
+                if self.channel.id() == ws::ChannelId::NONE {
+                    return Ok(false);
+                }
+
+                if let SettingsTarget::Show(id) = ctx.props().target {
+                    if let Some(Loaded::Show(s)) = &mut self.data {
+                        s.numbering = numbering.clone();
+                    }
+
+                    self._mutate_req = self
+                        .channel
+                        .request()
+                        .body(api::SetShowNumberingRequest { id, numbering })
+                        .on_packet(ctx.link().callback(Msg::SetNumberingDone))
+                        .send();
+                }
+
+                Ok(true)
+            }
+            Msg::SetNumberingDone(result) => {
+                let response = result
+                    .context(Message::SettingNumbering)?
+                    .decode()
+                    .context(Message::SettingNumbering)?;
+
+                if !response.errors.is_empty() {
+                    self.load(ctx);
+                    None::<()>.context(Message::SettingNumbering)?;
+                }
+
+                Ok(false)
+            }
             Msg::Sync => {
                 if self.channel.id() == ws::ChannelId::NONE {
                     return Ok(false);
@@ -473,6 +526,23 @@ impl MediaSettingsModal {
             .send();
     }
 
+    fn load_numbering(&mut self, ctx: &Context<Self>) {
+        let SettingsTarget::Show(id) = ctx.props().target else {
+            return;
+        };
+
+        if self.channel.id() == ws::ChannelId::NONE {
+            return;
+        }
+
+        self._numbering_req = self
+            .channel
+            .request()
+            .body(api::GetShowNumberingRequest { id })
+            .on_packet(ctx.link().callback(Msg::NumberingLoaded))
+            .send();
+    }
+
     /// Whether a task is a sync of this modal's target.
     fn is_our_sync(&self, ctx: &Context<Self>, kind: &api::TaskKind) -> bool {
         match ctx.props().target {
@@ -556,6 +626,11 @@ impl MediaSettingsModal {
             _ => None,
         };
 
+        let numbering = match data {
+            Loaded::Show(s) if admin => self.view_numbering(ctx, s),
+            _ => None,
+        };
+
         let last_synced =
             last_synced_at.map(|ts| AttrValue::from(ts.human_date_time(self.time.clone())));
         let on_sync = link.callback(|_: MouseEvent| Msg::Sync);
@@ -586,6 +661,8 @@ impl MediaSettingsModal {
                 {release}
 
                 {air_dates}
+
+                {numbering}
 
                 <FormRow label="Last synced">
                     if let Some(ts) = last_synced {
@@ -654,6 +731,112 @@ impl MediaSettingsModal {
                 }
             </>
         }
+    }
+
+    /// The episode numbering row, for shows XEM numbers whose episodes don't
+    /// come from TheTVDB (or that already have ranges, so they can be undone).
+    fn view_numbering(&self, ctx: &Context<Self>, show: &api::Show) -> Option<Html> {
+        let data = self.numbering.as_ref()?;
+
+        if data.tvdb_base || (data.systems.is_empty() && show.numbering.is_none()) {
+            return None;
+        }
+
+        let link = ctx.link();
+
+        let on_mode = {
+            let on_edit = ctx.props().on_edit_numbering.clone();
+
+            link.batch_callback(move |e: Event| {
+                let select: web_sys::HtmlSelectElement = e.target_unchecked_into();
+
+                if select.value() == "manual" {
+                    // The editor starts from suggested ranges; nothing is saved
+                    // until it is.
+                    on_edit.emit(());
+                    None
+                } else {
+                    Some(Msg::SetNumbering(None))
+                }
+            })
+        };
+
+        let regular = data.episodes.iter().filter(|&&(s, _)| s > 0).count();
+
+        let (hint, warning) = match &show.numbering {
+            Some(n) => {
+                let covered = data
+                    .episodes
+                    .iter()
+                    .filter(|&&(s, e)| s > 0 && n.target(s, e).is_some())
+                    .count();
+
+                let ranges = match n.ranges.len() {
+                    1 => "1 range covers".to_owned(),
+                    count => format!("{count} ranges cover"),
+                };
+
+                (
+                    Some(format!(
+                        "Episodes come from TMDB; XEM numbers them through these ranges. {ranges} {covered} of {regular} regular episodes."
+                    )),
+                    None,
+                )
+            }
+            None => {
+                let tvdb = data.system("tvdb");
+                let warning = api::numbering_mismatches(&data.episodes, tvdb)
+                    .into_iter()
+                    .next()
+                    .map(|m| {
+                        let from = if m.episodes > m.tvdb {
+                            format!(", so from S{:02}E{:02} on, other numberings would be wrong", m.season, m.tvdb + 1)
+                        } else {
+                            ", so other numberings may be wrong".to_owned()
+                        };
+
+                        let suggested = api::suggest_numbering(&data.episodes, "tvdb", tvdb);
+                        let on_switch = link.callback(move |_: MouseEvent| {
+                            Msg::SetNumbering(Some(suggested.clone()))
+                        });
+
+                        html! {
+                            <div class="numbering-warning">
+                                <span class="icon exclamation-triangle" aria-hidden="true" />
+                                <span>
+                                    {format!(
+                                        "TMDB Season {} has {} episodes but TheTVDB Season {} has {}{from}. ",
+                                        m.season, m.episodes, m.season, m.tvdb
+                                    )}
+                                    <button type="button" class="link-button" onclick={on_switch}>
+                                        {"Switch to manual with suggested ranges"}
+                                    </button>
+                                </span>
+                            </div>
+                        }
+                    });
+
+                (None, warning)
+            }
+        };
+
+        let manual = show.numbering.is_some();
+        let on_edit = ctx.props().on_edit_numbering.reform(|_: MouseEvent| ());
+
+        Some(html! {
+            <FormRow label="Episode numbering" hint={hint.map(AttrValue::from)}>
+                <select class="input-select" title="Episode numbering" onchange={on_mode}>
+                    <option value="automatic" selected={!manual}>{"Automatic: same as TheTVDB"}</option>
+                    <option value="manual" selected={manual}>{"Manual ranges"}</option>
+                </select>
+
+                if manual {
+                    <Button icon="adjustments-horizontal" label="Edit ranges" title="Edit ranges" onclick={on_edit} />
+                }
+
+                {warning}
+            </FormRow>
+        })
     }
 
     fn view_air_dates(&self, ctx: &Context<Self>, show: &api::Show) -> Html {

@@ -1,6 +1,6 @@
 use anyhow::Result;
 use api::ShowId;
-use sqll::{Statements, TypedStatement};
+use sqll::{Row, Statements, TypedStatement};
 use tokio::task::spawn_blocking;
 
 use super::{Database, InnerWrite};
@@ -18,6 +18,24 @@ pub(super) struct Read {
     #[sql = "SELECT season, language, name FROM xem_names WHERE show_id = ?"]
     #[sql = "ORDER BY season IS NOT NULL, season, language, name"]
     names: TypedStatement<(ShowId,), Name>,
+    #[sql = "SELECT season, episode FROM episodes WHERE show_id = ? ORDER BY season, episode"]
+    episode_codes: TypedStatement<(ShowId,), Code>,
+    #[sql = "SELECT DISTINCT system, season, episode FROM xem_episodes WHERE show_id = ? AND part = 0"]
+    #[sql = "ORDER BY system, season, episode"]
+    system_codes: TypedStatement<(ShowId,), SystemCode>,
+}
+
+#[derive(Row)]
+struct Code {
+    season: u32,
+    episode: u32,
+}
+
+#[derive(Row)]
+struct SystemCode {
+    system: String,
+    season: u32,
+    episode: u32,
 }
 
 #[derive(Statements)]
@@ -103,6 +121,47 @@ impl Database {
             }
 
             Ok(out)
+        });
+
+        result.await?
+    }
+
+    /// The show's episode codes, and XEM's codes for it by system, each in
+    /// episode order.
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn numbering_codes(
+        &self,
+        show_id: ShowId,
+    ) -> Result<(Vec<(u32, u32)>, Vec<api::XemSystemEpisodes>)> {
+        let mut s = self.inner.clone().shared().await?;
+
+        let result = spawn_blocking(move || {
+            let mut episodes = Vec::new();
+
+            {
+                let mut stmt = s.xem.episode_codes.bind((show_id,))?;
+
+                while let Some(c) = stmt.next()? {
+                    episodes.push((c.season, c.episode));
+                }
+            }
+
+            let mut systems = Vec::<api::XemSystemEpisodes>::new();
+            let mut stmt = s.xem.system_codes.bind((show_id,))?;
+
+            while let Some(c) = stmt.next()? {
+                match systems.last_mut() {
+                    Some(last) if last.system == c.system => {
+                        last.episodes.push((c.season, c.episode))
+                    }
+                    _ => systems.push(api::XemSystemEpisodes {
+                        system: c.system,
+                        episodes: vec![(c.season, c.episode)],
+                    }),
+                }
+            }
+
+            Ok((episodes, systems))
         });
 
         result.await?

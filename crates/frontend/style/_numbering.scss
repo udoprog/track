@@ -1,0 +1,173 @@
+@use 'grid' as g;
+@use 'vars' as v;
+
+// The episode numbering range editor and the warning under its setting.
+
+.modal.numbering-modal {
+    @include g.on-desktop {
+        width: min(780px, calc(100vw - #{v.$gap-sm * 2}));
+    }
+}
+
+.numbering-ranges {
+    display: flex;
+    flex-direction: column;
+    gap: v.$gap-xs;
+}
+
+.numbering-range {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: v.$gap-xs;
+    padding: v.$padding-lg;
+    background: v.$bg-panel;
+    border: 1px solid transparent;
+    border-radius: v.$radius;
+
+    &.invalid {
+        border-color: v.$color-danger;
+    }
+
+    .input-number {
+        width: 3.5em;
+        text-align: end;
+    }
+}
+
+.numbering-source,
+.numbering-target {
+    display: flex;
+    align-items: center;
+    gap: v.$padding-md;
+}
+
+.numbering-source .logo {
+    height: v.$input-height-sm;
+}
+
+.numbering-letter,
+.numbering-end {
+    color: v.$text-muted;
+    font-size: v.$font-xs;
+}
+
+.numbering-end {
+    min-width: 3.5em;
+    font-variant-numeric: tabular-nums;
+}
+
+.numbering-remove {
+    margin-inline-start: auto;
+}
+
+.numbering-errors {
+    flex-basis: 100%;
+    display: flex;
+    flex-direction: column;
+    color: v.$color-danger;
+    font-size: v.$font-sm;
+}
+
+.numbering-tools,
+.numbering-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: v.$gap-xs;
+}
+
+.numbering-actions {
+    justify-content: flex-end;
+}
+
+.numbering-coverage {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: v.$padding v.$gap-sm;
+    font-size: v.$font-xs;
+}
+
+.numbering-season {
+    color: v.$text-muted;
+    white-space: nowrap;
+}
+
+.numbering-bar {
+    position: relative;
+    height: 16px;
+    border-radius: v.$radius-sm;
+    background: v.$bg-panel;
+    overflow: hidden;
+}
+
+.numbering-segment {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    overflow: hidden;
+    padding-inline: v.$padding;
+    color: var(--on-accent);
+    font-size: 10px;
+    line-height: 16px;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    // A hairline between neighbouring ranges.
+    box-shadow: inset -1px 0 0 v.$bg-surface;
+
+    &.tone-0 {
+        background: var(--accent-selected);
+    }
+
+    &.tone-1 {
+        background: color-mix(in srgb, var(--accent-selected) 45%, #8a4fd0);
+    }
+
+    &.tone-2 {
+        background: color-mix(in srgb, var(--accent-selected) 45%, #2f9b8f);
+    }
+
+    &.tone-3 {
+        background: color-mix(in srgb, var(--accent-selected) 45%, #b5793a);
+    }
+}
+
+.numbering-unmapped {
+    display: block;
+    color: v.$text-muted;
+    font-size: 10px;
+    line-height: 16px;
+    text-align: center;
+}
+
+.numbering-warning {
+    flex-basis: 100%;
+    display: flex;
+    gap: v.$padding-md;
+    align-items: flex-start;
+    color: var(--warning);
+    font-size: v.$font-xs;
+
+    >.icon {
+        --icon-color: var(--warning);
+        flex-shrink: 0;
+        height: v.$icon-size-sm;
+    }
+}
+
+.link-button {
+    display: inline;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: v.$link-color;
+    min-height: 0;
+    height: auto;
+    font: inherit;
+    cursor: pointer;
+
+    &:hover {
+        text-decoration: underline;
+    }
+}

@@ -35,6 +35,26 @@ pub(crate) struct Name {
     pub(crate) name: String,
 }
 
+/// Where a show's episode `season`/`episode` sits in XEM: TheTVDB's same code
+/// when TheTVDB provides the episodes (`base`) or the show has no manual
+/// `numbering`, otherwise the range covering it, if any.
+#[allow(dead_code, reason = "the numbering display reads it")]
+pub(crate) fn link_target(
+    base: Option<api::RemoteSource>,
+    numbering: Option<&api::Numbering>,
+    season: u32,
+    episode: u32,
+) -> Option<api::NumberingTarget> {
+    match numbering {
+        Some(n) if base != Some(api::RemoteSource::Tvdb) => n.target(season, episode),
+        _ => Some(api::NumberingTarget {
+            system: "tvdb".to_owned(),
+            season,
+            episode,
+        }),
+    }
+}
+
 /// The answer to one conditional request, with the `Last-Modified` it carried.
 pub(crate) struct Fetched<T> {
     pub(crate) last_modified: Option<String>,
@@ -415,6 +435,71 @@ pub(crate) mod tests {
             parse::<RawNames>(FAILURE.as_bytes()).unwrap(),
             Body::Failure
         ));
+    }
+
+    fn frieren() -> api::Numbering {
+        let range = |first, last, target_season| api::NumberingRange {
+            season: 1,
+            first,
+            last,
+            system: "tvdb".to_owned(),
+            target_season,
+            target_first: 1,
+        };
+
+        api::Numbering {
+            ranges: vec![range(1, 28, 1), range(29, 38, 2)],
+        }
+    }
+
+    fn target(
+        base: Option<api::RemoteSource>,
+        numbering: Option<&api::Numbering>,
+        season: u32,
+        episode: u32,
+    ) -> Option<(String, u32, u32)> {
+        link_target(base, numbering, season, episode).map(|t| (t.system, t.season, t.episode))
+    }
+
+    #[test]
+    fn manual_ranges_link_frieren_to_its_tvdb_seasons() {
+        let tmdb = Some(api::RemoteSource::Tmdb);
+        let n = frieren();
+        let tvdb = |s, e| Some(("tvdb".to_owned(), s, e));
+
+        assert_eq!(target(tmdb, Some(&n), 1, 1), tvdb(1, 1));
+        assert_eq!(target(tmdb, Some(&n), 1, 28), tvdb(1, 28));
+        assert_eq!(target(tmdb, Some(&n), 1, 29), tvdb(2, 1));
+        assert_eq!(target(tmdb, Some(&n), 1, 38), tvdb(2, 10));
+
+        // Outside every range there is no target, specials included.
+        assert_eq!(target(tmdb, Some(&n), 1, 39), None);
+        assert_eq!(target(tmdb, Some(&n), 0, 1), None);
+
+        // Every target is an episode XEM maps.
+        let all =
+            success(parse::<Vec<BTreeMap<String, RawNumbering>>>(FRIEREN_ALL.as_bytes()).unwrap());
+        let mapped: Vec<_> = all
+            .into_iter()
+            .flat_map(entry)
+            .filter(|n| n.system == "tvdb")
+            .map(|n| (n.season, n.episode))
+            .collect();
+
+        for e in 1..=38 {
+            let (_, s, e) = target(tmdb, Some(&n), 1, e).unwrap();
+            assert!(mapped.contains(&(s, e)), "S{s}E{e} is not in XEM");
+        }
+    }
+
+    #[test]
+    fn automatic_and_tvdb_base_are_identity() {
+        let n = frieren();
+        let tvdb = Some(("tvdb".to_owned(), 1, 29));
+
+        assert_eq!(target(Some(api::RemoteSource::Tmdb), None, 1, 29), tvdb);
+        assert_eq!(target(None, None, 1, 29), tvdb);
+        assert_eq!(target(Some(api::RemoteSource::Tvdb), Some(&n), 1, 29), tvdb);
     }
 
     #[test]

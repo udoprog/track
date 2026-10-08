@@ -906,3 +906,136 @@ fn xem_anidb_scene_sources() {
     let scene = Remote::new(Scene, RemoteValue::Str("Sousou no Frieren".to_owned()));
     assert_eq!(scene.show_url(None), None);
 }
+
+fn range(season: u32, first: u32, last: u32, system: &str, ts: u32, tf: u32) -> NumberingRange {
+    NumberingRange {
+        season,
+        first,
+        last,
+        system: system.to_owned(),
+        target_season: ts,
+        target_first: tf,
+    }
+}
+
+fn codes(seasons: &[(u32, u32)]) -> Vec<(u32, u32)> {
+    seasons
+        .iter()
+        .flat_map(|&(s, n)| (1..=n).map(move |e| (s, e)))
+        .collect()
+}
+
+#[test]
+fn suggests_the_frieren_ranges() {
+    let n = suggest_numbering(
+        &codes(&[(0, 2), (1, 38)]),
+        "tvdb",
+        &codes(&[(0, 1), (1, 28), (2, 10)]),
+    );
+
+    assert_eq!(
+        n.ranges,
+        [
+            range(1, 1, 28, "tvdb", 1, 1),
+            range(1, 29, 38, "tvdb", 2, 1)
+        ]
+    );
+    assert!(n.validate().is_empty());
+}
+
+#[test]
+fn suggestion_stops_where_the_shorter_side_ends() {
+    let n = suggest_numbering(&codes(&[(1, 12)]), "anidb", &codes(&[(1, 10)]));
+    assert_eq!(n.ranges, [range(1, 1, 10, "anidb", 1, 1)]);
+}
+
+#[test]
+fn numbering_targets() {
+    let n = Numbering {
+        ranges: vec![
+            range(1, 1, 28, "tvdb", 1, 1),
+            range(1, 29, 38, "tvdb", 2, 1),
+        ],
+    };
+
+    let target = |s, e| n.target(s, e).map(|t| (t.system, t.season, t.episode));
+    assert_eq!(target(1, 1), Some(("tvdb".to_owned(), 1, 1)));
+    assert_eq!(target(1, 28), Some(("tvdb".to_owned(), 1, 28)));
+    assert_eq!(target(1, 29), Some(("tvdb".to_owned(), 2, 1)));
+    assert_eq!(target(1, 38), Some(("tvdb".to_owned(), 2, 10)));
+    assert_eq!(target(1, 39), None);
+    assert_eq!(target(0, 1), None);
+}
+
+#[test]
+fn validation_rejects_bad_ranges() {
+    let messages = |ranges: Vec<NumberingRange>| {
+        Numbering { ranges }
+            .validate()
+            .into_iter()
+            .map(|e| (e.index, e.message))
+            .collect::<Vec<_>>()
+    };
+
+    assert_eq!(
+        messages(vec![
+            range(1, 1, 28, "tvdb", 1, 1),
+            range(1, 29, 38, "tvdb", 2, 1),
+            range(1, 28, 30, "anidb", 2, 1),
+        ]),
+        [(
+            2,
+            "E28 is already in the range S1 E1–E28. TMDB ranges must not overlap.".to_owned()
+        )]
+    );
+
+    assert_eq!(
+        messages(vec![
+            range(1, 1, 10, "tvdb", 1, 1),
+            range(2, 1, 5, "tvdb", 1, 8)
+        ]),
+        [(
+            1,
+            "TheTVDB S1 E8 is already the target of S1 E1–E10. Target ranges must not overlap."
+                .to_owned()
+        )]
+    );
+
+    // The same target in different systems is fine, and so are future episodes.
+    assert!(
+        messages(vec![
+            range(1, 1, 10, "tvdb", 1, 1),
+            range(2, 1, 99, "anidb", 1, 1)
+        ])
+        .is_empty()
+    );
+
+    assert_eq!(
+        messages(vec![range(1, 5, 4, "tvdb", 1, 1)]),
+        [(0, "The range ends at E4 before it starts at E5.".to_owned())]
+    );
+    assert_eq!(
+        messages(vec![range(0, 0, 4, "tvdb", 0, 1)]),
+        [(0, "Episode numbers start at 1.".to_owned())]
+    );
+    assert_eq!(
+        messages(vec![range(1, 1, 4, "imdb", 1, 1)]),
+        [(0, "\"imdb\" is not a known numbering.".to_owned())]
+    );
+}
+
+#[test]
+fn mismatches_compare_regular_seasons_with_tvdb() {
+    let mismatches = numbering_mismatches(&codes(&[(0, 3), (1, 38)]), &codes(&[(1, 28), (2, 10)]));
+    assert_eq!(
+        mismatches,
+        [SeasonMismatch {
+            season: 1,
+            episodes: 38,
+            tvdb: 28
+        }]
+    );
+
+    assert!(numbering_mismatches(&codes(&[(1, 12)]), &codes(&[(1, 12), (2, 12)])).is_empty());
+    assert!(numbering_mismatches(&codes(&[(1, 12)]), &[]).is_empty());
+}

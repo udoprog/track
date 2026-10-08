@@ -51,6 +51,7 @@ struct ShowRow {
     default_language: api::Locale,
     include_specials: Pref<api::IncludeSpecials>,
     air_date_filters: Option<String>,
+    numbering: Option<String>,
 }
 
 /// A per-show or per-movie language some user picked, to tally the most-used
@@ -786,13 +787,13 @@ pub(crate) struct InnerRead {
 
     // shows
     // Shows and movies carry whether the viewer (?1, NULL for nobody) tracks them.
-    #[sql = "SELECT shows.id, first_air, EXISTS (SELECT 1 FROM user_tracked_shows t WHERE t.show_id = shows.id AND t.user_id = ?1) AS tracked, auto_sync, last_synced_at, (SELECT c.value FROM user_show_config c WHERE c.user_id = ?1 AND c.show_id = shows.id AND c.key = 'language') AS language, default_language, (SELECT c.value FROM user_show_config c WHERE c.user_id = ?1 AND c.show_id = shows.id AND c.key = 'include-specials') AS include_specials, air_date_filters"]
+    #[sql = "SELECT shows.id, first_air, EXISTS (SELECT 1 FROM user_tracked_shows t WHERE t.show_id = shows.id AND t.user_id = ?1) AS tracked, auto_sync, last_synced_at, (SELECT c.value FROM user_show_config c WHERE c.user_id = ?1 AND c.show_id = shows.id AND c.key = 'language') AS language, default_language, (SELECT c.value FROM user_show_config c WHERE c.user_id = ?1 AND c.show_id = shows.id AND c.key = 'include-specials') AS include_specials, air_date_filters, numbering"]
     #[sql = "FROM shows ORDER BY shows.id"]
     list_shows: TypedStatement<(Option<UserId>,), ShowRow>,
-    #[sql = "SELECT shows.id, first_air, EXISTS (SELECT 1 FROM user_tracked_shows t WHERE t.show_id = shows.id AND t.user_id = ?1) AS tracked, auto_sync, last_synced_at, (SELECT c.value FROM user_show_config c WHERE c.user_id = ?1 AND c.show_id = shows.id AND c.key = 'language') AS language, default_language, (SELECT c.value FROM user_show_config c WHERE c.user_id = ?1 AND c.show_id = shows.id AND c.key = 'include-specials') AS include_specials, air_date_filters"]
+    #[sql = "SELECT shows.id, first_air, EXISTS (SELECT 1 FROM user_tracked_shows t WHERE t.show_id = shows.id AND t.user_id = ?1) AS tracked, auto_sync, last_synced_at, (SELECT c.value FROM user_show_config c WHERE c.user_id = ?1 AND c.show_id = shows.id AND c.key = 'language') AS language, default_language, (SELECT c.value FROM user_show_config c WHERE c.user_id = ?1 AND c.show_id = shows.id AND c.key = 'include-specials') AS include_specials, air_date_filters, numbering"]
     #[sql = "FROM shows WHERE shows.id = ?2"]
     show_by_id: TypedStatement<(Option<UserId>, ShowId), ShowRow>,
-    #[sql = "SELECT s.id, s.first_air, EXISTS (SELECT 1 FROM user_tracked_shows t WHERE t.show_id = s.id AND t.user_id = ?1) AS tracked, s.auto_sync, s.last_synced_at, (SELECT c.value FROM user_show_config c WHERE c.user_id = ?1 AND c.show_id = s.id AND c.key = 'language') AS language, s.default_language, (SELECT c.value FROM user_show_config c WHERE c.user_id = ?1 AND c.show_id = s.id AND c.key = 'include-specials') AS include_specials, s.air_date_filters"]
+    #[sql = "SELECT s.id, s.first_air, EXISTS (SELECT 1 FROM user_tracked_shows t WHERE t.show_id = s.id AND t.user_id = ?1) AS tracked, s.auto_sync, s.last_synced_at, (SELECT c.value FROM user_show_config c WHERE c.user_id = ?1 AND c.show_id = s.id AND c.key = 'language') AS language, s.default_language, (SELECT c.value FROM user_show_config c WHERE c.user_id = ?1 AND c.show_id = s.id AND c.key = 'include-specials') AS include_specials, s.air_date_filters, s.numbering"]
     #[sql = "FROM shows s"]
     #[sql = "JOIN show_remotes r ON r.show_id = s.id"]
     #[sql = "WHERE r.source = ?2 AND r.value = ?3"]
@@ -1251,7 +1252,7 @@ pub(crate) struct InnerRead {
     list_movie_languages: TypedStatement<(), LanguageRow>,
 
     // stale-item queries
-    #[sql = "SELECT shows.id, first_air, EXISTS (SELECT 1 FROM user_tracked_shows t WHERE t.show_id = shows.id) AS tracked, auto_sync, last_synced_at, NULL AS language, default_language, NULL AS include_specials, air_date_filters"]
+    #[sql = "SELECT shows.id, first_air, EXISTS (SELECT 1 FROM user_tracked_shows t WHERE t.show_id = shows.id) AS tracked, auto_sync, last_synced_at, NULL AS language, default_language, NULL AS include_specials, air_date_filters, numbering"]
     #[sql = "FROM shows"]
     #[sql = "WHERE auto_sync = 1"]
     #[sql = "    AND (last_synced_at IS NULL OR last_synced_at < ?)"]
@@ -1332,6 +1333,8 @@ pub(crate) struct InnerWrite {
     update_show: TypedStatement<(Option<Timestamp>, ShowId), ()>,
     #[sql = "UPDATE shows SET air_date_filters = ? WHERE id = ?"]
     update_show_air_date_filters: TypedStatement<(Option<String>, ShowId), ()>,
+    #[sql = "UPDATE shows SET numbering = ? WHERE id = ?"]
+    update_show_numbering: TypedStatement<(Option<String>, ShowId), ()>,
     #[sql = "DELETE FROM shows WHERE id = ?"]
     delete_show: TypedStatement<(ShowId,), ()>,
     #[sql = "INSERT OR IGNORE INTO user_tracked_shows (user_id, show_id) VALUES (?, ?)"]
@@ -3943,6 +3946,23 @@ impl Database {
         let result = spawn_blocking(move || {
             let text = air_date_filters.as_ref().map(config::encode_filter_rules);
             s.update_show_air_date_filters.execute((text, id))?;
+            Ok(())
+        });
+
+        result.await?
+    }
+
+    #[tracing::instrument(skip(self), ret(level = "trace"))]
+    pub(crate) async fn set_show_numbering(
+        &self,
+        id: ShowId,
+        numbering: Option<api::Numbering>,
+    ) -> Result<()> {
+        let text = numbering.as_ref().map(serde_json::to_string).transpose()?;
+        let mut s = self.inner.clone().exclusive().await?;
+
+        let result = spawn_blocking(move || {
+            s.update_show_numbering.execute((text, id))?;
             Ok(())
         });
 
@@ -7046,6 +7066,10 @@ fn show_from_row(row: ShowRow, strings: api::Translations) -> api::Show {
             .air_date_filters
             .as_deref()
             .and_then(config::decode_filter_rules),
+        numbering: row
+            .numbering
+            .as_deref()
+            .and_then(|json| serde_json::from_str(json).ok()),
     }
 }
 

@@ -13,7 +13,8 @@ CREATE TABLE
         last_synced_at INTEGER,
         auto_sync INTEGER NOT NULL DEFAULT 1,
         air_date_filters TEXT,
-        remote_id INTEGER REFERENCES show_remotes (id) ON DELETE SET NULL
+        remote_id INTEGER REFERENCES show_remotes (id) ON DELETE SET NULL,
+        numbering TEXT
     );
 
 CREATE TABLE

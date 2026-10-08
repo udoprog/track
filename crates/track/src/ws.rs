@@ -149,6 +149,7 @@ fn requires_admin(id: api::Request) -> bool {
             | api::Request::PurgeEpisodeCache
             | api::Request::SetShowAutoSync
             | api::Request::SetShowAirDateFilters
+            | api::Request::SetShowNumbering
             | api::Request::AddMovieRemote
             | api::Request::RemoveMovieRemote
             | api::Request::UpdateMovieRemote
@@ -503,6 +504,8 @@ impl WsHandler {
             api::Request::SetShowAirDateFilters => {
                 self.set_show_air_date_filters(incoming, outgoing).await?
             }
+            api::Request::SetShowNumbering => self.set_show_numbering(incoming, outgoing).await?,
+            api::Request::GetShowNumbering => self.get_show_numbering(incoming, outgoing).await?,
             api::Request::SetMovieLanguage => self.set_movie_language(incoming, outgoing).await?,
             api::Request::SetMovieReleaseFilters => {
                 self.set_movie_release_filters(incoming, outgoing).await?

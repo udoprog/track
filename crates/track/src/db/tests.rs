@@ -1340,3 +1340,73 @@ async fn xem_anidb_scene_remotes_round_trip() -> Result<()> {
     assert_eq!(stored, expected);
     Ok(())
 }
+
+/// A show's numbering survives a round trip, and XEM's codes come back by
+/// system in episode order without double episodes' second parts.
+#[tokio::test]
+async fn show_numbering_round_trip() -> Result<()> {
+    let dir = tempfile::tempdir()?;
+    let db = Database::open(dir.path().join("test.db"), OpenMode::Bulk, 1)?;
+
+    let show = api::ShowId::new(1);
+    db.create_show(show, "Frieren", None, "").await?;
+    assert_eq!(
+        db.show_by_id(None, show).await?.context("show")?.numbering,
+        None
+    );
+
+    let numbering = api::Numbering {
+        ranges: vec![api::NumberingRange {
+            season: 1,
+            first: 29,
+            last: 38,
+            system: "tvdb".to_owned(),
+            target_season: 2,
+            target_first: 1,
+        }],
+    };
+
+    db.set_show_numbering(show, Some(numbering.clone())).await?;
+    let stored = db.show_by_id(None, show).await?.context("show")?.numbering;
+    assert_eq!(stored, Some(numbering));
+
+    db.set_show_numbering(show, None).await?;
+    assert_eq!(
+        db.show_by_id(None, show).await?.context("show")?.numbering,
+        None
+    );
+
+    let n = |system: &str, part, season, episode| crate::xem::Numbering {
+        system: system.to_owned(),
+        part,
+        season,
+        episode,
+        absolute: None,
+    };
+
+    let entries = vec![
+        vec![n("tvdb", 0, 2, 1), n("anidb", 0, 1, 29)],
+        vec![n("tvdb", 0, 1, 2), n("tvdb", 1, 1, 3), n("anidb", 0, 1, 2)],
+        vec![n("tvdb", 0, 0, 1)],
+    ];
+
+    db.transaction(move |s| s.replace_xem_episodes(show, &entries))
+        .await?;
+
+    let (episodes, systems) = db.numbering_codes(show).await?;
+    assert!(episodes.is_empty());
+
+    let systems = systems
+        .into_iter()
+        .map(|s| (s.system, s.episodes))
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        systems,
+        [
+            ("anidb".to_owned(), vec![(1, 2), (1, 29)]),
+            ("tvdb".to_owned(), vec![(0, 1), (1, 2), (2, 1)]),
+        ]
+    );
+    Ok(())
+}
