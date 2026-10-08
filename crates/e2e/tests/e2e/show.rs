@@ -1177,3 +1177,37 @@ pub async fn rail_colours_watched_apart_from_pending(
     );
     Ok(())
 }
+
+/// A TVmaze id is accepted in the Remotes editor.
+pub async fn tvmaze_remote_is_added(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_show(driver).await?;
+
+    driver
+        .find_one_by("[title='Settings']:not(#toolbar *)")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by(".modal [title='Edit remotes']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by(".modal select[title=Source] option[value=tvmaze]")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by(".modal input[aria-label=Identifier]")
+        .await?
+        .send_keys("82")
+        .await?;
+    driver
+        .find_one_by(".modal [title='Add identifier']")
+        .await?
+        .click()
+        .await?;
+    driver.wait_count(".modal .remote .logo.tvmaze", 1).await?;
+    ensure!(driver.count(".modal .field-error").await? == 0);
+    Ok(())
+}

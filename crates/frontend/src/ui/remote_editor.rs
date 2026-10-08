@@ -22,7 +22,10 @@ fn parse_remote(source: &api::RemoteSource, value: &str) -> Result<api::Remote, 
     }
 
     let value = match *source {
-        api::RemoteSource::Tvdb | api::RemoteSource::Tmdb | api::RemoteSource::Anidb => {
+        api::RemoteSource::Tvdb
+        | api::RemoteSource::Tmdb
+        | api::RemoteSource::Tvmaze
+        | api::RemoteSource::Anidb => {
             let Ok(value) = value.parse::<u32>() else {
                 return Err(format!("{} identifier must be a number", source.as_label()));
             };
