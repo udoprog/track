@@ -96,7 +96,8 @@ pub(crate) struct ShowDetail {
     season_image_modal: bool,
     settings_modal: bool,
     remote_editor: bool,
-    numbering_editor: bool,
+    /// The numbering editor is open, on manual ranges when `true`.
+    numbering_editor: Option<bool>,
     show_translations_modal: bool,
     season_translations_modal: bool,
     episode_translations: Option<api::EpisodeId>,
@@ -245,7 +246,7 @@ pub(crate) enum UiMsg {
     CloseEpisodeCache,
     OpenRemoteEditor,
     CloseRemoteEditor,
-    OpenNumberingEditor,
+    OpenNumberingEditor(bool),
     CloseNumberingEditor,
     ToggleActionsExpanded,
     ToggleEpisodeMenu(api::EpisodeId),
@@ -389,7 +390,7 @@ impl Component for ShowDetail {
             season_image_modal: false,
             settings_modal: false,
             remote_editor: false,
-            numbering_editor: false,
+            numbering_editor: None,
             show_translations_modal: false,
             season_translations_modal: false,
             episode_translations: None,
@@ -590,15 +591,16 @@ impl Component for ShowDetail {
                         target={SettingsTarget::Show(show.id)}
                         on_edit_graphics={link.callback(|_| UiMsg::OpenImageModal)}
                         on_edit_remotes={link.callback(|_| UiMsg::OpenRemoteEditor)}
-                        on_edit_numbering={link.callback(|_| UiMsg::OpenNumberingEditor)}
+                        on_edit_numbering={link.callback(UiMsg::OpenNumberingEditor)}
                         on_close={link.callback(|_| UiMsg::CloseSettingsModal)}
                     />
                 }
 
-                if self.numbering_editor {
+                if let Some(manual) = self.numbering_editor {
                     <NumberingEditor
                         show_id={show.id}
                         numbering={show.numbering.clone()}
+                        {manual}
                         on_close={link.callback(|_| UiMsg::CloseNumberingEditor)}
                     />
                 }
@@ -1728,13 +1730,13 @@ impl ShowDetail {
                 self.settings_modal = true;
                 Ok(true)
             }
-            UiMsg::OpenNumberingEditor => {
-                self.numbering_editor = true;
+            UiMsg::OpenNumberingEditor(manual) => {
+                self.numbering_editor = Some(manual);
                 self.settings_modal = false;
                 Ok(true)
             }
             UiMsg::CloseNumberingEditor => {
-                self.numbering_editor = false;
+                self.numbering_editor = None;
                 self.settings_modal = true;
                 Ok(true)
             }

@@ -1,33 +1,362 @@
 @use 'grid' as g;
 @use 'vars' as v;
 
-// The episode numbering range editor and the warning under its setting.
+// The episode numbering editor and the warning under its setting.
+
+// The heights of an episode and a season heading in the editor's map, which
+// ui/numbering_editor.rs lays its bands out by (ROW and HEAD).
+$numbering-row: 22px;
+$numbering-head: 26px;
 
 .modal.numbering-modal {
     @include g.on-desktop {
-        width: min(780px, calc(100vw - #{v.$gap-sm * 2}));
+        width: min(960px, calc(100vw - #{v.$gap-sm * 2}));
+    }
+
+    // A colour per range, cycling.
+    .tone-0 {
+        --tone: var(--accent-selected);
+    }
+
+    .tone-1 {
+        --tone: color-mix(in srgb, var(--accent-selected) 45%, #8a4fd0);
+    }
+
+    .tone-2 {
+        --tone: color-mix(in srgb, var(--accent-selected) 45%, #2f9b8f);
+    }
+
+    .tone-3 {
+        --tone: color-mix(in srgb, var(--accent-selected) 45%, #b5793a);
+    }
+}
+
+.numbering-mode {
+    display: flex;
+    gap: v.$padding;
+}
+
+// Phones read the status first, then the map, then the ranges; wide screens
+// put the map beside the other two.
+.numbering-layout {
+    display: grid;
+    grid-template-areas: 'status' 'map' 'side';
+    gap: v.$gap-xs v.$gap;
+    align-items: start;
+
+    @include g.on-desktop {
+        grid-template-areas: 'map status' 'map side';
+        grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+        grid-template-rows: auto 1fr;
+    }
+
+    >.numbering-status {
+        grid-area: status;
+    }
+
+    >.numbering-map-pane {
+        grid-area: map;
+    }
+
+    >.numbering-side {
+        grid-area: side;
+    }
+}
+
+.numbering-map-pane,
+.numbering-side {
+    display: flex;
+    flex-direction: column;
+    gap: v.$gap-xs;
+    min-width: 0;
+}
+
+.numbering-map-head,
+.numbering-map {
+    display: grid;
+    grid-template-columns: 88px minmax(48px, 1fr) 88px;
+}
+
+.numbering-map-head {
+    align-items: center;
+    font-size: v.$font-xs;
+
+    // The shown numbering's name or picker, which may reach over the bands.
+    >:last-child {
+        grid-column: 2 / 4;
+        justify-self: end;
+    }
+}
+
+.numbering-map-source {
+    display: flex;
+    align-items: center;
+    gap: v.$padding;
+    font-weight: v.$bold-weight;
+
+    >.logo {
+        height: 16px;
+    }
+}
+
+.numbering-map-scroll {
+    max-height: min(60vh, 560px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-inline: v.$padding;
+    border-radius: v.$radius;
+    background: v.$bg-panel;
+
+    @include g.on-mobile {
+        max-height: 45vh;
+    }
+}
+
+.numbering-column {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.numbering-map-season {
+    height: $numbering-head;
+    overflow: hidden;
+    font-size: v.$font-xs;
+    font-weight: v.$bold-weight;
+    line-height: $numbering-head;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.numbering-bands {
+    display: block;
+    width: 100%;
+}
+
+.numbering-band {
+    fill: var(--tone);
+    fill-opacity: 0.35;
+    stroke: transparent;
+    stroke-width: 1.5;
+    cursor: pointer;
+
+    &:hover,
+    &.selected {
+        fill-opacity: 0.65;
+        stroke: v.$text-primary;
+    }
+
+    &.missing {
+        stroke: var(--warning);
+        stroke-dasharray: 4 3;
+    }
+
+    &.invalid {
+        fill: var(--danger);
+        stroke: var(--danger);
+        stroke-dasharray: 4 3;
+    }
+}
+
+.read-only .numbering-band {
+    cursor: default;
+}
+
+// An episode in the map; the inner span is its box.
+.numbering-ep {
+    display: block;
+    width: 100%;
+    height: $numbering-row;
+    min-height: 0;
+    padding: 1px 0;
+    border: 0;
+    background: none;
+    color: v.$text-primary;
+    font: inherit;
+    cursor: pointer;
+
+    >span {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        border: 1px solid transparent;
+        border-radius: v.$radius-sm;
+        background: var(--neutral-bg);
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
+    }
+
+    &[class*='tone-']>span {
+        background: var(--tone);
+        color: var(--on-accent);
+    }
+
+    // A show's episode no range covers, and a target episode no range reaches.
+    &.unmapped>span,
+    &.untargeted>span {
+        background: repeating-linear-gradient(-45deg, transparent 0 4px, var(--border-soft) 4px 6px);
+        border-color: v.$border-input;
+        border-style: dashed;
+        color: v.$text-muted;
+    }
+
+    &.untargeted>span {
+        background: transparent;
+        border-style: solid;
+        border-color: v.$border-subtle;
+    }
+
+    // Drawn only because a range reaches past what the source knows.
+    &.future>span {
+        background: transparent;
+        border-style: dashed;
+        border-color: v.$border-subtle;
+        color: v.$text-muted;
+    }
+
+    &.missing>span {
+        background: color-mix(in srgb, var(--warning) 18%, transparent);
+        border-style: dashed;
+        border-color: var(--warning);
+        color: var(--warning);
+    }
+
+    &.overlap>span,
+    &.invalid>span {
+        background: var(--danger-bg);
+        border-color: var(--danger);
+        color: var(--danger);
+    }
+
+    &.selected>span {
+        border-color: v.$text-primary;
+    }
+
+    &.anchor>span {
+        outline: 2px solid v.$color-primary;
+        outline-offset: -1px;
+    }
+
+    &:disabled {
+        opacity: 1;
+        cursor: default;
+    }
+
+    &:not(:disabled):hover>span {
+        filter: brightness(1.15);
+    }
+}
+
+.numbering-specials {
+    align-self: flex-start;
+    font-size: v.$font-xs;
+}
+
+.numbering-status {
+    display: flex;
+    flex-direction: column;
+    gap: v.$padding-md;
+
+    p {
+        margin: 0;
+    }
+
+    >.numbering-missing {
+        font-size: v.$font-xs;
+    }
+}
+
+.numbering-note {
+    display: flex;
+    gap: v.$padding-md;
+    align-items: center;
+    color: v.$color-primary;
+    font-size: v.$font-sm;
+
+    >.icon {
+        --icon-color: #{v.$color-primary};
+        flex-shrink: 0;
+        height: v.$icon-size-sm;
     }
 }
 
 .numbering-ranges {
     display: flex;
     flex-direction: column;
-    gap: v.$gap-xs;
+    gap: v.$padding-md;
 }
 
 .numbering-range {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: v.$gap-xs;
-    padding: v.$padding-lg;
+    flex-direction: column;
+    gap: v.$padding-md;
+    padding: v.$padding-md v.$padding-lg;
     background: v.$bg-panel;
     border: 1px solid transparent;
     border-radius: v.$radius;
 
+    &.selected {
+        border-color: v.$border-input;
+    }
+
     &.invalid {
         border-color: v.$color-danger;
     }
+}
+
+.numbering-range-head {
+    display: flex;
+    align-items: center;
+    gap: v.$gap-xs;
+}
+
+// Under its head to outrank the centring of icon buttons.
+.numbering-range-head>.numbering-range-summary {
+    flex: 1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: v.$padding-md;
+    min-width: 0;
+    min-height: v.$input-height-sm;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+
+    >.logo {
+        height: 16px;
+    }
+
+    >.icon {
+        height: v.$icon-size-sm;
+    }
+}
+
+.numbering-span {
+    font-size: v.$font-sm;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.numbering-swatch {
+    flex-shrink: 0;
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    background: var(--tone);
+}
+
+.numbering-fields {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: v.$gap-xs;
 
     .input-number {
         width: 3.5em;
@@ -46,26 +375,24 @@
     height: v.$input-height-sm;
 }
 
-.numbering-letter,
-.numbering-end {
+.numbering-letter {
     color: v.$text-muted;
     font-size: v.$font-xs;
 }
 
-.numbering-end {
-    min-width: 3.5em;
-    font-variant-numeric: tabular-nums;
-}
-
-.numbering-remove {
+.numbering-done {
     margin-inline-start: auto;
 }
 
 .numbering-errors {
-    flex-basis: 100%;
     display: flex;
     flex-direction: column;
     color: v.$color-danger;
+    font-size: v.$font-sm;
+}
+
+.numbering-missing {
+    color: var(--warning);
     font-size: v.$font-sm;
 }
 
@@ -78,67 +405,6 @@
 
 .numbering-actions {
     justify-content: flex-end;
-}
-
-.numbering-coverage {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    align-items: center;
-    gap: v.$padding v.$gap-sm;
-    font-size: v.$font-xs;
-}
-
-.numbering-season {
-    color: v.$text-muted;
-    white-space: nowrap;
-}
-
-.numbering-bar {
-    position: relative;
-    height: 16px;
-    border-radius: v.$radius-sm;
-    background: v.$bg-panel;
-    overflow: hidden;
-}
-
-.numbering-segment {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    overflow: hidden;
-    padding-inline: v.$padding;
-    color: var(--on-accent);
-    font-size: 10px;
-    line-height: 16px;
-    text-align: center;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    // A hairline between neighbouring ranges.
-    box-shadow: inset -1px 0 0 v.$bg-surface;
-
-    &.tone-0 {
-        background: var(--accent-selected);
-    }
-
-    &.tone-1 {
-        background: color-mix(in srgb, var(--accent-selected) 45%, #8a4fd0);
-    }
-
-    &.tone-2 {
-        background: color-mix(in srgb, var(--accent-selected) 45%, #2f9b8f);
-    }
-
-    &.tone-3 {
-        background: color-mix(in srgb, var(--accent-selected) 45%, #b5793a);
-    }
-}
-
-.numbering-unmapped {
-    display: block;
-    color: v.$text-muted;
-    font-size: 10px;
-    line-height: 16px;
-    text-align: center;
 }
 
 .numbering-warning {

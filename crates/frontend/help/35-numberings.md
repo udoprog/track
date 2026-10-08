@@ -24,12 +24,23 @@ an **Episode numbering**:
 
 - **Automatic: same as TheTVDB** assumes the show's seasons and episodes
   are numbered like TheTVDB's. When a season's episode count differs, a
-  warning offers to **Switch to manual with suggested ranges**.
+  warning links to the range editor to **Compare** them.
 - **Manual ranges** maps a run of the show's episodes onto the start of a
   season in TheTVDB, AniDB, scene or another numbering.
   ![Edit ranges](button:adjustments-horizontal) **Edit ranges** opens the
-  ranges; **Suggest from episode order** pairs the episodes one to one.
-  An episode outside every range shows no other numbers.
+  ranges. An episode outside every range shows no other numbers.
+
+The range editor lists the show's TMDB episodes beside those of the other
+numbering, with a band from each range to the episodes it maps to. Episodes
+no range covers are hatched, episodes XEM doesn't know are dashed in amber,
+and ranges that overlap turn red and can't be saved. In automatic mode it
+shows what automatic numbering does; **Suggest from episode order** pairs
+the episodes one to one and shows the result before you save it.
+
+To edit, click an unmapped TMDB episode to start a range there, or a mapped
+one to select its range. With a range selected, click two TMDB episodes to
+set its first and last, and an episode on the other side to set where it
+starts. The selected range's numbers can also be typed.
 
 A show whose episodes come from TheTVDB already uses its numbering, so the
 setting is not shown.

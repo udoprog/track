@@ -6,7 +6,7 @@ use yew::prelude::*;
 use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
-use crate::ui::{Button, FormRow};
+use crate::ui::{Button, FormRow, mismatch_message};
 
 use super::{
     AIR_DATE_KINDS, AIR_DATE_SOURCES, FiltersEditor, LanguagePicker, Modal, RELEASE_KINDS,
@@ -28,9 +28,10 @@ pub(crate) struct Props {
     pub(crate) on_edit_graphics: Callback<()>,
     /// Open the parent-owned remote editor (which closes this one).
     pub(crate) on_edit_remotes: Callback<()>,
-    /// Open the parent-owned episode numbering editor (which closes this one).
+    /// Open the parent-owned episode numbering editor (which closes this one),
+    /// on manual ranges when `true`.
     #[prop_or_default]
-    pub(crate) on_edit_numbering: Callback<()>,
+    pub(crate) on_edit_numbering: Callback<bool>,
     pub(crate) on_close: Callback<()>,
 }
 
@@ -753,7 +754,7 @@ impl MediaSettingsModal {
                 if select.value() == "manual" {
                     // The editor starts from suggested ranges; nothing is saved
                     // until it is.
-                    on_edit.emit(());
+                    on_edit.emit(true);
                     None
                 } else {
                     Some(Msg::SetNumbering(None))
@@ -784,32 +785,19 @@ impl MediaSettingsModal {
                 )
             }
             None => {
-                let tvdb = data.system("tvdb");
-                let warning = api::numbering_mismatches(&data.episodes, tvdb)
+                let on_review = ctx.props().on_edit_numbering.reform(|_: MouseEvent| false);
+
+                let warning = api::numbering_mismatches(&data.episodes, data.system("tvdb"))
                     .into_iter()
                     .next()
                     .map(|m| {
-                        let from = if m.episodes > m.tvdb {
-                            format!(", so from S{:02}E{:02} on, other numberings would be wrong", m.season, m.tvdb + 1)
-                        } else {
-                            ", so other numberings may be wrong".to_owned()
-                        };
-
-                        let suggested = api::suggest_numbering(&data.episodes, "tvdb", tvdb);
-                        let on_switch = link.callback(move |_: MouseEvent| {
-                            Msg::SetNumbering(Some(suggested.clone()))
-                        });
-
                         html! {
                             <div class="numbering-warning">
                                 <span class="icon exclamation-triangle" aria-hidden="true" />
                                 <span>
-                                    {format!(
-                                        "TMDB Season {} has {} episodes but TheTVDB Season {} has {}{from}. ",
-                                        m.season, m.episodes, m.season, m.tvdb
-                                    )}
-                                    <button type="button" class="link-button" onclick={on_switch}>
-                                        {"Switch to manual with suggested ranges"}
+                                    {mismatch_message(&m)}{" "}
+                                    <button type="button" class="link-button" onclick={on_review}>
+                                        {"Compare in the range editor"}
                                     </button>
                                 </span>
                             </div>
@@ -821,7 +809,7 @@ impl MediaSettingsModal {
         };
 
         let manual = show.numbering.is_some();
-        let on_edit = ctx.props().on_edit_numbering.reform(|_: MouseEvent| ());
+        let on_edit = ctx.props().on_edit_numbering.reform(|_: MouseEvent| true);
 
         Some(html! {
             <FormRow label="Episode numbering" help={crate::help::NUMBERINGS} hint={hint.map(AttrValue::from)}>
