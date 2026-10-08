@@ -1134,6 +1134,37 @@ pub async fn picked_episodes_clear(driver: &mut TestDriver, _: &mut Track) -> Re
     Ok(())
 }
 
+/// Switching from a season with neither XEM season names nor an overview to
+/// one with names keeps the page working, as from Bleach's first season to its
+/// second.
+pub async fn season_names_appear_on_switching(
+    driver: &mut TestDriver,
+    track: &mut Track,
+) -> Result<()> {
+    track.execute(
+        "DELETE FROM xem_names WHERE show_id = 1001 AND season = 1;
+        DELETE FROM season_strings WHERE season_id = 2001;",
+    )?;
+
+    open_show(driver).await?;
+    driver.find_one_by("#S01E05").await?;
+    ensure!(driver.count(".season-names").await? == 0);
+
+    driver
+        .find_one_by(".season-list [title='Show Season 2']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .wait_texts(".detail-content .toolbar h2", ["Season 2"])
+        .await?;
+    driver
+        .wait_texts(".season-names .alt-name", ["Seeded Second"])
+        .await?;
+    driver.find_one_by("#S02E02").await?;
+    Ok(())
+}
+
 /// Expanded phone action menus share icon and label columns.
 pub async fn phone_action_rows_align(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     open_show(driver).await?;

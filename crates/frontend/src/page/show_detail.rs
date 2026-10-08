@@ -2180,7 +2180,10 @@ impl ShowDetail {
 
                 { self.view_season_chips(ctx) }
 
-                <div class="column">
+                // Keyed so a season switch replaces the column: patching it,
+                // Yew panics inserting the season names before an empty
+                // TranslatedText while removing the watched count after it.
+                <div class="column" key={season.id.to_string()}>
                     <div class="toolbar">
                         <h2>
                             if let Some(name) = season.strings.title() {
