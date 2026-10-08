@@ -29,8 +29,8 @@ to. Marking an episode watched moves pending to the one after it.
 
 On a show's page, each season can ![Mark remaining episodes as
 watched](icon:check) mark its remaining episodes watched, and each episode can
-be marked watched or made the next episode with
-![Mark next](icon:bookmark) **Mark next**. Episodes you watched are kept in
+be marked watched or made the next episode with its
+![Not next episode](icon:bookmark) bookmark. Episodes you watched are kept in
 their **Watch history**, where a watch can be moved to another episode or
 removed.
 

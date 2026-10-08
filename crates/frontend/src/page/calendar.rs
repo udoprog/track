@@ -210,7 +210,7 @@ impl Component for Calendar {
                             if can_reveal_week_start {
                                 <div class="field mobile-only">
                                     <label>{"Earlier this week"}</label>
-                                    <Button icon={if week_start { "eye-slash" } else { "eye" }} label={if week_start { "Hide past days" } else { "Show past days" }} title="Show the days of this week before today" onclick={on_toggle_week_start} />
+                                    <Button icon={if week_start { "eye-slash" } else { "eye" }} label={if week_start { "Hide past days" } else { "Show past days" }} title={if week_start { "Showing the days of this week before today" } else { "Hiding the days of this week before today" }} onclick={on_toggle_week_start} />
                                 </div>
                             }
                         </div>

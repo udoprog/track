@@ -469,7 +469,7 @@ impl Component for RemoteEditor {
                                         }
 
                                         <div class="remote-actions" ref={r.context_anchor.clone()}>
-                                            <Button class={classes!("input-checkbox", "has-text", enabled.then_some("checked"))} role="switch" checked={Some(enabled)} title="Enable this remote" onclick={link.callback(move |_| Msg::SetEnabled(id, !enabled))}>
+                                            <Button class={classes!("input-checkbox", "has-text", enabled.then_some("checked"))} role="switch" checked={Some(enabled)} title={if enabled { "Remote enabled" } else { "Remote disabled" }} onclick={link.callback(move |_| Msg::SetEnabled(id, !enabled))}>
                                                 <span class="mark" />
                                                 <span>{if enabled { "Enabled" } else { "Disabled" }}</span>
                                             </Button>
@@ -552,7 +552,7 @@ impl Component for RemoteEditor {
 
                             <input class="input-text fill" type="text" placeholder={placeholder(self.source)} aria-label="Identifier" value={self.value.clone()} oninput={on_value} />
 
-                            <Button icon="link" label="Slug" title="Edit slug" class={classes!(self.show_slug.then_some("selected"))} pressed={Some(self.show_slug)} onclick={link.callback(|_| Msg::ToggleSlug)} />
+                            <Button icon="link" label="Slug" title={if self.show_slug { "Showing slug" } else { "Hiding slug" }} class={classes!(self.show_slug.then_some("selected"))} pressed={Some(self.show_slug)} onclick={link.callback(|_| Msg::ToggleSlug)} />
 
                             <Button icon={if editing { "check" } else { "plus" }} label={if editing { "Save" } else { "Add" }} title={if editing { "Save identifier" } else { "Add identifier" }} variant={Variant::Primary} disabled={self.value.trim().is_empty()} onclick={link.callback(|_| Msg::Submit)} />
 

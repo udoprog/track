@@ -181,7 +181,7 @@ pub async fn edits_a_persons_remotes(driver: &mut TestDriver, _: &mut Track) -> 
         .await?;
     driver.wait_texts(".modal .remote-id", ["12345"]).await?;
 
-    let switch = ".modal .remote [title='Enable this remote']";
+    let switch = ".modal .remote-actions [role='switch']";
     driver.find_one_by(switch).await?.click().await?;
     driver.wait_texts(switch, ["Disabled"]).await?;
 

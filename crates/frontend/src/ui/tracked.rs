@@ -17,7 +17,7 @@ pub(crate) fn Tracked(props: &Props) -> Html {
     html! {
         <Button
             icon={if tracked { "eye" } else { "eye-slash" }}
-            title={format!("Track {}", props.kind)}
+            title={format!("{} {}", if tracked { "Tracking" } else { "Not tracking" }, props.kind)}
             pressed={Some(tracked)}
             text={if tracked { "Tracking" } else { "Not tracking" }}
             onclick={props.ontoggle.reform(move |_| !tracked)}

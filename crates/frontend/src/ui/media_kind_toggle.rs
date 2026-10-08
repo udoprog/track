@@ -28,8 +28,8 @@ pub(crate) fn MediaKindToggle(props: &Props) -> Html {
 
     html! {
         <>
-            <Button icon="tv" label="Shows" title="Show series" class={classes!("chip", selection.shows.then_some("selected"))} pressed={Some(selection.shows)} onclick={on_shows} />
-            <Button icon="film" label="Movies" title="Show movies" class={classes!("chip", selection.movies.then_some("selected"))} pressed={Some(selection.movies)} onclick={on_movies} />
+            <Button icon="tv" label="Shows" title={if selection.shows { "Showing series" } else { "Hiding series" }} class={classes!("chip", selection.shows.then_some("selected"))} pressed={Some(selection.shows)} onclick={on_shows} />
+            <Button icon="film" label="Movies" title={if selection.movies { "Showing movies" } else { "Hiding movies" }} class={classes!("chip", selection.movies.then_some("selected"))} pressed={Some(selection.movies)} onclick={on_movies} />
         </>
     }
 }

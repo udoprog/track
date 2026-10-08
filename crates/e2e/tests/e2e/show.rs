@@ -641,14 +641,29 @@ pub async fn watch_history_moves_and_removes(driver: &mut TestDriver, _: &mut Tr
     driver.wait_count(".modal .watch-row", 0).await
 }
 
-/// The show's tracking toggle is named for a show and says whether it is on.
+/// The show's tracking toggle is named for a show and its title says whether
+/// it is on, following the state as it is toggled.
 pub async fn tracking_toggle_names_the_show(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     open_show(driver).await?;
 
-    let toggle = driver.find_one_by("[title='Track show']").await?;
+    let toggle = driver.find_one_by("[title='Tracking show']").await?;
     ensure!(toggle.attr("aria-pressed").await? == "true");
-    ensure!(driver.count("[title='Track movie']").await? == 0);
-    Ok(())
+    ensure!(driver.count("[title$='movie']").await? == 0);
+    toggle.click().await?;
+
+    driver
+        .wait_count("[title='Not tracking show'][aria-pressed='false']", 1)
+        .await?;
+    ensure!(driver.count("[title='Tracking show']").await? == 0);
+    driver
+        .find_one_by("[title='Not tracking show']")
+        .await?
+        .click()
+        .await?;
+
+    driver
+        .wait_count("[title='Tracking show'][aria-pressed='true']", 1)
+        .await
 }
 
 /// Closing a page opened from the show's settings goes back to the settings.
@@ -850,7 +865,7 @@ pub async fn remotes_show_their_actions(driver: &mut TestDriver, _: &mut Track) 
     driver.wait_texts(".modal .remote-id", ["12345"]).await?;
 
     let switch = driver
-        .find_one_by(".modal .remote [title='Enable this remote']")
+        .find_one_by(".modal .remote-actions [role='switch']")
         .await?
         .text()
         .await?;
@@ -1043,7 +1058,7 @@ pub async fn remaining_episodes_advance_pending(
 ) -> Result<()> {
     open_show(driver).await?;
     driver
-        .find_one_by("[id='S01E01'] [title='Next episode']")
+        .find_one_by("[id='S01E01'] .item-inline[title='Next episode']")
         .await?;
 
     driver
@@ -1065,7 +1080,9 @@ pub async fn remaining_episodes_advance_pending(
             .await?;
     }
 
-    driver.wait_count("[title='Next episode']", 0).await?;
+    driver
+        .wait_count(".item-inline[title='Next episode']", 0)
+        .await?;
 
     driver
         .find_one_by(".season-list [title='Show Season 2']")
@@ -1073,14 +1090,14 @@ pub async fn remaining_episodes_advance_pending(
         .click()
         .await?;
     driver
-        .find_one_by("[id='S02E01'] [title='Next episode']")
+        .find_one_by("[id='S02E01'] .item-inline[title='Next episode']")
         .await?;
 
     driver.reload().await?;
     driver
-        .find_one_by("[id='S02E01'] [title='Next episode']")
+        .find_one_by("[id='S02E01'] .item-inline[title='Next episode']")
         .await?;
-    ensure!(driver.count("[title='Next episode']").await? == 1);
+    ensure!(driver.count(".item-inline[title='Next episode']").await? == 1);
     Ok(())
 }
 

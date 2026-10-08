@@ -116,7 +116,7 @@ pub async fn labels_its_filters(driver: &mut TestDriver, _: &mut Track) -> Resul
         .await?;
 
     driver
-        .find_one_by("[title='Show movies']")
+        .find_one_by("[title='Showing movies']")
         .await?
         .click()
         .await?;
@@ -266,7 +266,7 @@ pub async fn buttons_expose_their_state(driver: &mut TestDriver, _: &mut Track) 
         })
         .await?;
 
-    let shows = driver.find_one_by("[title='Show series']").await?;
+    let shows = driver.find_one_by("[title='Showing series']").await?;
     ensure!(shows.attr("aria-pressed").await? == "true");
     Ok(())
 }

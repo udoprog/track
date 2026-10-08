@@ -71,7 +71,7 @@ pub(crate) fn NumberingsEditor(props: &Props) -> Html {
                             <Button
                                 icon={if shown { "check" } else { "x-mark" }}
                                 label={if shown { "Shown" } else { "Hidden" }}
-                                title={format!("Show {label} numbers on episodes")}
+                                title={format!("{} {label} numbers on episodes", if shown { "Showing" } else { "Hiding" })}
                                 pressed={Some(shown)}
                                 onclick={on_toggle}
                             />

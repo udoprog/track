@@ -520,7 +520,8 @@ impl Component for ShowDetail {
                             <Button
                                 icon={if props.orphaned { "ellipsis-horizontal" } else { "exclamation-triangle" }}
                                 variant={Variant::Danger}
-                                title={if props.orphaned { "View orphaned watches" } else { "Hide orphaned watches" }}
+                                title={if props.orphaned { "Showing orphaned watches" } else { "Hiding orphaned watches" }}
+                                pressed={Some(props.orphaned)}
                                 text="Orphaned watches"
                                 onclick={link.callback(|_| UiMsg::ToggleOrphaned)}
                             />
@@ -2383,9 +2384,9 @@ impl ShowDetail {
 
                             <div class="input-group">
                                 if episode.pending.is_some() {
-                                    <Button icon="bookmark" variant={Variant::Primary} title="Clear next episode" onclick={on_remove_next} />
+                                    <Button icon="bookmark" variant={Variant::Primary} title="Next episode" pressed={Some(true)} onclick={on_remove_next} />
                                 } else {
-                                    <MarkTimeMenu icon="bookmark" title="Mark next" prompt={format!("When do you want to queue {}?", episode.code())} preset={preset.clone()} on_confirm={on_next_episode}>
+                                    <MarkTimeMenu icon="bookmark" title="Not next episode" prompt={format!("When do you want to queue {}?", episode.code())} preset={preset.clone()} on_confirm={on_next_episode}>
                                         <span class="icon bookmark" aria-hidden="true" />
                                     </MarkTimeMenu>
                                 }
