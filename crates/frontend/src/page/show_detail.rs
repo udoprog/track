@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::rc::Rc;
 
 use musli_web::web03::prelude::*;
 use wasm_bindgen::JsCast as _;
@@ -14,11 +15,12 @@ use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaQuery, Route, Router, ShowDetailQuery};
 use crate::ui::{
     AlsoKnownAs, Button, ConfirmDanger, ContextMenu, DetailHero, DetailSkeleton, EpisodeCacheModal,
-    EpisodePicker, Image, ImageGallery, ImageItem, Link, MarkTimeMenu, MediaSettingsModal, Modal,
+    EpisodePicker, Image, ImageGallery, ImageItem, MarkTimeMenu, MediaSettingsModal, Modal,
     NumberingEditor, OutlineControl, OutlineEntry, OutlineHandle, ReleaseModal, ReleaseTarget,
     RemoteEditor, RemoteSourceKind, SettingsTarget, SyncButton, TimePreset, Tracked,
     TranslatedText, TranslationsModal, Variant,
 };
+use crate::ui::{CastModal, cast_card};
 
 const ORPHAN_HINT: &str = r#"
     These are orphaned watches of this series.
@@ -58,9 +60,8 @@ pub(crate) struct ShowDetail {
     remotes: Remotes,
     season_graphics: BTreeMap<api::ImageKind, Vec<ImageItem>>,
     seasons: Vec<api::Season>,
-    credits: Vec<api::Credit>,
-    /// Whether the full cast list is expanded past the initial cap.
-    credits_expanded: bool,
+    credits: Rc<Vec<api::Credit>>,
+    cast_modal: bool,
     selected: Option<usize>,
     /// The phone season chips, and the season they were last scrolled to.
     season_chips: NodeRef,
@@ -228,7 +229,8 @@ pub(crate) enum SeasonImageMsg {
 
 /// Navigation, modals and expandable sections.
 pub(crate) enum UiMsg {
-    ToggleCreditsExpanded,
+    OpenCastModal,
+    CloseCastModal,
     SelectSeason(api::SeasonNumber),
     ToggleHistory(api::EpisodeId),
     OpenImageModal,
@@ -366,8 +368,8 @@ impl Component for ShowDetail {
             remotes: Remotes::default(),
             season_graphics: BTreeMap::new(),
             seasons: Vec::new(),
-            credits: Vec::new(),
-            credits_expanded: false,
+            credits: Rc::default(),
+            cast_modal: false,
             selected: None,
             season_chips: NodeRef::default(),
             chips_scrolled: None,
@@ -955,11 +957,13 @@ impl ShowDetail {
                 Ok(true)
             }
             LoadMsg::Credits(result) => {
-                self.credits = result
-                    .context(Message::LoadingCredits)?
-                    .decode()
-                    .context(Message::LoadingCredits)?
-                    .credits;
+                self.credits = Rc::new(
+                    result
+                        .context(Message::LoadingCredits)?
+                        .decode()
+                        .context(Message::LoadingCredits)?
+                        .credits,
+                );
 
                 Ok(true)
             }
@@ -1605,8 +1609,12 @@ impl ShowDetail {
         let props = ctx.props();
 
         match msg {
-            UiMsg::ToggleCreditsExpanded => {
-                self.credits_expanded = !self.credits_expanded;
+            UiMsg::OpenCastModal => {
+                self.cast_modal = true;
+                Ok(true)
+            }
+            UiMsg::CloseCastModal => {
+                self.cast_modal = false;
                 Ok(true)
             }
             UiMsg::SelectSeason(season) => {
@@ -1773,19 +1781,17 @@ impl ShowDetail {
             .send();
     }
 
-    /// Cast grid plus a compact key-crew line. Cast is capped until expanded.
+    /// Cast grid plus a compact key-crew line, capped; the full cast opens in
+    /// a searchable modal.
     fn view_credits(&self, ctx: &Context<Self>) -> Html {
         if self.credits.is_empty() {
             return html! {};
         }
 
-        let shown = if self.credits_expanded {
-            self.credits.as_slice()
-        } else {
-            self.credits
-                .get(..CAP.min(self.credits.len()))
-                .unwrap_or_default()
-        };
+        let shown = self
+            .credits
+            .get(..CAP.min(self.credits.len()))
+            .unwrap_or_default();
 
         html! {
             <section class="credits">
@@ -1793,35 +1799,18 @@ impl ShowDetail {
 
                 if !shown.is_empty() {
                     <div class="cast-grid">
-                        { for shown.iter().map(|c| self.view_credit_card(c, c.character.character().or(c.job.as_deref()))) }
+                        { for shown.iter().map(cast_card) }
                     </div>
                 }
 
                 if self.credits.len() > CAP {
-                    <Button icon={if self.credits_expanded { "chevron-up" } else { "chevron-down" }} label={if self.credits_expanded { "Show fewer" } else { "Show all cast" }} title={if self.credits_expanded { "Show fewer cast" } else { "Show all cast" }} class="credits-toggle" expanded={Some(self.credits_expanded)} onclick={ctx.link().callback(|_| UiMsg::ToggleCreditsExpanded)} />
+                    <Button icon="user-group" label="Show all cast" title="Show all cast" class="credits-toggle" onclick={ctx.link().callback(|_| UiMsg::OpenCastModal)} />
+                }
+
+                if self.cast_modal {
+                    <CastModal credits={self.credits.clone()} on_close={ctx.link().callback(|_| UiMsg::CloseCastModal)} />
                 }
             </section>
-        }
-    }
-
-    /// A clickable credit card - photo, name and a subtitle (the character for cast,
-    /// the job for crew) - that navigates to the person's page.
-    fn view_credit_card(&self, credit: &api::Credit, subtitle: Option<&str>) -> Html {
-        let name = credit.name.title().unwrap_or("Unknown").to_owned();
-        let subtitle = subtitle.map(str::to_owned);
-
-        html! {
-            <Link to={Route::PersonDetail(credit.person_id)} class="cast-card">
-                <Image class="cast-photo" placeholder={true} placeholder_icon="user" src={credit.profile.clone()} alt={name.clone()} />
-
-                <div class="cast-info">
-                    <div class="cast-name">{ name }</div>
-
-                    if let Some(subtitle) = subtitle {
-                        <div class="cast-character">{ subtitle }</div>
-                    }
-                </div>
-            </Link>
         }
     }
 

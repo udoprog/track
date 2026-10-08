@@ -11,6 +11,7 @@
 //! ```
 
 mod auth;
+mod cast;
 mod dashboard;
 mod help;
 mod media;
@@ -45,6 +46,8 @@ const SEED: &str = include_str!("seed.sql");
 const CROWDED: &str = include_str!("crowded.sql");
 /// A movie on top of [`SEED`] for the tests that ask with `(movie)`.
 const MOVIE: &str = include_str!("movie.sql");
+/// More cast for the seeded show than its page shows, with `(cast)`.
+const CAST: &str = include_str!("cast.sql");
 /// Specials and a second season for the seeded show, with `(seasons)`.
 const SEASONS: &str = include_str!("seasons.sql");
 /// A show airing tomorrow, with `(upcoming)`.
@@ -78,6 +81,8 @@ struct Setup {
     movie: bool,
     /// Start with `seed.sql` and the extra seasons in `seasons.sql`.
     seasons: bool,
+    /// Start with `seed.sql` and the extra cast in `cast.sql`.
+    cast: bool,
     /// Start with `seed.sql` and the show airing tomorrow in `upcoming.sql`.
     upcoming: bool,
     /// Start with `seed.sql` and the untracked show in `untracked.sql`.
@@ -152,6 +157,7 @@ impl Fixture for Track {
             || setup.crowded
             || setup.movie
             || setup.seasons
+            || setup.cast
             || setup.upcoming
             || setup.untracked
             || setup.graphics
@@ -184,6 +190,10 @@ impl Fixture for Track {
 
             if setup.seasons {
                 c.execute(SEASONS).context("adding the seasons")?;
+            }
+
+            if setup.cast {
+                c.execute(CAST).context("adding the cast")?;
             }
 
             if setup.upcoming {
@@ -443,6 +453,7 @@ async fn kept_marked(driver: &TestDriver, selector: &str) -> Result<usize> {
 
 yew_e2e::harness! {
     Track;
+    cast::{opens_the_full_cast_in_a_modal(cast), search_filters_by_person_and_character(cast), phone_cast_modal_fits_the_screen(cast)},
     auth::{cloudflare_requires_a_click(cloudflare), cloudflare_is_unavailable(signed_out), signs_in(signed_out), rejects_a_wrong_password(signed_out), signs_out(signed_out), registers_with_a_login_link(signed_out, login_link), changes_the_password(signed_out), changes_the_login},
     dashboard::{fills_rows_with_relative_dates(seeded), labels_its_filters, keeps_view_options_in_a_menu, buttons_expose_their_state, secondary_actions_are_filled(seeded), mobile_cards_always_have_a_picture(seeded), schedule_names_its_days, upcoming_is_an_agenda, upcoming_times_open_their_episode(upcoming), upcoming_keeps_days_when_more_are_shown(upcoming), schedule_keeps_weeks_when_more_are_shown(upcoming), schedule_entries_sit_flush_left(upcoming), marks_watched_in_one_click(seeded), marks_watched_at_a_chosen_time(seeded)},
     help::{opens_from_the_toolbar, search_filters_sections, links_between_sections, inline_help_opens_its_section, phones_stack_the_sections},

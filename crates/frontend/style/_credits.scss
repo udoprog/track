@@ -1,3 +1,4 @@
+@use 'grid' as g;
 @use 'vars' as v;
 
 .credits {
@@ -65,5 +66,39 @@
 
     &:hover {
         text-decoration: underline;
+    }
+}
+
+// Fixed height, so the dialog keeps its size while the search narrows the cast.
+.modal.cast-modal {
+    width: min(960px, calc(100vw - #{v.$gap-sm * 2}));
+    height: 85vh;
+
+    @include g.on-mobile {
+        width: 100%;
+        height: 90vh;
+    }
+
+    .modal-content {
+        flex: 1;
+    }
+
+    // Stays in reach while a long cast scrolls under it, covering the
+    // content's top padding so nothing shows above it.
+    .cast-search {
+        position: sticky;
+        top: calc(-1 * #{v.$gap});
+        z-index: 1;
+        display: flex;
+        flex-direction: column;
+        margin-top: calc(-1 * #{v.$gap});
+        padding-top: v.$gap;
+        background: v.$bg-surface;
+    }
+
+    // One step above the modal, as the page's cards are above the page.
+    .cast-card,
+    .cast-photo {
+        background: v.$bg-panel;
     }
 }
