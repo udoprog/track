@@ -239,3 +239,152 @@ pub async fn empty_filters_say_what_is_missing(
     );
     Ok(())
 }
+
+/// The status card's determinate bar, while the running task has one.
+const STRIP_BAR: &str = "[data-test=queue-now] .task-progress[aria-valuenow]";
+
+/// Queue a sync of the seeded show and wait until it fetches translations
+/// from the slow TMDB stand-in, returning how far its bar is.
+async fn sync_until_translations(driver: &mut TestDriver) -> Result<u32> {
+    sync_all(driver).await?;
+
+    driver
+        .wait_until_within(TASK_RUNS, "the sync to fetch translations", async || {
+            let steps = driver
+                .find_all_texts("[data-test=queue-now] .queue-now-step-label")
+                .await?;
+            Ok(steps.iter().any(|s| s == "TMDB translations")
+                && driver.count(STRIP_BAR).await? == 1)
+        })
+        .await?;
+
+    let bar = driver.find_one_by(STRIP_BAR).await?;
+    // One request for the show, one per season and one per episode.
+    ensure!(
+        bar.attr("aria-valuemax").await? == "19",
+        "the bar does not count the translation requests"
+    );
+    Ok(bar.attr("aria-valuenow").await?.parse()?)
+}
+
+/// Wait until the status card's bar is past halfway and past `first`, or
+/// gone with its step.
+async fn wait_for_advance(driver: &mut TestDriver, first: u32) -> Result<()> {
+    driver
+        .wait_until_within(TASK_RUNS, "the bar to pass halfway", async || {
+            let Ok(bar) = driver.find_one_by(STRIP_BAR).await else {
+                return Ok(true);
+            };
+            let now = bar.attr("aria-valuenow").await?.parse::<u32>()?;
+            Ok(now > first && now >= 10)
+        })
+        .await
+}
+
+/// A running show sync says what it is doing, with a bar that fills as it
+/// goes, in the status card and on its row; both go once it finishes, and the
+/// card keeps its height throughout.
+pub async fn shows_sync_progress(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_queue(driver).await?;
+    let strip = driver.find_one_by("[data-test=queue-now]").await?;
+    let height = strip.rect().await?.height;
+
+    let first = sync_until_translations(driver).await?;
+
+    let count = driver
+        .find_one_by("[data-test=queue-now] .queue-now-step-count")
+        .await?
+        .text()
+        .await?;
+    ensure!(
+        count.ends_with("of 19 requests"),
+        "the card counts {count:?}"
+    );
+
+    let step = driver
+        .find_one_by(".task-row.running .task-step")
+        .await?
+        .text()
+        .await?;
+    ensure!(
+        step.starts_with("TMDB translations"),
+        "the running row says {step:?}"
+    );
+    ensure!(
+        driver
+            .count(".task-row.running .task-progress[aria-valuenow]")
+            .await?
+            == 1,
+        "the running row has no bar"
+    );
+    ensure!(
+        strip.rect().await?.height == height,
+        "the status card changed height while showing progress"
+    );
+
+    wait_for_advance(driver, first).await?;
+    driver.snapshot("queue-sync-progress").await?;
+
+    driver
+        .wait_until_within(TASK_RUNS, "the sync to finish", async || {
+            Ok(driver.count(".task-row.running").await? == 0)
+        })
+        .await?;
+
+    let kinds = driver.find_all_texts(".task-row.done .task-kind").await?;
+    ensure!(
+        kinds.iter().any(|k| k == "Show"),
+        "the sync did not finish cleanly: {kinds:?}"
+    );
+    ensure!(
+        driver.count(".task-progress").await? == 0 && driver.count(".queue-now-step").await? == 0,
+        "progress is still shown after the sync finished"
+    );
+    ensure!(
+        strip.rect().await?.height == height,
+        "the status card changed height when the sync finished"
+    );
+    Ok(())
+}
+
+/// On a phone the status card carries the step inside its own bounds, and the
+/// running row keeps only its bar.
+pub async fn phone_shows_sync_progress(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_queue(driver).await?;
+    driver.set_window_size(400, 850).await?;
+    let strip = driver.find_one_by("[data-test=queue-now]").await?;
+    let height = strip.rect().await?.height;
+
+    let first = sync_until_translations(driver).await?;
+    wait_for_advance(driver, first).await?;
+    driver.snapshot("phone-queue-sync-progress").await?;
+
+    let card = strip.rect().await?;
+    let count = driver
+        .find_one_by("[data-test=queue-now] .queue-now-step-count")
+        .await?
+        .rect()
+        .await?;
+    ensure!(
+        card.height == height
+            && count.x >= card.x
+            && count.x + count.width <= card.x + card.width
+            && count.y + count.height <= card.y + card.height,
+        "the step count leaves the card: {count:?} {card:?}"
+    );
+
+    let step = driver
+        .find_one_by(".task-row.running .task-step")
+        .await?
+        .rect()
+        .await?;
+    ensure!(
+        step.width == 0.0,
+        "the running row repeats the step on a phone"
+    );
+    ensure!(
+        driver.count(".task-row.running .task-progress").await? == 1,
+        "the running row has no bar"
+    );
+    Ok(())
+}

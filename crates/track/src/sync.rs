@@ -9,6 +9,7 @@ use api::{
 
 use crate::app_broadcast::Broadcaster;
 use crate::db::{Database, InnerWrite};
+use crate::progress::Progress;
 use crate::remote::RemoteClients;
 use crate::shutdown::Shutdown;
 use crate::{tmdb, xem};
@@ -298,12 +299,14 @@ pub(crate) async fn sync_show(
     broadcast: &Broadcaster,
     pending: &crate::pending::PendingSystem,
     shutdown: &Shutdown,
+    progress: &Progress,
 ) -> Result<()> {
+    progress.step(api::TaskStep::Preparing, None, None);
     let (show, config) = load_show_for_sync(show_id, db, remote).await?;
 
     tracing::info!(show_id = %show_id, title = show.strings.title(), "Syncing show");
 
-    let draft = run_show_layers(&show, &config, remote, shutdown).await;
+    let draft = run_show_layers(&show, &config, remote, shutdown, progress).await;
 
     // Don't persist a half-fetched draft: aborting here leaves the stored
     // strings/seasons untouched rather than truncating them via `replace_*`.
@@ -311,6 +314,7 @@ pub(crate) async fn sync_show(
         anyhow::bail!("Sync aborted: service is shutting down");
     }
 
+    progress.step(api::TaskStep::Saving, None, None);
     persist_show_sync(&show, &config, draft, db, broadcast).await?;
     finish_show_sync(show_id, &config, db, broadcast, pending).await
 }
@@ -369,6 +373,7 @@ async fn run_show_layers(
     config: &api::Config,
     remote: &RemoteClients,
     shutdown: &Shutdown,
+    progress: &Progress,
 ) -> ShowDraft {
     // One clock for the whole sync, so every error recorded this run shares a timestamp
     // and expires together.
@@ -413,6 +418,7 @@ async fn run_show_layers(
             config,
             remote,
             shutdown,
+            progress,
             do_base,
             do_air_date: kinds.contains(SyncKind::Dates),
             do_credits: kinds.contains(SyncKind::Credits),
@@ -424,6 +430,7 @@ async fn run_show_layers(
         };
 
         let mut state = CacheState::new(entry.cache.as_ref(), now);
+        progress.step(api::TaskStep::Fetching, Some(source), None);
 
         let Some(result) = run_show_layer(cx, &mut draft, &mut state, show, entry).await else {
             continue;
@@ -987,6 +994,7 @@ struct ShowLayer<'a> {
     config: &'a api::Config,
     remote: &'a RemoteClients,
     shutdown: &'a Shutdown,
+    progress: &'a Progress,
     do_base: bool,
     do_air_date: bool,
     do_credits: bool,
@@ -1006,6 +1014,7 @@ async fn tmdb_show_layer(
         config,
         remote,
         shutdown,
+        progress,
         do_base,
         do_air_date,
         do_credits,
@@ -1068,6 +1077,12 @@ async fn tmdb_show_layer(
         draft.base_remote = Some((RemoteSource::Tmdb, tmdb_id));
     }
 
+    progress.step(
+        api::TaskStep::Episodes,
+        Some(RemoteSource::Tmdb),
+        Some(info.seasons.len()),
+    );
+
     for season in &info.seasons {
         if shutdown.is_cancelled() {
             anyhow::bail!("Sync aborted: service is shutting down");
@@ -1085,13 +1100,16 @@ async fn tmdb_show_layer(
         // it, keep the other seasons, and let the persist skip pruning.
         let key = season_episodes_key(season.number);
 
-        let Some(episodes) = recover(
+        let episodes = recover(
             state,
             &key,
             remote.fetch_tmdb_season_episodes(tmdb_id, season.number),
         )
-        .await
-        else {
+        .await;
+
+        progress.advance();
+
+        let Some(episodes) = episodes else {
             continue;
         };
 
@@ -1129,7 +1147,7 @@ async fn tmdb_show_layer(
         recover(
             state,
             translations_key(),
-            collect_tmdb_show_strings(draft, tmdb_id, config, remote, shutdown),
+            collect_tmdb_show_strings(draft, tmdb_id, config, remote, shutdown, progress),
         )
         .await;
     }
@@ -1140,7 +1158,7 @@ async fn tmdb_show_layer(
         recover(
             state,
             credits_key(),
-            collect_tmdb_show_credits(draft, tmdb_id, config, remote, shutdown),
+            collect_tmdb_show_credits(draft, tmdb_id, config, remote, shutdown, progress),
         )
         .await;
     }
@@ -1166,6 +1184,7 @@ async fn tvdb_show_layer(
         config,
         remote,
         shutdown,
+        progress,
         do_base,
         do_air_date,
         allow_skip,
@@ -1255,6 +1274,7 @@ async fn tvdb_show_layer(
     }
 
     tracing::info!(tvdb_id, "Episodes");
+    progress.step(api::TaskStep::Episodes, Some(RemoteSource::Tvdb), None);
 
     // TVDB serves the whole series' episodes in one paginated call, so a failure here
     // costs every episode. Recovering keeps the show's graphics/strings and leaves the
@@ -1327,25 +1347,52 @@ async fn tvdb_show_layer(
             .map(|l| api::Locale::new(l.language(), api::Country::DEFAULT))
             .collect();
 
-        for language in tvdb_targets {
+        // One request for the show, and one per season and episode TVDB knows.
+        let per_language = 1
+            + draft
+                .seasons
+                .values()
+                .filter(|s| s.tvdb_id.is_some())
+                .count()
+            + draft
+                .episodes
+                .values()
+                .filter(|e| e.tvdb_id.is_some())
+                .count();
+
+        let languages = tvdb_targets
+            .iter()
+            .filter(|l| l.language().to_part1().is_some())
+            .count();
+
+        progress.step(
+            api::TaskStep::Translations,
+            Some(RemoteSource::Tvdb),
+            Some(languages * per_language),
+        );
+
+        // Remotes key on ISO 639-1; skip any locale whose language has no
+        // 2-letter form.
+        for (n, language) in tvdb_targets
+            .into_iter()
+            .filter(|l| l.language().to_part1().is_some())
+            .enumerate()
+        {
+            // A language whose requests failed partway still counts as finished.
+            progress.set_done(n * per_language);
+
             if shutdown.is_cancelled() {
                 anyhow::bail!("Sync aborted: service is shutting down");
             }
 
             tracing::info!(?language, "Collecting strings");
 
-            // Remotes key on ISO 639-1; skip any locale whose language has no
-            // 2-letter form.
-            if language.language().to_part1().is_none() {
-                continue;
-            }
-
             let key = format!("translations/{language}");
 
             recover(
                 state,
                 &key,
-                collect_tvdb_strings(draft, tvdb_id, language, remote, shutdown),
+                collect_tvdb_strings(draft, tvdb_id, language, remote, shutdown, progress),
             )
             .await;
         }
@@ -1535,13 +1582,21 @@ async fn collect_tmdb_show_strings(
     config: &api::Config,
     remote: &RemoteClients,
     shutdown: &Shutdown,
+    progress: &Progress,
 ) -> Result<()> {
     let targets = api::expand_sync_languages(&config.sync_languages, draft.original_language);
+
+    progress.step(
+        api::TaskStep::Translations,
+        Some(RemoteSource::Tmdb),
+        Some(1 + draft.seasons.len() + draft.episodes.len()),
+    );
 
     // Show strings: one translations call instead of one full-detail call per
     // language.
     let translations = remote.fetch_tmdb_show_translations(tmdb_id).await?;
     add_tmdb_show_strings(draft, translations, &targets);
+    progress.advance();
 
     // Season strings: one translations call per season instead of one
     // full-detail call per season per language.
@@ -1555,6 +1610,8 @@ async fn collect_tmdb_show_strings(
         let translations = remote
             .fetch_tmdb_season_translations(tmdb_id, *season_number)
             .await?;
+
+        progress.advance();
 
         for translation in translations {
             if locale_matches_targets(translation.locale, &targets).is_none() {
@@ -1590,6 +1647,8 @@ async fn collect_tmdb_show_strings(
         let translations = remote
             .fetch_tmdb_episode_translations(tmdb_id, *season, *episode)
             .await?;
+
+        progress.advance();
 
         let original_name = draft
             .episodes
@@ -1638,11 +1697,15 @@ async fn collect_tvdb_strings(
     language: api::Locale,
     remote: &RemoteClients,
     shutdown: &Shutdown,
+    progress: &Progress,
 ) -> Result<()> {
-    if let Some(translation) = remote
+    let translation = remote
         .fetch_tvdb_show_translation(tvdb_id, language, &draft.translations)
-        .await?
-    {
+        .await?;
+
+    progress.advance();
+
+    if let Some(translation) = translation {
         tracing::info!(
             ?tvdb_id,
             ?language,
@@ -1666,10 +1729,13 @@ async fn collect_tvdb_strings(
             anyhow::bail!("Sync aborted: service is shutting down");
         }
 
-        if let Some(translation) = remote
+        let translation = remote
             .fetch_tvdb_season_translation(tvdb_id, language, &translations)
-            .await?
-        {
+            .await?;
+
+        progress.advance();
+
+        if let Some(translation) = translation {
             tracing::info!(
                 ?tvdb_id,
                 ?season,
@@ -1700,10 +1766,13 @@ async fn collect_tvdb_strings(
             anyhow::bail!("Sync aborted: service is shutting down");
         }
 
-        if let Some(translation) = remote
+        let translation = remote
             .fetch_tvdb_episode_translation(tvdb_id, language, &translations)
-            .await?
-        {
+            .await?;
+
+        progress.advance();
+
+        if let Some(translation) = translation {
             tracing::info!(
                 ?tvdb_id,
                 ?season,
@@ -1799,8 +1868,15 @@ async fn collect_tmdb_show_credits(
     config: &api::Config,
     remote: &RemoteClients,
     shutdown: &Shutdown,
+    progress: &Progress,
 ) -> Result<()> {
     let targets = api::expand_sync_languages(&config.sync_languages, draft.original_language);
+
+    progress.step(
+        api::TaskStep::Credits,
+        Some(RemoteSource::Tmdb),
+        Some(targets.len()),
+    );
 
     let mut merged: BTreeMap<String, CreditDraft> = BTreeMap::new();
 
@@ -1814,6 +1890,7 @@ async fn collect_tmdb_show_credits(
             .await?;
 
         merge_credits(&mut merged, credits, *locale);
+        progress.advance();
     }
 
     draft.credits = merged.into_values().collect();
@@ -3919,6 +3996,7 @@ mod tests {
             &Broadcaster::new(tx),
             &crate::pending::PendingSystem::new(db.clone()),
             &Shutdown::new(),
+            &Progress::default(),
         )
         .await?;
 
@@ -4244,6 +4322,7 @@ mod xem_tests {
                 &Broadcaster::new(tx),
                 &crate::pending::PendingSystem::new(self.db.clone()),
                 &Shutdown::new(),
+                &Progress::default(),
             )
             .await
         }

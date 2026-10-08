@@ -90,6 +90,7 @@ pub(crate) struct RemoteClients {
     image_http: reqwest::Client,
     rate_limiter: Arc<leaky_bucket::RateLimiter>,
     inner: Arc<Mutex<Inner>>,
+    tmdb_base: reqwest::Url,
     pub(crate) xem: xem::Client,
 }
 
@@ -119,7 +120,14 @@ impl RemoteClients {
             image_http,
             rate_limiter: Arc::new(rate_limiter),
             inner: Arc::new(Mutex::new(inner)),
+            tmdb_base: reqwest::Url::parse(tmdb::BASE).expect("the TMDB base is a URL"),
         }
+    }
+
+    /// Talk to the TMDB API at `base` instead, such as a local stand-in.
+    pub(crate) fn with_tmdb_base(mut self, base: reqwest::Url) -> Self {
+        self.tmdb_base = base;
+        self
     }
 
     pub(crate) fn configure(&self, config: &api::Config) -> Result<()> {
@@ -129,6 +137,7 @@ impl RemoteClients {
             None
         } else {
             Some(tmdb::Client::new(
+                self.tmdb_base.clone(),
                 self.http.clone(),
                 self.image_http.clone(),
                 config.tmdb_api_key.clone(),

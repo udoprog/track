@@ -11,10 +11,14 @@ use tracing::{error, info};
 
 use crate::app_broadcast::Broadcaster;
 use crate::db::Database;
+use crate::progress::Progress;
 use crate::remote::RemoteClients;
 use crate::sync;
 
 const TASK_DELAY: Duration = Duration::from_secs(5);
+/// How often a running task's progress is sent at most, so a sync of
+/// thousands of episodes doesn't flood clients.
+const PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
 /// Completed tasks kept for the queue page, newest first.
 const COMPLETED_HISTORY: usize = 500;
 
@@ -189,6 +193,7 @@ impl TaskQueue {
             kind,
             status: api::TaskStatus::Pending,
             run_at: None,
+            progress: None,
         };
 
         let scheduled = ScheduledTask {
@@ -299,6 +304,43 @@ impl TaskQueue {
         self.notify.notify_one();
     }
 
+    /// Tell clients where the running task is whenever it moves on, at most
+    /// once per [`PROGRESS_INTERVAL`], sending the latest state once each
+    /// interval passes. Never returns.
+    async fn report_progress(
+        &self,
+        task_id: api::TaskId,
+        progress: &Progress,
+        broadcast: &Broadcaster,
+    ) {
+        let mut rx = progress.subscribe();
+
+        loop {
+            if rx.changed().await.is_err() {
+                return std::future::pending().await;
+            }
+
+            let Some(current) = rx.borrow_and_update().clone() else {
+                continue;
+            };
+
+            if let Some(running) = &mut self.inner.lock().await.running {
+                running.progress = Some(current.clone());
+            }
+
+            broadcast.emit(
+                ChannelId::NONE,
+                api::AppEventKind::TaskProgress {
+                    task_id,
+                    progress: current,
+                },
+                "task queue task progress",
+            );
+
+            tokio::time::sleep(PROGRESS_INTERVAL).await;
+        }
+    }
+
     pub(crate) async fn list(&self) -> api::ListTasksResponse {
         let inner = self.inner.lock().await;
         let now = Instant::now();
@@ -362,8 +404,10 @@ impl TaskQueue {
 
             info!(task_id = ?task.id, task_kind = ?task.kind, "Task started");
             let start = Instant::now();
+            let progress = Progress::default();
             let result = tokio::select! {
-                result = execute(&task, &db, &remote, &broadcast, &pending, &shutdown) => result,
+                result = execute(&task, &db, &remote, &broadcast, &pending, &shutdown, &progress) => result,
+                _ = self.report_progress(task.id, &progress, &broadcast) => unreachable!(),
                 _ = shutdown.cancelled() => {
                     info!(task_id = ?task.id, "Task interrupted by shutdown");
                     break;
@@ -501,10 +545,11 @@ async fn execute(
     broadcast: &Broadcaster,
     pending: &crate::pending::PendingSystem,
     shutdown: &crate::shutdown::Shutdown,
+    progress: &Progress,
 ) -> Result<()> {
     match &task.kind {
         api::TaskKind::SyncShow { show_id, .. } => {
-            sync::sync_show(*show_id, db, remote, broadcast, pending, shutdown).await
+            sync::sync_show(*show_id, db, remote, broadcast, pending, shutdown, progress).await
         }
         api::TaskKind::SyncMovie { movie_id, .. } => {
             sync::sync_movie(*movie_id, db, remote, broadcast, shutdown).await
@@ -544,6 +589,7 @@ mod tests {
     use crate::app_broadcast::Broadcaster;
     use crate::db::{Database, OpenMode};
     use crate::pending::PendingSystem;
+    use crate::progress::Progress;
     use crate::remote::RemoteClients;
     use crate::shutdown::Shutdown;
 
@@ -699,6 +745,7 @@ mod tests {
             kind: kind.clone(),
             status: api::TaskStatus::Running,
             run_at: None,
+            progress: None,
         });
 
         assert!(!queue.push(kind.clone(), false, &broadcast).await);
@@ -708,5 +755,53 @@ mod tests {
         let inner = queue.inner.lock().await;
         assert!(inner.rerun);
         assert!(inner.pending.is_empty());
+    }
+
+    /// A sync reporting every unit of work reaches clients a few times a
+    /// second, ending on where it actually is.
+    #[tokio::test]
+    async fn progress_is_coalesced() {
+        let queue = TaskQueue::new();
+        let (tx, _) = broadcast::channel(4096);
+        let broadcast = Broadcaster::new(tx);
+        let mut events = broadcast.subscribe();
+        let progress = Progress::default();
+
+        let reporter = tokio::spawn({
+            let (queue, progress, broadcast) = (queue.clone(), progress.clone(), broadcast.clone());
+            async move {
+                queue
+                    .report_progress(api::TaskId::new(1), &progress, &broadcast)
+                    .await
+            }
+        });
+
+        progress.step(api::TaskStep::Translations, None, Some(1000));
+
+        for _ in 0..1000 {
+            progress.advance();
+            tokio::time::sleep(Duration::from_micros(500)).await;
+        }
+
+        let sent = tokio::time::timeout(Duration::from_secs(5), async {
+            let mut sent = 0;
+
+            loop {
+                if let api::AppEventKind::TaskProgress { progress, .. } =
+                    events.recv().await.unwrap().event.kind
+                {
+                    sent += 1;
+
+                    if progress.done == 1000 {
+                        break sent;
+                    }
+                }
+            }
+        })
+        .await
+        .expect("the final count is sent");
+
+        assert!(sent < 50, "{sent} updates for 1000 units");
+        reporter.abort();
     }
 }

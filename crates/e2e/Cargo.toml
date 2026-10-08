@@ -10,6 +10,7 @@ doctest = false
 
 [dev-dependencies]
 anyhow = "1.0.104"
+axum = "0.8.9"
 sqll = { version = "0.14.4", features = ["bundled"] }
 tempfile = "3.27.0"
 tokio = { version = "1.53.1", features = ["full"] }

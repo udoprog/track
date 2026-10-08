@@ -2747,6 +2747,8 @@ button.media-pick {
 // duration, time, actions) on wide screens, stacking kind and time under the
 // subject on phones.
 .queue-now {
+    position: relative;
+    overflow: hidden;
     display: flex;
     align-items: center;
     gap: v.$gap-sm;
@@ -2754,6 +2756,12 @@ button.media-pick {
     padding: 0 v.$gap-sm;
     border-radius: v.$radius-lg;
     background: v.$bg-surface;
+
+    // The running task's progress runs along the card's foot.
+    >.task-progress {
+        position: absolute;
+        inset: auto 0 0 0;
+    }
 
     >button {
         flex: none;
@@ -2808,6 +2816,65 @@ button.media-pick {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+// What the running task is doing: its step, and its count on the right.
+.queue-now-step {
+    display: flex;
+    gap: v.$gap-xs;
+    font-size: v.$font-xs;
+    color: v.$text-muted;
+    white-space: nowrap;
+}
+
+.queue-now-step-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.queue-now-step-count {
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+}
+
+// A thin bar filled to how far through its step a running task is, or
+// sweeping when the step can't know.
+.task-progress {
+    display: block;
+    height: 3px;
+    background: color-mix(in srgb, v.$color-primary 20%, transparent);
+    overflow: hidden;
+
+    >span {
+        display: block;
+        height: 100%;
+        background: v.$color-primary;
+        transition: width 0.25s linear;
+    }
+
+    &.indeterminate>span {
+        width: 30%;
+        animation: task-progress-sweep 1.4s ease-in-out infinite;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        &.indeterminate>span {
+            width: 100%;
+            opacity: 0.4;
+            animation: none;
+        }
+    }
+}
+
+@keyframes task-progress-sweep {
+    from {
+        transform: translateX(-100%);
+    }
+
+    to {
+        transform: translateX(340%);
+    }
 }
 
 .queue-filters {
@@ -2870,6 +2937,7 @@ button.media-pick {
 }
 
 .task-row {
+    position: relative;
     display: grid;
     grid-column: 1 / -1;
     grid-template-columns: subgrid;
@@ -2897,6 +2965,12 @@ button.media-pick {
 
     &.failed>.task-icon {
         --icon-color: #{v.$color-danger};
+    }
+
+    >.task-progress {
+        position: absolute;
+        inset: auto 0 0 0;
+        height: 2px;
     }
 
     @include g.on-mobile {
@@ -2969,6 +3043,18 @@ button.media-pick {
 .task-actions {
     display: flex;
     justify-content: flex-end;
+}
+
+// Phones show the step in the status card instead; the row keeps its bar.
+.task-step {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: v.$text-muted;
+
+    @include g.on-mobile {
+        display: none;
+    }
 }
 
 // The line above a list: its count on the left, paging and options on the right.

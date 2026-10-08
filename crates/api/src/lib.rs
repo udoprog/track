@@ -2464,6 +2464,39 @@ pub struct Task {
     /// Wall-clock time the task is expected to start running, or when it
     /// started once it is running.
     pub run_at: Option<Timestamp>,
+    /// What a running task is doing now, for tasks that report it.
+    pub progress: Option<TaskProgress>,
+}
+
+/// Where a running task is: its current step and how far through it.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub struct TaskProgress {
+    pub step: TaskStep,
+    /// The remote the step fetches from, if any.
+    pub source: Option<RemoteSource>,
+    /// Units of the step finished so far.
+    pub done: u32,
+    /// Units the step has in all, or `None` when it can't know.
+    pub total: Option<u32>,
+}
+
+/// A step of a show sync.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+#[musli(crate = musli_core)]
+pub enum TaskStep {
+    /// Loading the show and looking up its TVmaze and XEM remotes.
+    Preparing,
+    /// The first requests of a remote's layer.
+    Fetching,
+    /// Episode lists; counted in seasons where the remote serves them per season.
+    Episodes,
+    /// Translated show, season and episode strings, counted in requests.
+    Translations,
+    /// Cast and crew, counted in languages.
+    Credits,
+    /// Writing the fetched data and recomputing air dates.
+    Saving,
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
@@ -3690,6 +3723,11 @@ pub enum AppEventKind {
     },
     TaskRemoved {
         task_id: TaskId,
+    },
+    /// The running task moved on; sent at most a few times a second.
+    TaskProgress {
+        task_id: TaskId,
+        progress: TaskProgress,
     },
     /// Events for this socket were lost, so its client reloads what it shows.
     Resync,

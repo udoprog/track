@@ -134,6 +134,7 @@ mod identity;
 mod import;
 mod login_throttle;
 mod pending;
+mod progress;
 mod proxy;
 mod remote;
 mod shutdown;

@@ -8,7 +8,7 @@ use serde::de::DeserializeOwned;
 
 use crate::remote::best_image;
 
-const BASE: &str = "https://api.themoviedb.org/3/";
+pub(crate) const BASE: &str = "https://api.themoviedb.org/3/";
 const IMAGE_BASE: &str = "https://image.tmdb.org/t/p/original/";
 
 struct Inner {
@@ -26,13 +26,14 @@ pub(crate) struct Client {
 
 impl Client {
     pub(crate) fn new(
+        base: reqwest::Url,
         http: reqwest::Client,
         image_http: reqwest::Client,
         api_key: String,
     ) -> Result<Self> {
         Ok(Self {
             inner: Arc::new(Inner {
-                base: reqwest::Url::parse(BASE)?,
+                base,
                 image_base: reqwest::Url::parse(IMAGE_BASE)?,
                 http,
                 image_http,

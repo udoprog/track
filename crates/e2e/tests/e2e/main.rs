@@ -22,6 +22,7 @@ mod search;
 mod settings;
 mod show;
 mod sync;
+mod tmdb;
 mod users;
 
 use std::path::{Path, PathBuf};
@@ -63,6 +64,8 @@ const NEXT: &str = include_str!("next.sql");
 const NUMBERING: &str = include_str!("numbering.sql");
 /// A TMDB remote for every show, with `(remotes)`.
 const REMOTES: &str = include_str!("remotes.sql");
+/// A TMDB remote and key for the seeded show, with `(slow_tmdb)`.
+const SLOW_TMDB: &str = include_str!("slow_tmdb.sql");
 
 /// What a test asks of its server.
 #[derive(Default)]
@@ -91,6 +94,9 @@ struct Setup {
     numbering: bool,
     /// Start with `seed.sql` and a TMDB remote for every show, added last.
     remotes: bool,
+    /// Start with `seed.sql`, syncing the seeded show from a slow stand-in for
+    /// TMDB (see `tmdb.rs`).
+    slow_tmdb: bool,
     /// Start at the sign-in page instead of signed in as `root`.
     signed_out: bool,
     /// Supply trusted Cloudflare credentials on a scratch server.
@@ -115,6 +121,7 @@ const LOGIN_LINK_SQL: &str = "
 struct Track {
     port: u16,
     server: Option<Server>,
+    _tmdb: Option<tmdb::SlowTmdb>,
     // Dropped after the server has stopped, taking its database with it.
     dir: TempDir,
 }
@@ -151,11 +158,12 @@ impl Fixture for Track {
             || setup.backdrop
             || setup.next
             || setup.numbering
-            || setup.remotes;
+            || setup.remotes
+            || setup.slow_tmdb;
 
         if seeded || setup.login_link || setup.cloudflare {
             // The server creates the schema; the seed goes in while it is down.
-            Server::start(dir.path(), yew_e2e::dist()?)
+            Server::start(dir.path(), yew_e2e::dist()?, None)
                 .await?
                 .quit()
                 .await?;
@@ -211,6 +219,10 @@ impl Fixture for Track {
                 c.execute(REMOTES).context("adding the remotes")?;
             }
 
+            if setup.slow_tmdb {
+                c.execute(SLOW_TMDB).context("adding the TMDB remote")?;
+            }
+
             if setup.cloudflare {
                 c.execute(
                     "UPDATE users SET email = 'root@example.com' WHERE login = 'root';
@@ -236,11 +248,17 @@ impl Fixture for Track {
             signed_in_dist()?
         };
 
-        let server = Server::start(dir.path(), dist).await?;
+        let tmdb = match setup.slow_tmdb {
+            true => Some(tmdb::SlowTmdb::start().await?),
+            false => None,
+        };
+
+        let server = Server::start(dir.path(), dist, tmdb.as_ref().map(|t| t.base.clone())).await?;
 
         Ok(Self {
             port: server.port,
             server: Some(server),
+            _tmdb: tmdb,
             dir,
         })
     }
@@ -351,7 +369,7 @@ fn scripted_dist(name: &str, script: &str) -> Result<PathBuf> {
 }
 
 impl Server {
-    async fn start(dir: &Path, dist: &'static Path) -> Result<Self> {
+    async fn start(dir: &Path, dist: &'static Path, tmdb: Option<String>) -> Result<Self> {
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let port = listener.local_addr()?.port();
         let (shutdown, rx) = oneshot::channel::<()>();
@@ -360,9 +378,16 @@ impl Server {
         let cache = dir.join("image-cache");
 
         let task = tokio::spawn(async move {
-            track::serve(listener, &db, &cache, Some(dist), async move {
-                _ = rx.await;
-            })
+            track::serve(
+                listener,
+                &db,
+                &cache,
+                Some(dist),
+                tmdb.as_deref(),
+                async move {
+                    _ = rx.await;
+                },
+            )
             .await
         });
 
@@ -418,7 +443,7 @@ yew_e2e::harness! {
     movie::{puts_the_cast_beside_the_poster(movie), phone_release_line_stays_together(movie), phones_show_the_backdrop_once(movie, movie_backdrop)},
     navigation::{phone_menu_rows_align, opens_every_page, tab_shows_a_focus_ring, navigation_is_links(seeded), pages_have_landmarks_and_one_heading, page_scrolls_the_window, toolbar_icons_are_small, app_bar_items_have_room, errors_show_as_a_card, every_button_has_a_title(seeded)},
     people::{lists_people_by_credits(seeded), shows_no_count_while_loading(seeded), shows_a_silhouette_without_a_photo(seeded), phone_person_page_keeps_the_photo_shape(seeded), known_for_lists_each_title_once(seeded), edits_a_persons_remotes(seeded)},
-    queue::{lists_tasks_in_columns, empty_filters_say_what_is_missing, keeps_rows_in_place(seeded), follows_the_next_task(crowded), shows_failed_tasks(seeded)},
+    queue::{lists_tasks_in_columns, empty_filters_say_what_is_missing, keeps_rows_in_place(seeded), follows_the_next_task(crowded), shows_failed_tasks(seeded), shows_sync_progress(slow_tmdb), phone_shows_sync_progress(slow_tmdb)},
     search::{focuses_the_input, says_what_it_searches},
     settings::{reorders_sync_sources, reorders_xem_lookup, shows_and_hides_numberings, theme_applies_live, theme_is_remembered, adds_languages_and_rules, switches_work_from_the_keyboard, fields_follow_the_theme, settings_are_labelled_rows, tab_completes_the_time_zone, configures_cloudflare_access, warns_about_trusting_only_the_email_header, phones_list_the_settings_pages},
     users::{creates_a_user_who_registers, regular_users_do_not_see_users(login_link), changes_a_role(login_link), revokes_links_and_deletes(login_link), regular_users_cannot_remove_media(seeded, movie, login_link), regular_users_cannot_edit_shared_data(seeded, movie, login_link)},

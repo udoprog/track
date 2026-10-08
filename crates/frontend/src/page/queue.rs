@@ -16,8 +16,13 @@ const HISTORY: usize = 500;
 /// Where a task is in its life. Rows keep their place in the timeline while
 /// this changes.
 enum State {
-    Pending { run_at: Option<api::Timestamp> },
-    Running { since: Option<api::Timestamp> },
+    Pending {
+        run_at: Option<api::Timestamp>,
+    },
+    Running {
+        since: Option<api::Timestamp>,
+        progress: Option<api::TaskProgress>,
+    },
     Done(api::CompletedTask),
 }
 
@@ -217,8 +222,22 @@ impl Queue {
                         self.move_to_next(Entry {
                             id: task.id,
                             kind: task.kind,
-                            state: State::Running { since: task.run_at },
+                            state: State::Running {
+                                since: task.run_at,
+                                progress: task.progress,
+                            },
                         });
+                    }
+                    api::AppEventKind::TaskProgress { task_id, progress } => {
+                        let running = self.entries.iter_mut().find(|e| e.id == task_id);
+
+                        if let Some(Entry {
+                            state: State::Running { progress: p, .. },
+                            ..
+                        }) = running
+                        {
+                            *p = Some(progress);
+                        }
                     }
                     api::AppEventKind::TaskCompleted { task } => {
                         self.complete(task);
@@ -244,7 +263,10 @@ impl Queue {
                 let running = resp.running.into_iter().map(|task| Entry {
                     id: task.id,
                     kind: task.kind,
-                    state: State::Running { since: task.run_at },
+                    state: State::Running {
+                        since: task.run_at,
+                        progress: task.progress,
+                    },
                 });
 
                 self.entries = done
@@ -393,8 +415,8 @@ impl Queue {
     /// The fixed card above the timeline: what runs now or next, and Sync all.
     /// It never changes height.
     fn view_now(&self, ctx: &Context<Self>) -> Html {
-        let running = self.entries.iter().find_map(|e| match e.state {
-            State::Running { since } => Some((e, since)),
+        let running = self.entries.iter().find_map(|e| match &e.state {
+            State::Running { since, progress } => Some((e, *since, progress.as_ref())),
             _ => None,
         });
 
@@ -403,7 +425,9 @@ impl Queue {
             _ => None,
         });
 
-        let (state, icon, caption, entry) = if let Some((entry, since)) = running {
+        let progress = running.and_then(|(_, _, progress)| progress);
+
+        let (state, icon, caption, entry) = if let Some((entry, since, _)) = running {
             (
                 "running",
                 "arrow-path spin",
@@ -431,12 +455,25 @@ impl Queue {
                     if let Some(entry) = entry {
                         <span class="queue-now-title">
                             <span class="badge">{kind_label(&entry.kind)}</span>
-                            { view_task_title(&entry.kind, task_route(&entry.kind), None) }
+                            { view_task_title(&entry.kind, task_route(&entry.kind), None, None) }
                         </span>
                     } else {
                         <span class="queue-now-title">{"All caught up"}</span>
                     }
+
+                    if let Some(progress) = progress {
+                        <span class="queue-now-step">
+                            <span class="queue-now-step-label">{step_label(progress)}</span>
+                            if let Some(count) = count_label(progress) {
+                                <span class="queue-now-step-count">{count}</span>
+                            }
+                        </span>
+                    }
                 </div>
+
+                if let Some(progress) = progress {
+                    { view_progress_bar(progress) }
+                }
 
                 if crate::is_admin(ctx) {
                     <Button icon="arrow-path" label="Sync all" title="Queue sync for all show and movies" onclick={ctx.link().callback(|_| Msg::SyncAll)} />
@@ -564,7 +601,7 @@ impl Queue {
                 None,
                 eta_label(*run_at, self.now),
             ),
-            State::Running { since } => (
+            State::Running { since, .. } => (
                 "running",
                 classes!("icon", "arrow-path", "spin"),
                 since.and_then(|since| elapsed_label(since, self.now)),
@@ -594,11 +631,16 @@ impl Queue {
             _ => None,
         };
 
+        let progress = match &entry.state {
+            State::Running { progress, .. } => progress.as_ref(),
+            _ => None,
+        };
+
         html! {
             <div key={id.get()} class={classes!("task-row", state, (ctx.props().task == Some(id)).then_some("focused"))} data-task={id.get().to_string()} title={error.map(str::to_owned)}>
                 <span class="task-icon"><span class={icon} /></span>
 
-                { view_task_cells(&entry.kind, route, error) }
+                { view_task_cells(&entry.kind, route, error, progress) }
 
                 <span class="task-duration">{duration}</span>
                 <span class="task-time">{time}</span>
@@ -612,6 +654,9 @@ impl Queue {
                     }
                 </span>
 
+                if let Some(progress) = progress {
+                    { view_progress_bar(progress) }
+                }
             </div>
         }
     }
@@ -649,18 +694,87 @@ fn kind_label(kind: &api::TaskKind) -> &'static str {
     }
 }
 
-/// The kind and subject cells of a task row.
-fn view_task_cells(kind: &api::TaskKind, route: Option<Route>, error: Option<&str>) -> Html {
+/// The kind and subject cells of a task row, with what a running task is
+/// doing beside its subject.
+fn view_task_cells(
+    kind: &api::TaskKind,
+    route: Option<Route>,
+    error: Option<&str>,
+    progress: Option<&api::TaskProgress>,
+) -> Html {
     html! {
         <>
             <span class="task-kind">{kind_label(kind)}</span>
-            { view_task_title(kind, route, error) }
+            { view_task_title(kind, route, error, progress) }
         </>
     }
 }
 
-/// A task's subject: its title, episode code and any error.
-fn view_task_title(kind: &api::TaskKind, route: Option<Route>, error: Option<&str>) -> Html {
+/// What a running task's step is, e.g. "TMDB translations".
+fn step_label(progress: &api::TaskProgress) -> String {
+    let source = progress.source.map(|s| s.to_string());
+    let source = source.as_deref().unwrap_or("");
+
+    match progress.step {
+        api::TaskStep::Preparing => String::from("Preparing"),
+        api::TaskStep::Fetching => format!("Fetching from {source}"),
+        api::TaskStep::Episodes => format!("{source} episodes"),
+        api::TaskStep::Translations => format!("{source} translations"),
+        api::TaskStep::Credits => format!("{source} cast and crew"),
+        api::TaskStep::Saving => String::from("Saving"),
+    }
+}
+
+/// How far through its step a task is, e.g. "3 of 10 seasons", when the step
+/// knows its total.
+fn count_label(progress: &api::TaskProgress) -> Option<String> {
+    let total = progress.total.filter(|&t| t > 0)?;
+    let done = progress.done.min(total);
+
+    let unit = match progress.step {
+        api::TaskStep::Episodes => " seasons",
+        api::TaskStep::Translations => " requests",
+        api::TaskStep::Credits => " languages",
+        _ => "",
+    };
+
+    Some(format!("{done} of {total}{unit}"))
+}
+
+/// A bar filled to how far through its step a task is, or sweeping when the
+/// step can't know.
+fn view_progress_bar(progress: &api::TaskProgress) -> Html {
+    let label = step_label(progress);
+
+    match progress.total.filter(|&t| t > 0) {
+        Some(total) => {
+            let done = progress.done.min(total);
+            let width = format!("width: {:.1}%", f64::from(done) * 100.0 / f64::from(total));
+            // A new step gets a new fill, rather than one sliding back from the last.
+            let step = format!("{:?}{:?}", progress.step, progress.source);
+
+            html! {
+                <span class="task-progress" role="progressbar" aria-label={label}
+                    aria-valuemin="0" aria-valuemax={total.to_string()} aria-valuenow={done.to_string()}>
+                    <span key={step} style={width} />
+                </span>
+            }
+        }
+        None => html! {
+            <span class="task-progress indeterminate" role="progressbar" aria-label={label}>
+                <span />
+            </span>
+        },
+    }
+}
+
+/// A task's subject: its title, episode code, any error and what it is doing.
+fn view_task_title(
+    kind: &api::TaskKind,
+    route: Option<Route>,
+    error: Option<&str>,
+    progress: Option<&api::TaskProgress>,
+) -> Html {
     let body = html! {
         <>
                 if let api::TaskKind::RefreshTopLanguages = kind {
@@ -677,6 +791,15 @@ fn view_task_title(kind: &api::TaskKind, route: Option<Route>, error: Option<&st
 
                 if let Some(error) = error {
                     <span class="task-error">{error}</span>
+                }
+
+                if let Some(progress) = progress {
+                    <span class="task-step">
+                        {step_label(progress)}
+                        if let Some(count) = count_label(progress) {
+                            {" "}{count}
+                        }
+                    </span>
                 }
         </>
     };

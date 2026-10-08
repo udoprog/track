@@ -101,6 +101,7 @@ pub async fn server(args: Args, db: &Path, log: &[String]) -> Result<ExitCode> {
         args.delay,
         args.dist.as_deref(),
         &args.trusted_proxy,
+        None,
         ctrl_c,
     )
     .await
@@ -108,14 +109,21 @@ pub async fn server(args: Args, db: &Path, log: &[String]) -> Result<ExitCode> {
 
 /// Run the server on an already bound `listener` against the database at `db`,
 /// serving the frontend from `dist` (the bundled one when `None`), until
-/// `shutdown` completes.
+/// `shutdown` completes. `tmdb` replaces the TMDB API's base URL, such as with
+/// a local stand-in for tests.
 pub async fn serve(
     listener: TcpListener,
     db: &Path,
     cache_dir: &Path,
     dist: Option<&Path>,
+    tmdb: Option<&str>,
     shutdown: impl Future<Output = ()>,
 ) -> Result<ExitCode> {
+    let tmdb = tmdb
+        .map(reqwest::Url::parse)
+        .transpose()
+        .context("Parsing the TMDB base URL")?;
+
     run(
         listener,
         db,
@@ -124,6 +132,7 @@ pub async fn serve(
         None,
         dist,
         &[],
+        tmdb,
         shutdown,
     )
     .await
@@ -137,6 +146,7 @@ async fn run(
     delay: Option<RandomDelay>,
     dist: Option<&Path>,
     trusted_proxies: &[IpAddr],
+    tmdb: Option<reqwest::Url>,
     shutdown_signal: impl Future<Output = ()>,
 ) -> Result<ExitCode> {
     let db = Database::open(db, OpenMode::Normal, read_concurrency)
@@ -165,7 +175,11 @@ async fn run(
     let queue = TaskQueue::new();
     let shutdown = Shutdown::new();
 
-    let remote = RemoteClients::new(http.clone(), image_http);
+    let mut remote = RemoteClients::new(http.clone(), image_http);
+
+    if let Some(tmdb) = tmdb {
+        remote = remote.with_tmdb_base(tmdb);
+    }
 
     let config = db.load_config().await.context("Loading config")?;
     remote.configure(&config)?;
