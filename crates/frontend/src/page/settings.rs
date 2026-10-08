@@ -9,7 +9,7 @@ use crate::router::{Route, SettingsPage};
 use crate::ui::{
     AIR_DATE_KINDS, AIR_DATE_SOURCES, Button, DurationInput, FiltersEditor, FormRow,
     LanguagePicker, Link, RELEASE_KINDS, RELEASE_SOURCES, SecretInput, Skeleton, SyncKindsEditor,
-    SyncLanguagesEditor,
+    SyncLanguagesEditor, XemLookupEditor,
 };
 
 fn tz_is_valid(name: &str) -> bool {
@@ -63,6 +63,7 @@ pub(crate) enum Msg {
     ReleaseFiltersChanged(api::FilterRules),
     AirDateFiltersChanged(api::FilterRules),
     SyncKindsChanged(Vec<api::SourceSyncKinds>),
+    XemLookupChanged(Vec<api::RemoteSource>),
     CloudflareEnabledToggle,
     CloudflareTeamDomainChanged(String),
     CloudflareAudienceChanged(String),
@@ -389,6 +390,15 @@ impl Component for Settings {
                                     }) }
                                 </FormRow>
 
+                                <FormRow label="Find XEM through" hint="Which of a show's remotes look its XEM entry up, top first. The first one XEM maps becomes the show's XEM remote.">
+                                    { system("tall", html! {
+                                        <XemLookupEditor
+                                            sources={self.config.xem_lookup.clone()}
+                                            on_change={link.callback(Msg::XemLookupChanged)}
+                                        />
+                                    }) }
+                                </FormRow>
+
                                 <FormRow label="Release dates" hint="Which release dates count. A date matching any rule is considered, in the rules' order.">
                                     { system("tall", html! {
                                         <FiltersEditor
@@ -674,6 +684,11 @@ impl Settings {
             }
             Msg::SyncKindsChanged(kinds) => {
                 self.config.sync_kinds = kinds;
+                self.save_config(ctx);
+                Ok(true)
+            }
+            Msg::XemLookupChanged(sources) => {
+                self.config.xem_lookup = sources;
                 self.save_config(ctx);
                 Ok(true)
             }

@@ -11,7 +11,7 @@ use crate::app_broadcast::Broadcaster;
 use crate::db::{Database, InnerWrite};
 use crate::remote::RemoteClients;
 use crate::shutdown::Shutdown;
-use crate::tmdb;
+use crate::{tmdb, xem};
 
 /// Whether a sync layer fetched fresh data or detected (via ETag/`lastUpdated`)
 /// that its remote is unchanged and skipped the expensive re-fetch.
@@ -274,16 +274,17 @@ fn usable_cache(
     allow_skip && cache.kinds.contains_all(needed) && !cache.has_expired_errors(now)
 }
 
-/// Flush what the show layers learned. `persisted` says whether the data they fetched
-/// actually landed; see [`CacheState::finish`] for what that changes.
+/// Flush what the show layers learned. `persisted` says whether the data a remote's
+/// layer fetched actually landed; see [`CacheState::finish`] for what that changes.
 async fn flush_show_cache_writes(
     show_id: api::ShowId,
     writes: &[(api::RemoteId, CacheState)],
     db: &Database,
-    persisted: bool,
+    persisted: impl Fn(api::RemoteId) -> bool,
 ) -> Result<()> {
     for (remote_id, state) in writes {
-        db.set_remote_cache(show_id, *remote_id, cache_json(&state.finish(persisted)))
+        let cache = state.finish(persisted(*remote_id));
+        db.set_remote_cache(show_id, *remote_id, cache_json(&cache))
             .await?;
     }
 
@@ -341,7 +342,13 @@ async fn load_show_for_sync(
         tracing::warn!("TVmaze id resolution skipped for show {show_id}: {e:#}");
     }
 
-    // Re-read so a freshly stored TVmaze remote is included in the order.
+    if show.remote_by_source(RemoteSource::Xem).is_none()
+        && let Err(e) = ensure_xem_remote(&show, &config, remote, db).await
+    {
+        tracing::warn!("XEM lookup skipped for show {show_id}: {e:#}");
+    }
+
+    // Re-read so freshly stored TVmaze and XEM remotes are included in the order.
     let show = db
         .show_by_id(None, show_id)
         .await?
@@ -390,8 +397,9 @@ async fn run_show_layers(
         let configured = api::effective_remote_sync_kinds(entry, config);
         let kinds: SyncKindSet = configured.iter().filter(|k| draft.needs(*k)).collect();
 
-        // Run the source if it still owes a kind, or just to accumulate graphics.
-        if kinds.is_empty() && !source.has_graphics() {
+        // Run the source if it still owes a kind, to accumulate graphics, or for
+        // XEM's numbering map and names.
+        if kinds.is_empty() && !source.has_graphics() && source != RemoteSource::Xem {
             continue;
         }
 
@@ -428,6 +436,10 @@ async fn run_show_layers(
 
         draft.cache_writes.push((entry.id, state));
 
+        if source == RemoteSource::Xem {
+            draft.xem_remote = Some(entry.id);
+        }
+
         // A failing layer shouldn't abort the sync: lower-priority layers and the
         // data already collected still persist, and the kind stays unclaimed so a
         // later layer can fill it.
@@ -437,6 +449,15 @@ async fn run_show_layers(
                 tracing::warn!(?source, "Sync layer failed for show {}: {e:#}", show.id);
             }
         }
+    }
+
+    // XEM's rows only last while the show has an enabled XEM remote.
+    if !show
+        .remotes
+        .iter()
+        .any(|e| e.enabled && *e.remote.source() == RemoteSource::Xem)
+    {
+        draft.xem = Some(XemDraft::cleared());
     }
 
     draft
@@ -451,6 +472,11 @@ async fn run_show_layer(
     show: &api::Show,
     entry: &api::RemoteEntry,
 ) -> Option<Result<LayerOutcome>> {
+    if *entry.remote.source() == RemoteSource::Xem {
+        let id = entry.remote.value().as_str()?;
+        return Some(xem_layer(draft, state, id, cx.remote).await);
+    }
+
     let id = entry.remote.value().as_u32()?;
 
     let result = match *entry.remote.source() {
@@ -494,7 +520,7 @@ async fn persist_show_sync(
 
     if draft.provided.contains(SyncKind::Base) && !draft.base_unchanged {
         persist_show_draft(show_id, show, &draft, db, broadcast).await?;
-        flush_show_cache_writes(show_id, &draft.cache_writes, db, true).await?;
+        flush_show_cache_writes(show_id, &draft.cache_writes, db, |_| true).await?;
     } else if draft.base_unchanged {
         // The Base source was unchanged (cache hit): keep the stored
         // seasons/episodes/strings and only persist air dates other sources
@@ -502,7 +528,7 @@ async fn persist_show_sync(
         let air_dates = Arc::clone(&draft);
         db.transaction(move |s| persist_air_dates_only(show_id, &air_dates, s))
             .await?;
-        flush_show_cache_writes(show_id, &draft.cache_writes, db, true).await?;
+        flush_show_cache_writes(show_id, &draft.cache_writes, db, |_| true).await?;
 
         // A non-base source may have merged fresh graphics (or a slug); push the
         // refreshed show so clients update without a manual reload.
@@ -512,9 +538,15 @@ async fn persist_show_sync(
             broadcast.broadcast_event(api::AppEventKind::ShowChanged { show });
         }
     } else if eligible.contains(SyncKind::Base) {
-        // Nothing persisted, so no validator may be stored - but the failures that got
-        // us here must be, or we'd re-probe a dead remote on every sync.
-        flush_show_cache_writes(show_id, &draft.cache_writes, db, false).await?;
+        persist_xem_only(show_id, &draft, db).await?;
+
+        // Nothing but XEM's data persisted, so no other validator may be stored - but
+        // the failures that got us here must be, or we'd re-probe a dead remote on
+        // every sync.
+        flush_show_cache_writes(show_id, &draft.cache_writes, db, |id| {
+            draft.xem_remote == Some(id)
+        })
+        .await?;
 
         // A Base source that reported *why* it produced nothing (the remote 404s, its
         // episode list is unreachable) is an ordinary fact about the remote, already
@@ -528,7 +560,11 @@ async fn persist_show_sync(
             "No Base source produced data; keeping the stored show"
         );
     } else {
-        flush_show_cache_writes(show_id, &draft.cache_writes, db, false).await?;
+        persist_xem_only(show_id, &draft, db).await?;
+        flush_show_cache_writes(show_id, &draft.cache_writes, db, |id| {
+            draft.xem_remote == Some(id)
+        })
+        .await?;
 
         tracing::warn!(show_id = %show_id, "No enabled remote provides Base; keeping the stored seasons");
     }
@@ -613,6 +649,36 @@ async fn ensure_tvmaze_remote(
     // Idempotent via INSERT OR IGNORE.
     db.add_remote(show_id, None, &api::Remote::tvmaze(tvmaze_id))
         .await?;
+
+    Ok(())
+}
+
+/// Look the show up on XEM through its remotes in the configured order and
+/// store the first one XEM maps as an XEM remote.
+async fn ensure_xem_remote(
+    show: &api::Show,
+    config: &api::Config,
+    remote: &RemoteClients,
+    db: &Database,
+) -> Result<()> {
+    for &origin in &config.xem_lookup {
+        if !RemoteSource::XEM_LOOKUP.contains(&origin) {
+            continue;
+        }
+
+        for entry in show.remotes.iter().filter(|e| *e.remote.source() == origin) {
+            let id = entry.remote.value().to_string();
+
+            if remote.xem.has_map(origin.as_id(), &id).await? {
+                tracing::info!(show_id = %show.id, origin = origin.as_id(), id, "Found XEM entry");
+                let xem = api::Remote::new(
+                    RemoteSource::Xem,
+                    api::RemoteValue::Str(format!("{}/{id}", origin.as_id())),
+                );
+                return db.add_remote(show.id, None, &xem).await;
+            }
+        }
+    }
 
     Ok(())
 }
@@ -732,6 +798,26 @@ struct ShowDraft {
     translations: HashSet<String>,
     /// Cast & crew, provided by the TMDB Credits layer.
     credits: Vec<CreditDraft>,
+    /// What to store of XEM's data; `None` keeps the stored rows.
+    xem: Option<XemDraft>,
+    /// The XEM remote whose layer ran.
+    xem_remote: Option<api::RemoteId>,
+}
+
+/// XEM's map and names for a show. A part that is `None` was unchanged and
+/// keeps its stored rows; `Some` replaces them.
+struct XemDraft {
+    episodes: Option<Vec<Vec<xem::Numbering>>>,
+    names: Option<Vec<xem::Name>>,
+}
+
+impl XemDraft {
+    fn cleared() -> Self {
+        Self {
+            episodes: Some(Vec::new()),
+            names: Some(Vec::new()),
+        }
+    }
 }
 
 /// A batch of `(locale, kind, text)` rows destined for a `*_strings` table.
@@ -1229,6 +1315,62 @@ async fn tvdb_show_layer(
     if let Some(earned) = earned {
         state.earn(earned);
     }
+
+    Ok(LayerOutcome::Updated)
+}
+
+/// Fetch the show's XEM map and names. `value` is the XEM remote's
+/// `<origin>/<id>`.
+#[tracing::instrument(skip(draft, state, remote))]
+async fn xem_layer(
+    draft: &mut ShowDraft,
+    state: &mut CacheState,
+    value: &str,
+    remote: &RemoteClients,
+) -> Result<LayerOutcome> {
+    let (origin, id) = value
+        .split_once('/')
+        .context("Expected an XEM id like tvdb/<id>")?;
+
+    let since = state.prior.as_ref().and_then(|c| c.last_updated.clone());
+
+    let all = remote.xem.map_all(origin, id, since.as_deref()).await?;
+
+    let (xem, last_modified) = if let xem::Body::Failure = all.body {
+        // XEM doesn't map the show: drop what it mapped before.
+        tracing::info!("XEM has no map for {value}");
+        (XemDraft::cleared(), all.last_modified)
+    } else {
+        let names = remote.xem.names(origin, id, since.as_deref()).await?;
+
+        if let (xem::Body::NotModified, xem::Body::NotModified) = (&all.body, &names.body) {
+            tracing::info!("XEM unchanged (304)");
+            return Ok(LayerOutcome::Unchanged);
+        }
+
+        let xem = XemDraft {
+            episodes: match all.body {
+                xem::Body::Success(entries) => Some(entries),
+                _ => None,
+            },
+            names: match names.body {
+                xem::Body::NotModified => None,
+                xem::Body::Failure => Some(Vec::new()),
+                xem::Body::Success(names) => Some(names),
+            },
+        };
+
+        (xem, xem::latest(all.last_modified, names.last_modified))
+    };
+
+    draft.xem = Some(xem);
+
+    state.earn(api::RemoteCache {
+        etag: None,
+        last_updated: last_modified,
+        kinds: SyncKindSet::empty(),
+        errors: Vec::new(),
+    });
 
     Ok(LayerOutcome::Updated)
 }
@@ -2186,7 +2328,37 @@ fn write_show_draft(
         persist_show_credits(s, show_id, &draft.credits)?;
     }
 
+    write_xem(s, show_id, draft)
+}
+
+fn write_xem(s: &mut InnerWrite, show_id: api::ShowId, draft: &ShowDraft) -> Result<()> {
+    let Some(xem) = &draft.xem else {
+        return Ok(());
+    };
+
+    if let Some(episodes) = &xem.episodes {
+        s.replace_xem_episodes(show_id, episodes)?;
+    }
+
+    if let Some(names) = &xem.names {
+        s.replace_xem_names(show_id, names)?;
+    }
+
     Ok(())
+}
+
+/// Store XEM's data when nothing else of the draft is persisted.
+async fn persist_xem_only(
+    show_id: api::ShowId,
+    draft: &Arc<ShowDraft>,
+    db: &Database,
+) -> Result<()> {
+    if draft.xem.is_none() {
+        return Ok(());
+    }
+
+    let draft = Arc::clone(draft);
+    db.transaction(move |s| write_xem(s, show_id, &draft)).await
 }
 
 /// Persist only air-date releases when the Base layer was unchanged (cache hit):
@@ -2279,7 +2451,7 @@ fn persist_air_dates_only(
 
     s.prune_episode_releases(show_id, &kept_releases, &draft.air_date_sources)?;
 
-    Ok(())
+    write_xem(s, show_id, draft)
 }
 
 /// The shared model the single-episode sync layers contribute to: the episode-scoped
@@ -3905,5 +4077,317 @@ mod cache_tests {
             recover(&mut next, "k", async { panic!("must not be polled") }).await;
         assert_eq!(skipped, None);
         assert_eq!(next.errors.len(), 1);
+    }
+}
+
+#[cfg(test)]
+mod xem_tests {
+    use std::net::SocketAddr;
+
+    use axum::extract::State;
+    use axum::http::{HeaderMap, StatusCode, Uri, header};
+    use axum::response::{IntoResponse, Response};
+    use parking_lot::Mutex;
+
+    use super::*;
+    use crate::db::OpenMode;
+    use crate::xem::tests::{FAILURE, FRIEREN_ALL, OSHI_NO_KO_ALL, OSHI_NO_KO_NAMES};
+
+    const EARLY: &str = "Thu, 08 Oct 2026 00:07:43 GMT";
+    const LATE: &str = "Thu, 08 Oct 2026 00:37:57 GMT";
+    const NO_NAMES: &str = r#"{"result":"success","data":[],"message":""}"#;
+
+    /// A stand-in for thexem.info: answers each path with a fixed body and
+    /// `Last-Modified`, or `304` while the request's `If-Modified-Since` is the
+    /// same date; records every request.
+    #[derive(Default)]
+    struct Fake {
+        responses: HashMap<&'static str, (&'static str, &'static str)>,
+        requests: Vec<(String, Option<String>)>,
+    }
+
+    type Shared = Arc<Mutex<Fake>>;
+
+    async fn handle(State(fake): State<Shared>, uri: Uri, headers: HeaderMap) -> Response {
+        let since = headers
+            .get(header::IF_MODIFIED_SINCE)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned);
+
+        let mut fake = fake.lock();
+
+        let path = uri.path().trim_start_matches('/').to_owned();
+        let query = uri.query().unwrap_or_default();
+        fake.requests
+            .push((format!("{path}?{query}"), since.clone()));
+
+        let Some(&(body, last_modified)) = fake.responses.get(path.as_str()) else {
+            return StatusCode::NOT_FOUND.into_response();
+        };
+
+        if since.as_deref() == Some(last_modified) {
+            return (
+                StatusCode::NOT_MODIFIED,
+                [(header::LAST_MODIFIED, last_modified)],
+            )
+                .into_response();
+        }
+
+        (
+            [
+                (header::LAST_MODIFIED, last_modified),
+                (header::CONTENT_TYPE, "application/json"),
+            ],
+            body,
+        )
+            .into_response()
+    }
+
+    struct Setup {
+        _dir: tempfile::TempDir,
+        db: Database,
+        remote: RemoteClients,
+        fake: Shared,
+        base: String,
+        show_id: api::ShowId,
+    }
+
+    async fn setup(remote: api::Remote) -> Result<Setup> {
+        let fake = Shared::default();
+
+        let listener = tokio::net::TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0))).await?;
+        let addr = listener.local_addr()?;
+        let app = axum::Router::new()
+            .fallback(handle)
+            .with_state(fake.clone());
+        tokio::spawn(async move { axum::serve(listener, app).await });
+
+        let dir = tempfile::tempdir()?;
+        let db = Database::open(dir.path().join("test.db"), OpenMode::Normal, 1)?;
+        let show_id = api::ShowId::new(1);
+        db.create_show(show_id, "Show", None, "").await?;
+        db.add_remote(show_id, None, &remote).await?;
+
+        let http = reqwest::Client::new();
+        let mut remote = RemoteClients::new(http.clone(), http.clone());
+        let base = format!("http://{addr}");
+        remote.xem = xem::Client::with_base(http, &base);
+
+        Ok(Setup {
+            _dir: dir,
+            db,
+            remote,
+            fake,
+            base,
+            show_id,
+        })
+    }
+
+    impl Setup {
+        fn serve(&self, path: &'static str, body: &'static str, last_modified: &'static str) {
+            self.fake
+                .lock()
+                .responses
+                .insert(path, (body, last_modified));
+        }
+
+        fn requests(&self) -> Vec<(String, Option<String>)> {
+            std::mem::take(&mut self.fake.lock().requests)
+        }
+
+        async fn sync(&self) -> Result<()> {
+            let (tx, _) = tokio::sync::broadcast::channel(16);
+
+            sync_show(
+                self.show_id,
+                &self.db,
+                &self.remote,
+                &Broadcaster::new(tx),
+                &crate::pending::PendingSystem::new(self.db.clone()),
+                &Shutdown::new(),
+            )
+            .await
+        }
+
+        /// Every system's (season, episode) for `system`'s episode, sorted.
+        async fn entry(&self, system: &str, season: u32, episode: u32) -> Result<Vec<String>> {
+            let entry = self
+                .db
+                .xem_entry(self.show_id, system, season, episode)
+                .await?;
+
+            Ok(entry
+                .iter()
+                .map(|n| format!("{} {}x{}", n.system, n.season, n.episode))
+                .collect())
+        }
+
+        async fn xem_remote(&self) -> Result<Option<api::RemoteEntry>> {
+            let show = self
+                .db
+                .show_by_id(None, self.show_id)
+                .await?
+                .context("show")?;
+            Ok(show
+                .remotes
+                .into_iter()
+                .find(|e| *e.remote.source() == RemoteSource::Xem))
+        }
+    }
+
+    /// A covered show stores XEM's map and names, a re-sync replaces them, an
+    /// unchanged one (`304`) keeps them, and disabling the XEM remote drops them.
+    #[tokio::test]
+    async fn sync_stores_and_updates_xem_data() -> Result<()> {
+        let xem = api::Remote::new(
+            RemoteSource::Xem,
+            api::RemoteValue::Str("tvdb/424536".into()),
+        );
+        let t = setup(xem).await?;
+        t.serve("map/all", FRIEREN_ALL, EARLY);
+        t.serve("map/names", NO_NAMES, LATE);
+
+        t.sync().await?;
+
+        assert_eq!(
+            t.requests(),
+            [
+                ("map/all?id=424536&origin=tvdb".to_owned(), None),
+                ("map/names?id=424536&origin=tvdb".to_owned(), None),
+            ]
+        );
+        // TMDB's S1E29 is TheTVDB's S2E1.
+        assert_eq!(
+            t.entry("tvdb", 2, 1).await?,
+            ["anidb 2x1", "scene 2x1", "tvdb 2x1"]
+        );
+        assert!(t.db.xem_names(t.show_id).await?.is_empty());
+
+        let cache = t.xem_remote().await?.context("xem remote")?.cache;
+        assert_eq!(
+            cache.as_ref().and_then(|c| c.last_updated.as_deref()),
+            Some(LATE)
+        );
+
+        // Re-sync: the later of the two dates goes out with both requests;
+        // the names changed and the map did not.
+        t.serve("map/all", FRIEREN_ALL, LATE);
+        t.serve("map/names", OSHI_NO_KO_NAMES, EARLY);
+        t.sync().await?;
+
+        assert_eq!(
+            t.requests(),
+            [
+                (
+                    "map/all?id=424536&origin=tvdb".to_owned(),
+                    Some(LATE.to_owned())
+                ),
+                (
+                    "map/names?id=424536&origin=tvdb".to_owned(),
+                    Some(LATE.to_owned())
+                ),
+            ]
+        );
+        assert_eq!(t.db.xem_names(t.show_id).await?.len(), 6);
+        assert_eq!(t.entry("tvdb", 1, 12).await?.len(), 3);
+
+        // The map changed: Oshi no Ko's has 11 episodes in season 1 and a
+        // season 3.
+        t.serve("map/all", OSHI_NO_KO_ALL, EARLY);
+        t.serve("map/names", NO_NAMES, EARLY);
+        t.sync().await?;
+        assert!(t.entry("tvdb", 1, 12).await?.is_empty());
+        assert_eq!(t.entry("tvdb", 3, 1).await?.len(), 3);
+        assert!(t.db.xem_names(t.show_id).await?.is_empty());
+
+        // Unchanged (304): the stored rows stay, whatever the bodies would say.
+        t.serve("map/all", FRIEREN_ALL, EARLY);
+        t.serve("map/names", OSHI_NO_KO_NAMES, EARLY);
+        t.requests();
+        t.sync().await?;
+        assert_eq!(
+            t.requests(),
+            [
+                (
+                    "map/all?id=424536&origin=tvdb".to_owned(),
+                    Some(EARLY.to_owned())
+                ),
+                (
+                    "map/names?id=424536&origin=tvdb".to_owned(),
+                    Some(EARLY.to_owned())
+                ),
+            ]
+        );
+        assert_eq!(t.entry("tvdb", 3, 1).await?.len(), 3);
+        assert!(t.db.xem_names(t.show_id).await?.is_empty());
+
+        let entry = t.xem_remote().await?.context("xem remote")?;
+        t.db.set_remote_enabled(t.show_id, entry.id, false).await?;
+        t.sync().await?;
+        assert!(t.requests().is_empty());
+        assert!(t.entry("tvdb", 3, 1).await?.is_empty());
+        assert!(t.db.xem_names(t.show_id).await?.is_empty());
+        Ok(())
+    }
+
+    /// A show without an XEM remote is looked up through its remotes; one XEM
+    /// does not map gets no XEM remote, and XEM answering `failure` for a show
+    /// drops its rows without recording an error.
+    #[tokio::test]
+    async fn sync_finds_xem_and_handles_uncovered_shows() -> Result<()> {
+        let mut t = setup(api::Remote::new(
+            RemoteSource::Anidb,
+            api::RemoteValue::Int(17617),
+        ))
+        .await?;
+        t.serve(
+            "map/havemap",
+            r#"{"result":"success","data":["1","2"],"message":""}"#,
+            EARLY,
+        );
+
+        t.sync().await?;
+        assert!(t.xem_remote().await?.is_none());
+        assert_eq!(
+            t.requests(),
+            [("map/havemap?origin=anidb".to_owned(), None)]
+        );
+
+        // The havemap list is held for an hour.
+        t.serve(
+            "map/havemap",
+            r#"{"result":"success","data":["17617"],"message":""}"#,
+            LATE,
+        );
+        t.sync().await?;
+        assert!(t.requests().is_empty());
+
+        t.remote.xem = xem::Client::with_base(reqwest::Client::new(), &t.base);
+        t.serve("map/all", FRIEREN_ALL, EARLY);
+        t.serve("map/names", OSHI_NO_KO_NAMES, EARLY);
+        t.sync().await?;
+
+        let entry = t.xem_remote().await?.context("xem remote")?;
+        assert_eq!(
+            entry.remote.value(),
+            &api::RemoteValue::Str("anidb/17617".into())
+        );
+        assert!(entry.enabled);
+        assert_eq!(t.entry("anidb", 2, 1).await?.len(), 3);
+        assert_eq!(t.db.xem_names(t.show_id).await?.len(), 6);
+        assert!(
+            t.requests()
+                .contains(&("map/all?id=17617&origin=anidb".to_owned(), None))
+        );
+
+        t.serve("map/all", FAILURE, LATE);
+        t.sync().await?;
+
+        assert!(t.entry("anidb", 2, 1).await?.is_empty());
+        assert!(t.db.xem_names(t.show_id).await?.is_empty());
+
+        let entry = t.xem_remote().await?.context("xem remote")?;
+        assert!(entry.cache.is_none_or(|c| c.errors.is_empty()));
+        Ok(())
     }
 }

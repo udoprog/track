@@ -428,7 +428,9 @@ pub async fn reorders_sync_sources(driver: &mut TestDriver, _: &mut Track) -> Re
     open_page(driver, "Sources & dates").await?;
 
     let order = async |driver: &TestDriver| -> Result<Vec<String>> {
-        driver.find_all_attrs(".reorder .logo", "class").await
+        driver
+            .find_all_attrs(".reorder:not(.xem-lookup) .logo", "class")
+            .await
     };
 
     let before = order(driver).await?;
@@ -456,7 +458,7 @@ pub async fn reorders_sync_sources(driver: &mut TestDriver, _: &mut Track) -> Re
         .await?;
 
     driver.reload().await?;
-    driver.find_one_by(".reorder").await?;
+    driver.find_one_by(".reorder:not(.xem-lookup)").await?;
 
     driver
         .wait_until("the dragged order to survive a reload", async || {
@@ -473,6 +475,45 @@ pub async fn reorders_sync_sources(driver: &mut TestDriver, _: &mut Track) -> Re
     driver
         .wait_until("the last source to move up with the keyboard", async || {
             Ok(order(driver).await? == keyed)
+        })
+        .await
+}
+
+/// The "Find XEM through" order starts at TheTVDB then AniDB, moves with the
+/// arrow keys, and is saved.
+pub async fn reorders_xem_lookup(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_settings(driver).await?;
+    open_page(driver, "Sources & dates").await?;
+
+    let order = async |driver: &TestDriver| -> Result<Vec<String>> {
+        driver.find_all_attrs(".xem-lookup .logo", "class").await
+    };
+
+    let tvdb = "logo tvdb".to_owned();
+    let anidb = "logo anidb".to_owned();
+
+    driver
+        .wait_until("TheTVDB before AniDB", async || {
+            Ok(order(driver).await? == [tvdb.clone(), anidb.clone()])
+        })
+        .await?;
+
+    driver
+        .press_key_on(".xem-lookup .drag-handle[data-index='1']", "ArrowUp")
+        .await?;
+
+    driver
+        .wait_until("AniDB to move up", async || {
+            Ok(order(driver).await? == [anidb.clone(), tvdb.clone()])
+        })
+        .await?;
+
+    driver.reload().await?;
+    driver.find_one_by(".xem-lookup").await?;
+
+    driver
+        .wait_until("the order to survive a reload", async || {
+            Ok(order(driver).await? == [anidb.clone(), tvdb.clone()])
         })
         .await
 }

@@ -42,6 +42,7 @@ mod sync_languages_editor;
 mod tracked;
 mod translated_text;
 mod translations_modal;
+mod xem_lookup_editor;
 
 pub(crate) use self::button::{Button, Variant};
 pub(crate) use self::confirm_danger::ConfirmDanger;
@@ -82,5 +83,6 @@ pub(crate) use self::sync_languages_editor::SyncLanguagesEditor;
 pub(crate) use self::tracked::Tracked;
 pub(crate) use self::translated_text::TranslatedText;
 pub(crate) use self::translations_modal::TranslationsModal;
+pub(crate) use self::xem_lookup_editor::XemLookupEditor;
 
 pub(crate) const SEARCH: &str = "Search…";

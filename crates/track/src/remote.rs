@@ -6,7 +6,7 @@ use anyhow::{Context as _, Result, ensure};
 use api::{Image, ImageKey};
 use parking_lot::Mutex;
 
-use crate::{tmdb, tvdb, tvmaze};
+use crate::{tmdb, tvdb, tvmaze, xem};
 
 /// Choose the primary image for a kind: prefer the API's `selected` image when
 /// it's present in the gallery, otherwise fall back to the first entry.
@@ -90,6 +90,7 @@ pub(crate) struct RemoteClients {
     image_http: reqwest::Client,
     rate_limiter: Arc<leaky_bucket::RateLimiter>,
     inner: Arc<Mutex<Inner>>,
+    pub(crate) xem: xem::Client,
 }
 
 #[derive(Default)]
@@ -113,6 +114,7 @@ impl RemoteClients {
             .build();
 
         Self {
+            xem: xem::Client::new(http.clone()),
             http,
             image_http,
             rate_limiter: Arc::new(rate_limiter),

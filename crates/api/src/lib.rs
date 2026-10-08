@@ -88,6 +88,9 @@ impl RemoteSource {
         Self::Scene,
     ];
 
+    /// The sources XEM can look a show up through, in their default order.
+    pub const XEM_LOOKUP: &[Self] = &[Self::Tvdb, Self::Anidb];
+
     /// Whether this source is unknown.
     pub fn is_unknown(&self) -> bool {
         matches!(self, Self::Unknown)
@@ -2156,6 +2159,9 @@ pub struct Config {
     /// Which locales the sync path populates translations for.
     /// [`Locale::DEFAULT`] stands for each media's own original language.
     pub sync_languages: Vec<Locale>,
+    /// The remotes a show's XEM entry is looked up through, first match wins
+    /// ("Find XEM through").
+    pub xem_lookup: Vec<RemoteSource>,
     pub cloudflare_access: CloudflareAccess,
 }
 
@@ -2226,6 +2232,7 @@ impl Default for Config {
                 Locale::DEFAULT,
                 Locale::new(Language::ENG, Country::DEFAULT),
             ],
+            xem_lookup: RemoteSource::XEM_LOOKUP.to_vec(),
             cloudflare_access: CloudflareAccess::default(),
         }
     }

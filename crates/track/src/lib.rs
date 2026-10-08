@@ -148,6 +148,7 @@ mod tvdb;
 mod tvmaze;
 mod web;
 mod ws;
+mod xem;
 
 pub use self::backup::{BackupCommand, backup};
 pub use self::entry::{Args, serve, server};

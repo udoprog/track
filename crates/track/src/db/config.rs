@@ -1,4 +1,4 @@
-use api::{FilterRules, Locale, PreferenceValue, SourceSyncKinds};
+use api::{FilterRules, Locale, PreferenceValue, RemoteSource, SourceSyncKinds};
 use sqll::{FromColumn, Statement, ty};
 
 /// A preference read from a `*_config` table: the row's JSON value, NULL when
@@ -55,5 +55,15 @@ pub(super) fn encode_sync_languages(languages: &[Locale]) -> String {
 
 /// Parse sync locales written by [`encode_sync_languages`].
 pub(super) fn decode_sync_languages(s: &str) -> Option<Vec<Locale>> {
+    serde_json::from_str(s).ok()
+}
+
+/// Serialize the "Find XEM through" order for storage in a text column.
+pub(super) fn encode_xem_lookup(sources: &[RemoteSource]) -> String {
+    serde_json::to_string(sources).unwrap_or_else(|_| "[]".to_string())
+}
+
+/// Parse the order written by [`encode_xem_lookup`].
+pub(super) fn decode_xem_lookup(s: &str) -> Option<Vec<RemoteSource>> {
     serde_json::from_str(s).ok()
 }

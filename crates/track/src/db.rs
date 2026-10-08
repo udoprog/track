@@ -27,6 +27,7 @@ mod tests;
 pub(crate) mod config;
 use self::config::Pref;
 pub(crate) mod users;
+mod xem;
 
 const MIGRATIONS_INIT: &str = r#"
 CREATE TABLE IF NOT EXISTS migrations (
@@ -780,6 +781,8 @@ pub(crate) struct InnerRead {
     episodes: InnerEpisodes,
     #[sql(statements)]
     users: users::Read,
+    #[sql(statements)]
+    xem: xem::Read,
 
     // shows
     // Shows and movies carry whether the viewer (?1, NULL for nobody) tracks them.
@@ -1311,6 +1314,8 @@ pub(crate) struct InnerWrite {
     read: InnerRead,
     #[sql(statements)]
     users_write: users::Write,
+    #[sql(statements)]
+    xem_write: xem::Write,
 
     #[sql = "BEGIN IMMEDIATE"]
     begin_immediate: TypedStatement<(), ()>,
@@ -2006,6 +2011,12 @@ impl InnerRead {
             .and_then(config::decode_sync_languages)
             .unwrap_or(default.sync_languages);
 
+        let xem_lookup = self
+            .get_config("xem_lookup")?
+            .as_deref()
+            .and_then(config::decode_xem_lookup)
+            .unwrap_or(default.xem_lookup);
+
         let cloudflare_access = api::CloudflareAccess {
             enabled: self
                 .get_config("cloudflare_access_enabled")?
@@ -2033,6 +2044,7 @@ impl InnerRead {
             air_date_filters,
             sync_kinds,
             sync_languages,
+            xem_lookup,
             cloudflare_access,
         })
     }
@@ -6808,6 +6820,7 @@ impl Database {
                 "sync_languages",
                 config::encode_sync_languages(&config.sync_languages),
             )?;
+            s.set_config("xem_lookup", config::encode_xem_lookup(&config.xem_lookup))?;
 
             let bool_text = |v: bool| if v { "true" } else { "false" };
             let access = &config.cloudflare_access;
