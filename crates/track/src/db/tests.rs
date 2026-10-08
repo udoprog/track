@@ -1355,15 +1355,17 @@ async fn show_numbering_round_trip() -> Result<()> {
         None
     );
 
+    let range = |season, first, last, target_season| api::NumberingRange {
+        season,
+        first,
+        last,
+        system: "tvdb".to_owned(),
+        target_season,
+        target_first: 1,
+    };
+
     let numbering = api::Numbering {
-        ranges: vec![api::NumberingRange {
-            season: 1,
-            first: 29,
-            last: 38,
-            system: "tvdb".to_owned(),
-            target_season: 2,
-            target_first: 1,
-        }],
+        ranges: vec![range(1, 29, Some(38), 2), range(2, 1, None, 3)],
     };
 
     db.set_show_numbering(show, Some(numbering.clone())).await?;

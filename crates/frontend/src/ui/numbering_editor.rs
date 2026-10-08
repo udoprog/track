@@ -66,6 +66,8 @@ pub(crate) enum Msg {
     Loaded(Result<ws::Packet<api::GetShowNumbering>, ws::Error>),
     SetManual(bool),
     Set(usize, Field, String),
+    /// Whether a range runs on through every later episode of its season.
+    SetOpen(usize, bool),
     SetSystem(usize, String),
     Select(Option<usize>),
     /// A click on an episode in a column of the map.
@@ -89,6 +91,8 @@ struct Row {
     season: String,
     first: String,
     last: String,
+    /// The range has no last episode; `last` is kept for closing it again.
+    open: bool,
     system: String,
     target_season: String,
     target_first: String,
@@ -99,7 +103,8 @@ impl Row {
         Self {
             season: r.season.to_string(),
             first: r.first.to_string(),
-            last: r.last.to_string(),
+            last: r.last.map(|l| l.to_string()).unwrap_or_default(),
+            open: r.last.is_none(),
             system: r.system.clone(),
             target_season: r.target_season.to_string(),
             target_first: r.target_first.to_string(),
@@ -112,7 +117,11 @@ impl Row {
         Some(api::NumberingRange {
             season: n(&self.season)?,
             first: n(&self.first)?,
-            last: n(&self.last)?,
+            last: if self.open {
+                None
+            } else {
+                Some(n(&self.last)?)
+            },
             system: self.system.clone(),
             target_season: n(&self.target_season)?,
             target_first: n(&self.target_first)?,
@@ -133,6 +142,7 @@ impl Row {
         self.season = season.to_string();
         self.first = first.to_string();
         self.last = last.to_string();
+        self.open = false;
     }
 
     /// Point the range at `system`'s `season`/`first`, keeping its length.
@@ -149,17 +159,24 @@ impl Row {
 
         if let Ok(start) = self.first.trim().parse::<u32>() {
             self.last = (start + (last - first)).to_string();
+            self.open = false;
         }
     }
 }
 
 /// Whether `r` can be drawn: its numbers are in order and start at 1.
 fn drawable(r: &api::NumberingRange) -> bool {
-    r.first >= 1 && r.first <= r.last && r.target_first >= 1
+    r.first >= 1 && r.last.is_none_or(|l| r.first <= l) && r.target_first >= 1
 }
 
 fn covers(r: &api::NumberingRange, season: u32, episode: u32) -> bool {
-    r.season == season && (r.first..=r.last).contains(&episode)
+    r.season == season && episode >= r.first && r.last.is_none_or(|l| episode <= l)
+}
+
+/// The last episode of a drawn range, whose open end
+/// [`NumberingEditor::drawn`] has filled in.
+fn end(r: &api::NumberingRange) -> u32 {
+    r.last.unwrap_or(r.first)
 }
 
 /// The warning for a season automatic numbering gets wrong.
@@ -212,6 +229,33 @@ fn span(season: u32, first: u32, last: u32) -> String {
     }
 }
 
+/// `r` with an open end drawn through the last episode the show or XEM
+/// knows on either side, and at least through its first.
+fn materialised(data: Option<&api::ShowNumbering>, r: &api::NumberingRange) -> api::NumberingRange {
+    if r.last.is_some() {
+        return r.clone();
+    }
+
+    let last_in = |codes: &[(u32, u32)], season: u32| {
+        codes
+            .iter()
+            .filter(|&&(s, _)| s == season)
+            .map(|&(_, e)| e)
+            .max()
+    };
+
+    let own = data.and_then(|d| last_in(&d.episodes, r.season));
+    let target = data
+        .and_then(|d| last_in(d.system(&r.system), r.target_season))
+        .filter(|&e| e >= r.target_first)
+        .map(|e| r.first + (e - r.target_first));
+
+    api::NumberingRange {
+        last: Some(own.into_iter().chain(target).fold(r.first, u32::max)),
+        ..r.clone()
+    }
+}
+
 /// A season drawn in a column of the map: episodes `lo..=hi` under a heading
 /// at `top`.
 struct ColumnSeason {
@@ -228,13 +272,21 @@ struct Column {
     side: Side,
     seasons: Vec<ColumnSeason>,
     known: BTreeSet<(u32, u32)>,
+    /// The episode after each open range's last drawn one, by row.
+    tails: BTreeMap<(u32, u32), usize>,
 }
 
 impl Column {
     /// The `known` episodes, widened to the `used` spans of ranges as
-    /// `(season, first, last)`. Specials are left out unless asked for or
-    /// used.
-    fn new(side: Side, known: &[(u32, u32)], used: &[(u32, u32, u32)], specials: bool) -> Self {
+    /// `(season, first, last)` and to the `tails` of open ranges. Specials
+    /// are left out unless asked for or used.
+    fn new(
+        side: Side,
+        known: &[(u32, u32)],
+        used: &[(u32, u32, u32)],
+        tails: BTreeMap<(u32, u32), usize>,
+        specials: bool,
+    ) -> Self {
         let known = known
             .iter()
             .copied()
@@ -250,7 +302,9 @@ impl Column {
             v.2 += 1;
         }
 
-        for &(s, first, last) in used {
+        let tail_spans = tails.keys().map(|&(s, e)| (s, e, e));
+
+        for (s, first, last) in used.iter().copied().chain(tail_spans) {
             let v = spans.entry(s).or_insert((first, first, 0));
             let cap = v.1.max(first) + OVERRUN;
             v.0 = v.0.min(first);
@@ -280,6 +334,7 @@ impl Column {
             side,
             seasons,
             known,
+            tails,
         }
     }
 
@@ -501,6 +556,24 @@ impl NumberingEditor {
                 self.edited();
                 Ok(true)
             }
+            Msg::SetOpen(index, open) => {
+                let data = self.data.as_ref();
+
+                if let Some(row) = self.rows.get_mut(index) {
+                    // Close at the last episode drawn while it was open.
+                    if !open
+                        && row.last.trim().is_empty()
+                        && let Some(r) = row.parse()
+                    {
+                        row.last = end(&materialised(data, &r)).to_string();
+                    }
+
+                    row.open = open;
+                }
+
+                self.edited();
+                Ok(true)
+            }
             Msg::SetSystem(index, system) => {
                 if let Some(row) = self.rows.get_mut(index) {
                     row.system = system;
@@ -529,22 +602,32 @@ impl NumberingEditor {
             Msg::Add => {
                 // Continue where the last range ends.
                 let row = match self.rows.last().and_then(Row::parse) {
+                    // An open range holds the rest of its season, so go on
+                    // with the next.
+                    Some(last) if last.last.is_none() => Row::new(&api::NumberingRange {
+                        season: last.season + 1,
+                        first: 1,
+                        last: Some(1),
+                        system: last.system.clone(),
+                        target_season: last.target_season + 1,
+                        target_first: 1,
+                    }),
                     Some(last) => {
-                        let next = |n: u32| (n + 1).to_string();
+                        let next = |n: u32| n + 1;
 
-                        Row {
-                            season: last.season.to_string(),
-                            first: next(last.last),
-                            last: next(last.last),
+                        Row::new(&api::NumberingRange {
+                            season: last.season,
+                            first: next(end(&last)),
+                            last: Some(next(end(&last))),
                             system: last.system.clone(),
-                            target_season: last.target_season.to_string(),
-                            target_first: next(last.target_last()),
-                        }
+                            target_season: last.target_season,
+                            target_first: next(last.target_of(end(&last))),
+                        })
                     }
                     None => Row::new(&api::NumberingRange {
                         season: 1,
                         first: 1,
-                        last: 1,
+                        last: Some(1),
                         system: self.default_system(),
                         target_season: 1,
                         target_first: 1,
@@ -730,7 +813,7 @@ impl NumberingEditor {
     /// its target in the range's system, or that target's code in another
     /// system that XEM links it to.
     fn address(&self, r: &api::NumberingRange, episode: u32, side: &Side) -> Option<(u32, u32)> {
-        let target = r.target_first + (episode - r.first);
+        let target = r.target_of(episode);
 
         match side {
             Side::Tmdb => Some((r.season, episode)),
@@ -746,7 +829,7 @@ impl NumberingEditor {
         let mut out = Reach::new();
 
         for (i, r) in drawn {
-            for e in r.first..=r.last {
+            for e in r.first..=end(r) {
                 if let Some(code) = self.address(r, e, side) {
                     out.entry(code).or_default().push((*i, (r.season, e)));
                 }
@@ -762,16 +845,23 @@ impl NumberingEditor {
     /// selects the range reaching the episode, or starts a new range there.
     fn pick(&mut self, side: Side, season: u32, episode: u32) {
         let parsed = self.rows.iter().map(Row::parse).collect::<Vec<_>>();
-        let drawn = parsed
-            .iter()
-            .enumerate()
-            .filter_map(|(i, r)| Some((i, r.clone().filter(drawable)?)))
-            .collect::<Vec<_>>();
+        let drawn = self.drawn(&parsed);
 
-        let owners = self
+        let mut owners = self
             .reach(&drawn, &side)
             .remove(&(season, episode))
             .unwrap_or_default();
+
+        // The tail past an open range's last drawn episode belongs to it.
+        if owners.is_empty()
+            && let Some((i, r)) = drawn.iter().find(|(i, r)| {
+                self.is_open(*i)
+                    && self.address(r, end(r), &side).map(|(s, e)| (s, e + 1))
+                        == Some((season, episode))
+            })
+        {
+            owners.push((*i, (r.season, end(r) + 1)));
+        }
 
         if let Some(i) = self.selected {
             if let Some((s, e)) = self
@@ -839,15 +929,15 @@ impl NumberingEditor {
             Some(r) => api::NumberingRange {
                 season,
                 first: episode,
-                last: episode,
+                last: Some(episode),
                 system: r.system.clone(),
                 target_season: r.target_season,
-                target_first: r.target_first + (episode - r.first),
+                target_first: r.target_of(episode),
             },
             None => api::NumberingRange {
                 season,
                 first: episode,
-                last: episode,
+                last: Some(episode),
                 system: self.default_system(),
                 target_season: season,
                 target_first: episode,
@@ -891,7 +981,7 @@ impl NumberingEditor {
         api::NumberingRange {
             season: s,
             first: e,
-            last: e,
+            last: Some(e),
             system: system.to_owned(),
             target_season: season,
             target_first: episode,
@@ -933,14 +1023,23 @@ impl NumberingEditor {
         (parsed, errors)
     }
 
-    /// The ranges drawn, by row: the manual ones, or the season to season
-    /// link automatic numbering assumes.
+    /// Whether the range of row `index` is open.
+    fn is_open(&self, index: usize) -> bool {
+        self.manual && self.rows.get(index).is_some_and(|r| r.open)
+    }
+
+    /// The ranges drawn, by row, with open ends drawn as far as either side
+    /// knows episodes: the manual ones, or the season to season link
+    /// automatic numbering assumes.
     fn drawn(&self, ranges: &[Option<api::NumberingRange>]) -> Vec<(usize, api::NumberingRange)> {
         if self.manual {
             return ranges
                 .iter()
                 .enumerate()
-                .filter_map(|(i, r)| Some((i, r.clone().filter(drawable)?)))
+                .filter_map(|(i, r)| {
+                    let r = r.as_ref().filter(|r| drawable(r))?;
+                    Some((i, materialised(self.data.as_ref(), r)))
+                })
                 .collect();
         }
 
@@ -963,7 +1062,7 @@ impl NumberingEditor {
                     api::NumberingRange {
                         season,
                         first,
-                        last,
+                        last: Some(last),
                         system: "tvdb".to_owned(),
                         target_season: season,
                         target_first: first,
@@ -986,7 +1085,9 @@ impl NumberingEditor {
             return Vec::new();
         }
 
-        (r.target_first..=r.target_last())
+        let r = materialised(Some(data), r);
+
+        (r.target_first..=r.target_of(end(&r)))
             .filter(|&e| !known.contains(&(r.target_season, e)))
             .collect()
     }
@@ -1004,7 +1105,7 @@ impl NumberingEditor {
         let mut told = BTreeSet::new();
 
         for (_, r) in drawn {
-            for e in r.target_first..=r.target_last() {
+            for e in r.target_first..=r.target_of(end(r)) {
                 told.extend(self.links.entry(&r.system, r.target_season, e));
             }
         }
@@ -1177,7 +1278,11 @@ impl NumberingEditor {
         let options = bases.iter().map(|group| {
             let system = self.basis(group).to_owned();
             let n = api::suggest_numbering(&data.episodes, &system, data.system(&system));
-            let episodes = n.ranges.iter().map(|r| r.last - r.first + 1).sum::<u32>();
+            let episodes = data
+                .episodes
+                .iter()
+                .filter(|&&(s, e)| s > 0 && n.target(s, e).is_some())
+                .count();
             let names = group
                 .iter()
                 .map(|s| api::xem_system_label(s))
@@ -1227,25 +1332,43 @@ impl NumberingEditor {
 
         let drawn = self.drawn(ranges);
 
+        // Each open range runs on past its last drawn episode wherever that
+        // episode is.
+        let tails = |side: &Side| {
+            drawn
+                .iter()
+                .filter(|(i, _)| self.is_open(*i))
+                .filter_map(|(i, r)| {
+                    let (s, e) = self.address(r, end(r), side)?;
+                    Some(((s, e + 1), *i))
+                })
+                .collect::<BTreeMap<_, _>>()
+        };
+
         let mut columns = vec![Column::new(
             Side::Tmdb,
             &data.episodes,
             &drawn
                 .iter()
-                .map(|(_, r)| (r.season, r.first, r.last))
+                .map(|(_, r)| (r.season, r.first, end(r)))
                 .collect::<Vec<_>>(),
+            tails(&Side::Tmdb),
             self.specials,
         )];
 
         for system in self.systems() {
+            let side = Side::System(system.to_owned());
+            let tails = tails(&side);
+
             columns.push(Column::new(
-                Side::System(system.to_owned()),
+                side,
                 data.system(system),
                 &drawn
                     .iter()
                     .filter(|(_, r)| r.system == system)
-                    .map(|(_, r)| (r.target_season, r.target_first, r.target_last()))
+                    .map(|(_, r)| (r.target_season, r.target_first, r.target_of(end(r))))
                     .collect::<Vec<_>>(),
+                tails,
                 self.specials,
             ));
         }
@@ -1289,6 +1412,16 @@ impl NumberingEditor {
                     }
                 </div>
 
+                <svg class="numbering-defs" aria-hidden="true">
+                    <linearGradient id="numbering-fade-gradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0" stop-color="white" />
+                        <stop offset="1" stop-color="white" stop-opacity="0" />
+                    </linearGradient>
+                    <mask id="numbering-fade" maskContentUnits="objectBoundingBox">
+                        <rect width="1" height="1" fill="url(#numbering-fade-gradient)" />
+                    </mask>
+                </svg>
+
                 <div class="numbering-map-scroll">
                     <div class="numbering-map" style={format!("{template}; height: {height}px")}>
                         for part in map {
@@ -1330,7 +1463,7 @@ impl NumberingEditor {
             // they reach target episodes XEM doesn't know).
             let mut runs = Vec::<((u32, u32), (u32, u32), (u32, u32), (u32, u32), bool)>::new();
 
-            for e in r.first..=r.last {
+            for e in r.first..=end(r) {
                 let (Some(a), Some(b)) = (
                     self.address(r, e, &left.side),
                     self.address(r, e, &right.side),
@@ -1338,7 +1471,7 @@ impl NumberingEditor {
                     continue;
                 };
 
-                let m = touches_own && missing.contains(&(r.target_first + (e - r.first)));
+                let m = touches_own && missing.contains(&r.target_of(e));
 
                 if let Some(run) = runs.last_mut()
                     && run.1.0 == a.0
@@ -1396,6 +1529,45 @@ impl NumberingEditor {
                     </path>
                 });
             }
+
+            // An open range fades out over the episode after its last on
+            // both sides.
+            let tail = |c: &Column| c.tails.iter().find(|(_, j)| **j == i).map(|(&k, _)| k);
+
+            if let (Some(a), Some(b)) = (tail(left), tail(right))
+                && let (Some(ya), Some(yb)) = (left.y(a.0, a.1), right.y(b.0, b.1))
+            {
+                let (y1, y2, y3, y4) = (ya - 1, ya + ROW - 1, yb - 1, yb + ROW - 1);
+                let d = format!(
+                    "M0 {y1} C50 {y1} 50 {y3} 100 {y3} L100 {y4} C50 {y4} 50 {y2} 0 {y2} Z"
+                );
+
+                let class = classes!(
+                    "numbering-band",
+                    "open-end",
+                    format!("tone-{}", i % 4),
+                    (self.manual && self.selected == Some(i)).then_some("selected"),
+                    (self.manual && errors.iter().any(|(e, _)| *e == i)).then_some("invalid"),
+                );
+
+                let onclick = link.callback(move |_: MouseEvent| Msg::Select(Some(i)));
+
+                let title = format!(
+                    "{} S{} E{} on ↔ {} S{} E{} on",
+                    left.side.label(),
+                    a.0,
+                    a.1,
+                    right.side.label(),
+                    b.0,
+                    b.1
+                );
+
+                bands.push(html! {
+                    <path {class} {d} mask="url(#numbering-fade)" {onclick}>
+                        <title>{title}</title>
+                    </path>
+                });
+            }
         }
 
         html! {
@@ -1432,8 +1604,10 @@ impl NumberingEditor {
                 let season = s.season;
                 let owners = reach.get(&(season, e)).map_or(&[][..], Vec::as_slice);
                 let known = column.has(season, e);
+                let tail = column.tails.get(&(season, e)).copied().filter(|_| owners.is_empty());
 
                 let state = match owners {
+                    [] if let Some(i) = tail => format!("tone-{} open-end", i % 4),
                     [] if tmdb && known && season > 0 => "unmapped".to_owned(),
                     [] => String::new(),
                     [(i, _)] => format!("tone-{}", i % 4),
@@ -1443,6 +1617,7 @@ impl NumberingEditor {
                 let code = format!("{label} S{season} E{e}");
 
                 let title = match owners {
+                    [] if tail.is_some() => format!("{code} on: mapped by the open range as they are added"),
                     _ if !tmdb && !known && !owners.is_empty() => format!("{code}: not in XEM"),
                     [] if tmdb && known => format!("{code}: not mapped"),
                     [] if tmdb => format!("{code}: not on TMDB"),
@@ -1464,18 +1639,19 @@ impl NumberingEditor {
                     _ => format!("{code}: reached by more than one range"),
                 };
 
+                let mine = |i: &usize| tail == Some(*i) || owners.iter().any(|(o, _)| o == i);
+
                 let class = classes!(
                     "numbering-ep",
                     state,
-                    (!tmdb && known && owners.is_empty()).then_some("untargeted"),
-                    (!known).then_some(if tmdb || owners.is_empty() { "future" } else { "missing" }),
-                    owners
+                    (!tmdb && known && owners.is_empty() && tail.is_none()).then_some("untargeted"),
+                    (!known && tail.is_none()).then_some(if tmdb || owners.is_empty() { "future" } else { "missing" }),
+                    self.selected
+                        .filter(|i| self.manual && mine(i))
+                        .map(|_| "selected"),
+                    errors
                         .iter()
-                        .any(|(i, _)| self.manual && self.selected == Some(*i))
-                        .then_some("selected"),
-                    owners
-                        .iter()
-                        .any(|(i, _)| self.manual && errors.iter().any(|(x, _)| x == i))
+                        .any(|(x, _)| self.manual && mine(x))
                         .then_some("invalid"),
                     self.anchor
                         .as_ref()
@@ -1486,9 +1662,11 @@ impl NumberingEditor {
                 let pick = side.clone();
                 let onclick = link.callback(move |_: MouseEvent| Msg::Pick(pick.clone(), season, e));
 
+                let text = if tail.is_some() { format!("E{e}…") } else { format!("E{e}") };
+
                 html! {
                     <button type="button" {class} aria-label={code} {title} disabled={!self.manual} {onclick}>
-                        <span>{format!("E{e}")}</span>
+                        <span>{text}</span>
                     </button>
                 }
             });
@@ -1535,10 +1713,10 @@ impl NumberingEditor {
         let summary = match range.filter(|r| drawable(r)) {
             Some(r) => html! {
                 <>
-                    <span class="numbering-span">{format!("S{} E{}–E{}", r.season, r.first, r.last)}</span>
+                    <span class="numbering-span">{format!("S{} {}", r.season, r.span())}</span>
                     <span class="icon arrows-right-left" aria-hidden="true" />
                     <span class={classes!("logo", r.system.clone())} title={api::xem_system_label(&r.system).to_owned()} />
-                    <span class="numbering-span">{format!("S{} E{}–E{}", r.target_season, r.target_first, r.target_last())}</span>
+                    <span class="numbering-span">{format!("S{} {}", r.target_season, r.target_span())}</span>
                 </>
             },
             None => html! { <span class="numbering-span">{"Incomplete range"}</span> },
@@ -1602,6 +1780,7 @@ impl NumberingEditor {
         });
 
         let known = api::XEM_SYSTEMS.iter().any(|(name, _)| *name == row.system);
+        let open = row.open;
 
         html! {
             <div class="numbering-fields">
@@ -1612,7 +1791,19 @@ impl NumberingEditor {
                     <span class="numbering-letter">{"E"}</span>
                     { input(Field::First, &row.first, format!("Range {n} first episode")) }
                     <span class="numbering-letter">{"–"}</span>
-                    { input(Field::Last, &row.last, format!("Range {n} last episode")) }
+                    if row.open {
+                        <input class="input-number" type="text" value="" placeholder="…" disabled=true aria-label={format!("Range {n} last episode")} title="Open: runs on through the season" />
+                    } else {
+                        { input(Field::Last, &row.last, format!("Range {n} last episode")) }
+                    }
+                    <Button
+                        class={classes!("chip", "numbering-open", row.open.then_some("selected"))}
+                        icon="arrow-long-down"
+                        label="Open end"
+                        title={format!("Range {n} runs on through later episodes of the season")}
+                        pressed={Some(row.open)}
+                        onclick={link.callback(move |_: MouseEvent| Msg::SetOpen(index, !open))}
+                    />
                 </div>
 
                 <div class="numbering-target">

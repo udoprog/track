@@ -1355,10 +1355,12 @@ pub async fn numbering_ranges_are_edited(driver: &mut TestDriver, track: &mut Tr
     suggest_from(driver, "TheTVDB").await?;
     let spans = ".modal .numbering-range-summary .numbering-span";
     driver
-        .wait_texts(spans, ["S1 E1–E3", "S1 E1–E3", "S1 E4–E5", "S2 E1–E2"])
+        .wait_texts(spans, ["S1 E1–E3", "S1 E1–E3", "S1 E4–", "S2 E1–"])
         .await?;
     // Two ranges, each banded across the four gaps between five columns.
-    driver.wait_count(".modal .numbering-band", 8).await?;
+    driver
+        .wait_count(".modal .numbering-band:not(.open-end)", 8)
+        .await?;
     driver.wait_count(".modal .numbering-note", 1).await?;
     driver
         .wait_texts(
@@ -1374,7 +1376,7 @@ pub async fn numbering_ranges_are_edited(driver: &mut TestDriver, track: &mut Tr
         .wait_count(".modal .numbering-range.selected[aria-label='Range 2']", 1)
         .await?;
     let fields = ".modal .numbering-range.selected input";
-    ensure!(values(driver, fields).await? == ["1", "4", "5", "2", "1"]);
+    ensure!(values(driver, fields).await? == ["1", "4", "", "2", "1"]);
 
     pick(driver, "TMDB S1 E4").await?;
     pick(driver, "TMDB S1 E3").await?;
@@ -1605,6 +1607,149 @@ pub async fn numbering_ranges_are_made_from_either_side(
             Ok(track.query("SELECT numbering FROM shows WHERE id = 1001")?
                 == [r#"{"ranges":[{"season":1,"first":1,"last":3,"system":"tvdb","target_season":1,"target_first":1},{"season":1,"first":4,"last":5,"system":"tvdb","target_season":2,"target_first":1}]}"#])
         })
+        .await
+}
+
+/// A suggestion leaves the still-airing season open, drawn fading past its
+/// last episode. Only the last range of a TMDB season can be open, and an
+/// open range saved without a last episode maps episodes added after it.
+pub async fn numbering_ranges_are_left_open(
+    driver: &mut TestDriver,
+    track: &mut Track,
+) -> Result<()> {
+    open_show(driver).await?;
+    driver
+        .find_one_by("[title='Settings']:not(#toolbar *)")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by(".modal .numbering-warning .link-button")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by(".modal [title='Manual ranges']")
+        .await?
+        .click()
+        .await?;
+    suggest_from(driver, "TheTVDB").await?;
+
+    let spans = ".modal .numbering-range-summary .numbering-span";
+    driver
+        .wait_texts(spans, ["S1 E1–E3", "S1 E1–E3", "S1 E4–", "S2 E1–"])
+        .await?;
+    // The open end fades over the episode after the last in each of the four
+    // gaps, past what TMDB and XEM know.
+    driver
+        .wait_count(".modal .numbering-band.open-end", 4)
+        .await?;
+    let tail = driver
+        .find_one_by(".modal .numbering-ep.open-end[aria-label='TMDB S1 E6']")
+        .await?;
+    ensure!(tail.text().await? == "E6…");
+    ensure!(
+        tail.attr("title").await? == "TMDB S1 E6 on: mapped by the open range as they are added"
+    );
+    driver
+        .wait_count(
+            ".modal .numbering-ep.open-end[aria-label='TheTVDB S2 E3']",
+            1,
+        )
+        .await?;
+
+    // Opening the first range would run it into the second.
+    driver
+        .find_one_by(".modal [title='Edit range 1']")
+        .await?
+        .click()
+        .await?;
+    let open_end =
+        |n: u32| format!(".modal [title='Range {n} runs on through later episodes of the season']");
+    driver.find_one_by(&open_end(1)).await?.click().await?;
+    driver
+        .wait_texts(
+            ".modal .numbering-errors",
+            ["E4 is already in the range S1 E1–. TMDB ranges must not overlap. An open range must be the last in its TMDB season."],
+        )
+        .await?;
+    driver
+        .wait_count(".modal [title='Save']:disabled", 1)
+        .await?;
+    driver.find_one_by(&open_end(1)).await?.click().await?;
+    driver.wait_count(".modal .numbering-errors", 0).await?;
+    driver
+        .wait_texts(spans, ["S1 E1–E3", "S1 E1–E3", "S1 E4–", "S2 E1–"])
+        .await?;
+
+    // Closing the second ends it at the last episode drawn, and opening it
+    // again leaves the last episode out.
+    driver
+        .find_one_by(".modal [title='Edit range 2']")
+        .await?
+        .click()
+        .await?;
+    driver.find_one_by(&open_end(2)).await?.click().await?;
+    driver
+        .wait_texts(spans, ["S1 E1–E3", "S1 E1–E3", "S1 E4–E5", "S2 E1–E2"])
+        .await?;
+    driver
+        .wait_count(".modal .numbering-band.open-end", 0)
+        .await?;
+    driver.find_one_by(&open_end(2)).await?.click().await?;
+    driver
+        .wait_count(
+            ".modal .numbering-range.selected [aria-label='Range 2 last episode']:disabled",
+            1,
+        )
+        .await?;
+    driver
+        .wait_texts(spans, ["S1 E1–E3", "S1 E1–E3", "S1 E4–", "S2 E1–"])
+        .await?;
+
+    driver
+        .find_one_by(".modal [title='Save']")
+        .await?
+        .click()
+        .await?;
+    driver.find_one_by(".modal [title='Edit ranges']").await?;
+    let saved = track.query("SELECT numbering FROM shows WHERE id = 1001")?;
+    ensure!(
+        saved
+            == [
+                r#"{"ranges":[{"season":1,"first":1,"last":3,"system":"tvdb","target_season":1,"target_first":1},{"season":1,"first":4,"system":"tvdb","target_season":2,"target_first":1}]}"#
+            ],
+        "saved {saved:?}"
+    );
+
+    // An episode TMDB adds later falls in the open range.
+    track.execute(
+        "INSERT INTO episodes (id, show_id, season, episode, aired) VALUES (3006, 1001, 1, 6, 1703024000000)",
+    )?;
+    driver.reload().await?;
+    driver.find_one_by("#S01E06").await?;
+    driver
+        .find_one_by("[title='Settings']:not(#toolbar *)")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by(".modal [title='Edit ranges']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .wait_texts(
+            ".modal .numbering-coverage",
+            ["6 of 6 regular TMDB episodes are mapped."],
+        )
+        .await?;
+    let added = driver
+        .find_one_by(".modal .numbering-ep[aria-label='TMDB S1 E6']")
+        .await?;
+    ensure!(added.attr("title").await? == "TMDB S1 E6 ↔ TheTVDB S2 E3");
+    driver
+        .wait_count(".modal .numbering-ep.open-end[aria-label='TMDB S1 E7']", 1)
         .await
 }
 

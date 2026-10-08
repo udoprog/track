@@ -33,26 +33,51 @@ pub struct Numbering {
 }
 
 /// Episodes `first..=last` of `season` map one to one onto `system`'s
-/// `target_season`, starting at `target_first`.
+/// `target_season`, starting at `target_first`. Without `last` the range is
+/// open: it runs on through every later episode of the season, so episodes
+/// added while the season airs map without editing it.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize)]
 #[musli(crate = musli_core)]
 pub struct NumberingRange {
     pub season: u32,
     pub first: u32,
-    pub last: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last: Option<u32>,
     pub system: String,
     pub target_season: u32,
     pub target_first: u32,
 }
 
 impl NumberingRange {
-    /// The target episode `last` maps onto.
-    pub fn target_last(&self) -> u32 {
-        self.target_first + self.last.saturating_sub(self.first)
+    /// The target episode `episode` of the range maps onto.
+    pub fn target_of(&self, episode: u32) -> u32 {
+        self.target_first + episode.saturating_sub(self.first)
+    }
+
+    /// The target episode `last` maps onto; `None` when the range is open.
+    pub fn target_last(&self) -> Option<u32> {
+        Some(self.target_of(self.last?))
+    }
+
+    /// The range's episodes as `E4–E5`, or `E4–` when it is open.
+    pub fn span(&self) -> String {
+        span(self.first, self.last)
+    }
+
+    /// The range's target episodes as `E1–E2`, or `E1–` when it is open.
+    pub fn target_span(&self) -> String {
+        span(self.target_first, self.target_last())
     }
 
     fn contains(&self, season: u32, episode: u32) -> bool {
-        self.season == season && (self.first..=self.last).contains(&episode)
+        self.season == season && episode >= self.first && self.last.is_none_or(|l| episode <= l)
+    }
+}
+
+fn span(first: u32, last: Option<u32>) -> String {
+    match last {
+        Some(last) => format!("E{first}–E{last}"),
+        None => format!("E{first}–"),
     }
 }
 
@@ -100,49 +125,61 @@ impl Numbering {
                 error(format!("\"{}\" is not a known numbering.", r.system));
             }
 
-            if r.first == 0 || r.last == 0 || r.target_first == 0 {
+            if r.first == 0 || r.last == Some(0) || r.target_first == 0 {
                 error("Episode numbers start at 1.".to_owned());
                 continue;
             }
 
-            if r.first > r.last {
+            if let Some(last) = r.last
+                && r.first > last
+            {
                 error(format!(
-                    "The range ends at E{} before it starts at E{}.",
-                    r.last, r.first
+                    "The range ends at E{last} before it starts at E{}.",
+                    r.first
                 ));
                 continue;
             }
+
+            let end = |r: &NumberingRange| r.last.unwrap_or(u32::MAX);
+            let target_end = |r: &NumberingRange| r.target_last().unwrap_or(u32::MAX);
+            // Either range starts after the other, which is open.
+            let open = |o: &NumberingRange| {
+                if r.last.is_none() && o.first > r.first || o.last.is_none() && r.first > o.first {
+                    " An open range must be the last in its TMDB season."
+                } else {
+                    ""
+                }
+            };
 
             let earlier = &self.ranges[..index];
 
             if let Some(o) = earlier
                 .iter()
-                .find(|o| o.season == r.season && o.first <= r.last && r.first <= o.last)
+                .find(|o| o.season == r.season && o.first <= end(r) && r.first <= end(o))
             {
                 error(format!(
-                    "E{} is already in the range S{} E{}–E{}. TMDB ranges must not overlap.",
+                    "E{} is already in the range S{} {}. TMDB ranges must not overlap.{}",
                     r.first.max(o.first),
                     o.season,
-                    o.first,
-                    o.last
+                    o.span(),
+                    open(o)
                 ));
             }
 
             if let Some(o) = earlier.iter().find(|o| {
                 o.system == r.system
                     && o.target_season == r.target_season
-                    && o.first <= o.last
-                    && o.target_first <= r.target_last()
-                    && r.target_first <= o.target_last()
+                    && o.first <= end(o)
+                    && o.target_first <= target_end(r)
+                    && r.target_first <= target_end(o)
             }) {
                 error(format!(
-                    "{} S{} E{} is already the target of S{} E{}–E{}. Target ranges must not overlap.",
+                    "{} S{} E{} is already the target of S{} {}. Target ranges must not overlap.",
                     xem_system_label(&r.system),
                     r.target_season,
                     r.target_first.max(o.target_first),
                     o.season,
-                    o.first,
-                    o.last
+                    o.span()
                 ));
             }
         }
@@ -155,6 +192,10 @@ impl Numbering {
 /// `targets` one to one in episode order, starting a range wherever either
 /// side breaks a season or skips a number. Both are `(season, episode)` codes;
 /// specials (season 0) are left out.
+///
+/// The last range is left open when it runs to the end of the show's latest
+/// season and the targets left over, if any, continue its target season: that
+/// season may still be airing, and its new episodes then map on their own.
 pub fn suggest_numbering(
     episodes: &[(u32, u32)],
     system: &str,
@@ -170,22 +211,31 @@ pub fn suggest_numbering(
     for (&(season, episode), &(target_season, target)) in episodes.iter().zip(&targets) {
         if let Some(r) = ranges.last_mut()
             && r.season == season
-            && r.last + 1 == episode
+            && r.last.is_some_and(|l| l + 1 == episode)
             && r.target_season == target_season
-            && r.target_last() + 1 == target
+            && r.target_last().is_some_and(|t| t + 1 == target)
         {
-            r.last = episode;
+            r.last = Some(episode);
             continue;
         }
 
         ranges.push(NumberingRange {
             season,
             first: episode,
-            last: episode,
+            last: Some(episode),
             system: system.to_owned(),
             target_season,
             target_first: target,
         });
+    }
+
+    if let Some(r) = ranges.last_mut()
+        && episodes.last() == Some(&(r.season, r.last.unwrap_or(r.first)))
+        && targets[episodes.len().min(targets.len())..]
+            .iter()
+            .all(|&(s, _)| s == r.target_season)
+    {
+        r.last = None;
     }
 
     Numbering { ranges }

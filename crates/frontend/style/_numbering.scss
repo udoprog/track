@@ -163,6 +163,19 @@ $numbering-head: 26px;
     }
 }
 
+// The episode after an open range's last, which the band fades over (the
+// numbering-fade mask).
+.numbering-band.open-end {
+    fill-opacity: 0.55;
+}
+
+// Holds the map's masks without taking up room.
+.numbering-defs {
+    position: absolute;
+    width: 0;
+    height: 0;
+}
+
 .read-only .numbering-band {
     cursor: default;
 }
@@ -218,6 +231,15 @@ $numbering-head: 26px;
         border-style: dashed;
         border-color: v.$border-subtle;
         color: v.$text-muted;
+    }
+
+    // Where an open range runs on: its colour fading out downwards.
+    &.open-end>span {
+        background: linear-gradient(var(--tone), transparent);
+        border-style: dashed;
+        border-color: var(--tone);
+        border-bottom-color: transparent;
+        color: v.$text-primary;
     }
 
     &.missing>span {
@@ -376,8 +398,16 @@ $numbering-head: 26px;
     gap: v.$padding-md;
 }
 
+.numbering-source {
+    flex-wrap: wrap;
+}
+
 .numbering-source .logo {
     height: v.$input-height-sm;
+}
+
+.numbering-open {
+    white-space: nowrap;
 }
 
 .numbering-letter {

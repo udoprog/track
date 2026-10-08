@@ -915,10 +915,18 @@ fn range(season: u32, first: u32, last: u32, system: &str, ts: u32, tf: u32) -> 
     NumberingRange {
         season,
         first,
-        last,
+        last: Some(last),
         system: system.to_owned(),
         target_season: ts,
         target_first: tf,
+    }
+}
+
+/// A range from `first` on through the rest of `season`.
+fn open(season: u32, first: u32, system: &str, ts: u32, tf: u32) -> NumberingRange {
+    NumberingRange {
+        last: None,
+        ..range(season, first, first, system, ts, tf)
     }
 }
 
@@ -939,10 +947,7 @@ fn suggests_the_frieren_ranges() {
 
     assert_eq!(
         n.ranges,
-        [
-            range(1, 1, 28, "tvdb", 1, 1),
-            range(1, 29, 38, "tvdb", 2, 1)
-        ]
+        [range(1, 1, 28, "tvdb", 1, 1), open(1, 29, "tvdb", 2, 1)]
     );
     assert!(n.validate().is_empty());
 }
@@ -951,6 +956,122 @@ fn suggests_the_frieren_ranges() {
 fn suggestion_stops_where_the_shorter_side_ends() {
     let n = suggest_numbering(&codes(&[(1, 12)]), "anidb", &codes(&[(1, 10)]));
     assert_eq!(n.ranges, [range(1, 1, 10, "anidb", 1, 1)]);
+}
+
+#[test]
+fn suggestion_leaves_the_latest_season_open() {
+    // TheTVDB already lists episodes TMDB doesn't have yet in the same season.
+    let n = suggest_numbering(
+        &codes(&[(1, 10), (2, 5)]),
+        "tvdb",
+        &codes(&[(1, 10), (2, 2), (3, 8)]),
+    );
+    assert_eq!(
+        n.ranges,
+        [
+            range(1, 1, 10, "tvdb", 1, 1),
+            range(2, 1, 2, "tvdb", 2, 1),
+            open(2, 3, "tvdb", 3, 1)
+        ]
+    );
+
+    // The targets left over start another season, which the show's season
+    // running on would not reach.
+    let n = suggest_numbering(&codes(&[(1, 10)]), "tvdb", &codes(&[(1, 10), (2, 3)]));
+    assert_eq!(n.ranges, [range(1, 1, 10, "tvdb", 1, 1)]);
+}
+
+#[test]
+fn open_ranges_round_trip_without_last() {
+    let n = Numbering {
+        ranges: vec![range(1, 1, 5, "tvdb", 1, 1), open(2, 1, "tvdb", 3, 1)],
+    };
+
+    let json = serde_json::to_string(&n).unwrap();
+    assert_eq!(
+        json,
+        r#"{"ranges":[{"season":1,"first":1,"last":5,"system":"tvdb","target_season":1,"target_first":1},{"season":2,"first":1,"system":"tvdb","target_season":3,"target_first":1}]}"#
+    );
+    assert_eq!(serde_json::from_str::<Numbering>(&json).unwrap(), n);
+}
+
+#[test]
+fn open_ranges_map_every_later_episode() {
+    let n = Numbering {
+        ranges: vec![range(2, 1, 4, "tvdb", 2, 1), open(2, 5, "tvdb", 3, 1)],
+    };
+
+    let target = |s, e| n.target(s, e).map(|t| (t.season, t.episode));
+    assert_eq!(target(2, 4), Some((2, 4)));
+    assert_eq!(target(2, 5), Some((3, 1)));
+    assert_eq!(target(2, 40), Some((3, 36)));
+    assert_eq!(target(3, 1), None);
+    assert_eq!(n.ranges[1].span(), "E5–");
+    assert_eq!(n.ranges[1].target_span(), "E1–");
+    assert_eq!(n.ranges[0].target_span(), "E1–E4");
+}
+
+#[test]
+fn validation_rejects_bad_open_ranges() {
+    let messages = |ranges: Vec<NumberingRange>| {
+        Numbering { ranges }
+            .validate()
+            .into_iter()
+            .map(|e| (e.index, e.message))
+            .collect::<Vec<_>>()
+    };
+
+    // Open ranges in different seasons onto different target seasons.
+    assert!(
+        messages(vec![
+            range(1, 1, 4, "tvdb", 1, 1),
+            open(1, 5, "tvdb", 2, 1),
+            open(2, 1, "tvdb", 3, 1),
+        ])
+        .is_empty()
+    );
+
+    // A range after an open one in its TMDB season, in either order.
+    assert_eq!(
+        messages(vec![open(1, 5, "tvdb", 2, 1), range(1, 9, 10, "anidb", 1, 1)]),
+        [(
+            1,
+            "E9 is already in the range S1 E5–. TMDB ranges must not overlap. An open range must be the last in its TMDB season."
+                .to_owned()
+        )]
+    );
+    assert_eq!(
+        messages(vec![range(1, 9, 10, "anidb", 1, 1), open(1, 5, "tvdb", 2, 1)]),
+        [(
+            1,
+            "E9 is already in the range S1 E9–E10. TMDB ranges must not overlap. An open range must be the last in its TMDB season."
+                .to_owned()
+        )]
+    );
+
+    // A range ending before an open one starts is fine, one reaching into it is not.
+    assert_eq!(
+        messages(vec![range(1, 1, 5, "tvdb", 1, 1), open(1, 5, "tvdb", 2, 1)]),
+        [(
+            1,
+            "E5 is already in the range S1 E1–E5. TMDB ranges must not overlap.".to_owned()
+        )]
+    );
+
+    // An open range's targets run on, so a later target in its target season
+    // overlaps.
+    assert_eq!(
+        messages(vec![
+            open(1, 1, "tvdb", 1, 1),
+            range(2, 1, 3, "tvdb", 1, 40)
+        ]),
+        [(
+            1,
+            "TheTVDB S1 E40 is already the target of S1 E1–. Target ranges must not overlap."
+                .to_owned()
+        )]
+    );
+    assert!(messages(vec![open(1, 1, "tvdb", 2, 5), range(2, 1, 4, "tvdb", 2, 1)]).is_empty());
 }
 
 /// A system's codes, each in the map entry of its position.

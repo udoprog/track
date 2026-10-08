@@ -838,7 +838,7 @@ pub(crate) mod tests {
         };
 
         api::Numbering {
-            ranges: vec![range(1, 28, 1), range(29, 38, 2)],
+            ranges: vec![range(1, Some(28), 1), range(29, Some(38), 2)],
         }
     }
 
@@ -880,6 +880,28 @@ pub(crate) mod tests {
             let (_, s, e) = target(tmdb, Some(&n), 1, e).unwrap();
             assert!(mapped.contains(&(s, e)), "S{s}E{e} is not in XEM");
         }
+    }
+
+    /// An open range saved while the season had 38 episodes maps the ones
+    /// added after it.
+    #[test]
+    fn open_ranges_link_episodes_added_later() {
+        let tmdb = Some(api::RemoteSource::Tmdb);
+        let mut n = frieren();
+        n.ranges[1].last = None;
+        let tvdb = |s, e| Some(("tvdb".to_owned(), s, e));
+
+        assert_eq!(target(tmdb, Some(&n), 1, 28), tvdb(1, 28));
+        assert_eq!(target(tmdb, Some(&n), 1, 38), tvdb(2, 10));
+        assert_eq!(target(tmdb, Some(&n), 1, 39), tvdb(2, 11));
+        assert_eq!(target(tmdb, Some(&n), 1, 50), tvdb(2, 22));
+        assert_eq!(target(tmdb, Some(&n), 2, 1), None);
+
+        let seasons = season_targets(tmdb, Some(&n), 1)
+            .into_iter()
+            .map(|s| (s.system, s.season))
+            .collect::<Vec<_>>();
+        assert_eq!(seasons, [("tvdb".to_owned(), 1), ("tvdb".to_owned(), 2)]);
     }
 
     #[test]
