@@ -125,6 +125,36 @@ pub async fn phones_do_not_scroll_sideways(driver: &mut TestDriver, _: &mut Trac
     Ok(())
 }
 
+/// On a phone the backdrop shows only behind the heading, not again under the
+/// overview.
+pub async fn phones_show_the_backdrop_once(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_show(driver).await?;
+    driver.find_first(".episode [title='Mark watched']").await?;
+    driver.snapshot("wide-show-backdrop").await?;
+
+    driver.set_window_size(400, 850).await?;
+    driver.find_first(".episode [title='Mark watched']").await?;
+
+    ensure!(
+        driver
+            .find_one_by(".detail-hero-image")
+            .await?
+            .visible()
+            .await?,
+        "the heading has no backdrop"
+    );
+
+    let copies = driver
+        .rendered_texts(".detail-layout .backdrop")
+        .await?
+        .len();
+    ensure!(
+        copies == 0,
+        "the backdrop shows {copies} more time(s) on a phone"
+    );
+    driver.snapshot("phone-show-backdrop").await
+}
+
 /// Open the first episode's Translations modal from its menu.
 async fn open_episode_modal(driver: &TestDriver) -> Result<()> {
     driver

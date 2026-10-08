@@ -50,6 +50,8 @@ const UPCOMING: &str = include_str!("upcoming.sql");
 const UNTRACKED: &str = include_str!("untracked.sql");
 /// Poster candidates for the seeded show, with `(graphics)`.
 const GRAPHICS: &str = include_str!("graphics.sql");
+/// A backdrop for the seeded show, with `(backdrop)`.
+const BACKDROP: &str = include_str!("backdrop.sql");
 /// A finished show, one with only a special left and one being rewatched,
 /// with `(next)`.
 const NEXT: &str = include_str!("next.sql");
@@ -71,6 +73,8 @@ struct Setup {
     untracked: bool,
     /// Start with `seed.sql` and the poster candidates in `graphics.sql`.
     graphics: bool,
+    /// Start with `seed.sql` and the backdrop in `backdrop.sql`.
+    backdrop: bool,
     /// Start with `seed.sql` and the shows in `next.sql`.
     next: bool,
     /// Start at the sign-in page instead of signed in as `root`.
@@ -130,6 +134,7 @@ impl Fixture for Track {
             || setup.upcoming
             || setup.untracked
             || setup.graphics
+            || setup.backdrop
             || setup.next;
 
         if seeded || setup.login_link || setup.cloudflare {
@@ -167,6 +172,10 @@ impl Fixture for Track {
 
             if setup.graphics {
                 c.execute(GRAPHICS).context("adding the graphics")?;
+            }
+
+            if setup.backdrop {
+                c.execute(BACKDROP).context("adding the backdrop")?;
             }
 
             if setup.next {
@@ -383,5 +392,5 @@ yew_e2e::harness! {
     search::{focuses_the_input, says_what_it_searches},
     settings::{reorders_sync_sources, theme_applies_live, theme_is_remembered, adds_languages_and_rules, switches_work_from_the_keyboard, fields_follow_the_theme, settings_are_labelled_rows, tab_completes_the_time_zone, configures_cloudflare_access, warns_about_trusting_only_the_email_header, phones_list_the_settings_pages},
     users::{creates_a_user_who_registers, regular_users_do_not_see_users(login_link), changes_a_role(login_link), revokes_links_and_deletes(login_link), regular_users_cannot_remove_media(seeded, movie, login_link), regular_users_cannot_edit_shared_data(seeded, movie, login_link)},
-    show::{rail_colours_watched_apart_from_pending(seeded), phone_action_rows_align(seeded), episode_menu_holds_the_other_actions(seeded), menus_close_on_an_outside_click(seeded), modals_close_from_button_and_backdrop(seeded), phone_modals_rise_from_the_bottom(seeded), settings_line_up_their_controls(seeded), modals_hold_keyboard_focus(seeded), menus_work_from_the_keyboard(seeded), mark_watched_is_one_colour(seeded), seasons_list_beside_the_episodes(seasons), phones_pick_seasons_from_chips(seasons), season_overview_switches_language(seasons), phone_popovers_are_sheets(seeded), watch_history_moves_and_removes(seeded), tracking_toggle_names_the_show(seeded), settings_pages_return_to_settings(seeded), translations_sit_beside_their_language(seeded), air_dates_explain_the_default_quietly(seeded), graphics_say_what_they_do(graphics), detail_poster_is_rounded(graphics), remotes_show_their_actions(seeded), picked_episodes_are_marked_together(seeded), picked_episodes_clear(seasons), remaining_episodes_advance_pending(seasons), has_a_heading(seeded), phones_have_no_episode_rail(seeded), phones_do_not_scroll_sideways(seeded), seasons_count_watched_episodes(seeded), episodes_show_their_details(seeded)},
+    show::{rail_colours_watched_apart_from_pending(seeded), phone_action_rows_align(seeded), episode_menu_holds_the_other_actions(seeded), menus_close_on_an_outside_click(seeded), modals_close_from_button_and_backdrop(seeded), phone_modals_rise_from_the_bottom(seeded), settings_line_up_their_controls(seeded), modals_hold_keyboard_focus(seeded), menus_work_from_the_keyboard(seeded), mark_watched_is_one_colour(seeded), seasons_list_beside_the_episodes(seasons), phones_pick_seasons_from_chips(seasons), season_overview_switches_language(seasons), phone_popovers_are_sheets(seeded), watch_history_moves_and_removes(seeded), tracking_toggle_names_the_show(seeded), settings_pages_return_to_settings(seeded), translations_sit_beside_their_language(seeded), air_dates_explain_the_default_quietly(seeded), graphics_say_what_they_do(graphics), detail_poster_is_rounded(graphics), remotes_show_their_actions(seeded), picked_episodes_are_marked_together(seeded), picked_episodes_clear(seasons), remaining_episodes_advance_pending(seasons), has_a_heading(seeded), phones_have_no_episode_rail(seeded), phones_do_not_scroll_sideways(seeded), phones_show_the_backdrop_once(backdrop), seasons_count_watched_episodes(seeded), episodes_show_their_details(seeded)},
 }

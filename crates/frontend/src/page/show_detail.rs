@@ -560,8 +560,6 @@ impl Component for ShowDetail {
                         <div class="mobile-only">
                             if let Some(ref banner) = show.banner {
                                 <Image class="banner" src={banner.clone()} />
-                            } else if let Some(ref backdrop) = show.backdrop {
-                                <Image class="backdrop" src={backdrop.clone()} />
                             }
                         </div>
 
