@@ -1292,6 +1292,61 @@ fn locale_matches_targets(
     None
 }
 
+/// `original` as the text for `locale` when the remote has none, which only the
+/// original language may use: TMDB leaves the original language's own entry
+/// blank, while any other language without text is missing rather than the
+/// original-language text.
+fn original_fallback(
+    locale: api::Locale,
+    original_language: api::Locale,
+    original: &Option<String>,
+) -> Option<String> {
+    if locale.language() == original_language.language() {
+        original.clone()
+    } else {
+        None
+    }
+}
+
+fn add_tmdb_show_strings(
+    draft: &mut ShowDraft,
+    translations: Vec<tmdb::Translation>,
+    targets: &BTreeSet<api::Locale>,
+) {
+    let mut remaining = targets.clone();
+
+    for translation in translations {
+        let Some(locale) = locale_matches_targets(translation.locale, targets) else {
+            continue;
+        };
+
+        remaining.remove(&locale);
+
+        tracing::info!(?translation, ?targets, "Show translation");
+
+        let title = translation.name.or_else(|| {
+            original_fallback(
+                translation.locale,
+                draft.original_language,
+                &draft.original_name,
+            )
+        });
+
+        draft.add_show_string(translation.locale, api::StringKind::Title, title);
+
+        draft.add_show_string(
+            translation.locale,
+            api::StringKind::Overview,
+            translation.overview,
+        );
+    }
+
+    for locale in remaining {
+        let title = original_fallback(locale, draft.original_language, &draft.original_name);
+        draft.add_show_string(locale, api::StringKind::Title, title);
+    }
+}
+
 #[tracing::instrument(skip_all, fields(tmdb_id))]
 async fn collect_tmdb_show_strings(
     draft: &mut ShowDraft,
@@ -1302,37 +1357,10 @@ async fn collect_tmdb_show_strings(
 ) -> Result<()> {
     let targets = api::expand_sync_languages(&config.sync_languages, draft.original_language);
 
-    let mut remaining = targets.clone();
-
     // Show strings: one translations call instead of one full-detail call per
     // language.
     let translations = remote.fetch_tmdb_show_translations(tmdb_id).await?;
-
-    for translation in translations {
-        let Some(locale) = locale_matches_targets(translation.locale, &targets) else {
-            continue;
-        };
-
-        remaining.remove(&locale);
-
-        tracing::info!(?translation, ?targets, "Show translation");
-
-        draft.add_show_string(
-            translation.locale,
-            api::StringKind::Title,
-            translation.name.or(draft.original_name.clone()),
-        );
-
-        draft.add_show_string(
-            translation.locale,
-            api::StringKind::Overview,
-            translation.overview,
-        );
-    }
-
-    for locale in remaining {
-        draft.add_show_string(locale, api::StringKind::Title, draft.original_name.clone());
-    }
+    add_tmdb_show_strings(draft, translations, &targets);
 
     // Season strings: one translations call per season instead of one
     // full-detail call per season per language.
@@ -1405,7 +1433,9 @@ async fn collect_tmdb_show_strings(
                 *episode,
                 translation.locale,
                 api::StringKind::Title,
-                translation.name.or(original_name.clone()),
+                translation.name.or_else(|| {
+                    original_fallback(translation.locale, draft.original_language, &original_name)
+                }),
             );
 
             draft.add_episode_string(
@@ -2603,7 +2633,13 @@ async fn tmdb_episode_layer(
                 &mut draft.strings,
                 translation.locale,
                 api::StringKind::Title,
-                translation.name.or_else(|| info.original_name.clone()),
+                translation.name.or_else(|| {
+                    original_fallback(
+                        translation.locale,
+                        show.strings.locale(),
+                        &info.original_name,
+                    )
+                }),
             );
 
             push_string(
@@ -3474,14 +3510,26 @@ async fn collect_tmdb_movie_strings(
             &mut rows,
             translation.locale,
             api::StringKind::Title,
-            translation.title.or(info.original_title.clone()),
+            translation.title.or_else(|| {
+                original_fallback(
+                    translation.locale,
+                    info.original_language,
+                    &info.original_title,
+                )
+            }),
         );
 
         push_string(
             &mut rows,
             translation.locale,
             api::StringKind::Overview,
-            translation.overview.or(info.original_overview.clone()),
+            translation.overview.or_else(|| {
+                original_fallback(
+                    translation.locale,
+                    info.original_language,
+                    &info.original_overview,
+                )
+            }),
         );
     }
 
@@ -3587,6 +3635,54 @@ mod tests {
         );
         assert_eq!(show.images.len(), 1);
         Ok(())
+    }
+
+    /// A configured language TMDB has no translation for, or whose entry has no
+    /// name, is left missing; only the original language takes the original name.
+    #[test]
+    fn tmdb_show_titles_fall_back_only_in_original_language() {
+        let locale = |iso| api::Locale::from_iso(iso).unwrap();
+
+        let translation = |iso_639_1, iso_3166_1, name: Option<&str>| tmdb::Translation {
+            locale: api::Locale::new(
+                api::Language::from_iso(iso_639_1).unwrap(),
+                api::Country::from_iso(iso_3166_1).unwrap(),
+            ),
+            name: name.map(str::to_owned),
+            title: None,
+            overview: Some(format!("{iso_639_1} overview")),
+        };
+
+        let mut draft = ShowDraft {
+            original_language: locale("jpn"),
+            original_name: Some("ロメリア戦記".to_owned()),
+            ..ShowDraft::default()
+        };
+
+        let targets = BTreeSet::from([locale("jpn"), locale("eng"), locale("swe"), locale("nld")]);
+
+        let translations = vec![
+            translation("ja", "JP", None),
+            translation("en", "US", Some("Romelia War Chronicle")),
+            translation("nl", "NL", None),
+        ];
+
+        add_tmdb_show_strings(&mut draft, translations, &targets);
+
+        let titles: Vec<_> = draft
+            .show_strings
+            .iter()
+            .filter(|(_, kind, _)| *kind == api::StringKind::Title)
+            .map(|(locale, _, text)| (locale.to_string(), text.as_str()))
+            .collect();
+
+        assert_eq!(
+            titles,
+            [
+                ("ja-JP".to_owned(), "ロメリア戦記"),
+                ("en-US".to_owned(), "Romelia War Chronicle"),
+            ]
+        );
     }
 
     /// A show left without an enabled Base remote keeps its seasons and
