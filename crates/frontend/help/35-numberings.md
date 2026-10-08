@@ -58,7 +58,8 @@ it in the season list.
 Administrators choose in **Settings > Sources & dates**:
 
 - **Find XEM through**: which of a show's remotes look it up on XEM, top
-  first. The first one XEM maps is added as the show's XEM remote.
+  first. The first one XEM maps is added as the show's XEM remote, which
+  links to the show's XEM page once syncing finds it.
 - **Other numberings**: the order the numberings are shown in, and which are
   shown. TheTVDB, scene and AniDB are shown at first; Trakt and TVRage are
   hidden.

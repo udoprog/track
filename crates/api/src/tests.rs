@@ -902,6 +902,10 @@ fn xem_anidb_scene_sources() {
 
     let xem = Remote::new(Xem, RemoteValue::Str("tvdb/424536".to_owned()));
     assert_eq!(xem.show_url(None), None);
+    assert_eq!(
+        xem.show_url(Some("6743")).as_deref(),
+        Some("https://thexem.info/xem/show/6743")
+    );
 
     let scene = Remote::new(Scene, RemoteValue::Str("Sousou no Frieren".to_owned()));
     assert_eq!(scene.show_url(None), None);

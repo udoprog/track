@@ -36,3 +36,8 @@ VALUES
     (1001, NULL, 'fr', 'La Série'),
     (1001, 1, 'jp', 'Seeded First'),
     (1001, 2, 'jp', 'Seeded Second');
+
+-- The XEM remote sync found it through, with XEM's own show id as its slug.
+INSERT INTO show_remotes (show_id, source, value, slug)
+VALUES
+    (1001, 5, 'tvdb/424536', '6743');

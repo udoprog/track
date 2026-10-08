@@ -379,6 +379,8 @@ impl Remote {
                 Some(format!("https://www.tvmaze.com/shows/{}", self.value))
             }
             (RemoteSource::Anidb, _) => Some(format!("https://anidb.net/anime/{}", self.value)),
+            // An XEM remote's slug is XEM's own show id.
+            (RemoteSource::Xem, Some(id)) => Some(format!("https://thexem.info/xem/show/{id}")),
             _ => None,
         }
     }

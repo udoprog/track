@@ -2,6 +2,7 @@
 //! addressed by an origin (`tvdb`, `anidb`, ...) and the show's id there.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::hash::Hash;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -180,11 +181,24 @@ struct HaveMap {
     ids: Arc<HashSet<String>>,
 }
 
+/// A page of XEM's website, held as long as a havemap list. A failed fetch is
+/// held as empty, so it is not retried sooner either.
+struct Page<T> {
+    checked: Instant,
+    last_modified: Option<String>,
+    value: Arc<T>,
+}
+
+/// The most show pages fetched to confirm one show's XEM id.
+const MAX_CANDIDATES: usize = 3;
+
 #[derive(Clone)]
 pub(crate) struct Client {
     http: reqwest::Client,
     base: Arc<str>,
     havemaps: Arc<Mutex<HashMap<String, HaveMap>>>,
+    shows: Arc<Mutex<HashMap<(), Page<Vec<(u32, String)>>>>>,
+    show_pages: Arc<Mutex<HashMap<u32, Page<Vec<(String, String)>>>>>,
 }
 
 impl Client {
@@ -193,7 +207,109 @@ impl Client {
             http,
             base: BASE.into(),
             havemaps: Arc::default(),
+            shows: Arc::default(),
+            show_pages: Arc::default(),
         }
+    }
+
+    /// XEM's own id for the show it maps as `id` in `origin`, which only its
+    /// website has. The show list is searched for `names`, and a candidate is
+    /// taken only when its page links `origin`/`id`. Any failure is `None`.
+    pub(crate) async fn show_id<'a>(
+        &self,
+        origin: &str,
+        id: &str,
+        names: impl IntoIterator<Item = &'a str>,
+    ) -> Option<u32> {
+        let shows = self.cached(&self.shows, (), "xem/shows", parse_shows).await;
+
+        for xem_id in candidates(&shows, names) {
+            let path = format!("xem/show/{xem_id}");
+            let links = self
+                .cached(&self.show_pages, xem_id, &path, parse_show_links)
+                .await;
+
+            if links.iter().any(|(o, i)| o == origin && i == id) {
+                return Some(xem_id);
+            }
+        }
+
+        None
+    }
+
+    /// The page at `path`, parsed and held in `cache` under `key`.
+    async fn cached<K, T>(
+        &self,
+        cache: &Mutex<HashMap<K, Page<T>>>,
+        key: K,
+        path: &str,
+        parse: impl FnOnce(&str) -> T,
+    ) -> Arc<T>
+    where
+        K: Eq + Hash,
+        T: Default,
+    {
+        let since = match cache.lock().get(&key) {
+            Some(page) if page.checked.elapsed() < HAVEMAP_TTL => return page.value.clone(),
+            Some(page) => page.last_modified.clone(),
+            None => None,
+        };
+
+        let fetched = self.get_html(path, since.as_deref()).await;
+
+        let mut cache = cache.lock();
+
+        let (value, last_modified) = match fetched {
+            Ok((Some(html), last_modified)) => (Arc::new(parse(&html)), last_modified),
+            Ok((None, last_modified)) => (
+                cache.get(&key).map(|p| p.value.clone()).unwrap_or_default(),
+                last_modified,
+            ),
+            Err(e) => {
+                tracing::warn!(path, "Fetching an XEM page: {e:#}");
+                (Arc::default(), None)
+            }
+        };
+
+        cache.insert(
+            key,
+            Page {
+                checked: Instant::now(),
+                last_modified,
+                value: value.clone(),
+            },
+        );
+
+        value
+    }
+
+    /// A page of XEM's website, or `None` for `304 Not Modified`.
+    async fn get_html(
+        &self,
+        path: &str,
+        since: Option<&str>,
+    ) -> Result<(Option<String>, Option<String>)> {
+        let mut req = self.http.get(format!("{}/{path}", self.base));
+
+        if let Some(since) = since {
+            req = req.header(reqwest::header::IF_MODIFIED_SINCE, since);
+        }
+
+        let res = req.send().await.context("Sending request")?;
+
+        let last_modified = res
+            .headers()
+            .get(reqwest::header::LAST_MODIFIED)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned);
+
+        if res.status() == reqwest::StatusCode::NOT_MODIFIED {
+            return Ok((None, last_modified));
+        }
+
+        let res = res.error_for_status().context("Bad response status")?;
+        let text = res.text().await.context("Reading response body")?;
+        Ok((Some(text), last_modified))
     }
 
     #[cfg(test)]
@@ -348,6 +464,118 @@ pub(crate) fn latest(a: Option<String>, b: Option<String>) -> Option<String> {
     }
 }
 
+/// The shows of XEM's list page (`/xem/shows`): each `<a href="/xem/show/<id>">`
+/// with its name.
+fn parse_shows(html: &str) -> Vec<(u32, String)> {
+    const LINK: &str = "<a href=\"/xem/show/";
+
+    let mut out = Vec::new();
+
+    for rest in html.split(LINK).skip(1) {
+        let Some((id, rest)) = rest.split_once("\">") else {
+            continue;
+        };
+
+        let (Ok(id), Some((name, _))) = (id.parse(), rest.split_once("</a>")) else {
+            continue;
+        };
+
+        out.push((id, decode_html(name.trim())));
+    }
+
+    out
+}
+
+/// The `(origin, id)` pairs a show page links: TheTVDB and AniDB, per season.
+fn parse_show_links(html: &str) -> Vec<(String, String)> {
+    const LINKS: &[(&str, &str)] = &[
+        ("tvdb", "thetvdb.com/?tab=series&id="),
+        ("anidb", "animedb.pl?show=anime&aid="),
+    ];
+
+    let html = html.replace("&amp;", "&");
+    let mut out = Vec::new();
+
+    for &(origin, prefix) in LINKS {
+        for rest in html.split(prefix).skip(1) {
+            let end = rest
+                .find(|c: char| !c.is_ascii_digit())
+                .unwrap_or(rest.len());
+            let link = (origin.to_owned(), rest[..end].to_owned());
+
+            if end > 0 && !out.contains(&link) {
+                out.push(link);
+            }
+        }
+    }
+
+    out
+}
+
+fn decode_html(s: &str) -> String {
+    s.replace("&quot;", "\"")
+        .replace("&#039;", "'")
+        .replace("&#39;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
+}
+
+/// A name as lowercase words, ignoring punctuation and apostrophes.
+fn words(name: &str) -> Vec<String> {
+    name.replace(['\'', '\u{2019}'], "")
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(str::to_lowercase)
+        .collect()
+}
+
+/// The XEM ids of `shows` whose name is one of `names`, then those whose name
+/// starts one of them (XEM's `.hack//` for `.hack//Sign`), longest first; at
+/// most [`MAX_CANDIDATES`].
+fn candidates<'a>(shows: &[(u32, String)], names: impl IntoIterator<Item = &'a str>) -> Vec<u32> {
+    let names = names
+        .into_iter()
+        .map(words)
+        .filter(|w| !w.is_empty())
+        .collect::<Vec<_>>();
+
+    let mut found = shows
+        .iter()
+        .filter_map(|(id, name)| {
+            let show = words(name);
+
+            if show.is_empty() {
+                return None;
+            }
+
+            let exact = names.iter().any(|n| *n == show);
+
+            if !exact && !names.iter().any(|n| n.starts_with(&show)) {
+                return None;
+            }
+
+            Some((!exact, std::cmp::Reverse(show.len()), *id))
+        })
+        .collect::<Vec<_>>();
+
+    found.sort();
+
+    let mut out = Vec::new();
+
+    for (_, _, id) in found {
+        if !out.contains(&id) {
+            out.push(id);
+        }
+
+        if out.len() == MAX_CANDIDATES {
+            break;
+        }
+    }
+
+    out
+}
+
 /// XEM's envelope: `{"result": "success" | "failure", "data": ..., "message": ...}`.
 fn parse<T>(bytes: &[u8]) -> Result<Body<T>>
 where
@@ -470,6 +698,63 @@ pub(crate) mod tests {
     pub(crate) const OSHI_NO_KO_ALL: &str = include_str!("xem/fixtures/all-421069.json");
     pub(crate) const OSHI_NO_KO_NAMES: &str = include_str!("xem/fixtures/names-421069.json");
     pub(crate) const FAILURE: &str = include_str!("xem/fixtures/failure.json");
+    pub(crate) const SHOWS: &str = include_str!("xem/fixtures/shows.html");
+    pub(crate) const SHOW_4162: &str = include_str!("xem/fixtures/show-4162.html");
+
+    #[test]
+    fn parses_the_show_list() {
+        let shows = parse_shows(SHOWS);
+
+        // The navigation's show picker has no links and is left out.
+        assert_eq!(shows.len(), 7);
+        assert_eq!(shows[0], (4162, ".hack//".to_owned()));
+        assert!(shows.contains(&(6743, "Frieren: Beyond Journey's End".to_owned())));
+        assert!(shows.contains(&(
+            4420,
+            "100 Sleeping Princes & The Kingdom of Dreams".to_owned()
+        )));
+    }
+
+    #[test]
+    fn parses_the_links_of_a_show_page() {
+        let link = |origin: &str, id: &str| (origin.to_owned(), id.to_owned());
+
+        assert_eq!(
+            parse_show_links(SHOW_4162),
+            [
+                link("tvdb", "79099"),
+                link("anidb", "24"),
+                link("anidb", "447"),
+                link("anidb", "4324"),
+            ]
+        );
+    }
+
+    #[test]
+    fn candidates_match_names_then_prefixes() {
+        let shows = parse_shows(SHOWS);
+
+        assert_eq!(
+            candidates(&shows, ["Frieren: Beyond Journey's End"]),
+            [6743]
+        );
+        assert_eq!(
+            candidates(&shows, ["Frieren: Beyond Journey\u{2019}s End"]),
+            [6743]
+        );
+        assert_eq!(candidates(&shows, [".hack//Sign"]), [4162]);
+        assert_eq!(candidates(&shows, ["Oshi no Ko (My Star)"]), [6744]);
+        assert!(candidates(&shows, ["Show", ""]).is_empty());
+
+        // An exact name comes before a shorter prefix.
+        let shows = [
+            (1, "Oshi".to_owned()),
+            (2, "Oshi no Ko".to_owned()),
+            (3, "Oshi no Ko (My Star)".to_owned()),
+        ];
+        assert_eq!(candidates(&shows, ["Oshi no Ko"]), [2, 1]);
+        assert_eq!(candidates(&shows, ["Oshi no Ko: My Star"]), [3, 2, 1]);
+    }
 
     fn success<T>(body: Body<T>) -> T {
         match body {

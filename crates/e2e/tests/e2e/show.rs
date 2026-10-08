@@ -1456,6 +1456,33 @@ pub async fn alternative_names_are_listed(driver: &mut TestDriver, _: &mut Track
         .await
 }
 
+/// An XEM remote whose XEM show id is known links to its page, both in the
+/// show's sources row and in the Remotes editor, which shows the id.
+pub async fn xem_remote_links_to_its_page(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_show(driver).await?;
+
+    let page = "a[href='https://thexem.info/xem/show/6743'] .logo.xem";
+    driver
+        .wait_count(&format!(".detail-sources {page}"), 1)
+        .await?;
+
+    driver
+        .find_one_by("[title='Settings']:not(#toolbar *)")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by(".modal [title='Edit remotes']")
+        .await?
+        .click()
+        .await?;
+
+    driver.wait_count(&format!(".modal {page}"), 1).await?;
+    driver
+        .wait_texts(".modal .remote-id", ["tvdb/424536 #6743"])
+        .await
+}
+
 /// Linked to TheTVDB with ranges, an episode XEM numbers differently shows
 /// those numbers as chips, one that lines up shows none, and a line marks
 /// where TheTVDB's second season starts.

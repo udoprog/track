@@ -26,7 +26,8 @@ AniDB, XEM and scene remotes provide none of these:
   other names for it and its seasons; see [Other numberings and
   names](numberings). Syncing finds a show's XEM entry through its TheTVDB or
   AniDB id and adds it as a remote; while it is turned on, syncing keeps the
-  mappings and names up to date.
+  mappings and names up to date. It links to the show's XEM page once syncing
+  has found it on XEM's website.
 - **AniDB** links to the show's AniDB entry. A show can have several, one per
   cour.
 - **Scene** is the name release groups use for the show. It has no page to
@@ -44,7 +45,8 @@ again.
 
 TMDB, TheTVDB, TVmaze and AniDB identifiers are numbers; IMDb identifiers
 look like `tt1234567`. An XEM identifier is where XEM was found and the id
-there, such as `tvdb/424536`.
+there, such as `tvdb/424536`; its slug is XEM's own show id, such as `6743`
+for `thexem.info/xem/show/6743`.
 
 ## Syncing
 

@@ -354,6 +354,10 @@ async fn load_show_for_sync(
         .await?
         .context("Expected show to exist")?;
 
+    if let Err(e) = ensure_xem_id(&show, remote, db).await {
+        tracing::warn!("XEM show id not stored for show {show_id}: {e:#}");
+    }
+
     Ok((show, config))
 }
 
@@ -681,6 +685,41 @@ async fn ensure_xem_remote(
     }
 
     Ok(())
+}
+
+/// Store XEM's own show id, which links to its page, as the slug of an enabled
+/// XEM remote that has none. The show's titles and XEM names find it.
+async fn ensure_xem_id(show: &api::Show, remote: &RemoteClients, db: &Database) -> Result<()> {
+    let Some(entry) = show
+        .remotes
+        .iter()
+        .find(|e| e.enabled && e.slug.is_none() && *e.remote.source() == RemoteSource::Xem)
+    else {
+        return Ok(());
+    };
+
+    let Some((origin, id)) = entry
+        .remote
+        .value()
+        .as_str()
+        .and_then(|v| v.split_once('/'))
+    else {
+        return Ok(());
+    };
+
+    let names = show
+        .strings
+        .texts(api::StringKind::Title)
+        .chain(show.alt_names.iter().map(|n| n.name.as_str()));
+
+    let Some(xem_id) = remote.xem.show_id(origin, id, names).await else {
+        tracing::info!(show_id = %show.id, origin, id, "XEM show id not found");
+        return Ok(());
+    };
+
+    tracing::info!(show_id = %show.id, origin, id, xem_id, "Found XEM show id");
+    db.add_remote(show.id, Some(&xem_id.to_string()), &entry.remote)
+        .await
 }
 
 /// A show-level image accumulated during sync; graphics merge across every
@@ -4091,7 +4130,7 @@ mod xem_tests {
 
     use super::*;
     use crate::db::OpenMode;
-    use crate::xem::tests::{FAILURE, FRIEREN_ALL, OSHI_NO_KO_ALL, OSHI_NO_KO_NAMES};
+    use crate::xem::tests::{FAILURE, FRIEREN_ALL, OSHI_NO_KO_ALL, OSHI_NO_KO_NAMES, SHOW_4162};
 
     const EARLY: &str = "Thu, 08 Oct 2026 00:07:43 GMT";
     const LATE: &str = "Thu, 08 Oct 2026 00:37:57 GMT";
@@ -4256,13 +4295,16 @@ mod xem_tests {
 
         t.sync().await?;
 
+        // The show list is missing: the show syncs without an XEM id.
         assert_eq!(
             t.requests(),
             [
+                ("xem/shows?".to_owned(), None),
                 ("map/all?id=424536&origin=tvdb".to_owned(), None),
                 ("map/names?id=424536&origin=tvdb".to_owned(), None),
             ]
         );
+        assert_eq!(t.xem_remote().await?.context("xem remote")?.slug, None);
         // TMDB's S1E29 is TheTVDB's S2E1.
         assert_eq!(
             t.entry("tvdb", 2, 1).await?,
@@ -4334,6 +4376,61 @@ mod xem_tests {
         assert!(t.requests().is_empty());
         assert!(t.entry("tvdb", 3, 1).await?.is_empty());
         assert!(t.db.xem_names(t.show_id).await?.is_empty());
+        Ok(())
+    }
+
+    /// XEM's own id is found in its show list by the show's title, confirmed by
+    /// the show page's TheTVDB link, and stored as the XEM remote's slug.
+    #[tokio::test]
+    async fn sync_stores_the_xem_show_id() -> Result<()> {
+        let t = setup(api::Remote::new(
+            RemoteSource::Xem,
+            api::RemoteValue::Str("tvdb/424536".into()),
+        ))
+        .await?;
+        t.serve("map/all", FRIEREN_ALL, EARLY);
+        t.serve("map/names", NO_NAMES, EARLY);
+        t.serve(
+            "xem/shows",
+            r#"<a href="/xem/show/4162">Show</a> <a href="/xem/show/6743">Show</a> <a href="/xem/show/9">Other</a>"#,
+            EARLY,
+        );
+        t.serve("xem/show/4162", SHOW_4162, EARLY);
+        t.serve(
+            "xem/show/6743",
+            r#"<a href="http://thetvdb.com/?tab=series&amp;id=424536" target="_blank">424536</a>"#,
+            EARLY,
+        );
+
+        t.sync().await?;
+
+        let entry = t.xem_remote().await?.context("xem remote")?;
+        assert_eq!(entry.slug.as_deref(), Some("6743"));
+        assert_eq!(
+            entry.remote.show_url(entry.slug.as_deref()).as_deref(),
+            Some("https://thexem.info/xem/show/6743")
+        );
+        assert_eq!(
+            t.requests()
+                .into_iter()
+                .map(|(path, _)| path)
+                .collect::<Vec<_>>(),
+            [
+                "xem/shows?",
+                "xem/show/4162?",
+                "xem/show/6743?",
+                "map/all?id=424536&origin=tvdb",
+                "map/names?id=424536&origin=tvdb",
+            ]
+        );
+
+        // Once stored, it is not looked up again.
+        t.sync().await?;
+        assert!(
+            t.requests()
+                .iter()
+                .all(|(path, _)| path.starts_with("map/"))
+        );
         Ok(())
     }
 

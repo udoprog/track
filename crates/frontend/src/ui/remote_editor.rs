@@ -96,7 +96,9 @@ fn hint(source: api::RemoteSource) -> Option<&'static str> {
         api::RemoteSource::Anidb => Some(
             "AniDB takes an anime id (anidb.net/anime/17617); a show split into cours can have one per cour.",
         ),
-        api::RemoteSource::Xem => Some("XEM takes tvdb/<id> or anidb/<id>."),
+        api::RemoteSource::Xem => Some(
+            "XEM takes tvdb/<id> or anidb/<id>; its slug is XEM's show id, found when syncing.",
+        ),
         _ => None,
     }
 }
@@ -449,7 +451,11 @@ impl Component for RemoteEditor {
                                         {r.remote.remote.value().to_string()}
 
                                         if let Some(slug) = r.remote.slug.as_deref() {
-                                            {format!("/{slug}")}
+                                            if *r.remote.remote.source() == api::RemoteSource::Xem {
+                                                {format!(" #{slug}")}
+                                            } else {
+                                                {format!("/{slug}")}
+                                            }
                                         }
                                     </span>
                                 </>
