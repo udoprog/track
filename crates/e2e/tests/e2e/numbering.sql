@@ -1,7 +1,9 @@
 -- Two more episodes for the seeded show, which XEM numbers as TheTVDB S1 E1-3
 -- and S2 E1-2, so its five-episode first season does not line up. Scene
--- numbers like TheTVDB, TheTVDB's S2E2 is a double episode, and XEM knows
--- other names for the show and both of TheTVDB's seasons.
+-- numbers like TheTVDB, AniDB numbers the same entries as S1 E1-5, Trakt
+-- (hidden on episodes) has no first entry so its episode order disagrees,
+-- TheTVDB's S2E2 is a double episode, and XEM knows other names for the
+-- show and both of TheTVDB's seasons.
 
 INSERT INTO episodes (id, show_id, season, episode, aired)
 VALUES
@@ -25,7 +27,11 @@ VALUES
     (1001, 1, 'scene', 0, 1, 2, 2),
     (1001, 2, 'scene', 0, 1, 3, 3),
     (1001, 3, 'scene', 0, 2, 1, 4),
-    (1001, 4, 'scene', 0, 2, 2, 5);
+    (1001, 4, 'scene', 0, 2, 2, 5),
+    (1001, 1, 'trakt', 0, 1, 1, 1),
+    (1001, 2, 'trakt', 0, 1, 2, 2),
+    (1001, 3, 'trakt', 0, 1, 3, 3),
+    (1001, 4, 'trakt', 0, 1, 4, 4);
 
 INSERT INTO xem_names (show_id, season, language, name)
 VALUES

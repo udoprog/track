@@ -1,6 +1,8 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use musli_core::{Decode, Encode};
+
+use crate::XemSystemEpisodes;
 
 /// XEM's numbering systems a range can target, as XEM names them, with their
 /// labels.
@@ -187,6 +189,102 @@ pub fn suggest_numbering(
     }
 
     Numbering { ranges }
+}
+
+/// XEM's episodes of every system, linked through the map entries they share.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct XemLinks {
+    systems: Vec<String>,
+    entries: HashMap<(usize, u32, u32), u32>,
+    codes: HashMap<(u32, usize), (u32, u32)>,
+}
+
+impl XemLinks {
+    pub fn new(systems: &[XemSystemEpisodes]) -> Self {
+        let mut out = Self::default();
+
+        for (index, s) in systems.iter().enumerate() {
+            out.systems.push(s.system.clone());
+
+            for (&(season, episode), &entry) in s.episodes.iter().zip(&s.entries) {
+                out.entries.insert((index, season, episode), entry);
+                out.codes.entry((entry, index)).or_insert((season, episode));
+            }
+        }
+
+        out
+    }
+
+    fn index(&self, system: &str) -> Option<usize> {
+        self.systems.iter().position(|s| s == system)
+    }
+
+    /// The map entry `system` numbers `season`/`episode` in.
+    pub fn entry(&self, system: &str, season: u32, episode: u32) -> Option<u32> {
+        let index = self.index(system)?;
+        self.entries.get(&(index, season, episode)).copied()
+    }
+
+    /// The code of `system`'s episode `season`/`episode` in the `to` system.
+    pub fn translate(
+        &self,
+        system: &str,
+        season: u32,
+        episode: u32,
+        to: &str,
+    ) -> Option<(u32, u32)> {
+        if system == to {
+            return Some((season, episode));
+        }
+
+        let entry = self.entry(system, season, episode)?;
+        self.codes.get(&(entry, self.index(to)?)).copied()
+    }
+
+    /// The map entries the show's regular `episodes` reach when suggested
+    /// from `system`'s episode order, as [`suggest_numbering`] pairs them.
+    fn suggested_entries(&self, episodes: &[(u32, u32)], system: &XemSystemEpisodes) -> Vec<u32> {
+        let mut targets = system
+            .episodes
+            .iter()
+            .zip(&system.entries)
+            .filter(|((s, _), _)| *s > 0)
+            .collect::<Vec<_>>();
+        targets.sort();
+
+        targets
+            .into_iter()
+            .take(regular(episodes).len())
+            .map(|(_, &entry)| entry)
+            .collect()
+    }
+
+    /// The systems a suggestion could pair the show's `episodes` with,
+    /// grouped by the numbering they would give: systems in one group reach
+    /// the same map entries in the same order. Groups and their systems keep
+    /// the order of `systems`.
+    pub fn suggestion_bases(
+        &self,
+        episodes: &[(u32, u32)],
+        systems: &[XemSystemEpisodes],
+    ) -> Vec<Vec<String>> {
+        let mut groups = Vec::<(Vec<u32>, Vec<String>)>::new();
+
+        for system in systems {
+            if regular(&system.episodes).is_empty() {
+                continue;
+            }
+
+            let entries = self.suggested_entries(episodes, system);
+
+            match groups.iter_mut().find(|(e, _)| *e == entries) {
+                Some((_, names)) => names.push(system.system.clone()),
+                None => groups.push((entries, vec![system.system.clone()])),
+            }
+        }
+
+        groups.into_iter().map(|(_, names)| names).collect()
+    }
 }
 
 /// A regular season whose episode count differs between the show and

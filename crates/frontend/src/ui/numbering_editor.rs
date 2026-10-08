@@ -38,6 +38,29 @@ pub(crate) enum Field {
     TargetFirst,
 }
 
+/// A column of the map: the show's own (TMDB) episodes, or an XEM system's.
+#[derive(Clone, PartialEq)]
+pub(crate) enum Side {
+    Tmdb,
+    System(String),
+}
+
+impl Side {
+    fn label(&self) -> &str {
+        match self {
+            Side::Tmdb => "TMDB",
+            Side::System(system) => api::xem_system_label(system),
+        }
+    }
+
+    fn logo(&self) -> &str {
+        match self {
+            Side::Tmdb => "tmdb",
+            Side::System(system) => system,
+        }
+    }
+}
+
 pub(crate) enum Msg {
     Channel(Result<ws::Channel, ws::Error>),
     Loaded(Result<ws::Packet<api::GetShowNumbering>, ws::Error>),
@@ -45,15 +68,17 @@ pub(crate) enum Msg {
     Set(usize, Field, String),
     SetSystem(usize, String),
     Select(Option<usize>),
-    /// A click on the show's episode.
-    PickEpisode(u32, u32),
-    /// A click on an episode of the shown numbering.
-    PickTarget(u32, u32),
-    View(String),
+    /// A click on an episode in a column of the map.
+    Pick(Side, u32, u32),
     ToggleSpecials,
     Add,
     Remove(usize),
+    /// Suggest from episode order, asking for the basis when the numberings
+    /// disagree.
     Suggest,
+    /// Suggest from the episode order of a system.
+    SuggestFrom(String),
+    CancelSuggest,
     Save,
     Saved(Result<ws::Packet<api::SetShowNumbering>, ws::Error>),
 }
@@ -109,6 +134,23 @@ impl Row {
         self.first = first.to_string();
         self.last = last.to_string();
     }
+
+    /// Point the range at `system`'s `season`/`first`, keeping its length.
+    fn set_target(&mut self, system: &str, season: u32, first: u32) {
+        self.system = system.to_owned();
+        self.target_season = season.to_string();
+        self.target_first = first.to_string();
+    }
+
+    /// Set the range's span in its target to `first..=last`, which moves the
+    /// end of its TMDB span to match.
+    fn set_target_span(&mut self, system: &str, season: u32, first: u32, last: u32) {
+        self.set_target(system, season, first);
+
+        if let Ok(start) = self.first.trim().parse::<u32>() {
+            self.last = (start + (last - first)).to_string();
+        }
+    }
 }
 
 /// Whether `r` can be drawn: its numbers are in order and start at 1.
@@ -118,12 +160,6 @@ fn drawable(r: &api::NumberingRange) -> bool {
 
 fn covers(r: &api::NumberingRange, season: u32, episode: u32) -> bool {
     r.season == season && (r.first..=r.last).contains(&episode)
-}
-
-fn targets(r: &api::NumberingRange, system: &str, season: u32, episode: u32) -> bool {
-    r.system == system
-        && r.target_season == season
-        && (r.target_first..=r.target_last()).contains(&episode)
 }
 
 /// The warning for a season automatic numbering gets wrong.
@@ -167,6 +203,15 @@ fn runs(episodes: &[u32]) -> String {
     out.join(", ")
 }
 
+/// A span of episodes as `S1 E4–E5`, or `S1 E4` for one.
+fn span(season: u32, first: u32, last: u32) -> String {
+    if first == last {
+        format!("S{season} E{first}")
+    } else {
+        format!("S{season} E{first}–E{last}")
+    }
+}
+
 /// A season drawn in a column of the map: episodes `lo..=hi` under a heading
 /// at `top`.
 struct ColumnSeason {
@@ -178,8 +223,9 @@ struct ColumnSeason {
     top: u32,
 }
 
-/// One side of the map: the seasons of a numbering, laid out top to bottom.
+/// One column of the map: the seasons of a numbering, laid out top to bottom.
 struct Column {
+    side: Side,
     seasons: Vec<ColumnSeason>,
     known: BTreeSet<(u32, u32)>,
 }
@@ -188,7 +234,7 @@ impl Column {
     /// The `known` episodes, widened to the `used` spans of ranges as
     /// `(season, first, last)`. Specials are left out unless asked for or
     /// used.
-    fn new(known: &[(u32, u32)], used: &[(u32, u32, u32)], specials: bool) -> Self {
+    fn new(side: Side, known: &[(u32, u32)], used: &[(u32, u32, u32)], specials: bool) -> Self {
         let known = known
             .iter()
             .copied()
@@ -230,7 +276,11 @@ impl Column {
             top += HEAD + (hi - lo + 1) * ROW;
         }
 
-        Self { seasons, known }
+        Self {
+            side,
+            seasons,
+            known,
+        }
     }
 
     fn height(&self) -> u32 {
@@ -250,23 +300,29 @@ impl Column {
     }
 }
 
+/// The ranges reaching each episode of a column, as `(row, TMDB code)`.
+type Reach = BTreeMap<(u32, u32), Vec<(usize, (u32, u32))>>;
+
 /// The editor for a show's episode numbering: the show's episodes beside
-/// those of an XEM numbering, with a band for each range that links them.
+/// those of every numbering XEM has for it, with a band for each range
+/// through all of them.
 pub(crate) struct NumberingEditor {
     channel: ws::Channel,
     _setup: SetupChannel,
     _load_req: ws::Request,
     _save_req: ws::Request,
     data: Option<api::ShowNumbering>,
+    links: api::XemLinks,
     manual: bool,
     rows: Vec<Row>,
-    /// The rows are an unedited suggestion.
-    suggested: bool,
+    /// The system the rows were suggested from, while they are unedited.
+    suggested: Option<String>,
+    /// Asking which numbering to suggest from.
+    asking: bool,
     selected: Option<usize>,
-    /// The first episode clicked of a span the next click completes.
-    anchor: Option<(u32, u32)>,
-    /// The numbering shown beside the show's episodes in manual mode.
-    view: String,
+    /// The first episode clicked of a span the next click in the same column
+    /// completes.
+    anchor: Option<(Side, u32, u32)>,
     specials: bool,
     /// Problems the server reported on the last save.
     rejected: Vec<api::RangeError>,
@@ -298,23 +354,19 @@ impl Component for NumberingEditor {
             .map(Row::new)
             .collect::<Vec<_>>();
 
-        let view = rows
-            .first()
-            .map_or("tvdb", |r| r.system.as_str())
-            .to_owned();
-
         Self {
             channel: ws::Channel::default(),
             _setup: SetupChannel::new(ws, ctx.link().callback(Msg::Channel)),
             _load_req: ws::Request::default(),
             _save_req: ws::Request::default(),
             data: None,
+            links: api::XemLinks::default(),
             manual: props.manual || props.numbering.is_some(),
             rows,
-            suggested: false,
+            suggested: None,
+            asking: false,
             selected: None,
             anchor: None,
-            view,
             specials: false,
             rejected: Vec::new(),
             saving: false,
@@ -344,6 +396,16 @@ impl Component for NumberingEditor {
                 ctx.props().numbering.is_none()
             };
 
+        let bases = self.bases();
+
+        let suggest_title = match bases.as_slice() {
+            [group] => format!(
+                "Suggest from episode order ({})",
+                api::xem_system_label(self.basis(group))
+            ),
+            _ => "Suggest from episode order".to_owned(),
+        };
+
         html! {
             <Modal icon="adjustments-horizontal" title={html!("Episode numbering")} class="numbering-modal" on_close={on_close.clone()}>
                 <div class="numbering-mode" role="group" aria-label="Numbering mode">
@@ -352,7 +414,7 @@ impl Component for NumberingEditor {
                 </div>
 
                 <div class="numbering-layout">
-                    { self.view_status(ctx, &ranges) }
+                    { self.view_status(ctx, &ranges, &bases, &suggest_title) }
                     { self.view_map(ctx, &ranges, &errors) }
 
                     if self.manual {
@@ -368,8 +430,8 @@ impl Component for NumberingEditor {
                                 <Button
                                     icon="sparkles"
                                     label="Suggest from episode order"
-                                    title={format!("Suggest from episode order ({})", api::xem_system_label(self.suggest_system()))}
-                                    disabled={!self.can_suggest()}
+                                    title={suggest_title}
+                                    disabled={bases.is_empty()}
                                     onclick={link.callback(|_: MouseEvent| Msg::Suggest)}
                                 />
                             </div>
@@ -410,10 +472,11 @@ impl NumberingEditor {
                     .context(Message::LoadingNumbering)?
                     .decode()
                     .context(Message::LoadingNumbering)?;
+                self.links = api::XemLinks::new(&data.systems);
                 self.data = Some(data);
 
                 if self.manual && self.rows.is_empty() {
-                    self.suggest();
+                    self.start_suggestion();
                 }
 
                 Ok(true)
@@ -422,9 +485,10 @@ impl NumberingEditor {
                 self.manual = manual;
                 self.selected = None;
                 self.anchor = None;
+                self.asking = false;
 
                 if manual && self.rows.is_empty() {
-                    self.suggest();
+                    self.start_suggestion();
                 }
 
                 Ok(true)
@@ -439,8 +503,7 @@ impl NumberingEditor {
             }
             Msg::SetSystem(index, system) => {
                 if let Some(row) = self.rows.get_mut(index) {
-                    row.system = system.clone();
-                    self.view = system;
+                    row.system = system;
                 }
 
                 self.edited();
@@ -449,47 +512,14 @@ impl NumberingEditor {
             Msg::Select(index) => {
                 self.selected = index.filter(|&i| i < self.rows.len());
                 self.anchor = None;
-
-                if let Some(i) = self.selected {
-                    self.view = self.rows[i].system.clone();
-                }
-
                 Ok(true)
             }
-            Msg::PickEpisode(season, episode) => {
+            Msg::Pick(side, season, episode) => {
                 if !self.manual {
                     return Ok(false);
                 }
 
-                self.pick_episode(season, episode);
-                Ok(true)
-            }
-            Msg::PickTarget(season, episode) => {
-                if !self.manual {
-                    return Ok(false);
-                }
-
-                match self.selected {
-                    Some(i) => {
-                        let row = &mut self.rows[i];
-                        row.system = self.view.clone();
-                        row.target_season = season.to_string();
-                        row.target_first = episode.to_string();
-                        self.anchor = None;
-                        self.edited();
-                    }
-                    None => {
-                        self.selected = self.rows.iter().position(|row| {
-                            row.parse()
-                                .is_some_and(|r| targets(&r, &self.view, season, episode))
-                        });
-                    }
-                }
-
-                Ok(true)
-            }
-            Msg::View(system) => {
-                self.view = system;
+                self.pick(side, season, episode);
                 Ok(true)
             }
             Msg::ToggleSpecials => {
@@ -515,13 +545,12 @@ impl NumberingEditor {
                         season: 1,
                         first: 1,
                         last: 1,
-                        system: self.view.clone(),
+                        system: self.default_system(),
                         target_season: 1,
                         target_first: 1,
                     }),
                 };
 
-                self.view = row.system.clone();
                 self.rows.push(row);
                 self.selected = Some(self.rows.len() - 1);
                 self.anchor = None;
@@ -544,9 +573,21 @@ impl NumberingEditor {
                 Ok(true)
             }
             Msg::Suggest => {
-                self.manual = true;
-                self.suggest();
+                if !self.start_suggestion() {
+                    self.manual = true;
+                }
+
                 self.rejected.clear();
+                Ok(true)
+            }
+            Msg::SuggestFrom(system) => {
+                self.manual = true;
+                self.suggest(&system);
+                self.rejected.clear();
+                Ok(true)
+            }
+            Msg::CancelSuggest => {
+                self.asking = false;
                 Ok(true)
             }
             Msg::Save => {
@@ -591,52 +632,210 @@ impl NumberingEditor {
     }
 
     fn edited(&mut self) {
-        self.suggested = false;
+        self.suggested = None;
         self.rejected.clear();
     }
 
-    /// A click on the show's episode `season`/`episode`. With a range
-    /// selected, two clicks set its span; otherwise a click selects the range
-    /// the episode is in, or starts a new range there.
-    fn pick_episode(&mut self, season: u32, episode: u32) {
-        let parsed = self.rows.iter().map(Row::parse).collect::<Vec<_>>();
-        let owner = parsed
+    /// The systems drawn beside TMDB, in the order of [`api::XEM_SYSTEMS`]:
+    /// TheTVDB, which automatic numbering uses, every system XEM numbers the
+    /// show in, and any a range targets.
+    fn systems(&self) -> Vec<&'static str> {
+        api::XEM_SYSTEMS
             .iter()
-            .position(|r| r.as_ref().is_some_and(|r| covers(r, season, episode)));
+            .map(|&(name, _)| name)
+            .filter(|&name| {
+                name == "tvdb"
+                    || self
+                        .data
+                        .as_ref()
+                        .is_some_and(|d| !d.system(name).is_empty())
+                    || self.rows.iter().any(|r| r.system == name)
+            })
+            .collect()
+    }
+
+    /// The systems a suggestion can follow, grouped by the numbering they
+    /// give: one group when they all agree.
+    fn bases(&self) -> Vec<Vec<String>> {
+        let Some(data) = &self.data else {
+            return Vec::new();
+        };
+
+        let systems = self
+            .systems()
+            .into_iter()
+            .filter_map(|name| data.systems.iter().find(|s| s.system == name).cloned())
+            .collect::<Vec<_>>();
+
+        self.links.suggestion_bases(&data.episodes, &systems)
+    }
+
+    /// The system to suggest from in a group that agrees: the one the ranges
+    /// already use, else the first.
+    fn basis<'a>(&self, group: &'a [String]) -> &'a str {
+        self.rows
+            .first()
+            .and_then(|r| group.iter().find(|s| **s == r.system))
+            .or(group.first())
+            .map_or("tvdb", String::as_str)
+    }
+
+    /// The system a new range targets: the one the ranges use, else the first
+    /// with episodes.
+    fn default_system(&self) -> String {
+        if let Some(row) = self.rows.first() {
+            return row.system.clone();
+        }
+
+        let data = self.data.as_ref();
+
+        self.systems()
+            .into_iter()
+            .find(|name| data.is_some_and(|d| !d.system(name).is_empty()))
+            .unwrap_or("tvdb")
+            .to_owned()
+    }
+
+    /// Suggest ranges when the numberings agree on episode order, otherwise
+    /// ask which to follow. Returns whether it asked.
+    fn start_suggestion(&mut self) -> bool {
+        match self.bases().as_slice() {
+            [] => false,
+            [group] => {
+                let system = self.basis(group).to_owned();
+                self.suggest(&system);
+                false
+            }
+            _ => {
+                self.asking = true;
+                true
+            }
+        }
+    }
+
+    fn suggest(&mut self, system: &str) {
+        let Some(data) = &self.data else {
+            return;
+        };
+
+        let n = api::suggest_numbering(&data.episodes, system, data.system(system));
+        self.rows = n.ranges.iter().map(Row::new).collect();
+        self.selected = None;
+        self.anchor = None;
+        self.asking = false;
+        self.suggested = Some(system.to_owned());
+    }
+
+    /// Where `r` puts its TMDB `episode` in a column: the TMDB code itself,
+    /// its target in the range's system, or that target's code in another
+    /// system that XEM links it to.
+    fn address(&self, r: &api::NumberingRange, episode: u32, side: &Side) -> Option<(u32, u32)> {
+        let target = r.target_first + (episode - r.first);
+
+        match side {
+            Side::Tmdb => Some((r.season, episode)),
+            Side::System(system) => {
+                self.links
+                    .translate(&r.system, r.target_season, target, system)
+            }
+        }
+    }
+
+    /// Every episode of `side` the `drawn` ranges reach.
+    fn reach(&self, drawn: &[(usize, api::NumberingRange)], side: &Side) -> Reach {
+        let mut out = Reach::new();
+
+        for (i, r) in drawn {
+            for e in r.first..=r.last {
+                if let Some(code) = self.address(r, e, side) {
+                    out.entry(code).or_default().push((*i, (r.season, e)));
+                }
+            }
+        }
+
+        out
+    }
+
+    /// A click on episode `season`/`episode` of `side`. With a range
+    /// selected, two clicks in a column set its span there: in TMDB its
+    /// episodes, elsewhere the episodes they map to. Otherwise a click
+    /// selects the range reaching the episode, or starts a new range there.
+    fn pick(&mut self, side: Side, season: u32, episode: u32) {
+        let parsed = self.rows.iter().map(Row::parse).collect::<Vec<_>>();
+        let drawn = parsed
+            .iter()
+            .enumerate()
+            .filter_map(|(i, r)| Some((i, r.clone().filter(drawable)?)))
+            .collect::<Vec<_>>();
+
+        let owners = self
+            .reach(&drawn, &side)
+            .remove(&(season, episode))
+            .unwrap_or_default();
 
         if let Some(i) = self.selected {
-            if let Some((s, e)) = self.anchor
-                && s == season
+            if let Some((s, e)) = self
+                .anchor
+                .as_ref()
+                .filter(|(a, s, _)| *a == side && *s == season)
+                .map(|&(_, s, e)| (s, e))
             {
-                self.rows[i].set_span(season, e.min(episode), e.max(episode));
+                let (first, last) = (e.min(episode), e.max(episode));
+
+                match &side {
+                    Side::Tmdb => self.rows[i].set_span(s, first, last),
+                    Side::System(system) => self.rows[i].set_target_span(system, s, first, last),
+                }
+
                 self.anchor = None;
                 self.edited();
                 return;
             }
 
-            if owner.is_none_or(|o| o == i) {
-                self.rows[i].set_span(season, episode, episode);
-                self.anchor = Some((season, episode));
+            if owners.iter().all(|(o, _)| *o == i) {
+                match &side {
+                    Side::Tmdb => self.rows[i].set_span(season, episode, episode),
+                    Side::System(system) => self.rows[i].set_target(system, season, episode),
+                }
+
+                self.anchor = Some((side, season, episode));
                 self.edited();
                 return;
             }
         }
 
-        if let Some(o) = owner {
+        if let Some(&(o, _)) = owners.first() {
             self.selected = Some(o);
             self.anchor = None;
-            self.view = self.rows[o].system.clone();
             return;
         }
 
-        // A new range continues the one holding the previous episode, or else
-        // starts at the same code in the shown numbering.
+        let range = match &side {
+            Side::Tmdb => self.new_from_tmdb(&parsed, season, episode),
+            Side::System(system) => self.new_from_target(&drawn, system, season, episode),
+        };
+
+        self.rows.push(Row::new(&range));
+        self.selected = Some(self.rows.len() - 1);
+        self.anchor = Some((side, season, episode));
+        self.edited();
+    }
+
+    /// A new range from TMDB's `season`/`episode`: it continues the range
+    /// holding the previous episode, or else starts at the same code in the
+    /// ranges' system.
+    fn new_from_tmdb(
+        &self,
+        parsed: &[Option<api::NumberingRange>],
+        season: u32,
+        episode: u32,
+    ) -> api::NumberingRange {
         let previous = parsed
             .iter()
             .flatten()
             .find(|r| episode > 1 && covers(r, season, episode - 1));
 
-        let range = match previous {
+        match previous {
             Some(r) => api::NumberingRange {
                 season,
                 first: episode,
@@ -649,48 +848,54 @@ impl NumberingEditor {
                 season,
                 first: episode,
                 last: episode,
-                system: self.view.clone(),
+                system: self.default_system(),
                 target_season: season,
                 target_first: episode,
             },
+        }
+    }
+
+    /// A new range onto `system`'s `season`/`episode`: from the TMDB episode
+    /// after the one mapped to the previous episode, else the first TMDB
+    /// episode no range covers, else the same code.
+    fn new_from_target(
+        &self,
+        drawn: &[(usize, api::NumberingRange)],
+        system: &str,
+        season: u32,
+        episode: u32,
+    ) -> api::NumberingRange {
+        let side = Side::System(system.to_owned());
+        let reach = self.reach(drawn, &side);
+
+        let previous = (episode > 1)
+            .then(|| reach.get(&(season, episode - 1)))
+            .flatten()
+            .and_then(|o| o.first())
+            .map(|&(_, (s, e))| (s, e + 1));
+
+        let unmapped = || {
+            let mut episodes = self
+                .data
+                .iter()
+                .flat_map(|d| &d.episodes)
+                .copied()
+                .filter(|&(s, e)| s > 0 && !drawn.iter().any(|(_, r)| covers(r, s, e)))
+                .collect::<Vec<_>>();
+            episodes.sort();
+            episodes.first().copied()
         };
 
-        self.view = range.system.clone();
-        self.rows.push(Row::new(&range));
-        self.selected = Some(self.rows.len() - 1);
-        self.anchor = Some((season, episode));
-        self.edited();
-    }
+        let (s, e) = previous.or_else(unmapped).unwrap_or((season, episode));
 
-    /// The system suggestions pair episodes with: the first range's, else
-    /// TheTVDB.
-    fn suggest_system(&self) -> &str {
-        self.rows.first().map_or("tvdb", |r| r.system.as_str())
-    }
-
-    fn can_suggest(&self) -> bool {
-        self.data
-            .as_ref()
-            .is_some_and(|d| !d.system(self.suggest_system()).is_empty())
-    }
-
-    fn suggest(&mut self) {
-        let Some(data) = &self.data else {
-            return;
-        };
-
-        let system = self.suggest_system().to_owned();
-        let n = api::suggest_numbering(&data.episodes, &system, data.system(&system));
-        self.rows = n.ranges.iter().map(Row::new).collect();
-        self.view = system;
-        self.selected = None;
-        self.anchor = None;
-        self.suggested = true;
-    }
-
-    /// The numbering shown beside the show's episodes.
-    fn view_system(&self) -> &str {
-        if self.manual { &self.view } else { "tvdb" }
+        api::NumberingRange {
+            season: s,
+            first: e,
+            last: e,
+            system: system.to_owned(),
+            target_season: season,
+            target_first: episode,
+        }
     }
 
     /// Each row's parsed range, and every problem as (row, message).
@@ -786,7 +991,53 @@ impl NumberingEditor {
             .collect()
     }
 
-    fn view_status(&self, ctx: &Context<Self>, ranges: &[Option<api::NumberingRange>]) -> Html {
+    /// XEM's regular episodes no range reaches, each told once in the first
+    /// system that numbers it, as `(system, season, episodes)`.
+    fn unreached(
+        &self,
+        drawn: &[(usize, api::NumberingRange)],
+    ) -> Vec<(&'static str, u32, Vec<u32>)> {
+        let Some(data) = &self.data else {
+            return Vec::new();
+        };
+
+        let mut told = BTreeSet::new();
+
+        for (_, r) in drawn {
+            for e in r.target_first..=r.target_last() {
+                told.extend(self.links.entry(&r.system, r.target_season, e));
+            }
+        }
+
+        let mut out = Vec::new();
+
+        for system in self.systems() {
+            let mut seasons = BTreeMap::<u32, Vec<u32>>::new();
+
+            for &(s, e) in data.system(system) {
+                if s > 0
+                    && let Some(entry) = self.links.entry(system, s, e)
+                    && told.insert(entry)
+                {
+                    seasons.entry(s).or_default().push(e);
+                }
+            }
+
+            for (s, episodes) in seasons {
+                out.push((system, s, episodes));
+            }
+        }
+
+        out
+    }
+
+    fn view_status(
+        &self,
+        ctx: &Context<Self>,
+        ranges: &[Option<api::NumberingRange>],
+        bases: &[Vec<String>],
+        suggest_title: &str,
+    ) -> Html {
         let link = ctx.link();
 
         let Some(data) = &self.data else {
@@ -794,28 +1045,20 @@ impl NumberingEditor {
         };
 
         let drawn = self.drawn(ranges);
-        let system = self.view_system();
-        let label = api::xem_system_label(system);
 
-        // The shown numbering's regular episodes no range reaches.
-        let mut unreached = BTreeMap::<u32, Vec<u32>>::new();
-
-        for &(s, e) in data.system(system) {
-            if s > 0 && !drawn.iter().any(|(_, r)| targets(r, system, s, e)) {
-                unreached.entry(s).or_default().push(e);
-            }
-        }
-
-        let unreached = unreached
-            .iter()
-            .map(|(s, episodes)| {
+        let unreached = self
+            .unreached(&drawn)
+            .into_iter()
+            .map(|(system, s, episodes)| {
                 html! {
                     <p class="hint numbering-unreached">
-                        {format!("No TMDB episode maps to {label} S{s} {}.", runs(episodes))}
+                        {format!("No TMDB episode maps to {} S{s} {}.", api::xem_system_label(system), runs(&episodes))}
                     </p>
                 }
             })
             .collect::<Html>();
+
+        let asking = self.view_bases(ctx, bases);
 
         if !self.manual {
             let mismatches = api::numbering_mismatches(&data.episodes, data.system("tvdb"));
@@ -832,7 +1075,7 @@ impl NumberingEditor {
 
                     (!missing.is_empty()).then(|| html! {
                         <p class="numbering-missing">
-                            {format!("XEM has no {label} S{} {}, so TMDB S{} {} get no other numbers.", r.target_season, runs(&missing), r.season, runs(&episodes))}
+                            {format!("XEM has no {} S{} {}, so TMDB S{} {} get no other numbers.", api::xem_system_label(&r.system), r.target_season, runs(&missing), r.season, runs(&episodes))}
                         </p>
                     })
                 })
@@ -855,9 +1098,13 @@ impl NumberingEditor {
                         {missing}
                         {unreached}
 
-                        <div class="numbering-tools">
-                            <Button icon="sparkles" label="Suggest from episode order" title="Suggest from episode order (TheTVDB)" disabled={data.system("tvdb").is_empty()} onclick={link.callback(|_: MouseEvent| Msg::Suggest)} />
-                        </div>
+                        if self.asking {
+                            {asking}
+                        } else {
+                            <div class="numbering-tools">
+                                <Button icon="sparkles" label="Suggest from episode order" title={suggest_title.to_owned()} disabled={bases.is_empty()} onclick={link.callback(|_: MouseEvent| Msg::Suggest)} />
+                            </div>
+                        }
                     }
                 </div>
             };
@@ -880,26 +1127,26 @@ impl NumberingEditor {
 
         let mapped = regular - unmapped.values().map(Vec::len).sum::<usize>();
 
-        let hint = match (self.selected, self.anchor) {
-            (Some(_), Some((s, e))) => format!(
-                "Click the last episode of the range in TMDB Season {s}, or E{e} again for one episode."
+        let hint = match (self.selected, &self.anchor) {
+            (Some(_), Some((side, s, e))) => format!(
+                "Click the last episode of the range in {} Season {s}, or E{e} again for one episode.",
+                side.label()
             ),
-            (Some(_), None) => format!(
-                "Click two TMDB episodes to set the range's first and last, and a {} episode to set where it starts.",
-                api::xem_system_label(&self.view)
-            ),
+            (Some(_), None) => "Click two TMDB episodes to set the range's first and last, or two episodes of another numbering to map it there.".to_owned(),
             (None, _) => {
-                "Click an unmapped TMDB episode to start a range, or a mapped one to edit its range."
+                "Click an unmapped episode in any column to start a range there, or a mapped one to edit its range."
                     .to_owned()
             }
         };
 
         html! {
             <div class="numbering-status">
-                if self.suggested {
+                {asking}
+
+                if let Some(system) = &self.suggested {
                     <p class="numbering-note">
                         <span class="icon sparkles" aria-hidden="true" />
-                        {format!("Suggested from {}'s episode order. Nothing is saved until you save.", api::xem_system_label(self.suggest_system()))}
+                        {format!("Suggested from {}'s episode order. Nothing is saved until you save.", api::xem_system_label(system))}
                     </p>
                 }
 
@@ -918,6 +1165,54 @@ impl NumberingEditor {
         }
     }
 
+    /// The numberings to suggest from when they disagree, each with what it
+    /// would map.
+    fn view_bases(&self, ctx: &Context<Self>, bases: &[Vec<String>]) -> Html {
+        let link = ctx.link();
+
+        let Some(data) = self.data.as_ref().filter(|_| self.asking) else {
+            return Html::default();
+        };
+
+        let options = bases.iter().map(|group| {
+            let system = self.basis(group).to_owned();
+            let n = api::suggest_numbering(&data.episodes, &system, data.system(&system));
+            let episodes = n.ranges.iter().map(|r| r.last - r.first + 1).sum::<u32>();
+            let names = group
+                .iter()
+                .map(|s| api::xem_system_label(s))
+                .collect::<Vec<_>>()
+                .join(" · ");
+
+            let ranges = match n.ranges.len() {
+                1 => "1 range".to_owned(),
+                n => format!("{n} ranges"),
+            };
+
+            html! {
+                <Button class="numbering-basis-option" title={format!("Suggest from {}", api::xem_system_label(&system))} onclick={link.callback(move |_: MouseEvent| Msg::SuggestFrom(system.clone()))}>
+                    for s in group {
+                        <span class={classes!("logo", s.clone())} aria-hidden="true" />
+                    }
+                    <span class="numbering-basis-name">{names}</span>
+                    <span class="text-muted">{format!("{episodes} episodes in {ranges}")}</span>
+                </Button>
+            }
+        });
+
+        html! {
+            <div class="numbering-basis" role="group" aria-label="Suggest from">
+                <p class="hint">{"These numberings put the episodes in different orders. Which should the suggestion follow?"}</p>
+
+                for option in options {
+                    {option}
+                }
+
+                <Button class="numbering-basis-cancel" icon="x-mark" label="Cancel" title="Cancel suggestion" onclick={link.callback(|_: MouseEvent| Msg::CancelSuggest)} />
+            </div>
+        }
+    }
+
     fn view_map(
         &self,
         ctx: &Context<Self>,
@@ -930,104 +1225,75 @@ impl NumberingEditor {
             return html! { <div class="numbering-map-pane" /> };
         };
 
-        let system = self.view_system();
-        let label = api::xem_system_label(system);
         let drawn = self.drawn(ranges);
-        let left = Column::new(
+
+        let mut columns = vec![Column::new(
+            Side::Tmdb,
             &data.episodes,
             &drawn
                 .iter()
                 .map(|(_, r)| (r.season, r.first, r.last))
                 .collect::<Vec<_>>(),
             self.specials,
+        )];
+
+        for system in self.systems() {
+            columns.push(Column::new(
+                Side::System(system.to_owned()),
+                data.system(system),
+                &drawn
+                    .iter()
+                    .filter(|(_, r)| r.system == system)
+                    .map(|(_, r)| (r.target_season, r.target_first, r.target_last()))
+                    .collect::<Vec<_>>(),
+                self.specials,
+            ));
+        }
+
+        let height = columns.iter().map(Column::height).max().unwrap_or(0);
+        let template = format!(
+            "grid-template-columns: repeat({}, var(--numbering-col) var(--numbering-gap)) var(--numbering-col)",
+            columns.len() - 1
         );
 
-        let right = Column::new(
-            data.system(system),
-            &drawn
-                .iter()
-                .filter(|(_, r)| r.system == system)
-                .map(|(_, r)| (r.target_season, r.target_first, r.target_last()))
-                .collect::<Vec<_>>(),
-            self.specials,
-        );
+        let mut map = Vec::new();
 
-        let height = left.height().max(right.height());
-        let invalid = |i: usize| self.manual && errors.iter().any(|(e, _)| *e == i);
+        for (index, column) in columns.iter().enumerate() {
+            let reach = self.reach(&drawn, &column.side);
+            map.push(self.view_column(ctx, column, &drawn, &reach, errors));
 
-        let bands = drawn
-            .iter()
-            .filter(|(_, r)| r.system == system)
-            .filter_map(|(i, r)| {
-                let y1 = left.y(r.season, r.first)? + 1;
-                let y2 = left.y(r.season, r.last)? + ROW - 1;
-                let y3 = right.y(r.target_season, r.target_first)? + 1;
-                let y4 = right.y(r.target_season, r.target_last())? + ROW - 1;
-                let d = format!(
-                    "M0 {y1} C50 {y1} 50 {y3} 100 {y3} L100 {y4} C50 {y4} 50 {y2} 0 {y2} Z"
-                );
+            if let Some(next) = columns.get(index + 1) {
+                map.push(self.view_bands(ctx, column, next, &drawn, errors, height));
+            }
+        }
 
-                let i = *i;
-                let class = classes!(
-                    "numbering-band",
-                    format!("tone-{}", i % 4),
-                    (self.selected == Some(i)).then_some("selected"),
-                    invalid(i).then_some("invalid"),
-                    (!self.missing_targets(r).is_empty()).then_some("missing"),
-                );
-
-                let onclick = self
-                    .manual
-                    .then(|| link.callback(move |_: MouseEvent| Msg::Select(Some(i))));
-
-                Some(html! {
-                    <path {class} {d} vector-effect="non-scaling-stroke" {onclick}>
-                        <title>{format!("S{} E{}–E{} → {label} S{} E{}–E{}", r.season, r.first, r.last, r.target_season, r.target_first, r.target_last())}</title>
-                    </path>
-                })
-            })
-            .collect::<Html>();
-
-        let systems = api::XEM_SYSTEMS
-            .iter()
-            .copied()
-            .filter(|(name, _)| {
-                *name == system
-                    || !data.system(name).is_empty()
-                    || self.rows.iter().any(|r| r.system == *name)
-            })
-            .collect::<Vec<_>>();
-
-        let on_view = link.callback(|e: Event| {
-            let select: HtmlSelectElement = e.target_unchecked_into();
-            Msg::View(select.value())
+        let heads = columns.iter().map(|c| {
+            html! {
+                <span class="numbering-map-source" title={c.side.label().to_owned()}>
+                    <span class={classes!("logo", c.side.logo().to_owned())} aria-hidden="true" />
+                    <span class="numbering-map-label visually-hidden">{c.side.label().to_owned()}</span>
+                </span>
+            }
         });
 
-        let has_specials = data.episodes.iter().any(|&(s, _)| s == 0)
-            || data.system(system).iter().any(|&(s, _)| s == 0);
+        let has_specials = columns.iter().any(|c| match &c.side {
+            Side::Tmdb => data.episodes.iter().any(|&(s, _)| s == 0),
+            Side::System(system) => data.system(system).iter().any(|&(s, _)| s == 0),
+        });
 
         html! {
             <div class={classes!("numbering-map-pane", (!self.manual).then_some("read-only"))}>
-                <div class="numbering-map-head">
-                    <span class="numbering-map-source"><span class="logo tmdb" aria-hidden="true" />{"TMDB"}</span>
-                    if self.manual {
-                        <select class="input-select" title="Shown numbering" onchange={on_view}>
-                            for (name, label) in systems {
-                                <option value={name} selected={name == system}>{label}</option>
-                            }
-                        </select>
-                    } else {
-                        <span class="numbering-map-source"><span class="logo tvdb" aria-hidden="true" />{label}</span>
+                <div class="numbering-map-head" style={template.clone()}>
+                    for head in heads {
+                        {head}
                     }
                 </div>
 
                 <div class="numbering-map-scroll">
-                    <div class="numbering-map" style={format!("height: {height}px")}>
-                        { self.view_left(ctx, &left, &drawn, errors) }
-                        <svg class="numbering-bands" viewBox={format!("0 0 100 {}", height.max(1))} preserveAspectRatio="none" style={format!("height: {height}px")} aria-hidden="true">
-                            {bands}
-                        </svg>
-                        { self.view_right(ctx, &right, &drawn, errors) }
+                    <div class="numbering-map" style={format!("{template}; height: {height}px")}>
+                        for part in map {
+                            {part}
+                        }
                     </div>
                 </div>
 
@@ -1040,123 +1306,135 @@ impl NumberingEditor {
         }
     }
 
-    /// The show's episodes.
-    fn view_left(
+    /// The bands between two neighbouring columns: for each range, a band per
+    /// run of its episodes that runs on in both.
+    fn view_bands(
         &self,
         ctx: &Context<Self>,
-        column: &Column,
+        left: &Column,
+        right: &Column,
         drawn: &[(usize, api::NumberingRange)],
         errors: &[(usize, String)],
+        height: u32,
     ) -> Html {
         let link = ctx.link();
+        let mut bands = Vec::new();
 
-        let seasons = column.seasons.iter().map(|s| {
-            let label = if s.season == 0 {
-                "Specials".to_owned()
-            } else {
-                format!("Season {}", s.season)
-            };
+        for (i, r) in drawn {
+            let i = *i;
+            let own = Side::System(r.system.clone());
+            let touches_own = left.side == own || right.side == own;
+            let missing = self.missing_targets(r);
 
-            let cells = (s.lo..=s.hi).map(|e| {
-                let season = s.season;
-                let owners = drawn
-                    .iter()
-                    .filter(|(_, r)| covers(r, season, e))
-                    .collect::<Vec<_>>();
-                let known = column.has(season, e);
+            // Runs as (first left, last left, first right, last right, whether
+            // they reach target episodes XEM doesn't know).
+            let mut runs = Vec::<((u32, u32), (u32, u32), (u32, u32), (u32, u32), bool)>::new();
 
-                let state = match owners.as_slice() {
-                    [] if known && season > 0 => "unmapped".to_owned(),
-                    [] => String::new(),
-                    [(i, _)] => format!("tone-{}", i % 4),
-                    _ => "overlap".to_owned(),
+            for e in r.first..=r.last {
+                let (Some(a), Some(b)) = (
+                    self.address(r, e, &left.side),
+                    self.address(r, e, &right.side),
+                ) else {
+                    continue;
                 };
 
-                let code = format!("TMDB S{season} E{e}");
+                let m = touches_own && missing.contains(&(r.target_first + (e - r.first)));
 
-                let title = match owners.as_slice() {
-                    [] if known => format!("{code}: not mapped"),
-                    [] => format!("{code}: not on TMDB"),
-                    [(_, r)] => format!(
-                        "{code} → {} S{} E{}",
-                        api::xem_system_label(&r.system),
-                        r.target_season,
-                        r.target_first + (e - r.first)
-                    ),
-                    _ => format!("{code}: in more than one range"),
+                if let Some(run) = runs.last_mut()
+                    && run.1.0 == a.0
+                    && run.1.1 + 1 == a.1
+                    && run.3.0 == b.0
+                    && run.3.1 + 1 == b.1
+                    && run.4 == m
+                {
+                    run.1 = a;
+                    run.3 = b;
+                    continue;
+                }
+
+                runs.push((a, a, b, b, m));
+            }
+
+            for (a1, a2, b1, b2, missing) in runs {
+                let (Some(y1), Some(y2), Some(y3), Some(y4)) = (
+                    left.y(a1.0, a1.1),
+                    left.y(a2.0, a2.1),
+                    right.y(b1.0, b1.1),
+                    right.y(b2.0, b2.1),
+                ) else {
+                    continue;
                 };
 
-                let class = classes!(
-                    "numbering-ep",
-                    state,
-                    (!known).then_some("future"),
-                    owners
-                        .iter()
-                        .any(|(i, _)| self.manual && self.selected == Some(*i))
-                        .then_some("selected"),
-                    owners
-                        .iter()
-                        .any(|(i, _)| self.manual && errors.iter().any(|(x, _)| x == i))
-                        .then_some("invalid"),
-                    (self.anchor == Some((season, e))).then_some("anchor"),
+                let (y1, y2, y3, y4) = (y1 + 1, y2 + ROW - 1, y3 + 1, y4 + ROW - 1);
+                let d = format!(
+                    "M0 {y1} C50 {y1} 50 {y3} 100 {y3} L100 {y4} C50 {y4} 50 {y2} 0 {y2} Z"
                 );
 
-                html! {
-                    <button type="button" {class} aria-label={code} {title} disabled={!self.manual} onclick={link.callback(move |_: MouseEvent| Msg::PickEpisode(season, e))}>
-                        <span>{format!("E{e}")}</span>
-                    </button>
-                }
-            });
+                let class = classes!(
+                    "numbering-band",
+                    format!("tone-{}", i % 4),
+                    (self.manual && self.selected == Some(i)).then_some("selected"),
+                    (self.manual && errors.iter().any(|(e, _)| *e == i)).then_some("invalid"),
+                    missing.then_some("missing"),
+                );
 
-            html! {
-                <>
-                    <div class="numbering-map-season">
-                        {label}<span class="text-muted">{format!(" · {}", s.known)}</span>
-                    </div>
-                    for cell in cells {
-                        {cell}
-                    }
-                </>
+                let onclick = self
+                    .manual
+                    .then(|| link.callback(move |_: MouseEvent| Msg::Select(Some(i))));
+
+                let title = format!(
+                    "{} {} ↔ {} {}",
+                    left.side.label(),
+                    span(a1.0, a1.1, a2.1),
+                    right.side.label(),
+                    span(b1.0, b1.1, b2.1)
+                );
+
+                bands.push(html! {
+                    <path {class} {d} vector-effect="non-scaling-stroke" {onclick}>
+                        <title>{title}</title>
+                    </path>
+                });
             }
-        });
+        }
 
         html! {
-            <div class="numbering-column">
-                for season in seasons {
-                    {season}
+            <svg class="numbering-bands" viewBox={format!("0 0 100 {}", height.max(1))} preserveAspectRatio="none" style={format!("height: {height}px")} aria-hidden="true">
+                for band in bands {
+                    {band}
                 }
-            </div>
+            </svg>
         }
     }
 
-    /// The shown numbering's episodes.
-    fn view_right(
+    /// A column's episodes, each marked by the ranges reaching it.
+    fn view_column(
         &self,
         ctx: &Context<Self>,
         column: &Column,
         drawn: &[(usize, api::NumberingRange)],
+        reach: &Reach,
         errors: &[(usize, String)],
     ) -> Html {
         let link = ctx.link();
-        let system = self.view_system();
-        let label = api::xem_system_label(system);
+        let side = &column.side;
+        let label = side.label();
+        let tmdb = *side == Side::Tmdb;
 
         let seasons = column.seasons.iter().map(|s| {
-            let heading = if s.season == 0 {
-                "Specials".to_owned()
+            let (heading, name) = if s.season == 0 {
+                ("Sp".to_owned(), "Specials".to_owned())
             } else {
-                format!("Season {}", s.season)
+                (format!("S{}", s.season), format!("Season {}", s.season))
             };
 
             let cells = (s.lo..=s.hi).map(|e| {
                 let season = s.season;
-                let owners = drawn
-                    .iter()
-                    .filter(|(_, r)| targets(r, system, season, e))
-                    .collect::<Vec<_>>();
+                let owners = reach.get(&(season, e)).map_or(&[][..], Vec::as_slice);
                 let known = column.has(season, e);
 
-                let state = match owners.as_slice() {
+                let state = match owners {
+                    [] if tmdb && known && season > 0 => "unmapped".to_owned(),
                     [] => String::new(),
                     [(i, _)] => format!("tone-{}", i % 4),
                     _ => "overlap".to_owned(),
@@ -1164,23 +1442,33 @@ impl NumberingEditor {
 
                 let code = format!("{label} S{season} E{e}");
 
-                let title = match owners.as_slice() {
-                    _ if !known && !owners.is_empty() => format!("{code}: not in XEM"),
+                let title = match owners {
+                    _ if !tmdb && !known && !owners.is_empty() => format!("{code}: not in XEM"),
+                    [] if tmdb && known => format!("{code}: not mapped"),
+                    [] if tmdb => format!("{code}: not on TMDB"),
                     [] if known => format!("{code}: no TMDB episode"),
                     [] => format!("{code}: not in XEM"),
-                    [(_, r)] => format!(
-                        "{code} ← TMDB S{} E{}",
-                        r.season,
-                        r.first + (e - r.target_first)
-                    ),
-                    _ => format!("{code}: the target of more than one range"),
+                    [(i, (ts, te))] if tmdb => {
+                        let target = drawn.iter().find(|(j, _)| j == i).and_then(|(_, r)| {
+                            let system = Side::System(r.system.clone());
+                            Some((system.label().to_owned(), self.address(r, *te, &system)?))
+                        });
+
+                        match target {
+                            Some((system, (s, e))) => format!("{code} ↔ {system} S{s} E{e}"),
+                            None => format!("{code}: not mapped"),
+                        }
+                    }
+                    [(_, (ts, te))] => format!("{code} ↔ TMDB S{ts} E{te}"),
+                    _ if tmdb => format!("{code}: in more than one range"),
+                    _ => format!("{code}: reached by more than one range"),
                 };
 
                 let class = classes!(
                     "numbering-ep",
                     state,
-                    (known && owners.is_empty()).then_some("untargeted"),
-                    (!known).then_some(if owners.is_empty() { "future" } else { "missing" }),
+                    (!tmdb && known && owners.is_empty()).then_some("untargeted"),
+                    (!known).then_some(if tmdb || owners.is_empty() { "future" } else { "missing" }),
                     owners
                         .iter()
                         .any(|(i, _)| self.manual && self.selected == Some(*i))
@@ -1189,10 +1477,17 @@ impl NumberingEditor {
                         .iter()
                         .any(|(i, _)| self.manual && errors.iter().any(|(x, _)| x == i))
                         .then_some("invalid"),
+                    self.anchor
+                        .as_ref()
+                        .is_some_and(|(a, s, x)| a == side && (*s, *x) == (season, e))
+                        .then_some("anchor"),
                 );
 
+                let pick = side.clone();
+                let onclick = link.callback(move |_: MouseEvent| Msg::Pick(pick.clone(), season, e));
+
                 html! {
-                    <button type="button" {class} aria-label={code} {title} disabled={!self.manual} onclick={link.callback(move |_: MouseEvent| Msg::PickTarget(season, e))}>
+                    <button type="button" {class} aria-label={code} {title} disabled={!self.manual} {onclick}>
                         <span>{format!("E{e}")}</span>
                     </button>
                 }
@@ -1200,7 +1495,7 @@ impl NumberingEditor {
 
             html! {
                 <>
-                    <div class="numbering-map-season">
+                    <div class="numbering-map-season" title={format!("{label} {name}: {} episodes", s.known)}>
                         {heading}<span class="text-muted">{format!(" · {}", s.known)}</span>
                     </div>
                     for cell in cells {
@@ -1211,7 +1506,7 @@ impl NumberingEditor {
         });
 
         html! {
-            <div class="numbering-column">
+            <div class="numbering-column" data-side={side.logo().to_owned()}>
                 for season in seasons {
                     {season}
                 }
@@ -1241,7 +1536,7 @@ impl NumberingEditor {
             Some(r) => html! {
                 <>
                     <span class="numbering-span">{format!("S{} E{}–E{}", r.season, r.first, r.last)}</span>
-                    <span class="icon arrow-long-right" aria-hidden="true" />
+                    <span class="icon arrows-right-left" aria-hidden="true" />
                     <span class={classes!("logo", r.system.clone())} title={api::xem_system_label(&r.system).to_owned()} />
                     <span class="numbering-span">{format!("S{} E{}–E{}", r.target_season, r.target_first, r.target_last())}</span>
                 </>

@@ -1276,9 +1276,33 @@ async fn pick(driver: &TestDriver, label: &str) -> Result<()> {
         .await
 }
 
+/// Answer the editor's question of which numbering to suggest from, after
+/// checking it offers TheTVDB with the numberings that agree with it, and
+/// Trakt.
+async fn suggest_from(driver: &TestDriver, label: &str) -> Result<()> {
+    driver
+        .wait_texts(
+            ".modal .numbering-basis-name",
+            ["TheTVDB · Scene · AniDB", "Trakt"],
+        )
+        .await?;
+    driver
+        .wait_texts(
+            ".modal .numbering-basis-option .text-muted",
+            ["5 episodes in 2 ranges", "4 episodes in 1 range"],
+        )
+        .await?;
+    driver
+        .find_one_by(&format!(".modal [title='Suggest from {label}']"))
+        .await?
+        .click()
+        .await?;
+    driver.wait_count(".modal .numbering-basis", 0).await
+}
+
 /// A show whose TMDB season doesn't line up with XEM warns in automatic
-/// mode, and the range editor shows where: TMDB episodes beside TheTVDB's,
-/// with a band per range. A suggestion previews there unsaved; ranges are
+/// mode, and the range editor shows where: TMDB episodes beside every
+/// numbering XEM has, with bands for each range. A suggestion previews there unsaved; ranges are
 /// selected, respanned, removed and created by clicking episodes, an overlap
 /// is flagged, and automatic mode clears the ranges again.
 pub async fn numbering_ranges_are_edited(driver: &mut TestDriver, track: &mut Track) -> Result<()> {
@@ -1320,17 +1344,21 @@ pub async fn numbering_ranges_are_edited(driver: &mut TestDriver, track: &mut Tr
     ensure!(driver.count(".modal .numbering-ep.missing").await? == 2);
     ensure!(driver.count(".modal .numbering-ep:not(:disabled)").await? == 0);
 
-    // The suggestion shows in the same view before anything is saved.
+    // Trakt orders the episodes differently from the others, so suggesting
+    // asks which to follow; the suggestion shows in the same view before
+    // anything is saved.
     driver
-        .find_one_by(".modal .numbering-status [title='Suggest from episode order (TheTVDB)']")
+        .find_one_by(".modal .numbering-status [title='Suggest from episode order']")
         .await?
         .click()
         .await?;
+    suggest_from(driver, "TheTVDB").await?;
     let spans = ".modal .numbering-range-summary .numbering-span";
     driver
         .wait_texts(spans, ["S1 E1–E3", "S1 E1–E3", "S1 E4–E5", "S2 E1–E2"])
         .await?;
-    driver.wait_count(".modal .numbering-band", 2).await?;
+    // Two ranges, each banded across the four gaps between five columns.
+    driver.wait_count(".modal .numbering-band", 8).await?;
     driver.wait_count(".modal .numbering-note", 1).await?;
     driver
         .wait_texts(
@@ -1357,7 +1385,7 @@ pub async fn numbering_ranges_are_edited(driver: &mut TestDriver, track: &mut Tr
         )
         .await?;
     driver
-        .wait_count(".modal .numbering-band.invalid", 1)
+        .wait_count(".modal .numbering-band.invalid", 4)
         .await?;
     driver
         .wait_count(".modal .numbering-ep.overlap[aria-label='TMDB S1 E3']", 1)
@@ -1446,6 +1474,136 @@ pub async fn numbering_ranges_are_edited(driver: &mut TestDriver, track: &mut Tr
     driver
         .wait_until("the ranges to be cleared", async || {
             Ok(numbering()? == ["automatic"])
+        })
+        .await
+}
+
+/// Every numbering XEM has gets a column, also on a phone; switching to
+/// manual ranges asks which to suggest from since they disagree, and ranges
+/// are made by clicking another numbering's episodes as well as TMDB's, each
+/// reading the same from either side.
+pub async fn numbering_ranges_are_made_from_either_side(
+    driver: &mut TestDriver,
+    track: &mut Track,
+) -> Result<()> {
+    open_show(driver).await?;
+    driver
+        .find_one_by("[title='Settings']:not(#toolbar *)")
+        .await?
+        .click()
+        .await?;
+    driver
+        .find_one_by(".modal .numbering-warning .link-button")
+        .await?
+        .click()
+        .await?;
+
+    driver.wait_count(".modal .numbering-map-source", 5).await?;
+    ensure!(
+        driver
+            .find_all_attrs(".modal .numbering-map-source", "title")
+            .await?
+            == ["TMDB", "TheTVDB", "Scene", "AniDB", "Trakt"]
+    );
+
+    driver
+        .find_one_by(".modal [title='Manual ranges']")
+        .await?
+        .click()
+        .await?;
+    driver.wait_count(".modal .numbering-basis", 1).await?;
+    ensure!(driver.count(".modal .numbering-range").await? == 0);
+
+    suggest_from(driver, "Trakt").await?;
+    let spans = ".modal .numbering-range-summary .numbering-span";
+    driver.wait_texts(spans, ["S1 E1–E4", "S1 E1–E4"]).await?;
+    driver
+        .wait_texts(
+            ".modal .numbering-note",
+            ["Suggested from Trakt's episode order. Nothing is saved until you save."],
+        )
+        .await?;
+    driver
+        .wait_texts(
+            ".modal .numbering-unreached",
+            ["No TMDB episode maps to TheTVDB S1 E1."],
+        )
+        .await?;
+
+    // Two clicks in TheTVDB's column make a range spanning them, from the
+    // first TMDB episode no range covers.
+    driver
+        .find_one_by(".modal [title='Remove range 1']")
+        .await?
+        .click()
+        .await?;
+    pick(driver, "TheTVDB S1 E1").await?;
+    pick(driver, "TheTVDB S1 E3").await?;
+    let fields = ".modal .numbering-range.selected input";
+    ensure!(values(driver, fields).await? == ["1", "1", "3", "1", "1"]);
+
+    driver
+        .find_one_by(".modal [title='Done editing range 1']")
+        .await?
+        .click()
+        .await?;
+    pick(driver, "TheTVDB S2 E1").await?;
+    pick(driver, "TheTVDB S2 E2").await?;
+    driver
+        .wait_texts(spans, ["S1 E1–E3", "S1 E1–E3", "S1 E4–E5", "S2 E1–E2"])
+        .await?;
+    driver
+        .wait_texts(
+            ".modal .numbering-coverage",
+            ["5 of 5 regular TMDB episodes are mapped."],
+        )
+        .await?;
+
+    // Each side names the other, and AniDB, reached through XEM, too.
+    let title = async |label: &str| {
+        driver
+            .find_one_by(&format!(".modal .numbering-ep[aria-label='{label}']"))
+            .await?
+            .attr("title")
+            .await
+    };
+    ensure!(title("TMDB S1 E4").await? == "TMDB S1 E4 ↔ TheTVDB S2 E1");
+    ensure!(title("TheTVDB S2 E1").await? == "TheTVDB S2 E1 ↔ TMDB S1 E4");
+    ensure!(title("AniDB S1 E4").await? == "AniDB S1 E4 ↔ TMDB S1 E4");
+
+    // An episode reached through XEM selects its range.
+    driver
+        .find_one_by(".modal [title='Done editing range 2']")
+        .await?
+        .click()
+        .await?;
+    pick(driver, "Scene S2 E2").await?;
+    driver
+        .wait_count(".modal .numbering-range.selected[aria-label='Range 2']", 1)
+        .await?;
+
+    // Five columns fit a phone without the modal scrolling sideways.
+    driver.set_window_size(400, 850).await?;
+    driver.wait_count(".modal .numbering-map-source", 5).await?;
+    let ret = driver
+        .webdriver()
+        .execute(
+            "const e = document.querySelector('.modal .numbering-map-scroll'); return [e.scrollWidth, e.clientWidth];",
+            Vec::new(),
+        )
+        .await?;
+    let [scroll, client] = ret.convert::<[f64; 2]>()?;
+    ensure!(scroll <= client, "the map is {scroll}px wide in {client}px");
+
+    driver
+        .find_one_by(".modal [title='Save']")
+        .await?
+        .click()
+        .await?;
+    driver
+        .wait_until("the ranges to be saved", async || {
+            Ok(track.query("SELECT numbering FROM shows WHERE id = 1001")?
+                == [r#"{"ranges":[{"season":1,"first":1,"last":3,"system":"tvdb","target_season":1,"target_first":1},{"season":1,"first":4,"last":5,"system":"tvdb","target_season":2,"target_first":1}]}"#])
         })
         .await
 }
@@ -1619,10 +1777,11 @@ pub async fn episodes_show_other_numberings(
         .click()
         .await?;
     driver
-        .find_one_by(".modal .numbering-status [title='Suggest from episode order (TheTVDB)']")
+        .find_one_by(".modal .numbering-status [title='Suggest from episode order']")
         .await?
         .click()
         .await?;
+    suggest_from(driver, "TheTVDB").await?;
     driver
         .find_one_by(".modal [title='Save']")
         .await?

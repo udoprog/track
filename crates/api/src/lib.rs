@@ -36,7 +36,7 @@ pub use self::sync_kind::{SyncKind, SyncKindSet};
 mod numbering;
 pub use self::numbering::{
     AltName, AltNumbering, LinkedSeason, Numbering, NumberingPref, NumberingRange, NumberingTarget,
-    RangeError, SeasonAltNames, SeasonMismatch, XEM_SYSTEMS, default_numberings,
+    RangeError, SeasonAltNames, SeasonMismatch, XEM_SYSTEMS, XemLinks, default_numberings,
     numbering_mismatches, numbering_order, suggest_numbering, xem_system_label,
 };
 
@@ -3297,6 +3297,9 @@ pub struct ShowNumbering {
 pub struct XemSystemEpisodes {
     pub system: String,
     pub episodes: Vec<(u32, u32)>,
+    /// The XEM map entry of each of `episodes`, which links it to the other
+    /// systems' episodes in the same entry.
+    pub entries: Vec<u32>,
 }
 
 impl ShowNumbering {

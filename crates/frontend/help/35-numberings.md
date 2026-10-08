@@ -30,17 +30,21 @@ an **Episode numbering**:
   ![Edit ranges](button:adjustments-horizontal) **Edit ranges** opens the
   ranges. An episode outside every range shows no other numbers.
 
-The range editor lists the show's TMDB episodes beside those of the other
-numbering, with a band from each range to the episodes it maps to. Episodes
-no range covers are hatched, episodes XEM doesn't know are dashed in amber,
-and ranges that overlap turn red and can't be saved. In automatic mode it
-shows what automatic numbering does; **Suggest from episode order** pairs
-the episodes one to one and shows the result before you save it.
+The range editor lists the show's TMDB episodes beside those of every
+numbering XEM has for it, a column each, with bands showing where each range
+takes its episodes in all of them. A range maps onto one numbering; XEM
+carries it on to the rest. Episodes no range covers are hatched, episodes
+XEM doesn't know are dashed in amber, and ranges that overlap turn red and
+can't be saved. In automatic mode it shows what automatic numbering does;
+**Suggest from episode order** pairs the episodes one to one and shows the
+result before you save it. When the numberings put the episodes in
+different orders, it first asks which one to follow.
 
-To edit, click an unmapped TMDB episode to start a range there, or a mapped
-one to select its range. With a range selected, click two TMDB episodes to
-set its first and last, and an episode on the other side to set where it
-starts. The selected range's numbers can also be typed.
+To edit, click an unmapped episode in any column to start a range there, or
+a mapped one to select its range. With a range selected, click two TMDB
+episodes to set its first and last, or two episodes of another numbering to
+map it onto them; one click there moves where it starts. The selected
+range's numbers can also be typed.
 
 A show whose episodes come from TheTVDB already uses its numbering, so the
 setting is not shown.

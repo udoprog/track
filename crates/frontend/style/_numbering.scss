@@ -46,7 +46,7 @@ $numbering-head: 26px;
 
     @include g.on-desktop {
         grid-template-areas: 'map status' 'map side';
-        grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+        grid-template-columns: minmax(320px, 1.2fr) minmax(260px, 1fr);
         grid-template-rows: auto 1fr;
     }
 
@@ -71,30 +71,35 @@ $numbering-head: 26px;
     min-width: 0;
 }
 
+// A column of episodes per numbering with bands between them; the editor
+// sets the tracks, a column and a gap per numbering but the last.
 .numbering-map-head,
 .numbering-map {
+    --numbering-col: minmax(40px, 72px);
+    --numbering-gap: minmax(14px, 1fr);
     display: grid;
-    grid-template-columns: 88px minmax(48px, 1fr) 88px;
 }
 
 .numbering-map-head {
     align-items: center;
+    padding-inline: v.$padding;
     font-size: v.$font-xs;
-
-    // The shown numbering's name or picker, which may reach over the bands.
-    >:last-child {
-        grid-column: 2 / 4;
-        justify-self: end;
-    }
 }
 
+// A numbering's logo, named by its title.
 .numbering-map-source {
     display: flex;
     align-items: center;
     gap: v.$padding;
+    min-width: 0;
     font-weight: v.$bold-weight;
 
+    &:not(:last-child) {
+        grid-column: span 2;
+    }
+
     >.logo {
+        flex-shrink: 0;
         height: 16px;
     }
 }
@@ -394,6 +399,40 @@ $numbering-head: 26px;
 .numbering-missing {
     color: var(--warning);
     font-size: v.$font-sm;
+}
+
+// Which numbering a suggestion follows, when they disagree.
+.numbering-basis {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: v.$padding-md;
+}
+
+// Under its group to outrank the centring of buttons.
+.numbering-basis>.numbering-basis-option {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: v.$padding-md;
+    height: auto;
+    padding-block: v.$padding-md;
+    text-align: start;
+
+    >.logo {
+        height: 16px;
+    }
+
+    >.numbering-basis-name {
+        font-weight: v.$bold-weight;
+    }
+
+    >.text-muted {
+        font-size: v.$font-xs;
+    }
+}
+
+.numbering-basis-cancel {
+    align-self: flex-start;
 }
 
 .numbering-tools,

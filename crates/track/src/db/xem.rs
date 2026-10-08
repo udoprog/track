@@ -20,8 +20,9 @@ pub(super) struct Read {
     names: TypedStatement<(ShowId,), Name>,
     #[sql = "SELECT season, episode FROM episodes WHERE show_id = ? ORDER BY season, episode"]
     episode_codes: TypedStatement<(ShowId,), Code>,
-    #[sql = "SELECT DISTINCT system, season, episode FROM xem_episodes WHERE show_id = ? AND part = 0"]
-    #[sql = "ORDER BY system, season, episode"]
+    #[sql = "SELECT system, season, episode, MIN(entry) AS entry FROM xem_episodes"]
+    #[sql = "WHERE show_id = ? AND part = 0"]
+    #[sql = "GROUP BY system, season, episode ORDER BY system, season, episode"]
     system_codes: TypedStatement<(ShowId,), SystemCode>,
     #[sql = "SELECT DISTINCT o.season AS season FROM xem_episodes t"]
     #[sql = "JOIN xem_episodes o ON o.show_id = t.show_id AND o.entry = t.entry"]
@@ -46,6 +47,7 @@ struct SystemCode {
     system: String,
     season: u32,
     episode: u32,
+    entry: u32,
 }
 
 #[derive(Statements)]
@@ -245,11 +247,13 @@ impl Database {
             while let Some(c) = stmt.next()? {
                 match systems.last_mut() {
                     Some(last) if last.system == c.system => {
-                        last.episodes.push((c.season, c.episode))
+                        last.episodes.push((c.season, c.episode));
+                        last.entries.push(c.entry);
                     }
                     _ => systems.push(api::XemSystemEpisodes {
                         system: c.system,
                         episodes: vec![(c.season, c.episode)],
+                        entries: vec![c.entry],
                     }),
                 }
             }

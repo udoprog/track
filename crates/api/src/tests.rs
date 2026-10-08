@@ -953,6 +953,54 @@ fn suggestion_stops_where_the_shorter_side_ends() {
     assert_eq!(n.ranges, [range(1, 1, 10, "anidb", 1, 1)]);
 }
 
+/// A system's codes, each in the map entry of its position.
+fn xem(system: &str, codes: Vec<(u32, u32)>, first_entry: u32) -> XemSystemEpisodes {
+    XemSystemEpisodes {
+        system: system.to_owned(),
+        entries: (first_entry..).take(codes.len()).collect(),
+        episodes: codes,
+    }
+}
+
+#[test]
+fn xem_links_translate_through_entries() {
+    let systems = [
+        xem("tvdb", codes(&[(1, 3), (2, 2)]), 0),
+        xem("anidb", codes(&[(1, 5)]), 0),
+        xem("scene", codes(&[(1, 4)]), 1),
+    ];
+    let links = XemLinks::new(&systems);
+
+    assert_eq!(links.translate("tvdb", 2, 1, "anidb"), Some((1, 4)));
+    assert_eq!(links.translate("anidb", 1, 4, "tvdb"), Some((2, 1)));
+    assert_eq!(links.translate("tvdb", 1, 1, "scene"), None);
+    assert_eq!(links.translate("scene", 1, 1, "tvdb"), Some((1, 2)));
+    assert_eq!(links.translate("tvdb", 9, 9, "tvdb"), Some((9, 9)));
+    assert_eq!(links.translate("trakt", 1, 1, "tvdb"), None);
+}
+
+#[test]
+fn suggestion_bases_group_systems_that_agree() {
+    // TheTVDB's special is entry 0 and its regular episodes entries 1-5,
+    // which AniDB numbers differently but in the same order. Scene starts an
+    // entry later, so it pairs every episode apart, and Trakt has only
+    // specials.
+    let systems = [
+        xem("tvdb", codes(&[(0, 1), (1, 3), (2, 2)]), 0),
+        xem("anidb", codes(&[(1, 5)]), 1),
+        xem("scene", codes(&[(1, 4)]), 2),
+        xem("trakt", codes(&[(0, 2)]), 0),
+    ];
+
+    let links = XemLinks::new(&systems);
+    let bases = links.suggestion_bases(&codes(&[(1, 5)]), &systems);
+    assert_eq!(bases, [vec!["tvdb", "anidb"], vec!["scene"]]);
+
+    // Pairing stops where the show's episodes end, so a longer system agrees.
+    let bases = links.suggestion_bases(&codes(&[(1, 2)]), &systems[..2]);
+    assert_eq!(bases, [vec!["tvdb", "anidb"]]);
+}
+
 #[test]
 fn numbering_targets() {
     let n = Numbering {
