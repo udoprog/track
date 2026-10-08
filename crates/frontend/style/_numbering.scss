@@ -438,54 +438,28 @@ $numbering-head: 26px;
     }
 }
 
-// A show's other names under its title (ui/also_known_as.rs).
-.also-known-as {
+// The Other names modal (ui/names_modal.rs) keeps its short language codes
+// beside the names on phones.
+.names-modal .translation-rows {
+    @include g.on-mobile {
+        grid-template-columns: max-content minmax(0, 1fr);
+        row-gap: v.$gap-sm;
+    }
+}
+
+// A season of another numbering in the Other names modal.
+.names-target {
     display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 0 v.$gap-xs;
-    margin: 0;
-    font-size: v.$font-sm;
-
-    >.also-known-as-label {
-        color: v.$text-muted;
-    }
-}
-
-.alt-name-language {
-    margin-inline-start: v.$text-gap;
+    align-items: center;
+    gap: v.$padding-md;
+    margin-block: v.$gap-sm v.$padding;
     color: v.$text-muted;
-    font-size: 10px;
-}
-
-// The names of the seasons a season covers, under its heading.
-.season-names {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 0 v.$gap-xs;
-    margin: 0;
     font-size: v.$font-sm;
+    font-weight: normal;
 
-    >.season-names-label {
-        color: v.$text-muted;
+    >.logo {
+        height: 16px;
     }
-}
-
-.season-names-group {
-    display: inline-flex;
-    flex-wrap: wrap;
-    gap: 0 v.$text-gap;
-
-    >.alt-name:not(:nth-last-child(2))::after {
-        content: ',';
-    }
-}
-
-.season-names-group+.season-names-group::before {
-    content: '·';
-    margin-inline-end: v.$text-gap;
-    color: v.$text-muted;
 }
 
 // An episode's codes in other numberings.
@@ -554,10 +528,4 @@ $numbering-head: 26px;
     >.numbering-hidden>:not(button) {
         opacity: 0.55;
     }
-}
-
-.also-known-as>.alt-name+.alt-name::before {
-    content: '·';
-    margin-inline-end: v.$gap-xs;
-    color: v.$text-muted;
 }

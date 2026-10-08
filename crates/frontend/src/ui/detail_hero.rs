@@ -8,9 +8,6 @@ pub(crate) struct Props {
     pub(crate) meta: Option<AttrValue>,
     #[prop_or_default]
     pub(crate) backdrop: Option<api::Image>,
-    /// More lines under the meta line.
-    #[prop_or_default]
-    pub(crate) children: Html,
 }
 
 /// The heading of a show or movie page: its title large over a faded backdrop.
@@ -30,8 +27,6 @@ pub(crate) fn DetailHero(props: &Props) -> Html {
                 if let Some(meta) = &props.meta {
                     <span class="detail-meta">{meta.clone()}</span>
                 }
-
-                { props.children.clone() }
             </div>
         </header>
     }

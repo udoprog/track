@@ -1148,7 +1148,6 @@ pub async fn season_names_appear_on_switching(
 
     open_show(driver).await?;
     driver.find_one_by("#S01E05").await?;
-    ensure!(driver.count(".season-names").await? == 0);
 
     driver
         .find_one_by(".season-list [title='Show Season 2']")
@@ -1157,9 +1156,6 @@ pub async fn season_names_appear_on_switching(
         .await?;
     driver
         .wait_texts(".detail-content .toolbar h2", ["Season 2"])
-        .await?;
-    driver
-        .wait_texts(".season-names .alt-name", ["Seeded Second"])
         .await?;
     driver.find_one_by("#S02E02").await?;
     Ok(())
@@ -1454,37 +1450,121 @@ pub async fn numbering_ranges_are_edited(driver: &mut TestDriver, track: &mut Tr
         .await
 }
 
-/// XEM's other names for the show sit under its title, three at first and
-/// the rest a click away, without the show's own title; the season lists
-/// the names of the TheTVDB seasons it covers.
+/// XEM's other names for the show and its seasons are not on the page but in
+/// the Other names modal: the show's with their language, then the season's
+/// under the TheTVDB season they name.
 pub async fn alternative_names_are_listed(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     open_show(driver).await?;
+    driver.find_one_by("#S01E05").await?;
+    ensure_names_not_inline(driver).await?;
 
-    let names = ".also-known-as .alt-name>span:first-child";
+    open_names(driver).await?;
     driver
-        .wait_texts(names, ["Die Testserie", "La Série", "Shīdo Shō"])
+        .wait_texts(".names-modal h3", ["Show", "Season 1"])
         .await?;
     driver
-        .wait_texts(".also-known-as .alt-name-language", ["DE", "FR", "JP"])
+        .wait_texts(
+            ".names-modal .alt-name-text",
+            [
+                "Die Testserie",
+                "La Série",
+                "Shīdo Shō",
+                "Seeded",
+                "Seeded First",
+            ],
+        )
+        .await?;
+    driver
+        .wait_texts(
+            ".names-modal .translation-language",
+            ["DE", "FR", "JP", "US", "JP"],
+        )
         .await?;
 
+    // Automatic numbering: TMDB Season 1 is TheTVDB Season 1.
     driver
-        .find_one_by(".also-known-as .link-button")
+        .wait_texts(".names-modal .names-target", ["TheTVDB Season 1"])
+        .await?;
+    driver.snapshot("show-names").await?;
+
+    driver
+        .find_one_by(".modal [title='Close']")
+        .await?
+        .click()
+        .await?;
+    driver.wait_count(".modal", 0).await
+}
+
+/// On phones the Other names modal opens from the show's actions menu; a show
+/// without XEM names has no such entry.
+pub async fn phones_open_names_from_actions(
+    driver: &mut TestDriver,
+    track: &mut Track,
+) -> Result<()> {
+    open_show(driver).await?;
+    driver.set_window_size(400, 850).await?;
+    driver.find_one_by("#S01E05").await?;
+    ensure_names_not_inline(driver).await?;
+
+    driver
+        .find_one_by("button[title='Actions']")
+        .await?
+        .click()
+        .await?;
+    open_names(driver).await?;
+    driver
+        .wait_texts(".names-modal h3", ["Show", "Season 1"])
+        .await?;
+    driver.snapshot("phone-show-names").await?;
+
+    track.execute("DELETE FROM xem_names;")?;
+    driver.reload().await?;
+    driver.wait_texts(".detail-title", ["Seeded Show"]).await?;
+    driver.find_one_by("#S01E05").await?;
+    driver
+        .find_one_by("button[title='Actions']")
         .await?
         .click()
         .await?;
     driver
-        .wait_texts(names, ["Die Testserie", "La Série", "Shīdo Shō", "Seeded"])
+        .find_one_by("#page > .toolbar .toolbar-dropdown [title='Translations']")
         .await?;
-    driver.wait_count(".also-known-as .link-button", 0).await?;
+    ensure!(driver.count("[title='Other names']").await? == 0);
+    Ok(())
+}
 
-    // Automatic numbering: TMDB Season 1 is TheTVDB Season 1.
+/// Opens the show's Other names modal.
+async fn open_names(driver: &TestDriver) -> Result<()> {
     driver
-        .wait_texts(".season-names .alt-name", ["Seeded First"])
+        .find_one_by("[title='Other names']")
+        .await?
+        .click()
         .await?;
-    driver
-        .wait_texts(".season-names .text-muted", ["(TheTVDB S1)"])
-        .await
+    driver.find_one_by(".modal.names-modal").await?;
+    Ok(())
+}
+
+/// None of the seeded XEM names show on the page outside a modal.
+async fn ensure_names_not_inline(driver: &TestDriver) -> Result<()> {
+    let text = driver
+        .webdriver()
+        .execute(
+            "return document.querySelector('#page').innerText;",
+            Vec::new(),
+        )
+        .await?
+        .convert::<String>()?;
+
+    for name in [
+        "Die Testserie",
+        "Shīdo Shō",
+        "Seeded First",
+        "Seeded Second",
+    ] {
+        ensure!(!text.contains(name), "{name} shows on the page");
+    }
+
+    Ok(())
 }
 
 /// An XEM remote whose XEM show id is known links to its page, both in the
@@ -1579,12 +1659,6 @@ pub async fn episodes_show_other_numberings(
     driver
         .wait_texts(".numbering-divider-season", ["Season 1", "Season 2"])
         .await?;
-    driver
-        .wait_texts(
-            ".numbering-divider .text-muted",
-            ["· Seeded First", "· Seeded Second"],
-        )
-        .await?;
 
     // The divider comes right before the first episode of TheTVDB's season 2.
     let before = driver
@@ -1595,8 +1669,20 @@ pub async fn episodes_show_other_numberings(
         )
         .await?;
     ensure!(before.convert::<String>()? == "S01E04");
+    ensure_names_not_inline(driver).await?;
 
+    // The season's names follow the numbering to both TheTVDB seasons.
+    open_names(driver).await?;
     driver
-        .wait_texts(".season-names .alt-name", ["Seeded First", "Seeded Second"])
+        .wait_texts(
+            ".names-modal .names-target",
+            ["TheTVDB Season 1", "TheTVDB Season 2"],
+        )
+        .await?;
+    driver
+        .wait_texts(
+            ".names-modal section:last-child .alt-name-text",
+            ["Seeded First", "Seeded Second"],
+        )
         .await
 }

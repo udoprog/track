@@ -1614,24 +1614,6 @@ image {
         white-space: nowrap;
     }
 
-    // XEM's names of the seasons it covers, quietly under its name.
-    &.has-alt {
-        grid-template-areas:
-            "name count year"
-            "alt alt alt"
-            "bar bar bar";
-    }
-
-    >.season-alt-names {
-        grid-area: alt;
-        margin-top: -#{v.$padding};
-        overflow: hidden;
-        color: v.$text-muted;
-        font-size: v.$font-xs;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
     >.season-count,
     >.season-year {
         color: v.$text-muted;

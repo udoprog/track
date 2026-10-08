@@ -14,10 +14,10 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaQuery, Route, Router, ShowDetailQuery};
 use crate::ui::{
-    AlsoKnownAs, Button, ConfirmDanger, ContextMenu, DetailHero, DetailSkeleton, EpisodeCacheModal,
+    Button, ConfirmDanger, ContextMenu, DetailHero, DetailSkeleton, EpisodeCacheModal,
     EpisodePicker, Image, ImageGallery, ImageItem, MarkTimeMenu, MediaSettingsModal, Modal,
-    NumberingEditor, OutlineControl, OutlineEntry, OutlineHandle, ReleaseModal, ReleaseTarget,
-    RemoteEditor, RemoteSourceKind, SettingsTarget, SyncButton, TimePreset, Tracked,
+    NamesModal, NumberingEditor, OutlineControl, OutlineEntry, OutlineHandle, ReleaseModal,
+    ReleaseTarget, RemoteEditor, RemoteSourceKind, SettingsTarget, SyncButton, TimePreset, Tracked,
     TranslatedText, TranslationsModal, Variant,
 };
 use crate::ui::{CastModal, cast_card};
@@ -100,6 +100,7 @@ pub(crate) struct ShowDetail {
     /// The numbering editor is open, on manual ranges when `true`.
     numbering_editor: Option<bool>,
     show_translations_modal: bool,
+    names_modal: bool,
     season_translations_modal: bool,
     episode_translations: Option<api::EpisodeId>,
     /// The episode whose air-date releases modal is open. The modal ([`ReleaseModal`])
@@ -239,6 +240,8 @@ pub(crate) enum UiMsg {
     CloseSettingsModal,
     OpenShowTranslations,
     CloseShowTranslations,
+    OpenNames,
+    CloseNames,
     OpenSeasonTranslations,
     CloseSeasonTranslations,
     OpenEpisodeTranslations(api::EpisodeId),
@@ -400,6 +403,7 @@ impl Component for ShowDetail {
             remote_editor: false,
             numbering_editor: None,
             show_translations_modal: false,
+            names_modal: false,
             season_translations_modal: false,
             episode_translations: None,
             episode_releases_modal: None,
@@ -501,9 +505,7 @@ impl Component for ShowDetail {
                     title={show.strings.title().unwrap_or("Untitled Show").to_owned()}
                     meta={show.first_air_date.map(|date| date.date(self.time.clone()).year().to_string())}
                     backdrop={show.backdrop.clone()}
-                >
-                    <AlsoKnownAs names={show.alt_names.clone()} />
-                </DetailHero>
+                />
 
                 <div class="toolbar">
                     <div class="row detail-sources">
@@ -542,6 +544,10 @@ impl Component for ShowDetail {
                         }
 
                         <Button icon="language" title="Translations" text="Translations" onclick={link.callback(|_| UiMsg::OpenShowTranslations)} />
+
+                        if !show.alt_names.is_empty() || self.seasons.iter().any(|s| !s.alt_names.is_empty()) {
+                            <Button icon="tag" title="Other names" text="Names" onclick={link.callback(|_| UiMsg::OpenNames)} />
+                        }
 
                         <Button icon="cog-6-tooth" title="Settings" text="Settings" onclick={link.callback(|_| UiMsg::OpenSettingsModal)} />
 
@@ -645,6 +651,14 @@ impl Component for ShowDetail {
                             on_close={link.callback(|_| UiMsg::CloseSeasonTranslations)}
                         />
                     }
+                }
+
+                if self.names_modal {
+                    <NamesModal
+                        names={show.alt_names.clone()}
+                        seasons={self.seasons.iter().filter(|s| !s.alt_names.is_empty()).map(|s| (season_name(s), s.alt_names.clone())).collect::<Vec<_>>()}
+                        on_close={link.callback(|_| UiMsg::CloseNames)}
+                    />
                 }
 
                 if let Some(episode_id) = self.episode_translations {
@@ -1670,6 +1684,15 @@ impl ShowDetail {
                 self.show_translations_modal = false;
                 Ok(true)
             }
+            UiMsg::OpenNames => {
+                self.names_modal = true;
+                self.actions_expanded = false;
+                Ok(true)
+            }
+            UiMsg::CloseNames => {
+                self.names_modal = false;
+                Ok(true)
+            }
             UiMsg::OpenSeasonTranslations => {
                 self.season_translations_modal = true;
                 Ok(true)
@@ -2018,10 +2041,6 @@ impl ShowDetail {
             <>
                 <span class="season-name">{name.clone()}</span>
 
-                if !s.alt_names.is_empty() {
-                    <span class="season-alt-names">{season_alt_names(s)}</span>
-                }
-
                 <span class="season-count" title="Episodes watched">
                     if finished {
                         <span class="icon sm check" aria-hidden="true" />
@@ -2049,8 +2068,7 @@ impl ShowDetail {
         let class = classes!(
             "season-row",
             current.then_some("current"),
-            finished.then_some("finished"),
-            (!s.alt_names.is_empty()).then_some("has-alt")
+            finished.then_some("finished")
         );
 
         if self.seasons.len() > 1 {
@@ -2169,9 +2187,8 @@ impl ShowDetail {
 
                 { self.view_season_chips(ctx) }
 
-                // Keyed so a season switch replaces the column: patching it,
-                // Yew panics inserting the season names before an empty
-                // TranslatedText while removing the watched count after it.
+                // Keyed so a season switch replaces the column instead of
+                // patching it.
                 <div class="column" key={season.id.to_string()}>
                     <div class="toolbar">
                         <h2>
@@ -2224,10 +2241,6 @@ impl ShowDetail {
                         </div>
                     </div>
 
-                    if !season.alt_names.is_empty() {
-                        { view_season_names(season) }
-                    }
-
                     <TranslatedText strings={season.strings.clone()} />
 
                     if total > 0 {
@@ -2243,7 +2256,7 @@ impl ShowDetail {
                     { for self.episodes.iter().enumerate().map(|(i, ep)| html! {
                         <>
                             if let Some(Some(link)) = starts.get(i) {
-                                { view_link_divider(season, link) }
+                                { view_link_divider(link) }
                             }
 
                             { self.view_episode(ctx, ep) }
@@ -2606,67 +2619,17 @@ fn view_numbering(n: &api::AltNumbering) -> Html {
     }
 }
 
-/// The names of the seasons `s` covers, on one line.
-fn season_alt_names(s: &api::Season) -> String {
-    let mut names = Vec::new();
-
-    for group in &s.alt_names {
-        for n in &group.names {
-            names.push(n.name.as_str());
-        }
-    }
-
-    names.join(" · ")
-}
-
 /// A linked season's label, such as `TheTVDB S2`.
 fn linked_label(l: &api::LinkedSeason) -> String {
     format!("{} S{}", api::xem_system_label(&l.system), l.season)
 }
 
-/// The names of the seasons a season covers under its heading, each with the
-/// season of the other numbering it names.
-fn view_season_names(s: &api::Season) -> Html {
-    html! {
-        <p class="season-names">
-            <span class="season-names-label">{"Season names"}</span>
-
-            { for s.alt_names.iter().map(|group| html! {
-                <span class="season-names-group">
-                    { for group.names.iter().map(|n| html! {
-                        <span class="alt-name">{n.name.clone()}</span>
-                    }) }
-
-                    <span class="text-muted">{format!("({})", linked_label(&group.target))}</span>
-                </span>
-            }) }
-        </p>
-    }
-}
-
-/// The line before the first episode linked to `link`, naming that season
-/// and its XEM names.
-fn view_link_divider(season: &api::Season, link: &api::LinkedSeason) -> Html {
-    let names = season
-        .alt_names
-        .iter()
-        .find(|g| g.target == *link)
-        .map(|g| {
-            g.names
-                .iter()
-                .map(|n| n.name.as_str())
-                .collect::<Vec<_>>()
-                .join(" · ")
-        });
-
+/// The line before the first episode linked to `link`, naming that season.
+fn view_link_divider(link: &api::LinkedSeason) -> Html {
     html! {
         <div class="numbering-divider" role="separator" aria-label={linked_label(link)}>
             <span class={classes!("logo", link.system.clone())} title={api::xem_system_label(&link.system).to_owned()} />
             <span class="numbering-divider-season">{format!("Season {}", link.season)}</span>
-
-            if let Some(names) = names {
-                <span class="text-muted">{format!("· {names}")}</span>
-            }
         </div>
     }
 }

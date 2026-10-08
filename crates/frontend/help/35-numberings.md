@@ -14,7 +14,7 @@ such as **TheTVDB S02E01**; hover it for the absolute number. A double
 episode reads **S01E03+04**. An episode that lines up shows nothing extra.
 
 When one season covers several seasons of the other numbering, a line before
-the first episode of each names that season and its XEM name.
+the first episode of each names that season.
 
 ## Linking a show to XEM
 
@@ -47,11 +47,10 @@ setting is not shown.
 
 ## Alternative names
 
-XEM also knows other names for a show and its seasons. The show's are listed
-as **Also known as** under its title, with their language; **+N more** shows
-the rest. A season lists the names of the seasons it covers in the other
-numbering: under its heading as **Season names**, and on wide screens under
-it in the season list.
+XEM also knows other names for a show and its seasons. When it has some,
+the show's ![Names](button:tag) **Names** action lists them: the show's own,
+with their language, then each season's, grouped by the season of the other
+numbering they name, following the show's episode numbering.
 
 ## Settings
 
