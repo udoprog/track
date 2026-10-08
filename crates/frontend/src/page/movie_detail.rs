@@ -844,7 +844,7 @@ impl MovieDetail {
     /// A clickable credit card - photo, name and a subtitle (the character for cast,
     /// the job for crew) - that navigates to the person's page.
     fn view_credit_card(&self, credit: &api::Credit, subtitle: Option<&str>) -> Html {
-        let name = credit.name.title().unwrap_or("Unknown").to_owned();
+        let name = credit.name.title_or_any().unwrap_or("Unknown").to_owned();
         let subtitle = subtitle.map(str::to_owned);
 
         html! {

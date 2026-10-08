@@ -26,7 +26,7 @@ pub(crate) fn credit_subtitle(credit: &api::Credit) -> Option<&str> {
 /// A clickable credit card - photo, name and subtitle - that navigates to the
 /// person's page.
 pub(crate) fn cast_card(credit: &api::Credit) -> Html {
-    let name = credit.name.title().unwrap_or("Unknown").to_owned();
+    let name = credit.name.title_or_any().unwrap_or("Unknown").to_owned();
     let subtitle = credit_subtitle(credit).map(str::to_owned);
 
     html! {
@@ -48,7 +48,7 @@ pub(crate) fn cast_card(credit: &api::Credit) -> Html {
 fn matches(credit: &api::Credit, words: &[String]) -> bool {
     let haystack = format!(
         "{} {}",
-        credit.name.title().unwrap_or_default(),
+        credit.name.title_or_any().unwrap_or_default(),
         credit_subtitle(credit).unwrap_or_default()
     )
     .to_lowercase();

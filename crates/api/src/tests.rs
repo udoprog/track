@@ -1153,3 +1153,20 @@ fn alternative_codes_join_double_episodes() {
     assert_eq!(code(3, None), "S01E03");
     assert_eq!(code(3, Some(4)), "S01E03+04");
 }
+
+#[test]
+fn translations_title_or_any_falls_back_to_another_language() {
+    let t = build(Locale::EN_US, &[(StringKind::Title, pt_br(), "Garbo")]);
+    assert_eq!(t.title(), None);
+    assert_eq!(t.title_or_any(), Some("Garbo"));
+
+    let t = build(
+        Locale::EN_US,
+        &[
+            (StringKind::Title, pt_br(), "Garbo"),
+            (StringKind::Title, en(), "Greta"),
+        ],
+    );
+    assert_eq!(t.title_or_any(), Some("Greta"));
+    assert_eq!(Translations::new(Locale::EN_US).title_or_any(), None);
+}

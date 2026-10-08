@@ -390,7 +390,5 @@ impl PersonList {
 /// A person's name in the display language, or in any language they have one
 /// in: a list entry is better named in another language than not at all.
 fn display_name(p: &api::PersonItem) -> Option<&str> {
-    p.name
-        .title()
-        .or_else(|| p.name.texts(api::StringKind::Title).next())
+    p.name.title_or_any()
 }

@@ -94,6 +94,13 @@ impl Translations {
         self.get(StringKind::Title)
     }
 
+    /// The resolved title, or the first title in any language: a name is better
+    /// shown in another language than not at all.
+    pub fn title_or_any(&self) -> Option<&str> {
+        self.title()
+            .or_else(|| self.texts(StringKind::Title).next())
+    }
+
     /// The resolved overview, equivalent to `get(StringKind::Overview)`.
     #[inline]
     pub fn overview(&self) -> Option<&str> {

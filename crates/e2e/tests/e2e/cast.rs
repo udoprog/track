@@ -67,7 +67,14 @@ pub async fn search_filters_by_person_and_character(
         .wait_texts(".cast-modal .cast-name", ["Grace Hopper"])
         .await?;
 
+    // Named only in Swedish, and credited for two parts.
     search.send_keys(&BACKSPACE.repeat(6)).await?;
+    search.send_keys("garbo").await?;
+    driver
+        .wait_texts(".cast-modal .cast-name", ["Greta Garbo", "Greta Garbo"])
+        .await?;
+
+    search.send_keys(&BACKSPACE.repeat(5)).await?;
     search.send_keys("the narrator").await?;
     driver
         .wait_texts(".cast-modal .cast-character", ["The Narrator"])
