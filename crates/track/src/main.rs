@@ -11,17 +11,17 @@ const TEN: Duration = Duration::from_secs(10);
 
 /// ontv-musli-web tracking service. With no subcommand it runs the server;
 /// the subcommands back up the irreplaceable data (users, remotes, tracking,
-/// preferences and watched history).
+/// preferences and watched history) and issue a user a sign-in link.
 #[derive(Parser)]
 struct Cli {
     #[command(subcommand)]
     command: Option<track::BackupCommand>,
 
-    /// Path to the SQLite database (used by the backup subcommands).
+    /// Path to the SQLite database (used by the subcommands).
     #[arg(long, default_value = "track.db")]
     db: PathBuf,
 
-    /// Add logging directives (used by the backup subcommands).
+    /// Add logging directives (used by the subcommands).
     #[arg(long)]
     log: Vec<String>,
 

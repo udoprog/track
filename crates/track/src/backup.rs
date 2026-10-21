@@ -590,7 +590,25 @@ async fn import(db: &Database, input: impl BufRead) -> Result<ImportReport> {
     Ok(report)
 }
 
-/// Subcommands of the `track` binary that back up the irreplaceable data.
+/// Issue a new sign-in link to the user named `name` (a login, or else an
+/// email): a reset link for an active user, a registration link otherwise. It
+/// is returned as a URL under `public_url`, or as its path without one.
+async fn issue_link(db: &Database, name: &str, public_url: Option<&str>) -> Result<String> {
+    let auth = crate::entry::build_auth(db, &[]).await?;
+
+    let link = match auth.recovery_link(name).await {
+        Ok(link) => link,
+        Err(auth::core::Error::Auth(auth::AuthError::NotFound)) => {
+            return Err(anyhow!("No user named {name:?}"));
+        }
+        Err(error) => return Err(error).context("Issuing a sign-in link"),
+    };
+
+    Ok(link.url(public_url))
+}
+
+/// Subcommands of the `track` binary: backing up the irreplaceable data, and
+/// recovering an account.
 #[derive(Subcommand)]
 pub enum BackupCommand {
     /// Write users, remotes, tracking, preferences and watched history as JSON lines.
@@ -605,9 +623,19 @@ pub enum BackupCommand {
         #[arg(long)]
         input: Option<PathBuf>,
     },
+    /// Print a new sign-in link for a user, using up their earlier links: a
+    /// reset link for an active user, a registration link otherwise.
+    IssueLink {
+        /// The user's login, or else their email.
+        login: String,
+        /// The URL the app is reached at, to print a full URL instead of the
+        /// link's path.
+        #[arg(long, value_name = "URL")]
+        public_url: Option<String>,
+    },
 }
 
-/// Run a backup subcommand against the database at `db`.
+/// Run a subcommand against the database at `db`.
 pub async fn backup(db: &Path, log: &[String], command: BackupCommand) -> Result<()> {
     let mut filter = tracing_subscriber::EnvFilter::builder()
         .with_default_directive(Level::INFO.into())
@@ -664,6 +692,19 @@ pub async fn backup(db: &Path, log: &[String], command: BackupCommand) -> Result
                     stats.ignored
                 );
             }
+        }
+        BackupCommand::IssueLink { login, public_url } => {
+            if !db.exists() {
+                return Err(anyhow!("No database at {}", db.display()));
+            }
+
+            let database = Database::open(db, OpenMode::Normal, 1)
+                .with_context(|| anyhow!("Opening database at {}", db.display()))?;
+
+            println!(
+                "{}",
+                issue_link(&database, &login, public_url.as_deref()).await?
+            );
         }
     }
 
@@ -1010,5 +1051,31 @@ mod tests {
             dst.export_snapshot().await.unwrap().watched_episodes[0].1,
             "root"
         );
+    }
+
+    #[tokio::test]
+    async fn issue_link_names_an_existing_user() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = temp_db(&dir, "track.db").await;
+        db.test_user(
+            "alice",
+            Some("alice@example.com"),
+            auth::Role::Regular,
+            None,
+        )
+        .await
+        .unwrap();
+
+        let path = issue_link(&db, "root", None).await.unwrap();
+        let token = path.strip_prefix("/register/").unwrap();
+        assert!(!token.is_empty(), "{path}");
+
+        let url = issue_link(&db, "alice@example.com", Some("https://track.example/"))
+            .await
+            .unwrap();
+        assert!(url.starts_with("https://track.example/register/"), "{url}");
+
+        let error = issue_link(&db, "nobody", None).await.unwrap_err();
+        assert_eq!(error.to_string(), r#"No user named "nobody""#);
     }
 }

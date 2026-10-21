@@ -332,8 +332,14 @@ pub async fn import() -> Result<()> {
         .await?
         .build();
 
-    auth.bootstrap_admin(&auth::BootstrapAdmin::login("root"))
+    let bootstrap = auth
+        .bootstrap_admin(&auth::BootstrapAdmin::login("root"))
         .await?;
+
+    // Printed, since the log may not be seen; the link is shown only once.
+    if let Some(link) = bootstrap.link() {
+        println!("{}", link.url(None));
+    }
 
     let owner = db.default_owner().await?;
 

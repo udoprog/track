@@ -159,3 +159,20 @@ Export only reads: it refuses a database that does not exist or has pending
 migrations, and reads everything from one snapshot, so it can run while the
 server is up. Stop the server before importing: import writes without
 journaling, so it must not run alongside the server and is not crash-safe.
+
+<br>
+
+## Issuing a sign-in link
+
+When a user (such as a restored one, or the only admin) has no working link
+and no admin can issue one, issue it from the command line. It prints a reset
+link for an active user and a registration link otherwise, using up their
+earlier links:
+
+```text
+$ track issue-link root --public-url https://track.example.com
+https://track.example.com/register/...
+```
+
+Without `--public-url` it prints the link's path. An unknown login or email
+fails.
