@@ -501,7 +501,7 @@ async fn is_admin(auth: &Auth, session: &str) -> bool {
     match auth.session(session).await {
         Ok(found) => found.is_some_and(|(user, _)| user.is_admin()),
         Err(error) => {
-            tracing::error!("Looking up session: {error:#}");
+            tracing::error!(?error, "Looking up session");
             false
         }
     }
@@ -657,7 +657,7 @@ pub(super) async fn ws_handler(
                             }
                         }
                         Ok(None) => {}
-                        Err(error) => tracing::error!("Filtering an auth event: {error}"),
+                        Err(error) => tracing::error!(?error, "Filtering an auth event"),
                     }
                 }
                 result = server.run() => {
