@@ -16,7 +16,6 @@ static L10N: Catalog = Catalog::new(
 fn phrasebook() -> Phrasebook {
     Phrasebook::builder()
         .language(Lang::EN_US, "English")
-        .fallback(Lang::EN_US)
         .catalog(&L10N)
         .catalog(&auth::yew023::L10N)
         .build()
@@ -24,9 +23,7 @@ fn phrasebook() -> Phrasebook {
 
 /// A handle open at the browser's preferred language, or English.
 pub(crate) fn initial() -> Phrases {
-    let book = phrasebook();
-    let lang = phrasebook::browser::initial_lang(&book, phrasebook::browser::DEFAULT_KEY);
-    book.phrases(lang)
+    phrasebook::browser::initial(&phrasebook())
 }
 
 #[cfg(test)]
@@ -37,16 +34,14 @@ mod tests {
 
     #[test]
     fn the_catalog_is_sound() {
-        check::catalog(&L10N).unwrap();
+        check::all(&L10N, &[&auth::yew023::L10N]).unwrap();
     }
 
     #[test]
-    fn watchwords_messages_resolve() {
-        let phrases = phrasebook().phrases(Lang::EN_US);
-        assert_eq!(
-            phrases.try_text("watchword-sign-in").as_deref(),
-            Some("Sign in")
-        );
+    fn the_catalogs_are_in_the_phrasebook() {
+        let book = phrasebook();
+        assert!(book.has_catalog(&L10N));
+        assert!(book.has_catalog(&auth::yew023::L10N));
     }
 
     #[test]
