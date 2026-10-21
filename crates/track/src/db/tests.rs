@@ -125,7 +125,7 @@ async fn transaction_rolls_back_on_error_and_panic() -> Result<()> {
 #[tokio::test]
 async fn open_modes_set_connection_pragmas() -> Result<()> {
     fn pragmas(c: &sqll::Connection) -> Result<(i64, String, i64, i64)> {
-        let mut int = |pragma: &str| -> Result<i64> {
+        let int = |pragma: &str| -> Result<i64> {
             let value = c.prepare(format!("PRAGMA {pragma}"))?.first(())?;
             value.context("pragma row")
         };
