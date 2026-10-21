@@ -277,16 +277,20 @@ pub async fn app_bar_items_have_room(driver: &mut TestDriver, _: &mut Track) -> 
 }
 
 /// An error is a card under the app bar: what was being done, then why, and
-/// a way to dismiss it. A dropped connection is one way to cause one.
+/// a way to dismiss it. A request the connection drops under is one way to
+/// cause one.
 pub async fn errors_show_as_a_card(driver: &mut TestDriver, track: &mut Track) -> Result<()> {
     driver.wait_texts(".site-title", ["Track"]).await?;
-    track.stop().await?;
+    driver.delay_websocket_sends(2000).await?;
 
     driver
         .find_one_by(".toolbar-item[title=Media]")
         .await?
         .click()
         .await?;
+
+    driver.find_one_by("#page .icon.arrow-path.spin").await?;
+    track.stop().await?;
 
     let card = driver.find_one_by("#error[role=alert]").await?;
     ensure!(

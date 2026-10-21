@@ -25,7 +25,7 @@ fn phrasebook() -> Phrasebook {
 /// A handle open at the browser's preferred language, or English.
 pub(crate) fn initial() -> Phrases {
     let book = phrasebook();
-    let lang = phrasebook::browser::initial(&book, phrasebook::browser::DEFAULT_KEY);
+    let lang = phrasebook::browser::initial_lang(&book, phrasebook::browser::DEFAULT_KEY);
     book.phrases(lang)
 }
 

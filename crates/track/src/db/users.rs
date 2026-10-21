@@ -1,7 +1,7 @@
 use anyhow::{Result, anyhow};
 use api::UserId;
 use auth::Role;
-use auth::sqll014::SqllStore;
+use auth::sqll015::SqllStore;
 use sqll::{Row, Statements, TypedStatement};
 use tokio::task::spawn_blocking;
 
@@ -53,7 +53,7 @@ impl Read {
         let mut out = Vec::new();
         let mut stmt = self.list.bind(())?;
 
-        while let Some(row) = stmt.next()? {
+        while let Some(row) = stmt.next().transpose()? {
             out.push(row.into_record()?);
         }
 
@@ -61,14 +61,14 @@ impl Read {
     }
 }
 
-impl AsMut<auth::sqll014::Read> for InnerRead {
-    fn as_mut(&mut self) -> &mut auth::sqll014::Read {
+impl AsMut<auth::sqll015::Read> for InnerRead {
+    fn as_mut(&mut self) -> &mut auth::sqll015::Read {
         &mut self.auth
     }
 }
 
-impl AsMut<auth::sqll014::Write> for InnerWrite {
-    fn as_mut(&mut self) -> &mut auth::sqll014::Write {
+impl AsMut<auth::sqll015::Write> for InnerWrite {
+    fn as_mut(&mut self) -> &mut auth::sqll015::Write {
         &mut self.auth_write
     }
 }

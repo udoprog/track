@@ -8,14 +8,14 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 api = { path = "../api", features = ["js", "yew"] }
-auth = { package = "watchword", version = "0.2", features = ["musliweb04", "yew023"] }
-koine = "0.1"
+auth = { package = "watchword", version = "0.3", features = ["musliweb05", "yew023"] }
+koine = "0.3"
 
 derive_more = { version = "2.1.1", features = ["display"] }
 gloo = "0.11.0"
 jiff-tzdb = "0.1.8"
-musli-web = { version = "0.4.10", default-features = false, features = ["web03", "yew023"] }
-phrasebook = { version = "0.1", features = ["browser", "yew023"] }
+musli-web = { version = "0.5.0", default-features = false, features = ["web03", "yew023"] }
+phrasebook = { version = "0.2", features = ["browser", "yew023"] }
 serde = { version = "1.0.229", features = ["derive"] }
 tracing = "0.1.44"
 tracing-wasm = "0.2.1"

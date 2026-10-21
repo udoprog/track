@@ -11,7 +11,7 @@ doctest = false
 [dev-dependencies]
 anyhow = "1.0.104"
 axum = "0.8.9"
-sqll = { version = "0.14.7", features = ["bundled"] }
+sqll = { version = "0.15.0", features = ["bundled"] }
 tempfile = "3.27.0"
 tokio = { version = "1.53.1", features = ["full"] }
 # Without `bundle`, which embeds dist/ at compile time: the suite serves the

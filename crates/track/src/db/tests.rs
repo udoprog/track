@@ -7,7 +7,6 @@ fn migrations_apply_on_fresh_db() {
         .extended_result_codes()
         .read_write()
         .create()
-        .no_mutex()
         .open_in_memory()
         .unwrap();
 
@@ -20,7 +19,7 @@ fn migrations_are_recorded_and_idempotent() -> Result<()> {
     let path = dir.path().join("test.db");
 
     let applied = || -> Result<Vec<String>> {
-        let c = OpenOptions::new().read_write().no_mutex().open(&path)?;
+        let c = OpenOptions::new().read_write().open(&path)?;
         let mut q = c.prepare("SELECT id FROM migrations ORDER BY id")?;
         let mut ids = Vec::new();
         while let Some(id) = q.next::<String>()? {
@@ -57,7 +56,7 @@ fn read_only_open_neither_creates_nor_migrates() -> Result<()> {
     ids.sort();
     let last = ids.last().unwrap();
 
-    let c = OpenOptions::new().read_write().no_mutex().open(&path)?;
+    let c = OpenOptions::new().read_write().open(&path)?;
     c.prepare("DELETE FROM migrations WHERE id = ?")?
         .execute((last.as_str(),))?;
     drop(c);
@@ -65,7 +64,7 @@ fn read_only_open_neither_creates_nor_migrates() -> Result<()> {
     let error = Database::open(&path, OpenMode::ReadOnly, 1).err().unwrap();
     assert!(error.to_string().contains(last.as_str()), "{error:#}");
 
-    let c = OpenOptions::new().read_write().no_mutex().open(&path)?;
+    let c = OpenOptions::new().read_write().open(&path)?;
     let mut q = c.prepare("SELECT 1 FROM migrations WHERE id = ?")?;
     q.bind(last.as_str())?;
     assert!(
@@ -258,7 +257,7 @@ async fn list_persons_resolves_names_in_the_persons_language() -> Result<()> {
     let db = Database::open(&path, OpenMode::Bulk, 1)?;
 
     // 6148257917992593152 is `eng` with country `US`.
-    let c = OpenOptions::new().read_write().no_mutex().open(&path)?;
+    let c = OpenOptions::new().read_write().open(&path)?;
     c.execute(
         "INSERT INTO people (id, default_language) VALUES (1, 6148257917992593152);
          INSERT INTO person_strings (person_id, language, kind, text)
@@ -289,7 +288,7 @@ async fn list_persons_filters_sorts_and_pages() -> Result<()> {
 
     // 1 "ada Lovelace" (1 credit), 2 "Bob Marley" over its unknown-language
     // "Bobby" (3), 3 "Carl" (2), 4 nameless (0), 5 "Annie" with a French "Zed" (5).
-    let c = OpenOptions::new().read_write().no_mutex().open(&path)?;
+    let c = OpenOptions::new().read_write().open(&path)?;
     c.execute(format!(
         "INSERT INTO people (id, default_language) VALUES (1, {en_us}), (2, {en_us}), (3, {en_us}), (4, {en_us}), (5, {en_us});
          INSERT INTO person_strings (person_id, language, kind, text) VALUES
@@ -387,7 +386,7 @@ async fn list_history_groups_filters_and_pages() -> Result<()> {
 
     // Shows 1 "Alpha" and 2 "Beta", movie 1 "Gamma". Alpha S01E01 is titled,
     // S01E03 is gone from the show.
-    let c = OpenOptions::new().read_write().no_mutex().open(&path)?;
+    let c = OpenOptions::new().read_write().open(&path)?;
     c.execute(format!(
         "INSERT INTO shows (id) VALUES (1), (2);
          INSERT INTO movies (id) VALUES (1);
@@ -640,7 +639,6 @@ async fn tracking_watch_history_and_pending_are_per_user() -> Result<()> {
         .await?;
     let c = OpenOptions::new()
         .read_write()
-        .no_mutex()
         .open(dir.path().join("test.db"))?;
     let mut q = c.prepare(
         "SELECT (SELECT COUNT(*) FROM user_tracked_movies) + (SELECT COUNT(*) FROM pending WHERE user_id NOT IN (SELECT id FROM users))",
@@ -651,7 +649,7 @@ async fn tracking_watch_history_and_pending_are_per_user() -> Result<()> {
 }
 
 fn count(path: &Path, sql: &str) -> Result<i64> {
-    let c = OpenOptions::new().read_write().no_mutex().open(path)?;
+    let c = OpenOptions::new().read_write().open(path)?;
     let mut q = c.prepare(sql)?;
     Ok(q.next::<i64>()?.unwrap_or_default())
 }
@@ -679,7 +677,7 @@ async fn preferences_default_on_missing_rows() -> Result<()> {
     assert_eq!(db.load_preferences(root).await?, preferences);
     assert_eq!(count(&path, "SELECT COUNT(*) FROM user_config")?, 2);
 
-    let c = OpenOptions::new().read_write().no_mutex().open(&path)?;
+    let c = OpenOptions::new().read_write().open(&path)?;
     c.execute(
         "INSERT INTO user_config (user_id, key, value)
          SELECT id, 'no-such-key', '1' FROM users WHERE login = 'root';
@@ -1076,11 +1074,7 @@ fn schema(c: &sqll::Connection) -> Result<Vec<String>> {
 
 /// A database created before users, with its base schema recorded as applied.
 fn before_users_db(path: &Path) -> Result<sqll::Connection> {
-    let c = OpenOptions::new()
-        .read_write()
-        .create()
-        .no_mutex()
-        .open(path)?;
+    let c = OpenOptions::new().read_write().create().open(path)?;
 
     c.execute(BEFORE_USERS_SCHEMA)?;
     c.execute(MIGRATIONS_INIT)?;
@@ -1103,7 +1097,7 @@ fn failed_migration_is_rolled_back() -> Result<()> {
 
     assert!(Database::open(&path, OpenMode::Normal, 1).is_err());
 
-    let c = OpenOptions::new().read_write().no_mutex().open(&path)?;
+    let c = OpenOptions::new().read_write().open(&path)?;
 
     assert_eq!(
         texts(&c, "SELECT id FROM migrations ORDER BY id")?,
@@ -1139,11 +1133,7 @@ fn failed_migration_is_rolled_back() -> Result<()> {
 /// next open builds it from the base again.
 #[test]
 fn failed_base_schema_leaves_the_database_empty() -> Result<()> {
-    let c = OpenOptions::new()
-        .read_write()
-        .create()
-        .no_mutex()
-        .open_in_memory()?;
+    let c = OpenOptions::new().read_write().create().open_in_memory()?;
 
     // A view is not a table, so the database still reads as empty, but it
     // takes a name the base schema creates.
@@ -1205,8 +1195,8 @@ fn migrations_convert_a_database_from_before_users() -> Result<()> {
     drop(Database::open(&old, OpenMode::Bulk, 1)?);
     drop(Database::open(&fresh, OpenMode::Bulk, 1)?);
 
-    let old = OpenOptions::new().read_write().no_mutex().open(&old)?;
-    let fresh = OpenOptions::new().read_write().no_mutex().open(&fresh)?;
+    let old = OpenOptions::new().read_write().open(&old)?;
+    let fresh = OpenOptions::new().read_write().open(&fresh)?;
 
     assert_eq!(schema(&old)?, schema(&fresh)?);
     assert_eq!(
@@ -1296,11 +1286,7 @@ fn migrations_convert_a_database_from_before_users() -> Result<()> {
 /// A database created before strings of unknown language, with every migration
 /// up to then recorded as applied.
 fn before_unknown_language_db(path: &Path) -> Result<sqll::Connection> {
-    let c = OpenOptions::new()
-        .read_write()
-        .create()
-        .no_mutex()
-        .open(path)?;
+    let c = OpenOptions::new().read_write().create().open(path)?;
 
     c.execute(BEFORE_UNKNOWN_LANGUAGE_SCHEMA)?;
     c.execute(MIGRATIONS_INIT)?;
@@ -1371,8 +1357,8 @@ async fn migrations_store_untranslated_strings_in_unknown_language() -> Result<(
     let db = Database::open(&old, OpenMode::Bulk, 1)?;
 
     {
-        let old = OpenOptions::new().read_write().no_mutex().open(&old)?;
-        let fresh = OpenOptions::new().read_write().no_mutex().open(&fresh)?;
+        let old = OpenOptions::new().read_write().open(&old)?;
+        let fresh = OpenOptions::new().read_write().open(&fresh)?;
 
         assert_eq!(schema(&old)?, schema(&fresh)?);
         assert_eq!(
@@ -1470,11 +1456,7 @@ async fn migrations_store_untranslated_strings_in_unknown_language() -> Result<(
 /// a `Language` or `Country`.
 #[test]
 fn invalid_stored_language_and_country_are_rejected() -> Result<()> {
-    let c = OpenOptions::new()
-        .read_write()
-        .create()
-        .no_mutex()
-        .open_in_memory()?;
+    let c = OpenOptions::new().read_write().create().open_in_memory()?;
 
     let read = |sql: &str| -> (
         sqll::Result<Option<api::Language>>,
@@ -1525,10 +1507,7 @@ fn invalid_stored_language_and_country_are_rejected() -> Result<()> {
 
 #[test]
 fn date_round_trips_through_yyyymmdd_integer() -> Result<()> {
-    let c = OpenOptions::new()
-        .read_write()
-        .no_mutex()
-        .open_in_memory()?;
+    let c = OpenOptions::new().read_write().open_in_memory()?;
 
     for (year, month, day, n) in [
         (2026, 1, 5, 20260105),
@@ -1956,11 +1935,7 @@ async fn xem_entries_and_names() -> Result<()> {
 /// recorded as applied, root (from its base schema), and alice, who has no
 /// password, an unused login link, a used one, tracking and watch history.
 fn before_yew_auth_db(path: &Path) -> Result<sqll::Connection> {
-    let c = OpenOptions::new()
-        .read_write()
-        .create()
-        .no_mutex()
-        .open(path)?;
+    let c = OpenOptions::new().read_write().create().open(path)?;
 
     c.execute(BEFORE_YEW_AUTH_SCHEMA)?;
     c.execute(MIGRATIONS_INIT)?;
@@ -2004,8 +1979,8 @@ async fn migrations_move_users_onto_yew_auth() -> Result<()> {
     let db = Database::open(&old, OpenMode::Normal, 1)?;
 
     {
-        let old = OpenOptions::new().read_write().no_mutex().open(&old)?;
-        let fresh = OpenOptions::new().read_write().no_mutex().open(&fresh)?;
+        let old = OpenOptions::new().read_write().open(&old)?;
+        let fresh = OpenOptions::new().read_write().open(&fresh)?;
 
         assert_eq!(schema(&old)?, schema(&fresh)?);
         assert_eq!(

@@ -148,7 +148,7 @@ impl Server {
             delay: None,
             auth: state.auth.clone(),
             user: Arc::new(AuthUser::from(user)),
-            conn: auth::musliweb04::Connection::new(state.auth.clone(), user),
+            conn: auth::musliweb05::Connection::new(state.auth.clone(), user),
         }
     }
 
@@ -551,7 +551,7 @@ async fn admin_only_requests() -> Result<()> {
     server
         .state
         .auth
-        .set_role(&root.user, alice_user.user.id, Role::Admin)
+        .set_role(&root.user, &root.session, alice_user.user.id, Role::Admin)
         .await?;
     regular.authorize(api::Request::SetSystemConfig).await?;
     Ok(())

@@ -16,7 +16,7 @@ required-features = ["import"]
 
 [dependencies]
 api = { path = "../api", features = ["rand", "sqll"] }
-auth = { package = "watchword", version = "0.2", features = ["axum08", "cloudflare", "musliweb04", "sqll014"] }
+auth = { package = "watchword", version = "0.3", features = ["axum08", "cloudflare", "musliweb05", "sqll015"] }
 
 anyhow = "1.0.104"
 axum = "0.8.9"
@@ -24,7 +24,7 @@ bytes = "1.12.1"
 clap = { version = "4.6.7", features = ["derive", "env"] }
 lru = "0.18.5"
 mime_guess = { version = "2.0.5", default-features = false, optional = true }
-musli-web = { version = "0.4.10", default-features = false, features = ["axum08"] }
+musli-web = { version = "0.5.0", default-features = false, features = ["axum08"] }
 parking_lot = "0.12.5"
 reqwest = { version = "0.13.5", default-features = false, features = ["query", "rustls", "stream"] }
 serde = { version = "1.0.229", features = ["derive"] }
@@ -37,7 +37,7 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tokio-util = "0.7.19"
 jiff = "0.2.37"
-sqll = { version = "0.14.7", features = ["bundled", "pool"] }
+sqll = { version = "0.15.0", features = ["bundled", "pool"] }
 chrono = { version = "0.4.45", features = ["serde"], optional = true }
 serde_yaml = { version = "0.9.34", optional = true }
 uuid = { version = "1.26.1", default-features = false, optional = true, features = ["serde"] }

@@ -7,7 +7,7 @@ use std::time::Duration;
 use anyhow::{Context as _, Error, Result};
 use auth::Auth;
 use auth::axum08::SignedIn;
-use auth::musliweb04::Connection;
+use auth::musliweb05::Connection;
 use axum::extract::State;
 use axum::extract::WebSocketUpgrade;
 use musli_web::axum08;

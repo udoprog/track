@@ -1,81 +1,36 @@
 use core::cell::RefCell;
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
+/// Tells `onchannel` about the app channel: the open channel each time it
+/// opens, and a closed one when it is lost with the connection.
 pub(super) struct SetupChannel {
-    _inner: Rc<RefCell<SetupChannelInner>>,
-}
-
-struct SetupChannelInner {
-    onchannel: Callback<Result<ws::Channel, ws::Error>>,
-    _channel_req: ws::Request,
-    _state_listener: ws::StateListener,
-    state: ws::State,
-    ws: ws::Handle,
-    on_channel: Callback<Result<ws::Channel, ws::Error>>,
-    on_state: Callback<ws::State>,
+    _channel: Rc<RefCell<ws::Channel>>,
 }
 
 impl SetupChannel {
     pub(super) fn new(ws: ws::Handle, onchannel: Callback<Result<ws::Channel, ws::Error>>) -> Self {
-        let this = Self {
-            _inner: Rc::new_cyclic(|inner: &Weak<RefCell<SetupChannelInner>>| {
-                let on_state = Callback::from({
-                    let inner = inner.clone();
-                    move |state| {
-                        if let Some(inner) = inner.upgrade() {
-                            inner.borrow_mut().on_state(state);
-                        }
+        let slot = Rc::new(RefCell::new(ws::Channel::default()));
+
+        // NB: Weak, since the callback is owned by the channel.
+        let weak = Rc::downgrade(&slot);
+
+        let channel = ws
+            .channel()
+            .on_change(move |event| match event {
+                ws::ChannelEvent::Opened(..) => {
+                    if let Some(slot) = weak.upgrade() {
+                        onchannel.emit(Ok(slot.borrow().clone()));
                     }
-                });
-                let on_channel = Callback::from({
-                    let inner = inner.clone();
-                    move |ch| {
-                        if let Some(inner) = inner.upgrade() {
-                            inner.borrow_mut().on_channel(ch);
-                        }
-                    }
-                });
-                RefCell::new(SetupChannelInner {
-                    onchannel,
-                    _channel_req: ws::Request::default(),
-                    _state_listener: ws::StateListener::default(),
-                    state: ws::State::Closed,
-                    ws,
-                    on_channel,
-                    on_state,
-                })
-            }),
-        };
-        this._inner.borrow_mut().setup();
-        this
-    }
-}
+                }
+                ws::ChannelEvent::Failed(error) => onchannel.emit(Err(error)),
+                _ => onchannel.emit(Ok(ws::Channel::default())),
+            })
+            .open();
 
-impl SetupChannelInner {
-    fn on_state(&mut self, state: ws::State) {
-        self.state = state;
-        self.refresh();
-    }
-
-    fn on_channel(&mut self, channel: Result<ws::Channel, ws::Error>) {
-        self.onchannel.emit(channel);
-    }
-
-    fn setup(&mut self) {
-        let (state, listener) = self.ws.on_state_change(self.on_state.clone());
-        self.state = state;
-        self._state_listener = listener;
-        self.refresh();
-    }
-
-    fn refresh(&mut self) {
-        if self.state.is_open() {
-            self._channel_req = self.ws.channel().on_open(self.on_channel.clone()).send();
-        } else {
-            self.onchannel.emit(Ok(ws::Channel::default()));
-        }
+        *slot.borrow_mut() = channel;
+        Self { _channel: slot }
     }
 }

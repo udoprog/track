@@ -110,7 +110,7 @@ impl InnerRead {
         let mut out = Vec::new();
         let mut stmt = self.xem.names.bind((show_id,))?;
 
-        while let Some(row) = stmt.next()? {
+        while let Some(row) = stmt.next().transpose()? {
             out.push(row);
         }
 
@@ -154,7 +154,7 @@ impl Database {
                         .entry
                         .bind((show_id, show_id, t.system, t.season, t.episode))?;
 
-                    while let Some(row) = stmt.next()? {
+                    while let Some(row) = stmt.next().transpose()? {
                         entry.push(row);
                     }
                 }
@@ -199,7 +199,7 @@ impl Database {
                             origin.as_str(),
                         ))?;
 
-                        while let Some(row) = stmt.next()? {
+                        while let Some(row) = stmt.next().transpose()? {
                             out.push(Some(row.season));
                         }
 
@@ -236,7 +236,7 @@ impl Database {
             {
                 let mut stmt = s.xem.episode_codes.bind((show_id,))?;
 
-                while let Some(c) = stmt.next()? {
+                while let Some(c) = stmt.next().transpose()? {
                     episodes.push((c.season, c.episode));
                 }
             }
@@ -244,7 +244,7 @@ impl Database {
             let mut systems = Vec::<api::XemSystemEpisodes>::new();
             let mut stmt = s.xem.system_codes.bind((show_id,))?;
 
-            while let Some(c) = stmt.next()? {
+            while let Some(c) = stmt.next().transpose()? {
                 match systems.last_mut() {
                     Some(last) if last.system == c.system => {
                         last.episodes.push((c.season, c.episode));

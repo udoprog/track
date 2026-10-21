@@ -136,7 +136,7 @@ fn code_stored_values() {
     assert_eq!(stored(Language::DEFAULT.to_raw()), 0);
     assert_eq!(stored(Language::ENG.to_raw()), 0x656e_6700);
     assert_eq!(stored(Country::US.to_raw()), 0x5553_0000);
-    assert_eq!(format!("{:?}", Language::ENG), "eng");
+    assert_eq!(format!("{:?}", Language::ENG), "Language(eng)");
 }
 
 #[test]

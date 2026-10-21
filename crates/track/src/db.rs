@@ -525,7 +525,7 @@ where
     let mut out = Vec::new();
     let mut rows = stmt.query()?;
 
-    while let Some(row) = rows.next()? {
+    while let Some(row) = rows.next().transpose()? {
         out.push(row);
     }
 
@@ -632,7 +632,7 @@ impl InnerTranslations {
         let mut translations = api::Translations::new(language.or(config).or(default));
         let mut stmt = self.list_show_strings.bind((id,))?;
 
-        while let Some((locale, kind, text)) = stmt.next()? {
+        while let Some((locale, kind, text)) = stmt.next().transpose()? {
             translations.insert(kind, locale, &text);
         }
 
@@ -658,7 +658,7 @@ impl InnerTranslations {
 
         let mut stmt = self.list_movie_strings.bind((id,))?;
 
-        while let Some((locale, kind, text)) = stmt.next()? {
+        while let Some((locale, kind, text)) = stmt.next().transpose()? {
             translations.insert(kind, locale, &text);
         }
 
@@ -678,7 +678,7 @@ impl InnerTranslations {
         let mut translations = api::Translations::new(language.or(config).or(default));
         let mut stmt = self.list_episode_strings.bind((id,))?;
 
-        while let Some((locale, kind, text)) = stmt.next()? {
+        while let Some((locale, kind, text)) = stmt.next().transpose()? {
             translations.insert(kind, locale, &text);
         }
 
@@ -780,7 +780,7 @@ pub(crate) struct InnerRead {
     #[sql(statements)]
     users: users::Read,
     #[sql(statements)]
-    auth: auth::sqll014::Read,
+    auth: auth::sqll015::Read,
     #[sql(statements)]
     xem: xem::Read,
 
@@ -1370,7 +1370,7 @@ pub(crate) struct InnerWrite {
     #[sql(statements)]
     read: InnerRead,
     #[sql(statements)]
-    auth_write: auth::sqll014::Write,
+    auth_write: auth::sqll015::Write,
     #[sql(statements)]
     xem_write: xem::Write,
 
@@ -1973,7 +1973,7 @@ impl InnerRead {
         let mut out = Vec::new();
         let mut stmt = self.list_show_remotes.bind((show_id,))?;
 
-        while let Some(r) = stmt.next()? {
+        while let Some(r) = stmt.next().transpose()? {
             out.push(remote_entry(r));
         }
 
@@ -1986,7 +1986,7 @@ impl InnerRead {
         let mut out = Vec::new();
         let mut stmt = self.list_movie_remotes.bind((movie_id,))?;
 
-        while let Some(r) = stmt.next()? {
+        while let Some(r) = stmt.next().transpose()? {
             out.push(remote_entry(r));
         }
 
@@ -2004,7 +2004,7 @@ impl InnerRead {
 
         let mut stmt = self.list_episode_ids_for_show.bind((show_id,))?;
 
-        while let Some(r) = stmt.next()? {
+        while let Some(r) = stmt.next().transpose()? {
             out.insert((r.season, r.number), r.id);
         }
 
@@ -2119,7 +2119,7 @@ impl InnerRead {
         let mut out = Vec::new();
         let mut stmt = self.show_trackers.bind((show_id,))?;
 
-        while let Some(user) = stmt.next()? {
+        while let Some(user) = stmt.next().transpose()? {
             out.push(user);
         }
 
@@ -2131,7 +2131,7 @@ impl InnerRead {
         let mut out = Vec::new();
         let mut stmt = self.movie_trackers.bind((movie_id,))?;
 
-        while let Some(user) = stmt.next()? {
+        while let Some(user) = stmt.next().transpose()? {
             out.push(user);
         }
 
@@ -2150,7 +2150,7 @@ impl InnerWrite {
 
         let result = match result {
             Ok(Ok(value)) => match self.commit.execute(()) {
-                Ok(()) => return Ok(value),
+                Ok(_) => return Ok(value),
                 Err(e) => Err(e.into()),
             },
             Ok(Err(e)) => Err(e),
@@ -2174,7 +2174,7 @@ impl InnerWrite {
         let mut removed = Vec::new();
         let mut stmt = self.list_seasons.bind((None::<UserId>, show_id))?;
 
-        while let Some(r) = stmt.next()? {
+        while let Some(r) = stmt.next().transpose()? {
             if !kept.contains(&r.season) {
                 removed.push(r.season);
             }
@@ -2408,7 +2408,7 @@ impl InnerWrite {
 
         let mut stmt = self.episode_numbers_for_season.bind((show_id, season))?;
 
-        while let Some(number) = stmt.next()? {
+        while let Some(number) = stmt.next().transpose()? {
             if !kept.contains(&number) {
                 to_delete.push(number);
             }
@@ -2712,7 +2712,7 @@ impl InnerWrite {
         let mut out = HashMap::new();
         let mut stmt = self.show_image_max_ranks.bind((show_id,))?;
 
-        while let Some(r) = stmt.next()? {
+        while let Some(r) = stmt.next().transpose()? {
             out.insert(r.kind, r.rank + 1);
         }
 
@@ -2728,7 +2728,7 @@ impl InnerWrite {
         let mut out = HashSet::new();
         let mut stmt = self.show_selected_image_kinds.bind((show_id,))?;
 
-        while let Some(kind) = stmt.next()? {
+        while let Some(kind) = stmt.next().transpose()? {
             out.insert(kind);
         }
 
@@ -2744,7 +2744,7 @@ impl InnerWrite {
         let mut out = HashMap::new();
         let mut stmt = self.user_selected_movie_images.bind((movie_id,))?;
 
-        while let Some(r) = stmt.next()? {
+        while let Some(r) = stmt.next().transpose()? {
             out.insert(r.kind, ImageKey::new(r.source, &r.path));
         }
 
@@ -2761,7 +2761,7 @@ impl InnerWrite {
         let mut out = HashMap::new();
         let mut stmt = self.user_selected_show_images.bind((show_id,))?;
 
-        while let Some(r) = stmt.next()? {
+        while let Some(r) = stmt.next().transpose()? {
             out.insert(r.kind, ImageKey::new(r.source, &r.path));
         }
 
@@ -2818,7 +2818,7 @@ impl InnerWrite {
 
         let mut stmt = self.list_episode_releases_for_show.bind((show_id,))?;
 
-        while let Some(r) = stmt.next()? {
+        while let Some(r) = stmt.next().transpose()? {
             // An eligible source that didn't run this sync keeps its releases (a
             // transient fetch failure); every other source is pruned down to what
             // it just reported, so disabled and `Unknown` sources are dropped.
@@ -2864,7 +2864,7 @@ impl InnerWrite {
 
         let mut stmt = self.list_episode_releases.bind((episode_id,))?;
 
-        while let Some((source, country, network, _)) = stmt.next()? {
+        while let Some((source, country, network, _)) = stmt.next().transpose()? {
             // An eligible source that didn't run keeps its releases (a transient
             // fetch failure); every other source is pruned down to what it just
             // reported.
@@ -2911,7 +2911,7 @@ impl InnerWrite {
 
         let mut stmt = self.list_movie_releases.bind((movie_id,))?;
 
-        while let Some(r) = stmt.next()? {
+        while let Some(r) = stmt.next().transpose()? {
             // An eligible source that didn't run this sync keeps its releases;
             // every other source is pruned down to what it just reported.
             if eligible.contains(&r.source) && !ran.contains(&r.source) {
@@ -3054,7 +3054,7 @@ impl InnerRead {
         let mut show_remotes = Vec::new();
         let mut stmt = self.list_all_show_remotes.query()?;
 
-        while let Some(r) = stmt.next()? {
+        while let Some(r) = stmt.next().transpose()? {
             show_remotes.push(ExportRemote {
                 id: r.id,
                 owner: r.show_id,
@@ -3072,7 +3072,7 @@ impl InnerRead {
         let mut movie_remotes = Vec::new();
         let mut stmt = self.list_all_movie_remotes.query()?;
 
-        while let Some(r) = stmt.next()? {
+        while let Some(r) = stmt.next().transpose()? {
             movie_remotes.push(ExportRemote {
                 id: r.id,
                 owner: r.movie_id,
@@ -3100,7 +3100,7 @@ impl InnerRead {
         let mut watched_episodes = Vec::new();
         let mut stmt = self.list_all_watched_episodes.query()?;
 
-        while let Some(r) = stmt.next()? {
+        while let Some(r) = stmt.next().transpose()? {
             if let Some(show_id) = r.show_id {
                 watched_episodes.push((r.id, r.login, r.timestamp, show_id, r.season, r.episode));
             }
@@ -3111,7 +3111,7 @@ impl InnerRead {
         let mut watched_movies = Vec::new();
         let mut stmt = self.list_all_watched_movies.query()?;
 
-        while let Some(r) = stmt.next()? {
+        while let Some(r) = stmt.next().transpose()? {
             if let Some(movie_id) = r.movie_id {
                 watched_movies.push((r.id, r.login, r.timestamp, movie_id));
             }
@@ -3176,7 +3176,6 @@ impl Database {
             let c = OpenOptions::new()
                 .extended_result_codes()
                 .read_only()
-                .no_mutex()
                 .open(path.as_os_str())
                 .with_context(|| anyhow!("Opening database at {}", path.display()))?;
 
@@ -3186,15 +3185,13 @@ impl Database {
                 .extended_result_codes()
                 .read_write()
                 .create()
-                .no_mutex()
                 .open(path.as_os_str())
                 .with_context(|| anyhow!("Opening database at {}", path.display()))?;
 
             do_migrations(&c).context("Running migrations")?;
         }
 
-        let mut options = OpenOptions::new();
-        options.no_mutex();
+        let options = OpenOptions::new();
 
         let builder = PoolBuilder::new(options, read_concurrency)
             .with_write_setup(move |c| ensure_mode(c, mode))
@@ -3213,7 +3210,7 @@ impl Database {
         T: Send + 'static,
     {
         let mut s = self.inner.clone().exclusive().await?;
-        spawn_blocking(move || s.transaction(f)).await?
+        spawn_blocking(move || InnerWrite::transaction(&mut s, f)).await?
     }
 
     #[cfg(test)]
@@ -3313,8 +3310,11 @@ impl Database {
         owner: O,
         remote_id: RemoteId,
     ) -> Result<()> {
-        self.write_remotes(move |r: RemoteWrite<'_, O>| Ok(r.delete.execute((remote_id, owner))?))
-            .await
+        self.write_remotes(move |r: RemoteWrite<'_, O>| {
+            r.delete.execute((remote_id, owner))?;
+            Ok(())
+        })
+        .await
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -3329,13 +3329,14 @@ impl Database {
         let remote = remote.clone();
 
         self.write_remotes(move |r: RemoteWrite<'_, O>| {
-            Ok(r.update.execute((
+            r.update.execute((
                 slug.as_deref(),
                 remote.source(),
                 remote.value(),
                 remote_id,
                 owner,
-            ))?)
+            ))?;
+            Ok(())
         })
         .await
     }
@@ -3348,7 +3349,8 @@ impl Database {
         enabled: bool,
     ) -> Result<()> {
         self.write_remotes(move |r: RemoteWrite<'_, O>| {
-            Ok(r.set_enabled.execute((enabled, remote_id, owner))?)
+            r.set_enabled.execute((enabled, remote_id, owner))?;
+            Ok(())
         })
         .await
     }
@@ -3361,7 +3363,8 @@ impl Database {
         sync_kinds: Option<api::SyncKindSet>,
     ) -> Result<()> {
         self.write_remotes(move |r: RemoteWrite<'_, O>| {
-            Ok(r.set_sync_kinds.execute((sync_kinds, remote_id, owner))?)
+            r.set_sync_kinds.execute((sync_kinds, remote_id, owner))?;
+            Ok(())
         })
         .await
     }
@@ -3376,7 +3379,8 @@ impl Database {
         cache: Option<String>,
     ) -> Result<()> {
         self.write_remotes(move |r: RemoteWrite<'_, O>| {
-            Ok(r.set_cache.execute((cache, remote_id, owner))?)
+            r.set_cache.execute((cache, remote_id, owner))?;
+            Ok(())
         })
         .await
     }
@@ -3412,7 +3416,7 @@ impl Database {
 
             let mut stmt = s.list_shows.bind((user,))?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 id_to_idx.insert(r.id, out.len());
                 let strings =
                     api::Translations::new(r.language.0.or(config).or(r.default_language));
@@ -3423,7 +3427,7 @@ impl Database {
 
             let mut stmt = s.list_all_show_strings.query()?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 if let Some(&i) = id_to_idx.get(&r.show_id)
                     && let Some(o) = out.get_mut(i)
                 {
@@ -3440,7 +3444,7 @@ impl Database {
 
             let mut stmt = s.list_all_show_remotes.query()?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 if let Some(&i) = id_to_idx.get(&r.show_id)
                     && let Some(o) = out.get_mut(i)
                 {
@@ -3460,7 +3464,7 @@ impl Database {
 
             let mut stmt = s.list_all_show_images.query()?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 if let Some(&i) = id_to_idx.get(&r.show_id)
                     && let Some(o) = out.get_mut(i)
                 {
@@ -3472,7 +3476,7 @@ impl Database {
 
             let mut stmt = s.list_all_show_image_selections.query()?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 if let Some(&i) = id_to_idx.get(&r.show_id)
                     && let Some(o) = out.get_mut(i)
                 {
@@ -3517,7 +3521,7 @@ impl Database {
 
             let mut stmt = s.list_show_images.bind((id,))?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 show.images.push(image_from_row(r));
             }
 
@@ -3525,7 +3529,7 @@ impl Database {
 
             let mut stmt = s.list_show_image_selections.bind((id,))?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 apply_image_selection(&mut show, r);
             }
 
@@ -3642,7 +3646,7 @@ impl Database {
 
             let mut stmt = s.list_seasons.bind((user, show_id))?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 id_to_idx.insert(r.id, out.len());
                 let strings = api::Translations::new(language.or(config).or(default));
                 out.push(season_from_row(r, strings));
@@ -3652,7 +3656,7 @@ impl Database {
 
             let mut stmt = s.list_show_season_strings.bind((show_id,))?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 if let Some(&i) = id_to_idx.get(&r.season_id)
                     && let Some(o) = out.get_mut(i)
                 {
@@ -3718,7 +3722,7 @@ impl Database {
 
             let mut stmt = s.list_episodes.bind((Some(user), show_id, season))?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 idx_by_id.insert(r.id, out.len());
                 let strings = api::Translations::new(language.or(config).or(default));
                 out.push(episode_from_row(r, strings));
@@ -3728,7 +3732,7 @@ impl Database {
 
             let mut stmt = s.list_season_episode_strings.bind((show_id, season))?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 if let Some(&i) = idx_by_id.get(&r.episode_id)
                     && let Some(o) = out.get_mut(i)
                 {
@@ -3742,7 +3746,7 @@ impl Database {
                 s.list_season_episode_screenshots
                     .bind((ImageKind::Screenshot, show_id, season))?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 if let Some(&i) = idx_by_id.get(&r.episode_id)
                     && let Some(o) = out.get_mut(i)
                 {
@@ -3812,7 +3816,7 @@ impl Database {
             let mut out = HashMap::new();
             let mut stmt = s.episode_cache.bind((id,))?;
 
-            while let Some((source, cache)) = stmt.next()? {
+            while let Some((source, cache)) = stmt.next().transpose()? {
                 if let Some(cache) = parse_remote_cache(Some(cache)) {
                     out.insert(source, cache);
                 }
@@ -3898,7 +3902,7 @@ impl Database {
             let mut out = Vec::new();
             let mut stmt = s.episodes_needing_air_sync.bind((start, end, cutoff))?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 out.push((r.show_id, r.id, api::Code::new(r.season, r.episode)));
             }
 
@@ -3928,7 +3932,7 @@ impl Database {
 
             let mut last = None::<(u32, EpisodeId)>;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 if last.is_none_or(|(number, _)| r.number > number) {
                     last = Some((r.number, r.id));
                 }
@@ -3965,7 +3969,7 @@ impl Database {
 
             let mut stmt = s.list_episodes_watched.bind((user, show_id))?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 out.push(watched_episode_from_row(r));
             }
 
@@ -4054,7 +4058,7 @@ impl Database {
 
             let mut stmt = s.list_episode_releases_for_show.bind((show_id,))?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 by_episode
                     .entry(r.episode_id)
                     .or_default()
@@ -4153,7 +4157,7 @@ impl Database {
 
                 let mut stmt = s.list_movie_items.bind((user,))?;
 
-                while let Some(r) = stmt.next()? {
+                while let Some(r) = stmt.next().transpose()? {
                     let strings =
                         api::Translations::new(r.language.0.or(r.default_language).or(config));
                     let item = media_item_from_row(r, api::MediaKind::Movies, strings);
@@ -4165,7 +4169,7 @@ impl Database {
 
                 let mut stmt = s.list_all_movie_strings.query()?;
 
-                while let Some(r) = stmt.next()? {
+                while let Some(r) = stmt.next().transpose()? {
                     if let Some(&i) = id_to_idx.get(&r.movie_id.get())
                         && let Some(o) = out.get_mut(i)
                     {
@@ -4184,7 +4188,7 @@ impl Database {
 
                 let mut stmt = s.last_watched_movies.bind((user,))?;
 
-                while let Some(r) = stmt.next()? {
+                while let Some(r) = stmt.next().transpose()? {
                     if let Some(&i) = id_to_idx.get(&r.movie_id.get())
                         && let Some(o) = out.get_mut(i)
                     {
@@ -4196,7 +4200,7 @@ impl Database {
 
                 let mut stmt = s.list_all_movie_remotes.query()?;
 
-                while let Some(r) = stmt.next()? {
+                while let Some(r) = stmt.next().transpose()? {
                     if let Some(&i) = id_to_idx.get(&r.movie_id.get())
                         && let Some(o) = out.get_mut(i)
                     {
@@ -4222,7 +4226,7 @@ impl Database {
 
                 let mut stmt = s.list_show_items.bind((user,))?;
 
-                while let Some(r) = stmt.next()? {
+                while let Some(r) = stmt.next().transpose()? {
                     let strings =
                         api::Translations::new(r.language.0.or(r.default_language).or(config));
                     let item = media_item_from_row(r, api::MediaKind::Shows, strings);
@@ -4234,7 +4238,7 @@ impl Database {
 
                 let mut stmt = s.list_all_show_strings.query()?;
 
-                while let Some(r) = stmt.next()? {
+                while let Some(r) = stmt.next().transpose()? {
                     if let Some(&i) = id_to_idx.get(&r.show_id.get())
                         && let Some(o) = out.get_mut(i)
                     {
@@ -4253,7 +4257,7 @@ impl Database {
 
                 let mut stmt = s.last_watched_shows.bind((user,))?;
 
-                while let Some(r) = stmt.next()? {
+                while let Some(r) = stmt.next().transpose()? {
                     if let Some(&i) = id_to_idx.get(&r.show_id.get())
                         && let Some(o) = out.get_mut(i)
                     {
@@ -4265,7 +4269,7 @@ impl Database {
 
                 let mut stmt = s.unwatched_shows.bind((user,))?;
 
-                while let Some(r) = stmt.next()? {
+                while let Some(r) = stmt.next().transpose()? {
                     if let Some(&i) = id_to_idx.get(&r.show_id.get())
                         && let Some(o) = out.get_mut(i)
                     {
@@ -4279,7 +4283,7 @@ impl Database {
                     .next_episodes
                     .bind((user, None::<ShowId>, Timestamp::now()))?;
 
-                while let Some(r) = stmt.next()? {
+                while let Some(r) = stmt.next().transpose()? {
                     if let Some(&i) = id_to_idx.get(&r.show_id.get())
                         && let Some(o) = out.get_mut(i)
                     {
@@ -4295,7 +4299,7 @@ impl Database {
 
                 let mut stmt = s.list_all_show_remotes.query()?;
 
-                while let Some(r) = stmt.next()? {
+                while let Some(r) = stmt.next().transpose()? {
                     if let Some(&i) = id_to_idx.get(&r.show_id.get())
                         && let Some(o) = out.get_mut(i)
                     {
@@ -4332,7 +4336,7 @@ impl Database {
 
             let mut stmt = s.list_movies.bind((user,))?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 id_to_idx.insert(r.id, out.len());
                 let strings = api::Translations::new(r.language.0.or(r.default_language).or(cfg));
                 out.push(movie_from_row(r, strings));
@@ -4342,7 +4346,7 @@ impl Database {
 
             let mut stmt = s.list_all_movie_strings.query()?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 if let Some(&i) = id_to_idx.get(&r.movie_id)
                     && let Some(o) = out.get_mut(i)
                 {
@@ -4359,7 +4363,7 @@ impl Database {
 
             let mut stmt = s.list_all_movie_remotes.query()?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 if let Some(&index) = id_to_idx.get(&r.movie_id)
                     && let Some(o) = out.get_mut(index)
                 {
@@ -4379,7 +4383,7 @@ impl Database {
 
             let mut stmt = s.list_all_movie_images.query()?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 if let Some(&i) = id_to_idx.get(&r.movie_id)
                     && let Some(o) = out.get_mut(i)
                 {
@@ -4391,7 +4395,7 @@ impl Database {
 
             let mut stmt = s.list_all_movie_image_selections.query()?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 if let Some(&i) = id_to_idx.get(&r.movie_id)
                     && let Some(o) = out.get_mut(i)
                 {
@@ -4437,7 +4441,7 @@ impl Database {
 
             let mut stmt = s.list_movie_images.bind((movie_id,))?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 movie.images.push(image_from_row(r));
             }
 
@@ -4445,7 +4449,7 @@ impl Database {
 
             let mut stmt = s.list_movie_image_selections.bind((movie_id,))?;
 
-            while let Some(sel) = stmt.next()? {
+            while let Some(sel) = stmt.next().transpose()? {
                 apply_movie_image_selection(&mut movie, sel);
             }
 
@@ -4453,7 +4457,7 @@ impl Database {
 
             let mut stmt = s.list_movie_releases.bind((movie_id,))?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 movie.releases.push(api::MovieRelease {
                     source: r.source,
                     country: r.country,
@@ -4522,7 +4526,7 @@ impl Database {
 
             let mut stmt = s.list_show_images.bind((show_id,))?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 show.images.push(image_from_row(r));
             }
 
@@ -4530,7 +4534,7 @@ impl Database {
 
             let mut stmt = s.list_show_image_selections.bind((show_id,))?;
 
-            while let Some(sel) = stmt.next()? {
+            while let Some(sel) = stmt.next().transpose()? {
                 apply_image_selection(&mut show, sel);
             }
 
@@ -4571,7 +4575,7 @@ impl Database {
 
             let mut stmt = s.list_movie_images.bind((movie_id,))?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 movie.images.push(image_from_row(r));
             }
 
@@ -4579,7 +4583,7 @@ impl Database {
 
             let mut stmt = s.list_movie_image_selections.bind((movie_id,))?;
 
-            while let Some(sel) = stmt.next()? {
+            while let Some(sel) = stmt.next().transpose()? {
                 apply_movie_image_selection(&mut movie, sel);
             }
 
@@ -4696,7 +4700,7 @@ impl Database {
             let mut department = api::Translations::new(locale);
 
             let mut stmt = s.list_person_strings.bind((person_id,))?;
-            while let Some((language, kind, text)) = stmt.next()? {
+            while let Some((language, kind, text)) = stmt.next().transpose()? {
                 match kind {
                     api::StringKind::Overview => biography.insert(kind, language, &text),
                     api::StringKind::Department => department.insert(kind, language, &text),
@@ -4714,7 +4718,7 @@ impl Database {
 
             let mut remotes = Vec::new();
             let mut stmt = s.list_person_remotes.bind((person_id,))?;
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 remotes.push(api::RemoteEntry {
                     id: r.id,
                     slug: r.slug,
@@ -4754,7 +4758,7 @@ impl Database {
             let mut out = Vec::new();
             let mut stmt = s.people_needing_sync.bind((cutoff,))?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 out.push((r.id, r.name));
             }
 
@@ -4869,7 +4873,7 @@ impl Database {
                         offset,
                     ))?;
 
-                    while let Some(r) = stmt.next()? {
+                    while let Some(r) = stmt.next().transpose()? {
                         rows.push(r);
                     }
 
@@ -4880,7 +4884,7 @@ impl Database {
                         s.list_persons_by_credits
                             .bind((filter.as_str(), desc, fetch, offset))?;
 
-                    while let Some(r) = stmt.next()? {
+                    while let Some(r) = stmt.next().transpose()? {
                         rows.push(r);
                     }
 
@@ -4900,7 +4904,7 @@ impl Database {
 
                 let mut stmt = s.list_person_list_strings.bind((r.id,))?;
 
-                while let Some((language, kind, text)) = stmt.next()? {
+                while let Some((language, kind, text)) = stmt.next().transpose()? {
                     match kind {
                         api::StringKind::Department => department.insert(kind, language, &text),
                         _ => name.insert(kind, language, &text),
@@ -4966,7 +4970,7 @@ impl Database {
                 last,
             ))?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 rows.push(r);
             }
 
@@ -5073,7 +5077,7 @@ impl Database {
             // its title/role against its own owner's display locale below.
             let mut titles: HashMap<CreditId, Vec<(api::Locale, String)>> = HashMap::new();
             let mut stmt = s.list_person_show_titles.bind((person_id,))?;
-            while let Some((credit_id, language, text)) = stmt.next()? {
+            while let Some((credit_id, language, text)) = stmt.next().transpose()? {
                 titles.entry(credit_id).or_default().push((language, text));
             }
             stmt.reset()?;
@@ -5081,7 +5085,7 @@ impl Database {
             let mut roles: HashMap<CreditId, Vec<(api::Locale, api::StringKind, String)>> =
                 HashMap::new();
             let mut stmt = s.list_person_show_credit_strings.bind((person_id,))?;
-            while let Some((credit_id, language, kind, text)) = stmt.next()? {
+            while let Some((credit_id, language, kind, text)) = stmt.next().transpose()? {
                 roles
                     .entry(credit_id)
                     .or_default()
@@ -5090,7 +5094,7 @@ impl Database {
             stmt.reset()?;
 
             let mut stmt = s.list_person_show_credits.bind((person_id,))?;
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 let owner = api::CreditOwner::Show(ShowId::new(r.owner_id as u64));
                 let locale = config.or(r.owner_language);
                 out.push(person_credit_from_row(
@@ -5106,7 +5110,7 @@ impl Database {
             // Movies.
             let mut titles: HashMap<CreditId, Vec<(api::Locale, String)>> = HashMap::new();
             let mut stmt = s.list_person_movie_titles.bind((person_id,))?;
-            while let Some((credit_id, language, text)) = stmt.next()? {
+            while let Some((credit_id, language, text)) = stmt.next().transpose()? {
                 titles.entry(credit_id).or_default().push((language, text));
             }
             stmt.reset()?;
@@ -5114,7 +5118,7 @@ impl Database {
             let mut roles: HashMap<CreditId, Vec<(api::Locale, api::StringKind, String)>> =
                 HashMap::new();
             let mut stmt = s.list_person_movie_credit_strings.bind((person_id,))?;
-            while let Some((credit_id, language, kind, text)) = stmt.next()? {
+            while let Some((credit_id, language, kind, text)) = stmt.next().transpose()? {
                 roles
                     .entry(credit_id)
                     .or_default()
@@ -5123,7 +5127,7 @@ impl Database {
             stmt.reset()?;
 
             let mut stmt = s.list_person_movie_credits.bind((person_id,))?;
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 let owner = api::CreditOwner::Movie(MovieId::new(r.owner_id as u64));
                 let locale = config.or(r.owner_language);
                 out.push(person_credit_from_row(
@@ -5163,7 +5167,7 @@ impl Database {
             let mut names: HashMap<CreditId, api::Translations> = HashMap::new();
             let mut stmt = s.list_show_credit_names.bind((show_id,))?;
 
-            while let Some((credit_id, string_locale, text)) = stmt.next()? {
+            while let Some((credit_id, string_locale, text)) = stmt.next().transpose()? {
                 names
                     .entry(credit_id)
                     .or_insert_with(|| api::Translations::new(locale))
@@ -5175,7 +5179,7 @@ impl Database {
             let mut roles: HashMap<CreditId, api::Translations> = HashMap::new();
             let mut stmt = s.list_show_credit_strings.bind((show_id,))?;
 
-            while let Some((credit_id, string_locale, kind, text)) = stmt.next()? {
+            while let Some((credit_id, string_locale, kind, text)) = stmt.next().transpose()? {
                 roles
                     .entry(credit_id)
                     .or_insert_with(|| api::Translations::new(locale))
@@ -5187,7 +5191,7 @@ impl Database {
             let mut out = Vec::new();
             let mut stmt = s.list_show_credits.bind((show_id,))?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 out.push(credit_from_row(r, &mut names, &mut roles, locale));
             }
 
@@ -5219,7 +5223,7 @@ impl Database {
             let mut names: HashMap<CreditId, api::Translations> = HashMap::new();
             let mut stmt = s.list_movie_credit_names.bind((movie_id,))?;
 
-            while let Some((credit_id, string_locale, text)) = stmt.next()? {
+            while let Some((credit_id, string_locale, text)) = stmt.next().transpose()? {
                 names
                     .entry(credit_id)
                     .or_insert_with(|| api::Translations::new(locale))
@@ -5231,7 +5235,7 @@ impl Database {
             let mut roles: HashMap<CreditId, api::Translations> = HashMap::new();
             let mut stmt = s.list_movie_credit_strings.bind((movie_id,))?;
 
-            while let Some((credit_id, string_locale, kind, text)) = stmt.next()? {
+            while let Some((credit_id, string_locale, kind, text)) = stmt.next().transpose()? {
                 roles
                     .entry(credit_id)
                     .or_insert_with(|| api::Translations::new(locale))
@@ -5243,7 +5247,7 @@ impl Database {
             let mut out = Vec::new();
             let mut stmt = s.list_movie_credits.bind((movie_id,))?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 out.push(credit_from_row(r, &mut names, &mut roles, locale));
             }
 
@@ -5263,7 +5267,7 @@ impl Database {
             let mut out = Vec::new();
             let mut stmt = s.translations.list_show_strings.bind((id,))?;
 
-            while let Some((language, kind, text)) = stmt.next()? {
+            while let Some((language, kind, text)) = stmt.next().transpose()? {
                 out.push(api::Translation {
                     language,
                     kind,
@@ -5287,7 +5291,7 @@ impl Database {
             let mut out = Vec::new();
             let mut stmt = s.translations.list_movie_strings.bind((id,))?;
 
-            while let Some((language, kind, text)) = stmt.next()? {
+            while let Some((language, kind, text)) = stmt.next().transpose()? {
                 out.push(api::Translation {
                     language,
                     kind,
@@ -5314,7 +5318,7 @@ impl Database {
             let mut out = Vec::new();
             let mut stmt = s.translations.list_episode_strings.bind((id,))?;
 
-            while let Some((language, kind, text)) = stmt.next()? {
+            while let Some((language, kind, text)) = stmt.next().transpose()? {
                 out.push(api::Translation {
                     language,
                     kind,
@@ -5338,7 +5342,7 @@ impl Database {
             let mut out = Vec::new();
             let mut stmt = s.list_season_strings.bind((id,))?;
 
-            while let Some((language, kind, text)) = stmt.next()? {
+            while let Some((language, kind, text)) = stmt.next().transpose()? {
                 out.push(api::Translation {
                     language,
                     kind,
@@ -5433,7 +5437,7 @@ impl Database {
                 None => {
                     let mut kinds = Vec::new();
                     let mut stmt = s.show_image_kinds.bind((show_id,))?;
-                    while let Some(kind) = stmt.next()? {
+                    while let Some(kind) = stmt.next().transpose()? {
                         kinds.push(kind);
                     }
                     stmt.reset()?;
@@ -5470,7 +5474,7 @@ impl Database {
                 None => {
                     let mut kinds = Vec::new();
                     let mut stmt = s.movie_image_kinds.bind((movie_id,))?;
-                    while let Some(kind) = stmt.next()? {
+                    while let Some(kind) = stmt.next().transpose()? {
                         kinds.push(kind);
                     }
                     stmt.reset()?;
@@ -5508,7 +5512,7 @@ impl Database {
             let mut out = Vec::new();
             let mut stmt = s.list_season_images.bind((season_id,))?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 out.push(image_from_row(r));
             }
 
@@ -5541,7 +5545,7 @@ impl Database {
             let special = scope == api::EpisodeScope::Specials;
             let mut stmt = s.next_episodes.bind((user, Some(show), now))?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 if r.special == special {
                     return Ok(Some(r.episode_id));
                 }
@@ -5926,7 +5930,7 @@ impl Database {
 
             let mut stmt = s.list_orphaned_for_show.bind((user, show_id))?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 out.push(api::OrphanedWatched {
                     id: r.id,
                     timestamp: r.timestamp,
@@ -5969,7 +5973,7 @@ impl Database {
 
             let mut stmt = s.list_watched_by_episode.bind((user, episode_id))?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 out.push(watched_from_row(r)?);
             }
 
@@ -5993,7 +5997,7 @@ impl Database {
 
             let mut stmt = s.list_watched_by_movie.bind((user, movie_id))?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 out.push(watched_from_row(r)?);
             }
 
@@ -6152,7 +6156,7 @@ impl Database {
                 let mut out = Vec::new();
                 let mut stmt = s.list_movie_releases.bind((movie_id,))?;
 
-                while let Some(r) = stmt.next()? {
+                while let Some(r) = stmt.next().transpose()? {
                     out.push(api::MovieRelease {
                         source: r.source,
                         country: r.country,
@@ -6333,7 +6337,7 @@ impl Database {
 
             let mut stmt = s.movie_pending_candidates.query()?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 let release_filters = r
                     .release_filters
                     .as_deref()
@@ -6359,7 +6363,7 @@ impl Database {
 
             let mut stmt = s.list_movie_releases.bind((id,))?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 out.push(api::MovieRelease {
                     source: r.source,
                     country: r.country,
@@ -6385,7 +6389,7 @@ impl Database {
 
             let mut stmt = s.list_episode_releases.bind((id,))?;
 
-            while let Some((source, country, network, timestamp)) = stmt.next()? {
+            while let Some((source, country, network, timestamp)) = stmt.next().transpose()? {
                 out.push(api::EpisodeRelease {
                     source,
                     country,
@@ -6541,7 +6545,7 @@ impl Database {
             let mut out = Vec::new();
             let mut stmt = s.shows_needing_sync.bind((cutoff,))?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 let strings = s.translations.show(None, r.id, config)?;
                 out.push(show_from_row(r, strings));
             }
@@ -6567,7 +6571,7 @@ impl Database {
 
             let mut stmt = s.movies_needing_sync.bind((cutoff,))?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 let strings = s.translations.movie(None, r.id, cfg)?;
                 out.push(movie_from_row(r, strings));
             }
@@ -6593,7 +6597,7 @@ impl Database {
 
             let mut stmt = s.list_pending_before.bind((user, now))?;
 
-            'outer: while let Some(r) = stmt.next()? {
+            'outer: while let Some(r) = stmt.next().transpose()? {
                 let pending = 'pending: {
                     if let Some(episode_id) = r.episode_id {
                         let detail = s.pending_episode_detail.bind((user, episode_id))?.first()?;
@@ -6879,7 +6883,7 @@ impl Database {
 
             let mut stmt = s.list_schedule.bind((user, start, end))?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 let Some(day) = r.aired else { continue };
 
                 let ep = api::ScheduleEpisode {
@@ -6938,7 +6942,7 @@ impl Database {
 
             let mut stmt = s.list_schedule_movies.bind((user, start, end))?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 let Some(released) = r.released else { continue };
 
                 let title = s
@@ -7078,7 +7082,7 @@ impl Database {
             let mut stmt = s.show_viewer_languages.bind((show_id,))?;
             let mut rows = Vec::new();
 
-            while let Some(row) = stmt.next()? {
+            while let Some(row) = stmt.next().transpose()? {
                 rows.push(row);
             }
 
@@ -7101,7 +7105,7 @@ impl Database {
             let mut stmt = s.movie_viewer_languages.bind((movie_id,))?;
             let mut rows = Vec::new();
 
-            while let Some(row) = stmt.next()? {
+            while let Some(row) = stmt.next().transpose()? {
                 rows.push(row);
             }
 
@@ -7121,7 +7125,7 @@ impl Database {
             let mut preferences = api::Preferences::default();
             let mut stmt = s.list_user_config.bind((user,))?;
 
-            while let Some((key, value)) = stmt.next()? {
+            while let Some((key, value)) = stmt.next().transpose()? {
                 if let Err(error) = preferences.decode(&key, &value) {
                     tracing::warn!(%user, key, value, %error, "Skipping stored preference");
                 }
@@ -7164,7 +7168,7 @@ impl Database {
         let mut s = self.inner.clone().shared().await?;
 
         let result = spawn_blocking(move || {
-            let raw = s.get_state_top_languages.query()?.next()?;
+            let raw = s.get_state_top_languages.query()?.next().transpose()?;
 
             Ok(raw
                 .as_deref()
@@ -7206,7 +7210,7 @@ impl Database {
 
             let mut stmt = s.list_show_languages.query()?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 tally(r.language.0);
             }
 
@@ -7214,7 +7218,7 @@ impl Database {
 
             let mut stmt = s.list_movie_languages.query()?;
 
-            while let Some(r) = stmt.next()? {
+            while let Some(r) = stmt.next().transpose()? {
                 tally(r.language.0);
             }
 
