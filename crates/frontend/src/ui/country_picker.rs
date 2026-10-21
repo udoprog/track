@@ -67,7 +67,7 @@ impl CountryPicker {
         self.browse.extend(
             koine::country::iter()
                 .filter(|country| matches(country))
-                .flat_map(|country| Some((country, api::Country::from_iso(country.alpha2)?)))
+                .map(|country| (country, country.to_country()))
                 .filter(|(_, code)| !current.contains(code)),
         );
     }

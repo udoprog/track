@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use musli_core::{Decode, Encode};
 
-use crate::{Language, XemSystemEpisodes};
+use crate::{Country, Language, XemSystemEpisodes};
 
 /// XEM's numbering systems a range can target, as XEM names them, with their
 /// labels.
@@ -510,19 +510,18 @@ pub fn xem_language(code: &str) -> Option<Language> {
         return None;
     }
 
-    let country = code.to_ascii_uppercase();
-    let locales = koine::locale::iter().filter(|l| l.country == country);
-
-    let found = locales
-        .filter_map(|l| koine::language::by_id(l.language))
-        .min_by_key(|l| {
-            let flagged = l.flag == Some(country.as_str());
-            let spread = koine::locale::iter().filter(|o| o.language == l.id).count();
-            (!flagged, Reverse(spread))
-        });
+    let found = Country::from_iso(&code.to_ascii_uppercase()).and_then(|country| {
+        koine::locale::by_country(country)
+            .filter_map(|l| l.to_language().to_iso())
+            .min_by_key(|l| {
+                let flagged = l.flag == Some(country.as_str());
+                let spread = koine::locale::by_language(l.to_language()).len();
+                (!flagged, Reverse(spread))
+            })
+    });
 
     let found = found.or_else(|| koine::language::by_part1(&code))?;
-    Language::from_iso(found.id)
+    Some(found.to_language())
 }
 
 /// The XEM names of a season of another numbering that a season covers.

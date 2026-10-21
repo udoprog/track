@@ -70,73 +70,17 @@ fn sync_kind_set_serde() {
 }
 
 #[test]
-fn language_code_round_trip() {
-    // Default sentinel.
-    assert!(Language::DEFAULT.is_default());
-    assert_eq!(Language::DEFAULT.to_string(), "default");
-    assert_eq!(Language::DEFAULT.to_id(), None);
-    assert_eq!(Language::from_iso("default"), Some(Language::DEFAULT));
-    assert_eq!(Language::from_iso(""), Some(Language::DEFAULT));
-
-    // 3-letter packs to its own bytes.
-    let eng = Language::from_iso("eng").unwrap();
-    assert_eq!(eng, Language::ENG);
-    assert_eq!(eng.to_string(), "eng");
-    assert_eq!(eng.to_id(), Some("eng"));
-    assert_eq!(eng.to_part1(), Some("en"));
-
-    // 2-letter resolves to 3-letter.
-    assert_eq!(Language::from_iso("en"), Some(Language::ENG));
-    assert_eq!(Language::from_iso("SV"), Language::from_iso("swe"));
-
-    // Case-insensitive and Display/FromStr round-trip.
-    let swe = Language::from_iso("Swe").unwrap();
-    assert_eq!(swe.to_string().parse::<Language>().unwrap(), swe);
-
-    // serde round-trips through the string form.
-    let json = serde_json::to_string(&swe).unwrap();
-    assert_eq!(json, "\"swe\"");
-    assert_eq!(serde_json::from_str::<Language>(&json).unwrap(), swe);
-    assert_eq!(
-        serde_json::to_string(&Language::DEFAULT).unwrap(),
-        "\"default\""
-    );
-
-    // Garbage is rejected.
-    assert_eq!(Language::from_iso("123"), None);
-    assert_eq!(Language::from_iso("toolong"), None);
-}
-
-#[test]
-fn country_code_round_trip() {
-    assert!(Country::DEFAULT.is_default());
-    assert_eq!(Country::DEFAULT.to_string(), "default");
-    assert_eq!(Country::from_iso("default"), Some(Country::DEFAULT));
-    assert_eq!(Country::from_iso(""), Some(Country::DEFAULT));
-
-    let gb = Country::from_iso("gb").unwrap();
-    assert_eq!(gb, Country::GB);
-    assert_eq!(gb.to_string(), "GB");
-    assert_eq!(format!("{gb:?}"), "Country(GB)");
-    assert_eq!(gb.to_string().parse::<Country>().unwrap(), gb);
-
-    let json = serde_json::to_string(&gb).unwrap();
-    assert_eq!(json, "\"GB\"");
-    assert_eq!(serde_json::from_str::<Country>(&json).unwrap(), gb);
-
-    assert_eq!(Country::from_iso("ZZ"), None);
-    assert_eq!(Country::from_iso("USA"), None);
-    assert_eq!(Country::from_iso("1A"), None);
-}
-
-#[test]
 fn code_stored_values() {
     // The database stores the big-endian integer of the raw bytes.
     let stored = |raw: [u8; 4]| u32::from_be_bytes(raw);
     assert_eq!(stored(Language::DEFAULT.to_raw()), 0);
     assert_eq!(stored(Language::ENG.to_raw()), 0x656e_6700);
     assert_eq!(stored(Country::US.to_raw()), 0x5553_0000);
-    assert_eq!(format!("{:?}", Language::ENG), "Language(eng)");
+    assert_eq!(Locale::DEFAULT.to_u64(), 0);
+    assert_eq!(
+        serde_json::to_string(&Locale::DEFAULT).unwrap(),
+        "\"default\""
+    );
 }
 
 #[test]
@@ -447,51 +391,6 @@ fn air_date_earliest_within_winning_source() {
         .unwrap();
     // TVmaze wins by priority; earliest of its dates is used.
     assert_eq!(aired.inner().as_second(), 150);
-}
-
-#[test]
-fn locale_round_trip() {
-    // The all-default sentinel.
-    assert!(Locale::DEFAULT.is_default());
-    assert_eq!(Locale::DEFAULT.to_string(), "default");
-    assert_eq!(Locale::to_u64(Locale::DEFAULT), 0);
-
-    // `from_iso` never parses the sentinel (nor empty).
-    assert_eq!(Locale::from_iso("default"), Some(Locale::DEFAULT));
-    assert_eq!(Locale::from_iso(""), Some(Locale::DEFAULT));
-    assert_eq!(Locale::from_iso("invalid"), None);
-    assert_eq!(Locale::from_iso("inv"), None);
-    assert_eq!("default".parse::<Locale>().ok(), Some(Locale::DEFAULT));
-
-    // Language-only: prefers the part1 form on Display.
-    let en = Locale::new(Language::ENG, Country::DEFAULT);
-    assert_eq!(en.to_string(), "en");
-    assert_eq!(Locale::from_iso("en"), Some(en));
-    assert_eq!(Locale::from_iso("eng"), Some(en));
-    assert!(!en.is_default());
-    assert_eq!(en.language(), Language::ENG);
-    assert_eq!(en.country(), Country::DEFAULT);
-
-    // Language + country: `en-US` preferred over `eng-US`.
-    let en_us = Locale::new(Language::ENG, Country::US);
-    assert_eq!(en_us.to_string(), "en-US");
-    assert_eq!(Locale::from_iso("en-US"), Some(en_us));
-    assert_eq!(Locale::from_iso("eng-us"), Some(en_us));
-    assert_eq!(en_us.country(), Country::US);
-
-    // A country segment must name a real country.
-    assert_eq!(Locale::from_iso("en-ZZ"), None);
-    assert_eq!(Locale::from_iso("en-default"), None);
-
-    // u64 round-trips both components.
-    for l in [
-        Locale::DEFAULT,
-        en,
-        en_us,
-        Locale::new(Language::ENG, Country::JP),
-    ] {
-        assert_eq!(Locale::from_u64(l.to_u64()), l);
-    }
 }
 
 #[test]

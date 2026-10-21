@@ -23,14 +23,13 @@ pub(crate) fn locale_label(
     locale: api::Locale,
     default: &'static str,
 ) -> (Cow<'static, str>, Option<&'static str>) {
-    let lang = locale.language().to_iso();
-    let country = locale.country().to_iso();
-
-    let name = match (lang, country) {
-        (Some(l), Some(c)) => Cow::Owned(format!("{} ({})", l.name, c.name)),
-        (Some(l), None) => Cow::Borrowed(l.name),
-        (None, Some(c)) => Cow::Borrowed(c.name),
-        (None, None) => Cow::Borrowed(default),
+    let name = if locale.language().is_default() {
+        match locale.country().name() {
+            Some(name) => Cow::Borrowed(name),
+            None => Cow::Borrowed(default),
+        }
+    } else {
+        Cow::Owned(locale.display_name().to_string())
     };
 
     (name, locale.flag().filter(|flag| flags::has_flag(flag)))
@@ -45,19 +44,12 @@ fn populate_filtered(filter: &str, out: &mut Vec<api::Locale>) {
 
     // Language-only rows: one per language that has a 2-letter form.
     for entry in koine::language::iter().filter(|e| e.part1.is_some()) {
-        if let Some(language) = api::Language::from_iso(entry.id) {
-            out.push(api::Locale::new(language, api::Country::DEFAULT));
-        }
+        out.push(api::Locale::new(entry.to_language(), api::Country::DEFAULT));
     }
 
     // Concrete language+country combinations.
     for locale in koine::locale::iter() {
-        if let (Some(language), Some(country)) = (
-            api::Language::from_iso(locale.language),
-            api::Country::from_iso(locale.country),
-        ) {
-            out.push(api::Locale::new(language, country));
-        }
+        out.push(locale.to_locale());
     }
 
     let query = tokenize(filter);
