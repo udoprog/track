@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::rc::Rc;
 
+use auth::yew023::{AuthContext, AuthSubscription};
 use musli_web::web03::prelude::*;
 use wasm_bindgen::JsCast as _;
 use yew::prelude::*;
@@ -54,6 +55,7 @@ enum ShowState {
 }
 
 pub(crate) struct ShowDetail {
+    auth: AuthSubscription,
     channel: ws::Channel,
     show: ShowState,
     graphics: Graphics,
@@ -147,6 +149,7 @@ pub(crate) struct ShowDetail {
 }
 
 pub(crate) enum Msg {
+    Auth(AuthContext),
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     SetTime(TimeInfo),
@@ -365,6 +368,7 @@ impl Component for ShowDetail {
         let scroll_target = router.hash();
 
         Self {
+            auth: AuthSubscription::new(ctx, Msg::Auth),
             channel: ws::Channel::default(),
             show: ShowState::Loading,
             graphics: Graphics::default(),
@@ -551,7 +555,7 @@ impl Component for ShowDetail {
 
                         <Button icon="cog-6-tooth" title="Settings" text="Settings" onclick={link.callback(|_| UiMsg::OpenSettingsModal)} />
 
-                        if crate::is_admin(ctx) {
+                        if self.auth.is_admin() {
                             <Button node_ref={self.remove_anchor.clone()} icon="trash" variant={Variant::Danger} class="detached" title="Remove show" text="Remove" expanded={Some(self.confirm_remove)} haspopup="dialog" onclick={link.callback(|_| ActionMsg::ConfirmRemove)} />
 
                             if self.confirm_remove {
@@ -727,6 +731,7 @@ impl Component for ShowDetail {
 impl ShowDetail {
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
+            Msg::Auth(auth) => Ok(self.auth.set(auth)),
             Msg::Channel(result) => {
                 self.channel = result?;
 
@@ -2214,7 +2219,7 @@ impl ShowDetail {
                         <div class={classes!("toolbar-dropdown", "desktop-input-group", (!season_expanded).then_some("desktop-only"))}>
                             <Button icon="language" title="Season Translations" text="Translations" onclick={link.callback(|_| UiMsg::OpenSeasonTranslations)} />
 
-                            if crate::is_admin(ctx) {
+                            if self.auth.is_admin() {
                                 <Button icon="photo" title="Season Graphics" text="Graphics" onclick={link.callback(|_| SeasonImageMsg::OpenSeasonImageModal)} />
                             }
 

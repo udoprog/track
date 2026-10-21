@@ -1,4 +1,5 @@
 use api::TimeInfo;
+use auth::yew023::{AuthContext, AuthSubscription};
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
@@ -21,6 +22,7 @@ enum PersonState {
 }
 
 pub(crate) struct PersonDetail {
+    auth: AuthSubscription,
     channel: ws::Channel,
     person: PersonState,
     credits: Vec<api::PersonCredit>,
@@ -44,6 +46,7 @@ pub(crate) struct PersonDetail {
 }
 
 pub(crate) enum Msg {
+    Auth(AuthContext),
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     PersonLoaded(Result<ws::Packet<api::GetPerson>, ws::Error>),
@@ -104,6 +107,7 @@ impl Component for PersonDetail {
             .expect("Expected a configured time zone");
 
         Self {
+            auth: AuthSubscription::new(ctx, Msg::Auth),
             channel: ws::Channel::default(),
             person: PersonState::Loading,
             credits: Vec::new(),
@@ -187,6 +191,7 @@ impl Component for PersonDetail {
 impl PersonDetail {
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
+            Msg::Auth(auth) => Ok(self.auth.set(auth)),
             Msg::Channel(result) => {
                 self.channel = result?;
 
@@ -403,7 +408,7 @@ impl PersonDetail {
                         <div class="input-group">
                             <SyncButton target={SyncTarget::Person(person.id)} text="Sync" onclick={link.callback(|_| Msg::SyncPerson)} />
                             <Button icon="cog-6-tooth" title="Settings" onclick={link.callback(|_| Msg::OpenSettings)} />
-                            if crate::is_admin(ctx) {
+                            if self.auth.is_admin() {
                                 <Button node_ref={self.remove_anchor.clone()} icon="trash" variant={Variant::Danger} class="detached" title="Delete person" expanded={Some(self.confirming_delete)} haspopup="dialog" onclick={link.callback(|_| Msg::AskDelete)} />
 
                                 if self.confirming_delete {
@@ -463,7 +468,7 @@ impl PersonDetail {
                         }
                     </FormRow>
 
-                    if crate::is_admin(ctx) {
+                    if self.auth.is_admin() {
                         <FormRow label="Remotes" hint="The TMDB, IMDb and other identifiers used to sync.">
                             <Button icon="identification" label="Edit remotes" title="Edit remotes" onclick={link.callback(|_| Msg::OpenRemoteEditor)} />
                         </FormRow>

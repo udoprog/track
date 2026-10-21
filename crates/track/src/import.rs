@@ -328,9 +328,9 @@ pub async fn import() -> Result<()> {
 
     // The legacy data had a single user; it all belongs to root, who a fresh
     // database creates with a registration link, as the server would.
-    let store = db.auth_store();
-    let key = auth::load_or_create_key(&store).await?;
-    let auth = auth::Auth::builder(store, key).build();
+    let auth = auth::Auth::builder_from_store(db.auth_store())
+        .await?
+        .build();
 
     auth.bootstrap_admin(&auth::BootstrapAdmin::login("root"))
         .await?;

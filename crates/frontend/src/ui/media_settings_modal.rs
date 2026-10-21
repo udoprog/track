@@ -1,4 +1,5 @@
 use api::{IncludeSpecials, TimeInfo};
+use auth::yew023::{AuthContext, AuthSubscription};
 use musli_web::web03::prelude::*;
 use web_sys::{Event, MouseEvent};
 use yew::prelude::*;
@@ -43,6 +44,7 @@ enum Loaded {
 }
 
 pub(crate) enum Msg {
+    Auth(AuthContext),
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     MovieLoaded(Result<ws::Packet<api::GetMovie>, ws::Error>),
@@ -79,6 +81,7 @@ pub(crate) enum Msg {
 }
 
 pub(crate) struct MediaSettingsModal {
+    auth: AuthSubscription,
     channel: ws::Channel,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
@@ -123,6 +126,7 @@ impl Component for MediaSettingsModal {
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
         Self {
+            auth: AuthSubscription::new(ctx, Msg::Auth),
             channel: ws::Channel::default(),
             _setup,
             _broadcast,
@@ -164,6 +168,7 @@ impl Component for MediaSettingsModal {
 impl MediaSettingsModal {
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
+            Msg::Auth(auth) => Ok(self.auth.set(auth)),
             Msg::Channel(result) => {
                 self.channel = result?;
                 self.load(ctx);
@@ -608,7 +613,7 @@ impl MediaSettingsModal {
         };
 
         // Everything shared between users is for administrators to change.
-        let admin = crate::is_admin(ctx);
+        let admin = self.auth.is_admin();
 
         let release = match data {
             Loaded::Movie(m) if admin => Some(self.view_release(ctx, m)),

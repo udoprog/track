@@ -21,17 +21,6 @@ use tracing::Level;
 use tracing_wasm::WASMLayerConfigBuilder;
 use wasm_bindgen::prelude::*;
 
-/// Whether the signed-in user is an administrator, so components can leave out
-/// actions only administrators may take.
-fn is_admin<C>(ctx: &yew::Context<C>) -> bool
-where
-    C: yew::Component,
-{
-    ctx.link()
-        .context::<auth::yew023::AuthContext>(yew::Callback::noop())
-        .is_some_and(|(auth, _)| auth.is_admin())
-}
-
 #[wasm_bindgen(start)]
 fn main() {
     let mut config = WASMLayerConfigBuilder::default();

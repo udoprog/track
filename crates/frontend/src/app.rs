@@ -304,11 +304,6 @@ impl App {
                 }
 
                 self.ws_state = state;
-
-                if !state.is_open() {
-                    self.auth.check_session();
-                }
-
                 Ok(true)
             }
             Msg::AppBroadcast(result) => {
@@ -340,11 +335,6 @@ impl App {
                 Ok(false)
             }
             Msg::TickTime => {
-                // A refused upgrade only shows as a socket that never opens.
-                if !self.ws_state.is_open() {
-                    self.auth.check_session();
-                }
-
                 self.time = TimeInfo::new(self.time.tz().clone(), Timestamp::now());
                 Ok(true)
             }

@@ -268,6 +268,48 @@ pub async fn regular_users_cannot_remove_media(
     Ok(())
 }
 
+/// A user made an administrator elsewhere is offered the administrators'
+/// actions on the page they have open, without reloading it.
+pub async fn admin_actions_follow_a_role_change(
+    driver: &mut TestDriver,
+    track: &mut Track,
+) -> Result<()> {
+    let show = open_media(driver, 1, "Seeded Show").await?;
+    register_alice(driver, track).await?;
+    driver.webdriver().goto(&show).await?;
+    driver.wait_texts(".detail-title", ["Seeded Show"]).await?;
+    ensure!(
+        driver.count("[title='Remove show']").await? == 0,
+        "a regular user is offered Remove show"
+    );
+
+    // localhost keeps its own cookies, so root signs in there beside alice.
+    let root = format!("http://localhost:{}/", track.port);
+
+    driver
+        .in_second_window(async || {
+            driver.webdriver().goto(&root).await?;
+            driver
+                .wait_texts(".toolbar-item[title=Account]", ["root"])
+                .await?;
+            open_users(driver).await?;
+
+            driver
+                .find_one_by(".auth-user:not(.auth-me) .auth-select option[value=admin]")
+                .await?
+                .click()
+                .await?;
+            driver
+                .wait_texts(".auth-admin-users .auth-notice", ["Role changed."])
+                .await?;
+            Ok(())
+        })
+        .await?;
+
+    driver.find_one_by("[title='Remove show']").await?;
+    Ok(())
+}
+
 /// Remotes, graphics, sync settings, date rules and the queue are shared by
 /// every user, so only administrators are offered changing them.
 pub async fn regular_users_cannot_edit_shared_data(

@@ -1,3 +1,4 @@
+use auth::yew023::{AuthContext, AuthSubscription};
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
@@ -15,6 +16,7 @@ pub(crate) struct Props {
 }
 
 pub(crate) enum Msg {
+    Auth(AuthContext),
     Channel(Result<ws::Channel, ws::Error>),
     Loaded(Result<ws::Packet<api::GetEpisodeCache>, ws::Error>),
     Purge(api::RemoteSource),
@@ -25,6 +27,7 @@ pub(crate) enum Msg {
 /// clear. The show-level equivalent lives in the remote editor; an episode is not
 /// addressed by a remote id, so its entries are keyed by source alone.
 pub(crate) struct EpisodeCacheModal {
+    auth: AuthSubscription,
     channel: ws::Channel,
     _setup: SetupChannel,
     _req: ws::Request,
@@ -52,6 +55,7 @@ impl Component for EpisodeCacheModal {
         let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
 
         Self {
+            auth: AuthSubscription::new(ctx, Msg::Auth),
             channel: ws::Channel::default(),
             _setup,
             _req: ws::Request::default(),
@@ -86,6 +90,7 @@ impl Component for EpisodeCacheModal {
 impl EpisodeCacheModal {
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
+            Msg::Auth(auth) => Ok(self.auth.set(auth)),
             Msg::Channel(result) => {
                 self.channel = result?;
                 self.load(ctx);
@@ -150,7 +155,7 @@ impl EpisodeCacheModal {
         }
 
         let link = ctx.link();
-        let admin = crate::is_admin(ctx);
+        let admin = self.auth.is_admin();
 
         html! {
             <div class="column">

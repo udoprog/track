@@ -23,7 +23,7 @@ use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, Result, anyhow};
-use auth::{Conflict, NewUser, Store};
+use auth::{Auth, NewUser};
 use clap::Subcommand;
 use serde::{Deserialize, Serialize};
 use tracing::Level;
@@ -122,7 +122,6 @@ enum BackupRow {
         login: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         email: Option<String>,
-        #[serde(with = "as_string")]
         role: auth::Role,
     },
     /// A show a user tracks.
@@ -349,14 +348,16 @@ struct ImportReport {
 /// Resolves the users named by rows, once per name.
 struct Users<'a> {
     db: &'a Database,
+    auth: Auth,
     by_name: HashMap<String, api::UserId>,
     default: Option<api::UserId>,
 }
 
 impl<'a> Users<'a> {
-    fn new(db: &'a Database) -> Self {
+    fn new(db: &'a Database, auth: Auth) -> Self {
         Self {
             db,
+            auth,
             by_name: HashMap::new(),
             default: None,
         }
@@ -370,8 +371,6 @@ impl<'a> Users<'a> {
         email: Option<String>,
         role: auth::Role,
     ) -> Result<bool> {
-        let email = email.as_deref().map(auth::normalize_email);
-
         let Some(name) = login.clone().or_else(|| email.clone()) else {
             return Err(anyhow!("A user needs a login or an email"));
         };
@@ -384,33 +383,19 @@ impl<'a> Users<'a> {
         let new = NewUser { login, email, role };
 
         let user = self
-            .db
-            .auth_store()
-            .create_user(&new, jiff::Timestamp::now())
-            .await?
-            .map_err(|conflict| {
-                let field = match conflict {
-                    Conflict::Login => "login",
-                    Conflict::Email => "email",
-                };
+            .auth
+            .import_user(&new)
+            .await
+            .with_context(|| anyhow!("Cannot create the user {name:?}"))?;
 
-                anyhow!("Cannot create the user {name:?}: its {field} is taken")
-            })?;
-
-        self.by_name.insert(name, api::UserId::new(user.id.0));
+        self.by_name.insert(name, user.id);
         Ok(true)
     }
 
     /// The user named `name`: by login, or by email.
     async fn find(&self, name: &str) -> Result<Option<api::UserId>> {
-        let store = self.db.auth_store();
-
-        let user = match store.user_by_login(name).await? {
-            Some(user) => Some(user),
-            None => store.user_by_email(&auth::normalize_email(name)).await?,
-        };
-
-        Ok(user.map(|user| api::UserId::new(user.id.0)))
+        let user = self.auth.find_user(name).await?;
+        Ok(user.map(|user| user.id))
     }
 
     async fn get(&mut self, name: Option<String>) -> Result<api::UserId> {
@@ -456,7 +441,8 @@ fn preference(
 /// watch-next queue for the imported tracking.
 async fn import(db: &Database, input: impl BufRead) -> Result<ImportReport> {
     let mut report = ImportReport::default();
-    let mut users = Users::new(db);
+    let auth = crate::entry::build_auth(db, &[]).await?;
+    let mut users = Users::new(db, auth);
     let mut tracked_shows = Vec::new();
     let mut tracked_movies = false;
 
@@ -686,6 +672,8 @@ pub async fn backup(db: &Path, log: &[String], command: BackupCommand) -> Result
 
 #[cfg(test)]
 mod tests {
+    use auth::Store;
+
     use super::*;
 
     use crate::db::OpenMode;

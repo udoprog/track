@@ -46,6 +46,26 @@ const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 #[folder = "migrations"]
 struct Migrations;
 
+/// The ids of watchword's store migrations that track's own migrations
+/// already did: the base schema copies watchword's tables with
+/// `sessions.impersonator_id`, and existing databases got them from
+/// 2026-10-15-yew-auth.sql and 2026-10-16-impersonator.sql.
+const WATCHWORD_DONE: &[&str] = &[
+    "watchword-0001-tables",
+    "watchword-0002-sessions-impersonator",
+];
+
+/// watchword's store migrations after those track's own did, applied after
+/// track's own, in order, and recorded in the same migrations table. A fresh
+/// database applies them too, since the base schema's copy of watchword's
+/// tables stays as of [`WATCHWORD_DONE`].
+fn watchword_migrations() -> impl Iterator<Item = (&'static str, &'static str)> {
+    auth::sqll015::MIGRATIONS
+        .iter()
+        .copied()
+        .filter(|(id, _)| !WATCHWORD_DONE.contains(id))
+}
+
 #[derive(Row)]
 struct ShowRow {
     id: ShowId,
@@ -2075,22 +2095,6 @@ impl InnerRead {
             .and_then(config::decode_numberings)
             .unwrap_or(default.numberings);
 
-        let cloudflare_access = auth::CloudflareConfig {
-            enabled: self
-                .get_config("cloudflare_access_enabled")?
-                .is_some_and(|v| v == "true"),
-            team_domain: self
-                .get_config("cloudflare_team_domain")?
-                .unwrap_or_default(),
-            audience: self.get_config("cloudflare_audience")?.unwrap_or_default(),
-            trust_email_header: self
-                .get_config("cloudflare_trust_email_header")?
-                .is_some_and(|v| v == "true"),
-            verify_jwt: self
-                .get_config("cloudflare_verify_jwt")?
-                .is_none_or(|v| v == "true"),
-        };
-
         Ok(Config {
             tvdb_api_key,
             tvdb_pin,
@@ -2104,7 +2108,6 @@ impl InnerRead {
             sync_languages,
             xem_lookup,
             numberings,
-            cloudflare_access,
         })
     }
 
@@ -3168,6 +3171,38 @@ impl Database {
 
         Ok(Self {
             inner: Arc::new(pool),
+        })
+    }
+
+    /// A new migrated in-memory database, for tests that must hand out a
+    /// store with no directory to keep, such as watchword's store suite.
+    #[cfg(test)]
+    pub(crate) fn open_scratch() -> Result<Self> {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+
+        let n = NEXT.fetch_add(1, Ordering::Relaxed);
+        let uri = format!(
+            "file:track-scratch-{}-{n}?mode=memory&cache=shared",
+            std::process::id()
+        );
+
+        let mut options = OpenOptions::new();
+        options.uri();
+
+        // Kept open until the pool is, so the database lives on with it.
+        let c = options.clone().read_write().create().open(&uri)?;
+        do_migrations(&c)?;
+
+        let fk = |c: &mut sqll::Connection| c.execute("PRAGMA foreign_keys = ON;");
+
+        let builder = PoolBuilder::new(options, 1)
+            .with_write_setup(fk)
+            .with_read_setup(fk);
+
+        Ok(Self {
+            inner: Arc::new(builder.open(&uri)?),
         })
     }
 
@@ -6845,16 +6880,6 @@ impl Database {
             s.set_config("xem_lookup", config::encode_xem_lookup(&config.xem_lookup))?;
             s.set_config("numberings", config::encode_numberings(&config.numberings))?;
 
-            let bool_text = |v: bool| if v { "true" } else { "false" };
-            let access = &config.cloudflare_access;
-            s.set_config("cloudflare_access_enabled", bool_text(access.enabled))?;
-            s.set_config("cloudflare_team_domain", &access.team_domain)?;
-            s.set_config("cloudflare_audience", &access.audience)?;
-            s.set_config(
-                "cloudflare_trust_email_header",
-                bool_text(access.trust_email_header),
-            )?;
-            s.set_config("cloudflare_verify_jwt", bool_text(access.verify_jwt))?;
             Ok(())
         });
 
@@ -7344,8 +7369,10 @@ fn is_empty(c: &sqll::Connection) -> Result<bool> {
 /// Bring the schema up to date. An empty database is built from the base
 /// schema (the first migration) alone, with every later migration recorded
 /// without running; any other database applies each unrecorded migration in
-/// order. Each migration runs and is recorded in one transaction, so a failed
-/// one leaves the database as it was.
+/// order. Either then applies watchword's unrecorded store migrations (see
+/// [`watchword_migrations`]) and checks watchword's tables. Each migration
+/// runs and is recorded in one transaction, so a failed one leaves the
+/// database as it was.
 fn do_migrations(c: &sqll::Connection) -> Result<()> {
     let mut ids: Vec<_> = Migrations::iter().collect();
     ids.sort();
@@ -7379,6 +7406,13 @@ fn do_migrations(c: &sqll::Connection) -> Result<()> {
         tracing::info!(applied, "Migrations applied");
     }
 
+    let applied = sqll::Migrations::new().run(c, watchword_migrations())?;
+
+    if applied > 0 {
+        tracing::info!(applied, "watchword migrations applied");
+    }
+
+    auth::sqll015::check_schema(c).context("Checking watchword's tables")?;
     Ok(())
 }
 
@@ -7395,12 +7429,16 @@ fn ensure_migrated(c: &sqll::Connection) -> Result<()> {
 
     let mut pending = Vec::new();
 
-    for file in Migrations::iter() {
+    let ids = Migrations::iter()
+        .map(|file| file.into_owned())
+        .chain(watchword_migrations().map(|(id, _)| id.to_owned()));
+
+    for id in ids {
         select.reset()?;
-        select.bind(file.as_ref())?;
+        select.bind(id.as_str())?;
 
         if select.next::<i64>()?.is_none() {
-            pending.push(file);
+            pending.push(id);
         }
     }
 
@@ -7412,6 +7450,7 @@ fn ensure_migrated(c: &sqll::Connection) -> Result<()> {
         pending.join(", ")
     );
 
+    auth::sqll015::check_schema(c).context("Checking watchword's tables")?;
     Ok(())
 }
 

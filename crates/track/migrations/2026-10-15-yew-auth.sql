@@ -1,5 +1,5 @@
--- Moves the auth tables onto the schema of yew-auth's SqllStore: docs/sqll/track.sql
--- of yew-auth, as of e08325a.
+-- Moves the auth tables onto the schema of watchword's SqllStore (watchword was
+-- then named yew-auth): its docs/sqll/track.sql as of e08325a.
 --
 -- `users.login` becomes optional, which SQLite can only do by rebuilding the
 -- table. Dropping the old table with foreign keys on would cascade into every

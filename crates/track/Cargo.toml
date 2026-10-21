@@ -45,4 +45,4 @@ leaky-bucket = "1.1.2"
 rand = { version = "0.10.3", default-features = false }
 
 [dev-dependencies]
-cookie = "0.18.1"
+auth = { package = "watchword", version = "0.3", features = ["test-util"] }

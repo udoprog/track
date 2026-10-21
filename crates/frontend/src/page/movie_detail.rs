@@ -1,6 +1,7 @@
 use std::rc::Rc;
 
 use api::TimeInfo;
+use auth::yew023::{AuthContext, AuthSubscription};
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
@@ -36,6 +37,7 @@ enum MovieState {
 }
 
 pub(crate) struct MovieDetail {
+    auth: AuthSubscription,
     channel: ws::Channel,
     movie: MovieState,
     graphics: Graphics,
@@ -75,6 +77,7 @@ pub(crate) struct MovieDetail {
 }
 
 pub(crate) enum Msg {
+    Auth(AuthContext),
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     SetTime(TimeInfo),
@@ -214,6 +217,7 @@ impl Component for MovieDetail {
             .expect("Expected router in context");
 
         Self {
+            auth: AuthSubscription::new(ctx, Msg::Auth),
             channel: ws::Channel::default(),
             movie: MovieState::Loading,
             graphics: Graphics::default(),
@@ -311,6 +315,7 @@ impl Component for MovieDetail {
 impl MovieDetail {
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
+            Msg::Auth(auth) => Ok(self.auth.set(auth)),
             Msg::Channel(result) => {
                 self.channel = result?;
                 if self.channel.id() != ws::ChannelId::NONE {
@@ -931,7 +936,7 @@ impl MovieDetail {
 
                             <Button icon="cog-6-tooth" title="Settings" text="Settings" onclick={link.callback(|_| UiMsg::OpenSettingsModal)} />
 
-                            if crate::is_admin(ctx) {
+                            if self.auth.is_admin() {
                                 <Button node_ref={self.remove_anchor.clone()} icon="trash" variant={Variant::Danger} class="detached" title="Remove movie" text="Remove" expanded={Some(self.confirm_remove)} haspopup="dialog" onclick={link.callback(|_| ActionMsg::ConfirmRemove)} />
 
                                 if self.confirm_remove {

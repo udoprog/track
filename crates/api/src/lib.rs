@@ -60,7 +60,9 @@ macros::define_id!(PendingId);
 macros::define_id!(RemoteId);
 macros::define_id!(PersonId);
 macros::define_id!(CreditId);
-macros::define_id!(UserId);
+
+/// A user's id is watchword's, so track and watchword name a user alike.
+pub use auth::UserId;
 
 /// The source of a remote identifier.
 #[derive(
@@ -2034,9 +2036,6 @@ pub struct Config {
     pub xem_lookup: Vec<RemoteSource>,
     /// The numberings episodes show besides their own ("Other numberings").
     pub numberings: Vec<NumberingPref>,
-    /// Signing users in through Cloudflare Access: a verified email signs in
-    /// the existing user with that email.
-    pub cloudflare_access: auth::CloudflareConfig,
 }
 
 /// The part of the system configuration every signed-in user sees.
@@ -2079,10 +2078,6 @@ impl Default for Config {
             ],
             xem_lookup: RemoteSource::XEM_LOOKUP.to_vec(),
             numberings: default_numberings(),
-            cloudflare_access: auth::CloudflareConfig {
-                verify_jwt: true,
-                ..auth::CloudflareConfig::default()
-            },
         }
     }
 }

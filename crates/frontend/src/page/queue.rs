@@ -1,3 +1,4 @@
+use auth::yew023::{AuthContext, AuthSubscription};
 use gloo::render::{AnimationFrame, request_animation_frame};
 use gloo::timers::callback::Interval;
 use musli_web::web03::prelude::*;
@@ -63,6 +64,7 @@ impl Entry {
 }
 
 pub(crate) struct Queue {
+    auth: AuthSubscription,
     channel: ws::Channel,
     background: Background,
     router: Router,
@@ -84,6 +86,7 @@ pub(crate) struct Queue {
 }
 
 pub(crate) enum Msg {
+    Auth(AuthContext),
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     TasksLoaded(Result<ws::Packet<api::ListTasks>, ws::Error>),
@@ -136,6 +139,7 @@ impl Component for Queue {
         });
 
         Self {
+            auth: AuthSubscription::new(ctx, Msg::Auth),
             channel: ws::Channel::default(),
             background,
             router,
@@ -195,6 +199,7 @@ impl Component for Queue {
 impl Queue {
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
+            Msg::Auth(auth) => Ok(self.auth.set(auth)),
             Msg::Channel(result) => {
                 self.channel = result?;
                 if self.channel.id() != ws::ChannelId::NONE {
@@ -475,7 +480,7 @@ impl Queue {
                     { view_progress_bar(progress) }
                 }
 
-                if crate::is_admin(ctx) {
+                if self.auth.is_admin() {
                     <Button icon="arrow-path" label="Sync all" title="Queue sync for all show and movies" onclick={ctx.link().callback(|_| Msg::SyncAll)} />
                 }
             </div>
@@ -646,7 +651,7 @@ impl Queue {
                 <span class="task-time">{time}</span>
 
                 <span class="task-actions">
-                    if entry.is_pending() && crate::is_admin(ctx) {
+                    if entry.is_pending() && self.auth.is_admin() {
                         <div class="input-group">
                             <Button icon="forward" title="Run now" onclick={ctx.link().callback(move |_| Msg::Bump(id))} />
                             <Button icon="trash" variant={Variant::Danger} title="Remove from queue" onclick={ctx.link().callback(move |_| Msg::Remove(id))} />

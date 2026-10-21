@@ -34,6 +34,9 @@ const BROADCAST_CAPACITY: usize = 1024;
 const HTTP_TIMEOUT: Duration = Duration::from_secs(60);
 const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// The name of the session cookie.
+pub(crate) const SESSION_COOKIE: &str = "track_session";
+
 #[derive(Parser)]
 #[command(version, about = "Track web server")]
 pub struct Args {
@@ -148,23 +151,17 @@ pub async fn serve(
     .await
 }
 
-/// The auth service over the database's users, with the Cloudflare Access
-/// settings of `config`.
-pub(crate) async fn build_auth(
-    db: &Database,
-    config: &api::Config,
-    trusted_proxies: &[IpAddr],
-) -> Result<Auth> {
-    let store = db.auth_store();
-    let session_key = auth::load_or_create_key(&store)
+/// The auth service over the database's users, which keeps the Cloudflare
+/// Access settings itself.
+pub(crate) async fn build_auth(db: &Database, trusted_proxies: &[IpAddr]) -> Result<Auth> {
+    let builder = Auth::builder_from_store(db.auth_store())
         .await
         .context("Loading session key")?;
 
-    Ok(Auth::builder(store, session_key)
-        .cookie(CookieConfig::new("track_session"))
+    Ok(builder
+        .cookie(CookieConfig::new(SESSION_COOKIE))
         .logins(true)
         .trusted_proxies(trusted_proxies)
-        .cloudflare(Some(config.cloudflare_access.clone()))
         .build())
 }
 
@@ -215,7 +212,7 @@ async fn run(
     let config = db.load_config().await.context("Loading config")?;
     remote.configure(&config)?;
 
-    let auth = build_auth(&db, &config, trusted_proxies).await?;
+    let auth = build_auth(&db, trusted_proxies).await?;
 
     if let Some(bootstrap) = &bootstrap {
         auth.bootstrap_admin(bootstrap)

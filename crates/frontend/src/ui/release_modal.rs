@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use api::TimeInfo;
+use auth::yew023::{AuthContext, AuthSubscription};
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
@@ -30,6 +31,7 @@ pub(crate) struct Props {
 }
 
 pub(crate) enum Msg {
+    Auth(AuthContext),
     Channel(Result<ws::Channel, ws::Error>),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     MovieLoaded(Result<ws::Packet<api::GetMovieReleases>, ws::Error>),
@@ -48,6 +50,7 @@ pub(crate) enum Msg {
 }
 
 pub(crate) struct ReleaseModal {
+    auth: AuthSubscription,
     channel: ws::Channel,
     _setup: SetupChannel,
     _broadcast: ws::Listener,
@@ -57,8 +60,6 @@ pub(crate) struct ReleaseModal {
     _mutate_req: ws::Request,
     /// `None` while loading, `Some` once the response has arrived.
     rows: Option<Vec<api::ReleaseRow>>,
-    /// Whether the user is an administrator, who alone edits the filters.
-    admin: bool,
     /// The site configuration, holding the default filters.
     site: Option<api::SiteConfig>,
     /// The system configuration an administrator resends on a global edit.
@@ -98,6 +99,7 @@ impl Component for ReleaseModal {
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
         Self {
+            auth: AuthSubscription::new(ctx, Msg::Auth),
             channel: ws::Channel::default(),
             _setup,
             _broadcast,
@@ -106,7 +108,6 @@ impl Component for ReleaseModal {
             _config_req: ws::Request::default(),
             _mutate_req: ws::Request::default(),
             rows: None,
-            admin: crate::is_admin(ctx),
             site: None,
             config: None,
             override_filters: None,
@@ -144,6 +145,7 @@ impl Component for ReleaseModal {
 impl ReleaseModal {
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
+            Msg::Auth(auth) => Ok(self.auth.set(auth)),
             Msg::Channel(result) => {
                 self.channel = result?;
                 self.load(ctx);
@@ -303,7 +305,7 @@ impl ReleaseModal {
             .on_packet(ctx.link().callback(Msg::SiteLoaded))
             .send();
 
-        if self.admin {
+        if self.auth.is_admin() {
             self._config_req = self
                 .channel
                 .request()
@@ -378,7 +380,7 @@ impl ReleaseModal {
     /// The active filter shown above the list: a scope toggle, a warning when the
     /// global default is being edited, and the editor bound to the active rules.
     fn view_filters(&self, ctx: &Context<Self>) -> Html {
-        if !self.admin {
+        if !self.auth.is_admin() {
             return html! {};
         }
 

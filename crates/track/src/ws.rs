@@ -97,7 +97,7 @@ pub(crate) struct AuthUser {
 impl From<&SignedIn> for AuthUser {
     fn from(signed_in: &SignedIn) -> Self {
         Self {
-            id: api::UserId::new(signed_in.user.id.0),
+            id: signed_in.user.id,
             session: signed_in.session.id.clone(),
         }
     }
@@ -582,18 +582,18 @@ pub(super) async fn ws_handler(
         let mut subscribe = state.broadcast.subscribe();
         // Ends the socket with its session: signed out, revoked, deleted or
         // expired, here or in another process.
-        let guard = state.auth.guard(&signed_in.user, &signed_in.session);
-        let mut auth_events = state.auth.events();
+        let mut updates = conn.updates();
 
         let connect =
             axum08::server(socket, handler).with_channel_allocator(state.channels.clone());
 
-        let mut server = match connect.connect().await {
-            Ok(server) => server,
-            Err(error) => {
+        let mut server = match updates.unless_ended(connect.connect()).await {
+            Some(Ok(server)) => server,
+            Some(Err(error)) => {
                 tracing::error!("WebSocket negotiation failed: {error}");
                 return;
             }
+            None => return,
         };
 
         loop {
@@ -641,23 +641,14 @@ pub(super) async fn ws_handler(
                         break;
                     }
                 }
-                event = auth_events.recv() => {
-                    let update = match event {
-                        Ok(event) => conn.update(&event).await,
-                        // The page fetches again what it shows.
-                        Err(broadcast::error::RecvError::Lagged(_)) => conn.lagged().await,
-                        Err(broadcast::error::RecvError::Closed) => break,
+                update = updates.next() => {
+                    let Some(update) = update else {
+                        break;
                     };
 
-                    match update {
-                        Ok(Some(update)) => {
-                            if let Err(error) = server.broadcast(update) {
-                                tracing::error!("Broadcast Error: {error}");
-                                break;
-                            }
-                        }
-                        Ok(None) => {}
-                        Err(error) => tracing::error!(?error, "Filtering an auth event"),
+                    if let Err(error) = server.broadcast(update) {
+                        tracing::error!("Broadcast Error: {error}");
+                        break;
                     }
                 }
                 result = server.run() => {
@@ -669,7 +660,6 @@ pub(super) async fn ws_handler(
                     }
                     break;
                 }
-                _ = guard.ended() => break,
                 // Upgraded connections outlive the server's graceful shutdown.
                 _ = state.shutdown.cancelled() => break,
             }

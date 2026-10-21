@@ -272,11 +272,7 @@ impl Fixture for Track {
                 c.execute(
                     "UPDATE users SET email = 'root@example.com' WHERE login = 'root';
                     INSERT OR REPLACE INTO config (key, value) VALUES
-                    ('cloudflare_access_enabled', 'true'),
-                    ('cloudflare_team_domain', 'example.cloudflareaccess.com'),
-                    ('cloudflare_audience', 'aud'),
-                    ('cloudflare_trust_email_header', 'true'),
-                    ('cloudflare_verify_jwt', 'false');",
+                    ('cloudflare', '{\"enabled\":true,\"team_domain\":\"example.cloudflareaccess.com\",\"audience\":\"aud\",\"trust_email_header\":true,\"verify_jwt\":false}');",
                 )?;
             }
 
@@ -500,7 +496,7 @@ yew_e2e::harness! {
     queue::{lists_tasks_in_columns, empty_filters_say_what_is_missing, keeps_rows_in_place(seeded), follows_the_next_task(crowded), shows_failed_tasks(seeded), shows_sync_progress(slow_tmdb), phone_shows_sync_progress(slow_tmdb)},
     search::{focuses_the_input, says_what_it_searches, help_mark_sits_beside_its_text},
     settings::{reorders_sync_sources, reorders_xem_lookup, shows_and_hides_numberings, theme_applies_live, theme_is_remembered, adds_languages_and_rules, switches_work_from_the_keyboard, fields_follow_the_theme, settings_are_labelled_rows, tab_completes_the_time_zone, configures_cloudflare_access, warns_about_trusting_only_the_email_header, phones_list_the_settings_pages},
-    users::{creates_a_user_who_registers, regular_users_do_not_see_users(login_link), changes_a_role(login_link), revokes_links_and_deletes(login_link), follows_users_added_elsewhere, regular_users_cannot_remove_media(seeded, movie, login_link), regular_users_cannot_edit_shared_data(seeded, movie, login_link)},
+    users::{creates_a_user_who_registers, regular_users_do_not_see_users(login_link), changes_a_role(login_link), revokes_links_and_deletes(login_link), follows_users_added_elsewhere, regular_users_cannot_remove_media(seeded, movie, login_link), regular_users_cannot_edit_shared_data(seeded, movie, login_link), admin_actions_follow_a_role_change(seeded, movie, login_link)},
     sync::{spinner_survives_a_reload(crowded, remotes), spinner_opens_the_task_in_the_queue(crowded, remotes)},
     show::{rail_colours_watched_apart_from_pending(seeded), phone_action_rows_align(seeded), episode_menu_holds_the_other_actions(seeded), menus_close_on_an_outside_click(seeded), modals_close_from_button_and_backdrop(seeded), phone_modals_rise_from_the_bottom(seeded), settings_line_up_their_controls(seeded), modals_hold_keyboard_focus(seeded), menus_work_from_the_keyboard(seeded), mark_watched_is_one_colour(seeded), seasons_list_beside_the_episodes(seasons), phones_pick_seasons_from_chips(seasons), season_overview_switches_language(seasons), phone_popovers_are_sheets(seeded), watch_history_moves_and_removes(seeded), tracking_toggle_names_the_show(seeded), settings_pages_return_to_settings(seeded), translations_sit_beside_their_language(seeded), air_dates_explain_the_default_quietly(seeded), graphics_say_what_they_do(graphics), detail_poster_is_rounded(graphics), remotes_show_their_actions(seeded), xem_anidb_and_scene_remotes_are_added(seeded), tvmaze_remote_is_added(seeded), picked_episodes_are_marked_together(seeded), picked_episodes_clear(seasons), remaining_episodes_advance_pending(seasons), has_a_heading(seeded), phones_have_no_episode_rail(seeded), phones_do_not_scroll_sideways(seeded), phones_show_the_backdrop_once(backdrop), seasons_count_watched_episodes(seeded), episodes_show_their_details(seeded), numbering_ranges_are_edited(numbering), alternative_names_are_listed(numbering), names_show_their_origin_and_language(numbering), names_modal_opens_its_help(numbering), episodes_show_other_numberings(numbering), xem_remote_links_to_its_page(numbering), season_names_appear_on_switching(seasons, numbering),
         phones_open_names_from_actions(numbering),

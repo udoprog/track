@@ -1,4 +1,4 @@
-use auth::yew023::CloudflareSettings;
+use auth::yew023::AdminCloudflare;
 use musli_web::web03::prelude::*;
 use yew::prelude::*;
 
@@ -66,7 +66,6 @@ pub(crate) enum Msg {
     SyncKindsChanged(Vec<api::SourceSyncKinds>),
     XemLookupChanged(Vec<api::RemoteSource>),
     NumberingsChanged(Vec<api::NumberingPref>),
-    CloudflareChanged(auth::CloudflareConfig),
     PreferencesSaved(Result<ws::Packet<api::SetPreferences>, ws::Error>),
     ConfigSaved(Result<ws::Packet<api::SetSystemConfig>, ws::Error>),
 }
@@ -462,11 +461,7 @@ impl Component for Settings {
                     }
 
                     if current == SettingsPage::CloudflareAccess {
-                        if self.config_loaded {
-                            <CloudflareSettings value={self.config.cloudflare_access.clone()} on_change={link.callback(Msg::CloudflareChanged)} app_name="track" />
-                        } else {
-                            <Skeleton class="settings-skeleton" />
-                        }
+                        <AdminCloudflare app_name="track" />
                     }
                 </div>
                 </div>
@@ -636,11 +631,6 @@ impl Settings {
             }
             Msg::NumberingsChanged(prefs) => {
                 self.config.numberings = prefs;
-                self.save_config(ctx);
-                Ok(true)
-            }
-            Msg::CloudflareChanged(config) => {
-                self.config.cloudflare_access = config;
                 self.save_config(ctx);
                 Ok(true)
             }

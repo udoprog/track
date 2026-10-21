@@ -678,9 +678,7 @@ async fn tracking_watch_history_and_pending_are_per_user() -> Result<()> {
     assert_eq!(pending_episodes(db.pending(root, now).await?), [e2]);
 
     // Deleting alice removes her rows and leaves root's.
-    db.auth_store()
-        .delete_user(auth::UserId(alice.get()))
-        .await?;
+    db.auth_store().delete_user(alice).await?;
     let c = OpenOptions::new()
         .read_write()
         .open(dir.path().join("test.db"))?;
@@ -1041,7 +1039,8 @@ async fn next_episode_follows_the_most_recent_watch_in_scope() -> Result<()> {
 /// The base schema of databases created before users, frozen.
 const BEFORE_USERS_SCHEMA: &str = include_str!("testdata/2026-06-05-before-users.sql");
 
-/// The base schema of databases created before yew-auth, frozen.
+/// The base schema of databases created before 2026-10-15-yew-auth.sql,
+/// frozen.
 const BEFORE_YEW_AUTH_SCHEMA: &str = include_str!("testdata/2026-06-05-before-yew-auth.sql");
 
 /// The base schema of databases created before strings of unknown language,
@@ -1982,9 +1981,10 @@ async fn xem_entries_and_names() -> Result<()> {
     Ok(())
 }
 
-/// A database created before yew-auth, with every migration up to then
-/// recorded as applied, root (from its base schema), and alice, who has no
-/// password, an unused login link, a used one, tracking and watch history.
+/// A database created before 2026-10-15-yew-auth.sql, with every migration
+/// up to then recorded as applied, root (from its base schema), and alice,
+/// who has no password, an unused login link, a used one, tracking and watch
+/// history.
 fn before_yew_auth_db(path: &Path) -> Result<sqll::Connection> {
     let c = OpenOptions::new().read_write().create().open(path)?;
 
@@ -2015,12 +2015,12 @@ fn before_yew_auth_db(path: &Path) -> Result<sqll::Connection> {
     Ok(c)
 }
 
-/// A database from before yew-auth migrates to exactly the schema a fresh one
-/// gets, keeping its users, now active, with their passwords, sessions and
+/// A database from before 2026-10-15-yew-auth.sql migrates to exactly the
+/// schema a fresh one gets, keeping its users, now active, with their passwords, sessions and
 /// per-user rows; login links become reset links. A fresh database has no
 /// users until the server creates the first administrator.
 #[tokio::test]
-async fn migrations_move_users_onto_yew_auth() -> Result<()> {
+async fn migrations_move_users_onto_watchword() -> Result<()> {
     let dir = tempfile::tempdir()?;
     let old = dir.path().join("old.db");
     let fresh = dir.path().join("fresh.db");
@@ -2078,7 +2078,7 @@ async fn migrations_move_users_onto_yew_auth() -> Result<()> {
         );
     }
 
-    let auth = crate::entry::build_auth(&db, &Config::default(), &[]).await?;
+    let auth = crate::entry::build_auth(&db, &[]).await?;
 
     let (root, _) = auth
         .session("root-session")
@@ -2127,5 +2127,99 @@ fn yew_auth_migration_needs_foreign_keys_off() -> Result<()> {
         )?,
         Vec::<String>::new()
     );
+    Ok(())
+}
+
+/// 2026-10-21-watchword-cloudflare.sql moves track's five cloudflare_* keys
+/// onto watchword's stored settings, which the auth service then runs with,
+/// and leaves settings watchword already stored as they are.
+#[tokio::test]
+async fn migrations_move_cloudflare_settings_onto_watchword() -> Result<()> {
+    const ID: &str = "2026-10-21-watchword-cloudflare.sql";
+
+    let dir = tempfile::tempdir()?;
+
+    let before = |path: &Path, sql: &str| -> Result<()> {
+        drop(Database::open(path, OpenMode::Bulk, 1)?);
+        let c = OpenOptions::new().read_write().open(path)?;
+        c.execute(format!("DELETE FROM migrations WHERE id = '{ID}'; {sql}"))?;
+        Ok(())
+    };
+
+    let keys = dir.path().join("keys.db");
+    before(
+        &keys,
+        "INSERT INTO config (key, value) VALUES
+            ('page_title', 'track'),
+            ('cloudflare_access_enabled', 'true'),
+            ('cloudflare_team_domain', 'team.cloudflareaccess.com'),
+            ('cloudflare_audience', 'aud'),
+            ('cloudflare_trust_email_header', 'true'),
+            ('cloudflare_verify_jwt', 'false');",
+    )?;
+
+    let db = Database::open(&keys, OpenMode::Bulk, 1)?;
+    let auth = crate::entry::build_auth(&db, &[]).await?;
+
+    assert_eq!(
+        auth.cloudflare().await?,
+        Some(auth::CloudflareConfig {
+            enabled: true,
+            team_domain: "team.cloudflareaccess.com".to_owned(),
+            audience: "aud".to_owned(),
+            trust_email_header: true,
+            verify_jwt: false,
+        })
+    );
+
+    let c = OpenOptions::new().read_write().open(&keys)?;
+    assert_eq!(
+        texts(
+            &c,
+            "SELECT key FROM config WHERE key != 'session_key' ORDER BY key"
+        )?,
+        ["cloudflare", "page_title"]
+    );
+
+    // Only verify_jwt reads as on when missing.
+    let sparse = dir.path().join("sparse.db");
+    before(
+        &sparse,
+        "INSERT INTO config (key, value) VALUES ('cloudflare_team_domain', 'team');",
+    )?;
+    let db = Database::open(&sparse, OpenMode::Bulk, 1)?;
+    let auth = crate::entry::build_auth(&db, &[]).await?;
+
+    assert_eq!(
+        auth.cloudflare().await?,
+        Some(auth::CloudflareConfig {
+            team_domain: "team".to_owned(),
+            ..auth::CloudflareConfig::default()
+        })
+    );
+
+    let stored = dir.path().join("stored.db");
+    before(
+        &stored,
+        "INSERT INTO config (key, value) VALUES
+            ('cloudflare', '{\"enabled\":true,\"team_domain\":\"saved\"}'),
+            ('cloudflare_access_enabled', 'false'),
+            ('cloudflare_team_domain', 'stale');",
+    )?;
+    let db = Database::open(&stored, OpenMode::Bulk, 1)?;
+    let auth = crate::entry::build_auth(&db, &[]).await?;
+    let settings = auth.cloudflare().await?.expect("the stored settings");
+    assert!(settings.enabled);
+    assert_eq!(settings.team_domain, "saved");
+
+    let c = OpenOptions::new().read_write().open(&stored)?;
+    assert!(texts(&c, "SELECT key FROM config WHERE key LIKE 'cloudflare_%'")?.is_empty());
+
+    // Without any of the keys, nothing is stored.
+    let none = dir.path().join("none.db");
+    before(&none, "")?;
+    let db = Database::open(&none, OpenMode::Bulk, 1)?;
+    let auth = crate::entry::build_auth(&db, &[]).await?;
+    assert_eq!(auth.cloudflare().await?, None);
     Ok(())
 }

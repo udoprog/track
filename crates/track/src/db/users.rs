@@ -8,44 +8,21 @@ use tokio::task::spawn_blocking;
 use super::{Database, InnerRead, InnerWrite};
 
 /// A user as a backup names them: by login, or by email without one.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Row)]
 pub(crate) struct UserRecord {
     pub(crate) login: Option<String>,
     pub(crate) email: Option<String>,
     pub(crate) role: Role,
 }
 
-#[derive(Row)]
-struct UserRow {
-    id: UserId,
-    login: Option<String>,
-    email: Option<String>,
-    role: String,
-}
-
-impl UserRow {
-    fn into_record(self) -> Result<UserRecord> {
-        let role = self
-            .role
-            .parse()
-            .map_err(|_| anyhow!("User {} has unknown role {:?}", self.id, self.role))?;
-
-        Ok(UserRecord {
-            login: self.login,
-            email: self.email,
-            role,
-        })
-    }
-}
-
 #[derive(Statements)]
 #[sql(read_only)]
 pub(super) struct Read {
-    #[sql = "SELECT id, login, email, role FROM users ORDER BY id"]
-    list: TypedStatement<(), UserRow>,
+    #[sql = "SELECT login, email, role FROM users ORDER BY id"]
+    list: TypedStatement<(), UserRecord>,
     // Root, or the first administrator if root was renamed.
-    #[sql = "SELECT id FROM users WHERE role = 'admin' ORDER BY login IS NOT 'root', id LIMIT 1"]
-    default_owner: TypedStatement<(), UserId>,
+    #[sql = "SELECT id FROM users WHERE role = ? ORDER BY login IS NOT 'root', id LIMIT 1"]
+    default_owner: TypedStatement<Role, UserId>,
 }
 
 impl Read {
@@ -54,7 +31,7 @@ impl Read {
         let mut stmt = self.list.bind(())?;
 
         while let Some(row) = stmt.next().transpose()? {
-            out.push(row.into_record()?);
+            out.push(row);
         }
 
         Ok(out)
@@ -87,7 +64,7 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn default_owner(&self) -> Result<UserId> {
         let mut s = self.inner.clone().shared().await?;
-        let result = spawn_blocking(move || s.users.default_owner.query()?.first());
+        let result = spawn_blocking(move || s.users.default_owner.bind(Role::Admin)?.first());
         result
             .await??
             .ok_or_else(|| anyhow!("There is no administrator"))
@@ -96,18 +73,18 @@ impl Database {
 
 #[cfg(test)]
 impl Database {
-    /// Creates an active user, with a password if `password_hash` is set.
+    /// Creates an active user, who signs in with `password` if it is set, as
+    /// watchword's `Auth::test_user` does.
     pub(crate) async fn test_user(
         &self,
         login: &str,
         email: Option<&str>,
         role: Role,
-        password_hash: Option<&str>,
+        password: Option<&str>,
     ) -> Result<UserId> {
         use auth::Store;
-        use auth::store::Credential;
 
-        let store = self.auth_store();
+        let auth = crate::entry::build_auth(self, &[]).await?;
 
         let new = auth::NewUser {
             login: Some(login.to_owned()),
@@ -115,32 +92,23 @@ impl Database {
             role,
         };
 
-        let user = store
-            .create_user(&new, jiff::Timestamp::now())
-            .await?
-            .map_err(|conflict| anyhow!("{login}: {conflict:?} taken"))?;
-
-        match password_hash {
-            Some(hash) => {
-                let credential = Credential::Password(hash.to_owned());
-                store.set_credential(user.id, &credential, None).await?;
-            }
+        let user = match password {
+            Some(password) => auth.test_user(&new, password).await?,
             None => {
-                store.activate(user.id).await?;
+                let user = auth.import_user(&new).await?;
+                self.auth_store().activate(user.id).await?;
+                user
             }
-        }
+        };
 
-        Ok(UserId::new(user.id.0))
+        Ok(user.id)
     }
 
     /// Creates the administrator `root` with the password `root`, as fresh
-    /// databases had before yew-auth.
+    /// databases had before 2026-10-15-yew-auth.sql moved users onto
+    /// watchword.
     pub(crate) async fn test_root(&self) -> Result<UserId> {
-        self.test_user("root", None, Role::Admin, Some(ROOT_HASH))
+        self.test_user("root", None, Role::Admin, Some("root"))
             .await
     }
 }
-
-/// The bcrypt hash of `root`.
-#[cfg(test)]
-pub(crate) const ROOT_HASH: &str = "$2y$12$jxThPHsK8E/RT.IrJcuNfO6Deoc5a7DkfUZ0cLhM2TZsbPT0MvIwO";
