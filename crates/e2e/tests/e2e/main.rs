@@ -147,6 +147,8 @@ const LOGIN_LINK_SQL: &str = "
 struct Track {
     port: u16,
     server: Option<Server>,
+    dist: &'static Path,
+    tmdb_base: Option<String>,
     _tmdb: Option<tmdb::SlowTmdb>,
     // Dropped after the server has stopped, taking its database with it.
     dir: TempDir,
@@ -191,7 +193,7 @@ impl Fixture for Track {
 
         {
             // The server creates the schema; the seed goes in while it is down.
-            Server::start(dir.path(), yew_e2e::dist()?, None)
+            Server::start(dir.path(), 0, yew_e2e::dist()?, None)
                 .await?
                 .quit()
                 .await?;
@@ -294,11 +296,14 @@ impl Fixture for Track {
             false => None,
         };
 
-        let server = Server::start(dir.path(), dist, tmdb.as_ref().map(|t| t.base.clone())).await?;
+        let tmdb_base = tmdb.as_ref().map(|t| t.base.clone());
+        let server = Server::start(dir.path(), 0, dist, tmdb_base.clone()).await?;
 
         Ok(Self {
             port: server.port,
             server: Some(server),
+            dist,
+            tmdb_base,
             _tmdb: tmdb,
             dir,
         })
@@ -340,6 +345,21 @@ impl Track {
             Some(server) => server.quit().await,
             None => Ok(()),
         }
+    }
+
+    /// Start the server again after [`Track::stop`], on the same port and
+    /// database, so the browser's connection can come back.
+    async fn restart(&mut self) -> Result<()> {
+        ensure!(self.server.is_none(), "the server is still running");
+        let server = Server::start(
+            self.dir.path(),
+            self.port,
+            self.dist,
+            self.tmdb_base.clone(),
+        )
+        .await?;
+        self.server = Some(server);
+        Ok(())
     }
 }
 
@@ -417,8 +437,14 @@ fn scripted_dist(name: &str, script: &str) -> Result<PathBuf> {
 }
 
 impl Server {
-    async fn start(dir: &Path, dist: &'static Path, tmdb: Option<String>) -> Result<Self> {
-        let listener = TcpListener::bind("127.0.0.1:0").await?;
+    /// Serve on `port`, or on a free one when it is 0.
+    async fn start(
+        dir: &Path,
+        port: u16,
+        dist: &'static Path,
+        tmdb: Option<String>,
+    ) -> Result<Self> {
+        let listener = TcpListener::bind(("127.0.0.1", port)).await?;
         let port = listener.local_addr()?.port();
         let (shutdown, rx) = oneshot::channel::<()>();
 
@@ -489,7 +515,7 @@ yew_e2e::harness! {
     dashboard::{fills_rows_with_relative_dates(seeded), labels_its_filters, keeps_view_options_in_a_menu, buttons_expose_their_state, secondary_actions_are_filled(seeded), mobile_cards_always_have_a_picture(seeded), schedule_names_its_days, upcoming_is_an_agenda, upcoming_times_open_their_episode(upcoming), upcoming_keeps_days_when_more_are_shown(upcoming), schedule_keeps_weeks_when_more_are_shown(upcoming), schedule_entries_sit_flush_left(upcoming), marks_watched_in_one_click(seeded), marks_watched_at_a_chosen_time(seeded)},
     help::{opens_from_the_toolbar, search_filters_sections, links_between_sections, inline_help_opens_its_section, phones_stack_the_sections},
     history::{folds_episodes_watched_back_to_back(movie, history), pages_and_filters_the_history(movie, history), phone_history_fits_the_width(movie, history)},
-    media::{shows_a_poster_grid(seeded), partly_watched_shows_are_marked(seeded), toggle_marks_are_icon_sized, sort_stays_readable_at_tablet_width, reversing_keeps_the_cards(crowded), lists_tracked_items_by_default(untracked), filters_by_next_episode(next, movie), marks_the_next_episode_of_picked_shows(next), picked_items_track_and_untrack(next, movie), phone_pick_control_is_round(seeded)},
+    media::{shows_a_poster_grid(seeded), reloads_after_a_reconnect(seeded), partly_watched_shows_are_marked(seeded), toggle_marks_are_icon_sized, sort_stays_readable_at_tablet_width, reversing_keeps_the_cards(crowded), lists_tracked_items_by_default(untracked), filters_by_next_episode(next, movie), marks_the_next_episode_of_picked_shows(next), picked_items_track_and_untrack(next, movie), phone_pick_control_is_round(seeded)},
     movie::{puts_the_cast_beside_the_poster(movie), phone_release_line_stays_together(movie), phones_show_the_backdrop_once(movie, movie_backdrop)},
     navigation::{phone_menu_rows_align, opens_every_page, tab_shows_a_focus_ring, navigation_is_links(seeded), pages_have_landmarks_and_one_heading, page_scrolls_the_window, toolbar_icons_are_small, app_bar_items_have_room, errors_show_as_a_card, every_button_has_a_title(seeded)},
     people::{lists_people_by_credits(seeded), shows_nothing_while_loading(seeded), pages_and_filters_people(crowd), shows_a_silhouette_without_a_photo(seeded), phone_person_page_keeps_the_photo_shape(seeded), known_for_lists_each_title_once(seeded), edits_a_persons_remotes(seeded)},

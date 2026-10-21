@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use yew_e2e::prelude::*;
 
 use super::{Track, kept_marked, mark};
@@ -23,6 +25,50 @@ pub async fn shows_a_poster_grid(driver: &mut TestDriver, _: &mut Track) -> Resu
         "expected the year and watch state, got {meta:?}"
     );
 
+    Ok(())
+}
+
+/// A page whose connection drops fetches what it shows again once the
+/// connection is back, without reloading, and the drop itself shows only the
+/// toolbar's Disconnected icon, not an error.
+pub async fn reloads_after_a_reconnect(driver: &mut TestDriver, track: &mut Track) -> Result<()> {
+    driver
+        .find_one_by(".toolbar-item[title=Media]")
+        .await?
+        .click()
+        .await?;
+
+    driver.wait_texts(".media-title", ["Seeded Show"]).await?;
+    driver
+        .webdriver()
+        .execute("window.__same_page = true;", Vec::new())
+        .await?;
+
+    track.stop().await?;
+    driver.find_one_by("#toolbar [title=Disconnected]").await?;
+
+    track.execute(
+        "UPDATE show_strings SET text = 'Renamed Show' WHERE show_id = 1001 AND kind = 1",
+    )?;
+    track.restart().await?;
+
+    // The client retries with a backoff of up to four seconds.
+    driver
+        .wait_until_within(
+            Duration::from_secs(10),
+            "the media page to show the renamed show",
+            async || Ok(driver.find_all_texts(".media-title").await? == ["Renamed Show"]),
+        )
+        .await?;
+
+    driver.find_one_by("#toolbar [title=Connected]").await?;
+    driver.wait_count("#error", 0).await?;
+
+    let same = driver
+        .webdriver()
+        .execute("return window.__same_page === true;", Vec::new())
+        .await?;
+    ensure!(same.convert::<bool>()?, "the page was reloaded");
     Ok(())
 }
 
