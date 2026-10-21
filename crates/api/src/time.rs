@@ -5,7 +5,7 @@ use std::time::Duration;
 use jiff::Timestamp as JiffTimestamp;
 use jiff::civil::Date as JiffDate;
 use jiff::tz::TimeZone as JiffTimeZone;
-use musli_core::{Allocator, Context as _, Decode, Decoder, Encode, Encoder};
+use musli_core::{Decode, Encode};
 
 #[cfg(feature = "yew")]
 use implicit_clone::unsync::IString;
@@ -75,7 +75,8 @@ impl TimeZone {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Encode, Decode)]
+#[musli(display)]
 pub struct Timestamp(JiffTimestamp);
 
 impl Timestamp {
@@ -249,37 +250,6 @@ impl fmt::Display for Timestamp {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
-    }
-}
-
-impl<M> Encode<M> for Timestamp {
-    type Encode = Self;
-
-    #[inline]
-    fn encode<E>(&self, encoder: E) -> Result<(), E::Error>
-    where
-        E: Encoder<Mode = M>,
-    {
-        encoder.collect_string(self)
-    }
-
-    #[inline]
-    fn as_encode(&self) -> &Self::Encode {
-        self
-    }
-}
-
-impl<'de, M, A> Decode<'de, M, A> for Timestamp
-where
-    A: Allocator,
-{
-    fn decode<D>(decoder: D) -> Result<Self, D::Error>
-    where
-        D: Decoder<'de, Mode = M, Allocator = A>,
-    {
-        let cx = decoder.cx();
-        decoder
-            .decode_unsized(|s: &str| s.parse::<JiffTimestamp>().map(Timestamp).map_err(cx.map()))
     }
 }
 
@@ -657,7 +627,8 @@ impl fmt::Debug for DateError {
 }
 
 /// Calendar date, stored in SQLite as the integer `YYYYMMDD`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Encode, Decode)]
+#[musli(display)]
 pub struct Date(JiffDate);
 
 impl Date {
@@ -784,36 +755,6 @@ impl fmt::Display for Date {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // jiff::civil::Date displays as ISO 8601, e.g. "2024-01-15"
         self.0.fmt(f)
-    }
-}
-
-impl<M> Encode<M> for Date {
-    type Encode = Self;
-
-    #[inline]
-    fn encode<E>(&self, encoder: E) -> Result<(), E::Error>
-    where
-        E: Encoder<Mode = M>,
-    {
-        encoder.collect_string(self)
-    }
-
-    #[inline]
-    fn as_encode(&self) -> &Self::Encode {
-        self
-    }
-}
-
-impl<'de, M, A> Decode<'de, M, A> for Date
-where
-    A: Allocator,
-{
-    fn decode<D>(decoder: D) -> Result<Self, D::Error>
-    where
-        D: Decoder<'de, Mode = M, Allocator = A>,
-    {
-        let cx = decoder.cx();
-        decoder.decode_unsized(|s: &str| s.parse::<JiffDate>().map(Date).map_err(cx.map()))
     }
 }
 
@@ -1007,5 +948,41 @@ mod tests {
         assert!(Date::new(2024, 2, 29).is_some());
         assert!(Date::new(2026, 13, 1).is_none());
         assert!(Date::new(2026, 4, 31).is_none());
+    }
+
+    #[test]
+    fn string_wire_format() {
+        let ts = utc("2024-01-15T10:30:00Z");
+        assert_eq!(
+            musli::json::to_string(&ts).unwrap(),
+            r#""2024-01-15T10:30:00Z""#
+        );
+        assert_eq!(
+            musli::json::from_str::<Timestamp>(r#""2024-01-15T10:30:00Z""#).unwrap(),
+            ts
+        );
+        assert!(musli::json::from_str::<Timestamp>(r#""nope""#).is_err());
+        let bytes = musli::storage::to_vec(&ts).unwrap();
+        assert_eq!(
+            bytes,
+            [
+                20, b'2', b'0', b'2', b'4', b'-', b'0', b'1', b'-', b'1', b'5', b'T', b'1', b'0',
+                b':', b'3', b'0', b':', b'0', b'0', b'Z'
+            ]
+        );
+        assert_eq!(musli::storage::from_slice::<Timestamp>(&bytes).unwrap(), ts);
+
+        let d = date(2024, 1, 15);
+        assert_eq!(musli::json::to_string(&d).unwrap(), r#""2024-01-15""#);
+        assert_eq!(musli::json::from_str::<Date>(r#""2024-01-15""#).unwrap(), d);
+        assert!(musli::json::from_str::<Date>(r#""nope""#).is_err());
+        let bytes = musli::storage::to_vec(&d).unwrap();
+        assert_eq!(
+            bytes,
+            [
+                10, b'2', b'0', b'2', b'4', b'-', b'0', b'1', b'-', b'1', b'5'
+            ]
+        );
+        assert_eq!(musli::storage::from_slice::<Date>(&bytes).unwrap(), d);
     }
 }

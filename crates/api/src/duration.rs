@@ -10,7 +10,7 @@ use musli_core::{Decode, Encode};
 /// millisecond count so the value round-trips exactly through storage. Use
 /// [`Duration::human`] for a human-readable rendering.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Encode, Decode)]
-#[musli(crate = musli_core, transparent)]
+#[musli(transparent)]
 pub struct Duration(i64);
 
 impl Duration {

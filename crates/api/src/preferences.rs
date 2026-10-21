@@ -166,7 +166,6 @@ impl PreferenceValue for IncludeSpecials {
 
 /// A user's own preferences.
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct Preferences {
     pub theme: ThemeType,
     pub dashboard_page: u32,

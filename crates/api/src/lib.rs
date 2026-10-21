@@ -66,7 +66,6 @@ macros::define_id!(UserId);
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Encode, Decode, serde::Serialize, serde::Deserialize,
 )]
-#[musli(crate = musli_core)]
 #[serde(rename_all = "lowercase")]
 pub enum RemoteSource {
     Tvdb,
@@ -165,7 +164,6 @@ impl RemoteSource {
 /// A global, per-source selection of which [`SyncKind`]s that source contributes,
 /// stored in [`Config::sync_kinds`].
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize)]
-#[musli(crate = musli_core)]
 pub struct SourceSyncKinds {
     pub source: RemoteSource,
     pub kinds: SyncKindSet,
@@ -218,7 +216,6 @@ impl ::sqll::BindValue for RemoteSource {
 
 /// The value part of a remote identifier either an integer or a string.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize)]
-#[musli(crate = musli_core)]
 #[serde(untagged)]
 pub enum RemoteValue {
     Int(u32),
@@ -294,7 +291,6 @@ impl ::sqll::BindValue for RemoteValue {
 
 /// Remote identifier: "tvdb:123", "tmdb:456", "imdb:tt0001234".
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize)]
-#[musli(crate = musli_core)]
 #[serde(from = "String", into = "String")]
 pub struct Remote {
     source: RemoteSource,
@@ -428,7 +424,6 @@ impl From<Remote> for String {
 /// with the logical value. The `id` lets the client reference a specific remote
 /// (for editing or removal) without matching on its source/value.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct RemoteEntry {
     pub id: RemoteId,
     pub slug: Option<String>,
@@ -451,7 +446,6 @@ pub struct RemoteEntry {
 /// deserialize tolerantly (missing → `None`) and new sources can add fields
 /// without breaking existing rows.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize)]
-#[musli(crate = musli_core)]
 pub struct RemoteCache {
     /// TMDB `ETag`, replayed via `If-None-Match` (a `304` means unchanged).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -495,7 +489,6 @@ impl RemoteCache {
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize,
 )]
-#[musli(crate = musli_core)]
 #[serde(rename_all = "snake_case")]
 pub enum RemoteErrorKind {
     /// The remote does not carry this entity (a `404`). A stable fact, so it is
@@ -527,7 +520,6 @@ impl RemoteErrorKind {
 /// it can be suppressed until it expires - and shown to the user, so a silently
 /// half-synced entity is visible rather than mysterious.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize)]
-#[musli(crate = musli_core)]
 pub struct RemoteError {
     /// Stable identifier for the sub-request, so the next sync can tell whether
     /// *this* call failed before (e.g. `"season/3/episodes"`, `"episode/S02E05"`).
@@ -635,7 +627,6 @@ pub fn enabled_sources_by_priority(remotes: &[RemoteEntry]) -> Vec<RemoteSource>
 
 /// Image reference: "tvdb:/banners/abc.jpg", "tmdb:/xy.jpg".
 #[derive(Debug, Clone, PartialEq, Encode, Decode, serde::Serialize, serde::Deserialize)]
-#[musli(crate = musli_core)]
 pub struct ImageKey {
     source: ImageSource,
     path: String,
@@ -667,7 +658,6 @@ impl ImageKey {
 }
 
 #[derive(Debug, PartialEq, Clone, Encode, Decode, serde::Serialize, serde::Deserialize)]
-#[musli(crate = musli_core)]
 pub struct Image {
     path: ImageKey,
     width: u32,
@@ -770,7 +760,6 @@ impl From<ImageKey> for Image {
     serde::Serialize,
     serde::Deserialize,
 )]
-#[musli(crate = musli_core)]
 #[serde(untagged)]
 pub enum SeasonNumber {
     Specials,
@@ -883,7 +872,6 @@ impl ::sqll::BindValue for SeasonNumber {
     serde::Serialize,
     serde::Deserialize,
 )]
-#[musli(crate = musli_core)]
 #[serde(rename_all = "lowercase")]
 pub enum ImageKind {
     Poster,
@@ -973,7 +961,6 @@ impl ::sqll::BindValue for ImageKind {
     serde::Serialize,
     serde::Deserialize,
 )]
-#[musli(crate = musli_core)]
 #[serde(rename_all = "lowercase")]
 pub enum StringKind {
     Title,
@@ -1041,7 +1028,6 @@ impl ::sqll::BindValue for StringKind {
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Encode, Decode, serde::Serialize, serde::Deserialize,
 )]
-#[musli(crate = musli_core)]
 #[serde(rename_all = "lowercase")]
 pub enum CreditKind {
     Cast,
@@ -1086,7 +1072,6 @@ impl ::sqll::BindValue for CreditKind {
     serde::Serialize,
     serde::Deserialize,
 )]
-#[musli(crate = musli_core)]
 #[serde(rename_all = "lowercase")]
 pub enum ImageSource {
     Tvdb,
@@ -1149,7 +1134,6 @@ impl ::sqll::BindValue for ImageSource {
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Default, Encode, Decode, serde::Serialize, serde::Deserialize,
 )]
-#[musli(crate = musli_core)]
 #[serde(rename_all = "lowercase")]
 pub enum ThemeType {
     #[default]
@@ -1200,7 +1184,6 @@ impl ::sqll::BindValue for ThemeType {
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Encode, Decode, serde::Serialize, serde::Deserialize,
 )]
-#[musli(crate = musli_core)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum ReleaseType {
@@ -1266,7 +1249,6 @@ impl ::sqll::BindValue for ReleaseType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct MovieRelease {
     pub source: RemoteSource,
     pub country: Country,
@@ -1279,7 +1261,6 @@ pub struct MovieRelease {
 /// `ReleaseTypes` variant applies to movie releases and `Networks` to episode
 /// releases; the other two apply to both.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize)]
-#[musli(crate = musli_core)]
 #[serde(rename_all = "snake_case")]
 pub enum FilterPredicate {
     Sources(Vec<RemoteSource>),
@@ -1369,7 +1350,6 @@ impl PredicateKind {
 #[derive(
     Debug, Clone, Default, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize,
 )]
-#[musli(crate = musli_core)]
 pub struct FilterRule {
     /// Optional human-readable label shown in the editor. Purely informational.
     #[serde(default)]
@@ -1396,7 +1376,7 @@ impl FilterRule {
 #[derive(
     Debug, Clone, Default, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize,
 )]
-#[musli(crate = musli_core, transparent)]
+#[musli(transparent)]
 #[serde(transparent)]
 pub struct FilterRules {
     rules: Vec<FilterRule>,
@@ -1566,7 +1546,6 @@ where
 /// A known air date for an episode, attributed to the remote `source` it came
 /// from and optionally the `country`/`network` it aired on.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct EpisodeRelease {
     pub source: RemoteSource,
     pub country: Country,
@@ -1608,7 +1587,6 @@ pub fn sync_languages_for_viewers(sync_languages: &[Locale], viewers: &[Locale])
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct MediaImage {
     pub id: ImageId,
     pub kind: ImageKind,
@@ -1624,7 +1602,6 @@ pub struct MediaImage {
 /// per-language character name (cast only, resolved via the display locale);
 /// `department`/`job` are the English crew role (crew only).
 #[derive(Debug, Clone, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct Credit {
     pub person_id: PersonId,
     /// The person's localized name, resolved via the display locale.
@@ -1643,7 +1620,6 @@ pub struct Credit {
 /// biography, the best profile image, and the person's own remotes (identity +
 /// per-remote [`RemoteCache`] state) for the remote editor.
 #[derive(Debug, Clone, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct Person {
     pub id: PersonId,
     /// Localized name (kind=Title); resolve with [`Translations::title`].
@@ -1669,7 +1645,6 @@ impl Person {
 /// A slim person row for the people list view - only what's needed to filter and
 /// render a list entry.
 #[derive(Debug, Clone, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct PersonItem {
     pub id: PersonId,
     /// Localized name strings; filter across locales with [`Translations::texts`].
@@ -1684,7 +1659,6 @@ pub struct PersonItem {
 /// One work a person is credited on, for the person detail page. Points back at
 /// the owning show/movie via [`CreditOwner`] so the card can link to it.
 #[derive(Debug, Clone, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct PersonCredit {
     pub owner: CreditOwner,
     /// The owner's localized title.
@@ -1700,7 +1674,6 @@ pub struct PersonCredit {
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct Show {
     pub id: ShowId,
     pub strings: Translations,
@@ -1771,7 +1744,6 @@ impl Show {
 }
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct Season {
     pub id: SeasonId,
     pub show_id: ShowId,
@@ -1799,7 +1771,6 @@ impl Season {
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct Episode {
     pub id: EpisodeId,
     pub show_id: ShowId,
@@ -1830,7 +1801,6 @@ impl Episode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct Code {
     pub season: SeasonNumber,
     pub episode: u32,
@@ -1870,7 +1840,6 @@ impl IntoPropValue<VNode> for Code {
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct WatchedEpisode {
     pub id: WatchedId,
     pub timestamp: Timestamp,
@@ -1880,7 +1849,6 @@ pub struct WatchedEpisode {
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct Movie {
     pub id: MovieId,
     pub strings: Translations,
@@ -1953,7 +1921,6 @@ impl Movie {
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize,
 )]
-#[musli(crate = musli_core)]
 pub enum ImageOwner {
     Show(ShowId),
     Movie(MovieId),
@@ -1961,7 +1928,6 @@ pub enum ImageOwner {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub enum WatchedKind {
     Episode { show: ShowId, episode: EpisodeId },
     Movie { movie: MovieId },
@@ -1977,7 +1943,6 @@ impl WatchedKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub enum WatchedEvent {
     Episode { show: ShowId, episode: EpisodeId },
     RemainingSeason { show: ShowId, season: SeasonNumber },
@@ -1985,7 +1950,6 @@ pub enum WatchedEvent {
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct Watched {
     pub id: WatchedId,
     pub timestamp: Timestamp,
@@ -1993,7 +1957,6 @@ pub struct Watched {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub enum PendingInfo {
     Episode {
         show_id: ShowId,
@@ -2036,7 +1999,6 @@ impl PendingInfo {
 
 /// Denormalized pending item for dashboard/queue rendering.
 #[derive(Debug, Clone, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct Pending {
     pub info: PendingInfo,
     pub aired: Option<Timestamp>,
@@ -2091,7 +2053,6 @@ impl Timed for Pending {
 /// the `SxxEyy` code and uses the season for navigation, so it deliberately omits
 /// the heavyweight fields of [`Episode`].
 #[derive(Debug, Clone, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ScheduleEpisode {
     pub season: SeasonNumber,
     pub episode: u32,
@@ -2109,7 +2070,6 @@ impl ScheduleEpisode {
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ScheduledEntry {
     pub show_id: ShowId,
     pub show_title: String,
@@ -2122,7 +2082,6 @@ pub struct ScheduledEntry {
 
 /// Sparse movie shown in the schedule/calendar grid on its release date.
 #[derive(Debug, Clone, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ScheduleMovie {
     pub movie_id: MovieId,
     pub title: String,
@@ -2135,7 +2094,6 @@ pub struct ScheduleMovie {
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ScheduledDay {
     pub date: Date,
     pub shows: Vec<ScheduledEntry>,
@@ -2186,7 +2144,6 @@ impl ScheduledDay {
 
 /// System configuration: administrators read and write it.
 #[derive(Debug, Clone, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct Config {
     pub tvdb_api_key: String,
     pub tvdb_pin: Option<String>,
@@ -2219,7 +2176,6 @@ pub struct Config {
 
 /// The part of the system configuration every signed-in user sees.
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct SiteConfig {
     pub page_title: String,
     pub release_filters: FilterRules,
@@ -2295,11 +2251,9 @@ fn sync_kinds_for(kinds: &[SourceSyncKinds], source: RemoteSource) -> SyncKindSe
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct Empty;
 
 #[derive(Debug, Clone, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct SearchShow {
     pub remote: Remote,
     pub slug: Option<String>,
@@ -2313,7 +2267,6 @@ pub struct SearchShow {
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct SearchMovie {
     pub remote: Remote,
     pub title: Option<String>,
@@ -2327,7 +2280,6 @@ pub struct SearchMovie {
 
 /// Whether a media item is a show or a movie.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub enum MediaKind {
     #[default]
     Shows,
@@ -2337,7 +2289,6 @@ pub enum MediaKind {
 /// A slim row used by the movies/shows list views - only the fields needed to
 /// filter, reorder, and render a list entry.
 #[derive(Debug, Clone, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct MediaItem {
     /// Raw id; the consumer rebuilds `ShowId`/`MovieId` based on `kind`.
     pub id: u64,
@@ -2368,7 +2319,6 @@ pub struct MediaItem {
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub enum TaskKind {
     SyncShow {
         show_id: ShowId,
@@ -2410,14 +2360,12 @@ impl TaskKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub enum TaskStatus {
     Pending,
     Running,
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct Task {
     pub id: TaskId,
     pub kind: TaskKind,
@@ -2431,7 +2379,6 @@ pub struct Task {
 
 /// Where a running task is: its current step and how far through it.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct TaskProgress {
     pub step: TaskStep,
     /// The remote the step fetches from, if any.
@@ -2444,7 +2391,6 @@ pub struct TaskProgress {
 
 /// A step of a show sync.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub enum TaskStep {
     /// Loading the show and looking up its TVmaze and XEM remotes.
     Preparing,
@@ -2461,7 +2407,6 @@ pub enum TaskStep {
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct CompletedTask {
     pub id: TaskId,
     pub kind: TaskKind,
@@ -2474,17 +2419,14 @@ pub struct CompletedTask {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ListMediaRequest;
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ListMediaResponse {
     pub items: Vec<MediaItem>,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct GetShowRequest {
     pub id: ShowId,
 }
@@ -2492,7 +2434,6 @@ pub struct GetShowRequest {
 /// The entity whose translations are being requested. A single endpoint serves
 /// all four entity kinds via this type-safe target.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub enum TranslationTarget {
     Show(ShowId),
     Season(SeasonId),
@@ -2502,21 +2443,18 @@ pub enum TranslationTarget {
 
 /// The owner a set of [`Credit`]s belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub enum CreditOwner {
     Show(ShowId),
     Movie(MovieId),
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct GetTranslationsRequest {
     pub target: TranslationTarget,
 }
 
 /// A single translated string for an entity.
 #[derive(Debug, Clone, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct Translation {
     pub language: Locale,
     pub kind: StringKind,
@@ -2524,38 +2462,32 @@ pub struct Translation {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct GetTranslationsResponse {
     pub translations: Vec<Translation>,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ListSeasonsRequest {
     pub show_id: ShowId,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ListSeasonsResponse {
     pub seasons: Vec<Season>,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ListCreditsRequest {
     pub owner: CreditOwner,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ListCreditsResponse {
     pub credits: Vec<Credit>,
 }
 
 /// What the people list is ordered by.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub enum PersonSort {
     /// The name the list shows, people without one last either way.
     Name,
@@ -2564,7 +2496,6 @@ pub enum PersonSort {
 
 /// One page of the people list.
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ListPersonsRequest {
     /// Matched case-insensitively as a substring of any of a person's names.
     pub filter: String,
@@ -2575,7 +2506,6 @@ pub struct ListPersonsRequest {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ListPersonsResponse {
     pub persons: Vec<PersonItem>,
     /// Whether more people match past this page.
@@ -2584,7 +2514,6 @@ pub struct ListPersonsResponse {
 
 /// One page of the user's watch history, newest first, counted in groups.
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ListHistoryRequest {
     /// Matched case-insensitively as a substring of any of the show's or
     /// movie's titles.
@@ -2596,7 +2525,6 @@ pub struct ListHistoryRequest {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ListHistoryResponse {
     pub groups: Vec<HistoryGroup>,
     /// Whether more groups match past this page.
@@ -2606,7 +2534,6 @@ pub struct ListHistoryResponse {
 /// Watches of one show or movie that follow each other in the history: a run
 /// of episodes of one show watched close together, or a single watch.
 #[derive(Debug, Clone, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct HistoryGroup {
     pub media: HistoryMedia,
     pub title: Option<String>,
@@ -2616,14 +2543,12 @@ pub struct HistoryGroup {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub enum HistoryMedia {
     Show(ShowId),
     Movie(MovieId),
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct HistoryWatch {
     pub id: WatchedId,
     pub timestamp: Timestamp,
@@ -2632,7 +2557,6 @@ pub struct HistoryWatch {
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct HistoryEpisode {
     pub code: Code,
     /// The episode's title, when the show still has the episode.
@@ -2640,25 +2564,21 @@ pub struct HistoryEpisode {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct GetPersonRequest {
     pub id: PersonId,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ListPersonCreditsRequest {
     pub id: PersonId,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ListPersonCreditsResponse {
     pub credits: Vec<PersonCredit>,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct AddPersonRemoteRequest {
     pub id: PersonId,
     pub slug: Option<String>,
@@ -2666,14 +2586,12 @@ pub struct AddPersonRemoteRequest {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct RemovePersonRemoteRequest {
     pub id: PersonId,
     pub remote_id: RemoteId,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct UpdatePersonRemoteRequest {
     pub id: PersonId,
     pub remote_id: RemoteId,
@@ -2682,7 +2600,6 @@ pub struct UpdatePersonRemoteRequest {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct SetPersonRemoteEnabledRequest {
     pub id: PersonId,
     pub remote_id: RemoteId,
@@ -2690,7 +2607,6 @@ pub struct SetPersonRemoteEnabledRequest {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ReorderPersonRemotesRequest {
     pub id: PersonId,
     /// Remote ids in the desired priority order (first = highest priority).
@@ -2698,7 +2614,6 @@ pub struct ReorderPersonRemotesRequest {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct SetPersonRemoteSyncKindsRequest {
     pub id: PersonId,
     pub remote_id: RemoteId,
@@ -2707,72 +2622,61 @@ pub struct SetPersonRemoteSyncKindsRequest {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct PurgePersonRemoteCacheRequest {
     pub id: PersonId,
     pub remote_id: RemoteId,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct DeletePersonRequest {
     pub id: PersonId,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct GetSeasonImagesRequest {
     pub season_id: SeasonId,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct GetSeasonImagesResponse {
     pub images: Vec<MediaImage>,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct TrackShowRequest {
     pub slug: Option<String>,
     pub remote: Remote,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct UntrackShowRequest {
     pub id: ShowId,
     pub tracked: bool,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct RemoveShowRequest {
     pub id: ShowId,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ListEpisodesRequest {
     pub show_id: ShowId,
     pub season: SeasonNumber,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ListEpisodesResponse {
     pub episodes: Vec<Episode>,
     pub watched: Vec<WatchedEpisode>,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct GetEpisodeReleasesRequest {
     pub episode_id: EpisodeId,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct GetEpisodeReleasesResponse {
     pub releases: Vec<ReleaseRow>,
     /// The owning show, whose air-date filters apply to this episode and which the
@@ -2783,13 +2687,11 @@ pub struct GetEpisodeReleasesResponse {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct GetEpisodeCacheRequest {
     pub episode_id: EpisodeId,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct GetEpisodeCacheResponse {
     pub entries: Vec<EpisodeCacheEntry>,
 }
@@ -2798,27 +2700,23 @@ pub struct GetEpisodeCacheResponse {
 /// `episode_cache` table. Unlike shows and movies, an episode is not addressed by a
 /// remote id, so the entry is keyed by source alone.
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct EpisodeCacheEntry {
     pub source: RemoteSource,
     pub cache: RemoteCache,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct PurgeEpisodeCacheRequest {
     pub episode_id: EpisodeId,
     pub source: RemoteSource,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct GetMovieReleasesRequest {
     pub movie_id: MovieId,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct GetMovieReleasesResponse {
     pub releases: Vec<ReleaseRow>,
     /// The movie's release override, or `None` when the global default is in use.
@@ -2831,7 +2729,6 @@ pub struct GetMovieReleasesResponse {
 /// [`FilterRules::air_date_considered`]). `label` is the
 /// release type's name for movies and the network (or `"Unknown"`) for episodes.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ReleaseRow {
     pub label: String,
     pub source: RemoteSource,
@@ -2841,53 +2738,45 @@ pub struct ReleaseRow {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct FindEpisodeByTimestampRequest {
     pub show_id: ShowId,
     pub timestamp: Timestamp,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct EpisodeMatch {
     pub season: SeasonNumber,
     pub episode: u32,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct FindEpisodeByTimestampResponse {
     pub matched: Option<EpisodeMatch>,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct GetMovieRequest {
     pub id: MovieId,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct TrackMovieRequest {
     pub slug: Option<String>,
     pub remote: Remote,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct UntrackMovieRequest {
     pub id: MovieId,
     pub tracked: bool,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct RemoveMovieRequest {
     pub id: MovieId,
 }
 
 #[derive(Debug, Clone, Copy, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub enum MarkTime {
     Now,
     WhenAired,
@@ -2896,14 +2785,12 @@ pub enum MarkTime {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct MarkWatchedRequest {
     pub kind: WatchedKind,
     pub mark_time: MarkTime,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct MarkWatchedResponse {
     pub watched: Watched,
     /// What was pending before the watch moved it along, for undoing it.
@@ -2912,7 +2799,6 @@ pub struct MarkWatchedResponse {
 
 /// The pending entry a watch replaced; see [`UndoWatchedRequest`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub enum PendingBefore {
     None,
     Episode {
@@ -2926,7 +2812,6 @@ pub enum PendingBefore {
 
 /// Remove a watch that was just marked and put back what was pending before.
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct UndoWatchedRequest {
     pub id: WatchedId,
     pub kind: WatchedKind,
@@ -2935,7 +2820,6 @@ pub struct UndoWatchedRequest {
 
 /// Which seasons the next episode in watch order is taken from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub enum EpisodeScope {
     /// Every season but the specials.
     Regular,
@@ -2946,7 +2830,6 @@ pub enum EpisodeScope {
 /// Mark the episode after the most recently watched one in `scope`, or the
 /// first aired one when nothing in `scope` has been watched.
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct MarkNextEpisodeRequest {
     pub show: ShowId,
     pub scope: EpisodeScope,
@@ -2954,14 +2837,12 @@ pub struct MarkNextEpisodeRequest {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct MarkNextEpisodeResponse {
     /// The watch that was marked, or `None` when the show has no next episode.
     pub marked: Option<MarkWatchedResponse>,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct MarkWatchedRemainingRequest {
     pub show_id: ShowId,
     pub season: SeasonNumber,
@@ -2969,38 +2850,32 @@ pub struct MarkWatchedRemainingRequest {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct RemoveWatchedRequest {
     pub id: WatchedId,
     pub kind: WatchedKind,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ListEpisodesWatchedRequest {
     pub show_id: ShowId,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ListEpisodesWatchedResponse {
     pub watched: Vec<WatchedEpisode>,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ListWatchedRequest {
     pub kind: WatchedKind,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ListWatchedResponse {
     pub watched: Vec<Watched>,
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct OrphanedWatched {
     pub id: WatchedId,
     pub timestamp: Timestamp,
@@ -3020,7 +2895,6 @@ impl OrphanedWatched {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct MoveWatchedEpisodeRequest {
     pub id: WatchedId,
     pub show_id: ShowId,
@@ -3029,29 +2903,24 @@ pub struct MoveWatchedEpisodeRequest {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ListOrphanedWatchedRequest {
     pub show_id: ShowId,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ListOrphanedWatchedResponse {
     pub watched: Vec<OrphanedWatched>,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ListPendingRequest;
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ListPendingResponse {
     pub pending: Vec<Pending>,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ListScheduleRequest<'a> {
     pub tz: Option<&'a str>,
     /// Start of the window relative to the server's "today", in days. Negative
@@ -3061,23 +2930,19 @@ pub struct ListScheduleRequest<'a> {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ListScheduleResponse {
     pub days: Vec<ScheduledDay>,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ListWatchNextRequest;
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ListWatchNextResponse {
     pub pending: Vec<Pending>,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct SearchRequest {
     pub query: String,
     pub page: usize,
@@ -3091,14 +2956,12 @@ pub struct SearchRequest {
 /// A single search hit, either a show or a movie. The backend interleaves the
 /// two kinds into one ordered list so results are mixed rather than grouped.
 #[derive(Debug, Clone, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub enum SearchResult {
     Show(SearchShow),
     Movie(SearchMovie),
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct SearchResponse {
     /// Shows and movies interleaved, preserving each source's own order.
     pub results: Vec<SearchResult>,
@@ -3107,32 +2970,27 @@ pub struct SearchResponse {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct SyncShowRequest {
     pub id: ShowId,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct SyncMovieRequest {
     pub id: MovieId,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct SyncPersonRequest {
     pub id: PersonId,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct SyncEpisodeRequest {
     pub show_id: ShowId,
     pub episode_id: EpisodeId,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct SetShowRemoteEnabledRequest {
     pub id: ShowId,
     pub remote_id: RemoteId,
@@ -3140,7 +2998,6 @@ pub struct SetShowRemoteEnabledRequest {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ReorderShowRemotesRequest {
     pub id: ShowId,
     /// Remote ids in the desired priority order (first = highest priority).
@@ -3148,7 +3005,6 @@ pub struct ReorderShowRemotesRequest {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct SetMovieRemoteEnabledRequest {
     pub id: MovieId,
     pub remote_id: RemoteId,
@@ -3156,7 +3012,6 @@ pub struct SetMovieRemoteEnabledRequest {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ReorderMovieRemotesRequest {
     pub id: MovieId,
     /// Remote ids in the desired priority order (first = highest priority).
@@ -3164,7 +3019,6 @@ pub struct ReorderMovieRemotesRequest {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct SetShowRemoteSyncKindsRequest {
     pub id: ShowId,
     pub remote_id: RemoteId,
@@ -3173,7 +3027,6 @@ pub struct SetShowRemoteSyncKindsRequest {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct SetMovieRemoteSyncKindsRequest {
     pub id: MovieId,
     pub remote_id: RemoteId,
@@ -3182,14 +3035,12 @@ pub struct SetMovieRemoteSyncKindsRequest {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct SetShowLanguageRequest {
     pub id: ShowId,
     pub language: Locale,
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub enum IncludeSpecials {
     #[default]
     Default,
@@ -3269,35 +3120,30 @@ impl ::sqll::BindValue for IncludeSpecials {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct SetShowIncludeSpecialsRequest {
     pub id: ShowId,
     pub include_specials: IncludeSpecials,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct SetShowAutoSyncRequest {
     pub id: ShowId,
     pub auto_sync: bool,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct SetMovieAutoSyncRequest {
     pub id: MovieId,
     pub auto_sync: bool,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct SetShowAirDateFiltersRequest {
     pub id: ShowId,
     pub air_date_filters: Option<FilterRules>,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct SetShowNumberingRequest {
     pub id: ShowId,
     pub numbering: Option<Numbering>,
@@ -3305,26 +3151,22 @@ pub struct SetShowNumberingRequest {
 
 /// The ranges' problems; empty when the numbering was saved.
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct SetShowNumberingResponse {
     pub errors: Vec<RangeError>,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ListShowAltNamesRequest {
     pub id: ShowId,
 }
 
 /// Every other name a show has, as its sources give them.
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ShowAltNames {
     pub names: Vec<ShowAltName>,
 }
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ShowAltName {
     /// The season the name is for, in the numbering its source counts
     /// seasons in; `None` for the whole show.
@@ -3333,14 +3175,12 @@ pub struct ShowAltName {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct GetShowNumberingRequest {
     pub id: ShowId,
 }
 
 /// What the numbering setting needs to suggest ranges and warn.
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ShowNumbering {
     /// TheTVDB provides the show's episodes, so they already are TheTVDB's
     /// numbering and the setting does not apply.
@@ -3352,7 +3192,6 @@ pub struct ShowNumbering {
 }
 
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct XemSystemEpisodes {
     pub system: String,
     pub episodes: Vec<(u32, u32)>,
@@ -3372,21 +3211,18 @@ impl ShowNumbering {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct SetMovieLanguageRequest {
     pub id: MovieId,
     pub language: Locale,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct SetMovieReleaseFiltersRequest {
     pub id: MovieId,
     pub release_filters: Option<FilterRules>,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct AddShowRemoteRequest {
     pub id: ShowId,
     pub slug: Option<String>,
@@ -3394,14 +3230,12 @@ pub struct AddShowRemoteRequest {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct RemoveShowRemoteRequest {
     pub id: ShowId,
     pub remote_id: RemoteId,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct AddMovieRemoteRequest {
     pub id: MovieId,
     pub slug: Option<String>,
@@ -3409,28 +3243,24 @@ pub struct AddMovieRemoteRequest {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct RemoveMovieRemoteRequest {
     pub id: MovieId,
     pub remote_id: RemoteId,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct PurgeShowRemoteCacheRequest {
     pub id: ShowId,
     pub remote_id: RemoteId,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct PurgeMovieRemoteCacheRequest {
     pub id: MovieId,
     pub remote_id: RemoteId,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct UpdateShowRemoteRequest {
     pub id: ShowId,
     pub remote_id: RemoteId,
@@ -3439,7 +3269,6 @@ pub struct UpdateShowRemoteRequest {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct UpdateMovieRemoteRequest {
     pub id: MovieId,
     pub remote_id: RemoteId,
@@ -3448,27 +3277,22 @@ pub struct UpdateMovieRemoteRequest {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct SyncAllRequest;
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ListTasksRequest;
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct RemoveTaskRequest {
     pub id: TaskId,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct BumpTaskRequest {
     pub id: TaskId,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ListTasksResponse {
     pub pending: Vec<Task>,
     pub running: Vec<Task>,
@@ -3476,51 +3300,42 @@ pub struct ListTasksResponse {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct GetSystemConfigRequest;
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct GetSystemConfigResponse {
     pub config: Config,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct GetPreferencesRequest;
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct GetPreferencesResponse {
     pub preferences: Preferences,
     pub site: SiteConfig,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct GetTopLanguagesRequest;
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct GetTopLanguagesResponse {
     /// Most-used custom locales, ordered most-used first.
     pub top_languages: Vec<Locale>,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct SetSystemConfigRequest {
     pub config: Config,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct SetPreferencesRequest {
     pub preferences: Preferences,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub enum PendingKind {
     Episode { show: ShowId, episode: EpisodeId },
     Movie { movie: MovieId },
@@ -3537,7 +3352,6 @@ impl PendingKind {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct AddPendingRequest {
     pub kind: PendingKind,
     /// When the pending slot should be dated: `Now`, or when the episode aired
@@ -3546,33 +3360,28 @@ pub struct AddPendingRequest {
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct AddPendingResponse {
     /// The rebuilt pending entry, or `None` if the media is no longer tracked.
     pub pending: Option<Pending>,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct RemovePendingRequest {
     pub kind: PendingKind,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct SkipEpisodeRequest {
     pub show: ShowId,
     pub episode: EpisodeId,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct SelectImageRequest {
     pub id: ImageId,
 }
 
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ClearSelectedImageRequest {
     pub owner: ImageOwner,
     pub kind: ImageKind,
@@ -3582,7 +3391,6 @@ pub struct ClearSelectedImageRequest {
 /// for a single kind when `kind` is `Some`, or for every kind when `None`. This
 /// marks the selection as user-chosen and operates only on stored data.
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct PickBestImagesRequest {
     pub owner: ImageOwner,
     pub kind: Option<ImageKind>,
@@ -3591,21 +3399,18 @@ pub struct PickBestImagesRequest {
 /// Clear the user override for a kind, re-applying the configured-order default
 /// and handing the kind back to automatic sync management.
 #[derive(Debug, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct ResetImageSelectionRequest {
     pub owner: ImageOwner,
     pub kind: ImageKind,
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct AppEvent {
     pub channel: ChannelId,
     pub kind: AppEventKind,
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub enum AppEventKind {
     ShowCreated {
         show: Show,

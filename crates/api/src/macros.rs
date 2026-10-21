@@ -14,7 +14,7 @@ macro_rules! __define_id {
             serde::Deserialize,
         )]
         #[serde(transparent)]
-        #[musli(crate = musli_core, transparent)]
+        #[musli(transparent)]
         pub struct $name(u64);
 
         impl $name {

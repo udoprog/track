@@ -28,7 +28,6 @@ pub fn xem_system_label(system: &str) -> &str {
 #[derive(
     Debug, Clone, Default, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize,
 )]
-#[musli(crate = musli_core)]
 pub struct Numbering {
     pub ranges: Vec<NumberingRange>,
 }
@@ -38,7 +37,6 @@ pub struct Numbering {
 /// open: it runs on through every later episode of the season, so episodes
 /// added while the season airs map without editing it.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize)]
-#[musli(crate = musli_core)]
 pub struct NumberingRange {
     pub season: u32,
     pub first: u32,
@@ -92,7 +90,6 @@ pub struct NumberingTarget {
 
 /// A problem with the range at `index`.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct RangeError {
     pub index: u32,
     pub message: String,
@@ -387,7 +384,6 @@ fn counts(codes: &[(u32, u32)]) -> BTreeMap<u32, u32> {
 /// Whether an XEM system's numbering is shown on episodes, in the order of
 /// the "Other numberings" setting.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize, serde::Deserialize)]
-#[musli(crate = musli_core)]
 pub struct NumberingPref {
     pub system: String,
     pub shown: bool,
@@ -429,7 +425,6 @@ pub fn numbering_order(prefs: &[NumberingPref]) -> Vec<NumberingPref> {
 /// An episode's code in another numbering. `last` is the second episode of a
 /// double episode, which XEM gives as a second address in the same season.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct AltNumbering {
     pub system: String,
     pub season: u32,
@@ -453,7 +448,6 @@ impl AltNumbering {
 
 /// The season of another numbering an episode is linked to.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct LinkedSeason {
     pub system: String,
     pub season: u32,
@@ -461,7 +455,6 @@ pub struct LinkedSeason {
 
 /// Where an alternative name comes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub enum AltNameOrigin {
     Xem,
 }
@@ -486,7 +479,6 @@ impl AltNameOrigin {
 /// mostly country codes: `us`, `jp`, ...) and the language that code stands
 /// for when it is known.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct AltName {
     pub name: String,
     pub origin: AltNameOrigin,
@@ -535,7 +527,6 @@ pub fn xem_language(code: &str) -> Option<Language> {
 
 /// The XEM names of a season of another numbering that a season covers.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-#[musli(crate = musli_core)]
 pub struct SeasonAltNames {
     pub target: LinkedSeason,
     pub names: Vec<AltName>,

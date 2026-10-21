@@ -8,7 +8,6 @@ use crate::{Language, Locale, StringKind};
 
 /// A single localized string for one `(kind, locale)`.
 #[derive(Debug, Clone, PartialEq, Encode, Decode)]
-#[musli(crate = musli_core)]
 struct Entry {
     kind: StringKind,
     locale: Locale,
@@ -191,7 +190,6 @@ impl Translations {
 /// The owned wire form of [`Translations`]: only the persisted fields. The
 /// lookup indexes are derived and rebuilt on decode, so they are never stored.
 #[derive(Decode)]
-#[musli(crate = musli_core)]
 struct TranslationsStorage {
     locale: Locale,
     entries: Vec<Entry>,
@@ -202,7 +200,6 @@ struct TranslationsStorage {
 /// sequence, and `&[Entry]` encodes identically to `Vec<Entry>`, so this is
 /// wire-compatible with `TranslationsStorage`.
 #[derive(Encode)]
-#[musli(crate = musli_core)]
 struct TranslationsStorageRef<'a> {
     locale: Locale,
     entries: &'a [Entry],

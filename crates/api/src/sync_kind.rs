@@ -13,7 +13,6 @@ use musli_core::{Allocator, Decode, Decoder, Encode, Encoder};
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Encode, Decode, serde::Serialize, serde::Deserialize,
 )]
-#[musli(crate = musli_core)]
 #[serde(rename_all = "snake_case")]
 pub enum SyncKind {
     /// Core metadata: title, overview, seasons and episode details.
