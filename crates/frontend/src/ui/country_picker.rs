@@ -38,6 +38,13 @@ pub(crate) struct CountryPicker {
     browse: Vec<(&'static koine::country::Entry, api::Country)>,
 }
 
+/// Whether `needle` (already lowercased) occurs in the country's name or code.
+fn matches_filter(country: &koine::country::Entry, needle: &str) -> bool {
+    needle.is_empty()
+        || country.name.to_lowercase().contains(needle)
+        || country.alpha2.to_lowercase().contains(needle)
+}
+
 impl CountryPicker {
     /// Recompute `selected_list` and `browse` from the current filter and
     /// selection into the reused buffers.
@@ -45,11 +52,7 @@ impl CountryPicker {
         let current = &ctx.props().current;
         let needle = self.filter.to_lowercase();
 
-        let matches = |country: &koine::country::Entry| {
-            needle.is_empty()
-                || country.name.to_lowercase().contains(&needle)
-                || country.alpha2.contains(&needle)
-        };
+        let matches = |country: &koine::country::Entry| matches_filter(country, &needle);
 
         // Selected countries are pinned at the top (filtered by the search term)
         // so they stay easy to deselect while still browsing the full list below.
@@ -221,5 +224,21 @@ impl Component for CountryPicker {
                 </Modal>
             </>
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::matches_filter;
+
+    #[test]
+    fn code_matches_case_insensitively() {
+        let gb = koine::country::iter()
+            .find(|c| c.alpha2 == "GB")
+            .expect("GB");
+
+        assert!(matches_filter(gb, "gb"));
+        assert!(matches_filter(gb, &"GB".to_lowercase()));
+        assert!(!matches_filter(gb, "xx"));
     }
 }
