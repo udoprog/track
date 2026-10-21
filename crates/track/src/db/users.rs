@@ -3,7 +3,6 @@ use api::UserId;
 use auth::Role;
 use auth::sqll015::SqllStore;
 use sqll::{Row, Statements, TypedStatement};
-use tokio::task::spawn_blocking;
 
 use super::{Database, InnerRead, InnerWrite};
 
@@ -63,8 +62,9 @@ impl Database {
     /// if root was renamed.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn default_owner(&self) -> Result<UserId> {
-        let mut s = self.inner.clone().shared().await?;
-        let result = spawn_blocking(move || s.users.default_owner.bind(Role::Admin)?.first());
+        let result = self
+            .inner
+            .read(move |s| s.users.default_owner.bind(Role::Admin)?.first());
         result
             .await??
             .ok_or_else(|| anyhow!("There is no administrator"))
