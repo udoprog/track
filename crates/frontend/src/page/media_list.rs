@@ -3,11 +3,11 @@ use std::collections::HashSet;
 use api::TimeInfo;
 use gloo::events::EventListener;
 use musli_web::web03::prelude::*;
+use musli_web::yew023::ContextExt;
 use wasm_bindgen::JsCast as _;
 use web_sys::HtmlImageElement;
 use yew::prelude::*;
 
-use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{
@@ -62,7 +62,6 @@ pub(crate) struct MediaList {
     _time_handle: ContextHandle<TimeInfo>,
     background: Background,
     router: Router,
-    _setup: SetupChannel,
     _broadcast: ws::Listener,
     list_req: ws::Request,
     _mark_req: ws::Request,
@@ -76,7 +75,7 @@ pub(crate) struct MediaList {
     /// The scope picked for Mark next, overriding the one the Next filter implies.
     pick_scope: Option<api::EpisodeScope>,
     /// Bulk requests in flight, and how many have yet to answer.
-    _bulk_reqs: Vec<ws::Request>,
+    _bulk_reqs: ws::Requests,
     bulk_pending: usize,
     /// Shows the Mark next in flight has marked, and found no next episode in.
     next_marked: usize,
@@ -91,7 +90,7 @@ pub(crate) struct MediaList {
 }
 
 pub(crate) enum Msg {
-    Channel(Result<ws::Channel, ws::Error>),
+    Channel(ws::ChannelEvent),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     Loaded(Result<ws::Packet<api::ListMedia>, ws::Error>),
     MarkWatched(u64, api::MarkTime),
@@ -136,12 +135,12 @@ impl Component for MediaList {
     type Properties = Props;
 
     fn create(ctx: &Context<Self>) -> Self {
-        let (ws, _) = ctx
-            .link()
-            .context::<ws::Handle>(Callback::noop())
-            .expect("Expected ws::Handle in context");
+        let ws = ctx.handle();
 
-        let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
+        let channel = ws
+            .channel()
+            .on_change(ctx.link().callback(Msg::Channel))
+            .open();
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
         let (time, _time_handle) = ctx
@@ -160,7 +159,7 @@ impl Component for MediaList {
             .expect("Expected router in context");
 
         Self {
-            channel: ws::Channel::default(),
+            channel,
             items: Vec::new(),
             order: Vec::new(),
             filter: ctx.props().filter.clone(),
@@ -174,7 +173,6 @@ impl Component for MediaList {
             _time_handle,
             background,
             router,
-            _setup,
             _broadcast,
             list_req: ws::Request::default(),
             _mark_req: ws::Request::default(),
@@ -183,7 +181,7 @@ impl Component for MediaList {
             pick_anchor: None,
             _pick_escape: None,
             pick_scope: None,
-            _bulk_reqs: Vec::new(),
+            _bulk_reqs: ws::Requests::new(),
             bulk_pending: 0,
             next_marked: 0,
             next_missing: 0,
@@ -376,10 +374,12 @@ impl Component for MediaList {
 impl MediaList {
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
-            Msg::Channel(result) => {
-                self.channel = result?;
+            Msg::Channel(event) => {
+                if let ws::ChannelEvent::Failed(error) = event {
+                    return Err(error.into());
+                }
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self.load(ctx);
                 } else {
                     self.items.clear();
@@ -389,9 +389,10 @@ impl MediaList {
                 Ok(true)
             }
             Msg::AppBroadcast(packet) => {
-                let event = packet?.decode_event()?;
+                let packet = packet?;
+                let event = packet.decode_event()?;
 
-                if event.channel == self.channel.id() {
+                if packet.is_from(self.channel.id()) {
                     return Ok(false);
                 }
 
@@ -406,7 +407,7 @@ impl MediaList {
                         | api::AppEventKind::WatchedChanged { .. }
                 );
 
-                if relevant && self.channel.id() != ws::ChannelId::NONE {
+                if relevant && self.channel.is_open() {
                     self.load(ctx);
                 }
 
@@ -431,7 +432,7 @@ impl MediaList {
                 Ok(false)
             }
             Msg::MarkWatched(id, mark_time) => {
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._mark_req = self
                         .channel
                         .request()
@@ -455,14 +456,14 @@ impl MediaList {
 
                 self.background.offer_undo(&response);
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self.load(ctx);
                 }
 
                 Ok(false)
             }
             Msg::SetTracked(kind, id, tracked) => {
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._track_req = match kind {
                         api::MediaKind::Shows => self
                             .channel
@@ -498,7 +499,7 @@ impl MediaList {
             Msg::SetTrackedDone(result) => {
                 result.context(Message::TrackingShow)?;
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self.load(ctx);
                 }
 
@@ -559,23 +560,24 @@ impl MediaList {
             Msg::BulkMarkNext(mark_time) => {
                 let scope = self.scope();
 
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._bulk_reqs = self
-                        .picked
-                        .iter()
-                        .filter(|(kind, _)| *kind == api::MediaKind::Shows)
-                        .map(|&(_, id)| {
-                            self.channel
-                                .request()
-                                .body(api::MarkNextEpisodeRequest {
-                                    show: api::ShowId::new(id),
-                                    scope,
-                                    mark_time,
-                                })
-                                .on_packet(ctx.link().callback(Msg::BulkMarkNextDone))
-                                .send()
-                        })
-                        .collect();
+                if self.channel.is_open() {
+                    self._bulk_reqs.clear();
+                    self._bulk_reqs.extend(
+                        self.picked
+                            .iter()
+                            .filter(|(kind, _)| *kind == api::MediaKind::Shows)
+                            .map(|&(_, id)| {
+                                self.channel
+                                    .request()
+                                    .body(api::MarkNextEpisodeRequest {
+                                        show: api::ShowId::new(id),
+                                        scope,
+                                        mark_time,
+                                    })
+                                    .on_packet(ctx.link().callback(Msg::BulkMarkNextDone))
+                                    .send()
+                            }),
+                    );
                     self.bulk_pending = self._bulk_reqs.len();
                     self.next_marked = 0;
                     self.next_missing = 0;
@@ -606,28 +608,29 @@ impl MediaList {
                 Ok(true)
             }
             Msg::BulkMarkMovies(mark_time) => {
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._bulk_reqs = self
-                        .picked
-                        .iter()
-                        .filter(|(kind, _)| *kind == api::MediaKind::Movies)
-                        .map(|&(_, id)| {
-                            self.channel
-                                .request()
-                                .body(api::MarkWatchedRequest {
-                                    kind: api::WatchedKind::Movie {
-                                        movie: api::MovieId::new(id),
-                                    },
-                                    mark_time,
-                                })
-                                .on_packet(ctx.link().callback(
-                                    |r: Result<ws::Packet<api::MarkWatched>, ws::Error>| {
-                                        Msg::BulkDone(Message::MarkingWatched, r.map(drop))
-                                    },
-                                ))
-                                .send()
-                        })
-                        .collect();
+                if self.channel.is_open() {
+                    self._bulk_reqs.clear();
+                    self._bulk_reqs.extend(
+                        self.picked
+                            .iter()
+                            .filter(|(kind, _)| *kind == api::MediaKind::Movies)
+                            .map(|&(_, id)| {
+                                self.channel
+                                    .request()
+                                    .body(api::MarkWatchedRequest {
+                                        kind: api::WatchedKind::Movie {
+                                            movie: api::MovieId::new(id),
+                                        },
+                                        mark_time,
+                                    })
+                                    .on_packet(ctx.link().callback(
+                                        |r: Result<ws::Packet<api::MarkWatched>, ws::Error>| {
+                                            Msg::BulkDone(Message::MarkingWatched, r.map(drop))
+                                        },
+                                    ))
+                                    .send()
+                            }),
+                    );
                     self.bulk_pending = self._bulk_reqs.len();
                 }
 
@@ -635,40 +638,41 @@ impl MediaList {
                 Ok(true)
             }
             Msg::BulkTrack(tracked) => {
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._bulk_reqs = self
-                        .items
-                        .iter()
-                        .filter(|m| m.tracked != tracked && self.picked.contains(&pick_key(m)))
-                        .map(|m| match m.kind {
-                            api::MediaKind::Shows => self
-                                .channel
-                                .request()
-                                .body(api::UntrackShowRequest {
-                                    id: api::ShowId::new(m.id),
-                                    tracked,
-                                })
-                                .on_packet(ctx.link().callback(
-                                    |r: Result<ws::Packet<api::UntrackShow>, ws::Error>| {
-                                        Msg::BulkDone(Message::TrackingShow, r.map(drop))
-                                    },
-                                ))
-                                .send(),
-                            api::MediaKind::Movies => self
-                                .channel
-                                .request()
-                                .body(api::UntrackMovieRequest {
-                                    id: api::MovieId::new(m.id),
-                                    tracked,
-                                })
-                                .on_packet(ctx.link().callback(
-                                    |r: Result<ws::Packet<api::UntrackMovie>, ws::Error>| {
-                                        Msg::BulkDone(Message::TrackingMovie, r.map(drop))
-                                    },
-                                ))
-                                .send(),
-                        })
-                        .collect();
+                if self.channel.is_open() {
+                    self._bulk_reqs.clear();
+                    self._bulk_reqs.extend(
+                        self.items
+                            .iter()
+                            .filter(|m| m.tracked != tracked && self.picked.contains(&pick_key(m)))
+                            .map(|m| match m.kind {
+                                api::MediaKind::Shows => self
+                                    .channel
+                                    .request()
+                                    .body(api::UntrackShowRequest {
+                                        id: api::ShowId::new(m.id),
+                                        tracked,
+                                    })
+                                    .on_packet(ctx.link().callback(
+                                        |r: Result<ws::Packet<api::UntrackShow>, ws::Error>| {
+                                            Msg::BulkDone(Message::TrackingShow, r.map(drop))
+                                        },
+                                    ))
+                                    .send(),
+                                api::MediaKind::Movies => self
+                                    .channel
+                                    .request()
+                                    .body(api::UntrackMovieRequest {
+                                        id: api::MovieId::new(m.id),
+                                        tracked,
+                                    })
+                                    .on_packet(ctx.link().callback(
+                                        |r: Result<ws::Packet<api::UntrackMovie>, ws::Error>| {
+                                            Msg::BulkDone(Message::TrackingMovie, r.map(drop))
+                                        },
+                                    ))
+                                    .send(),
+                            }),
+                    );
                     self.bulk_pending = self._bulk_reqs.len();
                 }
 
@@ -878,7 +882,7 @@ impl MediaList {
     }
 
     fn load(&mut self, ctx: &Context<Self>) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 

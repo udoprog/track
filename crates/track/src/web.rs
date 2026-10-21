@@ -5,7 +5,6 @@ use auth::Auth;
 use axum::Router;
 use axum::extract::FromRef;
 use axum::routing::get;
-use musli_web::ws::Channels;
 use tokio::sync::Notify;
 use tower_http::services::{ServeDir, ServeFile};
 
@@ -22,7 +21,6 @@ use crate::ws::RandomDelay;
 pub(crate) struct AppState {
     pub(crate) db: Database,
     pub(crate) broadcast: Broadcaster,
-    pub(crate) channels: Channels,
     pub(crate) cache: ImageCache,
     pub(crate) queue: TaskQueue,
     pub(crate) remote: RemoteClients,

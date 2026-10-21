@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use musli_web::web03::prelude::*;
+use musli_web::yew023::ContextExt;
 use yew::prelude::*;
 
-use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 
@@ -117,13 +117,12 @@ pub(crate) struct ActiveTasksProvider {
     /// Changes broadcast while the task list loads, replayed over it since the
     /// list may predate them.
     loading: Option<Vec<Change>>,
-    _setup: SetupChannel,
     _broadcast: ws::Listener,
     _list_req: ws::Request,
 }
 
 pub(crate) enum Msg {
-    Channel(Result<ws::Channel, ws::Error>),
+    Channel(ws::ChannelEvent),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     TasksLoaded(Result<ws::Packet<api::ListTasks>, ws::Error>),
 }
@@ -138,25 +137,24 @@ impl Component for ActiveTasksProvider {
     type Properties = Props;
 
     fn create(ctx: &Context<Self>) -> Self {
-        let (ws, _) = ctx
-            .link()
-            .context::<ws::Handle>(Callback::noop())
-            .expect("Expected ws::Handle in context");
+        let ws = ctx.handle();
 
         let (background, _) = ctx
             .link()
             .context::<Background>(Callback::noop())
             .expect("Expected background handle in context");
 
-        let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
+        let channel = ws
+            .channel()
+            .on_change(ctx.link().callback(Msg::Channel))
+            .open();
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
         Self {
-            channel: ws::Channel::default(),
+            channel,
             background,
             tasks: ActiveTasks::default(),
             loading: None,
-            _setup,
             _broadcast,
             _list_req: ws::Request::default(),
         }
@@ -184,8 +182,10 @@ impl Component for ActiveTasksProvider {
 impl ActiveTasksProvider {
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
-            Msg::Channel(result) => {
-                self.channel = result?;
+            Msg::Channel(event) => {
+                if let ws::ChannelEvent::Failed(error) = event {
+                    return Err(error.into());
+                }
                 self.load(ctx);
                 Ok(false)
             }
@@ -234,7 +234,7 @@ impl ActiveTasksProvider {
     }
 
     fn load(&mut self, ctx: &Context<Self>) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 

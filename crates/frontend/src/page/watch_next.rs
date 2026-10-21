@@ -3,11 +3,11 @@ use core::cmp::Reverse;
 use gloo::events::EventListener;
 
 use musli_web::web03::prelude::*;
+use musli_web::yew023::ContextExt;
 use yew::prelude::*;
 
 use api::{TimeInfo, Timed};
 
-use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaSelection, Route, ShowDetailQuery};
@@ -33,7 +33,6 @@ pub(crate) struct WatchNext {
     time: TimeInfo,
     _time_handle: ContextHandle<TimeInfo>,
     background: Background,
-    _setup: SetupChannel,
     _broadcast: ws::Listener,
     _pending_req: ws::Request,
     _config_req: ws::Request,
@@ -57,7 +56,7 @@ const MIN_CARD_WIDTH: f64 = 200.0;
 const GRID_GAP: f64 = 16.0;
 
 pub(crate) enum Msg {
-    Channel(Result<ws::Channel, ws::Error>),
+    Channel(ws::ChannelEvent),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     PendingLoaded(Result<ws::Packet<api::ListPending>, ws::Error>),
     ConfigLoaded(Result<ws::Packet<api::GetPreferences>, ws::Error>),
@@ -99,12 +98,12 @@ impl Component for WatchNext {
     type Properties = Props;
 
     fn create(ctx: &Context<Self>) -> Self {
-        let (ws, _) = ctx
-            .link()
-            .context::<ws::Handle>(Callback::noop())
-            .expect("Expected ws::Handle in context");
+        let ws = ctx.handle();
 
-        let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
+        let channel = ws
+            .channel()
+            .on_change(ctx.link().callback(Msg::Channel))
+            .open();
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
         let (time, _time_handle) = ctx
@@ -118,7 +117,7 @@ impl Component for WatchNext {
             .expect("Expected background handle in context");
 
         Self {
-            channel: ws::Channel::default(),
+            channel,
             pending: Vec::new(),
             order: Vec::new(),
             pending_loaded: false,
@@ -126,7 +125,6 @@ impl Component for WatchNext {
             time,
             _time_handle,
             background,
-            _setup,
             _broadcast,
             _pending_req: ws::Request::default(),
             _config_req: ws::Request::default(),
@@ -278,10 +276,12 @@ impl WatchNext {
 
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
-            Msg::Channel(result) => {
-                self.channel = result?;
+            Msg::Channel(event) => {
+                if let ws::ChannelEvent::Failed(error) = event {
+                    return Err(error.into());
+                }
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self.load_pending(ctx);
                     self.load_config(ctx);
                 } else {
@@ -293,9 +293,10 @@ impl WatchNext {
                 Ok(true)
             }
             Msg::AppBroadcast(packet) => {
-                let event = packet?.decode_event()?;
+                let packet = packet?;
+                let event = packet.decode_event()?;
 
-                if event.channel == self.channel.id() {
+                if packet.is_from(self.channel.id()) {
                     return Ok(false);
                 }
 
@@ -372,7 +373,7 @@ impl WatchNext {
                 Ok(false)
             }
             Msg::MarkWatched(kind, mark_time) => {
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._mark_req = self
                         .channel
                         .request()
@@ -391,7 +392,7 @@ impl WatchNext {
 
                 self.background.offer_undo(&response);
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self.load_pending(ctx);
                 }
 
@@ -408,7 +409,7 @@ impl WatchNext {
             Msg::SkipEpisode(show, episode) => {
                 self.confirming_skip = None;
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._skip_req = self
                         .channel
                         .request()
@@ -422,14 +423,14 @@ impl WatchNext {
             Msg::SkipEpisodeDone(result) => {
                 result.context(Message::SkippingEpisode)?;
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self.load_pending(ctx);
                 }
 
                 Ok(false)
             }
             Msg::MarkPending(kind, mark_time) => {
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._add_pending_req = self
                         .channel
                         .request()
@@ -450,7 +451,7 @@ impl WatchNext {
                     // Update just the affected row in place.
                     Some(pending) => self.upsert_pending(ctx, pending),
                     // Media is no longer tracked; reconcile by reloading.
-                    None if self.channel.id() != ws::ChannelId::NONE => self.load_pending(ctx),
+                    None if self.channel.is_open() => self.load_pending(ctx),
                     None => {}
                 }
 
@@ -466,7 +467,7 @@ impl WatchNext {
                 self.preferences.dashboard_page = new_size;
                 self.clamp_page(ctx);
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._set_config_req = self
                         .channel
                         .request()
@@ -563,7 +564,7 @@ impl WatchNext {
     }
 
     fn load_pending(&mut self, ctx: &Context<Self>) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 
@@ -603,7 +604,7 @@ impl WatchNext {
     }
 
     fn load_config(&mut self, ctx: &Context<Self>) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 

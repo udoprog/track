@@ -3,13 +3,13 @@ use std::rc::Rc;
 
 use auth::yew023::{AuthContext, AuthSubscription};
 use musli_web::web03::prelude::*;
+use musli_web::yew023::ContextExt;
 use wasm_bindgen::JsCast as _;
 use yew::prelude::*;
 
 use api::{TimeInfo, Timed};
 
 use super::detail::{Graphics, ImageMsg, ImageUpdate, RemoteMsg, RemoteUpdate, Remotes};
-use crate::SetupChannel;
 use crate::active_tasks::{ActiveTasks, SyncTarget};
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
@@ -83,7 +83,7 @@ pub(crate) struct ShowDetail {
     /// Clears the picked episodes on Escape while any are picked.
     _pick_escape: Option<gloo::events::EventListener>,
     /// Bulk requests in flight, and how many have yet to answer.
-    _bulk_reqs: Vec<ws::Request>,
+    _bulk_reqs: ws::Requests,
     bulk_pending: usize,
     actions_expanded: bool,
     /// The episode whose overflow menu is open, anchored to its trigger.
@@ -125,7 +125,6 @@ pub(crate) struct ShowDetail {
     scroll_target: Option<String>,
     time: TimeInfo,
     _time_info_handle: ContextHandle<TimeInfo>,
-    _setup: SetupChannel,
     _broadcast: ws::Listener,
     _show_req: ws::Request,
     _seasons_req: ws::Request,
@@ -150,7 +149,7 @@ pub(crate) struct ShowDetail {
 
 pub(crate) enum Msg {
     Auth(AuthContext),
-    Channel(Result<ws::Channel, ws::Error>),
+    Channel(ws::ChannelEvent),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     SetTime(TimeInfo),
     ActiveTasks(ActiveTasks),
@@ -332,12 +331,12 @@ impl Component for ShowDetail {
     type Properties = Props;
 
     fn create(ctx: &Context<Self>) -> Self {
-        let (ws, _) = ctx
-            .link()
-            .context::<ws::Handle>(Callback::noop())
-            .expect("Expected ws::Handle in context");
+        let ws = ctx.handle();
 
-        let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
+        let channel = ws
+            .channel()
+            .on_change(ctx.link().callback(Msg::Channel))
+            .open();
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
         let (time_info, _time_info_handle) = ctx
@@ -369,7 +368,7 @@ impl Component for ShowDetail {
 
         Self {
             auth: AuthSubscription::new(ctx, Msg::Auth),
-            channel: ws::Channel::default(),
+            channel,
             show: ShowState::Loading,
             graphics: Graphics::default(),
             remotes: Remotes::default(),
@@ -390,7 +389,7 @@ impl Component for ShowDetail {
             picked: BTreeSet::new(),
             pick_anchor: None,
             _pick_escape: None,
-            _bulk_reqs: Vec::new(),
+            _bulk_reqs: ws::Requests::new(),
             bulk_pending: 0,
             actions_expanded: false,
             episode_menu: None,
@@ -420,7 +419,6 @@ impl Component for ShowDetail {
             scroll_target,
             time: time_info,
             _time_info_handle,
-            _setup,
             _broadcast,
             _show_req: ws::Request::default(),
             _seasons_req: ws::Request::default(),
@@ -690,7 +688,7 @@ impl Component for ShowDetail {
             self.watched_by_episode.clear();
             self.clear_picked();
 
-            if self.channel.id() != ws::ChannelId::NONE {
+            if self.channel.is_open() {
                 self.load_show(ctx);
                 self.load_seasons(ctx);
                 self.load_credits(ctx);
@@ -715,7 +713,7 @@ impl Component for ShowDetail {
             self.watched_by_episode.clear();
             self.clear_picked();
 
-            if self.channel.id() != ws::ChannelId::NONE {
+            if self.channel.is_open() {
                 self.load_episodes(ctx);
                 self.load_orphaned(ctx);
                 self.load_history(ctx);
@@ -732,10 +730,12 @@ impl ShowDetail {
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
             Msg::Auth(auth) => Ok(self.auth.set(auth)),
-            Msg::Channel(result) => {
-                self.channel = result?;
+            Msg::Channel(event) => {
+                if let ws::ChannelEvent::Failed(error) = event {
+                    return Err(error.into());
+                }
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self.load_show(ctx);
                     self.load_seasons(ctx);
                     self.load_credits(ctx);
@@ -782,8 +782,9 @@ impl ShowDetail {
     ) -> Result<bool, Error> {
         let props = ctx.props();
 
-        let event = packet?.decode_event()?;
-        if event.channel == self.channel.id() {
+        let packet = packet?;
+        let event = packet.decode_event()?;
+        if packet.is_from(self.channel.id()) {
             return Ok(false);
         }
         match &event.kind {
@@ -796,7 +797,7 @@ impl ShowDetail {
                 // Other numberings and season names follow the numbering.
                 if let ShowState::Loaded(old) = &self.show
                     && old.numbering != show.numbering
-                    && self.channel.id() != ws::ChannelId::NONE
+                    && self.channel.is_open()
                 {
                     self.load_seasons(ctx);
                     self.load_episodes(ctx);
@@ -807,7 +808,7 @@ impl ShowDetail {
                 Ok(true)
             }
             api::AppEventKind::SeasonsChanged { show_id, .. } if *show_id == props.show_id => {
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self.load_seasons(ctx);
                 }
 
@@ -816,7 +817,7 @@ impl ShowDetail {
             api::AppEventKind::CreditsChanged {
                 target: api::TranslationTarget::Show(show_id),
             } if *show_id == props.show_id => {
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self.load_credits(ctx);
                 }
 
@@ -825,7 +826,7 @@ impl ShowDetail {
             api::AppEventKind::PersonChanged { person_id }
                 if self.credits.iter().any(|c| c.person_id == *person_id) =>
             {
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self.load_credits(ctx);
                 }
 
@@ -1092,7 +1093,7 @@ impl ShowDetail {
             WatchMsg::MarkWatched(show, episode, mark_time) => {
                 self.episode_menu = None;
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._mark_req = self
                         .channel
                         .request()
@@ -1141,7 +1142,7 @@ impl ShowDetail {
                     ));
                 }
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._remove_watch_req = self
                         .channel
                         .request()
@@ -1174,7 +1175,7 @@ impl ShowDetail {
             WatchMsg::WatchRemaining(season, mark_time) => {
                 let show_id = props.show_id;
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._watch_remaining_reqs = self
                         .channel
                         .request()
@@ -1204,7 +1205,7 @@ impl ShowDetail {
 
                 let show_id = props.show_id;
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._set_next_req = self
                         .channel
                         .request()
@@ -1234,7 +1235,7 @@ impl ShowDetail {
                 self.episode_menu = None;
                 let show_id = props.show_id;
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._set_next_req = self
                         .channel
                         .request()
@@ -1271,7 +1272,7 @@ impl ShowDetail {
                 self.fixing_watched = None;
                 let show_id = props.show_id;
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._move_req = self
                         .channel
                         .request()
@@ -1354,21 +1355,18 @@ impl ShowDetail {
             PickMsg::BulkMark(mark_time) => {
                 let show = props.show_id;
 
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._bulk_reqs = self
-                        .picked
-                        .iter()
-                        .map(|&episode| {
-                            self.channel
-                                .request()
-                                .body(api::MarkWatchedRequest {
-                                    kind: api::WatchedKind::Episode { show, episode },
-                                    mark_time,
-                                })
-                                .on_packet(ctx.link().callback(PickMsg::BulkMarkDone))
-                                .send()
-                        })
-                        .collect();
+                if self.channel.is_open() {
+                    self._bulk_reqs.clear();
+                    self._bulk_reqs.extend(self.picked.iter().map(|&episode| {
+                        self.channel
+                            .request()
+                            .body(api::MarkWatchedRequest {
+                                kind: api::WatchedKind::Episode { show, episode },
+                                mark_time,
+                            })
+                            .on_packet(ctx.link().callback(PickMsg::BulkMarkDone))
+                            .send()
+                    }));
                     self.bulk_pending = self._bulk_reqs.len();
                 }
 
@@ -1395,11 +1393,10 @@ impl ShowDetail {
             PickMsg::BulkSync => {
                 let show_id = props.show_id;
 
-                if self.channel.id() != ws::ChannelId::NONE {
-                    self._bulk_reqs = self
-                        .picked
-                        .iter()
-                        .map(|&episode_id| {
+                if self.channel.is_open() {
+                    self._bulk_reqs.clear();
+                    self._bulk_reqs
+                        .extend(self.picked.iter().map(|&episode_id| {
                             self.channel
                                 .request()
                                 .body(api::SyncEpisodeRequest {
@@ -1408,8 +1405,7 @@ impl ShowDetail {
                                 })
                                 .on_packet(ctx.link().callback(PickMsg::BulkSyncDone))
                                 .send()
-                        })
-                        .collect();
+                        }));
                 }
 
                 self.clear_picked();
@@ -1431,7 +1427,7 @@ impl ShowDetail {
 
                 let id = props.show_id;
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._untrack_req = self
                         .channel
                         .request()
@@ -1463,7 +1459,7 @@ impl ShowDetail {
             ActionMsg::RemoveShow => {
                 let id = props.show_id;
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._remove_req = self
                         .channel
                         .request()
@@ -1482,7 +1478,7 @@ impl ShowDetail {
             ActionMsg::SyncShow => {
                 let id = props.show_id;
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._sync_req = self
                         .channel
                         .request()
@@ -1501,7 +1497,7 @@ impl ShowDetail {
                 self.episode_menu = None;
                 let show_id = props.show_id;
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._sync_episode_req = self
                         .channel
                         .request()
@@ -1575,7 +1571,7 @@ impl ShowDetail {
                     }
                 }
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._select_season_image_req = self
                         .channel
                         .request()
@@ -1598,7 +1594,7 @@ impl ShowDetail {
                 }
 
                 if let Some(season) = self.selected()
-                    && self.channel.id() != ws::ChannelId::NONE
+                    && self.channel.is_open()
                 {
                     self._clear_season_image_req = self
                         .channel
@@ -1795,7 +1791,7 @@ impl ShowDetail {
     }
 
     fn load_show(&mut self, ctx: &Context<Self>) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 
@@ -1852,7 +1848,7 @@ impl ShowDetail {
     }
 
     fn load_seasons(&mut self, ctx: &Context<Self>) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 
@@ -1867,7 +1863,7 @@ impl ShowDetail {
     }
 
     fn load_credits(&mut self, ctx: &Context<Self>) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 
@@ -1884,7 +1880,7 @@ impl ShowDetail {
     }
 
     fn load_season_images(&mut self, ctx: &Context<Self>, season_id: api::SeasonId) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 
@@ -1897,7 +1893,7 @@ impl ShowDetail {
     }
 
     fn load_episodes(&mut self, ctx: &Context<Self>) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 
@@ -1943,7 +1939,7 @@ impl ShowDetail {
     }
 
     fn load_history(&mut self, ctx: &Context<Self>) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 
@@ -1958,7 +1954,7 @@ impl ShowDetail {
     }
 
     fn load_orphaned(&mut self, ctx: &Context<Self>) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 
@@ -1975,7 +1971,7 @@ impl ShowDetail {
     /// Load the global config for the per-source sync-kind defaults shown (as
     /// inherited values) in the remote editor.
     fn load_config(&mut self, ctx: &Context<Self>) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 

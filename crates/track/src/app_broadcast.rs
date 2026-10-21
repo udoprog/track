@@ -9,10 +9,11 @@ pub(crate) enum Audience {
     Admins,
 }
 
-/// An event and who may see it.
+/// An event, who may see it, and the channel whose request caused it.
 #[derive(Clone)]
 pub(crate) struct Broadcast {
     pub(crate) audience: Audience,
+    pub(crate) origin: ChannelId,
     pub(crate) event: api::AppEvent,
 }
 
@@ -66,8 +67,12 @@ impl Broadcaster {
         self.emit(ChannelId::NONE, kind, "sync event");
     }
 
-    fn send(&self, audience: Audience, channel: ChannelId, kind: api::AppEventKind) {
-        let event = api::AppEvent { channel, kind };
-        _ = self.tx.send(Broadcast { audience, event });
+    fn send(&self, audience: Audience, origin: ChannelId, kind: api::AppEventKind) {
+        let event = api::AppEvent { kind };
+        _ = self.tx.send(Broadcast {
+            audience,
+            origin,
+            event,
+        });
     }
 }

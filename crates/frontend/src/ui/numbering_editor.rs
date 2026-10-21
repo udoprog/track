@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 
 use musli_web::web03::prelude::*;
+use musli_web::yew023::ContextExt;
 use wasm_bindgen::JsCast as _;
 use web_sys::{
     Element, Event, HtmlInputElement, HtmlSelectElement, InputEvent, MouseEvent,
@@ -9,7 +10,6 @@ use web_sys::{
 };
 use yew::prelude::*;
 
-use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 
@@ -72,7 +72,7 @@ impl Side {
 }
 
 pub(crate) enum Msg {
-    Channel(Result<ws::Channel, ws::Error>),
+    Channel(ws::ChannelEvent),
     Loaded(Result<ws::Packet<api::GetShowNumbering>, ws::Error>),
     SetManual(bool),
     Set(usize, Field, String),
@@ -542,7 +542,6 @@ fn map_folds(
 /// through all of them.
 pub(crate) struct NumberingEditor {
     channel: ws::Channel,
-    _setup: SetupChannel,
     _load_req: ws::Request,
     _save_req: ws::Request,
     data: Option<api::ShowNumbering>,
@@ -585,10 +584,7 @@ impl Component for NumberingEditor {
     type Properties = Props;
 
     fn create(ctx: &Context<Self>) -> Self {
-        let (ws, _) = ctx
-            .link()
-            .context::<ws::Handle>(Callback::noop())
-            .expect("Expected ws::Handle in context");
+        let ws = ctx.handle();
 
         let (background, _) = ctx
             .link()
@@ -605,8 +601,10 @@ impl Component for NumberingEditor {
             .collect::<Vec<_>>();
 
         Self {
-            channel: ws::Channel::default(),
-            _setup: SetupChannel::new(ws, ctx.link().callback(Msg::Channel)),
+            channel: ws
+                .channel()
+                .on_change(ctx.link().callback(Msg::Channel))
+                .open(),
             _load_req: ws::Request::default(),
             _save_req: ws::Request::default(),
             data: None,
@@ -729,10 +727,12 @@ impl Component for NumberingEditor {
 impl NumberingEditor {
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
-            Msg::Channel(result) => {
-                self.channel = result?;
+            Msg::Channel(event) => {
+                if let ws::ChannelEvent::Failed(error) = event {
+                    return Err(error.into());
+                }
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._load_req = self
                         .channel
                         .request()
@@ -986,7 +986,7 @@ impl NumberingEditor {
             Msg::Save => {
                 let (ranges, errors) = self.check();
 
-                if self.manual && !errors.is_empty() || self.channel.id() == ws::ChannelId::NONE {
+                if self.manual && !errors.is_empty() || !self.channel.is_open() {
                     return Ok(false);
                 }
 

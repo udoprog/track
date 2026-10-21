@@ -2,9 +2,9 @@ use std::collections::HashMap;
 
 use api::TimeInfo;
 use musli_web::web03::prelude::*;
+use musli_web::yew023::ContextExt;
 use yew::prelude::*;
 
-use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::MediaSelection;
@@ -42,7 +42,6 @@ pub(crate) struct ScheduleRange {
     time: TimeInfo,
     _time_handle: ContextHandle<TimeInfo>,
     background: Background,
-    _setup: SetupChannel,
     _broadcast: ws::Listener,
     _schedule_req: ws::Request,
     _config_req: ws::Request,
@@ -53,7 +52,7 @@ pub(crate) struct ScheduleRange {
 }
 
 pub(crate) enum Msg {
-    Channel(Result<ws::Channel, ws::Error>),
+    Channel(ws::ChannelEvent),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     ScheduleLoaded(Result<ws::Packet<api::ListSchedule>, ws::Error>),
     ConfigLoaded(Result<ws::Packet<api::GetPreferences>, ws::Error>),
@@ -70,12 +69,12 @@ impl Component for ScheduleRange {
     type Properties = Props;
 
     fn create(ctx: &Context<Self>) -> Self {
-        let (ws, _) = ctx
-            .link()
-            .context::<ws::Handle>(Callback::noop())
-            .expect("Expected ws::Handle in context");
+        let ws = ctx.handle();
 
-        let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
+        let channel = ws
+            .channel()
+            .on_change(ctx.link().callback(Msg::Channel))
+            .open();
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
         let (time, _time_handle) = ctx
@@ -89,7 +88,7 @@ impl Component for ScheduleRange {
             .expect("Expected Background in context");
 
         Self {
-            channel: ws::Channel::default(),
+            channel,
             schedule: Vec::new(),
             schedule_index: HashMap::new(),
             preferences: api::Preferences::default(),
@@ -98,7 +97,6 @@ impl Component for ScheduleRange {
             time,
             _time_handle,
             background,
-            _setup,
             _broadcast,
             _schedule_req: ws::Request::default(),
             _config_req: ws::Request::default(),
@@ -111,7 +109,7 @@ impl Component for ScheduleRange {
     fn changed(&mut self, ctx: &Context<Self>, old: &Props) -> bool {
         // Refetch only when the start offset actually changed. The day count
         // lives in config and is refetched via its own path.
-        if ctx.props().day_offset != old.day_offset && self.channel.id() != ws::ChannelId::NONE {
+        if ctx.props().day_offset != old.day_offset && self.channel.is_open() {
             self.load_schedule(ctx);
         }
 
@@ -196,9 +194,11 @@ impl ScheduleRange {
 
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
-            Msg::Channel(result) => {
-                self.channel = result?;
-                if self.channel.id() != ws::ChannelId::NONE {
+            Msg::Channel(event) => {
+                if let ws::ChannelEvent::Failed(error) = event {
+                    return Err(error.into());
+                }
+                if self.channel.is_open() {
                     self.load_schedule(ctx);
                     self.load_config(ctx);
                 } else {
@@ -208,8 +208,9 @@ impl ScheduleRange {
                 Ok(true)
             }
             Msg::AppBroadcast(packet) => {
-                let event = packet?.decode_event()?;
-                if event.channel == self.channel.id() {
+                let packet = packet?;
+                let event = packet.decode_event()?;
+                if packet.is_from(self.channel.id()) {
                     return Ok(false);
                 }
                 match event.kind {
@@ -219,7 +220,7 @@ impl ScheduleRange {
                         let days_changed =
                             preferences.schedule_range_days != self.preferences.schedule_range_days;
                         self.preferences = preferences;
-                        if days_changed && self.channel.id() != ws::ChannelId::NONE {
+                        if days_changed && self.channel.is_open() {
                             self.load_schedule(ctx);
                         }
                         Ok(true)
@@ -233,7 +234,7 @@ impl ScheduleRange {
                     | api::AppEventKind::MovieDeleted { .. }
                     | api::AppEventKind::WatchedChanged { .. }
                     | api::AppEventKind::TaskCompleted { .. } => {
-                        if self.channel.id() != ws::ChannelId::NONE {
+                        if self.channel.is_open() {
                             self.load_schedule(ctx);
                         }
                         Ok(false)
@@ -261,7 +262,7 @@ impl ScheduleRange {
                 let days_changed =
                     preferences.schedule_range_days != self.preferences.schedule_range_days;
                 self.preferences = preferences;
-                if days_changed && self.channel.id() != ws::ChannelId::NONE {
+                if days_changed && self.channel.is_open() {
                     self.load_schedule(ctx);
                 }
                 Ok(true)
@@ -274,7 +275,7 @@ impl ScheduleRange {
                     .max(1);
 
                 // Reload directly: our own SetPreferences broadcast is filtered out.
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self.load_schedule(ctx);
 
                     self._set_config_req = self
@@ -295,7 +296,7 @@ impl ScheduleRange {
             }
             Msg::SetTime(time) => {
                 self.time = time;
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self.load_schedule(ctx);
                 }
                 Ok(true)
@@ -344,7 +345,7 @@ impl ScheduleRange {
     }
 
     fn load_schedule(&mut self, ctx: &Context<Self>) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 
@@ -365,7 +366,7 @@ impl ScheduleRange {
     }
 
     fn load_config(&mut self, ctx: &Context<Self>) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 

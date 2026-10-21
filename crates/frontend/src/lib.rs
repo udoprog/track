@@ -10,12 +10,10 @@ mod l10n;
 mod page;
 mod root;
 mod router;
-mod setup_channel;
 mod theme;
 mod ui;
 
 use self::root::Root;
-use self::setup_channel::SetupChannel;
 
 use tracing::Level;
 use tracing_wasm::WASMLayerConfigBuilder;

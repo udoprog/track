@@ -82,7 +82,7 @@ impl Graphics {
         C: Component,
         C::Message: From<ImageMsg>,
     {
-        let connected = channel.id() != ws::ChannelId::NONE;
+        let connected = channel.is_open();
 
         match msg {
             ImageMsg::SelectImage(kind, id) => {
@@ -478,7 +478,7 @@ impl Remotes {
         C: Component,
         C::Message: From<RemoteMsg>,
     {
-        let connected = channel.id() != ws::ChannelId::NONE;
+        let connected = channel.is_open();
 
         let (op, render) = match msg {
             RemoteMsg::SetRemoteEnabled(remote_id, enabled) => {

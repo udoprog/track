@@ -11,7 +11,6 @@ use std::sync::Arc;
 use anyhow::Result;
 use auth::axum08::SignedIn;
 use auth::{CloudflareConfig, Role};
-use musli_web::ws::Channels;
 use reqwest::StatusCode;
 use reqwest::header::{CONNECTION, COOKIE, HeaderMap, HeaderValue, SET_COOKIE, UPGRADE};
 use serde_json::{Value, json};
@@ -62,7 +61,6 @@ impl Server {
         let state = AppState {
             db: db.clone(),
             broadcast: Broadcaster::new(tx),
-            channels: Channels::default(),
             cache: ImageCache::new(dir.path().join("image-cache")),
             queue: TaskQueue::new(),
             remote: RemoteClients::new(http.clone(), http),

@@ -3,9 +3,9 @@ use std::collections::HashSet;
 use api::TimeInfo;
 use gloo::timers::callback::Timeout;
 use musli_web::web03::prelude::*;
+use musli_web::yew023::ContextExt;
 use yew::prelude::*;
 
-use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaSelection, Route, ShowDetailQuery};
@@ -34,7 +34,6 @@ pub(crate) struct History {
     time: TimeInfo,
     _time_handle: ContextHandle<TimeInfo>,
     background: Background,
-    _setup: SetupChannel,
     _broadcast: ws::Listener,
     /// The request for the current page; replacing it drops the answer to an
     /// earlier one.
@@ -47,7 +46,7 @@ pub(crate) struct History {
 }
 
 pub(crate) enum Msg {
-    Channel(Result<ws::Channel, ws::Error>),
+    Channel(ws::ChannelEvent),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     SetTime(TimeInfo),
     Load,
@@ -70,12 +69,12 @@ impl Component for History {
     type Properties = Props;
 
     fn create(ctx: &Context<Self>) -> Self {
-        let (ws, _) = ctx
-            .link()
-            .context::<ws::Handle>(Callback::noop())
-            .expect("Expected ws::Handle in context");
+        let ws = ctx.handle();
 
-        let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
+        let channel = ws
+            .channel()
+            .on_change(ctx.link().callback(Msg::Channel))
+            .open();
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
         let (background, _) = ctx
@@ -89,7 +88,7 @@ impl Component for History {
             .expect("Expected TimeInfo in context");
 
         Self {
-            channel: ws::Channel::default(),
+            channel,
             groups: Vec::new(),
             has_more: false,
             filter: ctx.props().filter.clone(),
@@ -97,7 +96,6 @@ impl Component for History {
             time,
             _time_handle,
             background,
-            _setup,
             _broadcast,
             list_req: ws::Request::default(),
             filter_delay: None,
@@ -212,10 +210,12 @@ impl Component for History {
 impl History {
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
-            Msg::Channel(result) => {
-                self.channel = result?;
+            Msg::Channel(event) => {
+                if let ws::ChannelEvent::Failed(error) = event {
+                    return Err(error.into());
+                }
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self.load(ctx);
                 } else {
                     self.groups.clear();
@@ -237,7 +237,7 @@ impl History {
                         | api::AppEventKind::MovieDeleted { .. }
                 );
 
-                if relevant && self.channel.id() != ws::ChannelId::NONE {
+                if relevant && self.channel.is_open() {
                     self.load(ctx);
                 }
 
@@ -279,7 +279,7 @@ impl History {
     fn load(&mut self, ctx: &Context<Self>) {
         self.filter_delay = None;
 
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 

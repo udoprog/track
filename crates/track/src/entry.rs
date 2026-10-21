@@ -9,7 +9,6 @@ use std::time::Duration;
 use anyhow::{Context as _, Result, anyhow};
 use auth::{Auth, BootstrapAdmin, CookieConfig};
 use clap::Parser;
-use musli_web::ws::Channels;
 use tokio::net::TcpListener;
 use tokio::sync::{Notify, broadcast};
 use tracing::Level;
@@ -242,7 +241,6 @@ async fn run(
     let state = AppState {
         db,
         broadcast,
-        channels: Channels::default(),
         cache,
         queue,
         remote,

@@ -10,8 +10,9 @@ use auth::axum08::SignedIn;
 use auth::musliweb05::Connection;
 use axum::extract::State;
 use axum::extract::WebSocketUpgrade;
+use musli_web::api::ChannelId;
 use musli_web::axum08;
-use musli_web::ws;
+use musli_web::ws::{self, Handler as _};
 use tokio::sync::broadcast;
 use tokio::time;
 
@@ -482,9 +483,7 @@ impl WsHandler {
             api::Request::ResetImageSelection => {
                 self.reset_image_selection(incoming, outgoing).await?
             }
-            api::Request::Unknown(id) => {
-                anyhow::bail!("Unknown request id: {id:?}");
-            }
+            api::Request::Unknown(id) => anyhow::bail!("Unknown request id: {id:?}"),
         }
 
         Ok(())
@@ -546,7 +545,6 @@ pub(crate) async fn personalize(
 
 fn resync() -> api::AppEvent {
     api::AppEvent {
-        channel: musli_web::api::ChannelId::NONE,
         kind: api::AppEventKind::Resync,
     }
 }
@@ -581,8 +579,7 @@ pub(super) async fn ws_handler(
 
         // watchword's account and admin requests, in its own id band, go to
         // `conn`; the rest to track's handler.
-        let connect = axum08::server(socket, ws::Handler::or(handler, conn.clone()))
-            .with_channel_allocator(state.channels.clone());
+        let connect = axum08::server(socket, handler.or(conn.clone()));
 
         let mut server = match updates.unless_ended(connect.connect()).await {
             Some(Ok(server)) => server,
@@ -620,6 +617,7 @@ pub(super) async fn ws_handler(
                         continue;
                     }
 
+                    let mut origin = msg.origin;
                     let mut event = msg.event;
 
                     // An event left unpersonalized may carry another user's
@@ -629,11 +627,12 @@ pub(super) async fn ws_handler(
                         Ok(false) => continue,
                         Err(error) => {
                             tracing::error!("Personalizing broadcast, resyncing instead: {error:#}");
+                            origin = ChannelId::NONE;
                             event = resync();
                         }
                     }
 
-                    if let Err(error) = server.broadcast(event) {
+                    if let Err(error) = server.broadcast_from(event, origin) {
                         tracing::error!("Broadcast Error: {error}");
                         break;
                     }

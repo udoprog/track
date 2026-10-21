@@ -1,8 +1,8 @@
 use auth::yew023::AdminCloudflare;
 use musli_web::web03::prelude::*;
+use musli_web::yew023::ContextExt;
 use yew::prelude::*;
 
-use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::help;
@@ -35,7 +35,6 @@ pub(crate) struct Settings {
     /// skeletons rather than flashing default values.
     preferences_loaded: bool,
     config_loaded: bool,
-    _setup: SetupChannel,
     _broadcast: ws::Listener,
     _preferences_req: ws::Request,
     _config_req: ws::Request,
@@ -44,7 +43,7 @@ pub(crate) struct Settings {
 }
 
 pub(crate) enum Msg {
-    Channel(Result<ws::Channel, ws::Error>),
+    Channel(ws::ChannelEvent),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     PreferencesLoaded(Result<ws::Packet<api::GetPreferences>, ws::Error>),
     ConfigLoaded(Result<ws::Packet<api::GetSystemConfig>, ws::Error>),
@@ -75,12 +74,12 @@ impl Component for Settings {
     type Properties = Props;
 
     fn create(ctx: &Context<Self>) -> Self {
-        let (ws, _) = ctx
-            .link()
-            .context::<ws::Handle>(Callback::noop())
-            .expect("Expected ws::Handle in context");
+        let ws = ctx.handle();
 
-        let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
+        let channel = ws
+            .channel()
+            .on_change(ctx.link().callback(Msg::Channel))
+            .open();
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
         let (background, _) = ctx
@@ -89,13 +88,12 @@ impl Component for Settings {
             .expect("Expected background handle in context");
 
         Self {
-            channel: ws::Channel::default(),
+            channel,
             background,
             preferences: api::Preferences::default(),
             config: api::Config::default(),
             preferences_loaded: false,
             config_loaded: false,
-            _setup,
             _broadcast,
             _preferences_req: ws::Request::default(),
             _config_req: ws::Request::default(),
@@ -484,9 +482,11 @@ impl Settings {
 
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
-            Msg::Channel(result) => {
-                self.channel = result?;
-                if self.channel.id() != ws::ChannelId::NONE {
+            Msg::Channel(event) => {
+                if let ws::ChannelEvent::Failed(error) = event {
+                    return Err(error.into());
+                }
+                if self.channel.is_open() {
                     self.load(ctx);
                 } else {
                     self.preferences = api::Preferences::default();
@@ -497,8 +497,9 @@ impl Settings {
                 Ok(true)
             }
             Msg::AppBroadcast(packet) => {
-                let event = packet?.decode_event()?;
-                if event.channel == self.channel.id() {
+                let packet = packet?;
+                let event = packet.decode_event()?;
+                if packet.is_from(self.channel.id()) {
                     return Ok(false);
                 }
                 match event.kind {
@@ -648,7 +649,7 @@ impl Settings {
     /// Save the preferences. Called on every edit so the settings page has no
     /// explicit save step.
     fn save_preferences(&mut self, ctx: &Context<Self>) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 
@@ -664,7 +665,7 @@ impl Settings {
 
     /// Save the system configuration, as [`Self::save_preferences`].
     fn save_config(&mut self, ctx: &Context<Self>) {
-        if self.channel.id() == ws::ChannelId::NONE || !self.config_loaded {
+        if !self.channel.is_open() || !self.config_loaded {
             return;
         }
 
@@ -679,7 +680,7 @@ impl Settings {
     }
 
     fn load(&mut self, ctx: &Context<Self>) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 

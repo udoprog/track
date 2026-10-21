@@ -1,8 +1,8 @@
 use auth::yew023::{AuthContext, AuthSubscription};
 use musli_web::web03::prelude::*;
+use musli_web::yew023::ContextExt;
 use yew::prelude::*;
 
-use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 
@@ -17,7 +17,7 @@ pub(crate) struct Props {
 
 pub(crate) enum Msg {
     Auth(AuthContext),
-    Channel(Result<ws::Channel, ws::Error>),
+    Channel(ws::ChannelEvent),
     Loaded(Result<ws::Packet<api::GetEpisodeCache>, ws::Error>),
     Purge(api::RemoteSource),
     PurgeDone(Result<ws::Packet<api::PurgeEpisodeCache>, ws::Error>),
@@ -29,7 +29,6 @@ pub(crate) enum Msg {
 pub(crate) struct EpisodeCacheModal {
     auth: AuthSubscription,
     channel: ws::Channel,
-    _setup: SetupChannel,
     _req: ws::Request,
     _purge_req: ws::Request,
     /// `None` while loading, `Some` once the response has arrived.
@@ -42,22 +41,21 @@ impl Component for EpisodeCacheModal {
     type Properties = Props;
 
     fn create(ctx: &Context<Self>) -> Self {
-        let (ws, _) = ctx
-            .link()
-            .context::<ws::Handle>(Callback::noop())
-            .expect("Expected ws::Handle in context");
+        let ws = ctx.handle();
 
         let (background, _) = ctx
             .link()
             .context::<Background>(Callback::noop())
             .expect("Expected Background in context");
 
-        let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
+        let channel = ws
+            .channel()
+            .on_change(ctx.link().callback(Msg::Channel))
+            .open();
 
         Self {
             auth: AuthSubscription::new(ctx, Msg::Auth),
-            channel: ws::Channel::default(),
-            _setup,
+            channel,
             _req: ws::Request::default(),
             _purge_req: ws::Request::default(),
             entries: None,
@@ -91,8 +89,10 @@ impl EpisodeCacheModal {
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
             Msg::Auth(auth) => Ok(self.auth.set(auth)),
-            Msg::Channel(result) => {
-                self.channel = result?;
+            Msg::Channel(event) => {
+                if let ws::ChannelEvent::Failed(error) = event {
+                    return Err(error.into());
+                }
                 self.load(ctx);
                 Ok(true)
             }
@@ -105,7 +105,7 @@ impl EpisodeCacheModal {
                 Ok(true)
             }
             Msg::Purge(source) => {
-                if self.channel.id() == ws::ChannelId::NONE {
+                if !self.channel.is_open() {
                     return Ok(false);
                 }
 
@@ -131,7 +131,7 @@ impl EpisodeCacheModal {
     }
 
     fn load(&mut self, ctx: &Context<Self>) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 

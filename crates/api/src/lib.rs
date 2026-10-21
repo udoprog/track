@@ -3,7 +3,7 @@ use core::num::NonZero;
 use std::collections::BTreeSet;
 
 use musli_core::{Decode, Encode};
-use musli_web::api::{self, ChannelId};
+use musli_web::api;
 
 #[cfg(feature = "yew")]
 use implicit_clone::unsync::IString;
@@ -3266,7 +3266,6 @@ pub struct ResetImageSelectionRequest {
 
 #[derive(Debug, Clone, Encode, Decode)]
 pub struct AppEvent {
-    pub channel: ChannelId,
     pub kind: AppEventKind,
 }
 

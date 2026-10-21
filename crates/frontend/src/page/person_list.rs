@@ -1,8 +1,8 @@
 use gloo::timers::callback::Timeout;
 use musli_web::web03::prelude::*;
+use musli_web::yew023::ContextExt;
 use yew::prelude::*;
 
-use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{PersonQuery, PersonSort, Route, Router};
@@ -28,7 +28,6 @@ pub(crate) struct PersonList {
     desc: bool,
     background: Background,
     router: Router,
-    _setup: SetupChannel,
     _broadcast: ws::Listener,
     /// The request for the current page; replacing it drops the answer to an
     /// earlier one.
@@ -41,7 +40,7 @@ pub(crate) struct PersonList {
 }
 
 pub(crate) enum Msg {
-    Channel(Result<ws::Channel, ws::Error>),
+    Channel(ws::ChannelEvent),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     Load,
     Loaded(Result<ws::Packet<api::ListPersons>, ws::Error>),
@@ -64,12 +63,12 @@ impl Component for PersonList {
     type Properties = Props;
 
     fn create(ctx: &Context<Self>) -> Self {
-        let (ws, _) = ctx
-            .link()
-            .context::<ws::Handle>(Callback::noop())
-            .expect("Expected ws::Handle in context");
+        let ws = ctx.handle();
 
-        let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
+        let channel = ws
+            .channel()
+            .on_change(ctx.link().callback(Msg::Channel))
+            .open();
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
         let (background, _) = ctx
@@ -83,7 +82,7 @@ impl Component for PersonList {
             .expect("Expected router in context");
 
         Self {
-            channel: ws::Channel::default(),
+            channel,
             persons: Vec::new(),
             has_more: false,
             filter: ctx.props().filter.clone(),
@@ -92,7 +91,6 @@ impl Component for PersonList {
             desc: ctx.props().desc,
             background,
             router,
-            _setup,
             _broadcast,
             list_req: ws::Request::default(),
             filter_delay: None,
@@ -224,10 +222,12 @@ impl Component for PersonList {
 impl PersonList {
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
-            Msg::Channel(result) => {
-                self.channel = result?;
+            Msg::Channel(event) => {
+                if let ws::ChannelEvent::Failed(error) = event {
+                    return Err(error.into());
+                }
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self.load(ctx);
                 } else {
                     self.persons.clear();
@@ -238,9 +238,10 @@ impl PersonList {
                 Ok(true)
             }
             Msg::AppBroadcast(packet) => {
-                let event = packet?.decode_event()?;
+                let packet = packet?;
+                let event = packet.decode_event()?;
 
-                if event.channel == self.channel.id() {
+                if packet.is_from(self.channel.id()) {
                     return Ok(false);
                 }
 
@@ -252,7 +253,7 @@ impl PersonList {
                         | api::AppEventKind::CreditsChanged { .. }
                 );
 
-                if relevant && self.channel.id() != ws::ChannelId::NONE {
+                if relevant && self.channel.is_open() {
                     self.load(ctx);
                 }
 
@@ -309,7 +310,7 @@ impl PersonList {
     fn load(&mut self, ctx: &Context<Self>) {
         self.filter_delay = None;
 
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 

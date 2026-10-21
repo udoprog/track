@@ -1,10 +1,10 @@
 use api::{IncludeSpecials, TimeInfo};
 use auth::yew023::{AuthContext, AuthSubscription};
 use musli_web::web03::prelude::*;
+use musli_web::yew023::ContextExt;
 use web_sys::{Event, MouseEvent};
 use yew::prelude::*;
 
-use crate::SetupChannel;
 use crate::active_tasks::SyncTarget;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
@@ -45,7 +45,7 @@ enum Loaded {
 
 pub(crate) enum Msg {
     Auth(AuthContext),
-    Channel(Result<ws::Channel, ws::Error>),
+    Channel(ws::ChannelEvent),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     MovieLoaded(Result<ws::Packet<api::GetMovie>, ws::Error>),
     ShowLoaded(Result<ws::Packet<api::GetShow>, ws::Error>),
@@ -83,7 +83,6 @@ pub(crate) enum Msg {
 pub(crate) struct MediaSettingsModal {
     auth: AuthSubscription,
     channel: ws::Channel,
-    _setup: SetupChannel,
     _broadcast: ws::Listener,
     _load_req: ws::Request,
     _config_req: ws::Request,
@@ -107,10 +106,7 @@ impl Component for MediaSettingsModal {
     type Properties = Props;
 
     fn create(ctx: &Context<Self>) -> Self {
-        let (ws, _) = ctx
-            .link()
-            .context::<ws::Handle>(Callback::noop())
-            .expect("Expected ws::Handle in context");
+        let ws = ctx.handle();
 
         let (background, _) = ctx
             .link()
@@ -122,13 +118,15 @@ impl Component for MediaSettingsModal {
             .context::<TimeInfo>(ctx.link().callback(Msg::SetTime))
             .expect("Expected TimeInfo in context");
 
-        let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
+        let channel = ws
+            .channel()
+            .on_change(ctx.link().callback(Msg::Channel))
+            .open();
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
         Self {
             auth: AuthSubscription::new(ctx, Msg::Auth),
-            channel: ws::Channel::default(),
-            _setup,
+            channel,
             _broadcast,
             _load_req: ws::Request::default(),
             _config_req: ws::Request::default(),
@@ -169,18 +167,21 @@ impl MediaSettingsModal {
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
             Msg::Auth(auth) => Ok(self.auth.set(auth)),
-            Msg::Channel(result) => {
-                self.channel = result?;
+            Msg::Channel(event) => {
+                if let ws::ChannelEvent::Failed(error) = event {
+                    return Err(error.into());
+                }
                 self.load(ctx);
                 self.load_config(ctx);
                 self.load_numbering(ctx);
                 Ok(true)
             }
             Msg::AppBroadcast(packet) => {
-                let event = packet?.decode_event()?;
+                let packet = packet?;
+                let event = packet.decode_event()?;
 
                 // Mutations originate from our own channel; ignore their echoes.
-                if event.channel == self.channel.id() {
+                if packet.is_from(self.channel.id()) {
                     return Ok(false);
                 }
 
@@ -237,7 +238,7 @@ impl MediaSettingsModal {
             Msg::SetLanguage(language) => {
                 // Skip the optimistic update too: it mirrors server state, so it
                 // must not be applied when it cannot be persisted.
-                if self.channel.id() == ws::ChannelId::NONE {
+                if !self.channel.is_open() {
                     return Ok(false);
                 }
 
@@ -275,7 +276,7 @@ impl MediaSettingsModal {
                 Ok(true)
             }
             Msg::SetAutoSync(auto_sync) => {
-                if self.channel.id() == ws::ChannelId::NONE {
+                if !self.channel.is_open() {
                     return Ok(false);
                 }
 
@@ -312,7 +313,7 @@ impl MediaSettingsModal {
                 Ok(true)
             }
             Msg::SetIncludeSpecials(include_specials) => {
-                if self.channel.id() == ws::ChannelId::NONE {
+                if !self.channel.is_open() {
                     return Ok(false);
                 }
 
@@ -335,7 +336,7 @@ impl MediaSettingsModal {
                 Ok(true)
             }
             Msg::SetReleaseFilters(release_filters) => {
-                if self.channel.id() == ws::ChannelId::NONE {
+                if !self.channel.is_open() {
                     return Ok(false);
                 }
 
@@ -356,7 +357,7 @@ impl MediaSettingsModal {
                 Ok(true)
             }
             Msg::SetAirDateFilters(air_date_filters) => {
-                if self.channel.id() == ws::ChannelId::NONE {
+                if !self.channel.is_open() {
                     return Ok(false);
                 }
 
@@ -385,7 +386,7 @@ impl MediaSettingsModal {
                 Ok(true)
             }
             Msg::SetNumbering(numbering) => {
-                if self.channel.id() == ws::ChannelId::NONE {
+                if !self.channel.is_open() {
                     return Ok(false);
                 }
 
@@ -418,7 +419,7 @@ impl MediaSettingsModal {
                 Ok(false)
             }
             Msg::Sync => {
-                if self.channel.id() == ws::ChannelId::NONE {
+                if !self.channel.is_open() {
                     return Ok(false);
                 }
 
@@ -492,7 +493,7 @@ impl MediaSettingsModal {
 
     /// Request this target's record on the current channel.
     fn load(&mut self, ctx: &Context<Self>) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 
@@ -513,7 +514,7 @@ impl MediaSettingsModal {
     }
 
     fn load_config(&mut self, ctx: &Context<Self>) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 
@@ -530,7 +531,7 @@ impl MediaSettingsModal {
             return;
         };
 
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 

@@ -3,10 +3,10 @@ use std::rc::Rc;
 use api::TimeInfo;
 use auth::yew023::{AuthContext, AuthSubscription};
 use musli_web::web03::prelude::*;
+use musli_web::yew023::ContextExt;
 use yew::prelude::*;
 
 use super::detail::{Graphics, ImageMsg, ImageUpdate, RemoteMsg, RemoteUpdate, Remotes};
-use crate::SetupChannel;
 use crate::active_tasks::SyncTarget;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
@@ -62,7 +62,6 @@ pub(crate) struct MovieDetail {
     router: Router,
     time: TimeInfo,
     _time_handle: ContextHandle<TimeInfo>,
-    _setup: SetupChannel,
     _broadcast: ws::Listener,
     _movie_req: ws::Request,
     _credits_req: ws::Request,
@@ -78,7 +77,7 @@ pub(crate) struct MovieDetail {
 
 pub(crate) enum Msg {
     Auth(AuthContext),
-    Channel(Result<ws::Channel, ws::Error>),
+    Channel(ws::ChannelEvent),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     SetTime(TimeInfo),
     Image(ImageMsg),
@@ -193,12 +192,12 @@ impl Component for MovieDetail {
     type Properties = Props;
 
     fn create(ctx: &Context<Self>) -> Self {
-        let (ws, _) = ctx
-            .link()
-            .context::<ws::Handle>(Callback::noop())
-            .expect("Expected ws::Handle in context");
+        let ws = ctx.handle();
 
-        let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
+        let channel = ws
+            .channel()
+            .on_change(ctx.link().callback(Msg::Channel))
+            .open();
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
         let (time, _time_handle) = ctx
@@ -218,7 +217,7 @@ impl Component for MovieDetail {
 
         Self {
             auth: AuthSubscription::new(ctx, Msg::Auth),
-            channel: ws::Channel::default(),
+            channel,
             movie: MovieState::Loading,
             graphics: Graphics::default(),
             remotes: Remotes::default(),
@@ -242,7 +241,6 @@ impl Component for MovieDetail {
             router,
             time,
             _time_handle,
-            _setup,
             _broadcast,
             _movie_req: ws::Request::default(),
             _credits_req: ws::Request::default(),
@@ -301,7 +299,7 @@ impl Component for MovieDetail {
             self.confirm_remove = false;
             self.confirm_remove_watch = None;
 
-            if self.channel.id() != ws::ChannelId::NONE {
+            if self.channel.is_open() {
                 self.load_movie(ctx);
                 self.load_credits(ctx);
                 self.load_watched(ctx);
@@ -316,9 +314,11 @@ impl MovieDetail {
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
             Msg::Auth(auth) => Ok(self.auth.set(auth)),
-            Msg::Channel(result) => {
-                self.channel = result?;
-                if self.channel.id() != ws::ChannelId::NONE {
+            Msg::Channel(event) => {
+                if let ws::ChannelEvent::Failed(error) = event {
+                    return Err(error.into());
+                }
+                if self.channel.is_open() {
                     self.load_movie(ctx);
                     self.load_credits(ctx);
                     self.load_watched(ctx);
@@ -348,9 +348,10 @@ impl MovieDetail {
         ctx: &Context<Self>,
         packet: Result<ws::Packet<api::AppBroadcast>, ws::Error>,
     ) -> Result<bool, Error> {
-        let event = packet?.decode_event()?;
+        let packet = packet?;
+        let event = packet.decode_event()?;
 
-        if event.channel == self.channel.id() {
+        if packet.is_from(self.channel.id()) {
             return Ok(false);
         }
 
@@ -369,7 +370,7 @@ impl MovieDetail {
             api::AppEventKind::CreditsChanged {
                 target: api::TranslationTarget::Movie(movie_id),
             } if *movie_id == ctx.props().movie_id => {
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self.load_credits(ctx);
                 }
 
@@ -378,7 +379,7 @@ impl MovieDetail {
             api::AppEventKind::PersonChanged { person_id }
                 if self.credits.iter().any(|c| c.person_id == *person_id) =>
             {
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self.load_credits(ctx);
                 }
 
@@ -390,7 +391,7 @@ impl MovieDetail {
                     api::WatchedEvent::Movie { movie } if *movie == ctx.props().movie_id
                 );
 
-                if relevant && self.channel.id() != ws::ChannelId::NONE {
+                if relevant && self.channel.is_open() {
                     self.load_movie(ctx);
                     self.load_watched(ctx);
                 }
@@ -516,7 +517,7 @@ impl MovieDetail {
             WatchMsg::MarkWatched(mark_time) => {
                 let movie = ctx.props().movie_id;
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._mark_req = self
                         .channel
                         .request()
@@ -542,7 +543,7 @@ impl MovieDetail {
                 Ok(false)
             }
             WatchMsg::RemoveWatched(id, kind) => {
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._remove_watch_req = self
                         .channel
                         .request()
@@ -571,7 +572,7 @@ impl MovieDetail {
             WatchMsg::OnWatchNext(mark_time) => {
                 let movie = ctx.props().movie_id;
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._pending_req = self
                         .channel
                         .request()
@@ -600,7 +601,7 @@ impl MovieDetail {
             WatchMsg::OnRemoveNext => {
                 let movie = ctx.props().movie_id;
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._pending_req = self
                         .channel
                         .request()
@@ -641,7 +642,7 @@ impl MovieDetail {
             ActionMsg::RemoveMovie => {
                 let id = ctx.props().movie_id;
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._remove_req = self
                         .channel
                         .request()
@@ -660,7 +661,7 @@ impl MovieDetail {
             ActionMsg::SyncMovie => {
                 let id = ctx.props().movie_id;
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._sync_req = self
                         .channel
                         .request()
@@ -680,7 +681,7 @@ impl MovieDetail {
 
                 let id = ctx.props().movie_id;
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._untrack_req = self
                         .channel
                         .request()
@@ -795,7 +796,7 @@ impl MovieDetail {
     }
 
     fn load_movie(&mut self, ctx: &Context<Self>) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 
@@ -810,7 +811,7 @@ impl MovieDetail {
     }
 
     fn load_credits(&mut self, ctx: &Context<Self>) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 
@@ -857,7 +858,7 @@ impl MovieDetail {
     }
 
     fn load_watched(&mut self, ctx: &Context<Self>) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 
@@ -873,7 +874,7 @@ impl MovieDetail {
     }
 
     fn load_config(&mut self, ctx: &Context<Self>) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 

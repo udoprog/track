@@ -5,6 +5,7 @@ use auth::yew023::AuthContext;
 use gloo::events::EventListener;
 use gloo::timers::callback::{Interval, Timeout};
 use musli_web::web03::prelude::*;
+use musli_web::yew023::HandleProvider;
 use yew::prelude::*;
 
 use crate::active_tasks::ActiveTasksProvider;
@@ -17,7 +18,6 @@ use crate::page::{
 use crate::router::{
     DashboardQuery, MediaQuery, PersonQuery, QueueQuery, Route, Router, RouterState, SearchQuery,
 };
-use crate::setup_channel::SetupChannel;
 use crate::ui::{
     Button, ErrorBox, HelpControl, HelpModal, Link, Outline, OutlineControl, OutlineEntry,
     TopLanguages,
@@ -50,7 +50,6 @@ pub(super) struct App {
     router: Router,
     background_state: BackgroundState,
     background: Background,
-    _setup: SetupChannel,
     _state_listener: ws::StateListener,
     _broadcast: ws::Listener,
     _config_req: ws::Request,
@@ -67,7 +66,7 @@ pub(super) struct App {
 }
 
 pub(super) enum Msg {
-    Channel(Result<ws::Channel, ws::Error>),
+    Channel(ws::ChannelEvent),
     WsState(ws::State),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     TickTime,
@@ -115,7 +114,11 @@ impl Component for App {
         // the socket.
         auth.set_socket(Some(ws.handle().clone()));
 
-        let _setup = SetupChannel::new(ws.handle().clone(), link.callback(Msg::Channel));
+        let channel = ws
+            .handle()
+            .channel()
+            .on_change(link.callback(Msg::Channel))
+            .open();
 
         let (ws_state, _state_listener) = ws.handle().on_state_change(link.callback(Msg::WsState));
 
@@ -156,7 +159,7 @@ impl Component for App {
         Self {
             auth,
             _auth_listener,
-            channel: ws::Channel::default(),
+            channel,
             ws,
             ws_state,
             time: TimeInfo::new(TimeZone::system(), Timestamp::now()),
@@ -172,7 +175,6 @@ impl Component for App {
             _history_listener,
             background_state,
             background,
-            _setup,
             _state_listener,
             _broadcast,
             _config_req: ws::Request::default(),
@@ -209,7 +211,7 @@ impl Component for App {
                     }
                 </div>
 
-                <ContextProvider<ws::Handle> context={self.ws.handle()}>
+                <HandleProvider context={self.ws.handle()}>
                 <ContextProvider<TimeInfo> context={self.time.clone()}>
                 <ContextProvider<TopLanguages> context={self.top_languages.clone()}>
                 <ContextProvider<Router> context={self.router.clone()}>
@@ -262,7 +264,7 @@ impl Component for App {
                 </ContextProvider<Router>>
                 </ContextProvider<TopLanguages>>
                 </ContextProvider<TimeInfo>>
-                </ContextProvider<ws::Handle>>
+                </HandleProvider>
             </>
         }
     }
@@ -270,7 +272,7 @@ impl Component for App {
 
 impl App {
     fn load(&mut self, ctx: &Context<Self>) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 
@@ -293,8 +295,10 @@ impl App {
 
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
-            Msg::Channel(result) => {
-                self.channel = result?;
+            Msg::Channel(event) => {
+                if let ws::ChannelEvent::Failed(error) = event {
+                    return Err(error.into());
+                }
                 self.load(ctx);
                 Ok(true)
             }

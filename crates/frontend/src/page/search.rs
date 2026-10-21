@@ -1,8 +1,8 @@
 use musli_web::web03::prelude::*;
+use musli_web::yew023::ContextExt;
 use wasm_bindgen::JsCast as _;
 use yew::prelude::*;
 
-use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::help;
@@ -24,14 +24,13 @@ pub(crate) struct Search {
     /// can over-report).
     end: bool,
     input: NodeRef,
-    _setup: SetupChannel,
     _broadcast: ws::Listener,
     _search_req: ws::Request,
     _track_req: ws::Request,
 }
 
 pub(crate) enum Msg {
-    Channel(Result<ws::Channel, ws::Error>),
+    Channel(ws::ChannelEvent),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     QueryInput(String),
     SelectionChanged(MediaSelection),
@@ -55,12 +54,12 @@ impl Component for Search {
     type Properties = Props;
 
     fn create(ctx: &Context<Self>) -> Self {
-        let (ws, _) = ctx
-            .link()
-            .context::<ws::Handle>(Callback::noop())
-            .expect("Expected ws::Handle in context");
+        let ws = ctx.handle();
 
-        let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
+        let channel = ws
+            .channel()
+            .on_change(ctx.link().callback(Msg::Channel))
+            .open();
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
         let (background, _) = ctx
@@ -74,7 +73,7 @@ impl Component for Search {
             .expect("Expected router in context");
 
         Self {
-            channel: ws::Channel::default(),
+            channel,
             background,
             router,
             query: ctx.props().filter.clone(),
@@ -85,7 +84,6 @@ impl Component for Search {
             loading: false,
             end: false,
             input: NodeRef::default(),
-            _setup,
             _broadcast,
             _search_req: ws::Request::default(),
             _track_req: ws::Request::default(),
@@ -180,14 +178,17 @@ impl Component for Search {
 impl Search {
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
-            Msg::Channel(result) => {
-                self.channel = result?;
+            Msg::Channel(event) => {
+                if let ws::ChannelEvent::Failed(error) = event {
+                    return Err(error.into());
+                }
                 self.page = 0;
                 Ok(self.send_search(ctx, self.page))
             }
             Msg::AppBroadcast(packet) => {
-                let event = packet?.decode_event()?;
-                if event.channel == self.channel.id() {
+                let packet = packet?;
+                let event = packet.decode_event()?;
+                if packet.is_from(self.channel.id()) {
                     return Ok(false);
                 }
                 match event.kind {
@@ -259,7 +260,7 @@ impl Search {
                 Ok(true)
             }
             Msg::TrackShow(slug, remote) => {
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._track_req = self
                         .channel
                         .request()
@@ -271,7 +272,7 @@ impl Search {
                 Ok(false)
             }
             Msg::TrackMovie(slug, remote) => {
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._track_req = self
                         .channel
                         .request()
@@ -305,7 +306,7 @@ impl Search {
     fn send_search(&mut self, ctx: &Context<Self>, page: usize) -> bool {
         let no_kind = !self.selection.shows && !self.selection.movies;
 
-        if self.query.is_empty() || no_kind || self.channel.id() == ws::ChannelId::NONE {
+        if self.query.is_empty() || no_kind || !self.channel.is_open() {
             self.loading = false;
             return true;
         }

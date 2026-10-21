@@ -3,9 +3,9 @@ use std::collections::HashSet;
 use api::TimeInfo;
 use auth::yew023::{AuthContext, AuthSubscription};
 use musli_web::web03::prelude::*;
+use musli_web::yew023::ContextExt;
 use yew::prelude::*;
 
-use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::flags;
@@ -32,7 +32,7 @@ pub(crate) struct Props {
 
 pub(crate) enum Msg {
     Auth(AuthContext),
-    Channel(Result<ws::Channel, ws::Error>),
+    Channel(ws::ChannelEvent),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     MovieLoaded(Result<ws::Packet<api::GetMovieReleases>, ws::Error>),
     EpisodeLoaded(Result<ws::Packet<api::GetEpisodeReleases>, ws::Error>),
@@ -52,7 +52,6 @@ pub(crate) enum Msg {
 pub(crate) struct ReleaseModal {
     auth: AuthSubscription,
     channel: ws::Channel,
-    _setup: SetupChannel,
     _broadcast: ws::Listener,
     _req: ws::Request,
     _site_req: ws::Request,
@@ -80,10 +79,7 @@ impl Component for ReleaseModal {
     type Properties = Props;
 
     fn create(ctx: &Context<Self>) -> Self {
-        let (ws, _) = ctx
-            .link()
-            .context::<ws::Handle>(Callback::noop())
-            .expect("Expected ws::Handle in context");
+        let ws = ctx.handle();
 
         let (background, _) = ctx
             .link()
@@ -95,13 +91,15 @@ impl Component for ReleaseModal {
             .context::<TimeInfo>(ctx.link().callback(Msg::SetTime))
             .expect("Expected TimeInfo in context");
 
-        let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
+        let channel = ws
+            .channel()
+            .on_change(ctx.link().callback(Msg::Channel))
+            .open();
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
         Self {
             auth: AuthSubscription::new(ctx, Msg::Auth),
-            channel: ws::Channel::default(),
-            _setup,
+            channel,
             _broadcast,
             _req: ws::Request::default(),
             _site_req: ws::Request::default(),
@@ -146,17 +144,20 @@ impl ReleaseModal {
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
             Msg::Auth(auth) => Ok(self.auth.set(auth)),
-            Msg::Channel(result) => {
-                self.channel = result?;
+            Msg::Channel(event) => {
+                if let ws::ChannelEvent::Failed(error) = event {
+                    return Err(error.into());
+                }
                 self.load(ctx);
                 self.load_config(ctx);
                 Ok(true)
             }
             Msg::AppBroadcast(packet) => {
-                let event = packet?.decode_event()?;
+                let packet = packet?;
+                let event = packet.decode_event()?;
 
                 // Sync broadcasts originate from another channel; ignore our own.
-                if event.channel == self.channel.id() {
+                if packet.is_from(self.channel.id()) {
                     return Ok(false);
                 }
 
@@ -271,7 +272,7 @@ impl ReleaseModal {
 
     /// Request this target's releases on the current channel.
     fn load(&mut self, ctx: &Context<Self>) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 
@@ -294,7 +295,7 @@ impl ReleaseModal {
     /// Request the default filters, and for an administrator the system
     /// configuration resent on a global edit.
     fn load_config(&mut self, ctx: &Context<Self>) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 
@@ -326,7 +327,7 @@ impl ReleaseModal {
 
     /// Persist the per-media override (`None` reverts to the global default).
     fn send_override(&mut self, ctx: &Context<Self>, filters: Option<api::FilterRules>) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 
@@ -361,7 +362,7 @@ impl ReleaseModal {
 
     /// Persist the global config after a global-default edit.
     fn send_global(&mut self, ctx: &Context<Self>) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 

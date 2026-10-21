@@ -1,10 +1,10 @@
 use api::TimeInfo;
 use auth::yew023::{AuthContext, AuthSubscription};
 use musli_web::web03::prelude::*;
+use musli_web::yew023::ContextExt;
 use yew::prelude::*;
 
 use super::detail::{RemoteMsg, RemoteUpdate, Remotes};
-use crate::SetupChannel;
 use crate::active_tasks::SyncTarget;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
@@ -36,7 +36,6 @@ pub(crate) struct PersonDetail {
     _time_handle: ContextHandle<TimeInfo>,
     background: Background,
     router: Router,
-    _setup: SetupChannel,
     _broadcast: ws::Listener,
     _person_req: ws::Request,
     _credits_req: ws::Request,
@@ -47,7 +46,7 @@ pub(crate) struct PersonDetail {
 
 pub(crate) enum Msg {
     Auth(AuthContext),
-    Channel(Result<ws::Channel, ws::Error>),
+    Channel(ws::ChannelEvent),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     PersonLoaded(Result<ws::Packet<api::GetPerson>, ws::Error>),
     CreditsLoaded(Result<ws::Packet<api::ListPersonCredits>, ws::Error>),
@@ -83,12 +82,12 @@ impl Component for PersonDetail {
     type Properties = Props;
 
     fn create(ctx: &Context<Self>) -> Self {
-        let (ws, _) = ctx
-            .link()
-            .context::<ws::Handle>(Callback::noop())
-            .expect("Expected ws::Handle in context");
+        let ws = ctx.handle();
 
-        let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
+        let channel = ws
+            .channel()
+            .on_change(ctx.link().callback(Msg::Channel))
+            .open();
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
         let (background, _) = ctx
@@ -108,7 +107,7 @@ impl Component for PersonDetail {
 
         Self {
             auth: AuthSubscription::new(ctx, Msg::Auth),
-            channel: ws::Channel::default(),
+            channel,
             person: PersonState::Loading,
             credits: Vec::new(),
             remotes: Remotes::default(),
@@ -121,7 +120,6 @@ impl Component for PersonDetail {
             _time_handle,
             background,
             router,
-            _setup,
             _broadcast,
             _person_req: ws::Request::default(),
             _credits_req: ws::Request::default(),
@@ -192,19 +190,22 @@ impl PersonDetail {
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
             Msg::Auth(auth) => Ok(self.auth.set(auth)),
-            Msg::Channel(result) => {
-                self.channel = result?;
+            Msg::Channel(event) => {
+                if let ws::ChannelEvent::Failed(error) = event {
+                    return Err(error.into());
+                }
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self.load(ctx);
                 }
 
                 Ok(true)
             }
             Msg::AppBroadcast(packet) => {
-                let event = packet?.decode_event()?;
+                let packet = packet?;
+                let event = packet.decode_event()?;
 
-                if event.channel == self.channel.id() {
+                if packet.is_from(self.channel.id()) {
                     return Ok(false);
                 }
 
@@ -212,14 +213,14 @@ impl PersonDetail {
 
                 match &event.kind {
                     api::AppEventKind::PersonChanged { person_id } if *person_id == id => {
-                        if self.channel.id() != ws::ChannelId::NONE {
+                        if self.channel.is_open() {
                             self.load(ctx);
                         }
                         Ok(false)
                     }
                     // A person's filmography changes when a show/movie's credits sync.
                     api::AppEventKind::CreditsChanged { .. } => {
-                        if self.channel.id() != ws::ChannelId::NONE {
+                        if self.channel.is_open() {
                             self.load(ctx);
                         }
                         Ok(false)
@@ -274,7 +275,7 @@ impl PersonDetail {
             Msg::SyncPerson => {
                 let id = ctx.props().person_id;
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._sync_req = self
                         .channel
                         .request()
@@ -312,7 +313,7 @@ impl PersonDetail {
             Msg::DeletePerson => {
                 let id = ctx.props().person_id;
 
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._delete_req = self
                         .channel
                         .request()
@@ -366,7 +367,7 @@ impl PersonDetail {
     }
 
     fn load(&mut self, ctx: &Context<Self>) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 

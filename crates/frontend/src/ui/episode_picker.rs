@@ -4,8 +4,8 @@ use web_sys::Event;
 use yew::prelude::*;
 
 use musli_web::web03::prelude::*;
+use musli_web::yew023::ContextExt;
 
-use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext as _, Error, Message};
 use crate::ui::{Button, FormRow, Variant};
@@ -23,14 +23,13 @@ pub(crate) struct EpisodePicker {
     // Ensures the timestamp-based best match only resolves once.
     did_best_match: bool,
     _time_handle: ContextHandle<api::TimeInfo>,
-    _setup: SetupChannel,
     _seasons_req: ws::Request,
     _episodes_req: ws::Request,
     _best_match_req: ws::Request,
 }
 
 pub(crate) enum Msg {
-    Channel(Result<ws::Channel, ws::Error>),
+    Channel,
     SelectSeason(api::SeasonNumber),
     SeasonsLoaded(Result<ws::Packet<api::ListSeasons>, ws::Error>),
     EpisodesLoaded(Result<ws::Packet<api::ListEpisodes>, ws::Error>),
@@ -58,10 +57,7 @@ impl Component for EpisodePicker {
     type Properties = Props;
 
     fn create(ctx: &Context<Self>) -> Self {
-        let (ws, _) = ctx
-            .link()
-            .context::<ws::Handle>(Callback::noop())
-            .expect("Expected ws::Handle in context");
+        let ws = ctx.handle();
 
         let (background, _) = ctx
             .link()
@@ -73,10 +69,13 @@ impl Component for EpisodePicker {
             .context::<api::TimeInfo>(Callback::noop())
             .expect("Expected api::TimeInfo in context");
 
-        let _setup = SetupChannel::new(ws, ctx.link().callback(Msg::Channel));
+        let channel = ws
+            .channel()
+            .on_change(ctx.link().callback(|_| Msg::Channel))
+            .open();
 
         Self {
-            channel: ws::Channel::default(),
+            channel,
             seasons: Vec::new(),
             episodes: Vec::new(),
             season: ctx.props().season,
@@ -85,7 +84,6 @@ impl Component for EpisodePicker {
             background,
             did_best_match: false,
             _time_handle,
-            _setup,
             _seasons_req: ws::Request::default(),
             _episodes_req: ws::Request::default(),
             _best_match_req: ws::Request::default(),
@@ -166,10 +164,8 @@ impl Component for EpisodePicker {
 impl EpisodePicker {
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
-            Msg::Channel(result) => {
-                self.channel = result.unwrap_or_default();
-
-                if self.channel.id() != ws::ChannelId::NONE {
+            Msg::Channel => {
+                if self.channel.is_open() {
                     self.load_seasons(ctx);
 
                     if let (Some(ts), false) = (ctx.props().timestamp, self.did_best_match) {
@@ -241,7 +237,7 @@ impl EpisodePicker {
     }
 
     fn load_best_match(&mut self, ctx: &Context<Self>, timestamp: api::Timestamp) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 
@@ -257,7 +253,7 @@ impl EpisodePicker {
     }
 
     fn load_seasons(&mut self, ctx: &Context<Self>) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 
@@ -272,7 +268,7 @@ impl EpisodePicker {
     }
 
     fn load_episodes(&mut self, ctx: &Context<Self>, season: api::SeasonNumber) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 

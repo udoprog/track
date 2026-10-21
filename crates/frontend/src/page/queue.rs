@@ -2,9 +2,9 @@ use auth::yew023::{AuthContext, AuthSubscription};
 use gloo::render::{AnimationFrame, request_animation_frame};
 use gloo::timers::callback::Interval;
 use musli_web::web03::prelude::*;
+use musli_web::yew023::ContextExt;
 use yew::prelude::*;
 
-use crate::SetupChannel;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{QueueFilter, QueueQuery, Route, Router, ShowDetailQuery};
@@ -77,7 +77,6 @@ pub(crate) struct Queue {
     /// events renders once.
     frame: Option<AnimationFrame>,
     _tick: Interval,
-    _setup: SetupChannel,
     _broadcast: ws::Listener,
     _list_req: ws::Request,
     _sync_req: ws::Request,
@@ -87,7 +86,7 @@ pub(crate) struct Queue {
 
 pub(crate) enum Msg {
     Auth(AuthContext),
-    Channel(Result<ws::Channel, ws::Error>),
+    Channel(ws::ChannelEvent),
     AppBroadcast(Result<ws::Packet<api::AppBroadcast>, ws::Error>),
     TasksLoaded(Result<ws::Packet<api::ListTasks>, ws::Error>),
     Frame,
@@ -115,12 +114,12 @@ impl Component for Queue {
     type Properties = Props;
 
     fn create(ctx: &Context<Self>) -> Self {
-        let (ws, _) = ctx
-            .link()
-            .context::<ws::Handle>(Callback::noop())
-            .expect("Expected ws::Handle in context");
+        let ws = ctx.handle();
 
-        let _setup = SetupChannel::new(ws.clone(), ctx.link().callback(Msg::Channel));
+        let channel = ws
+            .channel()
+            .on_change(ctx.link().callback(Msg::Channel))
+            .open();
         let _broadcast = ws.on_broadcast(ctx.link().callback(Msg::AppBroadcast));
 
         let (background, _) = ctx
@@ -140,7 +139,7 @@ impl Component for Queue {
 
         Self {
             auth: AuthSubscription::new(ctx, Msg::Auth),
-            channel: ws::Channel::default(),
+            channel,
             background,
             router,
             entries: Vec::new(),
@@ -148,7 +147,6 @@ impl Component for Queue {
             now: api::Timestamp::now(),
             frame: None,
             _tick,
-            _setup,
             _broadcast,
             _list_req: ws::Request::default(),
             _sync_req: ws::Request::default(),
@@ -200,9 +198,11 @@ impl Queue {
     fn try_update(&mut self, ctx: &Context<Self>, msg: Msg) -> Result<bool, Error> {
         match msg {
             Msg::Auth(auth) => Ok(self.auth.set(auth)),
-            Msg::Channel(result) => {
-                self.channel = result?;
-                if self.channel.id() != ws::ChannelId::NONE {
+            Msg::Channel(event) => {
+                if let ws::ChannelEvent::Failed(error) = event {
+                    return Err(error.into());
+                }
+                if self.channel.is_open() {
                     self.load(ctx);
                 } else {
                     self.entries.clear();
@@ -291,7 +291,7 @@ impl Queue {
                 Ok(!self.entries.is_empty())
             }
             Msg::SyncAll => {
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._sync_req = self
                         .channel
                         .request()
@@ -307,7 +307,7 @@ impl Queue {
                 Ok(false)
             }
             Msg::Remove(id) => {
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._remove_req = self
                         .channel
                         .request()
@@ -323,7 +323,7 @@ impl Queue {
                 Ok(false)
             }
             Msg::Bump(id) => {
-                if self.channel.id() != ws::ChannelId::NONE {
+                if self.channel.is_open() {
                     self._bump_req = self
                         .channel
                         .request()
@@ -346,7 +346,7 @@ impl Queue {
     }
 
     fn load(&mut self, ctx: &Context<Self>) {
-        if self.channel.id() == ws::ChannelId::NONE {
+        if !self.channel.is_open() {
             return;
         }
 
