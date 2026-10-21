@@ -289,7 +289,7 @@ impl ::sqll::FromColumn<'_> for Timestamp {
         let ms = i64::from_column(stmt, index)?;
         JiffTimestamp::from_millisecond(ms)
             .map(Timestamp)
-            .map_err(|e| ::sqll::Error::custom(format!("invalid timestamp ms {ms}: {e}")))
+            .map_err(|e| ::sqll::Error::mismatch(format_args!("invalid timestamp ms {ms}: {e}")))
     }
 }
 
@@ -786,7 +786,7 @@ impl ::sqll::FromColumn<'_> for Date {
 
         JiffDate::new(year, month, day)
             .map(Date)
-            .map_err(|e| ::sqll::Error::custom(format!("invalid date integer {n}: {e}")))
+            .map_err(|e| ::sqll::Error::mismatch(format_args!("invalid date integer {n}: {e}")))
     }
 }
 

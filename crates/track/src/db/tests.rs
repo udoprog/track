@@ -120,6 +120,50 @@ async fn transaction_rolls_back_on_error_and_panic() -> Result<()> {
     Ok(())
 }
 
+/// The connection settings of each mode reach the write connection and the
+/// read connections alike.
+#[tokio::test]
+async fn open_modes_set_connection_pragmas() -> Result<()> {
+    fn pragmas(c: &sqll::Connection) -> Result<(i64, String, i64, i64)> {
+        let mut int = |pragma: &str| -> Result<i64> {
+            let value = c.prepare(format!("PRAGMA {pragma}"))?.first(())?;
+            value.context("pragma row")
+        };
+
+        let foreign_keys = int("foreign_keys")?;
+        let synchronous = int("synchronous")?;
+        let busy_timeout = int("busy_timeout")?;
+
+        let journal_mode = c.prepare("PRAGMA journal_mode")?.first(())?;
+        let journal_mode = journal_mode.context("pragma row")?;
+        Ok((foreign_keys, journal_mode, synchronous, busy_timeout))
+    }
+
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("test.db");
+
+    for (mode, write, read) in [
+        (OpenMode::Bulk, (1, "off", 0, 0), (1, "delete", 0, 0)),
+        (OpenMode::Normal, (1, "wal", 1, 5000), (1, "wal", 1, 5000)),
+        (OpenMode::ReadOnly, (1, "wal", 2, 5000), (1, "wal", 2, 5000)),
+    ] {
+        let db = Database::open(&path, mode, 1)?;
+
+        let w = db.inner.write(|s| pragmas(s.connection())).await??;
+        let r = db.inner.read(|s| pragmas(s.connection())).await??;
+
+        for (actual, expected) in [(w, write), (r, read)] {
+            assert_eq!(
+                (actual.0, actual.1.as_str(), actual.2, actual.3),
+                expected,
+                "{mode:?}"
+            );
+        }
+    }
+
+    Ok(())
+}
+
 fn ms(millis: i64) -> Timestamp {
     Timestamp::from_jiff(jiff::Timestamp::from_millisecond(millis).unwrap())
 }
@@ -1129,24 +1173,31 @@ fn failed_migration_is_rolled_back() -> Result<()> {
     Ok(())
 }
 
-/// An empty database whose base schema fails to apply is left empty, so the
-/// next open builds it from the base again.
+/// A database whose base schema fails to apply is left with nothing but an
+/// empty migrations table, so the next open builds it from the base again.
 #[test]
 fn failed_base_schema_leaves_the_database_empty() -> Result<()> {
     let c = OpenOptions::new().read_write().create().open_in_memory()?;
 
-    // A view is not a table, so the database still reads as empty, but it
-    // takes a name the base schema creates.
+    // Takes a name the base schema creates.
     c.execute("CREATE VIEW shows AS SELECT 1")?;
 
     assert!(do_migrations(&c).is_err());
     assert_eq!(
         texts(&c, "SELECT name FROM sqlite_master WHERE type = 'table'")?,
+        ["migrations"]
+    );
+    assert_eq!(
+        texts(&c, "SELECT id FROM migrations")?,
         Vec::<String>::new()
     );
 
     c.execute("DROP VIEW shows")?;
     do_migrations(&c)?;
+
+    let mut ids: Vec<String> = Migrations::iter().map(|id| id.to_string()).collect();
+    ids.sort();
+    assert_eq!(texts(&c, "SELECT id FROM migrations ORDER BY id")?, ids);
     Ok(())
 }
 

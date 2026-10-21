@@ -4,9 +4,9 @@
 use core::ops::{Deref, DerefMut};
 use core::str;
 
-use std::panic::{self, AssertUnwindSafe};
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{Context as _, Result, anyhow};
 use std::collections::{HashMap, HashSet};
@@ -18,11 +18,15 @@ use api::{
     SeasonNumber, ShowId, Timestamp, UserId, WatchedId, WatchedKind,
 };
 use rust_embed::RustEmbed;
-use sqll::{OpenOptions, Pool, PoolBuilder, Row, Statements, TypedStatement};
-use tokio::task::spawn_blocking;
+use sqll::{
+    JournalMode, OpenOptions, Pool, PoolBuilder, Row, Statements, Synchronous, TransactionBehavior,
+    TypedStatement,
+};
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod value_tests;
 
 pub(crate) mod config;
 use self::config::Pref;
@@ -35,6 +39,8 @@ CREATE TABLE IF NOT EXISTS migrations (
     applied_at TEXT NOT NULL
 );
 "#;
+
+const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(RustEmbed)]
 #[folder = "migrations"]
@@ -1249,10 +1255,6 @@ pub(crate) struct InnerRead {
     watched_episode_exists: TypedStatement<(WatchedId,), (i64,)>,
     #[sql = "SELECT 1 FROM watched_movies WHERE id = ? LIMIT 1"]
     watched_movie_exists: TypedStatement<(WatchedId,), (i64,)>,
-    #[sql = "BEGIN"]
-    begin: TypedStatement<(), ()>,
-    #[sql = "COMMIT"]
-    commit: TypedStatement<(), ()>,
     #[sql = "SELECT 1 FROM show_remotes WHERE id = ? OR (show_id = ? AND source = ? AND value = ?) LIMIT 1"]
     show_remote_exists: TypedStatement<(RemoteId, ShowId, RemoteSource, RemoteValue), (i64,)>,
     #[sql = "SELECT 1 FROM movie_remotes WHERE id = ? OR (movie_id = ? AND source = ? AND value = ?) LIMIT 1"]
@@ -1373,11 +1375,6 @@ pub(crate) struct InnerWrite {
     auth_write: auth::sqll015::Write,
     #[sql(statements)]
     xem_write: xem::Write,
-
-    #[sql = "BEGIN IMMEDIATE"]
-    begin_immediate: TypedStatement<(), ()>,
-    #[sql = "ROLLBACK"]
-    rollback: TypedStatement<(), ()>,
 
     // shows
     #[sql = "INSERT INTO shows (id, first_air)"]
@@ -1787,21 +1784,21 @@ pub(crate) struct InnerWrite {
     #[sql = "VALUES (?, ?, ?, ?)"]
     insert_watched_movie: TypedStatement<(WatchedId, UserId, Timestamp, MovieId), ()>,
 
-    // backup import; RETURNING yields a row only when the insert happened
+    // backup import; each reports whether the insert happened by its change count
     #[sql = "INSERT OR IGNORE INTO shows (id) VALUES (?)"]
     ensure_show: TypedStatement<(ShowId,), ()>,
     #[sql = "INSERT OR IGNORE INTO movies (id) VALUES (?)"]
     ensure_movie: TypedStatement<(MovieId,), ()>,
-    #[sql = "INSERT OR IGNORE INTO user_tracked_shows (user_id, show_id) VALUES (?, ?) RETURNING 1"]
-    import_tracked_show: TypedStatement<(UserId, ShowId), (i64,)>,
-    #[sql = "INSERT OR IGNORE INTO user_tracked_movies (user_id, movie_id) VALUES (?, ?) RETURNING 1"]
-    import_tracked_movie: TypedStatement<(UserId, MovieId), (i64,)>,
-    #[sql = "INSERT OR IGNORE INTO user_config (user_id, key, value) VALUES (?, ?, ?) RETURNING 1"]
-    import_user_config: TypedStatement<(UserId, PreferenceKey, String), (i64,)>,
-    #[sql = "INSERT OR IGNORE INTO user_show_config (user_id, show_id, key, value) VALUES (?, ?, ?, ?) RETURNING 1"]
-    import_user_show_config: TypedStatement<(UserId, ShowId, PreferenceKey, String), (i64,)>,
-    #[sql = "INSERT OR IGNORE INTO user_movie_config (user_id, movie_id, key, value) VALUES (?, ?, ?, ?) RETURNING 1"]
-    import_user_movie_config: TypedStatement<(UserId, MovieId, PreferenceKey, String), (i64,)>,
+    #[sql = "INSERT OR IGNORE INTO user_tracked_shows (user_id, show_id) VALUES (?, ?)"]
+    import_tracked_show: TypedStatement<(UserId, ShowId), ()>,
+    #[sql = "INSERT OR IGNORE INTO user_tracked_movies (user_id, movie_id) VALUES (?, ?)"]
+    import_tracked_movie: TypedStatement<(UserId, MovieId), ()>,
+    #[sql = "INSERT OR IGNORE INTO user_config (user_id, key, value) VALUES (?, ?, ?)"]
+    import_user_config: TypedStatement<(UserId, PreferenceKey, String), ()>,
+    #[sql = "INSERT OR IGNORE INTO user_show_config (user_id, show_id, key, value) VALUES (?, ?, ?, ?)"]
+    import_user_show_config: TypedStatement<(UserId, ShowId, PreferenceKey, String), ()>,
+    #[sql = "INSERT OR IGNORE INTO user_movie_config (user_id, movie_id, key, value) VALUES (?, ?, ?, ?)"]
+    import_user_movie_config: TypedStatement<(UserId, MovieId, PreferenceKey, String), ()>,
     #[sql = "DELETE FROM watched_episodes WHERE user_id = ? AND id = ?"]
     delete_watched_episode: TypedStatement<(UserId, WatchedId), ()>,
     #[sql = "DELETE FROM watched_movies WHERE user_id = ? AND id = ?"]
@@ -2141,30 +2138,6 @@ impl InnerRead {
 }
 
 impl InnerWrite {
-    /// Run `f` inside `BEGIN IMMEDIATE` / `COMMIT`, rolling back when it fails
-    /// or panics so the connection is never left inside a transaction.
-    fn transaction<T>(&mut self, f: impl FnOnce(&mut Self) -> Result<T>) -> Result<T> {
-        self.begin_immediate.execute(())?;
-
-        let result = panic::catch_unwind(AssertUnwindSafe(|| f(self)));
-
-        let result = match result {
-            Ok(Ok(value)) => match self.commit.execute(()) {
-                Ok(_) => return Ok(value),
-                Err(e) => Err(e.into()),
-            },
-            Ok(Err(e)) => Err(e),
-            Err(payload) => {
-                _ = self.rollback.execute(());
-                panic::resume_unwind(payload);
-            }
-        };
-
-        // Fails only when SQLite already rolled the transaction back itself.
-        _ = self.rollback.execute(());
-        result
-    }
-
     /// Delete the show's seasons not in `kept`, with their episodes.
     pub(crate) fn prune_seasons(
         &mut self,
@@ -3191,26 +3164,23 @@ impl Database {
             do_migrations(&c).context("Running migrations")?;
         }
 
-        let options = OpenOptions::new();
-
-        let builder = PoolBuilder::new(options, read_concurrency)
-            .with_write_setup(move |c| ensure_mode(c, mode))
-            .with_read_setup(move |c| ensure_mode(c, mode));
+        let pool = PoolBuilder::new(open_options(mode), read_concurrency).open(path)?;
 
         Ok(Self {
-            inner: Arc::new(builder.open(path)?),
+            inner: Arc::new(pool),
         })
     }
 
-    /// Run `f` on the write connection in one transaction (see
-    /// [`InnerWrite::transaction`]).
+    /// Run `f` on the write connection in one `BEGIN IMMEDIATE` transaction,
+    /// rolled back when it fails or panics.
     pub(crate) async fn transaction<T, F>(&self, f: F) -> Result<T>
     where
         F: FnOnce(&mut InnerWrite) -> Result<T> + Send + 'static,
         T: Send + 'static,
     {
-        let mut s = self.inner.clone().exclusive().await?;
-        spawn_blocking(move || InnerWrite::transaction(&mut s, f)).await?
+        self.inner
+            .write(move |s| s.transaction(|w, _| f(w)))
+            .await?
     }
 
     #[cfg(test)]
@@ -3270,9 +3240,7 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn show_id_by_remote(&self, remote: &Remote) -> Result<Option<ShowId>> {
         let remote = remote.clone();
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             s.show_id_by_remote
                 .bind((remote.source(), remote.value()))?
                 .first()
@@ -3286,8 +3254,7 @@ impl Database {
         &self,
         f: impl FnOnce(RemoteWrite<'_, O>) -> Result<()> + Send + 'static,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-        spawn_blocking(move || f(O::remotes(&mut s))).await?
+        self.inner.write(move |s| f(O::remotes(s))).await?
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -3406,9 +3373,7 @@ impl Database {
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn shows(&self, user: Option<UserId>) -> Result<Vec<api::Show>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let mut out: Vec<api::Show> = Vec::new();
             let mut id_to_idx: HashMap<ShowId, usize> = HashMap::new();
 
@@ -3506,9 +3471,7 @@ impl Database {
         user: Option<UserId>,
         id: ShowId,
     ) -> Result<Option<api::Show>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let Some(r) = s.show_by_id.bind((user, id))?.first()? else {
                 return Ok(None);
             };
@@ -3546,9 +3509,7 @@ impl Database {
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn delete_show(&self, id: ShowId) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             s.delete_show.execute((id,))?;
             Ok(())
         });
@@ -3563,9 +3524,7 @@ impl Database {
         id: ShowId,
         tracked: bool,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             if tracked {
                 s.track_show.execute((user, id))?;
             } else {
@@ -3580,9 +3539,7 @@ impl Database {
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn set_show_auto_sync(&self, id: ShowId, auto_sync: bool) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             s.set_show_auto_sync.execute((auto_sync, id))?;
             Ok(())
         });
@@ -3597,10 +3554,9 @@ impl Database {
         id: ShowId,
         language: api::Locale,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result =
-            spawn_blocking(move || s.set_show_pref(user, id, PreferenceKey::Language, language));
+        let result = self
+            .inner
+            .write(move |s| s.set_show_pref(user, id, PreferenceKey::Language, language));
 
         result.await?
     }
@@ -3612,9 +3568,7 @@ impl Database {
         id: ShowId,
         include_specials: IncludeSpecials,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             s.set_show_pref(user, id, PreferenceKey::IncludeSpecials, include_specials)
         });
 
@@ -3627,9 +3581,7 @@ impl Database {
         user: Option<UserId>,
         show_id: ShowId,
     ) -> Result<Vec<api::Season>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let mut out = Vec::new();
 
             let config = s.user_language(user)?;
@@ -3681,9 +3633,7 @@ impl Database {
         show_id: ShowId,
         timestamp: Timestamp,
     ) -> Result<Option<api::EpisodeMatch>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let row = s
                 .find_episode_by_timestamp
                 .bind((show_id, timestamp))?
@@ -3704,9 +3654,7 @@ impl Database {
         show_id: ShowId,
         season: SeasonNumber,
     ) -> Result<Vec<api::Episode>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let mut out = Vec::new();
             let mut idx_by_id = HashMap::new();
 
@@ -3767,10 +3715,8 @@ impl Database {
         user: Option<UserId>,
         id: EpisodeId,
     ) -> Result<Option<api::Episode>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
-            let s = &mut *s;
+        let result = self.inner.read(move |s| {
+            let s = &mut **s;
 
             let Some(r) = s.episode_by_id.bind((user, id))?.first()? else {
                 return Ok(None);
@@ -3810,9 +3756,7 @@ impl Database {
         &self,
         id: EpisodeId,
     ) -> Result<HashMap<RemoteSource, api::RemoteCache>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let mut out = HashMap::new();
             let mut stmt = s.episode_cache.bind((id,))?;
 
@@ -3837,9 +3781,7 @@ impl Database {
         source: RemoteSource,
         cache: Option<String>,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             match cache {
                 Some(cache) => s.set_episode_cache.execute((id, source, cache))?,
                 None => s.delete_episode_cache.execute((id, source))?,
@@ -3859,9 +3801,7 @@ impl Database {
         show_id: ShowId,
         source: RemoteSource,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             s.delete_episode_cache_for_show_source
                 .execute((source, show_id))?;
             Ok(())
@@ -3871,9 +3811,7 @@ impl Database {
     }
 
     pub(crate) async fn set_episode_synced_at(&self, id: EpisodeId, at: Timestamp) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             s.set_episode_synced_at.execute((at, id))?;
             Ok(())
         });
@@ -3896,9 +3834,7 @@ impl Database {
         let end = now.saturating_add(api::Duration::from_hours(hours));
         let cutoff = cutoff_timestamp(interval_hours);
 
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let mut out = Vec::new();
             let mut stmt = s.episodes_needing_air_sync.bind((start, end, cutoff))?;
 
@@ -3962,9 +3898,7 @@ impl Database {
         user: UserId,
         show_id: ShowId,
     ) -> Result<Vec<api::WatchedEpisode>> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             let mut out = Vec::new();
 
             let mut stmt = s.list_episodes_watched.bind((user, show_id))?;
@@ -3981,9 +3915,7 @@ impl Database {
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn episode_aired_by_id(&self, id: EpisodeId) -> Result<Option<Timestamp>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let stmt = s.episodes.episode_aired_by_id.bind((id,))?;
             Ok(stmt.first()?.flatten())
         });
@@ -3997,9 +3929,7 @@ impl Database {
         id: ShowId,
         air_date_filters: Option<api::FilterRules>,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             let text = air_date_filters.as_ref().map(config::encode_filter_rules);
             s.update_show_air_date_filters.execute((text, id))?;
             Ok(())
@@ -4015,9 +3945,7 @@ impl Database {
         numbering: Option<api::Numbering>,
     ) -> Result<()> {
         let text = numbering.as_ref().map(serde_json::to_string).transpose()?;
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             s.update_show_numbering.execute((text, id))?;
             Ok(())
         });
@@ -4127,9 +4055,7 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn movie_id_by_remote(&self, remote: &Remote) -> Result<Option<MovieId>> {
         let remote = remote.clone();
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             Ok(s.movie_id_by_remote
                 .bind((remote.source(), remote.value()))?
                 .first()?
@@ -4143,9 +4069,7 @@ impl Database {
     /// List every show and movie as slim [`api::MediaItem`]s, each tagged with
     /// its [`api::MediaKind`]. The frontend filters and sorts client-side.
     pub(crate) async fn media_items(&self, user: UserId) -> Result<Vec<api::MediaItem>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let mut out: Vec<api::MediaItem> = Vec::new();
 
             let config = s.user_language(user)?;
@@ -4326,9 +4250,7 @@ impl Database {
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn movies(&self, user: Option<UserId>) -> Result<Vec<api::Movie>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let mut out: Vec<api::Movie> = Vec::new();
             let mut id_to_idx: HashMap<MovieId, usize> = HashMap::new();
 
@@ -4425,9 +4347,7 @@ impl Database {
         user: Option<UserId>,
         id: MovieId,
     ) -> Result<Option<api::Movie>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let Some(r) = s.movie_by_id.bind((user, id))?.first()? else {
                 return Ok(None);
             };
@@ -4482,9 +4402,7 @@ impl Database {
     /// slot to when the movie became available to watch.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn earliest_movie_release(&self, id: MovieId) -> Result<Option<Timestamp>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let mut earliest: Option<Timestamp> = None;
 
             for ty in [ReleaseType::Digital, ReleaseType::Physical] {
@@ -4506,9 +4424,7 @@ impl Database {
         remote: &Remote,
     ) -> Result<Option<api::Show>> {
         let remote = remote.clone();
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let Some(row) = s
                 .shows_by_remote
                 .bind((user, remote.source(), remote.value()))?
@@ -4555,9 +4471,7 @@ impl Database {
         remote: &Remote,
     ) -> Result<Option<api::Movie>> {
         let remote = remote.clone();
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let Some(row) = s
                 .movie_by_remote
                 .bind((user, remote.source(), remote.value()))?
@@ -4600,9 +4514,7 @@ impl Database {
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn delete_movie(&self, id: MovieId) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             s.delete_movie.execute((id,))?;
             Ok(())
         });
@@ -4617,9 +4529,7 @@ impl Database {
         id: MovieId,
         tracked: bool,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             if tracked {
                 s.track_movie.execute((user, id))?;
             } else {
@@ -4634,9 +4544,7 @@ impl Database {
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn set_movie_auto_sync(&self, id: MovieId, auto_sync: bool) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             s.set_movie_auto_sync.execute((auto_sync, id))?;
             Ok(())
         });
@@ -4651,10 +4559,9 @@ impl Database {
         id: MovieId,
         language: api::Locale,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result =
-            spawn_blocking(move || s.set_movie_pref(user, id, PreferenceKey::Language, language));
+        let result = self
+            .inner
+            .write(move |s| s.set_movie_pref(user, id, PreferenceKey::Language, language));
 
         result.await?
     }
@@ -4665,9 +4572,7 @@ impl Database {
         id: MovieId,
         release_filters: Option<api::FilterRules>,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             let text = release_filters.as_ref().map(config::encode_filter_rules);
             s.set_movie_release_filters.execute((text, id))?;
             Ok(())
@@ -4683,9 +4588,7 @@ impl Database {
         user: Option<UserId>,
         person_id: PersonId,
     ) -> Result<Option<api::Person>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let Some(row) = s.person_row.bind((person_id,))?.first()? else {
                 return Ok(None);
             };
@@ -4752,9 +4655,7 @@ impl Database {
         interval_hours: u32,
     ) -> Result<Vec<(PersonId, Option<String>)>> {
         let cutoff = cutoff_timestamp(interval_hours);
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let mut out = Vec::new();
             let mut stmt = s.people_needing_sync.bind((cutoff,))?;
 
@@ -4817,9 +4718,7 @@ impl Database {
         person_id: PersonId,
         now: Timestamp,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             s.mark_person_synced.execute((now, person_id))?;
             Ok(())
         });
@@ -4852,9 +4751,7 @@ impl Database {
         offset: usize,
         limit: usize,
     ) -> Result<api::ListPersonsResponse> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let config = s.user_language(user)?;
             // One more than the page tells whether another page follows.
             let fetch = i64::try_from(limit.saturating_add(1)).unwrap_or(i64::MAX);
@@ -4947,10 +4844,8 @@ impl Database {
         /// as watching them back to back.
         const GROUP_GAP_MS: i64 = 6 * 60 * 60 * 1000;
 
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
-            let s = &mut *s;
+        let result = self.inner.read(move |s| {
+            let s = &mut **s;
             let config = s.user_language(user)?;
 
             let first = i64::try_from(req.offset).unwrap_or(i64::MAX);
@@ -5066,9 +4961,7 @@ impl Database {
         user: UserId,
         person_id: PersonId,
     ) -> Result<Vec<api::PersonCredit>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let config = s.user_language(user)?;
 
             let mut out: Vec<api::PersonCredit> = Vec::new();
@@ -5151,9 +5044,7 @@ impl Database {
         user: UserId,
         show_id: ShowId,
     ) -> Result<Vec<Credit>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let config = s.user_language(user)?;
             let (language, default) = s
                 .translations
@@ -5207,9 +5098,7 @@ impl Database {
         user: UserId,
         movie_id: MovieId,
     ) -> Result<Vec<Credit>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let config = s.user_language(user)?;
             let (language, default) = s
                 .translations
@@ -5261,9 +5150,7 @@ impl Database {
     /// Read the translated strings stored for a show.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn show_translations(&self, id: ShowId) -> Result<Vec<api::Translation>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let mut out = Vec::new();
             let mut stmt = s.translations.list_show_strings.bind((id,))?;
 
@@ -5285,9 +5172,7 @@ impl Database {
     /// Read the translated strings stored for a movie.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn movie_translations(&self, id: MovieId) -> Result<Vec<api::Translation>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let mut out = Vec::new();
             let mut stmt = s.translations.list_movie_strings.bind((id,))?;
 
@@ -5312,9 +5197,7 @@ impl Database {
         &self,
         id: EpisodeId,
     ) -> Result<Vec<api::Translation>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let mut out = Vec::new();
             let mut stmt = s.translations.list_episode_strings.bind((id,))?;
 
@@ -5336,9 +5219,7 @@ impl Database {
     /// Read the translated strings stored for a season.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn season_translations(&self, id: SeasonId) -> Result<Vec<api::Translation>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let mut out = Vec::new();
             let mut stmt = s.list_season_strings.bind((id,))?;
 
@@ -5361,9 +5242,7 @@ impl Database {
     /// prior selection. Returns which entity owns the image.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn select_image(&self, id: ImageId) -> Result<api::ImageOwner> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             // Ids are globally unique, so at most one candidate table owns this id.
             let show = s.show_image_owner_by_id.bind((id,))?.first()?;
             if let Some((show_id, kind)) = show {
@@ -5399,9 +5278,7 @@ impl Database {
         owner: api::ImageOwner,
         kind: ImageKind,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             match owner {
                 api::ImageOwner::Show(show_id) => {
                     s.delete_show_image_selection.execute((show_id, kind))?;
@@ -5506,9 +5383,7 @@ impl Database {
         &self,
         season_id: SeasonId,
     ) -> Result<Vec<api::MediaImage>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let mut out = Vec::new();
             let mut stmt = s.list_season_images.bind((season_id,))?;
 
@@ -5525,8 +5400,9 @@ impl Database {
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn show_id_for_season(&self, season_id: SeasonId) -> Result<Option<ShowId>> {
-        let mut s = self.inner.clone().shared().await?;
-        spawn_blocking(move || Ok(s.show_id_for_season.bind((season_id,))?.first()?)).await?
+        self.inner
+            .read(move |s| Ok(s.show_id_for_season.bind((season_id,))?.first()?))
+            .await?
     }
 
     /// The next episode in watch order of `show` in `scope`; see
@@ -5539,9 +5415,7 @@ impl Database {
         scope: api::EpisodeScope,
         now: Timestamp,
     ) -> Result<Option<EpisodeId>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let special = scope == api::EpisodeScope::Specials;
             let mut stmt = s.next_episodes.bind((user, Some(show), now))?;
 
@@ -5566,9 +5440,7 @@ impl Database {
         mark_time: MarkTime,
         now: Timestamp,
     ) -> Result<api::Watched> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             let (watched_id, timestamp) = match kind {
                 WatchedKind::Episode { episode, .. } => {
                     let timestamp = s.episodes.episode_mark_time(episode, mark_time, now)?;
@@ -5628,9 +5500,7 @@ impl Database {
         season: api::SeasonNumber,
         episode: u32,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             s.insert_watched_episode
                 .execute((id, user, timestamp, show_id, season, episode))?;
             Ok(())
@@ -5648,9 +5518,7 @@ impl Database {
         timestamp: Timestamp,
         movie_id: MovieId,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             s.insert_watched_movie
                 .execute((id, user, timestamp, movie_id))?;
             Ok(())
@@ -5665,15 +5533,9 @@ impl Database {
     /// written meanwhile cannot leave it inconsistent.
     #[tracing::instrument(skip(self))]
     pub(crate) async fn export_snapshot(&self) -> Result<ExportSnapshot> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
-            s.begin.execute(())?;
-            let snapshot = s.export_snapshot();
-            // Ends the read transaction even when a read failed, so the pooled
-            // connection is not left pinned to this snapshot.
-            s.commit.execute(())?;
-            snapshot
+        let result = self.inner.read(move |s| {
+            let (r, c) = s.split();
+            c.transaction_with(TransactionBehavior::Deferred, |_| r.export_snapshot())
         });
 
         result.await?
@@ -5685,11 +5547,9 @@ impl Database {
     /// when it does not exist yet.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn import_tracked_show(&self, user: UserId, show: ShowId) -> Result<bool> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             s.ensure_show.execute((show,))?;
-            Ok(s.import_tracked_show.bind((user, show))?.first()?.is_some())
+            Ok(s.import_tracked_show.execute((user, show))? > 0)
         });
 
         result.await?
@@ -5698,14 +5558,9 @@ impl Database {
     /// Track a movie for a user, creating a placeholder movie when missing.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn import_tracked_movie(&self, user: UserId, movie: MovieId) -> Result<bool> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             s.ensure_movie.execute((movie,))?;
-            Ok(s.import_tracked_movie
-                .bind((user, movie))?
-                .first()?
-                .is_some())
+            Ok(s.import_tracked_movie.execute((user, movie))? > 0)
         });
 
         result.await?
@@ -5719,14 +5574,9 @@ impl Database {
         key: PreferenceKey,
         value: String,
     ) -> Result<bool> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
-            Ok(s.import_user_config
-                .bind((user, key, value))?
-                .first()?
-                .is_some())
-        });
+        let result = self
+            .inner
+            .write(move |s| Ok(s.import_user_config.execute((user, key, value))? > 0));
 
         result.await?
     }
@@ -5741,14 +5591,11 @@ impl Database {
         key: PreferenceKey,
         value: String,
     ) -> Result<bool> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             s.ensure_show.execute((show,))?;
             Ok(s.import_user_show_config
-                .bind((user, show, key, value))?
-                .first()?
-                .is_some())
+                .execute((user, show, key, value))?
+                > 0)
         });
 
         result.await?
@@ -5764,14 +5611,11 @@ impl Database {
         key: PreferenceKey,
         value: String,
     ) -> Result<bool> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             s.ensure_movie.execute((movie,))?;
             Ok(s.import_user_movie_config
-                .bind((user, movie, key, value))?
-                .first()?
-                .is_some())
+                .execute((user, movie, key, value))?
+                > 0)
         });
 
         result.await?
@@ -5782,9 +5626,7 @@ impl Database {
     /// show, source and value, is left untouched.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn import_show_remote(&self, remote: ExportRemote<ShowId>) -> Result<bool> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             let exists = s
                 .show_remote_exists
                 .bind((remote.id, remote.owner, remote.source, &remote.value))?
@@ -5816,9 +5658,7 @@ impl Database {
     /// structure. Idempotent, as for shows.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn import_movie_remote(&self, remote: ExportRemote<MovieId>) -> Result<bool> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             let exists = s
                 .movie_remote_exists
                 .bind((remote.id, remote.owner, remote.source, &remote.value))?
@@ -5856,9 +5696,7 @@ impl Database {
         season: SeasonNumber,
         episode: u32,
     ) -> Result<bool> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             let exists = s.watched_episode_exists.bind((id,))?.first()?.is_some();
 
             if exists {
@@ -5881,9 +5719,7 @@ impl Database {
         timestamp: Timestamp,
         movie_id: MovieId,
     ) -> Result<bool> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             let exists = s.watched_movie_exists.bind((id,))?.first()?.is_some();
 
             if exists {
@@ -5906,9 +5742,7 @@ impl Database {
         season: api::SeasonNumber,
         episode: u32,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             s.move_watched_episode
                 .execute((season, episode, user, id))?;
             Ok(())
@@ -5923,9 +5757,7 @@ impl Database {
         user: UserId,
         show_id: ShowId,
     ) -> Result<Vec<api::OrphanedWatched>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let mut out = Vec::new();
 
             let mut stmt = s.list_orphaned_for_show.bind((user, show_id))?;
@@ -5949,9 +5781,7 @@ impl Database {
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn remove_watched(&self, user: UserId, id: WatchedId) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             s.delete_watched_episode.execute((user, id))?;
             s.delete_watched_movie.execute((user, id))?;
             Ok(())
@@ -5966,9 +5796,7 @@ impl Database {
         user: UserId,
         episode_id: EpisodeId,
     ) -> Result<Vec<api::Watched>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let mut out = Vec::new();
 
             let mut stmt = s.list_watched_by_episode.bind((user, episode_id))?;
@@ -5990,9 +5818,7 @@ impl Database {
         user: UserId,
         movie_id: MovieId,
     ) -> Result<Vec<api::Watched>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let mut out = Vec::new();
 
             let mut stmt = s.list_watched_by_movie.bind((user, movie_id))?;
@@ -6015,9 +5841,7 @@ impl Database {
         episode_id: api::EpisodeId,
         ts: Timestamp,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             s.upsert_pending_episode.execute((
                 PendingId::random(),
                 user,
@@ -6038,9 +5862,7 @@ impl Database {
         movie_id: api::MovieId,
         ts: Timestamp,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             s.upsert_pending_movie
                 .execute((PendingId::random(), user, ts, movie_id))?;
             Ok(())
@@ -6055,9 +5877,7 @@ impl Database {
         user: UserId,
         show_id: api::ShowId,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             s.delete_pending_episode.execute((user, show_id))?;
             Ok(())
         });
@@ -6073,9 +5893,7 @@ impl Database {
         episode_id: api::EpisodeId,
         now: Timestamp,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             let next = s.next_episode_after.bind((show_id, episode_id))?.first()?;
 
             match next {
@@ -6107,9 +5925,7 @@ impl Database {
         user: UserId,
         movie_id: api::MovieId,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             s.delete_pending_movie.execute((user, movie_id))?;
             Ok(())
         });
@@ -6235,9 +6051,9 @@ impl Database {
         show_id: api::ShowId,
         now: Timestamp,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || s.fill_pending_for_show(user, show_id, now));
+        let result = self
+            .inner
+            .write(move |s| s.fill_pending_for_show(user, show_id, now));
 
         result.await?
     }
@@ -6253,9 +6069,7 @@ impl Database {
         episode_id: api::EpisodeId,
         now: Timestamp,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             let already_has = s
                 .has_pending_episode_for_show
                 .bind((user, show_id))?
@@ -6294,9 +6108,7 @@ impl Database {
         user: UserId,
         show_id: api::ShowId,
     ) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             let stmt = s.has_pending_episode_for_show.bind((user, show_id))?;
 
             let already_has = stmt.first()?.is_some();
@@ -6330,9 +6142,7 @@ impl Database {
     pub(crate) async fn movie_pending_candidates(
         &self,
     ) -> Result<Vec<(UserId, MovieId, Option<api::FilterRules>)>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let mut out = Vec::new();
 
             let mut stmt = s.movie_pending_candidates.query()?;
@@ -6356,9 +6166,7 @@ impl Database {
     /// The release dates recorded for a movie.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn movie_releases(&self, id: MovieId) -> Result<Vec<api::MovieRelease>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let mut out = Vec::new();
 
             let mut stmt = s.list_movie_releases.bind((id,))?;
@@ -6382,9 +6190,7 @@ impl Database {
     /// The air dates recorded for a single episode, attributed to their source.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn episode_releases(&self, id: EpisodeId) -> Result<Vec<api::EpisodeRelease>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let mut out = Vec::new();
 
             let mut stmt = s.list_episode_releases.bind((id,))?;
@@ -6407,8 +6213,7 @@ impl Database {
 
     /// The owning show of an episode, if it exists.
     async fn episode_show_id(&self, id: EpisodeId) -> Result<Option<ShowId>> {
-        let mut s = self.inner.clone().shared().await?;
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             Ok(s.episode_natural_key
                 .bind((id,))?
                 .first()?
@@ -6465,8 +6270,7 @@ impl Database {
 
     /// A movie's release-date override filters, if any.
     async fn movie_release_filters(&self, id: MovieId) -> Result<Option<api::FilterRules>> {
-        let mut s = self.inner.clone().shared().await?;
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let text = s.movie_release_filters.bind((id,))?.first()?.flatten();
             Ok(text.as_deref().and_then(config::decode_filter_rules))
         });
@@ -6512,8 +6316,7 @@ impl Database {
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn set_show_synced_at(&self, id: ShowId, at: Timestamp) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             s.set_show_synced_at.execute((at, id))?;
             Ok(())
         });
@@ -6523,8 +6326,7 @@ impl Database {
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn set_movie_synced_at(&self, id: MovieId, at: Timestamp) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             s.set_movie_synced_at.execute((at, id))?;
             Ok(())
         });
@@ -6535,10 +6337,8 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn shows_needing_sync(&self, interval_hours: u32) -> Result<Vec<api::Show>> {
         let cutoff = cutoff_timestamp(interval_hours);
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
-            let s = &mut *s;
+        let result = self.inner.read(move |s| {
+            let s = &mut **s;
 
             let config = s.user_language(None)?;
 
@@ -6560,10 +6360,8 @@ impl Database {
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn movies_needing_sync(&self, interval_hours: u32) -> Result<Vec<api::Movie>> {
         let cutoff = cutoff_timestamp(interval_hours);
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
-            let s = &mut *s;
+        let result = self.inner.read(move |s| {
+            let s = &mut **s;
 
             let cfg = s.user_language(None)?;
 
@@ -6586,12 +6384,10 @@ impl Database {
     /// Unified pending list replacing pending_episodes + pending_movies.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn pending(&self, user: UserId, now: Timestamp) -> Result<Vec<api::Pending>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let mut out = Vec::new();
 
-            let s = &mut *s;
+            let s = &mut **s;
 
             let config = s.user_language(user)?;
 
@@ -6703,9 +6499,7 @@ impl Database {
         user: UserId,
         kind: api::WatchedKind,
     ) -> Result<api::PendingBefore> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || match kind {
+        let result = self.inner.read(move |s| match kind {
             api::WatchedKind::Episode { show, .. } => {
                 let pending = s.pending_for_show.bind((user, show))?.first()?;
 
@@ -6734,9 +6528,7 @@ impl Database {
         user: UserId,
         kind: api::PendingKind,
     ) -> Result<Option<api::Pending>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || match kind {
+        let result = self.inner.read(move |s| match kind {
             api::PendingKind::Episode { show, episode } => {
                 let Some((timestamp,)) = s
                     .pending_timestamp_for_episode
@@ -6864,12 +6656,10 @@ impl Database {
         let start = start.to_timestamp_at_midnight_zoned(time.tz().clone())?;
         let end = end.to_timestamp_at_midnight_zoned(time.tz().clone())?;
 
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let mut days_map = Vec::<(Date, DayShows, Vec<api::ScheduleMovie>)>::new();
 
-            let s = &mut *s;
+            let s = &mut **s;
 
             let config = s.user_language(user)?;
 
@@ -7006,8 +6796,7 @@ impl Database {
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn load_config(&self) -> Result<Config> {
-        let mut s = self.inner.clone().shared().await?;
-        spawn_blocking(move || s.load_config()).await?
+        self.inner.read(move |s| s.load_config()).await?
     }
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
@@ -7076,9 +6865,7 @@ impl Database {
     /// it in; [`api::Locale::DEFAULT`] (its original language) is left out.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn show_viewer_languages(&self, show_id: ShowId) -> Result<Vec<api::Locale>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let mut stmt = s.show_viewer_languages.bind((show_id,))?;
             let mut rows = Vec::new();
 
@@ -7099,9 +6886,7 @@ impl Database {
         &self,
         movie_id: MovieId,
     ) -> Result<Vec<api::Locale>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let mut stmt = s.movie_viewer_languages.bind((movie_id,))?;
             let mut rows = Vec::new();
 
@@ -7119,9 +6904,7 @@ impl Database {
     /// The user's preferences: the default for every key without a row.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn load_preferences(&self, user: UserId) -> Result<api::Preferences> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let mut preferences = api::Preferences::default();
             let mut stmt = s.list_user_config.bind((user,))?;
 
@@ -7165,9 +6948,7 @@ impl Database {
     /// most-used first, as recomputed by the periodic task.
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn get_state_top_languages(&self) -> Result<Vec<api::Locale>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let raw = s.get_state_top_languages.query()?.next().transpose()?;
 
             Ok(raw
@@ -7181,9 +6962,7 @@ impl Database {
 
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn set_state_top_languages(&self, languages: Vec<api::Locale>) -> Result<()> {
-        let mut s = self.inner.clone().exclusive().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.write(move |s| {
             let encoded = serde_json::to_string(&languages).unwrap_or_else(|_| "[]".to_string());
             s.set_state_top_languages.execute((encoded,))?;
             Ok(())
@@ -7197,9 +6976,7 @@ impl Database {
     /// `n` most-used codes, ordered most-used first (ties broken by code).
     #[tracing::instrument(skip(self), ret(level = "trace"))]
     pub(crate) async fn compute_top_languages(&self, n: usize) -> Result<Vec<api::Locale>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let mut counts: HashMap<api::Locale, usize> = HashMap::new();
 
             let mut tally = |language: api::Locale| {
@@ -7570,71 +7347,39 @@ fn is_empty(c: &sqll::Connection) -> Result<bool> {
 /// order. Each migration runs and is recorded in one transaction, so a failed
 /// one leaves the database as it was.
 fn do_migrations(c: &sqll::Connection) -> Result<()> {
-    let empty = is_empty(c).context("Checking whether the database is empty")?;
-
     let mut ids: Vec<_> = Migrations::iter().collect();
     ids.sort();
 
-    if empty {
-        // The migrations table is created in the same transaction: left behind
-        // alone, it would make the database read as not empty.
-        return in_transaction(c, || {
-            c.execute(MIGRATIONS_INIT)
-                .context("Creating migrations table")?;
+    let mut migrations = Vec::with_capacity(ids.len());
 
-            let Some((base, rest)) = ids.split_first() else {
-                return Ok(());
-            };
+    for id in ids {
+        let asset =
+            Migrations::get(&id).with_context(|| anyhow!("Migration file not found: {id}"))?;
 
-            apply(c, base.as_ref()).with_context(|| anyhow!("Migration {base}"))?;
+        let sql = String::from_utf8(asset.data.into_owned())
+            .with_context(|| anyhow!("Migration {id} is not valid UTF-8"))?;
 
-            for id in rest {
-                record(c, id.as_ref()).with_context(|| anyhow!("Recording migration {id}"))?;
-            }
-
-            Ok(())
-        });
+        migrations.push((id, sql));
     }
 
+    let Some((_, base)) = migrations.first() else {
+        return Ok(());
+    };
+
+    // Created here rather than by the runner, which would make `applied_at` an
+    // INTEGER column on new databases.
     c.execute(MIGRATIONS_INIT)
         .context("Creating migrations table")?;
 
-    let mut select = c.prepare("SELECT applied_at FROM migrations WHERE id = ?")?;
+    let applied = sqll::Migrations::new()
+        .fresh_schema(base)
+        .run(c, migrations.iter().map(|(id, sql)| (id, sql)))?;
 
-    for file in &ids {
-        let id = file.as_ref();
-
-        let result: Result<()> = (|| {
-            select.reset()?;
-            select.bind(id)?;
-
-            if let Some(applied_at) = select.next::<String>()? {
-                tracing::debug!(id, applied_at, "Migration already applied");
-                return Ok(());
-            }
-
-            in_transaction(c, || apply(c, id))
-        })();
-
-        result.with_context(|| anyhow!("Migration {id}"))?;
+    if applied > 0 {
+        tracing::info!(applied, "Migrations applied");
     }
 
     Ok(())
-}
-
-/// Run `f` inside `BEGIN IMMEDIATE` / `COMMIT` on `c`, rolling back when it
-/// fails.
-fn in_transaction(c: &sqll::Connection, f: impl FnOnce() -> Result<()>) -> Result<()> {
-    c.execute("BEGIN IMMEDIATE")?;
-
-    let result = f().and_then(|()| Ok(c.execute("COMMIT")?));
-
-    if result.is_err() {
-        // Fails only when SQLite already rolled the transaction back itself.
-        _ = c.execute("ROLLBACK");
-    }
-
-    result
 }
 
 /// Fail unless the database has every migration applied.
@@ -7670,39 +7415,13 @@ fn ensure_migrated(c: &sqll::Connection) -> Result<()> {
     Ok(())
 }
 
-/// Run one migration and record it.
-fn apply(c: &sqll::Connection, id: &str) -> Result<()> {
-    let asset = Migrations::get(id).with_context(|| anyhow!("Migration file not found: {id}"))?;
+/// The connection settings for `mode`, applied to every connection the pool
+/// opens.
+fn open_options(mode: OpenMode) -> OpenOptions {
+    let mut options = OpenOptions::new();
 
-    let sql = str::from_utf8(asset.data.as_ref())
-        .with_context(|| anyhow!("Migration {id} is not valid UTF-8"))?;
-
-    c.execute(sql)
-        .with_context(|| anyhow!("Executing migration {id}"))?;
-
-    record(c, id)?;
-
-    tracing::info!(id, "Migration applied");
-    Ok(())
-}
-
-/// Record a migration as applied without running it.
-fn record(c: &sqll::Connection, id: &str) -> Result<()> {
-    let now = Timestamp::now().to_string();
-
-    let mut insert = c.prepare("INSERT INTO migrations (id, applied_at) VALUES (?, ?)")?;
-
-    insert
-        .execute((id, now.as_str()))
-        .with_context(|| anyhow!("Updating migrations table {id}"))?;
-
-    Ok(())
-}
-
-fn ensure_mode(c: &mut sqll::Connection, mode: OpenMode) -> Result<(), sqll::Error> {
-    // Enforce foreign keys so ON DELETE CASCADE actually fires. Must run
-    // outside any transaction.
-    c.execute("PRAGMA foreign_keys = ON;")?;
+    // Enforce foreign keys so ON DELETE CASCADE actually fires.
+    options.foreign_keys(true);
 
     match mode {
         OpenMode::Normal => {
@@ -7711,22 +7430,20 @@ fn ensure_mode(c: &mut sqll::Connection, mode: OpenMode) -> Result<(), sqll::Err
             // checkpoints rather than on every commit. A committed transaction
             // can be lost only on OS crash / power loss, never corrupting the
             // db.
-            //
-            // Unlike journal_mode, synchronous is per-connection and not
-            // persisted in the database header, so it resets to the default
-            // (FULL) on every open and must simply be set unconditionally.
-            c.execute("PRAGMA journal_mode = wal;")?;
-            c.execute("PRAGMA synchronous = normal;")?;
-            c.execute("PRAGMA busy_timeout = 5000;")?;
+            options
+                .journal_mode(JournalMode::Wal)
+                .synchronous(Synchronous::Normal)
+                .busy_timeout(BUSY_TIMEOUT);
         }
         OpenMode::Bulk => {
-            c.execute("PRAGMA journal_mode = off;")?;
-            c.execute("PRAGMA synchronous = off;")?;
+            options
+                .journal_mode(JournalMode::Off)
+                .synchronous(Synchronous::Off);
         }
         OpenMode::ReadOnly => {
-            c.execute("PRAGMA busy_timeout = 5000;")?;
+            options.busy_timeout(BUSY_TIMEOUT);
         }
     }
 
-    Ok(())
+    options
 }

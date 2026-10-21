@@ -67,14 +67,27 @@ macros::define_id!(UserId);
     Debug, Clone, Copy, PartialEq, Eq, Hash, Encode, Decode, serde::Serialize, serde::Deserialize,
 )]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(
+    feature = "sqll",
+    derive(::sqll::FromColumn, ::sqll::BindValue),
+    sql(integer)
+)]
 pub enum RemoteSource {
+    #[cfg_attr(feature = "sqll", sql(value = 1))]
     Tvdb,
+    #[cfg_attr(feature = "sqll", sql(value = 2))]
     Tmdb,
+    #[cfg_attr(feature = "sqll", sql(value = 3))]
     Imdb,
+    #[cfg_attr(feature = "sqll", sql(value = 4))]
     Tvmaze,
+    #[cfg_attr(feature = "sqll", sql(value = 5))]
     Xem,
+    #[cfg_attr(feature = "sqll", sql(value = 6))]
     Anidb,
+    #[cfg_attr(feature = "sqll", sql(value = 7))]
     Scene,
+    #[cfg_attr(feature = "sqll", sql(value = 0, other))]
     Unknown,
 }
 
@@ -173,44 +186,6 @@ impl fmt::Display for RemoteSource {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_label())
-    }
-}
-
-#[cfg(feature = "sqll")]
-impl ::sqll::FromColumn<'_> for RemoteSource {
-    type Type = ::sqll::ty::Integer;
-
-    fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Integer) -> ::sqll::Result<Self> {
-        let s = u32::from_column(stmt, index)?;
-
-        match s {
-            1 => Ok(RemoteSource::Tvdb),
-            2 => Ok(RemoteSource::Tmdb),
-            3 => Ok(RemoteSource::Imdb),
-            4 => Ok(RemoteSource::Tvmaze),
-            5 => Ok(RemoteSource::Xem),
-            6 => Ok(RemoteSource::Anidb),
-            7 => Ok(RemoteSource::Scene),
-            _ => Ok(RemoteSource::Unknown),
-        }
-    }
-}
-
-#[cfg(feature = "sqll")]
-impl ::sqll::BindValue for RemoteSource {
-    fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
-        let n: u32 = match self {
-            RemoteSource::Unknown => 0,
-            RemoteSource::Tvdb => 1,
-            RemoteSource::Tmdb => 2,
-            RemoteSource::Imdb => 3,
-            RemoteSource::Tvmaze => 4,
-            RemoteSource::Xem => 5,
-            RemoteSource::Anidb => 6,
-            RemoteSource::Scene => 7,
-        };
-
-        n.bind_value(stmt, index)
     }
 }
 
@@ -873,12 +848,23 @@ impl ::sqll::BindValue for SeasonNumber {
     serde::Deserialize,
 )]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(
+    feature = "sqll",
+    derive(::sqll::FromColumn, ::sqll::BindValue),
+    sql(integer)
+)]
 pub enum ImageKind {
+    #[cfg_attr(feature = "sqll", sql(value = 1))]
     Poster,
+    #[cfg_attr(feature = "sqll", sql(value = 2))]
     Banner,
+    #[cfg_attr(feature = "sqll", sql(value = 3))]
     Backdrop,
+    #[cfg_attr(feature = "sqll", sql(value = 4))]
     Screenshot,
+    #[cfg_attr(feature = "sqll", sql(value = 5))]
     Profile,
+    #[cfg_attr(feature = "sqll", sql(value = 0, other))]
     Unknown,
 }
 
@@ -912,38 +898,6 @@ impl fmt::Display for ImageKind {
     }
 }
 
-#[cfg(feature = "sqll")]
-impl ::sqll::FromColumn<'_> for ImageKind {
-    type Type = ::sqll::ty::Integer;
-
-    fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Integer) -> ::sqll::Result<Self> {
-        match u32::from_column(stmt, index)? {
-            1 => Ok(ImageKind::Poster),
-            2 => Ok(ImageKind::Banner),
-            3 => Ok(ImageKind::Backdrop),
-            4 => Ok(ImageKind::Screenshot),
-            5 => Ok(ImageKind::Profile),
-            _ => Ok(ImageKind::Unknown),
-        }
-    }
-}
-
-#[cfg(feature = "sqll")]
-impl ::sqll::BindValue for ImageKind {
-    fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
-        let n: u32 = match self {
-            ImageKind::Poster => 1,
-            ImageKind::Banner => 2,
-            ImageKind::Backdrop => 3,
-            ImageKind::Screenshot => 4,
-            ImageKind::Profile => 5,
-            ImageKind::Unknown => 0,
-        };
-
-        n.bind_value(stmt, index)
-    }
-}
-
 /// The kind of a translated string stored in a `*_strings` table. The owning
 /// table supplies the context, so a show/movie `title` and an episode/season
 /// `name` both use [`StringKind::Title`].
@@ -962,14 +916,25 @@ impl ::sqll::BindValue for ImageKind {
     serde::Deserialize,
 )]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(
+    feature = "sqll",
+    derive(::sqll::FromColumn, ::sqll::BindValue),
+    sql(integer)
+)]
 pub enum StringKind {
+    #[cfg_attr(feature = "sqll", sql(value = 1))]
     Title,
+    #[cfg_attr(feature = "sqll", sql(value = 2))]
     Overview,
+    #[cfg_attr(feature = "sqll", sql(value = 3))]
     Character,
     /// A crew credit's job, such as "Director".
+    #[cfg_attr(feature = "sqll", sql(value = 4))]
     Job,
     /// A crew credit's or a person's department, such as "Directing".
+    #[cfg_attr(feature = "sqll", sql(value = 5))]
     Department,
+    #[cfg_attr(feature = "sqll", sql(value = 0, other))]
     Unknown,
 }
 
@@ -992,70 +957,21 @@ impl fmt::Display for StringKind {
     }
 }
 
-#[cfg(feature = "sqll")]
-impl ::sqll::FromColumn<'_> for StringKind {
-    type Type = ::sqll::ty::Integer;
-
-    fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Integer) -> ::sqll::Result<Self> {
-        match u32::from_column(stmt, index)? {
-            1 => Ok(StringKind::Title),
-            2 => Ok(StringKind::Overview),
-            3 => Ok(StringKind::Character),
-            4 => Ok(StringKind::Job),
-            5 => Ok(StringKind::Department),
-            _ => Ok(StringKind::Unknown),
-        }
-    }
-}
-
-#[cfg(feature = "sqll")]
-impl ::sqll::BindValue for StringKind {
-    fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
-        let n: u32 = match self {
-            StringKind::Title => 1,
-            StringKind::Overview => 2,
-            StringKind::Character => 3,
-            StringKind::Job => 4,
-            StringKind::Department => 5,
-            StringKind::Unknown => 0,
-        };
-
-        n.bind_value(stmt, index)
-    }
-}
-
 /// Whether a [`Credit`] is a cast (acting) or a crew role.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Encode, Decode, serde::Serialize, serde::Deserialize,
 )]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(
+    feature = "sqll",
+    derive(::sqll::FromColumn, ::sqll::BindValue),
+    sql(integer)
+)]
 pub enum CreditKind {
+    #[cfg_attr(feature = "sqll", sql(value = 1, other))]
     Cast,
+    #[cfg_attr(feature = "sqll", sql(value = 2))]
     Crew,
-}
-
-#[cfg(feature = "sqll")]
-impl ::sqll::FromColumn<'_> for CreditKind {
-    type Type = ::sqll::ty::Integer;
-
-    fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Integer) -> ::sqll::Result<Self> {
-        match u32::from_column(stmt, index)? {
-            2 => Ok(CreditKind::Crew),
-            _ => Ok(CreditKind::Cast),
-        }
-    }
-}
-
-#[cfg(feature = "sqll")]
-impl ::sqll::BindValue for CreditKind {
-    fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
-        let n: u32 = match self {
-            CreditKind::Cast => 1,
-            CreditKind::Crew => 2,
-        };
-
-        n.bind_value(stmt, index)
-    }
 }
 
 #[derive(
@@ -1073,9 +989,17 @@ impl ::sqll::BindValue for CreditKind {
     serde::Deserialize,
 )]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(
+    feature = "sqll",
+    derive(::sqll::FromColumn, ::sqll::BindValue),
+    sql(integer)
+)]
 pub enum ImageSource {
+    #[cfg_attr(feature = "sqll", sql(value = 1))]
     Tvdb,
+    #[cfg_attr(feature = "sqll", sql(value = 2))]
     Tmdb,
+    #[cfg_attr(feature = "sqll", sql(value = 0, other))]
     Unknown,
 }
 
@@ -1103,38 +1027,15 @@ impl fmt::Display for ImageSource {
     }
 }
 
-#[cfg(feature = "sqll")]
-impl ::sqll::FromColumn<'_> for ImageSource {
-    type Type = ::sqll::ty::Integer;
-
-    fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Integer) -> ::sqll::Result<Self> {
-        let s = u32::from_column(stmt, index)?;
-
-        match s {
-            1 => Ok(ImageSource::Tvdb),
-            2 => Ok(ImageSource::Tmdb),
-            _ => Ok(ImageSource::Unknown),
-        }
-    }
-}
-
-#[cfg(feature = "sqll")]
-impl ::sqll::BindValue for ImageSource {
-    fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
-        let n: u32 = match self {
-            ImageSource::Unknown => 0,
-            ImageSource::Tvdb => 1,
-            ImageSource::Tmdb => 2,
-        };
-
-        n.bind_value(stmt, index)
-    }
-}
-
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Default, Encode, Decode, serde::Serialize, serde::Deserialize,
 )]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(
+    feature = "sqll",
+    derive(::sqll::FromColumn, ::sqll::BindValue),
+    sql(text, rename_all = "lowercase")
+)]
 pub enum ThemeType {
     #[default]
     Dark,
@@ -1159,40 +1060,30 @@ impl fmt::Display for ThemeType {
     }
 }
 
-#[cfg(feature = "sqll")]
-impl ::sqll::FromColumn<'_> for ThemeType {
-    type Type = ::sqll::ty::Text;
-
-    fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Text) -> ::sqll::Result<Self> {
-        let s = String::from_column(stmt, index)?;
-        match s.as_str() {
-            "dark" => Ok(ThemeType::Dark),
-            "light" => Ok(ThemeType::Light),
-            "system" => Ok(ThemeType::System),
-            other => Err(::sqll::Error::custom(format!("unknown theme: {other}"))),
-        }
-    }
-}
-
-#[cfg(feature = "sqll")]
-impl ::sqll::BindValue for ThemeType {
-    fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
-        self.as_str().bind_value(stmt, index)
-    }
-}
-
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Encode, Decode, serde::Serialize, serde::Deserialize,
 )]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
+#[cfg_attr(
+    feature = "sqll",
+    derive(::sqll::FromColumn, ::sqll::BindValue),
+    sql(integer)
+)]
 pub enum ReleaseType {
+    #[cfg_attr(feature = "sqll", sql(value = 0, other))]
     Unknown,
+    #[cfg_attr(feature = "sqll", sql(value = 1))]
     Premiere,
+    #[cfg_attr(feature = "sqll", sql(value = 2))]
     TheatricalLimited,
+    #[cfg_attr(feature = "sqll", sql(value = 3))]
     Theatrical,
+    #[cfg_attr(feature = "sqll", sql(value = 4))]
     Digital,
+    #[cfg_attr(feature = "sqll", sql(value = 5))]
     Physical,
+    #[cfg_attr(feature = "sqll", sql(value = 6))]
     Tv,
 }
 
@@ -1219,32 +1110,6 @@ impl ReleaseType {
             Self::Physical => "Physical",
             Self::Tv => "TV",
         }
-    }
-}
-
-#[cfg(feature = "sqll")]
-impl ::sqll::FromColumn<'_> for ReleaseType {
-    type Type = ::sqll::ty::Integer;
-
-    #[inline]
-    fn from_column(stmt: &::sqll::Statement, index: ::sqll::ty::Integer) -> ::sqll::Result<Self> {
-        match u32::from_column(stmt, index)? {
-            1 => Ok(Self::Premiere),
-            2 => Ok(Self::TheatricalLimited),
-            3 => Ok(Self::Theatrical),
-            4 => Ok(Self::Digital),
-            5 => Ok(Self::Physical),
-            6 => Ok(Self::Tv),
-            _ => Ok(Self::Unknown),
-        }
-    }
-}
-
-#[cfg(feature = "sqll")]
-impl ::sqll::BindValue for ReleaseType {
-    #[inline]
-    fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
-        self.as_u32().bind_value(stmt, index)
     }
 }
 

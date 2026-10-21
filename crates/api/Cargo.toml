@@ -20,7 +20,7 @@ musli-web = { version = "0.5.0", features = ["api"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 rand = { version = "0.10.3", optional = true }
-sqll = { version = "0.15.0", optional = true }
+sqll = { version = "0.15.0", optional = true, default-features = false, features = ["alloc", "derive"] }
 yew = { version = "0.23.0", optional = true }
 implicit-clone = { version = "0.6.0", optional = true }
 

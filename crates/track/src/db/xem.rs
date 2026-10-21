@@ -1,7 +1,6 @@
 use anyhow::Result;
 use api::ShowId;
 use sqll::{Row, Statements, TypedStatement};
-use tokio::task::spawn_blocking;
 
 use super::{Database, InnerRead, InnerWrite};
 use crate::xem::{self, Name, Numbering};
@@ -128,8 +127,7 @@ impl InnerRead {
 impl Database {
     /// Every XEM name the show has, the show's before its seasons'.
     pub(crate) async fn xem_names(&self, show_id: ShowId) -> Result<Vec<Name>> {
-        let mut s = self.inner.clone().shared().await?;
-        spawn_blocking(move || s.xem_names(show_id)).await?
+        self.inner.read(move |s| s.xem_names(show_id)).await?
     }
 
     /// For each target, every system's address of the XEM entry holding it;
@@ -140,9 +138,7 @@ impl Database {
         show_id: ShowId,
         targets: Vec<Option<api::NumberingTarget>>,
     ) -> Result<Vec<Vec<Numbering>>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let mut out = Vec::with_capacity(targets.len());
 
             for target in targets {
@@ -178,9 +174,7 @@ impl Database {
         origin: String,
         seasons: Vec<Vec<api::LinkedSeason>>,
     ) -> Result<Vec<Vec<api::SeasonAltNames>>> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let names = s.xem_names(show_id)?;
             let mut out = Vec::with_capacity(seasons.len());
 
@@ -228,9 +222,7 @@ impl Database {
         &self,
         show_id: ShowId,
     ) -> Result<(Vec<(u32, u32)>, Vec<api::XemSystemEpisodes>)> {
-        let mut s = self.inner.clone().shared().await?;
-
-        let result = spawn_blocking(move || {
+        let result = self.inner.read(move |s| {
             let mut episodes = Vec::new();
 
             {

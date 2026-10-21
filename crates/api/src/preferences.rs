@@ -23,8 +23,9 @@ macro_rules! keys {
     ($($variant:ident = $text:literal),* $(,)?) => {
         /// The key of a stored preference.
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        #[cfg_attr(feature = "sqll", derive(::sqll::BindValue), sql(text))]
         pub enum PreferenceKey {
-            $($variant),*
+            $(#[cfg_attr(feature = "sqll", sql(rename = $text))] $variant),*
         }
 
         impl PreferenceKey {
@@ -77,13 +78,6 @@ impl PreferenceKey {
 impl fmt::Display for PreferenceKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
-    }
-}
-
-#[cfg(feature = "sqll")]
-impl ::sqll::BindValue for PreferenceKey {
-    fn bind_value(&self, stmt: &mut ::sqll::Statement, index: ::sqll::Index) -> ::sqll::Result<()> {
-        self.as_str().bind_value(stmt, index)
     }
 }
 
