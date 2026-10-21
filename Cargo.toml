@@ -5,6 +5,7 @@ resolver = "2"
 # Unreleased; drop each once it is published.
 [patch.crates-io]
 phrasebook = { path = "../phrasebook" }
+phrasebook-catalog = { path = "../phrasebook/crates/phrasebook-catalog" }
 watchword = { path = "../watchword" }
 watchword-core = { path = "../watchword/crates/watchword-core" }
 watchword-yew023 = { path = "../watchword/crates/watchword-yew023" }
