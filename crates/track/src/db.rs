@@ -28,6 +28,7 @@ mod tests;
 #[cfg(test)]
 mod value_tests;
 
+mod auth_store;
 pub(crate) mod config;
 use self::config::Pref;
 pub(crate) mod users;
@@ -45,26 +46,6 @@ const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 #[derive(RustEmbed)]
 #[folder = "migrations"]
 struct Migrations;
-
-/// The ids of watchword's store migrations that track's own migrations
-/// already did: the base schema copies watchword's tables with
-/// `sessions.impersonator_id`, and existing databases got them from
-/// 2026-10-15-yew-auth.sql and 2026-10-16-impersonator.sql.
-const WATCHWORD_DONE: &[&str] = &[
-    "watchword-0001-tables",
-    "watchword-0002-sessions-impersonator",
-];
-
-/// watchword's store migrations after those track's own did, applied after
-/// track's own, in order, and recorded in the same migrations table. A fresh
-/// database applies them too, since the base schema's copy of watchword's
-/// tables stays as of [`WATCHWORD_DONE`].
-fn watchword_migrations() -> impl Iterator<Item = (&'static str, &'static str)> {
-    auth::sqll015::MIGRATIONS
-        .iter()
-        .copied()
-        .filter(|(id, _)| !WATCHWORD_DONE.contains(id))
-}
 
 #[derive(Row)]
 struct ShowRow {
@@ -806,7 +787,7 @@ pub(crate) struct InnerRead {
     #[sql(statements)]
     users: users::Read,
     #[sql(statements)]
-    auth: auth::sqll015::Read,
+    auth: auth_store::Read,
     #[sql(statements)]
     xem: xem::Read,
 
@@ -1392,7 +1373,7 @@ pub(crate) struct InnerWrite {
     #[sql(statements)]
     read: InnerRead,
     #[sql(statements)]
-    auth_write: auth::sqll015::Write,
+    auth_write: auth_store::Write,
     #[sql(statements)]
     xem_write: xem::Write,
 
@@ -7369,10 +7350,8 @@ fn is_empty(c: &sqll::Connection) -> Result<bool> {
 /// Bring the schema up to date. An empty database is built from the base
 /// schema (the first migration) alone, with every later migration recorded
 /// without running; any other database applies each unrecorded migration in
-/// order. Either then applies watchword's unrecorded store migrations (see
-/// [`watchword_migrations`]) and checks watchword's tables. Each migration
-/// runs and is recorded in one transaction, so a failed one leaves the
-/// database as it was.
+/// order. Each migration runs and is recorded in one transaction, so a failed
+/// one leaves the database as it was.
 fn do_migrations(c: &sqll::Connection) -> Result<()> {
     let mut ids: Vec<_> = Migrations::iter().collect();
     ids.sort();
@@ -7406,13 +7385,6 @@ fn do_migrations(c: &sqll::Connection) -> Result<()> {
         tracing::info!(applied, "Migrations applied");
     }
 
-    let applied = sqll::Migrations::new().run(c, watchword_migrations())?;
-
-    if applied > 0 {
-        tracing::info!(applied, "watchword migrations applied");
-    }
-
-    auth::sqll015::check_schema(c).context("Checking watchword's tables")?;
     Ok(())
 }
 
@@ -7429,9 +7401,7 @@ fn ensure_migrated(c: &sqll::Connection) -> Result<()> {
 
     let mut pending = Vec::new();
 
-    let ids = Migrations::iter()
-        .map(|file| file.into_owned())
-        .chain(watchword_migrations().map(|(id, _)| id.to_owned()));
+    let ids = Migrations::iter().map(|file| file.into_owned());
 
     for id in ids {
         select.reset()?;
@@ -7450,7 +7420,6 @@ fn ensure_migrated(c: &sqll::Connection) -> Result<()> {
         pending.join(", ")
     );
 
-    auth::sqll015::check_schema(c).context("Checking watchword's tables")?;
     Ok(())
 }
 

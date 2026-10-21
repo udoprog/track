@@ -82,8 +82,6 @@ pub(super) struct WsHandler {
     pub(super) delay: Option<RandomDelay>,
     pub(super) auth: Auth,
     pub(super) user: Arc<AuthUser>,
-    /// Answers watchword's account and admin requests on this socket.
-    pub(super) conn: Connection,
 }
 
 /// The signed-in user of a socket.
@@ -485,9 +483,7 @@ impl WsHandler {
                 self.reset_image_selection(incoming, outgoing).await?
             }
             api::Request::Unknown(id) => {
-                if !self.conn.handle(id, incoming, outgoing).await? {
-                    anyhow::bail!("Unknown request id: {id:?}");
-                }
+                anyhow::bail!("Unknown request id: {id:?}");
             }
         }
 
@@ -576,7 +572,6 @@ pub(super) async fn ws_handler(
             delay: state.delay,
             auth: state.auth.clone(),
             user: user.clone(),
-            conn: conn.clone(),
         };
 
         let mut subscribe = state.broadcast.subscribe();
@@ -584,8 +579,10 @@ pub(super) async fn ws_handler(
         // expired, here or in another process.
         let mut updates = conn.updates();
 
-        let connect =
-            axum08::server(socket, handler).with_channel_allocator(state.channels.clone());
+        // watchword's account and admin requests, in its own id band, go to
+        // `conn`; the rest to track's handler.
+        let connect = axum08::server(socket, ws::Handler::or(handler, conn.clone()))
+            .with_channel_allocator(state.channels.clone());
 
         let mut server = match updates.unless_ended(connect.connect()).await {
             Some(Ok(server)) => server,

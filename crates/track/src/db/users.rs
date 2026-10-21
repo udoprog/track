@@ -1,10 +1,9 @@
 use anyhow::{Result, anyhow};
 use api::UserId;
 use auth::Role;
-use auth::sqll015::SqllStore;
 use sqll::{Row, Statements, TypedStatement};
 
-use super::{Database, InnerRead, InnerWrite};
+use super::Database;
 
 /// A user as a backup names them: by login, or by email without one.
 #[derive(Debug, Clone, Row)]
@@ -37,27 +36,7 @@ impl Read {
     }
 }
 
-impl AsMut<auth::sqll015::Read> for InnerRead {
-    fn as_mut(&mut self) -> &mut auth::sqll015::Read {
-        &mut self.auth
-    }
-}
-
-impl AsMut<auth::sqll015::Write> for InnerWrite {
-    fn as_mut(&mut self) -> &mut auth::sqll015::Write {
-        &mut self.auth_write
-    }
-}
-
-/// The store watchword keeps users, sessions and links in, sharing the
-/// database's connections.
-pub(crate) type AuthStore = SqllStore<InnerRead, InnerWrite>;
-
 impl Database {
-    pub(crate) fn auth_store(&self) -> AuthStore {
-        SqllStore::new(self.inner.clone())
-    }
-
     /// The owner of data that names no user: root, or the first administrator
     /// if root was renamed.
     #[tracing::instrument(skip(self), ret(level = "trace"))]

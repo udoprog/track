@@ -139,7 +139,6 @@ impl Server {
             delay: None,
             auth: state.auth.clone(),
             user: Arc::new(AuthUser::from(user)),
-            conn: auth::musliweb05::Connection::new(state.auth.clone(), user),
         }
     }
 
