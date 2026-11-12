@@ -2502,10 +2502,12 @@ pub struct GetSeasonImagesResponse {
     pub images: Vec<MediaImage>,
 }
 
-#[derive(Debug, Encode, Decode)]
+#[derive(Debug, Clone, Encode, Decode)]
 pub struct TrackShowRequest {
     pub slug: Option<String>,
     pub remote: Remote,
+    pub title: Option<String>,
+    pub overview: Option<String>,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -2619,10 +2621,12 @@ pub struct GetMovieRequest {
     pub id: MovieId,
 }
 
-#[derive(Debug, Encode, Decode)]
+#[derive(Debug, Clone, Encode, Decode)]
 pub struct TrackMovieRequest {
     pub slug: Option<String>,
     pub remote: Remote,
+    pub title: Option<String>,
+    pub overview: Option<String>,
 }
 
 #[derive(Debug, Encode, Decode)]

@@ -37,8 +37,8 @@ pub(crate) enum Msg {
     Submit,
     LoadMore,
     SearchDone(Result<ws::Packet<api::Search>, ws::Error>),
-    TrackShow(Option<String>, api::Remote),
-    TrackMovie(Option<String>, api::Remote),
+    TrackShow(api::TrackShowRequest),
+    TrackMovie(api::TrackMovieRequest),
     TrackShowDone(Result<ws::Packet<api::TrackShow>, ws::Error>),
     TrackMovieDone(Result<ws::Packet<api::TrackMovie>, ws::Error>),
 }
@@ -259,24 +259,24 @@ impl Search {
                 self.total = resp.total;
                 Ok(true)
             }
-            Msg::TrackShow(slug, remote) => {
+            Msg::TrackShow(req) => {
                 if self.channel.is_open() {
                     self._track_req = self
                         .channel
                         .request()
-                        .body(api::TrackShowRequest { slug, remote })
+                        .body(req)
                         .on_packet(ctx.link().callback(Msg::TrackShowDone))
                         .send();
                 }
 
                 Ok(false)
             }
-            Msg::TrackMovie(slug, remote) => {
+            Msg::TrackMovie(req) => {
                 if self.channel.is_open() {
                     self._track_req = self
                         .channel
                         .request()
-                        .body(api::TrackMovieRequest { slug, remote })
+                        .body(req)
                         .on_packet(ctx.link().callback(Msg::TrackMovieDone))
                         .send();
                 }
@@ -413,8 +413,8 @@ impl Search {
             (None, Some(track)) => {
                 let track = track.clone();
                 let onclick = ctx.link().callback(move |_| match track.clone() {
-                    Track::Show(slug, remote) => Msg::TrackShow(slug, remote),
-                    Track::Movie(remote) => Msg::TrackMovie(None, remote),
+                    Track::Show(req) => Msg::TrackShow(req),
+                    Track::Movie(req) => Msg::TrackMovie(req),
                 });
 
                 html! {
@@ -479,8 +479,8 @@ impl Search {
 /// How to track a result that isn't tracked yet.
 #[derive(Clone)]
 enum Track {
-    Show(Option<String>, api::Remote),
-    Movie(api::Remote),
+    Show(api::TrackShowRequest),
+    Movie(api::TrackMovieRequest),
 }
 
 /// A search result as shown: results from several sources that lead to the
@@ -512,7 +512,12 @@ fn merge(results: &[api::SearchResult]) -> Vec<Row<'_>> {
                 tracked: r
                     .already_tracked
                     .map(|id| Route::ShowDetail(id, ShowDetailQuery::default())),
-                track: Some(Track::Show(r.slug.clone(), r.remote.clone())),
+                track: Some(Track::Show(api::TrackShowRequest {
+                    slug: r.slug.clone(),
+                    remote: r.remote.clone(),
+                    title: r.title.clone(),
+                    overview: r.overview.clone(),
+                })),
                 sources: vec![(*r.remote.source(), r.remote.show_url(r.slug.as_deref()))],
             },
             api::SearchResult::Movie(r) => Row {
@@ -523,7 +528,12 @@ fn merge(results: &[api::SearchResult]) -> Vec<Row<'_>> {
                 year: r.release_date.map(|d| d.year()),
                 overview: r.overview.as_deref(),
                 tracked: r.already_tracked.map(Route::MovieDetail),
-                track: Some(Track::Movie(r.remote.clone())),
+                track: Some(Track::Movie(api::TrackMovieRequest {
+                    slug: None,
+                    remote: r.remote.clone(),
+                    title: r.title.clone(),
+                    overview: r.overview.clone(),
+                })),
                 sources: vec![(*r.remote.source(), r.remote.movie_url())],
             },
         };

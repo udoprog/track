@@ -62,7 +62,14 @@ impl WsHandler {
 
         if existing.is_none() {
             self.db
-                .create_show(show_id, &req.remote.value().to_string(), None, "")
+                .create_show(
+                    show_id,
+                    &req.title
+                        .clone()
+                        .unwrap_or_else(|| req.remote.value().to_string()),
+                    None,
+                    req.overview.as_deref().unwrap_or_default(),
+                )
                 .await?;
         }
 
