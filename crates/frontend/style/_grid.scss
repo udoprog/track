@@ -11,15 +11,3 @@
         @content;
     }
 }
-
-.desktop-only {
-    @include on-mobile {
-        display: none !important;
-    }
-}
-
-.mobile-only {
-    @include on-desktop {
-        display: none;
-    }
-}

@@ -32,7 +32,7 @@
 .menu-list {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: v.$hair;
     margin: -(v.$gap-xs);
 
     >button {

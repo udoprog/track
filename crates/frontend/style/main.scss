@@ -2856,3 +2856,17 @@ button.chip {
         display: none;
     }
 }
+
+// Visibility by screen width. Last in the file, so at equal specificity they
+// beat the display a component sets for itself, with no `!important`.
+.desktop-only {
+    @include g.on-mobile {
+        display: none;
+    }
+}
+
+.mobile-only {
+    @include g.on-desktop {
+        display: none;
+    }
+}

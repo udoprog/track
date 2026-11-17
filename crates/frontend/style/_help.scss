@@ -3,7 +3,7 @@
 
 // The help modal: sections beside the one being read, stacked on phones.
 .modal.help-modal {
-    width: min(960px, calc(100vw - #{v.$gap-sm * 2}));
+    width: min(#{v.$modal-width-lg}, calc(100vw - #{v.$gap-sm * 2}));
     height: 85vh;
 
     @include g.on-mobile {
@@ -56,7 +56,7 @@
         overflow-x: auto;
         scrollbar-width: none;
         // Room for the focus ring of the chips in the scrolling strip.
-        padding: 2px;
+        padding: v.$hair;
     }
 }
 
@@ -83,6 +83,8 @@ button.help-section {
     }
 }
 
+// The article holds authored help text (headings, lists, tables), so its
+// elements are styled by tag here rather than by a class on each.
 .help-body {
     overflow-y: auto;
     min-height: 0;
@@ -172,7 +174,7 @@ button.help-mark {
     display: inline-flex;
     height: auto;
     min-height: 0;
-    padding: 2px;
+    padding: v.$hair;
     margin-left: v.$gap-xs;
     background: transparent;
     border-color: transparent;

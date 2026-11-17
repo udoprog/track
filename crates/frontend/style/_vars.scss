@@ -4,6 +4,12 @@ $sans-serif-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helveti
 
 $page-width: 1200px;
 $mobile-limit: 768px;
+// Above this the toolbar has room for padded labels; below it, tight spacing.
+$wide-limit: 1000px;
+$modal-width-lg: 960px;
+$blur-glass: 12px;
+// Hairline spacing: focus-ring room and tight list gaps.
+$hair: 2px;
 
 // Colors resolve to the custom properties defined in _theme.scss, so the theme
 // can change at runtime. Sass color functions cannot operate on them; use

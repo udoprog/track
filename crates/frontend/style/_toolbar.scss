@@ -14,14 +14,11 @@
 }
 
 // Narrow desktops hold every item on one line only with tighter spacing.
-@media (min-width: v.$mobile-limit) and (max-width: 999px) {
+@media (min-width: v.$mobile-limit) and (max-width: #{v.$wide-limit - 1px}) {
     #toolbar {
         gap: v.$gap-sm;
         padding-inline: v.$gap-sm;
-
-        .toolbar-dropdown {
-            gap: v.$padding;
-        }
+        --dropdown-gap: #{v.$padding};
     }
 }
 
@@ -31,7 +28,7 @@
     top: 0;
     z-index: 10;
     background: v.$bg-dark-transparent;
-    backdrop-filter: blur(12px);
+    backdrop-filter: blur(#{v.$blur-glass});
     border-bottom: 1px solid v.$border-subtle-transparent;
 }
 
@@ -39,7 +36,14 @@
     display: flex;
     flex-direction: row;
     align-items: center;
-    gap: v.$gap-xs;
+    gap: var(--dropdown-gap, #{v.$gap-xs});
+
+    // Only the wide toolbar shows it; a phone opens it from the toggle.
+    &.desktop-only {
+        @include g.on-mobile {
+            display: none;
+        }
+    }
 
     @include g.on-mobile {
         flex-direction: column;
@@ -101,7 +105,7 @@
 
     // Room around each label on wide screens, so the items read as buttons;
     // narrower desktops keep them tight so the site title still fits.
-    @media (min-width: 1000px) {
+    @media (min-width: v.$wide-limit) {
         height: v.$input-height + v.$padding;
         gap: v.$padding-md;
 
