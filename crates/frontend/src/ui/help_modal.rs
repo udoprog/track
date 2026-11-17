@@ -87,12 +87,12 @@ pub(crate) fn HelpModal(props: &Props) -> Html {
     };
 
     html! {
-        <Modal icon="question-mark-circle" title="Help" size={plinth::DialogSize::WideTall} flush=true on_close={props.on_close.clone()}>
+        <Modal icon="question-mark-circle" title="Help" size={sockel::DialogSize::WideTall} flush=true on_close={props.on_close.clone()}>
             <div class="help" data-test="help">
                 <nav class="help-nav" aria-label="Help sections">
                     <input
                         type="search"
-                        class={plinth::class::INPUT}
+                        class={sockel::class::INPUT}
                         placeholder="Search help…"
                         aria-label="Search help"
                         data-test="help-search"
@@ -100,7 +100,7 @@ pub(crate) fn HelpModal(props: &Props) -> Html {
                         {oninput}
                     />
 
-                    <div class="help-sections plinth-stack plinth-tight">
+                    <div class="help-sections sockel-stack sockel-tight">
                         { for found.iter().map(|section| {
                             let selected = shown.is_some_and(|s| s.id == section.id);
 

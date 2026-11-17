@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use plinth::FieldInputs;
+use sockel::FieldInputs;
 use yew::prelude::*;
 
 use crate::ui::Help;
@@ -23,7 +23,7 @@ pub(crate) struct Props {
     pub(crate) children: Children,
 }
 
-/// One setting in a `plinth::form_rows` grid: plinth's FormRow as a group
+/// One setting in a `sockel::form_rows` grid: sockel's FormRow as a group
 /// named by its label, its controls in a wrapping line or a column.
 #[function_component]
 pub(crate) fn FormRow(props: &Props) -> Html {
@@ -40,8 +40,8 @@ pub(crate) fn FormRow(props: &Props) -> Html {
     };
 
     html! {
-        <plinth::FormRow id={(*id).clone()} label={html! { {props.label.clone()} }} {help} hint={props.hint.clone().map(|hint| html! { {hint} })} group=true {inputs}>
+        <sockel::FormRow id={(*id).clone()} label={html! { {props.label.clone()} }} {help} hint={props.hint.clone().map(|hint| html! { {hint} })} group=true {inputs}>
             { for props.children.iter() }
-        </plinth::FormRow>
+        </sockel::FormRow>
     }
 }

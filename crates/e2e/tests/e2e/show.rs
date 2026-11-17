@@ -169,7 +169,7 @@ async fn open_episode_modal(driver: &TestDriver) -> Result<()> {
         .click()
         .await?;
 
-    driver.wait_count(".plinth-dialog", 1).await
+    driver.wait_count(".sockel-dialog", 1).await
 }
 
 /// An episode's menu closes when the page around it is clicked.
@@ -203,21 +203,21 @@ pub async fn modals_close_from_button_and_backdrop(
 
     open_episode_modal(driver).await?;
     driver
-        .find_one_by(".plinth-dialog [aria-label=Close]")
+        .find_one_by(".sockel-dialog [aria-label=Close]")
         .await?
         .click()
         .await?;
-    driver.wait_count(".plinth-dialog", 0).await?;
+    driver.wait_count(".sockel-dialog", 0).await?;
 
     open_episode_modal(driver).await?;
-    let modal = driver.find_one_by(".plinth-dialog").await?.rect().await?;
-    let background = driver.find_one_by(".plinth-dialog-layer").await?;
+    let modal = driver.find_one_by(".sockel-dialog").await?.rect().await?;
+    let background = driver.find_one_by(".sockel-dialog-layer").await?;
     let page = background.rect().await?;
 
     // Halfway between the page's top edge and the modal's.
     let dy = (page.y + modal.y) / 2.0 - (page.y + page.height / 2.0);
     background.click_by(0, dy as i64).await?;
-    driver.wait_count(".plinth-dialog", 0).await
+    driver.wait_count(".sockel-dialog", 0).await
 }
 
 /// On a phone a modal is a sheet along the bottom edge of the screen.
@@ -229,9 +229,9 @@ pub async fn phone_modals_rise_from_the_bottom(
     driver.set_window_size(400, 850).await?;
     open_episode_modal(driver).await?;
 
-    let modal = driver.find_one_by(".plinth-dialog").await?.rect().await?;
+    let modal = driver.find_one_by(".sockel-dialog").await?.rect().await?;
     let page = driver
-        .find_one_by(".plinth-dialog-layer")
+        .find_one_by(".sockel-dialog-layer")
         .await?
         .rect()
         .await?;
@@ -241,7 +241,7 @@ pub async fn phone_modals_rise_from_the_bottom(
         gap.abs() < 1.0,
         "the modal ends {gap}px above the bottom of the screen"
     );
-    ensure_only_top_border(driver, ".plinth-dialog").await
+    ensure_only_top_border(driver, ".sockel-dialog").await
 }
 
 /// The show's settings are labelled rows whose controls start on one line.
@@ -256,7 +256,7 @@ pub async fn settings_line_up_their_controls(driver: &mut TestDriver, _: &mut Tr
 
     driver
         .wait_texts(
-            ".plinth-dialog .plinth-form-label",
+            ".sockel-dialog .sockel-form-label",
             [
                 "Language",
                 "Automatic sync",
@@ -271,7 +271,7 @@ pub async fn settings_line_up_their_controls(driver: &mut TestDriver, _: &mut Tr
 
     // Each row is a group named by its label.
     let row = driver
-        .find_first(".plinth-dialog .plinth-form-row[role=group]")
+        .find_first(".sockel-dialog .sockel-form-row[role=group]")
         .await?;
     let label = driver
         .find_one_by(&format!("#{}", row.attr("aria-labelledby").await?))
@@ -281,7 +281,7 @@ pub async fn settings_line_up_their_controls(driver: &mut TestDriver, _: &mut Tr
     let mut lefts = Vec::new();
 
     for control in driver
-        .find_all(By::Css(".plinth-dialog .plinth-form-control"))
+        .find_all(By::Css(".sockel-dialog .sockel-form-control"))
         .await?
     {
         lefts.push(control.rect().await?.x);
@@ -326,7 +326,7 @@ pub async fn modals_hold_keyboard_focus(driver: &mut TestDriver, _: &mut Track) 
     settings.focus().await?;
     settings.send_keys("\u{E007}").await?;
 
-    let dialog = driver.find_one_by(".plinth-dialog[role='dialog']").await?;
+    let dialog = driver.find_one_by(".sockel-dialog[role='dialog']").await?;
     ensure!(dialog.attr("aria-modal").await? == "true");
     ensure!(dialog.attr("aria-label").await? == "Settings");
 
@@ -335,7 +335,7 @@ pub async fn modals_hold_keyboard_focus(driver: &mut TestDriver, _: &mut Track) 
             Ok(driver
                 .webdriver()
                 .execute(
-                    "return !!document.activeElement.closest('.plinth-dialog');",
+                    "return !!document.activeElement.closest('.sockel-dialog');",
                     Vec::new(),
                 )
                 .await?
@@ -344,7 +344,7 @@ pub async fn modals_hold_keyboard_focus(driver: &mut TestDriver, _: &mut Track) 
         .await?;
 
     driver
-        .find_one_by(".plinth-dialog [title='Edit remotes']")
+        .find_one_by(".sockel-dialog [title='Edit remotes']")
         .await?
         .send_keys("\u{E004}")
         .await?;
@@ -362,11 +362,11 @@ pub async fn modals_hold_keyboard_focus(driver: &mut TestDriver, _: &mut Track) 
     );
 
     driver
-        .find_one_by(".plinth-dialog [aria-label=Close]")
+        .find_one_by(".sockel-dialog [aria-label=Close]")
         .await?
         .send_keys("\u{E00C}")
         .await?;
-    driver.wait_count(".plinth-dialog", 0).await?;
+    driver.wait_count(".sockel-dialog", 0).await?;
 
     let back = focused_title(driver).await?;
     ensure!(back == "Settings", "focus went back to {back:?}");
@@ -383,7 +383,7 @@ pub async fn confirms_hold_keyboard_focus(driver: &mut TestDriver, _: &mut Track
     remove.focus().await?;
     remove.send_keys("\u{E007}").await?;
 
-    let confirm = driver.find_one_by(".plinth-confirm-popover").await?;
+    let confirm = driver.find_one_by(".sockel-confirm-popover").await?;
     ensure!(confirm.attr("aria-label").await? == "Remove show Seeded Show");
 
     driver
@@ -393,7 +393,7 @@ pub async fn confirms_hold_keyboard_focus(driver: &mut TestDriver, _: &mut Track
         .await?;
 
     driver
-        .find_one_by(".plinth-confirm-popover [title=Yes]")
+        .find_one_by(".sockel-confirm-popover [title=Yes]")
         .await?
         .send_keys("\u{E004}")
         .await?;
@@ -401,11 +401,11 @@ pub async fn confirms_hold_keyboard_focus(driver: &mut TestDriver, _: &mut Track
     ensure!(wrapped == "No", "Tab from Yes went to {wrapped:?}");
 
     driver
-        .find_one_by(".plinth-confirm-popover [title=No]")
+        .find_one_by(".sockel-confirm-popover [title=No]")
         .await?
         .send_keys("\u{E00C}")
         .await?;
-    driver.wait_count(".plinth-confirm-popover", 0).await?;
+    driver.wait_count(".sockel-confirm-popover", 0).await?;
     let back = focused_title(driver).await?;
     ensure!(back == "Remove show", "focus went back to {back:?}");
 
@@ -417,7 +417,7 @@ pub async fn confirms_hold_keyboard_focus(driver: &mut TestDriver, _: &mut Track
     wait_episode_reads(driver, "S01E01", "Watched once").await?;
     open_history(driver, "S01E01").await?;
     let remove = driver
-        .find_one_by(".plinth-dialog .watch-row [title=Remove]")
+        .find_one_by(".sockel-dialog .watch-row [title=Remove]")
         .await?;
     remove.focus().await?;
     remove.send_keys("\u{E007}").await?;
@@ -427,12 +427,12 @@ pub async fn confirms_hold_keyboard_focus(driver: &mut TestDriver, _: &mut Track
         })
         .await?;
     driver
-        .find_one_by(".plinth-confirm-popover [title=No]")
+        .find_one_by(".sockel-confirm-popover [title=No]")
         .await?
         .send_keys("\u{E00C}")
         .await?;
-    driver.wait_count(".plinth-confirm-popover", 0).await?;
-    ensure!(driver.count(".plinth-dialog .watch-history").await? == 1);
+    driver.wait_count(".sockel-confirm-popover", 0).await?;
+    ensure!(driver.count(".sockel-dialog .watch-history").await? == 1);
     let back = focused_title(driver).await?;
     ensure!(back == "Remove", "focus went back to {back:?}");
     Ok(())
@@ -456,7 +456,7 @@ pub async fn menus_work_from_the_keyboard(driver: &mut TestDriver, _: &mut Track
         })
         .await?;
     ensure!(
-        driver.count(".plinth-dialog").await? == 0,
+        driver.count(".sockel-dialog").await? == 0,
         "Enter also chose an item"
     );
 
@@ -601,7 +601,7 @@ pub async fn phone_popovers_are_sheets(driver: &mut TestDriver, _: &mut Track) -
         .rect()
         .await?;
     let page = driver
-        .find_one_by(".plinth-menu-scrim")
+        .find_one_by(".sockel-menu-scrim")
         .await?
         .rect()
         .await?;
@@ -649,7 +649,7 @@ async fn open_history(driver: &TestDriver, code: &str) -> Result<()> {
         .await?
         .click()
         .await?;
-    driver.find_one_by(".plinth-dialog .watch-history").await?;
+    driver.find_one_by(".sockel-dialog .watch-history").await?;
     Ok(())
 }
 
@@ -684,18 +684,18 @@ pub async fn watch_history_moves_and_removes(driver: &mut TestDriver, _: &mut Tr
 
     open_history(driver, "S01E01").await?;
     driver
-        .find_one_by(".plinth-dialog [title='Move to another episode']")
+        .find_one_by(".sockel-dialog [title='Move to another episode']")
         .await?
         .click()
         .await?;
 
     let episode = driver
-        .find_one_by(".plinth-dialog select[title=Episode]")
+        .find_one_by(".sockel-dialog select[title=Episode]")
         .await?;
     driver
         .wait_until("the episodes to load", async || {
             Ok(driver
-                .count(".plinth-dialog select[title=Episode] option")
+                .count(".sockel-dialog select[title=Episode] option")
                 .await?
                 == 3)
         })
@@ -703,7 +703,7 @@ pub async fn watch_history_moves_and_removes(driver: &mut TestDriver, _: &mut Tr
     driver
         .webdriver()
         .execute(
-            "const s = document.querySelector('.plinth-dialog select[title=Episode]');
+            "const s = document.querySelector('.sockel-dialog select[title=Episode]');
              s.value = '2';
              s.dispatchEvent(new Event('change', { bubbles: true }));",
             Vec::new(),
@@ -712,31 +712,31 @@ pub async fn watch_history_moves_and_removes(driver: &mut TestDriver, _: &mut Tr
     ensure!(episode.value().await? == "2");
 
     driver
-        .find_one_by(".plinth-dialog [title='Move the watch here']")
+        .find_one_by(".sockel-dialog [title='Move the watch here']")
         .await?
         .click()
         .await?;
 
     // S02 is up next, so its details show that instead of its watches.
     wait_episode_reads(driver, "S01E01", "Never watched").await?;
-    driver.wait_count(".plinth-dialog", 0).await?;
+    driver.wait_count(".sockel-dialog", 0).await?;
 
     open_history(driver, "S01E02").await?;
-    ensure!(driver.count(".plinth-dialog .watch-row").await? == 1);
+    ensure!(driver.count(".sockel-dialog .watch-row").await? == 1);
 
     driver
-        .find_one_by(".plinth-dialog [title=Remove]")
+        .find_one_by(".sockel-dialog [title=Remove]")
         .await?
         .click()
         .await?;
     driver
-        .find_one_by(".plinth-confirm-popover [title=Yes]")
+        .find_one_by(".sockel-confirm-popover [title=Yes]")
         .await?
         .click()
         .await?;
 
     // With its only watch gone the history has nothing left to show.
-    driver.wait_count(".plinth-dialog .watch-row", 0).await
+    driver.wait_count(".sockel-dialog .watch-row", 0).await
 }
 
 /// The show's tracking toggle is named for a show and its title says whether
@@ -777,18 +777,18 @@ pub async fn settings_pages_return_to_settings(
         .click()
         .await?;
     driver
-        .find_one_by(".plinth-dialog [title='Edit remotes']")
+        .find_one_by(".sockel-dialog [title='Edit remotes']")
         .await?
         .click()
         .await?;
-    driver.wait_texts(".plinth-dialog h2", ["Remotes"]).await?;
+    driver.wait_texts(".sockel-dialog h2", ["Remotes"]).await?;
 
     driver
-        .find_one_by(".plinth-dialog [aria-label=Close]")
+        .find_one_by(".sockel-dialog [aria-label=Close]")
         .await?
         .click()
         .await?;
-    driver.wait_texts(".plinth-dialog h2", ["Settings"]).await
+    driver.wait_texts(".sockel-dialog h2", ["Settings"]).await
 }
 
 /// The translations modal lists each field's translations with the language
@@ -800,7 +800,7 @@ pub async fn translations_sit_beside_their_language(
     open_show(driver).await?;
 
     driver
-        .find_one_by("[title='Translations']:not(.plinth-menu *)")
+        .find_one_by("[title='Translations']:not(.sockel-menu *)")
         .await?
         .click()
         .await?;
@@ -842,13 +842,13 @@ pub async fn air_dates_explain_the_default_quietly(
         .await?;
 
     driver
-        .wait_texts(".plinth-dialog .plinth-form-label", ["Air date rules"])
+        .wait_texts(".sockel-dialog .sockel-form-label", ["Air date rules"])
         .await?;
     driver
-        .find_one_by(".plinth-dialog .plinth-form-row .plinth-field-hint")
+        .find_one_by(".sockel-dialog .sockel-form-row .sockel-field-hint")
         .await?;
     ensure!(
-        driver.count(".plinth-dialog .exclamation-triangle").await? == 0,
+        driver.count(".sockel-dialog .exclamation-triangle").await? == 0,
         "the default still carries a warning sign"
     );
     Ok(())
@@ -862,7 +862,7 @@ pub async fn season_overview_switches_language(
 ) -> Result<()> {
     open_show(driver).await?;
 
-    let season = "[data-testid='detail-content'] > .plinth-stack";
+    let season = "[data-testid='detail-content'] > .sockel-stack";
     driver
         .find_one_by(&format!("{season} [title='Change displayed language']"))
         .await?
@@ -896,18 +896,18 @@ pub async fn graphics_say_what_they_do(driver: &mut TestDriver, _: &mut Track) -
         .click()
         .await?;
     driver
-        .find_one_by(".plinth-dialog [title='Edit graphics']")
+        .find_one_by(".sockel-dialog [title='Edit graphics']")
         .await?
         .click()
         .await?;
 
     driver
-        .wait_texts(".plinth-dialog .gallery-meta .badge", ["Current"])
+        .wait_texts(".sockel-dialog .gallery-meta .badge", ["Current"])
         .await?;
 
     for title in ["Pick best poster", "Clear poster"] {
         let text = driver
-            .find_one_by(&format!(".plinth-dialog [title='{title}']"))
+            .find_one_by(&format!(".sockel-dialog [title='{title}']"))
             .await?
             .text()
             .await?;
@@ -915,7 +915,7 @@ pub async fn graphics_say_what_they_do(driver: &mut TestDriver, _: &mut Track) -
     }
 
     let meta = driver
-        .rendered_texts(".plinth-dialog .gallery-meta")
+        .rendered_texts(".sockel-dialog .gallery-meta")
         .await?;
     ensure!(
         meta.iter().all(|m| !m.chars().any(|c| c.is_ascii_digit())),
@@ -948,28 +948,28 @@ pub async fn remotes_show_their_actions(driver: &mut TestDriver, _: &mut Track) 
         .click()
         .await?;
     driver
-        .find_one_by(".plinth-dialog [title='Edit remotes']")
+        .find_one_by(".sockel-dialog [title='Edit remotes']")
         .await?
         .click()
         .await?;
 
     driver
-        .find_one_by(".plinth-dialog input[aria-label=Identifier]")
+        .find_one_by(".sockel-dialog input[aria-label=Identifier]")
         .await?
         .send_keys("12345")
         .await?;
     driver
-        .find_one_by(".plinth-dialog [title='Add identifier']")
+        .find_one_by(".sockel-dialog [title='Add identifier']")
         .await?
         .click()
         .await?;
 
     driver
-        .wait_texts(".plinth-dialog [data-testid='remote-id']", ["12345"])
+        .wait_texts(".sockel-dialog [data-testid='remote-id']", ["12345"])
         .await?;
 
     let switch = driver
-        .find_one_by(".plinth-dialog [data-testid='remote-actions'] [role='switch']")
+        .find_one_by(".sockel-dialog [data-testid='remote-actions'] [role='switch']")
         .await?
         .text()
         .await?;
@@ -977,7 +977,7 @@ pub async fn remotes_show_their_actions(driver: &mut TestDriver, _: &mut Track) 
 
     for title in ["Edit identifier", "Remove identifier"] {
         let text = driver
-            .find_one_by(&format!(".plinth-dialog .remote [title='{title}']"))
+            .find_one_by(&format!(".sockel-dialog .remote [title='{title}']"))
             .await?
             .text()
             .await?;
@@ -1003,7 +1003,7 @@ pub async fn xem_anidb_and_scene_remotes_are_added(
         .click()
         .await?;
     driver
-        .find_one_by(".plinth-dialog [title='Edit remotes']")
+        .find_one_by(".sockel-dialog [title='Edit remotes']")
         .await?
         .click()
         .await?;
@@ -1016,15 +1016,15 @@ pub async fn xem_anidb_and_scene_remotes_are_added(
     ] {
         driver
             .find_one_by(&format!(
-                ".plinth-dialog select[title=Source] option[value={source}]"
+                ".sockel-dialog select[title=Source] option[value={source}]"
             ))
             .await?
             .click()
             .await?;
-        driver.wait_count(".plinth-dialog .form .hint", 1).await?;
+        driver.wait_count(".sockel-dialog .form .hint", 1).await?;
 
         let input = driver
-            .find_one_by(".plinth-dialog input[aria-label=Identifier]")
+            .find_one_by(".sockel-dialog input[aria-label=Identifier]")
             .await?;
         let shown = input.attr("placeholder").await?;
         ensure!(shown == placeholder, "{source} asks for {shown:?}");
@@ -1032,30 +1032,30 @@ pub async fn xem_anidb_and_scene_remotes_are_added(
         if source == "xem" {
             input.send_keys("424536").await?;
             driver
-                .find_one_by(".plinth-dialog [title='Add identifier']")
+                .find_one_by(".sockel-dialog [title='Add identifier']")
                 .await?
                 .click()
                 .await?;
-            driver.wait_count(".plinth-dialog .field-error", 1).await?;
+            driver.wait_count(".sockel-dialog .field-error", 1).await?;
             input.clear().await?;
         }
 
         input.send_keys(value).await?;
         driver
-            .find_one_by(".plinth-dialog [title='Add identifier']")
+            .find_one_by(".sockel-dialog [title='Add identifier']")
             .await?
             .click()
             .await?;
         driver
             .wait_count(
-                &format!(".plinth-dialog .remote .logo.{source}"),
+                &format!(".sockel-dialog .remote .logo.{source}"),
                 if value == "18603" { 2 } else { 1 },
             )
             .await?;
     }
 
     let mut ids = driver
-        .find_all_texts(".plinth-dialog [data-testid='remote-id']")
+        .find_all_texts(".sockel-dialog [data-testid='remote-id']")
         .await?;
     ids.sort();
     ensure!(
@@ -1065,26 +1065,26 @@ pub async fn xem_anidb_and_scene_remotes_are_added(
 
     ensure!(
         driver
-            .count(".plinth-dialog a[data-testid='remote-link'][href='https://anidb.net/anime/17617'] .logo.anidb")
+            .count(".sockel-dialog a[data-testid='remote-link'][href='https://anidb.net/anime/17617'] .logo.anidb")
             .await?
             == 1
     );
     ensure!(
         driver
-            .count(".plinth-dialog a[data-testid='remote-link'] .logo.scene")
+            .count(".sockel-dialog a[data-testid='remote-link'] .logo.scene")
             .await?
             == 0
     );
     ensure!(
         driver
-            .count(".plinth-dialog a[data-testid='remote-link'] .logo.xem")
+            .count(".sockel-dialog a[data-testid='remote-link'] .logo.xem")
             .await?
             == 0
     );
 
     for source in ["anidb", "scene", "xem"] {
         let width = driver
-            .find_first(&format!(".plinth-dialog .remote .logo.{source}"))
+            .find_first(&format!(".sockel-dialog .remote .logo.{source}"))
             .await?
             .css("width")
             .await?;
@@ -1093,15 +1093,15 @@ pub async fn xem_anidb_and_scene_remotes_are_added(
     }
 
     for heading in ["Remotes", "Settings"] {
-        driver.wait_texts(".plinth-dialog h2", [heading]).await?;
+        driver.wait_texts(".sockel-dialog h2", [heading]).await?;
         driver
-            .find_one_by(".plinth-dialog [aria-label=Close]")
+            .find_one_by(".sockel-dialog [aria-label=Close]")
             .await?
             .click()
             .await?;
     }
 
-    driver.wait_count(".plinth-dialog", 0).await?;
+    driver.wait_count(".sockel-dialog", 0).await?;
 
     driver
         .wait_count(
@@ -1351,29 +1351,29 @@ pub async fn tvmaze_remote_is_added(driver: &mut TestDriver, _: &mut Track) -> R
         .click()
         .await?;
     driver
-        .find_one_by(".plinth-dialog [title='Edit remotes']")
+        .find_one_by(".sockel-dialog [title='Edit remotes']")
         .await?
         .click()
         .await?;
     driver
-        .find_one_by(".plinth-dialog select[title=Source] option[value=tvmaze]")
+        .find_one_by(".sockel-dialog select[title=Source] option[value=tvmaze]")
         .await?
         .click()
         .await?;
     driver
-        .find_one_by(".plinth-dialog input[aria-label=Identifier]")
+        .find_one_by(".sockel-dialog input[aria-label=Identifier]")
         .await?
         .send_keys("82")
         .await?;
     driver
-        .find_one_by(".plinth-dialog [title='Add identifier']")
+        .find_one_by(".sockel-dialog [title='Add identifier']")
         .await?
         .click()
         .await?;
     driver
-        .wait_count(".plinth-dialog .remote .logo.tvmaze", 1)
+        .wait_count(".sockel-dialog .remote .logo.tvmaze", 1)
         .await?;
-    ensure!(driver.count(".plinth-dialog .field-error").await? == 0);
+    ensure!(driver.count(".sockel-dialog .field-error").await? == 0);
     Ok(())
 }
 
@@ -1386,7 +1386,7 @@ async fn wait_spans(driver: &TestDriver, expected: &[&str]) -> Result<()> {
             let ret = driver
                 .webdriver()
                 .execute(
-                    "return [...document.querySelectorAll('.plinth-dialog .numbering-range-summary .numbering-span')].map(e => e.textContent);",
+                    "return [...document.querySelectorAll('.sockel-dialog .numbering-range-summary .numbering-span')].map(e => e.textContent);",
                     Vec::new(),
                 )
                 .await?;
@@ -1409,7 +1409,7 @@ async fn values(driver: &TestDriver, selector: &str) -> Result<Vec<String>> {
 async fn pick(driver: &TestDriver, label: &str) -> Result<()> {
     driver
         .find_one_by(&format!(
-            ".plinth-dialog .numbering-ep[aria-label='{label}']"
+            ".sockel-dialog .numbering-ep[aria-label='{label}']"
         ))
         .await?
         .click()
@@ -1422,23 +1422,23 @@ async fn pick(driver: &TestDriver, label: &str) -> Result<()> {
 async fn suggest_from(driver: &TestDriver, label: &str) -> Result<()> {
     driver
         .wait_texts(
-            ".plinth-dialog .numbering-basis-name",
+            ".sockel-dialog .numbering-basis-name",
             ["TheTVDB · Scene · AniDB", "Trakt"],
         )
         .await?;
     driver
         .wait_texts(
-            ".plinth-dialog .numbering-basis-option .text-muted",
+            ".sockel-dialog .numbering-basis-option .text-muted",
             ["5 episodes in 2 ranges", "4 episodes in 1 range"],
         )
         .await?;
     driver
-        .find_one_by(&format!(".plinth-dialog [title='Suggest from {label}']"))
+        .find_one_by(&format!(".sockel-dialog [title='Suggest from {label}']"))
         .await?
         .click()
         .await?;
     driver
-        .wait_count(".plinth-dialog .numbering-basis", 0)
+        .wait_count(".sockel-dialog .numbering-basis", 0)
         .await
 }
 
@@ -1460,38 +1460,38 @@ pub async fn numbering_ranges_are_edited(driver: &mut TestDriver, track: &mut Tr
 
     driver
         .wait_texts(
-            ".plinth-dialog .numbering-warning",
+            ".sockel-dialog .numbering-warning",
             ["TMDB Season 1 has 5 episodes but TheTVDB Season 1 has 3, so from S01E04 on, other numberings would be wrong. Compare in the range editor"],
         )
         .await?;
 
     // Automatic numbering, drawn: TheTVDB S1 has no E4-E5 and S2 is unreached.
     driver
-        .find_one_by(".plinth-dialog .numbering-warning .link-button")
+        .find_one_by(".sockel-dialog .numbering-warning .link-button")
         .await?
         .click()
         .await?;
     driver
-        .find_one_by(".plinth-dialog .numbering-details-toggle")
+        .find_one_by(".sockel-dialog .numbering-details-toggle")
         .await?
         .click()
         .await?;
     driver
         .wait_texts(
-            ".plinth-dialog .numbering-status .numbering-missing",
+            ".sockel-dialog .numbering-status .numbering-missing",
             ["XEM has no TheTVDB S1 E4–E5, so TMDB S1 E4–E5 get no other numbers."],
         )
         .await?;
     driver
         .wait_texts(
-            ".plinth-dialog .numbering-unreached",
+            ".sockel-dialog .numbering-unreached",
             ["No TMDB episode maps to TheTVDB S2 E1–E2."],
         )
         .await?;
-    ensure!(driver.count(".plinth-dialog .numbering-ep.missing").await? == 2);
+    ensure!(driver.count(".sockel-dialog .numbering-ep.missing").await? == 2);
     ensure!(
         driver
-            .count(".plinth-dialog .numbering-ep:not(:disabled)")
+            .count(".sockel-dialog .numbering-ep:not(:disabled)")
             .await?
             == 0
     );
@@ -1500,7 +1500,7 @@ pub async fn numbering_ranges_are_edited(driver: &mut TestDriver, track: &mut Tr
     // asks which to follow; the suggestion shows in the same view before
     // anything is saved.
     driver
-        .find_one_by(".plinth-dialog .numbering-status [title='Suggest from episode order']")
+        .find_one_by(".sockel-dialog .numbering-status [title='Suggest from episode order']")
         .await?
         .click()
         .await?;
@@ -1508,14 +1508,14 @@ pub async fn numbering_ranges_are_edited(driver: &mut TestDriver, track: &mut Tr
     wait_spans(driver, &["S1 E1–E3", "S1 E1–E3", "S1 E4–", "S2 E1–"]).await?;
     // Two ranges, each banded across the four gaps between five columns.
     driver
-        .wait_count(".plinth-dialog .numbering-band:not(.open-end)", 8)
+        .wait_count(".sockel-dialog .numbering-band:not(.open-end)", 8)
         .await?;
     driver
-        .wait_count(".plinth-dialog .numbering-note", 1)
+        .wait_count(".sockel-dialog .numbering-note", 1)
         .await?;
     driver
         .wait_texts(
-            ".plinth-dialog .numbering-coverage",
+            ".sockel-dialog .numbering-coverage",
             ["5 of 5 regular TMDB episodes are mapped."],
         )
         .await?;
@@ -1525,62 +1525,62 @@ pub async fn numbering_ranges_are_edited(driver: &mut TestDriver, track: &mut Tr
     pick(driver, "TMDB S1 E4").await?;
     driver
         .wait_count(
-            ".plinth-dialog .numbering-range.selected[aria-label='Range 2']",
+            ".sockel-dialog .numbering-range.selected[aria-label='Range 2']",
             1,
         )
         .await?;
-    let fields = ".plinth-dialog .numbering-range.selected input";
+    let fields = ".sockel-dialog .numbering-range.selected input";
     ensure!(values(driver, fields).await? == ["1", "4", "", "2", "1"]);
 
     pick(driver, "TMDB S1 E4").await?;
     pick(driver, "TMDB S1 E3").await?;
     driver
         .wait_texts(
-            ".plinth-dialog .numbering-errors",
+            ".sockel-dialog .numbering-errors",
             ["E3 is already in the range S1 E1–E3. TMDB ranges must not overlap."],
         )
         .await?;
     driver
-        .wait_count(".plinth-dialog .numbering-band.invalid", 4)
+        .wait_count(".sockel-dialog .numbering-band.invalid", 4)
         .await?;
     driver
         .wait_count(
-            ".plinth-dialog .numbering-ep.overlap[aria-label='TMDB S1 E3']",
+            ".sockel-dialog .numbering-ep.overlap[aria-label='TMDB S1 E3']",
             1,
         )
         .await?;
     driver
-        .wait_count(".plinth-dialog [title='Save']:disabled", 1)
+        .wait_count(".sockel-dialog [title='Save']:disabled", 1)
         .await?;
 
     pick(driver, "TMDB S1 E4").await?;
     pick(driver, "TMDB S1 E5").await?;
     driver
-        .wait_count(".plinth-dialog .numbering-errors", 0)
+        .wait_count(".sockel-dialog .numbering-errors", 0)
         .await?;
     ensure!(values(driver, fields).await? == ["1", "4", "5", "2", "1"]);
 
     // Removing it leaves its episodes unmapped.
     driver
-        .find_one_by(".plinth-dialog [title='Remove range 2']")
+        .find_one_by(".sockel-dialog [title='Remove range 2']")
         .await?
         .click()
         .await?;
     driver
-        .wait_count(".plinth-dialog .numbering-range", 1)
+        .wait_count(".sockel-dialog .numbering-range", 1)
         .await?;
     driver
-        .wait_count(".plinth-dialog .numbering-ep.unmapped", 2)
+        .wait_count(".sockel-dialog .numbering-ep.unmapped", 2)
         .await?;
     driver
         .wait_texts(
-            ".plinth-dialog .numbering-coverage",
+            ".sockel-dialog .numbering-coverage",
             ["3 of 5 regular TMDB episodes are mapped."],
         )
         .await?;
     driver
         .wait_texts(
-            ".plinth-dialog .numbering-unmapped",
+            ".sockel-dialog .numbering-unmapped",
             ["Not mapped: S1 E4–E5."],
         )
         .await?;
@@ -1589,12 +1589,12 @@ pub async fn numbering_ranges_are_edited(driver: &mut TestDriver, track: &mut Tr
     // which runs past what XEM knows until it is pointed at TheTVDB S2.
     pick(driver, "TMDB S1 E4").await?;
     driver
-        .wait_count(".plinth-dialog .numbering-range", 2)
+        .wait_count(".sockel-dialog .numbering-range", 2)
         .await?;
     pick(driver, "TMDB S1 E5").await?;
     driver
         .wait_texts(
-            ".plinth-dialog .numbering-range .numbering-missing",
+            ".sockel-dialog .numbering-range .numbering-missing",
             ["XEM has no TheTVDB S1 E4–E5."],
         )
         .await?;
@@ -1602,18 +1602,18 @@ pub async fn numbering_ranges_are_edited(driver: &mut TestDriver, track: &mut Tr
 
     pick(driver, "TheTVDB S2 E1").await?;
     driver
-        .wait_count(".plinth-dialog .numbering-missing", 0)
+        .wait_count(".sockel-dialog .numbering-missing", 0)
         .await?;
     ensure!(values(driver, fields).await? == ["1", "4", "5", "2", "1"]);
     wait_spans(driver, &["S1 E1–E3", "S1 E1–E3", "S1 E4–E5", "S2 E1–E2"]).await?;
 
     driver
-        .find_one_by(".plinth-dialog [title='Save']")
+        .find_one_by(".sockel-dialog [title='Save']")
         .await?
         .click()
         .await?;
     driver
-        .find_one_by(".plinth-dialog [title='Edit ranges']")
+        .find_one_by(".sockel-dialog [title='Edit ranges']")
         .await?;
 
     let saved = numbering()?;
@@ -1627,28 +1627,28 @@ pub async fn numbering_ranges_are_edited(driver: &mut TestDriver, track: &mut Tr
 
     // The editor opens on the saved ranges, and saving automatic clears them.
     driver
-        .find_one_by(".plinth-dialog [title='Edit ranges']")
+        .find_one_by(".sockel-dialog [title='Edit ranges']")
         .await?
         .click()
         .await?;
     driver
-        .wait_count(".plinth-dialog .numbering-range", 2)
+        .wait_count(".sockel-dialog .numbering-range", 2)
         .await?;
     driver
-        .find_one_by(".plinth-dialog [title='Automatic: same as TheTVDB']")
+        .find_one_by(".sockel-dialog [title='Automatic: same as TheTVDB']")
         .await?
         .click()
         .await?;
     driver
-        .wait_count(".plinth-dialog .numbering-range", 0)
+        .wait_count(".sockel-dialog .numbering-range", 0)
         .await?;
     driver
-        .find_one_by(".plinth-dialog [title='Save']")
+        .find_one_by(".sockel-dialog [title='Save']")
         .await?
         .click()
         .await?;
     driver
-        .wait_count(".plinth-dialog .numbering-warning", 1)
+        .wait_count(".sockel-dialog .numbering-warning", 1)
         .await?;
     driver
         .wait_until("the ranges to be cleared", async || {
@@ -1672,47 +1672,47 @@ pub async fn numbering_ranges_are_made_from_either_side(
         .click()
         .await?;
     driver
-        .find_one_by(".plinth-dialog .numbering-warning .link-button")
+        .find_one_by(".sockel-dialog .numbering-warning .link-button")
         .await?
         .click()
         .await?;
 
     driver
-        .wait_count(".plinth-dialog .numbering-map-source", 5)
+        .wait_count(".sockel-dialog .numbering-map-source", 5)
         .await?;
     ensure!(
         driver
-            .find_all_attrs(".plinth-dialog .numbering-map-source", "title")
+            .find_all_attrs(".sockel-dialog .numbering-map-source", "title")
             .await?
             == ["TMDB", "TheTVDB", "Scene", "AniDB", "Trakt"]
     );
 
     driver
-        .find_one_by(".plinth-dialog [title='Manual ranges']")
+        .find_one_by(".sockel-dialog [title='Manual ranges']")
         .await?
         .click()
         .await?;
     driver
-        .wait_count(".plinth-dialog .numbering-basis", 1)
+        .wait_count(".sockel-dialog .numbering-basis", 1)
         .await?;
-    ensure!(driver.count(".plinth-dialog .numbering-range").await? == 0);
+    ensure!(driver.count(".sockel-dialog .numbering-range").await? == 0);
 
     suggest_from(driver, "Trakt").await?;
     wait_spans(driver, &["S1 E1–E4", "S1 E1–E4"]).await?;
     driver
         .wait_texts(
-            ".plinth-dialog .numbering-note",
+            ".sockel-dialog .numbering-note",
             ["Suggested from Trakt's episode order. Nothing is saved until you save."],
         )
         .await?;
     driver
-        .find_one_by(".plinth-dialog .numbering-details-toggle")
+        .find_one_by(".sockel-dialog .numbering-details-toggle")
         .await?
         .click()
         .await?;
     driver
         .wait_texts(
-            ".plinth-dialog .numbering-unreached",
+            ".sockel-dialog .numbering-unreached",
             ["No TMDB episode maps to TheTVDB S1 E1."],
         )
         .await?;
@@ -1720,17 +1720,17 @@ pub async fn numbering_ranges_are_made_from_either_side(
     // Two clicks in TheTVDB's column make a range spanning them, from the
     // first TMDB episode no range covers.
     driver
-        .find_one_by(".plinth-dialog [title='Remove range 1']")
+        .find_one_by(".sockel-dialog [title='Remove range 1']")
         .await?
         .click()
         .await?;
     pick(driver, "TheTVDB S1 E1").await?;
     pick(driver, "TheTVDB S1 E3").await?;
-    let fields = ".plinth-dialog .numbering-range.selected input";
+    let fields = ".sockel-dialog .numbering-range.selected input";
     ensure!(values(driver, fields).await? == ["1", "1", "3", "1", "1"]);
 
     driver
-        .find_one_by(".plinth-dialog [title='Done editing range 1']")
+        .find_one_by(".sockel-dialog [title='Done editing range 1']")
         .await?
         .click()
         .await?;
@@ -1739,7 +1739,7 @@ pub async fn numbering_ranges_are_made_from_either_side(
     wait_spans(driver, &["S1 E1–E3", "S1 E1–E3", "S1 E4–E5", "S2 E1–E2"]).await?;
     driver
         .wait_texts(
-            ".plinth-dialog .numbering-coverage",
+            ".sockel-dialog .numbering-coverage",
             ["5 of 5 regular TMDB episodes are mapped."],
         )
         .await?;
@@ -1748,7 +1748,7 @@ pub async fn numbering_ranges_are_made_from_either_side(
     let title = async |label: &str| {
         driver
             .find_one_by(&format!(
-                ".plinth-dialog .numbering-ep[aria-label='{label}']"
+                ".sockel-dialog .numbering-ep[aria-label='{label}']"
             ))
             .await?
             .attr("title")
@@ -1760,14 +1760,14 @@ pub async fn numbering_ranges_are_made_from_either_side(
 
     // An episode reached through XEM selects its range.
     driver
-        .find_one_by(".plinth-dialog [title='Done editing range 2']")
+        .find_one_by(".sockel-dialog [title='Done editing range 2']")
         .await?
         .click()
         .await?;
     pick(driver, "Scene S2 E2").await?;
     driver
         .wait_count(
-            ".plinth-dialog .numbering-range.selected[aria-label='Range 2']",
+            ".sockel-dialog .numbering-range.selected[aria-label='Range 2']",
             1,
         )
         .await?;
@@ -1775,12 +1775,12 @@ pub async fn numbering_ranges_are_made_from_either_side(
     // Five columns fit a phone without the modal scrolling sideways.
     driver.set_window_size(400, 850).await?;
     driver
-        .wait_count(".plinth-dialog .numbering-map-source", 5)
+        .wait_count(".sockel-dialog .numbering-map-source", 5)
         .await?;
     let ret = driver
         .webdriver()
         .execute(
-            "const e = document.querySelector('.plinth-dialog .numbering-map-scroll'); return [e.scrollWidth, e.clientWidth];",
+            "const e = document.querySelector('.sockel-dialog .numbering-map-scroll'); return [e.scrollWidth, e.clientWidth];",
             Vec::new(),
         )
         .await?;
@@ -1788,7 +1788,7 @@ pub async fn numbering_ranges_are_made_from_either_side(
     ensure!(scroll <= client, "the map is {scroll}px wide in {client}px");
 
     driver
-        .find_one_by(".plinth-dialog [title='Save']")
+        .find_one_by(".sockel-dialog [title='Save']")
         .await?
         .click()
         .await?;
@@ -1813,50 +1813,50 @@ pub async fn numbering_warnings_fold_into_a_summary(
         .click()
         .await?;
     driver
-        .find_one_by(".plinth-dialog .numbering-warning .link-button")
+        .find_one_by(".sockel-dialog .numbering-warning .link-button")
         .await?
         .click()
         .await?;
 
     driver
         .wait_texts(
-            ".plinth-dialog .numbering-summary",
+            ".sockel-dialog .numbering-summary",
             ["1 season differs from TheTVDB. Show details"],
         )
         .await?;
     ensure!(
         driver
             .count(
-                ".plinth-dialog .numbering-summary + .numbering-tools [title='Suggest from episode order']"
+                ".sockel-dialog .numbering-summary + .numbering-tools [title='Suggest from episode order']"
             )
             .await?
             == 1
     );
-    ensure!(driver.count(".plinth-dialog .numbering-details").await? == 0);
+    ensure!(driver.count(".sockel-dialog .numbering-details").await? == 0);
 
     // The details unfold under Suggest, which stays where it was.
-    let toggle = ".plinth-dialog .numbering-details-toggle";
+    let toggle = ".sockel-dialog .numbering-details-toggle";
     driver.find_one_by(toggle).await?.click().await?;
     driver
         .wait_texts(
-            ".plinth-dialog .numbering-details .numbering-warning",
+            ".sockel-dialog .numbering-details .numbering-warning",
             ["TMDB Season 1 has 5 episodes but TheTVDB Season 1 has 3, so from S01E04 on, other numberings would be wrong."],
         )
         .await?;
     driver
         .wait_texts(
-            ".plinth-dialog .numbering-details .numbering-missing",
+            ".sockel-dialog .numbering-details .numbering-missing",
             ["XEM has no TheTVDB S1 E4–E5, so TMDB S1 E4–E5 get no other numbers."],
         )
         .await?;
     driver
         .wait_texts(
-            ".plinth-dialog .numbering-details .numbering-unreached",
+            ".sockel-dialog .numbering-details .numbering-unreached",
             ["No TMDB episode maps to TheTVDB S2 E1–E2."],
         )
         .await?;
     driver
-        .wait_count(".plinth-dialog .numbering-tools + .numbering-details", 1)
+        .wait_count(".sockel-dialog .numbering-tools + .numbering-details", 1)
         .await?;
     driver.wait_texts(toggle, ["Hide details"]).await?;
     ensure!(
@@ -1870,33 +1870,33 @@ pub async fn numbering_warnings_fold_into_a_summary(
 
     driver.find_one_by(toggle).await?.click().await?;
     driver
-        .wait_count(".plinth-dialog .numbering-details", 0)
+        .wait_count(".sockel-dialog .numbering-details", 0)
         .await?;
 
     // Manual ranges fold the episodes no range maps under their count.
     driver
-        .find_one_by(".plinth-dialog [title='Manual ranges']")
+        .find_one_by(".sockel-dialog [title='Manual ranges']")
         .await?
         .click()
         .await?;
     suggest_from(driver, "TheTVDB").await?;
     driver
-        .find_one_by(".plinth-dialog [title='Remove range 2']")
+        .find_one_by(".sockel-dialog [title='Remove range 2']")
         .await?
         .click()
         .await?;
     driver
         .wait_texts(
-            ".plinth-dialog .numbering-coverage",
+            ".sockel-dialog .numbering-coverage",
             ["3 of 5 regular TMDB episodes are mapped."],
         )
         .await?;
-    ensure!(driver.count(".plinth-dialog .numbering-unmapped").await? == 0);
+    ensure!(driver.count(".sockel-dialog .numbering-unmapped").await? == 0);
 
     driver.find_one_by(toggle).await?.click().await?;
     driver
         .wait_texts(
-            ".plinth-dialog .numbering-details .numbering-unmapped",
+            ".sockel-dialog .numbering-details .numbering-unmapped",
             ["Not mapped: S1 E4–E5."],
         )
         .await
@@ -1917,27 +1917,27 @@ pub async fn numbering_map_opens_when_seasons_line_up(
         .click()
         .await?;
     driver
-        .find_one_by(".plinth-dialog .numbering-view-map")
+        .find_one_by(".sockel-dialog .numbering-view-map")
         .await?
         .click()
         .await?;
 
     driver
         .wait_texts(
-            ".plinth-dialog .numbering-status .hint",
+            ".sockel-dialog .numbering-status .hint",
             ["Automatic numbering reads the show's episode codes as TheTVDB's, and its seasons line up."],
         )
         .await?;
     driver
-        .wait_count(".plinth-dialog .numbering-map-source", 5)
+        .wait_count(".sockel-dialog .numbering-map-source", 5)
         .await?;
     ensure!(
         driver
-            .count(".plinth-dialog [title='Automatic: same as TheTVDB'][aria-pressed='true']")
+            .count(".sockel-dialog [title='Automatic: same as TheTVDB'][aria-pressed='true']")
             .await?
             == 1
     );
-    ensure!(driver.count(".plinth-dialog .numbering-range").await? == 0);
+    ensure!(driver.count(".sockel-dialog .numbering-range").await? == 0);
     Ok(())
 }
 
@@ -1998,15 +1998,15 @@ pub async fn numbering_list_and_map_follow_each_other(
 
     open_show(driver).await?;
 
-    let last = ".plinth-dialog .numbering-range[aria-label='Range 32']";
-    let first_ep = ".plinth-dialog .numbering-ep[aria-label='TMDB S31 E1']";
-    let target_ep = ".plinth-dialog .numbering-ep[aria-label='TheTVDB S32 E1']";
+    let last = ".sockel-dialog .numbering-range[aria-label='Range 32']";
+    let first_ep = ".sockel-dialog .numbering-ep[aria-label='TMDB S31 E1']";
+    let target_ep = ".sockel-dialog .numbering-ep[aria-label='TheTVDB S32 E1']";
 
     let top = async || {
         driver
             .webdriver()
             .execute(
-                "for (const e of document.querySelectorAll('.plinth-dialog, .plinth-dialog *')) { e.scrollTop = 0; }",
+                "for (const e of document.querySelectorAll('.sockel-dialog, .sockel-dialog *')) { e.scrollTop = 0; }",
                 Vec::new(),
             )
             .await
@@ -2018,12 +2018,12 @@ pub async fn numbering_list_and_map_follow_each_other(
         .click()
         .await?;
     driver
-        .find_one_by(".plinth-dialog [title='Edit ranges']")
+        .find_one_by(".sockel-dialog [title='Edit ranges']")
         .await?
         .click()
         .await?;
     driver
-        .wait_count(".plinth-dialog .numbering-range", 32)
+        .wait_count(".sockel-dialog .numbering-range", 32)
         .await?;
     driver.find_one_by(first_ep).await?;
 
@@ -2034,7 +2034,7 @@ pub async fn numbering_list_and_map_follow_each_other(
         // The list picks the last range: the map scrolls to its episodes.
         ensure!(!in_view(driver, first_ep, Some(".numbering-map-scroll")).await?);
         driver
-            .find_one_by(".plinth-dialog [title='Edit range 32']")
+            .find_one_by(".sockel-dialog [title='Edit range 32']")
             .await?
             .click()
             .await?;
@@ -2051,17 +2051,17 @@ pub async fn numbering_list_and_map_follow_each_other(
         // Back at the top of both, a click on the last episode in the map
         // scrolls the list to its range.
         driver
-            .find_one_by(".plinth-dialog [title='Done editing range 32']")
+            .find_one_by(".sockel-dialog [title='Done editing range 32']")
             .await?
             .click()
             .await?;
         driver
-            .wait_count(".plinth-dialog .numbering-range.selected", 0)
+            .wait_count(".sockel-dialog .numbering-range.selected", 0)
             .await?;
         top().await?;
         ensure!(!in_view(driver, last, None).await?);
         driver
-            .find_one_by(".plinth-dialog .numbering-ep[aria-label='TMDB S31 E3']")
+            .find_one_by(".sockel-dialog .numbering-ep[aria-label='TMDB S31 E3']")
             .await?
             .click()
             .await?;
@@ -2072,12 +2072,12 @@ pub async fn numbering_list_and_map_follow_each_other(
         );
 
         driver
-            .find_one_by(".plinth-dialog [title='Done editing range 32']")
+            .find_one_by(".sockel-dialog [title='Done editing range 32']")
             .await?
             .click()
             .await?;
         driver
-            .wait_count(".plinth-dialog .numbering-range.selected", 0)
+            .wait_count(".sockel-dialog .numbering-range.selected", 0)
             .await?;
     }
 
@@ -2109,17 +2109,17 @@ pub async fn numbering_map_names_the_season_in_view(
         .click()
         .await?;
     driver
-        .find_one_by(".plinth-dialog [title='Edit ranges']")
+        .find_one_by(".sockel-dialog [title='Edit ranges']")
         .await?
         .click()
         .await?;
     driver
-        .find_one_by(".plinth-dialog .numbering-ep[aria-label='TMDB S31 E1']")
+        .find_one_by(".sockel-dialog .numbering-ep[aria-label='TMDB S31 E1']")
         .await?;
 
     let checked = |label: &str, season: &str| {
         format!(
-            ".plinth-dialog select[aria-label='{label} season in view'] option[value='{season}']:checked"
+            ".sockel-dialog select[aria-label='{label} season in view'] option[value='{season}']:checked"
         )
     };
 
@@ -2128,7 +2128,7 @@ pub async fn numbering_map_names_the_season_in_view(
         driver
             .webdriver()
             .execute(
-                "for (const e of document.querySelectorAll('.plinth-dialog, .plinth-dialog *')) { e.scrollTop = 0; }",
+                "for (const e of document.querySelectorAll('.sockel-dialog, .sockel-dialog *')) { e.scrollTop = 0; }",
                 Vec::new(),
             )
             .await?;
@@ -2140,8 +2140,8 @@ pub async fn numbering_map_names_the_season_in_view(
         driver
             .webdriver()
             .execute(
-                "const s = document.querySelector('.plinth-dialog .numbering-map-scroll'); \
-                 const e = document.querySelector(\".plinth-dialog .numbering-ep[aria-label='TMDB S10 E1']\"); \
+                "const s = document.querySelector('.sockel-dialog .numbering-map-scroll'); \
+                 const e = document.querySelector(\".sockel-dialog .numbering-ep[aria-label='TMDB S10 E1']\"); \
                  s.scrollTop += e.getBoundingClientRect().top - s.getBoundingClientRect().top - 13;",
                 Vec::new(),
             )
@@ -2153,7 +2153,7 @@ pub async fn numbering_map_names_the_season_in_view(
         // Picking TMDB S20 scrolls the map to it.
         driver
             .find_one_by(
-                ".plinth-dialog select[aria-label='TMDB season in view'] option[value='20']",
+                ".sockel-dialog select[aria-label='TMDB season in view'] option[value='20']",
             )
             .await?
             .click()
@@ -2163,7 +2163,7 @@ pub async fn numbering_map_names_the_season_in_view(
         ensure!(
             in_view(
                 driver,
-                ".plinth-dialog .numbering-ep[aria-label='TMDB S20 E1']",
+                ".sockel-dialog .numbering-ep[aria-label='TMDB S20 E1']",
                 Some(".numbering-map-scroll")
             )
             .await?,
@@ -2173,7 +2173,7 @@ pub async fn numbering_map_names_the_season_in_view(
         let ret = driver
             .webdriver()
             .execute(
-                "const e = document.querySelector('.plinth-dialog .numbering-map-head'); return [e.scrollWidth, e.clientWidth];",
+                "const e = document.querySelector('.sockel-dialog .numbering-map-head'); return [e.scrollWidth, e.clientWidth];",
                 Vec::new(),
             )
             .await?;
@@ -2205,12 +2205,12 @@ pub async fn numbering_ranges_are_left_open(
         .click()
         .await?;
     driver
-        .find_one_by(".plinth-dialog .numbering-warning .link-button")
+        .find_one_by(".sockel-dialog .numbering-warning .link-button")
         .await?
         .click()
         .await?;
     driver
-        .find_one_by(".plinth-dialog [title='Manual ranges']")
+        .find_one_by(".sockel-dialog [title='Manual ranges']")
         .await?
         .click()
         .await?;
@@ -2219,10 +2219,10 @@ pub async fn numbering_ranges_are_left_open(
     // The open end fades over the episode after the last in each of the four
     // gaps, past what TMDB and XEM know.
     driver
-        .wait_count(".plinth-dialog .numbering-band.open-end", 4)
+        .wait_count(".sockel-dialog .numbering-band.open-end", 4)
         .await?;
     let tail = driver
-        .find_one_by(".plinth-dialog .numbering-ep.open-end[aria-label='TMDB S1 E6']")
+        .find_one_by(".sockel-dialog .numbering-ep.open-end[aria-label='TMDB S1 E6']")
         .await?;
     ensure!(tail.text().await? == "E6…");
     ensure!(
@@ -2230,64 +2230,64 @@ pub async fn numbering_ranges_are_left_open(
     );
     driver
         .wait_count(
-            ".plinth-dialog .numbering-ep.open-end[aria-label='TheTVDB S2 E3']",
+            ".sockel-dialog .numbering-ep.open-end[aria-label='TheTVDB S2 E3']",
             1,
         )
         .await?;
 
     // Opening the first range would run it into the second.
     driver
-        .find_one_by(".plinth-dialog [title='Edit range 1']")
+        .find_one_by(".sockel-dialog [title='Edit range 1']")
         .await?
         .click()
         .await?;
     let open_end = |n: u32| {
-        format!(".plinth-dialog [title='Range {n} runs on through later episodes of the season']")
+        format!(".sockel-dialog [title='Range {n} runs on through later episodes of the season']")
     };
     driver.find_one_by(&open_end(1)).await?.click().await?;
     driver
         .wait_texts(
-            ".plinth-dialog .numbering-errors",
+            ".sockel-dialog .numbering-errors",
             ["E4 is already in the range S1 E1–. TMDB ranges must not overlap. An open range must be the last in its TMDB season."],
         )
         .await?;
     driver
-        .wait_count(".plinth-dialog [title='Save']:disabled", 1)
+        .wait_count(".sockel-dialog [title='Save']:disabled", 1)
         .await?;
     driver.find_one_by(&open_end(1)).await?.click().await?;
     driver
-        .wait_count(".plinth-dialog .numbering-errors", 0)
+        .wait_count(".sockel-dialog .numbering-errors", 0)
         .await?;
     wait_spans(driver, &["S1 E1–E3", "S1 E1–E3", "S1 E4–", "S2 E1–"]).await?;
 
     // Closing the second ends it at the last episode drawn, and opening it
     // again leaves the last episode out.
     driver
-        .find_one_by(".plinth-dialog [title='Edit range 2']")
+        .find_one_by(".sockel-dialog [title='Edit range 2']")
         .await?
         .click()
         .await?;
     driver.find_one_by(&open_end(2)).await?.click().await?;
     wait_spans(driver, &["S1 E1–E3", "S1 E1–E3", "S1 E4–E5", "S2 E1–E2"]).await?;
     driver
-        .wait_count(".plinth-dialog .numbering-band.open-end", 0)
+        .wait_count(".sockel-dialog .numbering-band.open-end", 0)
         .await?;
     driver.find_one_by(&open_end(2)).await?.click().await?;
     driver
         .wait_count(
-            ".plinth-dialog .numbering-range.selected [aria-label='Range 2 last episode']:disabled",
+            ".sockel-dialog .numbering-range.selected [aria-label='Range 2 last episode']:disabled",
             1,
         )
         .await?;
     wait_spans(driver, &["S1 E1–E3", "S1 E1–E3", "S1 E4–", "S2 E1–"]).await?;
 
     driver
-        .find_one_by(".plinth-dialog [title='Save']")
+        .find_one_by(".sockel-dialog [title='Save']")
         .await?
         .click()
         .await?;
     driver
-        .find_one_by(".plinth-dialog [title='Edit ranges']")
+        .find_one_by(".sockel-dialog [title='Edit ranges']")
         .await?;
     let saved = track.query("SELECT numbering FROM shows WHERE id = 1001")?;
     ensure!(
@@ -2310,23 +2310,23 @@ pub async fn numbering_ranges_are_left_open(
         .click()
         .await?;
     driver
-        .find_one_by(".plinth-dialog [title='Edit ranges']")
+        .find_one_by(".sockel-dialog [title='Edit ranges']")
         .await?
         .click()
         .await?;
     driver
         .wait_texts(
-            ".plinth-dialog .numbering-coverage",
+            ".sockel-dialog .numbering-coverage",
             ["6 of 6 regular TMDB episodes are mapped."],
         )
         .await?;
     let added = driver
-        .find_one_by(".plinth-dialog .numbering-ep[aria-label='TMDB S1 E6']")
+        .find_one_by(".sockel-dialog .numbering-ep[aria-label='TMDB S1 E6']")
         .await?;
     ensure!(added.attr("title").await? == "TMDB S1 E6 ↔ TheTVDB S2 E3");
     driver
         .wait_count(
-            ".plinth-dialog .numbering-ep.open-end[aria-label='TMDB S1 E7']",
+            ".sockel-dialog .numbering-ep.open-end[aria-label='TMDB S1 E7']",
             1,
         )
         .await
@@ -2358,10 +2358,10 @@ async fn numbering_layout(driver: &TestDriver) -> Result<([[f64; 4]; 3], f64)> {
         .execute(
             "const r = s => { const b = document.querySelector(s).getBoundingClientRect(); \
                  return [b.top, b.bottom, b.left, b.right]; }; \
-             const c = document.querySelector('.numbering-modal .plinth-dialog-body'); \
+             const c = document.querySelector('.numbering-modal .sockel-dialog-body'); \
              return [[r('.numbering-modal .numbering-map-pane'), \
                  r('.numbering-modal .numbering-range:last-child .numbering-range-head'), \
-                 r('.numbering-modal .plinth-dialog-body')], c.scrollTop];",
+                 r('.numbering-modal .sockel-dialog-body')], c.scrollTop];",
             Vec::new(),
         )
         .await?;
@@ -2380,25 +2380,25 @@ pub async fn numbering_map_stays_in_view(driver: &mut TestDriver, track: &mut Tr
         .click()
         .await?;
     driver
-        .find_one_by(".plinth-dialog [title='Edit ranges']")
+        .find_one_by(".sockel-dialog [title='Edit ranges']")
         .await?
         .click()
         .await?;
     driver
-        .wait_count(".plinth-dialog .numbering-range", 40)
+        .wait_count(".sockel-dialog .numbering-range", 40)
         .await?;
 
     let modal = driver.find_one_by(".numbering-modal").await?.rect().await?;
     ensure!(modal.width > 1000.0, "the editor is {}px wide", modal.width);
 
     driver
-        .find_one_by(".plinth-dialog [title='Edit range 40']")
+        .find_one_by(".sockel-dialog [title='Edit range 40']")
         .await?
         .click()
         .await?;
     driver
         .wait_count(
-            ".plinth-dialog .numbering-range.selected[aria-label='Range 40']",
+            ".sockel-dialog .numbering-range.selected[aria-label='Range 40']",
             1,
         )
         .await?;
@@ -2476,11 +2476,11 @@ pub async fn alternative_names_are_listed(driver: &mut TestDriver, _: &mut Track
     driver.snapshot("show-names").await?;
 
     driver
-        .find_one_by(".plinth-dialog [aria-label=Close]")
+        .find_one_by(".sockel-dialog [aria-label=Close]")
         .await?
         .click()
         .await?;
-    driver.wait_count(".plinth-dialog", 0).await
+    driver.wait_count(".sockel-dialog", 0).await
 }
 
 /// Each other name says where it comes from and its language, with the code its
@@ -2640,7 +2640,7 @@ async fn open_names(driver: &TestDriver) -> Result<()> {
         .await?
         .click()
         .await?;
-    driver.find_one_by(".plinth-dialog").await?;
+    driver.find_one_by(".sockel-dialog").await?;
     Ok(())
 }
 
@@ -2683,17 +2683,17 @@ pub async fn xem_remote_links_to_its_page(driver: &mut TestDriver, _: &mut Track
         .click()
         .await?;
     driver
-        .find_one_by(".plinth-dialog [title='Edit remotes']")
+        .find_one_by(".sockel-dialog [title='Edit remotes']")
         .await?
         .click()
         .await?;
 
     driver
-        .wait_count(&format!(".plinth-dialog {page}"), 1)
+        .wait_count(&format!(".sockel-dialog {page}"), 1)
         .await?;
     driver
         .wait_texts(
-            ".plinth-dialog [data-testid='remote-id']",
+            ".sockel-dialog [data-testid='remote-id']",
             ["tvdb/424536 #6743"],
         )
         .await
@@ -2719,23 +2719,23 @@ pub async fn episodes_show_other_numberings(
         .click()
         .await?;
     driver
-        .find_one_by(".plinth-dialog .numbering-warning .link-button")
+        .find_one_by(".sockel-dialog .numbering-warning .link-button")
         .await?
         .click()
         .await?;
     driver
-        .find_one_by(".plinth-dialog .numbering-status [title='Suggest from episode order']")
+        .find_one_by(".sockel-dialog .numbering-status [title='Suggest from episode order']")
         .await?
         .click()
         .await?;
     suggest_from(driver, "TheTVDB").await?;
     driver
-        .find_one_by(".plinth-dialog [title='Save']")
+        .find_one_by(".sockel-dialog [title='Save']")
         .await?
         .click()
         .await?;
     driver
-        .find_one_by(".plinth-dialog [title='Edit ranges']")
+        .find_one_by(".sockel-dialog [title='Edit ranges']")
         .await?;
     ensure!(
         track.query("SELECT CAST(numbering IS NOT NULL AS TEXT) FROM shows WHERE id = 1001")?
@@ -2743,11 +2743,11 @@ pub async fn episodes_show_other_numberings(
     );
 
     driver
-        .find_one_by(".plinth-dialog [aria-label=Close]")
+        .find_one_by(".sockel-dialog [aria-label=Close]")
         .await?
         .click()
         .await?;
-    driver.wait_count(".plinth-dialog", 0).await?;
+    driver.wait_count(".sockel-dialog", 0).await?;
 
     driver
         .wait_texts("#S01E04 .numbering-chip", ["S02E01", "S02E01"])
@@ -2838,16 +2838,16 @@ pub async fn numbering_ranges_fold_and_line_up(
         .click()
         .await?;
     driver
-        .find_one_by(".plinth-dialog [title='Edit ranges']")
+        .find_one_by(".sockel-dialog [title='Edit ranges']")
         .await?
         .click()
         .await?;
 
-    let fold = ".plinth-dialog .numbering-fold-summary";
+    let fold = ".sockel-dialog .numbering-fold-summary";
     driver
         .wait_texts(fold, ["S3–S10 match TheTVDB season for season · 8 ranges"])
         .await?;
-    ensure!(driver.count(".plinth-dialog .numbering-range").await? == 3);
+    ensure!(driver.count(".sockel-dialog .numbering-range").await? == 3);
     let s1 = ["S1 E1–E3", "S1 E1–E3", "S2 E1–E3", "S2 E1–E3"];
     let s11 = ["S11 E2–E3", "S11 E1–E2"];
     wait_spans(driver, &[&s1[..], &s11[..]].concat()).await?;
@@ -2856,7 +2856,7 @@ pub async fn numbering_ranges_fold_and_line_up(
     let ret = driver
         .webdriver()
         .execute(
-            "return [...document.querySelectorAll('.plinth-dialog .numbering-range-summary')].map(s => \
+            "return [...document.querySelectorAll('.sockel-dialog .numbering-range-summary')].map(s => \
                  [...s.querySelectorAll('.numbering-first, .numbering-last')].map(e => { \
                      const b = e.getBoundingClientRect(); \
                      return e.classList.contains('numbering-first') ? b.right : b.left; }));",
@@ -2871,7 +2871,7 @@ pub async fn numbering_ranges_fold_and_line_up(
 
     driver.find_one_by(fold).await?.click().await?;
     driver
-        .wait_count(".plinth-dialog .numbering-range", 11)
+        .wait_count(".sockel-dialog .numbering-range", 11)
         .await?;
     let run = (3..=10)
         .flat_map(|s| {
@@ -2884,14 +2884,14 @@ pub async fn numbering_ranges_fold_and_line_up(
     driver.snapshot("numbering-fold-open-wide").await?;
     driver.find_one_by(fold).await?.click().await?;
     driver
-        .wait_count(".plinth-dialog .numbering-range", 3)
+        .wait_count(".sockel-dialog .numbering-range", 3)
         .await?;
     driver.snapshot("numbering-fold-wide").await?;
 
     // The map selects a range in the folded run: the run unfolds to it, and
     // folds again when done.
     pick(driver, "TMDB S5 E2").await?;
-    let selected = ".plinth-dialog .numbering-range.selected[aria-label='Range 5']";
+    let selected = ".sockel-dialog .numbering-range.selected[aria-label='Range 5']";
     driver.wait_count(selected, 1).await?;
     ensure!(
         in_view(driver, selected, None).await?,
@@ -2900,7 +2900,7 @@ pub async fn numbering_ranges_fold_and_line_up(
 
     // Editing it out of step splits the run around it.
     driver
-        .find_one_by(".plinth-dialog [aria-label='Range 5 last episode']")
+        .find_one_by(".sockel-dialog [aria-label='Range 5 last episode']")
         .await?
         .send_keys("\u{E003}2")
         .await?;
@@ -2915,12 +2915,12 @@ pub async fn numbering_ranges_fold_and_line_up(
         .await?;
     driver.wait_count(selected, 1).await?;
     driver
-        .find_one_by(".plinth-dialog [title='Done editing range 5']")
+        .find_one_by(".sockel-dialog [title='Done editing range 5']")
         .await?
         .click()
         .await?;
     driver
-        .wait_count(".plinth-dialog .numbering-range", 4)
+        .wait_count(".sockel-dialog .numbering-range", 4)
         .await?;
     wait_spans(
         driver,
@@ -2932,12 +2932,12 @@ pub async fn numbering_ranges_fold_and_line_up(
     driver.set_window_size(400, 850).await?;
     driver.find_all(By::Css(fold)).await?[1].click().await?;
     driver
-        .wait_count(".plinth-dialog .numbering-range", 9)
+        .wait_count(".sockel-dialog .numbering-range", 9)
         .await?;
     let ret = driver
         .webdriver()
         .execute(
-            "const e = document.querySelector('.numbering-modal .plinth-dialog-body'); return [e.scrollWidth, e.clientWidth];",
+            "const e = document.querySelector('.numbering-modal .sockel-dialog-body'); return [e.scrollWidth, e.clientWidth];",
             Vec::new(),
         )
         .await?;
@@ -2970,7 +2970,7 @@ async fn map_offset(driver: &TestDriver, selector: &str) -> Result<f64> {
     let ret = driver
         .webdriver()
         .execute(
-            "const s = document.querySelector('.plinth-dialog .numbering-map-scroll'); \
+            "const s = document.querySelector('.sockel-dialog .numbering-map-scroll'); \
              return document.querySelector(arguments[0]).getBoundingClientRect().top - s.getBoundingClientRect().top;",
             vec![selector.into()],
         )
@@ -3033,13 +3033,13 @@ pub async fn numbering_map_folds_long_runs(
         .click()
         .await?;
     driver
-        .find_one_by(".plinth-dialog [title='Edit ranges']")
+        .find_one_by(".sockel-dialog [title='Edit ranges']")
         .await?
         .click()
         .await?;
 
     let folds = |side: &str| {
-        format!(".plinth-dialog .numbering-column[data-side='{side}'] .numbering-fold-row")
+        format!(".sockel-dialog .numbering-column[data-side='{side}'] .numbering-fold-row")
     };
     driver.wait_count(&folds("tmdb"), 2).await?;
     ensure!(
@@ -3052,7 +3052,7 @@ pub async fn numbering_map_folds_long_runs(
     );
     ensure!(
         driver
-            .count(".plinth-dialog .numbering-ep[aria-label='TMDB S1 E15']")
+            .count(".sockel-dialog .numbering-ep[aria-label='TMDB S1 E15']")
             .await?
             == 0
     );
@@ -3062,7 +3062,7 @@ pub async fn numbering_map_folds_long_runs(
         ensure!(
             driver
                 .count(&format!(
-                    ".plinth-dialog .numbering-ep[aria-label='{label}']"
+                    ".sockel-dialog .numbering-ep[aria-label='{label}']"
                 ))
                 .await?
                 == 1,
@@ -3072,7 +3072,7 @@ pub async fn numbering_map_folds_long_runs(
     let ret = driver
         .webdriver()
         .execute(
-            "return [...document.querySelectorAll('.plinth-dialog .numbering-band title')].map(e => e.textContent);",
+            "return [...document.querySelectorAll('.sockel-dialog .numbering-band title')].map(e => e.textContent);",
             Vec::new(),
         )
         .await?;
@@ -3087,28 +3087,28 @@ pub async fn numbering_map_folds_long_runs(
     // Six colours: the sixth range has its own.
     ensure!(
         driver
-            .count(".plinth-dialog .numbering-swatch.tone-5")
+            .count(".sockel-dialog .numbering-swatch.tone-5")
             .await?
             == 1
     );
     ensure!(
         driver
-            .count(".plinth-dialog .numbering-ep.tone-5[aria-label='TMDB S1 E35']")
+            .count(".sockel-dialog .numbering-ep.tone-5[aria-label='TMDB S1 E35']")
             .await?
             == 1
     );
     driver.snapshot("numbering-map-folded").await?;
 
     // Unfolding keeps the row in place and unfolds TheTVDB's too.
-    let fold = ".plinth-dialog .numbering-fold-row[aria-label='TMDB S1 E2–E29']";
+    let fold = ".sockel-dialog .numbering-fold-row[aria-label='TMDB S1 E2–E29']";
     let before = map_row_top(driver, fold, true).await?;
     driver.find_one_by(fold).await?.click().await?;
     driver
-        .wait_count(".plinth-dialog .numbering-ep[aria-label='TMDB S1 E15']", 1)
+        .wait_count(".sockel-dialog .numbering-ep[aria-label='TMDB S1 E15']", 1)
         .await?;
     let after = map_row_top(
         driver,
-        ".plinth-dialog .numbering-ep[aria-label='TMDB S1 E2']",
+        ".sockel-dialog .numbering-ep[aria-label='TMDB S1 E2']",
         false,
     )
     .await?;
@@ -3118,7 +3118,7 @@ pub async fn numbering_map_folds_long_runs(
     );
     ensure!(
         driver
-            .count(".plinth-dialog .numbering-ep[aria-label='TheTVDB S1 E15']")
+            .count(".sockel-dialog .numbering-ep[aria-label='TheTVDB S1 E15']")
             .await?
             == 1
     );
@@ -3126,39 +3126,39 @@ pub async fn numbering_map_folds_long_runs(
 
     // Folding all again.
     driver
-        .find_one_by(".plinth-dialog .numbering-fold-all")
+        .find_one_by(".sockel-dialog .numbering-fold-all")
         .await?
         .click()
         .await?;
     driver.wait_count(&folds("tmdb"), 2).await?;
-    ensure!(driver.count(".plinth-dialog .numbering-fold-all").await? == 0);
+    ensure!(driver.count(".sockel-dialog .numbering-fold-all").await? == 0);
 
     // Picking a span whose end is folded: the fold opens and keeps the first
     // click.
     pick(driver, "TMDB S1 E1").await?;
     driver
         .wait_count(
-            ".plinth-dialog .numbering-range.selected[aria-label='Range 1']",
+            ".sockel-dialog .numbering-range.selected[aria-label='Range 1']",
             1,
         )
         .await?;
     pick(driver, "TMDB S1 E1").await?;
     driver
         .wait_count(
-            ".plinth-dialog .numbering-ep.anchor[aria-label='TMDB S1 E1']",
+            ".sockel-dialog .numbering-ep.anchor[aria-label='TMDB S1 E1']",
             1,
         )
         .await?;
-    let fold = ".plinth-dialog .numbering-fold-row[aria-label='TMDB S1 E3–E29']";
+    let fold = ".sockel-dialog .numbering-fold-row[aria-label='TMDB S1 E3–E29']";
     driver.wait_count(fold, 1).await?;
     let before = map_row_top(driver, fold, true).await?;
     driver.find_one_by(fold).await?.click().await?;
     driver
-        .wait_count(".plinth-dialog .numbering-ep[aria-label='TMDB S1 E20']", 1)
+        .wait_count(".sockel-dialog .numbering-ep[aria-label='TMDB S1 E20']", 1)
         .await?;
     let after = map_row_top(
         driver,
-        ".plinth-dialog .numbering-ep[aria-label='TMDB S1 E3']",
+        ".sockel-dialog .numbering-ep[aria-label='TMDB S1 E3']",
         false,
     )
     .await?;
@@ -3168,7 +3168,7 @@ pub async fn numbering_map_folds_long_runs(
     );
     ensure!(
         driver
-            .count(".plinth-dialog .numbering-ep.anchor[aria-label='TMDB S1 E1']")
+            .count(".sockel-dialog .numbering-ep.anchor[aria-label='TMDB S1 E1']")
             .await?
             == 1
     );
@@ -3185,16 +3185,16 @@ pub async fn numbering_map_folds_long_runs(
 
     // Unfolding everything.
     driver
-        .find_one_by(".plinth-dialog .numbering-unfold-all")
+        .find_one_by(".sockel-dialog .numbering-unfold-all")
         .await?
         .click()
         .await?;
     driver
-        .wait_count(".plinth-dialog .numbering-fold-row", 0)
+        .wait_count(".sockel-dialog .numbering-fold-row", 0)
         .await?;
     ensure!(
         driver
-            .count(".plinth-dialog .numbering-column[data-side='tmdb'] .numbering-ep")
+            .count(".sockel-dialog .numbering-column[data-side='tmdb'] .numbering-ep")
             .await?
             == 50
     );
@@ -3203,12 +3203,12 @@ pub async fn numbering_map_folds_long_runs(
     // On a short phone, folding the runs above the map's top row leaves that
     // row where it was.
     driver.set_window_size(400, 500).await?;
-    let row = ".plinth-dialog .numbering-ep[aria-label='TMDB S1 E30']";
+    let row = ".sockel-dialog .numbering-ep[aria-label='TMDB S1 E30']";
     let top = map_offset(driver, row).await?;
     driver
         .webdriver()
         .execute(
-            "document.querySelector('.plinth-dialog .numbering-map-scroll').scrollTop += arguments[0];",
+            "document.querySelector('.sockel-dialog .numbering-map-scroll').scrollTop += arguments[0];",
             vec![top.into()],
         )
         .await?;
@@ -3217,7 +3217,7 @@ pub async fn numbering_map_folds_long_runs(
         before.abs() <= 1.0,
         "the map did not scroll to E30: {before}"
     );
-    js_click(driver, ".plinth-dialog .numbering-fold-all").await?;
+    js_click(driver, ".sockel-dialog .numbering-fold-all").await?;
     driver.wait_count(&folds("tmdb"), 3).await?;
     let after = map_offset(driver, row).await?;
     ensure!(

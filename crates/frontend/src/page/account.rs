@@ -10,7 +10,7 @@ pub(crate) fn Account() -> Html {
 
     html! {
         <>
-            <h1 class="plinth-visually-hidden">{"Account"}</h1>
+            <h1 class="sockel-visually-hidden">{"Account"}</h1>
 
             <div class="settings">
                 <AccountPanel />

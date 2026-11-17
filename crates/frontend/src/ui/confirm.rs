@@ -1,5 +1,5 @@
 //! Asking before a destructive action, beside the button that asked:
-//! plinth's compact confirm, "Remove show **Title**?" over an icon-only
+//! sockel's compact confirm, "Remove show **Title**?" over an icon-only
 //! No and Yes.
 
 use yew::prelude::*;
@@ -36,7 +36,7 @@ pub(crate) fn Confirm(props: &Props) -> Html {
     });
 
     html! {
-        <plinth::ConfirmPopover anchor={props.anchor.clone()} open=true compact=true {title}
+        <sockel::ConfirmPopover anchor={props.anchor.clone()} open=true compact=true {title}
             explanation={props.prompt.clone()} {details} explanation_icon={icon}
             cancel_label="No" accept="Yes"
             on_accept={props.on_confirm.clone()} on_cancel={props.on_cancel.clone()} />

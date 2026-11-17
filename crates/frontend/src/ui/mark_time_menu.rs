@@ -280,7 +280,7 @@ impl Component for MarkTimeMenu {
 
                 if self.context_open {
                     <ContextMenu icon={props.icon.clone()} prompt={props.prompt.clone()} anchor={self.anchor.clone()} on_close={link.callback(|_| Msg::Close)}>
-                        <div class="mark-time plinth-stack plinth-loose">
+                        <div class="mark-time sockel-stack sockel-loose">
                             {self.view_presets(ctx)}
 
                             if self.preset == Preset::Custom {
@@ -331,12 +331,12 @@ impl MarkTimeMenu {
             <div class="mark-time-fields">
                 <label>
                     <span>{"Date"}</span>
-                    <input type="date" class={plinth::class::INPUT} value={date} onchange={on_date} />
+                    <input type="date" class={sockel::class::INPUT} value={date} onchange={on_date} />
                 </label>
 
                 <label>
                     <span>{"Time"}</span>
-                    <input type="time" class={plinth::class::INPUT} value={clock} onchange={on_clock} />
+                    <input type="time" class={sockel::class::INPUT} value={clock} onchange={on_clock} />
                 </label>
             </div>
         }
@@ -368,7 +368,7 @@ impl MarkTimeMenu {
         let chip = |on: bool| classes!("chip", on.then_some("selected"));
 
         html! {
-            <div class="chips plinth-cluster" role="group" aria-label="When">
+            <div class="chips sockel-cluster" role="group" aria-label="When">
                 <Button icon="clock" label="Now" title="Now" class={chip(self.preset == Preset::Now)} pressed={Some(self.preset == Preset::Now)} onclick={link.callback(|_| Msg::SelectPreset(Preset::Now))} />
 
                 {props.preset.as_ref().map(|preset| {

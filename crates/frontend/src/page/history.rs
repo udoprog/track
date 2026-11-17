@@ -178,17 +178,17 @@ impl Component for History {
                 </div>
 
                 if !self.loaded || self.list_req.is_pending() {
-                    <div class="plinth-cluster plinth-nowrap plinth-loose plinth-center">
+                    <div class="sockel-cluster sockel-nowrap sockel-loose sockel-center">
                         <span class="item-inline-more"><span class="icon arrow-path spin" aria-hidden="true" /></span>
                     </div>
                 } else if self.groups.is_empty() {
-                    <div class="plinth-cluster plinth-nowrap plinth-loose plinth-center">
+                    <div class="sockel-cluster sockel-nowrap sockel-loose sockel-center">
                         <span class="item-inline-more">{"Nothing to show."}</span>
                     </div>
                 } else {
-                    <div class="agenda history plinth-stack plinth-loose">
+                    <div class="agenda history sockel-stack sockel-loose">
                         { for days.iter().map(|(day, groups)| html! {
-                            <section key={day.to_string()} class="agenda-day plinth-stack plinth-tight">
+                            <section key={day.to_string()} class="agenda-day sockel-stack sockel-tight">
                                 { view_day_heading(*day, today) }
 
                                 <div class="agenda-items">
@@ -198,7 +198,7 @@ impl Component for History {
                         }) }
                     </div>
 
-                    <div class="desktop-align-end plinth-cluster plinth-nowrap plinth-loose">
+                    <div class="desktop-align-end sockel-cluster sockel-nowrap sockel-loose">
                         <Pager {page} pages={total_pages} {on_page} />
                     </div>
                 }
@@ -360,7 +360,7 @@ impl History {
 
             html! {
                 <>
-                    <span class="schedule-time plinth-numeric">
+                    <span class="schedule-time sockel-numeric">
                         <span>{span}</span>
                         <span class="badge">{range}</span>
                     </span>
@@ -418,17 +418,17 @@ impl History {
                 );
 
                 html! {
-                    <Link {to} class="schedule-time history-watch plinth-numeric" title={format!("Open {code}")}>
+                    <Link {to} class="schedule-time history-watch sockel-numeric" title={format!("Open {code}")}>
                         <span>{when}</span>
                         <span class="badge">{code.to_string()}</span>
                         if let Some(title) = &episode.title {
-                            <span class="history-episode-title plinth-truncate">{title.clone()}</span>
+                            <span class="history-episode-title sockel-truncate">{title.clone()}</span>
                         }
                     </Link>
                 }
             }
             _ => html! {
-                <span class="schedule-time history-watch plinth-numeric">
+                <span class="schedule-time history-watch sockel-numeric">
                     <span>{when}</span>
                     <span class="badge">{"Movie"}</span>
                 </span>

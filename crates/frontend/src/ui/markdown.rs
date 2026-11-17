@@ -33,7 +33,7 @@ pub(crate) fn demo(name: &str) -> Option<Html> {
             </>
         },
         "media-kind" => html! {
-            <span class="chips plinth-cluster">
+            <span class="chips sockel-cluster">
                 <MediaKindToggle selection={MediaSelection { shows: true, movies: false }} on_change={Callback::noop()} />
             </span>
         },

@@ -427,9 +427,9 @@ impl ReleaseModal {
         let on_change = link.callback(Msg::EditFilters);
 
         html! {
-            <div class={plinth::form_rows(false)}>
+            <div class={sockel::form_rows(false)}>
                 <FormRow {label} hint={(!is_custom).then_some(hint)}>
-                    <select class={classes!(plinth::class::INPUT, plinth::class::NATIVE_SELECT)} title={label} onchange={on_toggle}>
+                    <select class={classes!(sockel::class::INPUT, sockel::class::NATIVE_SELECT)} title={label} onchange={on_toggle}>
                         <option value="default" selected={!is_custom}>{"Global default"}</option>
                         <option value="custom" selected={is_custom}>{custom_label}</option>
                     </select>
@@ -499,9 +499,9 @@ impl ReleaseModal {
                         <span />
                     }
 
-                    <span class="release-label plinth-truncate">{label.clone()}</span>
+                    <span class="release-label sockel-truncate">{label.clone()}</span>
 
-                    <span class="release-date plinth-numeric">
+                    <span class="release-date sockel-numeric">
                         if let Some(earliest) = earliest {
                             {earliest.timestamp.human_date_time(self.time.clone())}
                         }
@@ -526,7 +526,7 @@ impl ReleaseModal {
 
                 <span />
 
-                <span class="release-date plinth-numeric">{r.timestamp.human_date_time(self.time.clone())}</span>
+                <span class="release-date sockel-numeric">{r.timestamp.human_date_time(self.time.clone())}</span>
             </div>
         }
     }

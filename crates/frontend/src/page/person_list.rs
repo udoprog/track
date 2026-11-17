@@ -170,7 +170,7 @@ impl Component for PersonList {
         html! {
             <>
                 // The app bar already says which page this is.
-                <h1 class="plinth-visually-hidden">{"People"}</h1>
+                <h1 class="sockel-visually-hidden">{"People"}</h1>
 
                 <div class="list-controls">
                     <div class="search-field">
@@ -182,7 +182,7 @@ impl Component for PersonList {
                         }
                     </div>
 
-                    <div class="chips plinth-cluster">
+                    <div class="chips sockel-cluster">
                         <SortMenu
                             options={SORTS}
                             current={match self.sort { PersonSort::Name => "name", PersonSort::Credits => "credits" }}
@@ -198,11 +198,11 @@ impl Component for PersonList {
                 </div>
 
                 if !self.loaded || self.list_req.is_pending() {
-                    <div class="plinth-cluster plinth-nowrap plinth-loose plinth-center">
+                    <div class="sockel-cluster sockel-nowrap sockel-loose sockel-center">
                         <span class="item-inline-more"><span class="icon arrow-path spin" aria-hidden="true" /></span>
                     </div>
                 } else if self.persons.is_empty() {
-                    <div class="plinth-cluster plinth-nowrap plinth-loose plinth-center">
+                    <div class="sockel-cluster sockel-nowrap sockel-loose sockel-center">
                         <span class="item-inline-more">{"Nothing to show."}</span>
                     </div>
                 } else {
@@ -210,7 +210,7 @@ impl Component for PersonList {
                         { for self.persons.iter().map(|p| self.view_card(p)) }
                     </div>
 
-                    <div class="desktop-align-end plinth-cluster plinth-nowrap plinth-loose">
+                    <div class="desktop-align-end sockel-cluster sockel-nowrap sockel-loose">
                         <Pager {page} pages={total_pages} on_page={link.callback(Msg::SetPage)} />
                     </div>
                 }

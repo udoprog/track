@@ -837,8 +837,8 @@ impl MovieDetail {
             .unwrap_or_default();
 
         html! {
-            <section class="plinth-stack" data-testid="credits">
-                <plinth::SectionHead title={html! {"Cast & crew"}} />
+            <section class="sockel-stack" data-testid="credits">
+                <sockel::SectionHead title={html! {"Cast & crew"}} />
 
                 if !shown.is_empty() {
                     <div class="cast-grid">
@@ -847,7 +847,7 @@ impl MovieDetail {
                 }
 
                 if self.credits.len() > CAP {
-                    <Button icon="user-group" label="Show all cast" title="Show all cast" class="credits-toggle plinth-self-start" onclick={ctx.link().callback(|_| UiMsg::OpenCastModal)} />
+                    <Button icon="user-group" label="Show all cast" title="Show all cast" class="credits-toggle sockel-self-start" onclick={ctx.link().callback(|_| UiMsg::OpenCastModal)} />
                 }
 
                 if self.cast_modal {
@@ -900,7 +900,7 @@ impl MovieDetail {
             .map(|r| r.source);
 
         html! {
-            <div class="plinth-stack">
+            <div class="sockel-stack">
                 <DetailHero
                     title={movie.strings.title().unwrap_or("Untitled Movie").to_owned()}
                     meta={movie.release_date.map(|ts| ts.date(self.time.clone()).year().to_string())}
@@ -908,7 +908,7 @@ impl MovieDetail {
                 />
 
                 <div class="toolbar">
-                    <div class="detail-sources plinth-cluster">
+                    <div class="detail-sources sockel-cluster">
                         {for movie.remotes.iter().filter_map(|r| {
                             let url = r.remote.movie_url()?;
                             let id = r.remote.source().as_id();
@@ -998,13 +998,13 @@ impl MovieDetail {
                     }
                 </div>
 
-                <div class="detail-sidebar plinth-stack plinth-loose">
+                <div class="detail-sidebar sockel-stack sockel-loose">
                     <Image class="poster desktop-only artwork" src={movie.poster.clone()} />
                 </div>
 
-                <div class="plinth-stack plinth-loose" data-testid="detail-content">
-                    <div class="plinth-cluster plinth-between plinth-loose">
-                        <div class="fill plinth-stack">
+                <div class="sockel-stack sockel-loose" data-testid="detail-content">
+                    <div class="sockel-cluster sockel-between sockel-loose">
+                        <div class="fill sockel-stack">
                             <div class="toolbar">
                                 <indicator title="Release date">
                                     if movie.pending.is_some() {
@@ -1135,10 +1135,10 @@ impl MovieDetail {
 
                     html! {
                         <div class="watch-row">
-                            <span class="watch-when plinth-numeric">{w.watched.timestamp.human_date_time(self.time.clone()).view()}</span>
+                            <span class="watch-when sockel-numeric">{w.watched.timestamp.human_date_time(self.time.clone()).view()}</span>
                             <span class="watch-age">{w.watched.timestamp.relative_to(self.time.now())}</span>
 
-                            <div class="actions start-on-mobile plinth-cluster plinth-nowrap plinth-tight plinth-end">
+                            <div class="actions start-on-mobile sockel-cluster sockel-nowrap sockel-tight sockel-end">
                             <Button node_ref={w.remove_watch_anchor.clone()} icon="trash" label="Remove" title="Remove" expanded={Some(self.confirm_remove_watch == Some(wid))} haspopup="dialog" onclick={link.callback(move |_| WatchMsg::ConfirmRemoveWatch(wid))} />
 
                             if self.confirm_remove_watch == Some(wid) {

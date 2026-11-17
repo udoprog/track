@@ -1,10 +1,10 @@
-// plinth's tokens, then the rules of the parts of plinth the app uses, in
-// plinth's own order (style/_index.scss), so the app's own rules refine them.
+// sockel's tokens, then the rules of the parts of sockel the app uses, in
+// sockel's own order (style/_index.scss), so the app's own rules refine them.
 @use 'vars' as v;
 // The app's small text, controls, phone breakpoint, buttons (filled, no
 // edge, touch height on phones), dialogs (centred) and popovers (rounder,
-// wider padded, a sheet's top edge alone), where plinth's differ.
-@use '../../../../plinth/style/tokens' as plinth-tokens with (
+// wider padded, a sheet's top edge alone), where sockel's differ.
+@use '../../../../sockel/style/tokens' as sockel-tokens with (
     $text-sm: v.$font-sm,
     $control-height: v.$input-height,
     $control-height-small: v.$input-height-sm,
@@ -105,7 +105,7 @@
     $field-bg: false,
     $field-border: false,
     $card-border-width: false,
-    // The parts of plinth's partials track never renders.
+    // The parts of sockel's partials track never renders.
     $omit: (
         "buttons.bare", "buttons.busy", "buttons.fold", "buttons.touch",
         "confirm.inline",
@@ -134,28 +134,28 @@
         secondary: (fill: var(--neutral-bg), edge: transparent, pressed-fill: var(--button-fill), pressed-edge: var(--button-edge)),
         // Switches (ui::Button with `checked`): a field's ground and edge.
         ghost: (fill: v.$bg-surface, ink: var(--text), edge: v.$border-input, hover-edge: var(--accent)),
-        // plinth's close buttons: filled, their icon muted.
+        // sockel's close buttons: filled, their icon muted.
         quiet: (fill: var(--neutral-bg), ink: var(--text-muted), edge: transparent),
         primary: (fill: var(--accent-bg), ink: var(--text), edge: transparent, hover-edge: var(--accent)),
         success: (fill: var(--success-bg), ink: var(--text), edge: transparent, hover-edge: var(--accent)),
         danger: (fill: var(--danger-bg), ink: var(--text), edge: transparent, hover-edge: var(--accent)),
     )
 );
-@use '../../../../plinth/style/layout' as plinth-layout;
-@use '../../../../plinth/style/heads' as plinth-heads;
-@use '../../../../plinth/style/buttons' as plinth-buttons;
-@use '../../../../plinth/style/fields' as plinth-fields;
-@use '../../../../plinth/style/icons' as plinth-icons;
-@use '../../../../plinth/style/inputs' as plinth-inputs;
-@use '../../../../plinth/style/notices' as plinth-notices;
-@use '../../../../plinth/style/skeleton' as plinth-skeleton;
-@use '../../../../plinth/style/popover' as plinth-popover;
-@use '../../../../plinth/style/pager' as plinth-pager;
-@use '../../../../plinth/style/reorder' as plinth-reorder;
-@use '../../../../plinth/style/confirm' as plinth-confirm;
-@use '../../../../plinth/style/dialog' as plinth-dialog;
-@use '../../../../plinth/style/menu' as plinth-menu;
-@use '../../../../plinth/style/utilities' as plinth-utilities;
+@use '../../../../sockel/style/layout' as sockel-layout;
+@use '../../../../sockel/style/heads' as sockel-heads;
+@use '../../../../sockel/style/buttons' as sockel-buttons;
+@use '../../../../sockel/style/fields' as sockel-fields;
+@use '../../../../sockel/style/icons' as sockel-icons;
+@use '../../../../sockel/style/inputs' as sockel-inputs;
+@use '../../../../sockel/style/notices' as sockel-notices;
+@use '../../../../sockel/style/skeleton' as sockel-skeleton;
+@use '../../../../sockel/style/popover' as sockel-popover;
+@use '../../../../sockel/style/pager' as sockel-pager;
+@use '../../../../sockel/style/reorder' as sockel-reorder;
+@use '../../../../sockel/style/confirm' as sockel-confirm;
+@use '../../../../sockel/style/dialog' as sockel-dialog;
+@use '../../../../sockel/style/menu' as sockel-menu;
+@use '../../../../sockel/style/utilities' as sockel-utilities;
 @use 'theme';
 @use 'icons';
 @use 'logos';
@@ -228,7 +228,7 @@ p {
     margin: 0 auto;
 }
 
-// Something went wrong: plinth's ErrorBox as a card under the app bar.
+// Something went wrong: sockel's ErrorBox as a card under the app bar.
 #error {
     position: fixed;
     top: v.$toolbar-height + v.$gap-xs;
@@ -535,7 +535,7 @@ a.remote-link:hover .mono {
 // Search results: compact rows of a small poster, the title with its kind
 // and year, two lines of overview and the sources, with the action on the
 // right (under the text on phones).
-.plinth-skeleton.tall {
+.sockel-skeleton.tall {
     --skeleton-height: #{v.$input-height-xl * 2};
 }
 
@@ -867,11 +867,11 @@ h1.auth-heading {
 }
 
 .auth-input {
-    @extend .plinth-input;
+    @extend .sockel-input;
 }
 
 .auth-select {
-    @extend .plinth-input, .plinth-native-select;
+    @extend .sockel-input, .sockel-native-select;
 }
 
 .auth-muted,
@@ -885,7 +885,7 @@ h1.auth-heading {
 }
 
 .auth-hidden {
-    @include plinth-tokens.visually-hidden;
+    @include sockel-tokens.visually-hidden;
 }
 
 // The components' buttons carry text, not icons. They have no class of their
@@ -1014,7 +1014,7 @@ h1.auth-heading {
 }
 
 .auth-user-email {
-    @extend .plinth-truncate;
+    @extend .sockel-truncate;
     max-width: 24ch;
 
     @include g.on-mobile {
@@ -1079,7 +1079,7 @@ h1.auth-heading {
 
 // In a stacked row (`ui::FormRow`), lists and editors take the width; single
 // controls keep their own.
-.plinth-field-inputs.plinth-stacked {
+.sockel-field-inputs.sockel-stacked {
     >select,
     >button,
     >.input-number,
@@ -1504,7 +1504,7 @@ image {
     border-radius: v.$radius-lg;
     background: none;
 
-    // The mark is a `.plinth-cluster.plinth-center`; this places and draws it.
+    // The mark is a `.sockel-cluster.sockel-center`; this places and draws it.
     >.episode-pick-mark {
         position: absolute;
         top: v.$gap-xs;
@@ -1563,7 +1563,7 @@ image {
     font-weight: v.$bold-weight;
 }
 
-// Dates and watch state (a `.plinth-cluster`): quiet text, not links.
+// Dates and watch state (a `.sockel-cluster`): quiet text, not links.
 .episode-meta {
     font-size: v.$font-sm;
     color: v.$text-muted;
@@ -1729,7 +1729,7 @@ image {
 
 // A value shown in a field's box, read-only, as wide as its text.
 .input-value {
-    @extend .plinth-input-box;
+    @extend .sockel-input-box;
     width: auto;
     user-select: text;
 }
@@ -1797,11 +1797,11 @@ input-label-controls {
         white-space: nowrap;
     }
 
-    >.list-count+.plinth-pager {
+    >.list-count+.sockel-pager {
         margin-inline-start: 0;
     }
 
-    >.plinth-pager {
+    >.sockel-pager {
         margin-inline-start: auto;
     }
 
@@ -2396,7 +2396,7 @@ button.media-pick {
 }
 
 .queue-filters {
-    // On phones the chips wrap (plinth-cluster) and the row scrolls when a
+    // On phones the chips wrap (sockel-cluster) and the row scrolls when a
     // single chip is wider than it.
     @include g.on-mobile {
         overflow-x: auto;
@@ -2407,14 +2407,14 @@ button.media-pick {
         @include g.on-mobile {
             padding: 0 v.$padding-lg * 1.25;
 
-            .plinth-button-icon {
+            .sockel-button-icon {
                 display: none;
             }
         }
     }
 }
 
-// A chip's count, quieter than its label. `.in-label`: in a plinth
+// A chip's count, quieter than its label. `.in-label`: in a sockel
 // button's label, which is a line of text, not a row with a gap.
 .chip-count {
     color: v.$text-muted;
@@ -2587,12 +2587,12 @@ button.chip {
     padding: 0 v.$padding-lg * 1.5;
     border-radius: v.$radius-pill;
 
-    // An icon alone keeps the pill's padding rather than plinth's square.
-    &.plinth-icon {
+    // An icon alone keeps the pill's padding rather than sockel's square.
+    &.sockel-icon {
         aspect-ratio: auto;
         padding-inline: v.$padding-lg * 1.5;
     }
-    // plinth's button keeps this edge while disabled.
+    // sockel's button keeps this edge while disabled.
     --button-edge: #{v.$border-subtle};
     border-color: var(--button-edge);
     background: transparent;
@@ -2664,7 +2664,7 @@ button.chip {
             flex: 1;
             padding-inline: 0;
 
-            .plinth-button-icon {
+            .sockel-button-icon {
                 display: none;
             }
         }

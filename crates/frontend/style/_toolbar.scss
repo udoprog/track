@@ -99,13 +99,13 @@
             @include i.has-text-padding;
         }
 
-        &:not(.plinth-button, .mobile-has-text, .has-text) {
+        &:not(.sockel-button, .mobile-has-text, .has-text) {
             justify-content: center;
         }
     }
 
     @include g.on-desktop {
-        &:not(.plinth-button, .has-text) {
+        &:not(.sockel-button, .has-text) {
             justify-content: center;
         }
     }

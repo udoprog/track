@@ -150,7 +150,7 @@ impl TranslationsModal {
         }
 
         html! {
-            <div class="translations plinth-stack plinth-loose">
+            <div class="translations sockel-stack sockel-loose">
                 { for FIELDS.iter().filter_map(|&(kind, label)| {
                     let mut rows = translations.iter().filter(|t| t.kind == kind).peekable();
 

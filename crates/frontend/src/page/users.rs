@@ -10,7 +10,7 @@ pub(crate) fn Users() -> Html {
 
     html! {
         <>
-            <h1 class="plinth-visually-hidden">{"Users"}</h1>
+            <h1 class="sockel-visually-hidden">{"Users"}</h1>
 
             <div class="settings wide">
                 <AdminUsers />

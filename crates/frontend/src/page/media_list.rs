@@ -296,7 +296,7 @@ impl Component for MediaList {
         html! {
             <>
                 // The app bar already says which page this is.
-                <h1 class="plinth-visually-hidden">{"Media"}</h1>
+                <h1 class="sockel-visually-hidden">{"Media"}</h1>
 
                 <div class="list-controls">
                     <div class="search-field">
@@ -308,7 +308,7 @@ impl Component for MediaList {
                         }
                     </div>
 
-                    <div class="chips plinth-cluster">
+                    <div class="chips sockel-cluster">
                         <SortMenu
                             options={SORTS}
                             current={sort_value}
@@ -327,17 +327,17 @@ impl Component for MediaList {
                         />
                     </div>
 
-                    <span class="list-count plinth-numeric">{format!("{total} titles")}</span>
+                    <span class="list-count sockel-numeric">{format!("{total} titles")}</span>
 
                     <Pager {page} pages={total_pages} on_page={link.callback(Msg::SetPage)} />
                 </div>
 
                 if self.list_req.is_pending() {
-                    <div class="plinth-cluster plinth-nowrap plinth-loose plinth-center">
+                    <div class="sockel-cluster sockel-nowrap sockel-loose sockel-center">
                         <span class="item-inline-more"><span class="icon arrow-path spin" aria-hidden="true" /></span>
                     </div>
                 } else if items.len() == 0 {
-                    <div class="plinth-cluster plinth-nowrap plinth-loose plinth-center">
+                    <div class="sockel-cluster sockel-nowrap sockel-loose sockel-center">
                         <span class="item-inline-more">{"Nothing to show."}</span>
                     </div>
                 } else {
@@ -345,7 +345,7 @@ impl Component for MediaList {
                         { for items.into_iter().map(|m| self.view_card(ctx, m)) }
                     </div>
 
-                    <div class="desktop-align-end plinth-cluster plinth-nowrap plinth-loose">
+                    <div class="desktop-align-end sockel-cluster sockel-nowrap sockel-loose">
                         <Pager {page} pages={total_pages} on_page={link.callback(Msg::SetPage)} />
                     </div>
 
@@ -928,11 +928,11 @@ impl MediaList {
 
         html! {
             <div class="selection-bar" role="region" aria-label="Selected media">
-                <span class="selection-count plinth-numeric">{picked_label(shows, movies)}</span>
+                <span class="selection-count sockel-numeric">{picked_label(shows, movies)}</span>
 
-                <div class="plinth-cluster plinth-tight">
+                <div class="sockel-cluster sockel-tight">
                     if shows > 0 {
-                        <div class="chips plinth-cluster" role="group" aria-label="Mark the next episode from">
+                        <div class="chips sockel-cluster" role="group" aria-label="Mark the next episode from">
                             <Button class={classes!("chip", regular.then_some("selected"))} label="Regular" title="From the regular seasons" pressed={Some(regular)} onclick={link.callback(|_| Msg::SetScope(api::EpisodeScope::Regular))} />
                             <Button class={classes!("chip", (!regular).then_some("selected"))} label="Specials" title="From the specials" pressed={Some(!regular)} onclick={link.callback(|_| Msg::SetScope(api::EpisodeScope::Specials))} />
                         </div>
@@ -1000,7 +1000,7 @@ impl MediaList {
             .callback(move |e: MouseEvent| Msg::TogglePick(key, e.shift_key()));
 
         html! {
-            <div key={format!("{kind:?}-{id}")} class={classes!("media-card", "lift", "plinth-stack", "plinth-tight", picked.then_some("picked"))} {onmouseover}>
+            <div key={format!("{kind:?}-{id}")} class={classes!("media-card", "lift", "sockel-stack", "sockel-tight", picked.then_some("picked"))} {onmouseover}>
                 <Button class={classes!("media-pick", picked.then_some("picked"), (!self.picked.is_empty()).then_some("picking"))} title={format!("Select {title}")} pressed={Some(picked)} onclick={on_pick}>
                     <span class="icon sm check" aria-hidden="true" />
                 </Button>
@@ -1025,10 +1025,10 @@ impl MediaList {
                     <Link to={route} class="media-title" title={title.to_owned()}><>{title}</></Link>
 
                     if let Some(alt) = matched_alt {
-                        <span class="media-meta plinth-truncate" title={alt.to_owned()}>{format!("Alt: {alt}")}</span>
+                        <span class="media-meta sockel-truncate" title={alt.to_owned()}>{format!("Alt: {alt}")}</span>
                     }
 
-                    <span class="media-meta plinth-truncate">
+                    <span class="media-meta sockel-truncate">
                         if is_movie {
                             <span class="icon sm film" title="Movie" />
                         }
@@ -1040,7 +1040,7 @@ impl MediaList {
                         }
                     </span>
 
-                    <span class="media-meta plinth-truncate">
+                    <span class="media-meta sockel-truncate">
                         if let Some(ts) = m.last_watched_at {
                             <span title={ts.human_date(self.time.clone()).to_string()}>{format!("Watched {}", ts.relative_to(now))}</span>
                         } else {

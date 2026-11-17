@@ -3,7 +3,7 @@ use yew::prelude::*;
 
 use crate::flags;
 
-use plinth::{Reorder, ReorderHandle, ReorderItem};
+use sockel::{Reorder, ReorderHandle, ReorderItem};
 
 use super::{Button, Confirm, CountryPicker, Variant};
 
@@ -174,8 +174,8 @@ impl Component for FiltersEditor {
             }
             Msg::Move(from, to) => {
                 let mut next = ctx.props().rules.clone();
-                plinth::move_item(&mut next, from, to);
-                plinth::move_item(&mut self.ids, from, to);
+                sockel::move_item(&mut next, from, to);
+                sockel::move_item(&mut self.ids, from, to);
                 ctx.props().on_change.emit(next);
                 false
             }
@@ -215,7 +215,7 @@ impl Component for FiltersEditor {
                     {for rules}
                 }
 
-                <div class="plinth-cluster plinth-nowrap plinth-loose">
+                <div class="sockel-cluster sockel-nowrap sockel-loose">
                     {toggle}
                     <Button icon="plus" label="Add rule" title="Add rule" onclick={link.callback(|_| Msg::AddRule)} />
                 </div>
@@ -235,7 +235,7 @@ impl FiltersEditor {
 
         let summaries = rule.predicates.iter().map(|p| {
             html! {
-                <div class="plinth-cluster plinth-loose">
+                <div class="sockel-cluster sockel-loose">
                     <span class="input-label has-text">{p.kind().label()}</span>
                     {self.predicate_summary(p)}
                 </div>
@@ -244,7 +244,7 @@ impl FiltersEditor {
 
         html! {
             <rule>
-                <div class="plinth-cluster plinth-between plinth-loose">
+                <div class="sockel-cluster sockel-between sockel-loose">
                     <span class="has-text">{name.clone()}</span>
 
                     <div ref={anchor.clone()} class="input-group">
@@ -352,11 +352,11 @@ impl FiltersEditor {
 
         html! {
             <rule>
-                <div class="plinth-cluster plinth-between plinth-loose">
+                <div class="sockel-cluster sockel-between sockel-loose">
                     <ReorderHandle />
 
                     <input
-                        class={classes!(plinth::class::INPUT, "fill")}
+                        class={classes!(sockel::class::INPUT, "fill")}
                         type="text"
                         placeholder={format!("Rule {}", index + 1)}
                         value={rule.name.clone()}
@@ -401,8 +401,8 @@ impl FiltersEditor {
         };
 
         html! {
-            <div class="input-group plinth-cluster plinth-nowrap">
-                <select class={classes!(plinth::class::INPUT, plinth::class::NATIVE_SELECT, "fill")} onchange={on_add}>
+            <div class="input-group sockel-cluster sockel-nowrap">
+                <select class={classes!(sockel::class::INPUT, sockel::class::NATIVE_SELECT, "fill")} onchange={on_add}>
                     <option value="" selected={true}>{"Add predicate…"}</option>
 
                     {for available.iter().enumerate().map(|(i, kind)| html! {
@@ -560,7 +560,7 @@ impl FiltersEditor {
                 };
 
                 html! {
-                    <input class={classes!(plinth::class::INPUT, "fill")} type="text" placeholder="Networks (comma separated)" value={selected.join(", ")} onchange={on_change} />
+                    <input class={classes!(sockel::class::INPUT, "fill")} type="text" placeholder="Networks (comma separated)" value={selected.join(", ")} onchange={on_change} />
                 }
             }
         }

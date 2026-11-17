@@ -1,4 +1,4 @@
-use plinth::{ButtonSize, Dialog, DialogSize};
+use sockel::{ButtonSize, Dialog, DialogSize};
 use yew::prelude::*;
 
 #[derive(Properties, PartialEq)]
@@ -18,7 +18,7 @@ pub(crate) struct Props {
     pub(crate) children: Html,
 }
 
-/// plinth's dialog, open while rendered, with an app icon by name before
+/// sockel's dialog, open while rendered, with an app icon by name before
 /// its title and a regular close button.
 #[function_component]
 pub(crate) fn Modal(props: &Props) -> Html {

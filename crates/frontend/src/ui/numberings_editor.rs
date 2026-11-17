@@ -1,6 +1,6 @@
 use yew::prelude::*;
 
-use plinth::{Reorder, ReorderHandle, ReorderItem};
+use sockel::{Reorder, ReorderHandle, ReorderItem};
 
 use super::Button;
 
@@ -57,14 +57,14 @@ pub(crate) fn NumberingsEditor(props: &Props) -> Html {
                     };
 
                     html_nested! {
-                        <ReorderItem id={pref.system.clone()} name={label.to_owned()} class={classes!("input-group", "plinth-cluster", "plinth-nowrap", (!shown).then_some("numbering-hidden"))}>
+                        <ReorderItem id={pref.system.clone()} name={label.to_owned()} class={classes!("input-group", "sockel-cluster", "sockel-nowrap", (!shown).then_some("numbering-hidden"))}>
                             <ReorderHandle class={dim.clone()} />
 
                             <span class={classes!("input-label", "has-text", dim.clone())}>
                                 <span class={classes!("logo", pref.system.clone())} data-system={pref.system.clone()} />
                             </span>
 
-                            <span class={classes!("input-label", "has-text", "grow", "plinth-cluster", "plinth-tight", dim.clone())}>
+                            <span class={classes!("input-label", "has-text", "grow", "sockel-cluster", "sockel-tight", dim.clone())}>
                                 <span>{label}</span>
 
                                 if let Some(description) = description(&pref.system) {

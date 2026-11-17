@@ -7,7 +7,7 @@ use musli_web::yew023::ContextExt;
 use yew::prelude::*;
 
 use api::{TimeInfo, Timed};
-use plinth::{Ratio, Skeleton, SkeletonShape};
+use sockel::{Ratio, Skeleton, SkeletonShape};
 
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
@@ -182,7 +182,7 @@ impl Component for WatchNext {
         let link = ctx.link();
 
         html! {
-            <div class="plinth-stack">
+            <div class="sockel-stack">
                 <div class="page-controls">
                     <span class="text-muted">
                         if self.pending_loaded {
@@ -190,7 +190,7 @@ impl Component for WatchNext {
                         }
                     </span>
 
-                    <div class="plinth-cluster plinth-nowrap plinth-loose">
+                    <div class="sockel-cluster sockel-nowrap sockel-loose">
                         if total_pages > 1 {
                             <Pager {page} pages={total_pages} on_page={link.callback(Msg::SetPage)} />
                         }
@@ -214,9 +214,9 @@ impl Component for WatchNext {
                             <div class="field">
                                 <label>{"Per page"}</label>
 
-                                <div class="plinth-cluster plinth-nowrap plinth-loose">
+                                <div class="sockel-cluster sockel-nowrap sockel-loose">
                                     <Button icon="minus" title="Show a row fewer" onclick={link.callback(|_| Msg::AdjustPageSize(-1))} />
-                                    <span class="page-size plinth-numeric">{page_size}</span>
+                                    <span class="page-size sockel-numeric">{page_size}</span>
                                     <Button icon="plus" title="Show a row more" onclick={link.callback(|_| Msg::AdjustPageSize(1))} />
                                 </div>
                             </div>
@@ -237,7 +237,7 @@ impl Component for WatchNext {
                 }
 
                 if total_pages > 1 {
-                    <div class="plinth-cluster plinth-nowrap plinth-loose plinth-center">
+                    <div class="sockel-cluster sockel-nowrap sockel-loose sockel-center">
                         <Pager {page} pages={total_pages} on_page={link.callback(Msg::SetPage)} />
                     </div>
                 }
@@ -621,11 +621,11 @@ impl WatchNext {
     /// slot while the pending list is still loading.
     fn view_pending_skeleton() -> Html {
         html! {
-            <div class="pending-item plinth-stack">
+            <div class="pending-item sockel-stack">
                 <Skeleton shape={SkeletonShape::Image(Ratio::Poster)} class="desktop-only" />
                 <Skeleton shape={SkeletonShape::Image(Ratio::Banner)} class="mobile-only" />
 
-                <div class="pending-info plinth-stack">
+                <div class="pending-info sockel-stack">
                     <div class="pending-content">
                         <Skeleton shape={SkeletonShape::Line} width="80%" />
                         <Skeleton shape={SkeletonShape::Line} width="50%" />
@@ -742,7 +742,7 @@ impl WatchNext {
             .callback(move |_| Msg::HoverBackdrop(backdrop_url.clone()));
 
         html! {
-            <div {key} class="pending-item lift plinth-stack" {onmouseover}>
+            <div {key} class="pending-item lift sockel-stack" {onmouseover}>
                 <Link to={route.clone()} class="pending-picture desktop-only" decorative=true>
                     <Image class="poster artwork" src={pending.season_poster.clone().or_else(|| pending.poster.clone())} />
                 </Link>
@@ -752,7 +752,7 @@ impl WatchNext {
                     <Image class="banner" placeholder=true src={pending.season_banner.clone().or_else(|| pending.banner.clone()).or_else(|| pending.backdrop.clone()).or_else(|| pending.poster.clone())} />
                 </Link>
 
-                <div class="pending-info plinth-stack">
+                <div class="pending-info sockel-stack">
                     <div class="pending-content">
                         {title}
 
@@ -763,7 +763,7 @@ impl WatchNext {
                         }
                     </div>
 
-                    <div class="plinth-cluster plinth-nowrap plinth-tight plinth-between">
+                    <div class="sockel-cluster sockel-nowrap sockel-tight sockel-between">
                         <div class="input-group">
                             if aired_in_past {
                                 <MarkTimeMenu quick=true variant="primary" icon="check" title="Mark watched" prompt={format!("When did you watch this {}?", pending_kind.title())} preset={preset.clone()} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(kind, mark_time))} />
@@ -772,7 +772,7 @@ impl WatchNext {
                             }
                         </div>
 
-                        <div class="plinth-cluster plinth-nowrap plinth-loose">
+                        <div class="sockel-cluster sockel-nowrap sockel-loose">
                             <MarkTimeMenu title="Move pending" icon="bookmark" prompt={format!("When do you want to queue this {}?", pending_kind.title())} preset={preset.clone()} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkPending(pending_kind, mark_time))} />
 
                             if let Some((show, episode)) = skip_ids {

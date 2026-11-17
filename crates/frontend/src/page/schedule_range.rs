@@ -8,7 +8,7 @@ use yew::prelude::*;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::MediaSelection;
-use plinth::{Skeleton, SkeletonShape};
+use sockel::{Skeleton, SkeletonShape};
 
 use crate::ui::ContextMenu;
 
@@ -152,7 +152,7 @@ impl Component for ScheduleRange {
         let last = days[days.len() - 1];
 
         html! {
-            <div class="plinth-stack">
+            <div class="sockel-stack">
                 { view_range_controls(RangeControls {
                     label: format!("{} {} – {} {}", first.day(), first.month_name(), last.day(), last.month_name()),
                     prev_title: "Previous day",
@@ -174,7 +174,7 @@ impl Component for ScheduleRange {
                     </ContextMenu>
                 }
 
-                <div class="agenda plinth-stack plinth-loose">
+                <div class="agenda sockel-stack sockel-loose">
                     { for days.iter().map(|&day| self.view_day(ctx, day, today)) }
                 </div>
             </div>
@@ -326,7 +326,7 @@ impl ScheduleRange {
         let on_hover = link.callback(Msg::Hover);
 
         html! {
-            <section key={day.to_string()} class="agenda-day plinth-stack plinth-tight">
+            <section key={day.to_string()} class="agenda-day sockel-stack sockel-tight">
                 { view_day_heading(day, today) }
 
                 if !self.loaded.is_some_and(|(first, last)| first <= day && day <= last) {

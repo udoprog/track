@@ -45,8 +45,8 @@ pub(crate) fn Help(props: &Props) -> Html {
     });
 
     html! {
-        <plinth::IconButton class="help-mark" {title} haspopup=true {onclick}>
+        <sockel::IconButton class="help-mark" {title} haspopup=true {onclick}>
             <span class="icon question-mark-circle" aria-hidden="true" />
-        </plinth::IconButton>
+        </sockel::IconButton>
     }
 }

@@ -548,7 +548,7 @@ impl App {
                 } else {
                     html! {
                         <>
-                            <plinth::PageHead title={html! {"Users"}} />
+                            <sockel::PageHead title={html! {"Users"}} />
                             <p>{"Only administrators can manage users."}</p>
                         </>
                     }
@@ -635,7 +635,7 @@ fn Toolbar(props: &ToolbarProps) -> Html {
 
     html! {
         <header id="toolbar" class="toolbar toolbar-padding">
-            <div class="plinth-cluster plinth-nowrap plinth-snug">
+            <div class="sockel-cluster sockel-nowrap sockel-snug">
                 <Link to={Route::Dashboard(DashboardQuery::default())} class="site-title" onclick={close_menu.clone()}>{ props.site_title.clone() }</Link>
             </div>
 
@@ -684,10 +684,10 @@ fn Toolbar(props: &ToolbarProps) -> Html {
                     </Link>
                 }
 
-                <plinth::IconButton class="toolbar-item mobile-has-text" title="Help" haspopup=true onclick={on_help}>
+                <sockel::IconButton class="toolbar-item mobile-has-text" title="Help" haspopup=true onclick={on_help}>
                     <span class="icon question-mark-circle" aria-hidden="true" />
                     <span class="mobile-only">{"Help"}</span>
-                </plinth::IconButton>
+                </sockel::IconButton>
 
                 <Link to={Route::Account} class={classes!("toolbar-item", "has-text", (props.section == Section::Account).then_some("active"))} title="Account" current={props.section == Section::Account} onclick={close_menu.clone()}>
                     <span class="icon user-circle" aria-hidden="true" />

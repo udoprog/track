@@ -9,7 +9,7 @@ use yew::prelude::*;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::MediaSelection;
-use plinth::{Skeleton, SkeletonShape};
+use sockel::{Skeleton, SkeletonShape};
 
 use crate::ui::{Button, ContextMenu};
 
@@ -182,7 +182,7 @@ impl Component for Calendar {
         let last = weeks[weeks.len() - 1].1[6];
 
         html! {
-            <div class="plinth-stack">
+            <div class="sockel-stack">
                 { view_range_controls(RangeControls {
                     label: format!("{} {} – {} {}", first.day(), first.month_name(), last.day(), last.month_name()),
                     prev_title: "Previous week",
@@ -213,12 +213,12 @@ impl Component for Calendar {
                     </ContextMenu>
                 }
 
-                <div class="calendar-grid plinth-stack plinth-loose">
+                <div class="calendar-grid sockel-stack sockel-loose">
                     { for weeks.iter().enumerate().flat_map(|(index, (month_band, days))| {
                         let monday = days[0];
 
                         let band = month_band.as_ref().map(|month_band| html! {
-                            <div key={format!("calendar-month-{monday}")} class="calendar-month title sm plinth-cluster plinth-nowrap plinth-loose">
+                            <div key={format!("calendar-month-{monday}")} class="calendar-month title sm sockel-cluster sockel-nowrap sockel-loose">
                                 {month_band}
                             </div>
                         });
@@ -246,7 +246,7 @@ impl Component for Calendar {
                                             (is_past && !show_past).then_some("desktop-only"),
                                             (known && items.is_empty()).then_some("desktop-only"),
                                         )}>
-                                            <span class={classes!("calendar-day-number", plinth::class::NUMERIC, "desktop-only", is_today.then_some("today"))}>{day.day()}</span>
+                                            <span class={classes!("calendar-day-number", sockel::class::NUMERIC, "desktop-only", is_today.then_some("today"))}>{day.day()}</span>
 
                                             <div class="mobile-only">
                                                 { view_day_heading(day, today) }

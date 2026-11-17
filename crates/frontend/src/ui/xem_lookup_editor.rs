@@ -1,6 +1,6 @@
 use yew::prelude::*;
 
-use plinth::{Reorder, ReorderHandle, ReorderItem};
+use sockel::{Reorder, ReorderHandle, ReorderItem};
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
@@ -47,7 +47,7 @@ pub(crate) fn XemLookupEditor(props: &Props) -> Html {
         <Reorder class={classes!("form", "xem-lookup")} {on_move} quick_keys=true titles=true>
             {
                 for sources.iter().map(|source| html_nested! {
-                    <ReorderItem id={source.as_id()} name={source.as_label()} class="input-group plinth-cluster plinth-nowrap">
+                    <ReorderItem id={source.as_id()} name={source.as_label()} class="input-group sockel-cluster sockel-nowrap">
                         <ReorderHandle />
 
                         <span class="input-label has-text">

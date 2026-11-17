@@ -4,7 +4,7 @@ use yew::prelude::*;
 use crate::help;
 use crate::ui::Help;
 
-use plinth::{Reorder, ReorderHandle, ReorderItem};
+use sockel::{Reorder, ReorderHandle, ReorderItem};
 
 use super::{Button, Confirm, Modal, Size, Variant};
 
@@ -417,7 +417,7 @@ impl Component for RemoteEditor {
                             let overriding = r.remote.sync_kinds.is_some();
 
                             let kind_toggles = (!capability.is_empty()).then(|| html! {
-                                <div class="plinth-cluster plinth-tight" role="group" aria-label="Kinds synced from this source">
+                                <div class="sockel-cluster sockel-tight" role="group" aria-label="Kinds synced from this source">
                                     <span class="text-muted">{"Syncs"}</span>
                                     <Help section={help::REMOTES} />
 
@@ -461,19 +461,19 @@ impl Component for RemoteEditor {
                             };
 
                             html_nested! {
-                                <ReorderItem id={key} name={r.remote.remote.to_string()} class="remote plinth-stack plinth-tight">
-                                    <div class="plinth-cluster plinth-tight">
+                                <ReorderItem id={key} name={r.remote.remote.to_string()} class="remote sockel-stack sockel-tight">
+                                    <div class="sockel-cluster sockel-tight">
                                         <ReorderHandle />
 
                                         if let Some(url) = url {
-                                            <a class="remote-link plinth-cluster plinth-nowrap plinth-tight" data-testid="remote-link" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {}", r.remote.remote.source())}>
+                                            <a class="remote-link sockel-cluster sockel-nowrap sockel-tight" data-testid="remote-link" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {}", r.remote.remote.source())}>
                                                 {identifier}
                                             </a>
                                         } else {
-                                            <span class="remote-link plinth-cluster plinth-nowrap plinth-tight" data-testid="remote-link">{identifier}</span>
+                                            <span class="remote-link sockel-cluster sockel-nowrap sockel-tight" data-testid="remote-link">{identifier}</span>
                                         }
 
-                                        <div class="plinth-push-end plinth-cluster plinth-tight" data-testid="remote-actions" ref={r.context_anchor.clone()}>
+                                        <div class="sockel-push-end sockel-cluster sockel-tight" data-testid="remote-actions" ref={r.context_anchor.clone()}>
                                             <Button size={Size::Small} role="switch" checked={Some(enabled)} title={if enabled { "Remote enabled" } else { "Remote disabled" }} onclick={link.callback(move |_| Msg::SetEnabled(id, !enabled))} label={if enabled { "Enabled" } else { "Disabled" }} />
 
                                             <Button size={Size::Small} icon="pencil-square" label="Edit" title="Edit identifier" onclick={link.callback(move |_| Msg::Edit(edit_entry.clone()))} />
@@ -488,7 +488,7 @@ impl Component for RemoteEditor {
                                     {kind_toggles}
 
                                     if let Some(ref cache) = r.remote.cache {
-                                        <div class="remote-cache plinth-cluster plinth-loose plinth-between plinth-top">
+                                        <div class="remote-cache sockel-cluster sockel-loose sockel-between sockel-top">
                                             <dl>
                                                 if let Some(ref last_updated) = cache.last_updated {
                                                     <dt>{"Last updated"}</dt>
@@ -497,7 +497,7 @@ impl Component for RemoteEditor {
 
                                                 if let Some(ref etag) = cache.etag {
                                                     <dt>{"ETag"}</dt>
-                                                    <dd class="remote-etag mono plinth-truncate" title={etag.clone()}>{etag}</dd>
+                                                    <dd class="remote-etag mono sockel-truncate" title={etag.clone()}>{etag}</dd>
                                                 }
 
                                                 if !cache.kinds.is_empty() {
@@ -541,13 +541,13 @@ impl Component for RemoteEditor {
                 <div class="form">
                     <div class={classes!("field", self.error.is_some().then_some("error"))}>
                         <div class="input-group fill">
-                            <select ref={self.source_ref.clone()} class={classes!(plinth::class::INPUT, plinth::class::NATIVE_SELECT)} onchange={on_source} title="Source">
+                            <select ref={self.source_ref.clone()} class={classes!(sockel::class::INPUT, sockel::class::NATIVE_SELECT)} onchange={on_source} title="Source">
                                 { for addable_sources(props.kind).map(|source| html! {
                                     <option value={source.as_id()} selected={self.source == source}>{source.as_label()}</option>
                                 }) }
                             </select>
 
-                            <input class={classes!(plinth::class::INPUT, "fill")} type="text" placeholder={placeholder(self.source)} aria-label="Identifier" value={self.value.clone()} oninput={on_value} />
+                            <input class={classes!(sockel::class::INPUT, "fill")} type="text" placeholder={placeholder(self.source)} aria-label="Identifier" value={self.value.clone()} oninput={on_value} />
 
                             <Button icon="link" label="Slug" title={if self.show_slug { "Showing slug" } else { "Hiding slug" }} class={classes!(self.show_slug.then_some("selected"))} pressed={Some(self.show_slug)} onclick={link.callback(|_| Msg::ToggleSlug)} />
 
@@ -561,7 +561,7 @@ impl Component for RemoteEditor {
                         if self.show_slug {
                             <div class="input-group fill">
                                 <span class="input-label has-text" title="Slug">{"/"}</span>
-                                <input class={classes!(plinth::class::INPUT, "fill")} type="text" placeholder="slug" value={self.slug.clone()} oninput={on_slug} />
+                                <input class={classes!(sockel::class::INPUT, "fill")} type="text" placeholder="slug" value={self.slug.clone()} oninput={on_slug} />
 
                                 if !self.slug.is_empty() {
                                     <Button icon="backspace" title="Clear slug" onclick={link.callback(|_| Msg::ClearSlug)} />

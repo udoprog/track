@@ -12,7 +12,7 @@ $numbering-head: 26px;
 // from its height, leaving the rest to the map's episodes.
 $numbering-map-chrome: 120px;
 
-.plinth-dialog.numbering-modal {
+.sockel-dialog.numbering-modal {
     // Anchored at the top on wide screens (5vh down, less the layer's own
     // padding) and at full height as a phone's sheet, so the map growing as
     // runs unfold leaves its rows in place.

@@ -148,7 +148,7 @@ impl Component for PersonDetail {
             PersonState::Loading => return html! { <DetailSkeleton /> },
             PersonState::Missing => {
                 return html! {
-                    <div class="plinth-cluster plinth-nowrap plinth-loose plinth-center">
+                    <div class="sockel-cluster sockel-nowrap sockel-loose sockel-center">
                         <span class="item-inline-more">{"No such person"}</span>
                     </div>
                 };
@@ -158,7 +158,7 @@ impl Component for PersonDetail {
 
         html! {
             <>
-                <div class="plinth-stack plinth-loose">
+                <div class="sockel-stack sockel-loose">
                     { self.view_header(ctx, person) }
                     { self.view_filmography() }
                 </div>
@@ -405,8 +405,8 @@ impl PersonDetail {
             <div class="person-detail-header" data-testid="person-header">
                 <Image class="person-detail-photo" placeholder={true} placeholder_icon="user" src={person.profile.clone()} alt={name.clone()} />
 
-                <div class="plinth-stack">
-                    <plinth::PageHead title={html! {name}} subtitle={person.department.department().map(|d| html! {d.to_owned()})}>
+                <div class="sockel-stack">
+                    <sockel::PageHead title={html! {name}} subtitle={person.department.department().map(|d| html! {d.to_owned()})}>
                         <div class="input-group">
                             <SyncButton target={SyncTarget::Person(person.id)} text="Sync" onclick={link.callback(|_| Msg::SyncPerson)} />
                             <Button icon="cog-6-tooth" title="Settings" onclick={link.callback(|_| Msg::OpenSettings)} />
@@ -418,9 +418,9 @@ impl PersonDetail {
                                 }
                             }
                         </div>
-                    </plinth::PageHead>
+                    </sockel::PageHead>
 
-                    <div class="detail-sources plinth-cluster">
+                    <div class="detail-sources sockel-cluster">
                         {for person.remotes.iter().filter_map(|r| {
                             let url = r.remote.person_url(r.slug.as_deref())?;
                             let id = r.remote.source().as_id();
@@ -448,7 +448,7 @@ impl PersonDetail {
 
         html! {
             <Modal icon="cog-6-tooth" title="Settings" on_close={link.callback(|_| Msg::CloseSettings)}>
-                <div class={plinth::form_rows(false)}>
+                <div class={sockel::form_rows(false)}>
                     <FormRow label="Last synced">
                         if let Some(ts) = last_synced {
                             <span title="Last synced at">{ts}</span>
@@ -504,8 +504,8 @@ impl PersonDetail {
         }
 
         html! {
-            <section class="plinth-stack" data-testid="filmography">
-                <plinth::SectionHead title={html! {"Known for"}} />
+            <section class="sockel-stack" data-testid="filmography">
+                <sockel::SectionHead title={html! {"Known for"}} />
 
                 <div class="person-grid">
                     { for titles.iter().map(|(c, roles)| self.view_credit(c, roles)) }

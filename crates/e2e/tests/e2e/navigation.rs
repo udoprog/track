@@ -299,10 +299,10 @@ pub async fn errors_show_as_a_card(driver: &mut TestDriver, track: &mut Track) -
         "the error pushes the page down"
     );
     driver
-        .find_one_by("#error .plinth-error-box-message")
+        .find_one_by("#error .sockel-error-box-message")
         .await?;
     driver
-        .find_one_by("#error .plinth-error-box-causes li")
+        .find_one_by("#error .sockel-error-box-causes li")
         .await?;
 
     driver
@@ -347,7 +347,7 @@ pub(crate) async fn ensure_menu_rows_align(driver: &TestDriver, selector: &str) 
         .execute(
             "return [...document.querySelectorAll(arguments[0])].map(row => {
             const icon = row.querySelector('.icon');
-            const label = row.querySelector('.plinth-button-label') || row.querySelector(':scope > span:not(.icon)');
+            const label = row.querySelector('.sockel-button-label') || row.querySelector(':scope > span:not(.icon)');
             return [icon.getBoundingClientRect().left, label.getBoundingClientRect().left];
         });",
             vec![selector.into()],

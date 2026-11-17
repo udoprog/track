@@ -50,7 +50,7 @@ pub async fn shows_nothing_while_loading(driver: &mut TestDriver, _: &mut Track)
         "people show before they load"
     );
     ensure!(
-        driver.count("#page .plinth-pager").await? == 0,
+        driver.count("#page .sockel-pager").await? == 0,
         "pages show before the people load"
     );
 
@@ -78,12 +78,12 @@ pub async fn pages_and_filters_people(driver: &mut TestDriver, _: &mut Track) ->
         )
         .await?;
     ensure!(
-        driver.count("#page .plinth-pager [title='Page 3']").await? == 0,
+        driver.count("#page .sockel-pager [title='Page 3']").await? == 0,
         "a page past the next one is offered"
     );
 
     driver
-        .find_first("#page .plinth-pager [title='Page 2']")
+        .find_first("#page .sockel-pager [title='Page 2']")
         .await?
         .click()
         .await?;
@@ -95,7 +95,7 @@ pub async fn pages_and_filters_people(driver: &mut TestDriver, _: &mut Track) ->
         )
         .await?;
     ensure!(
-        driver.count("#page .plinth-pager [title='Page 3']").await? == 0,
+        driver.count("#page .sockel-pager [title='Page 3']").await? == 0,
         "a page past the last one is offered"
     );
 
@@ -116,7 +116,7 @@ pub async fn pages_and_filters_people(driver: &mut TestDriver, _: &mut Track) ->
         )
         .await?;
     ensure!(
-        driver.count("#page .plinth-pager [title='Page 2']").await? == 0,
+        driver.count("#page .sockel-pager [title='Page 2']").await? == 0,
         "one page of matches offers a second"
     );
 
@@ -246,20 +246,20 @@ pub async fn edits_a_persons_remotes(driver: &mut TestDriver, _: &mut Track) -> 
     open_remote_editor(driver).await?;
 
     driver
-        .find_one_by(".plinth-dialog input[aria-label=Identifier]")
+        .find_one_by(".sockel-dialog input[aria-label=Identifier]")
         .await?
         .send_keys("12345")
         .await?;
     driver
-        .find_one_by(".plinth-dialog [title='Add identifier']")
+        .find_one_by(".sockel-dialog [title='Add identifier']")
         .await?
         .click()
         .await?;
     driver
-        .wait_texts(".plinth-dialog [data-testid='remote-id']", ["12345"])
+        .wait_texts(".sockel-dialog [data-testid='remote-id']", ["12345"])
         .await?;
 
-    let switch = ".plinth-dialog [data-testid='remote-actions'] [role='switch']";
+    let switch = ".sockel-dialog [data-testid='remote-actions'] [role='switch']";
     driver.find_one_by(switch).await?.click().await?;
     driver.wait_texts(switch, ["Disabled"]).await?;
 
@@ -270,12 +270,12 @@ pub async fn edits_a_persons_remotes(driver: &mut TestDriver, _: &mut Track) -> 
     driver.wait_texts(switch, ["Disabled"]).await?;
 
     driver
-        .find_one_by(".plinth-dialog .remote [title='Remove identifier']")
+        .find_one_by(".sockel-dialog .remote [title='Remove identifier']")
         .await?
         .click()
         .await?;
     driver.find_one_by("[title='Yes']").await?.click().await?;
-    driver.wait_count(".plinth-dialog .remote", 0).await
+    driver.wait_count(".sockel-dialog .remote", 0).await
 }
 
 async fn open_remote_editor(driver: &mut TestDriver) -> Result<()> {
@@ -285,9 +285,9 @@ async fn open_remote_editor(driver: &mut TestDriver) -> Result<()> {
         .click()
         .await?;
     driver
-        .find_one_by(".plinth-dialog [title='Edit remotes']")
+        .find_one_by(".sockel-dialog [title='Edit remotes']")
         .await?
         .click()
         .await?;
-    driver.wait_texts(".plinth-dialog h2", ["Remotes"]).await
+    driver.wait_texts(".sockel-dialog h2", ["Remotes"]).await
 }

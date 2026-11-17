@@ -117,7 +117,7 @@ pub async fn follows_the_next_task(driver: &mut TestDriver, _: &mut Track) -> Re
     );
 
     driver
-        .find_one_by(".plinth-pager [title^='Page ']:not([aria-current])")
+        .find_one_by(".sockel-pager [title^='Page ']:not([aria-current])")
         .await?
         .click()
         .await?;

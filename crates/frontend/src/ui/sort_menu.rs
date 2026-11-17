@@ -1,4 +1,4 @@
-use plinth::{Menu, MenuRadio, PopoverAlign};
+use sockel::{Menu, MenuRadio, PopoverAlign};
 use yew::prelude::*;
 
 #[derive(Properties, PartialEq)]

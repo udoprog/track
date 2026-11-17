@@ -4,7 +4,7 @@ use std::rc::Rc;
 use auth::yew023::{AuthContext, AuthSubscription};
 use musli_web::web03::prelude::*;
 use musli_web::yew023::ContextExt;
-use plinth::{Menu, MenuItem, PopoverAlign};
+use sockel::{Menu, MenuItem, PopoverAlign};
 use wasm_bindgen::JsCast as _;
 use yew::prelude::*;
 
@@ -509,7 +509,7 @@ impl Component for ShowDetail {
                 />
 
                 <div class="toolbar">
-                    <div class="detail-sources plinth-cluster">
+                    <div class="detail-sources sockel-cluster">
                         {for show.remotes.iter().filter_map(|r| {
                             let url = r.remote.show_url(r.slug.as_deref())?;
                             let id = r.remote.source().as_id();
@@ -1820,8 +1820,8 @@ impl ShowDetail {
             .unwrap_or_default();
 
         html! {
-            <section class="plinth-stack" data-testid="credits">
-                <plinth::SectionHead title={html! {"Cast & crew"}} />
+            <section class="sockel-stack" data-testid="credits">
+                <sockel::SectionHead title={html! {"Cast & crew"}} />
 
                 if !shown.is_empty() {
                     <div class="cast-grid">
@@ -1830,7 +1830,7 @@ impl ShowDetail {
                 }
 
                 if self.credits.len() > CAP {
-                    <Button icon="user-group" label="Show all cast" title="Show all cast" class="credits-toggle plinth-self-start" onclick={ctx.link().callback(|_| UiMsg::OpenCastModal)} />
+                    <Button icon="user-group" label="Show all cast" title="Show all cast" class="credits-toggle sockel-self-start" onclick={ctx.link().callback(|_| UiMsg::OpenCastModal)} />
                 }
 
                 if self.cast_modal {
@@ -1989,10 +1989,10 @@ impl ShowDetail {
         let poster = season.poster.as_ref().or(show.poster.as_ref());
 
         html! {
-            <div class="detail-sidebar plinth-stack plinth-loose">
+            <div class="detail-sidebar sockel-stack sockel-loose">
                 <Image class="poster desktop-only artwork" src={poster.cloned()} />
 
-                <nav class="season-list desktop-only plinth-stack plinth-tight" aria-label="Seasons">
+                <nav class="season-list desktop-only sockel-stack sockel-tight" aria-label="Seasons">
                     { for self.seasons.iter().map(|s| self.view_season(ctx, s)) }
                 </nav>
             </div>
@@ -2042,9 +2042,9 @@ impl ShowDetail {
 
         let body = html! {
             <>
-                <span class="season-name plinth-truncate">{name.clone()}</span>
+                <span class="season-name sockel-truncate">{name.clone()}</span>
 
-                <span class="season-count plinth-numeric" title="Episodes watched">
+                <span class="season-count sockel-numeric" title="Episodes watched">
                     if finished {
                         <span class="icon sm check" aria-hidden="true" />
                     }
@@ -2054,7 +2054,7 @@ impl ShowDetail {
                     }
                 </span>
 
-                <span class="season-year plinth-numeric">
+                <span class="season-year sockel-numeric">
                     if let Some(ts) = s.air_date {
                         {ts.date(self.time.clone()).year().to_string()}
                     }
@@ -2097,7 +2097,7 @@ impl ShowDetail {
         let current = self.selected().map(|s| s.id);
 
         html! {
-            <nav class="season-chips mobile-only plinth-cluster plinth-nowrap plinth-tight" aria-label="Seasons" ref={self.season_chips.clone()}>
+            <nav class="season-chips mobile-only sockel-cluster sockel-nowrap sockel-tight" aria-label="Seasons" ref={self.season_chips.clone()}>
                 { for self.seasons.iter().map(|s| {
                     let season = s.season;
                     let is_current = current == Some(s.id);
@@ -2112,7 +2112,7 @@ impl ShowDetail {
                             if finished {
                                 <span class="icon sm check" aria-hidden="true" />
                             } else if s.total_count > 0 {
-                                <span class="chip-count plinth-numeric">{format!("{watched}/{}", s.total_count)}</span>
+                                <span class="chip-count sockel-numeric">{format!("{watched}/{}", s.total_count)}</span>
                             }
                         </Button>
                     }
@@ -2185,14 +2185,14 @@ impl ShowDetail {
         });
 
         html! {
-            <div class="plinth-stack plinth-loose" data-testid="detail-content">
+            <div class="sockel-stack sockel-loose" data-testid="detail-content">
                 { self.view_credits(ctx) }
 
                 { self.view_season_chips(ctx) }
 
                 // Keyed so a season switch replaces the column instead of
                 // patching it.
-                <div class="plinth-stack" key={season.id.to_string()}>
+                <div class="sockel-stack" key={season.id.to_string()}>
                     <div class="toolbar">
                         <h2>
                             if let Some(name) = season.strings.title() {
@@ -2281,11 +2281,11 @@ impl ShowDetail {
 
         html! {
             <div class="selection-bar" role="region" aria-label="Selected episodes">
-                <span class="selection-count plinth-numeric">
+                <span class="selection-count sockel-numeric">
                     {if count == 1 { "1 episode selected".to_owned() } else { format!("{count} episodes selected") }}
                 </span>
 
-                <div class="plinth-cluster plinth-tight">
+                <div class="sockel-cluster sockel-tight">
                     <MarkTimeMenu variant="primary" icon="check" label="Mark watched" title="Mark the selected episodes watched" prompt="When did you watch them?" preset={aired} on_confirm={link.callback(PickMsg::BulkMark)} />
 
                     <Button icon="arrow-path" label="Sync" title="Sync the selected episodes" onclick={link.callback(|_| PickMsg::BulkSync)} />
@@ -2335,22 +2335,22 @@ impl ShowDetail {
             <div class={classes!("episode", (!watched.is_empty()).then_some("watched"))} id={episode.code()}>
                 <Button class={classes!("episode-pick", picked.then_some("picked"))} title={format!("Select {}", episode.code())} pressed={Some(picked)} onclick={link.callback(move |e: MouseEvent| PickMsg::TogglePick(episode_id, e.shift_key()))}>
                     <Image class="screenshot artwork" placeholder={true} placeholder_icon="photo" src={episode.screenshot.clone()} />
-                    <span class="episode-pick-mark plinth-cluster plinth-nowrap plinth-loose plinth-center" aria-hidden="true">
+                    <span class="episode-pick-mark sockel-cluster sockel-nowrap sockel-loose sockel-center" aria-hidden="true">
                         <span class="icon sm check" />
                     </span>
                 </Button>
 
-                <div class="plinth-stack plinth-tight">
-                    <div class="plinth-section-head">
-                        <div class="plinth-cluster plinth-tight plinth-baseline">
-                            <a class="episode-code plinth-numeric" href={format!("#{}", episode.code())} title="Link to this episode">{episode.code()}</a>
+                <div class="sockel-stack sockel-tight">
+                    <div class="sockel-section-head">
+                        <div class="sockel-cluster sockel-tight sockel-baseline">
+                            <a class="episode-code sockel-numeric" href={format!("#{}", episode.code())} title="Link to this episode">{episode.code()}</a>
 
                             if let Some(name) = episode.strings.title() {
                                 <h4 class="title sm">{name}</h4>
                             }
                         </div>
 
-                        <div class="plinth-push-end plinth-cluster plinth-nowrap plinth-loose">
+                        <div class="sockel-push-end sockel-cluster sockel-nowrap sockel-loose">
                             <div class="input-group">
                                 <MarkTimeMenu quick=true variant="primary" icon="check" title="Mark watched" prompt={format!("When did you watch {}?", episode.code())} preset={preset.clone()} on_confirm={on_mark_confirm} />
                             </div>
@@ -2384,7 +2384,7 @@ impl ShowDetail {
                         </div>
                     }
 
-                    <div class="episode-meta plinth-cluster plinth-loose">
+                    <div class="episode-meta sockel-cluster sockel-loose">
                         <indicator title="Air date">
                             <span class="item-inline">
                                 <span class={classes!("icon", if episode.aired().is_some() { "clock" } else { "exclamation-circle" })} />
@@ -2470,10 +2470,10 @@ impl ShowDetail {
 
                                     html! {
                                         <div class="watch-row">
-                                            <span class="watch-when plinth-numeric">{w.watched.timestamp.human_date_time(self.time.clone()).view()}</span>
+                                            <span class="watch-when sockel-numeric">{w.watched.timestamp.human_date_time(self.time.clone()).view()}</span>
                                             <span class="watch-age">{w.watched.timestamp.relative_to(self.time.now())}</span>
 
-                                            <div class="start-on-mobile plinth-cluster plinth-nowrap plinth-tight plinth-end" ref={w.context_anchor.clone()}>
+                                            <div class="start-on-mobile sockel-cluster sockel-nowrap sockel-tight sockel-end" ref={w.context_anchor.clone()}>
                                                 <Button icon="arrow-uturn-right" label="Move" title="Move to another episode" onclick={link.callback(move |_| WatchMsg::FixWatched(wid))} />
 
                                                 <Button icon="trash" label="Remove" title="Remove" expanded={Some(self.confirm_remove_watch == Some(wid))} haspopup="dialog" onclick={link.callback(move |_| WatchMsg::ConfirmRemoveWatch(wid))} />
@@ -2520,15 +2520,15 @@ impl ShowDetail {
         let show_id = props.show_id;
 
         html! {
-            <div class="plinth-stack plinth-loose" data-testid="detail-content">
+            <div class="sockel-stack sockel-loose" data-testid="detail-content">
                 <div class="table">
                     { for self.orphaned.iter().map(|w| {
                         let id = w.watched.id;
                         let kind = api::WatchedKind::Episode { show: show_id, episode: api::EpisodeId::new(0) };
 
                         html! {
-                            <div class="plinth-cluster plinth-between plinth-loose">
-                                <div class="plinth-cluster plinth-nowrap plinth-loose">
+                            <div class="sockel-cluster sockel-between sockel-loose">
+                                <div class="sockel-cluster sockel-nowrap sockel-loose">
                                     <span class="text-muted">{w.watched.code()}</span>
                                     <span>{w.watched.timestamp.human_date_time(self.time.clone())}</span>
                                 </div>
@@ -2584,7 +2584,7 @@ fn view_numbering(n: &api::AltNumbering) -> Html {
     };
 
     html! {
-        <span class="numbering-chip plinth-numeric" {title}>
+        <span class="numbering-chip sockel-numeric" {title}>
             <span class={classes!("logo", n.system.clone())} aria-hidden="true" />
             <span class="numbering-chip-code">{code}</span>
         </span>

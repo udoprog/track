@@ -19,7 +19,7 @@
     }
 }
 
-// The app's own buttons (and watchword's), and what plinth's (`.plinth-button`,
+// The app's own buttons (and watchword's), and what sockel's (`.sockel-button`,
 // configured in main.scss) take from them: the icon colour, and `selected`.
 button {
     display: flex;
@@ -37,13 +37,13 @@ button {
     font-family: v.$sans-serif-font;
     user-select: none;
 
-    // Not plinth's drag handles, which grab and keep their edge (:where, so
+    // Not sockel's drag handles, which grab and keep their edge (:where, so
     // this weighs what it did without them).
-    &:not(.disabled):not(:disabled):where(:not(.plinth-drag-handle)) {
+    &:not(.disabled):not(:disabled):where(:not(.sockel-drag-handle)) {
         cursor: pointer;
     }
 
-    &:hover:not(.disabled):not(:disabled):where(:not(.plinth-drag-handle)) {
+    &:hover:not(.disabled):not(:disabled):where(:not(.sockel-drag-handle)) {
         border-color: v.$color-primary;
     }
 
@@ -51,22 +51,22 @@ button {
         background-color: var(--neutral-selected);
     }
 
-    &.plinth-primary {
+    &.sockel-primary {
         @include button-color(accent);
     }
 
-    &.plinth-success {
+    &.sockel-success {
         @include button-color(success);
     }
 
-    &.plinth-danger {
+    &.sockel-danger {
         @include button-color(danger);
     }
 
     // The app's own icon-only buttons are square, so a row of them reads as
     // one set.
     @include g.on-desktop {
-        &:not(.plinth-button) {
+        &:not(.sockel-button) {
             justify-content: center;
             min-width: v.$input-height;
         }
@@ -75,7 +75,7 @@ button {
     @include g.on-mobile {
         height: v.$input-height-touch;
 
-        &:not(.plinth-button, .mobile-has-text) {
+        &:not(.sockel-button, .mobile-has-text) {
             justify-content: center;
             min-width: v.$input-height-touch;
         }
@@ -114,7 +114,7 @@ button {
 
 .input-number {
     appearance: textfield;
-    // As wide as the browser draws a number field, not plinth's field width.
+    // As wide as the browser draws a number field, not sockel's field width.
     width: auto;
 
     &::-webkit-inner-spin-button,

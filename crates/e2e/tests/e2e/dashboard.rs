@@ -407,7 +407,7 @@ pub async fn upcoming_keeps_days_when_more_are_shown(
         .await?;
 
     driver.wait_count(DAYS, days + 1).await?;
-    driver.wait_count(".agenda-day .plinth-skeleton", 0).await?;
+    driver.wait_count(".agenda-day .sockel-skeleton", 0).await?;
 
     let kept = kept_marked(driver, SHOWN).await?;
     ensure!(
@@ -430,7 +430,7 @@ pub async fn schedule_keeps_weeks_when_more_are_shown(
     driver.reopen_with("view=schedule").await?;
     driver.find_first(".calendar-week").await?;
     driver
-        .wait_count(".calendar-week .plinth-skeleton", 0)
+        .wait_count(".calendar-week .sockel-skeleton", 0)
         .await?;
 
     let weeks = driver.count(WEEKS).await?;
@@ -449,7 +449,7 @@ pub async fn schedule_keeps_weeks_when_more_are_shown(
 
     driver.wait_count(WEEKS, weeks + 1).await?;
     driver
-        .wait_count(".calendar-week .plinth-skeleton", 0)
+        .wait_count(".calendar-week .sockel-skeleton", 0)
         .await?;
 
     let kept = kept_marked(driver, SHOWN).await?;

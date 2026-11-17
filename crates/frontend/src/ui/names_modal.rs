@@ -24,7 +24,7 @@ pub(crate) fn NamesModal(props: &Props) -> Html {
                 <Help section={help::NAMES} />
             </p>
 
-            <div class="translations plinth-stack plinth-loose">
+            <div class="translations sockel-stack sockel-loose">
                 if !props.names.is_empty() {
                     <section>
                         <h3>{"Show"}</h3>

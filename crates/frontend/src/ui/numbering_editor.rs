@@ -690,7 +690,7 @@ impl Component for NumberingEditor {
                     { self.view_map(ctx, &ranges, &errors) }
 
                     if self.manual {
-                        <div class="numbering-side plinth-stack plinth-tight">
+                        <div class="numbering-side sockel-stack sockel-tight">
                             <div class="numbering-ranges" ref={self.ranges.clone()}>
                                 for group in self.folds(&ranges, &errors) {
                                     if group.len() > 1 {
@@ -701,7 +701,7 @@ impl Component for NumberingEditor {
                                 }
                             </div>
 
-                            <div class="numbering-tools plinth-cluster plinth-tight">
+                            <div class="numbering-tools sockel-cluster sockel-tight">
                                 <Button icon="plus" label="Add range" title="Add range" onclick={link.callback(|_: MouseEvent| Msg::Add)} />
                                 <Button
                                     icon="sparkles"
@@ -715,7 +715,7 @@ impl Component for NumberingEditor {
                     }
                 </div>
 
-                <div class="plinth-cluster plinth-tight plinth-end">
+                <div class="sockel-cluster sockel-tight sockel-end">
                     <Button icon="x-mark" label="Cancel" title="Cancel" onclick={on_close.reform(|_: MouseEvent| ())} />
                     <Button icon="check" label="Save" title="Save" variant={Variant::Primary} spin={self.saving} {disabled} onclick={link.callback(|_: MouseEvent| Msg::Save)} />
                 </div>
@@ -1731,7 +1731,7 @@ impl NumberingEditor {
                         if self.asking {
                             {asking}
                         } else {
-                            <div class="numbering-tools plinth-cluster plinth-tight">
+                            <div class="numbering-tools sockel-cluster sockel-tight">
                                 <Button icon="sparkles" label="Suggest from episode order" title={suggest_title.to_owned()} disabled={bases.is_empty()} onclick={link.callback(|_: MouseEvent| Msg::Suggest)} />
                             </div>
                         }
@@ -1880,7 +1880,7 @@ impl NumberingEditor {
         let link = ctx.link();
 
         let Some(data) = &self.data else {
-            return html! { <div class="numbering-map-pane plinth-stack plinth-tight" /> };
+            return html! { <div class="numbering-map-pane sockel-stack sockel-tight" /> };
         };
 
         let drawn = self.drawn(ranges);
@@ -2010,8 +2010,8 @@ impl NumberingEditor {
             html! {
                 <span class="numbering-map-source" title={label.clone()}>
                     <span class={classes!("logo", c.side.logo().to_owned())} aria-hidden="true" />
-                    <span class="numbering-map-label plinth-visually-hidden">{label.clone()}</span>
-                    <select class={classes!(plinth::class::INPUT, plinth::class::NATIVE_SELECT, "numbering-map-in-view", plinth::class::NUMERIC)} aria-label={format!("{label} season in view")} title={format!("{label} season in view: pick one to jump to it")} {onchange}>
+                    <span class="numbering-map-label sockel-visually-hidden">{label.clone()}</span>
+                    <select class={classes!(sockel::class::INPUT, sockel::class::NATIVE_SELECT, "numbering-map-in-view", sockel::class::NUMERIC)} aria-label={format!("{label} season in view")} title={format!("{label} season in view: pick one to jump to it")} {onchange}>
                         if current.is_none() {
                             <option value="" selected=true hidden=true>{"–"}</option>
                         }
@@ -2031,7 +2031,7 @@ impl NumberingEditor {
         });
 
         html! {
-            <div class="numbering-map-pane plinth-stack plinth-tight">
+            <div class="numbering-map-pane sockel-stack sockel-tight">
                 <div class="numbering-map-head" style={template.clone()} ref={self.map_head.clone()}>
                     for head in heads {
                         {head}
@@ -2360,7 +2360,7 @@ impl NumberingEditor {
 
                     rows.push(html! {
                         <button type="button" class={classes!("numbering-ep", "numbering-fold-row", cell.classes.clone())} data-season={season.to_string()} data-first={first.to_string()} data-last={last.to_string()} aria-label={code} aria-expanded="false" {title} {onclick}>
-                            <span class="plinth-numeric">
+                            <span class="sockel-numeric">
                                 <span>{format!("E{first}–E{last}")}</span>
                                 <span class="numbering-fold-count">{format!("· {n}")}</span>
                             </span>
@@ -2377,7 +2377,7 @@ impl NumberingEditor {
 
                 rows.push(html! {
                     <button type="button" class={classes!("numbering-ep", cell.classes.clone())} data-season={season.to_string()} data-first={e.to_string()} data-last={e.to_string()} aria-label={format!("{label} S{season} E{e}")} title={cell.title.clone()} disabled={!self.manual} {onclick}>
-                        <span class="plinth-numeric">{text}</span>
+                        <span class="sockel-numeric">{text}</span>
                     </button>
                 });
 
@@ -2386,7 +2386,7 @@ impl NumberingEditor {
 
             html! {
                 <>
-                    <div class="numbering-map-season plinth-truncate" title={format!("{label} {name}: {} episodes", s.known)}>
+                    <div class="numbering-map-season sockel-truncate" title={format!("{label} {name}: {} episodes", s.known)}>
                         {heading}<span class="text-muted">{format!(" · {}", s.known)}</span>
                     </div>
                     for row in rows {
@@ -2476,7 +2476,7 @@ impl NumberingEditor {
         // in columns from row to row.
         let cells = |season: u32, first: u32, last: Option<u32>| {
             html! {
-                <span class="numbering-span plinth-numeric">
+                <span class="numbering-span sockel-numeric">
                     <span class="numbering-season">{format!("S{season}")}</span>{" "}
                     <span class="numbering-first">{format!("E{first}")}</span>
                     <span class="numbering-last">{last.map(|l| format!("–E{l}")).unwrap_or_else(|| "–".to_owned())}</span>
@@ -2544,7 +2544,7 @@ impl NumberingEditor {
             });
 
             html! {
-                <input class={classes!(plinth::class::INPUT, "input-number", plinth::class::NUMERIC, "numbering-number")} type="text" inputmode="numeric" value={value.to_owned()} aria-label={title.clone()} {title} {oninput} />
+                <input class={classes!(sockel::class::INPUT, "input-number", sockel::class::NUMERIC, "numbering-number")} type="text" inputmode="numeric" value={value.to_owned()} aria-label={title.clone()} {title} {oninput} />
             }
         };
 
@@ -2557,7 +2557,7 @@ impl NumberingEditor {
         let open = row.open;
 
         html! {
-            <div class="plinth-cluster plinth-tight">
+            <div class="sockel-cluster sockel-tight">
                 <div class="numbering-source">
                     <span class="logo tmdb" title="TMDB" />
                     <span class="numbering-letter">{"S"}</span>
@@ -2566,7 +2566,7 @@ impl NumberingEditor {
                     { input(Field::First, &row.first, format!("Range {n} first episode")) }
                     <span class="numbering-letter">{"–"}</span>
                     if row.open {
-                        <input class={classes!(plinth::class::INPUT, "input-number", plinth::class::NUMERIC, "numbering-number")} type="text" value="" placeholder="…" disabled=true aria-label={format!("Range {n} last episode")} title="Open: runs on through the season" />
+                        <input class={classes!(sockel::class::INPUT, "input-number", sockel::class::NUMERIC, "numbering-number")} type="text" value="" placeholder="…" disabled=true aria-label={format!("Range {n} last episode")} title="Open: runs on through the season" />
                     } else {
                         { input(Field::Last, &row.last, format!("Range {n} last episode")) }
                     }
@@ -2581,7 +2581,7 @@ impl NumberingEditor {
                 </div>
 
                 <div class="numbering-target">
-                    <select class={classes!(plinth::class::INPUT, plinth::class::NATIVE_SELECT)} title={format!("Range {n} numbering")} onchange={on_system}>
+                    <select class={classes!(sockel::class::INPUT, sockel::class::NATIVE_SELECT)} title={format!("Range {n} numbering")} onchange={on_system}>
                         if !known {
                             <option value={row.system.clone()} selected=true>{row.system.clone()}</option>
                         }
@@ -2596,7 +2596,7 @@ impl NumberingEditor {
                     { input(Field::TargetFirst, &row.target_first, format!("Range {n} target first episode")) }
                 </div>
 
-                <Button class="plinth-push-end" icon="check" label="Done" title={format!("Done editing range {n}")} onclick={link.callback(|_: MouseEvent| Msg::Select(None))} />
+                <Button class="sockel-push-end" icon="check" label="Done" title={format!("Done editing range {n}")} onclick={link.callback(|_: MouseEvent| Msg::Select(None))} />
             </div>
         }
     }

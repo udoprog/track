@@ -1,7 +1,7 @@
 use web_sys::MouseEvent;
 use yew::prelude::*;
 
-use plinth::{Reorder, ReorderHandle, ReorderItem};
+use sockel::{Reorder, ReorderHandle, ReorderItem};
 
 use super::Button;
 
@@ -68,7 +68,7 @@ pub(crate) fn SyncKindsEditor(props: &Props) -> Html {
                     let current = entry.kinds.intersect(capability);
 
                     html_nested! {
-                        <ReorderItem id={source.as_id()} name={source.as_label()} class="input-group plinth-cluster plinth-nowrap">
+                        <ReorderItem id={source.as_id()} name={source.as_label()} class="input-group sockel-cluster sockel-nowrap">
                             <ReorderHandle />
 
                             <span class="input-label has-text">

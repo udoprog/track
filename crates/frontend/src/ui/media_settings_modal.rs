@@ -602,7 +602,7 @@ impl MediaSettingsModal {
 
                 Some(html! {
                     <FormRow label="Specials">
-                        <select class={classes!(plinth::class::INPUT, plinth::class::NATIVE_SELECT)} title="Include specials" onchange={on_change}>
+                        <select class={classes!(sockel::class::INPUT, sockel::class::NATIVE_SELECT)} title="Include specials" onchange={on_change}>
                             for (value, option) in options {
                                 <option {value} selected={option == current}>{option.as_label()}</option>
                             }
@@ -642,7 +642,7 @@ impl MediaSettingsModal {
         let on_edit_remotes = ctx.props().on_edit_remotes.reform(|_: MouseEvent| ());
 
         html! {
-            <div class={plinth::form_rows(false)}>
+            <div class={sockel::form_rows(false)}>
                 <FormRow label="Language">
                     <LanguagePicker
                         current={language}
@@ -721,7 +721,7 @@ impl MediaSettingsModal {
         html! {
             <>
                 <FormRow label="Release dates">
-                    <select class={classes!(plinth::class::INPUT, plinth::class::NATIVE_SELECT)} title="Release date rules" onchange={on_mode}>
+                    <select class={classes!(sockel::class::INPUT, sockel::class::NATIVE_SELECT)} title="Release date rules" onchange={on_mode}>
                         <option value="default" selected={!is_custom}>{"Use global default"}</option>
                         <option value="custom" selected={is_custom}>{"Custom"}</option>
                     </select>
@@ -819,7 +819,7 @@ impl MediaSettingsModal {
 
         Some(html! {
             <FormRow label="Episode numbering" help={crate::help::NUMBERINGS} hint={hint.map(AttrValue::from)}>
-                <select class={classes!(plinth::class::INPUT, plinth::class::NATIVE_SELECT)} title="Episode numbering" onchange={on_mode}>
+                <select class={classes!(sockel::class::INPUT, sockel::class::NATIVE_SELECT)} title="Episode numbering" onchange={on_mode}>
                     <option value="automatic" selected={!manual}>{"Automatic: same as TheTVDB"}</option>
                     <option value="manual" selected={manual}>{"Manual ranges"}</option>
                 </select>
@@ -855,7 +855,7 @@ impl MediaSettingsModal {
         html! {
             <>
                 <FormRow label="Air dates">
-                    <select class={classes!(plinth::class::INPUT, plinth::class::NATIVE_SELECT)} title="Air date rules" onchange={on_mode}>
+                    <select class={classes!(sockel::class::INPUT, sockel::class::NATIVE_SELECT)} title="Air date rules" onchange={on_mode}>
                         <option value="default" selected={!is_custom}>{"Use global default"}</option>
                         <option value="custom" selected={is_custom}>{"Custom"}</option>
                     </select>

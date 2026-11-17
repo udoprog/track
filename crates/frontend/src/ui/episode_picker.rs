@@ -118,10 +118,10 @@ impl Component for EpisodePicker {
         let can_confirm = self.season.is_some() && self.episode.is_some();
 
         html! {
-            <div class="episode-picker plinth-stack plinth-loose">
-                <div class={plinth::form_rows(false)}>
+            <div class="episode-picker sockel-stack sockel-loose">
+                <div class={sockel::form_rows(false)}>
                     <FormRow label="Season">
-                        <select class={classes!(plinth::class::INPUT, plinth::class::NATIVE_SELECT)} title="Season" onchange={on_season_change}>
+                        <select class={classes!(sockel::class::INPUT, sockel::class::NATIVE_SELECT)} title="Season" onchange={on_season_change}>
                             { for self.seasons.iter().map(|s| {
                                 let value = s.season.ordinal().to_string();
                                 let selected = self.season == Some(s.season);
@@ -136,7 +136,7 @@ impl Component for EpisodePicker {
                     </FormRow>
 
                     <FormRow label="Episode">
-                        <select class={classes!(plinth::class::INPUT, plinth::class::NATIVE_SELECT)} title="Episode" onchange={on_episode_change} disabled={self.episodes.is_empty()}>
+                        <select class={classes!(sockel::class::INPUT, sockel::class::NATIVE_SELECT)} title="Episode" onchange={on_episode_change} disabled={self.episodes.is_empty()}>
                             { for self.episodes.iter().map(|e| {
                                 let value = e.episode.to_string();
                                 let selected = self.episode == Some(e.episode);
@@ -151,7 +151,7 @@ impl Component for EpisodePicker {
                     </FormRow>
                 </div>
 
-                <div class="plinth-cluster plinth-nowrap plinth-loose plinth-end">
+                <div class="sockel-cluster sockel-nowrap sockel-loose sockel-end">
                     <Button icon="x-mark" label="Cancel" title="Cancel" onclick={link.callback(|_| Msg::Cancel)} />
 
                     <Button icon="check" label="Move" title="Move the watch here" variant={Variant::Primary} disabled={!can_confirm} onclick={link.callback(|_| Msg::Confirm)} />

@@ -8,7 +8,7 @@ pub(crate) struct Props {
     pub(crate) onclearerror: Callback<()>,
 }
 
-/// plinth's ErrorBox: what was being done, then its causes, most specific
+/// sockel's ErrorBox: what was being done, then its causes, most specific
 /// last, and a dismiss button.
 #[function_component]
 pub(crate) fn ErrorBox(props: &Props) -> Html {
@@ -19,12 +19,12 @@ pub(crate) fn ErrorBox(props: &Props) -> Html {
         .collect::<Vec<_>>();
 
     html! {
-        <plinth::ErrorBox
+        <sockel::ErrorBox
             icon={html! { <span class="icon exclamation-triangle danger" /> }}
             {causes}
             ondismiss={props.onclearerror.reform(|_| ())}
             dismiss_label="Dismiss error">
             {message}
-        </plinth::ErrorBox>
+        </sockel::ErrorBox>
     }
 }

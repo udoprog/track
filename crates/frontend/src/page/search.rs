@@ -7,7 +7,7 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::help;
 use crate::router::{MediaSelection, Route, Router, SearchQuery, ShowDetailQuery};
-use plinth::Skeleton;
+use sockel::Skeleton;
 
 use crate::ui::{Button, Help, Image, Link, MediaKindToggle, SEARCH, Variant};
 
@@ -154,7 +154,7 @@ impl Component for Search {
 
         html! {
             <>
-                <h1 class="plinth-visually-hidden">{"Search"}</h1>
+                <h1 class="sockel-visually-hidden">{"Search"}</h1>
 
                 <div class="list-controls">
                     <div class="search-field">
@@ -163,7 +163,7 @@ impl Component for Search {
                         <Button icon="arrow-right" title="Search" variant={Variant::Primary} onclick={on_submit} />
                     </div>
 
-                    <div class="chips plinth-cluster">
+                    <div class="chips sockel-cluster">
                         <MediaKindToggle
                             selection={self.selection}
                             on_change={link.callback(Msg::SelectionChanged)}
@@ -376,13 +376,13 @@ impl Search {
                 </div>
 
                 if self.loading {
-                    <div class="plinth-cluster plinth-nowrap plinth-loose plinth-center">
+                    <div class="sockel-cluster sockel-nowrap sockel-loose sockel-center">
                         <span class="item-inline-more"><span class="icon arrow-path spin" aria-hidden="true" /></span>
                     </div>
                 } else if self.end {
                     <p class="text-muted center">{"No more results."}</p>
                 } else if self.results.len() < self.total {
-                    <div class="plinth-cluster plinth-nowrap plinth-loose plinth-center">
+                    <div class="sockel-cluster sockel-nowrap sockel-loose sockel-center">
                         <Button icon="ellipsis-horizontal" title="Load more results" label="More results" onclick={on_more} />
                     </div>
                 }
@@ -435,18 +435,18 @@ impl Search {
                     </span>
                 }
 
-                <div class="search-body plinth-stack plinth-snug">
+                <div class="search-body sockel-stack sockel-snug">
                     <div class="search-heading">
                         <span class={classes!("icon", "sm", kind_icon)} role="img" aria-label={kind_label} title={kind_label} />
 
                         if let Some(to) = &row.tracked {
-                            <Link to={to.clone()} class="search-title title sm plinth-truncate"><>{title}</></Link>
+                            <Link to={to.clone()} class="search-title title sm sockel-truncate"><>{title}</></Link>
                         } else {
-                            <span class="search-title title sm plinth-truncate">{title}</span>
+                            <span class="search-title title sm sockel-truncate">{title}</span>
                         }
 
                         if let Some(year) = row.year {
-                            <span class="search-year plinth-numeric">{year.to_string()}</span>
+                            <span class="search-year sockel-numeric">{year.to_string()}</span>
                         }
                     </div>
 
@@ -454,7 +454,7 @@ impl Search {
                         <p class="search-overview">{overview}</p>
                     }
 
-                    <div class="plinth-cluster plinth-nowrap plinth-tight">
+                    <div class="sockel-cluster sockel-nowrap sockel-tight">
                         { for row.sources.iter().map(|(source, url)| html! {
                             if let Some(url) = url {
                                 <a class="search-source" href={url.clone()} target="_blank" rel="noopener noreferrer" title={format!("Open on {source}")}>

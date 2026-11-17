@@ -1,6 +1,6 @@
 use auth::yew023::AuthProvider;
 use phrasebook::Phrases;
-use plinth::{Glyph, IconSet, OverlayHost};
+use sockel::{Glyph, IconSet, OverlayHost};
 use yew::prelude::*;
 
 use crate::app::App;
@@ -25,7 +25,7 @@ pub(super) fn Root() -> Html {
     }
 }
 
-/// plinth's glyphs drawn with the app's heroicons.
+/// sockel's glyphs drawn with the app's heroicons.
 fn icon_set() -> IconSet {
     const GLYPHS: &[(Glyph, &str)] = &[
         (Glyph::Close, "x-mark"),

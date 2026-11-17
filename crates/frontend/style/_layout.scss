@@ -1,8 +1,8 @@
-// Rows, columns, splits and actions are plinth's `.plinth-cluster` and
-// `.plinth-stack` (with their gap and alignment modifiers) and `.plinth-push-end`;
-// heads and cards are plinth's PageHead, SectionHead (`.plinth-section-head`)
-// and `.plinth-card`.
-// This keeps what plinth does not do:
+// Rows, columns, splits and actions are sockel's `.sockel-cluster` and
+// `.sockel-stack` (with their gap and alignment modifiers) and `.sockel-push-end`;
+// heads and cards are sockel's PageHead, SectionHead (`.sockel-section-head`)
+// and `.sockel-card`.
+// This keeps what sockel does not do:
 //
 // .desktop-row .mobile-column  a row on wide screens that is a column on phones
 // .desktop-align-end  a cluster's items at its end on wide screens
@@ -37,7 +37,7 @@
         @include row-base;
     }
 
-    .plinth-cluster.desktop-align-end {
+    .sockel-cluster.desktop-align-end {
         justify-content: flex-end;
     }
 }
@@ -47,14 +47,14 @@
         @include column-base;
     }
 
-    .plinth-cluster.start-on-mobile {
+    .sockel-cluster.start-on-mobile {
         justify-content: flex-start;
     }
 }
 
 // Section titles in the text colour, not the accent of the app's headings,
-// and without the headings' gap: plinth spaces a title's icon itself.
-.plinth-section-head-title {
+// and without the headings' gap: sockel spaces a title's icon itself.
+.sockel-section-head-title {
     gap: 0;
     color: v.$text-primary;
 }

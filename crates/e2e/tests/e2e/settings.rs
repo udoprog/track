@@ -265,7 +265,7 @@ pub async fn settings_are_labelled_rows(driver: &mut TestDriver, _: &mut Track) 
         let column = driver.find_one_by(".settings").await?.rect().await?.x;
 
         for control in driver
-            .find_all(By::Css(".settings .plinth-form-control"))
+            .find_all(By::Css(".settings .sockel-form-control"))
             .await?
         {
             lefts.push(control.rect().await?.x - column);
@@ -441,7 +441,7 @@ pub async fn reorders_sync_sources(driver: &mut TestDriver, _: &mut Track) -> Re
     let order = async |driver: &TestDriver| -> Result<Vec<String>> {
         driver
             .find_all_attrs(
-                ".plinth-reorder:not(.xem-lookup, .numberings) .logo",
+                ".sockel-reorder:not(.xem-lookup, .numberings) .logo",
                 "class",
             )
             .await
@@ -455,11 +455,11 @@ pub async fn reorders_sync_sources(driver: &mut TestDriver, _: &mut Track) -> Re
 
     // From the first handle to the lower half of the second row.
     let first = driver
-        .find_nth(".plinth-reorder .plinth-drag-handle", 0)
+        .find_nth(".sockel-reorder .sockel-drag-handle", 0)
         .await?;
     let from = first.rect().await?;
     let to = driver
-        .find_nth(".plinth-reorder > .plinth-reorder-row", 1)
+        .find_nth(".sockel-reorder > .sockel-reorder-row", 1)
         .await?
         .rect()
         .await?;
@@ -479,7 +479,7 @@ pub async fn reorders_sync_sources(driver: &mut TestDriver, _: &mut Track) -> Re
 
     driver.reload().await?;
     driver
-        .find_one_by(".plinth-reorder:not(.xem-lookup, .numberings)")
+        .find_one_by(".sockel-reorder:not(.xem-lookup, .numberings)")
         .await?;
 
     driver
@@ -490,7 +490,7 @@ pub async fn reorders_sync_sources(driver: &mut TestDriver, _: &mut Track) -> Re
 
     driver
         .press_key_on(
-            ".plinth-reorder:not(.xem-lookup, .numberings) > :nth-child(3) .plinth-drag-handle",
+            ".sockel-reorder:not(.xem-lookup, .numberings) > :nth-child(3) .sockel-drag-handle",
             "ArrowUp",
         )
         .await?;
@@ -524,7 +524,7 @@ pub async fn reorders_xem_lookup(driver: &mut TestDriver, _: &mut Track) -> Resu
         .await?;
 
     driver
-        .press_key_on(".xem-lookup > :nth-child(2) .plinth-drag-handle", "ArrowUp")
+        .press_key_on(".xem-lookup > :nth-child(2) .sockel-drag-handle", "ArrowUp")
         .await?;
 
     driver
@@ -586,7 +586,7 @@ pub async fn shows_and_hides_numberings(driver: &mut TestDriver, _: &mut Track) 
         .await?;
 
     driver
-        .press_key_on(".numberings > :nth-child(3) .plinth-drag-handle", "ArrowUp")
+        .press_key_on(".numberings > :nth-child(3) .sockel-drag-handle", "ArrowUp")
         .await?;
     driver
         .wait_until("AniDB to move up", async || {
@@ -619,13 +619,13 @@ pub async fn adds_languages_and_rules(driver: &mut TestDriver, _: &mut Track) ->
         "Add language has no label"
     );
     add_language.click().await?;
-    driver.find_one_by(".plinth-dialog").await?;
+    driver.find_one_by(".sockel-dialog").await?;
     driver
-        .find_one_by(".plinth-dialog-layer")
+        .find_one_by(".sockel-dialog-layer")
         .await?
         .click()
         .await?;
-    driver.wait_count(".plinth-dialog", 0).await?;
+    driver.wait_count(".sockel-dialog", 0).await?;
 
     open_page(driver, "Sources & dates").await?;
     let rules = driver.count("rule").await?;

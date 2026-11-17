@@ -64,10 +64,10 @@ pub(crate) fn ImageGallery(props: &Props) -> Html {
 
     html! {
         <>
-            <div class="plinth-cluster plinth-between plinth-loose">
+            <div class="sockel-cluster sockel-between sockel-loose">
                 <h2>{props.kind.title()}</h2>
 
-                <div class="plinth-cluster plinth-nowrap plinth-loose">
+                <div class="sockel-cluster sockel-nowrap sockel-loose">
                     if let Some(on_pick_best) = &props.on_pick_best {
                         <Button icon="sparkles" variant={Variant::Primary} title={format!("Pick best {}", props.kind)} label="Pick best" onclick={on_pick_best.reform(|_| ())} />
                     }
@@ -80,7 +80,7 @@ pub(crate) fn ImageGallery(props: &Props) -> Html {
                 </div>
             </div>
 
-            <div class="desktop-align-end plinth-cluster plinth-nowrap plinth-loose">
+            <div class="desktop-align-end sockel-cluster sockel-nowrap sockel-loose">
                 <Pager page={this_page} pages={total_pages} on_page={on_page} />
             </div>
 

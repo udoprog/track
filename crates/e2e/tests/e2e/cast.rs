@@ -52,7 +52,7 @@ pub async fn opens_the_full_cast_in_a_modal(driver: &mut TestDriver, _: &mut Tra
         .send_keys(ESCAPE)
         .await?;
 
-    driver.wait_count(".plinth-dialog", 0).await
+    driver.wait_count(".sockel-dialog", 0).await
 }
 
 /// The search keeps the cast whose name or character holds every word, and
@@ -120,7 +120,7 @@ pub async fn phone_cast_modal_fits_the_screen(
         .rect()
         .await?;
     let page = driver
-        .find_one_by(".plinth-dialog-layer")
+        .find_one_by(".sockel-dialog-layer")
         .await?
         .rect()
         .await?;
@@ -135,7 +135,7 @@ pub async fn phone_cast_modal_fits_the_screen(
     let sideways = driver
         .webdriver()
         .execute(
-            "const c = document.querySelector('[data-testid=cast-modal] .plinth-dialog-body'); \
+            "const c = document.querySelector('[data-testid=cast-modal] .sockel-dialog-body'); \
              return c.scrollWidth - c.clientWidth;",
             Vec::new(),
         )
@@ -194,5 +194,5 @@ pub async fn movie_opens_the_full_cast_in_a_modal(
         .await?;
 
     search.send_keys(ESCAPE).await?;
-    driver.wait_count(".plinth-dialog", 0).await
+    driver.wait_count(".sockel-dialog", 0).await
 }

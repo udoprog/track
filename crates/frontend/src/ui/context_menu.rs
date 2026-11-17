@@ -1,4 +1,4 @@
-//! A small dialog beside the control that opened it: plinth's popover, with
+//! A small dialog beside the control that opened it: sockel's popover, with
 //! the prompt it asks ("Displayed language", "View options") over its body.
 //! Focus moves to its first control and Tab stays inside; Escape or a press
 //! outside closes it, and focus goes back. Phones show it as a sheet.
@@ -29,11 +29,11 @@ pub(crate) fn ContextMenu(props: &Props) -> Html {
     };
 
     html! {
-        <plinth::Popover anchor={props.anchor.clone()} open=true {title} head=false trap=true focus_first=true
+        <sockel::Popover anchor={props.anchor.clone()} open=true {title} head=false trap=true focus_first=true
             on_dismiss={props.on_close.reform(|_| ())} testid="context-menu">
-            <div class="plinth-stack plinth-loose">
+            <div class="sockel-stack sockel-loose">
                 if let Some(prompt) = &props.prompt {
-                    <div class="plinth-cluster plinth-snug">
+                    <div class="sockel-cluster sockel-snug">
                         if let Some(icon) = &props.icon {
                             <span class="item-inline" aria-hidden="true">
                                 <span class={classes!("icon", icon.clone())} aria-hidden="true" />
@@ -50,6 +50,6 @@ pub(crate) fn ContextMenu(props: &Props) -> Html {
 
                 { for props.children.iter() }
             </div>
-        </plinth::Popover>
+        </sockel::Popover>
     }
 }

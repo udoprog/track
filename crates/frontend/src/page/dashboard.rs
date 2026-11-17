@@ -94,7 +94,7 @@ impl Component for Dashboard {
 
         html! {
             <>
-                <h1 class="plinth-visually-hidden">{"Dashboard"}</h1>
+                <h1 class="sockel-visually-hidden">{"Dashboard"}</h1>
 
                 <div class="page-tabs">
                     <nav class="tabs" aria-label="Dashboard views">
@@ -104,13 +104,13 @@ impl Component for Dashboard {
                         { tab(DashboardView::History, "clock", "History") }
                     </nav>
 
-                    <div class="chips plinth-cluster">
+                    <div class="chips sockel-cluster">
                         <MediaKindToggle selection={selection} on_change={link.callback(Msg::SetSelection)} />
                         <Help section={help::WATCHING} />
                     </div>
                 </div>
 
-                <div class="plinth-stack">
+                <div class="sockel-stack">
                     { match view {
                         DashboardView::WatchNext => html! {
                             <WatchNext

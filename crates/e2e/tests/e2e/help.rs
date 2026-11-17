@@ -122,7 +122,7 @@ pub async fn inline_help_opens_its_section(driver: &mut TestDriver, _: &mut Trac
         .await?;
 
     driver
-        .find_one_by(".plinth-dialog button[aria-label=Close]")
+        .find_one_by(".sockel-dialog button[aria-label=Close]")
         .await?
         .click()
         .await?;
@@ -132,7 +132,7 @@ pub async fn inline_help_opens_its_section(driver: &mut TestDriver, _: &mut Trac
     super::settings::open_page(driver, "Sources & dates").await?;
 
     driver
-        .find_first(".plinth-form-label button.help-mark")
+        .find_first(".sockel-form-label button.help-mark")
         .await?
         .click()
         .await?;
@@ -173,7 +173,7 @@ pub async fn phones_stack_the_sections(driver: &mut TestDriver, _: &mut Track) -
         .await?;
     let [width, scrolled] = ret.convert::<[f64; 2]>()?;
 
-    let modal = driver.find_one_by(".plinth-dialog").await?.rect().await?;
+    let modal = driver.find_one_by(".sockel-dialog").await?.rect().await?;
     ensure!(
         modal.x >= 0.0 && modal.x + modal.width <= width,
         "the sheet is wider than the {width}px phone: {modal:?}"

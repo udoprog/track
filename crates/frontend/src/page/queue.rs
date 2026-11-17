@@ -8,7 +8,7 @@ use yew::prelude::*;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{QueueFilter, QueueQuery, Route, Router, ShowDetailQuery};
-use plinth::Skeleton;
+use sockel::Skeleton;
 
 use crate::ui::{Button, Link, Pager, Variant};
 
@@ -180,14 +180,14 @@ impl Component for Queue {
     fn view(&self, ctx: &Context<Self>) -> Html {
         html! {
             <>
-                <h1 class="plinth-visually-hidden">{"Queue"}</h1>
+                <h1 class="sockel-visually-hidden">{"Queue"}</h1>
 
                 { self.view_now(ctx) }
 
                 if self.loaded {
                     { self.view_timeline(ctx) }
                 } else {
-                    <div class="plinth-stack">
+                    <div class="sockel-stack">
                         { for (0..3).map(|_| html! { <Skeleton /> }) }
                     </div>
                 }
@@ -456,23 +456,23 @@ impl Queue {
             <div class={classes!("queue-now", state)} data-test="queue-now">
                 <span class={classes!("queue-now-badge", state)}><span class={classes!("icon", icon)} aria-hidden="true" /></span>
 
-                <div class="grow plinth-stack plinth-snug">
+                <div class="grow sockel-stack sockel-snug">
                     <span class={classes!("queue-now-caption", state)}>{caption}</span>
 
                     if let Some(entry) = entry {
-                        <span class="queue-now-title plinth-truncate">
+                        <span class="queue-now-title sockel-truncate">
                             <span class="badge">{kind_label(&entry.kind)}</span>
                             { view_task_title(&entry.kind, task_route(&entry.kind), None, None) }
                         </span>
                     } else {
-                        <span class="queue-now-title plinth-truncate">{"All caught up"}</span>
+                        <span class="queue-now-title sockel-truncate">{"All caught up"}</span>
                     }
 
                     if let Some(progress) = progress {
                         <span class="queue-now-step">
                             <span class="queue-now-step-label">{step_label(progress)}</span>
                             if let Some(count) = count_label(progress) {
-                                <span class="queue-now-step-count plinth-numeric">{count}</span>
+                                <span class="queue-now-step-count sockel-numeric">{count}</span>
                             }
                         </span>
                     }
@@ -537,7 +537,7 @@ impl Queue {
 
             html! {
                 <Button {icon} {label} title={format!("Show {} tasks", label.to_lowercase())} class={classes!("chip", (filter == f).then_some("selected"))} pressed={Some(filter == f)} {onclick}>
-                    <span class="chip-count in-label plinth-numeric">{self.count(f)}</span>
+                    <span class="chip-count in-label sockel-numeric">{self.count(f)}</span>
                 </Button>
             }
         };
@@ -559,16 +559,16 @@ impl Queue {
         });
 
         html! {
-            <div class="plinth-stack">
-                <div class="queue-controls plinth-cluster plinth-between plinth-loose">
-                    <div class="chips queue-filters plinth-cluster">
+            <div class="sockel-stack">
+                <div class="queue-controls sockel-cluster sockel-between sockel-loose">
+                    <div class="chips queue-filters sockel-cluster">
                         { chip(QueueFilter::All, "queue-list", "All") }
                         { chip(QueueFilter::Upcoming, "clock", "Upcoming") }
                         { chip(QueueFilter::Done, "check", "Done") }
                         { chip(QueueFilter::Failed, "x-mark", "Failed") }
                     </div>
 
-                    <div class="plinth-cluster plinth-nowrap plinth-loose">
+                    <div class="sockel-cluster sockel-nowrap sockel-loose">
                         if !following {
                             <Button icon="arrow-down-circle" label="Follow" title="Follow the running task" onclick={on_follow} />
                         }
@@ -649,10 +649,10 @@ impl Queue {
 
                 { view_task_cells(&entry.kind, route, error, progress) }
 
-                <span class="task-duration plinth-numeric">{duration}</span>
+                <span class="task-duration sockel-numeric">{duration}</span>
                 <span class="task-time">{time}</span>
 
-                <span class="actions plinth-cluster plinth-nowrap plinth-tight plinth-end">
+                <span class="actions sockel-cluster sockel-nowrap sockel-tight sockel-end">
                     if entry.is_pending() && self.auth.is_admin() {
                         <div class="input-group">
                             <Button icon="forward" title="Run now" onclick={ctx.link().callback(move |_| Msg::Bump(id))} />
@@ -813,9 +813,9 @@ fn view_task_title(
 
     html! {
         if let Some(to) = route {
-            <Link {to} class="task-title plinth-truncate">{body}</Link>
+            <Link {to} class="task-title sockel-truncate">{body}</Link>
         } else {
-            <span class="task-title plinth-truncate">{body}</span>
+            <span class="task-title sockel-truncate">{body}</span>
         }
     }
 }

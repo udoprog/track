@@ -35,7 +35,7 @@ pub(crate) fn cast_card_on(credit: &api::Credit, raised: bool) -> Html {
     let subtitle = credit_subtitle(credit).map(str::to_owned);
 
     html! {
-        <Link to={Route::PersonDetail(credit.person_id)} class={classes!("cast-card", "plinth-card", "plinth-inset", "plinth-flush", raised.then_some("raised"))}>
+        <Link to={Route::PersonDetail(credit.person_id)} class={classes!("cast-card", "sockel-card", "sockel-inset", "sockel-flush", raised.then_some("raised"))}>
             <Image class="cast-photo" placeholder={true} placeholder_icon="user" src={credit.profile.clone()} alt={name.clone()} />
 
             <div class="cast-info">
@@ -87,11 +87,11 @@ pub(crate) fn CastModal(props: &Props) -> Html {
         .collect::<Vec<_>>();
 
     html! {
-        <Modal icon="user-group" title="Cast & crew" size={plinth::DialogSize::WideTall} testid="cast-modal" on_close={props.on_close.clone()}>
-            <div class="cast-search plinth-stack">
+        <Modal icon="user-group" title="Cast & crew" size={sockel::DialogSize::WideTall} testid="cast-modal" on_close={props.on_close.clone()}>
+            <div class="cast-search sockel-stack">
                 <input
                     type="search"
-                    class={plinth::class::INPUT}
+                    class={sockel::class::INPUT}
                     placeholder="Search by name or character…"
                     aria-label="Search cast"
                     data-test="cast-search"

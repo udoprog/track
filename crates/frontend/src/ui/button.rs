@@ -1,4 +1,4 @@
-use plinth::{ButtonSize, ButtonVariant};
+use sockel::{ButtonSize, ButtonVariant};
 use web_sys::MouseEvent;
 use yew::html::IntoPropValue;
 use yew::prelude::*;
@@ -108,7 +108,7 @@ pub(crate) struct Props {
     pub(crate) children: Children,
 }
 
-/// plinth's button with an app icon by name, a required `title` tooltip, and
+/// sockel's button with an app icon by name, a required `title` tooltip, and
 /// a `label` shown at every width or a `text` shown on mobile only.
 #[function_component]
 pub(crate) fn Button(props: &Props) -> Html {
@@ -149,9 +149,9 @@ pub(crate) fn Button(props: &Props) -> Html {
     if props.icon.is_empty() && label.is_none() && props.checked.is_none() {
         let variant = match props.variant {
             Variant::Secondary => None,
-            Variant::Primary => Some(plinth::class::PRIMARY),
-            Variant::Success => Some(plinth::class::SUCCESS),
-            Variant::Danger => Some(plinth::class::DANGER),
+            Variant::Primary => Some(sockel::class::PRIMARY),
+            Variant::Success => Some(sockel::class::SUCCESS),
+            Variant::Danger => Some(sockel::class::DANGER),
         };
         let class = classes!(variant, props.class.clone());
 
@@ -163,7 +163,7 @@ pub(crate) fn Button(props: &Props) -> Html {
         };
     }
 
-    // A plain switch is drawn as a field: plinth's ghost, given the field's
+    // A plain switch is drawn as a field: sockel's ghost, given the field's
     // ground and edge in main.scss.
     let variant = match (props.variant, props.checked) {
         (Variant::Secondary, Some(_)) => ButtonVariant::Ghost,
@@ -171,7 +171,7 @@ pub(crate) fn Button(props: &Props) -> Html {
     };
 
     html! {
-        <plinth::Button {variant} {size} {icon}
+        <sockel::Button {variant} {size} {icon}
             fold_wide={props.label.is_none() && props.text.is_some()}
             class={props.class.clone()} title={props.title.clone()} node_ref={props.node_ref.clone()}
             {href} disabled={props.disabled} {onclick}
@@ -182,7 +182,7 @@ pub(crate) fn Button(props: &Props) -> Html {
                 {label}
             }
             { for props.children.iter() }
-        </plinth::Button>
+        </sockel::Button>
     }
 }
 

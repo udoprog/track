@@ -158,14 +158,14 @@ impl EpisodeCacheModal {
         let admin = self.auth.is_admin();
 
         html! {
-            <div class="plinth-stack">
+            <div class="sockel-stack">
                 { for entries.iter().map(|e| {
                     let source = e.source;
                     let cache = &e.cache;
 
                     html! {
-                        <div class="plinth-stack">
-                            <div class="plinth-cluster plinth-between plinth-loose plinth-top">
+                        <div class="sockel-stack">
+                            <div class="sockel-cluster sockel-between sockel-loose sockel-top">
                                 <h4>{source.as_label()}</h4>
 
                                 if admin {

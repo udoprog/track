@@ -1,7 +1,7 @@
 use auth::yew023::AdminCloudflare;
 use musli_web::web03::prelude::*;
 use musli_web::yew023::ContextExt;
-use plinth::Skeleton;
+use sockel::Skeleton;
 use yew::prelude::*;
 
 use crate::background::Background;
@@ -199,7 +199,7 @@ impl Component for Settings {
 
         html! {
             <>
-                <h1 class="plinth-visually-hidden">{"Settings"}</h1>
+                <h1 class="sockel-visually-hidden">{"Settings"}</h1>
 
                 <div class={classes!("settings-layout", admin.then_some("has-nav"))}>
                 if admin {
@@ -223,10 +223,10 @@ impl Component for Settings {
                     <section>
                         <h2>{"Appearance"}</h2>
 
-                        <div class={plinth::form_rows(true)}>
+                        <div class={sockel::form_rows(true)}>
                             <FormRow stack=true label="Theme">
                                 { mine("", html! {
-                                    <select class={classes!(plinth::class::INPUT, plinth::class::NATIVE_SELECT)} data-test="theme" title="Theme" onchange={on_theme} value={theme_val}>
+                                    <select class={classes!(sockel::class::INPUT, sockel::class::NATIVE_SELECT)} data-test="theme" title="Theme" onchange={on_theme} value={theme_val}>
                                         <option value="dark" selected={self.preferences.theme == api::ThemeType::Dark}>{"Dark"}</option>
                                         <option value="light" selected={self.preferences.theme == api::ThemeType::Light}>{"Light"}</option>
                                         <option value="system" selected={self.preferences.theme == api::ThemeType::System}>{"System"}</option>
@@ -236,7 +236,7 @@ impl Component for Settings {
 
                             <FormRow stack=true label="Time zone" hint="Leave empty to use the browser's time zone.">
                                 { mine("", html! {
-                                    <input class={classes!(plinth::class::INPUT, "fill")} type="text" title="Time zone" placeholder="Browser time zone" value={self.preferences.timezone.clone()} onchange={on_timezone} onkeydown={on_timezone_key} list="tz-datalist" autocomplete="off" />
+                                    <input class={classes!(sockel::class::INPUT, "fill")} type="text" title="Time zone" placeholder="Browser time zone" value={self.preferences.timezone.clone()} onchange={on_timezone} onkeydown={on_timezone_key} list="tz-datalist" autocomplete="off" />
                                 }) }
 
                                 <datalist id="tz-datalist">
@@ -254,7 +254,7 @@ impl Component for Settings {
                                 { mine("", html! {
                                     <input
                                         type="number"
-                                        class={classes!(plinth::class::INPUT, "input-number", plinth::class::NUMERIC)}
+                                        class={classes!(sockel::class::INPUT, "input-number", sockel::class::NUMERIC)}
                                         title="Up next per page"
                                         min="1"
                                         max="100"
@@ -286,7 +286,7 @@ impl Component for Settings {
                     <section>
                         <h2>{"Language"}</h2>
 
-                        <div class={plinth::form_rows(true)}>
+                        <div class={sockel::form_rows(true)}>
                             <FormRow stack=true label="Language" hint="The language you see shows and movies in.">
                                 { mine("", html! {
                                     <LanguagePicker
@@ -304,10 +304,10 @@ impl Component for Settings {
                         <section>
                             <h2>{"Site"}</h2>
 
-                            <div class={plinth::form_rows(true)}>
+                            <div class={sockel::form_rows(true)}>
                                 <FormRow stack=true label="Page title">
                                     { system("", html! {
-                                        <input class={classes!(plinth::class::INPUT, "fill")} type="text" title="Page title" placeholder="Track" value={self.config.page_title.clone()} onchange={on_page_title} autocomplete="off" />
+                                        <input class={classes!(sockel::class::INPUT, "fill")} type="text" title="Page title" placeholder="Track" value={self.config.page_title.clone()} onchange={on_page_title} autocomplete="off" />
                                     }) }
                                 </FormRow>
                             </div>
@@ -318,7 +318,7 @@ impl Component for Settings {
                         <section>
                             <h2>{"Sync"}</h2>
 
-                            <div class={plinth::form_rows(true)}>
+                            <div class={sockel::form_rows(true)}>
                                 <FormRow stack=true label="Automatic sync" help={help::REMOTES}>
                                     { system("", html! {
                                         <Button role="switch" checked={Some(auto_sync)} title="Automatic sync" onclick={on_auto_sync_toggle} label={if auto_sync { "Enabled" } else { "Disabled" }} />
@@ -330,7 +330,7 @@ impl Component for Settings {
                                         <div class="input-group">
                                             <input
                                                 type="number"
-                                                class={classes!(plinth::class::INPUT, "input-number", plinth::class::NUMERIC)}
+                                                class={classes!(sockel::class::INPUT, "input-number", sockel::class::NUMERIC)}
                                                 title="Sync every"
                                                 min="1"
                                                 max="168"
@@ -359,7 +359,7 @@ impl Component for Settings {
                         <section>
                             <h2>{"Sources & dates"}</h2>
 
-                            <div class={plinth::form_rows(true)}>
+                            <div class={sockel::form_rows(true)}>
                                 <FormRow stack=true label="Sync sources" help={help::REMOTES} hint="What each source contributes by default, in priority order (top wins). Base covers titles, overviews and episodes; air dates merge in this order; graphics come from every source. Shows and movies can override this per remote.">
                                     { system("tall", html! {
                                         <SyncKindsEditor
@@ -416,10 +416,10 @@ impl Component for Settings {
                         <section>
                             <h2>{"API keys"}</h2>
 
-                            <div class={plinth::form_rows(true)}>
+                            <div class={sockel::form_rows(true)}>
                                 <FormRow stack=true label="TheTVDB API key">
                                     { system("", html! {
-                                        <plinth::SecretInput id="tvdb-api-key" label="TheTVDB API key" placeholder="Enter TVDB API key"
+                                        <sockel::SecretInput id="tvdb-api-key" label="TheTVDB API key" placeholder="Enter TVDB API key"
                                             value={AttrValue::from(self.config.tvdb_api_key.clone())}
                                             on_input={link.callback(Msg::TvdbKeyChanged)}
                                             commit=true titles=true show_label="Reveal"
@@ -429,7 +429,7 @@ impl Component for Settings {
 
                                 <FormRow stack=true label="TheTVDB subscriber PIN" hint="Optional.">
                                     { system("", html! {
-                                        <plinth::SecretInput id="tvdb-pin" label="TheTVDB subscriber PIN" placeholder="Enter TVDB subscriber PIN"
+                                        <sockel::SecretInput id="tvdb-pin" label="TheTVDB subscriber PIN" placeholder="Enter TVDB subscriber PIN"
                                             value={AttrValue::from(self.config.tvdb_pin.clone().unwrap_or_default())}
                                             on_input={link.callback(Msg::TvdbPinChanged)}
                                             commit=true titles=true show_label="Reveal"
@@ -439,7 +439,7 @@ impl Component for Settings {
 
                                 <FormRow stack=true label="TheMovieDB API key">
                                     { system("", html! {
-                                        <plinth::SecretInput id="tmdb-api-key" label="TheMovieDB API key" placeholder="Enter TMDB API key"
+                                        <sockel::SecretInput id="tmdb-api-key" label="TheMovieDB API key" placeholder="Enter TMDB API key"
                                             value={AttrValue::from(self.config.tmdb_api_key.clone())}
                                             on_input={link.callback(Msg::TmdbKeyChanged)}
                                             commit=true titles=true show_label="Reveal"
