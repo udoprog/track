@@ -222,7 +222,7 @@ impl FiltersEditor {
 
         let summaries = rule.predicates.iter().map(|p| {
             html! {
-                <div class="row">
+                <div class="row wrap">
                     <span class="input-label has-text">{p.kind().label()}</span>
                     {self.predicate_summary(p)}
                 </div>
