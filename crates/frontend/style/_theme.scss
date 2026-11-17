@@ -54,6 +54,12 @@
     --field-border: color-mix(in srgb, var(--text) 16%, transparent);
     --field-border-hover: color-mix(in srgb, var(--text) 30%, transparent);
 
+    // The colours plinth's components read, named the way it names them.
+    --bg: var(--surface-0);
+    --surface: var(--surface-2);
+    --muted: var(--text-muted);
+    --shadow-1: 0 8px 32px var(--shadow-strong);
+
     --backdrop-opacity: 0.18;
     // Third-party logos are drawn for dark backgrounds.
     --logo-plate: transparent;

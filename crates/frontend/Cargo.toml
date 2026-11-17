@@ -16,6 +16,7 @@ gloo = "0.13.0"
 jiff-tzdb = "1.0"
 musli-web = { version = "0.6.0", default-features = false, features = ["web03", "yew023"] }
 phrasebook = { version = "0.2", features = ["browser", "yew023"] }
+plinth = "0.1"
 serde = { version = "1.0.229", features = ["derive"] }
 tracing = "0.1.44"
 tracing-wasm = "0.2.1"

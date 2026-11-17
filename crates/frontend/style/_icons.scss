@@ -51,6 +51,12 @@
         aspect-ratio: 4 / 3;
     }
 
+    // Inside plinth's glyph box (the IconSet): fills it, in the text's colour.
+    &.glyph {
+        height: 100%;
+        --icon-color: currentColor;
+    }
+
     mask-size: contain;
     mask-repeat: no-repeat;
     mask-position: center;
