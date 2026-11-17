@@ -89,11 +89,11 @@ pub async fn seasons_count_watched_episodes(driver: &mut TestDriver, _: &mut Tra
 /// The episode rail beside the show page gives way on a phone.
 pub async fn phones_have_no_episode_rail(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     open_show(driver).await?;
-    driver.find_one_by("#outline.visible").await?;
+    driver.find_one_by("[data-testid=outline].visible").await?;
 
     driver.set_window_size(400, 850).await?;
 
-    let outline = driver.find_one_by("#outline").await?;
+    let outline = driver.find_one_by("[data-testid=outline]").await?;
 
     driver
         .wait_until("the episode rail to hide", async || {
@@ -1209,7 +1209,7 @@ pub async fn rail_colours_watched_apart_from_pending(
 ) -> Result<()> {
     open_show(driver).await?;
     driver
-        .find_one_by("#outline .outline-sample.pending")
+        .find_one_by("[data-testid=outline] .outline-sample.pending")
         .await?;
 
     driver
@@ -1217,15 +1217,17 @@ pub async fn rail_colours_watched_apart_from_pending(
         .await?
         .click()
         .await?;
-    driver.find_one_by("#outline .outline-sample.seen").await?;
+    driver
+        .find_one_by("[data-testid=outline] .outline-sample.seen")
+        .await?;
 
     let seen = driver
-        .find_one_by("#outline .outline-sample.seen")
+        .find_one_by("[data-testid=outline] .outline-sample.seen")
         .await?
         .css("color")
         .await?;
     let pending = driver
-        .find_one_by("#outline .outline-sample.pending")
+        .find_one_by("[data-testid=outline] .outline-sample.pending")
         .await?
         .css("color")
         .await?;

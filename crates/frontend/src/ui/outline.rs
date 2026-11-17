@@ -205,7 +205,7 @@ impl Component for Outline {
         let props = ctx.props();
 
         html! {
-            <div
+            <div data-testid="outline"
                 ref={self.outline.clone()}
                 class={classes!("outline", (!props.entries.is_empty()).then_some("visible"))}
                 onpointerdown={link.callback(Msg::PointerDown)}

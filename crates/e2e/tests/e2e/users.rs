@@ -259,7 +259,7 @@ pub async fn regular_users_cannot_remove_media(
     );
 
     driver.webdriver().goto(person.as_str()).await?;
-    driver.find_one_by(".person-detail-info h1").await?;
+    driver.find_one_by("[data-testid=person-header] h1").await?;
     driver.find_one_by("[title='Sync now']").await?;
     ensure!(
         driver.count("[title='Delete person']").await? == 0,
@@ -325,7 +325,7 @@ pub async fn regular_users_cannot_edit_shared_data(
         .click()
         .await?;
     driver.find_nth(".person-card", 0).await?.click().await?;
-    driver.find_one_by(".person-detail-info h1").await?;
+    driver.find_one_by("[data-testid=person-header] h1").await?;
     let person = driver.webdriver().current_url().await?;
     let queue = person.join("/queue")?;
 
@@ -436,7 +436,7 @@ async fn check_shared_controls(
     }
 
     driver.webdriver().goto(person).await?;
-    driver.find_one_by(".person-detail-info h1").await?;
+    driver.find_one_by("[data-testid=person-header] h1").await?;
     open_settings(driver).await?;
     if admin {
         driver
