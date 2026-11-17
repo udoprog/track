@@ -15,7 +15,8 @@ use crate::router::{
     TrackedFilter,
 };
 use crate::ui::{
-    Button, Image, Link, MarkTimeMenu, MediaKindToggle, PaginationButtons, SortMenu, TimePreset,
+    Button, Image, Link, MarkTimeMenu, MediaKindToggle, PageHead, PaginationButtons, SortMenu,
+    TimePreset,
 };
 
 /// The fields the list can be sorted by, as `(value, label)`.
@@ -298,7 +299,7 @@ impl Component for MediaList {
         html! {
             <>
                 // The app bar already says which page this is.
-                <h1 class="visually-hidden">{"Media"}</h1>
+                <PageHead hidden=true title="Media" />
 
                 <div class="list-controls">
                     <div class="search-field">
@@ -932,7 +933,7 @@ impl MediaList {
             <div class="selection-bar" role="region" aria-label="Selected media">
                 <span class="selection-count">{picked_label(shows, movies)}</span>
 
-                <div class="selection-actions">
+                <div class="row wrap tight">
                     if shows > 0 {
                         <div class="chips" role="group" aria-label="Mark the next episode from">
                             <Button class={classes!("chip", regular.then_some("selected"))} label="Regular" title="From the regular seasons" pressed={Some(regular)} onclick={link.callback(|_| Msg::SetScope(api::EpisodeScope::Regular))} />

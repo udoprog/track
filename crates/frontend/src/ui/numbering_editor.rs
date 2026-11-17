@@ -715,7 +715,7 @@ impl Component for NumberingEditor {
                     }
                 </div>
 
-                <div class="numbering-actions">
+                <div class="row wrap tight end">
                     <Button icon="x-mark" label="Cancel" title="Cancel" onclick={on_close.reform(|_: MouseEvent| ())} />
                     <Button icon="check" label="Save" title="Save" variant={Variant::Primary} spin={self.saving} {disabled} onclick={link.callback(|_: MouseEvent| Msg::Save)} />
                 </div>

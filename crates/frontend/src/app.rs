@@ -20,7 +20,7 @@ use crate::router::{
 };
 use crate::ui::{
     Button, ErrorBox, HelpControl, HelpModal, Link, Outline, OutlineControl, OutlineEntry,
-    TopLanguages,
+    PageHead, TopLanguages,
 };
 
 pub(super) struct App {
@@ -548,7 +548,7 @@ impl App {
                 } else {
                     html! {
                         <>
-                            <h1>{"Users"}</h1>
+                            <PageHead title="Users" />
                             <p>{"Only administrators can manage users."}</p>
                         </>
                     }

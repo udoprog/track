@@ -7,7 +7,7 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::help;
 use crate::router::{MediaSelection, Route, Router, SearchQuery, ShowDetailQuery};
-use crate::ui::{Button, Help, Image, Link, MediaKindToggle, SEARCH, Skeleton, Variant};
+use crate::ui::{Button, Help, Image, Link, MediaKindToggle, PageHead, SEARCH, Skeleton, Variant};
 
 pub(crate) struct Search {
     channel: ws::Channel,
@@ -152,7 +152,7 @@ impl Component for Search {
 
         html! {
             <>
-                <h1 class="visually-hidden">{"Search"}</h1>
+                <PageHead hidden=true title="Search" />
 
                 <div class="list-controls">
                     <div class="search-field">

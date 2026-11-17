@@ -2294,7 +2294,7 @@ impl ShowDetail {
                     {if count == 1 { "1 episode selected".to_owned() } else { format!("{count} episodes selected") }}
                 </span>
 
-                <div class="selection-actions">
+                <div class="row wrap tight">
                     <MarkTimeMenu class="primary has-text" icon="check" title="Mark the selected episodes watched" prompt="When did you watch them?" preset={aired} on_confirm={link.callback(PickMsg::BulkMark)}>
                         <span class="icon check" aria-hidden="true" />
                         <span>{"Mark watched"}</span>

@@ -604,15 +604,10 @@ $numbering-map-chrome: 120px;
     align-self: flex-start;
 }
 
-.numbering-tools,
-.numbering-actions {
+.numbering-tools {
     display: flex;
     flex-wrap: wrap;
     gap: v.$gap-xs;
-}
-
-.numbering-actions {
-    justify-content: flex-end;
 }
 
 .numbering-warning {

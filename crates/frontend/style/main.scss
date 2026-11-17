@@ -914,7 +914,7 @@ a.search-title:hover {
 
 // The users as a table, with a heading row holding Add user; phones stack
 // each user as a card.
-.users-page {
+.settings.wide {
     max-width: none;
 }
 
@@ -1333,14 +1333,6 @@ image {
     flex: 1;
 }
 
-// The primary mark on the left, quieter actions on the right.
-.pending-actions {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: v.$gap-xs;
-}
-
 .pending-label {
     font-size: v.$font-sm;
     line-height: 1.4;
@@ -1645,12 +1637,6 @@ image {
 .selection-count {
     font-weight: v.$bold-weight;
     font-variant-numeric: tabular-nums;
-}
-
-.selection-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: v.$gap-xs;
 }
 
 .episode-body {

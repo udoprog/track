@@ -6,7 +6,7 @@ use yew::prelude::*;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{PersonQuery, PersonSort, Route, Router};
-use crate::ui::{Button, Image, Link, PaginationButtons, SortMenu};
+use crate::ui::{Button, Image, Link, PageHead, PaginationButtons, SortMenu};
 
 /// The fields the list can be sorted by, as `(value, label)`.
 const SORTS: &[(&str, &str)] = &[("name", "Name"), ("credits", "Credits")];
@@ -170,7 +170,7 @@ impl Component for PersonList {
         html! {
             <>
                 // The app bar already says which page this is.
-                <h1 class="visually-hidden">{"People"}</h1>
+                <PageHead hidden=true title="People" />
 
                 <div class="list-controls">
                     <div class="search-field">

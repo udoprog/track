@@ -10,8 +10,8 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{PersonQuery, Route, Router, ShowDetailQuery};
 use crate::ui::{
-    Button, ConfirmDanger, ContextMenu, DetailSkeleton, FormRow, Image, Link, Modal, RemoteEditor,
-    RemoteSourceKind, SyncButton, TranslatedText, Variant,
+    Button, ConfirmDanger, ContextMenu, DetailSkeleton, FormRow, Image, Link, Modal, PageHead,
+    RemoteEditor, RemoteSourceKind, SyncButton, TranslatedText, Variant,
 };
 
 /// Load state for the person this page renders.
@@ -404,9 +404,8 @@ impl PersonDetail {
                 <Image class="person-detail-photo" placeholder={true} placeholder_icon="user" src={person.profile.clone()} alt={name.clone()} />
 
                 <div class="person-detail-info">
-                    <div class="page-head">
-                        <h1 class="page-head-title">{ name }</h1>
-                        <div class="input-group push">
+                    <PageHead title={name} sub={person.department.department().map(|d| AttrValue::from(d.to_owned()))}>
+                        <div class="input-group">
                             <SyncButton target={SyncTarget::Person(person.id)} text="Sync" onclick={link.callback(|_| Msg::SyncPerson)} />
                             <Button icon="cog-6-tooth" title="Settings" onclick={link.callback(|_| Msg::OpenSettings)} />
                             if self.auth.is_admin() {
@@ -422,11 +421,7 @@ impl PersonDetail {
                                 }
                             }
                         </div>
-                    </div>
-
-                    if let Some(department) = person.department.department() {
-                        <div class="text-muted">{ department.to_owned() }</div>
-                    }
+                    </PageHead>
 
                     <div class="row detail-sources">
                         {for person.remotes.iter().filter_map(|r| {
