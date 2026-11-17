@@ -28,7 +28,7 @@ pub(crate) fn GraphicsSourceFilter(props: &Props) -> Html {
 
                 html! {
                     <Button role="switch" checked={Some(checked)} title={source.to_string()} onclick={on_toggle}>
-                        <span class={classes!("logo", source.as_str())} />
+                        <span class={classes!("logo", "in-label", source.as_str())} />
                     </Button>
                 }
             })}

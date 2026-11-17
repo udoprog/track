@@ -107,11 +107,12 @@ pub(crate) fn HelpModal(props: &Props) -> Html {
                             html! {
                                 <Button
                                     class={classes!("help-section", selected.then_some("selected"))}
-                                    label={section.title.clone()}
                                     title={section.title.clone()}
                                     current={selected}
                                     onclick={select(&section.id)}
-                                />
+                                >
+                                    <span>{section.title.clone()}</span>
+                                </Button>
                             }
                         }) }
                     </div>

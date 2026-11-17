@@ -43,7 +43,7 @@ button.help-section {
     justify-content: flex-start;
     height: auto;
     min-height: v.$input-height;
-    padding-block: v.$gap-xs;
+    padding: v.$gap-xs v.$padding-lg;
     text-align: left;
     background: transparent;
     color: v.$text-muted;

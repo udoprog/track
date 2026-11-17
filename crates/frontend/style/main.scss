@@ -118,7 +118,7 @@
         "layout.gap-hair", "layout.gap-medium", "layout.gap-none", "layout.gap-wide",
         "layout.grow", "layout.lines", "layout.pages", "layout.plain-list", "layout.toolbar",
         "menu.context", "menu.current", "menu.danger", "menu.detail", "menu.disabled", "menu.heading",
-        "menu.marks", "menu.note",
+        "menu.note",
         "menu.row-actions", "menu.separator", "menu.split-button", "menu.tight", "menu.widths",
         "notices.empty-state", "notices.notice",
         "pager.edges", "pager.states", "pager.summary",
@@ -1856,7 +1856,13 @@ input-label-controls {
     >button {
         flex: none;
         height: calc(100% - 4px);
+        // As wide as the field is high, not a square of its own height.
+        min-width: v.$input-height;
         border-radius: v.$radius-pill;
+
+        @include g.on-mobile {
+            min-width: v.$input-height-touch;
+        }
     }
 }
 
@@ -2408,11 +2414,15 @@ button.media-pick {
     }
 }
 
-// A chip's count, quieter than its label.
+// A chip's count, quieter than its label. `.in-label`: in a plinth
+// button's label, which is a line of text, not a row with a gap.
 .chip-count {
-    margin-inline-start: v.$text-gap;
     color: v.$text-muted;
     font-weight: normal;
+
+    &.in-label {
+        margin-inline-start: v.$text-gap;
+    }
 }
 
 .task-grid {
@@ -2582,7 +2592,9 @@ button.chip {
         aspect-ratio: auto;
         padding-inline: v.$padding-lg * 1.5;
     }
-    border-color: v.$border-subtle;
+    // plinth's button keeps this edge while disabled.
+    --button-edge: #{v.$border-subtle};
+    border-color: var(--button-edge);
     background: transparent;
     --icon-color: #{v.$text-muted};
     color: v.$text-muted;

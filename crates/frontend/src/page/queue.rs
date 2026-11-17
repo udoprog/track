@@ -537,7 +537,7 @@ impl Queue {
 
             html! {
                 <Button {icon} {label} title={format!("Show {} tasks", label.to_lowercase())} class={classes!("chip", (filter == f).then_some("selected"))} pressed={Some(filter == f)} {onclick}>
-                    <span class="chip-count plinth-numeric">{self.count(f)}</span>
+                    <span class="chip-count in-label plinth-numeric">{self.count(f)}</span>
                 </Button>
             }
         };

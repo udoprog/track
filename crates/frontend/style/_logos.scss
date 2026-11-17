@@ -1,4 +1,5 @@
 @use 'vars' as v;
+@use 'grid' as g;
 
 @mixin logo($name) {
     &.#{$name} {
@@ -15,6 +16,17 @@
 
     &.sm {
         height: 80%;
+    }
+
+    // In a plinth button's label, whose height is its line's: the share of
+    // a control's content box (inside its edge and padding) it takes in a
+    // button of the app's own.
+    &.in-label {
+        height: 0.8 * (v.$input-height - 2 * (1px + v.$padding));
+
+        @include g.on-mobile {
+            height: 0.8 * (v.$input-height-touch - 2 * (1px + v.$padding));
+        }
     }
 
     background-size: contain;
