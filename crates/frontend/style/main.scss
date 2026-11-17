@@ -1779,6 +1779,11 @@ input-label-controls {
     }
 }
 
+// The current page is medium weight, as the app's pager always had it.
+.sockel-pager-button[aria-current]:not([aria-current='false']) {
+    font-weight: v.$bold-weight;
+}
+
 // A list page's controls: a search field, then sort and filter chips, then
 // the pages, wrapping as the width runs out.
 .list-controls {
