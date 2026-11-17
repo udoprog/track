@@ -862,7 +862,9 @@ pub async fn remotes_show_their_actions(driver: &mut TestDriver, _: &mut Track) 
         .click()
         .await?;
 
-    driver.wait_texts(".modal .remote-id", ["12345"]).await?;
+    driver
+        .wait_texts(".modal [data-testid='remote-id']", ["12345"])
+        .await?;
 
     let switch = driver
         .find_one_by(".modal [data-testid='remote-actions'] [role='switch']")
@@ -950,7 +952,9 @@ pub async fn xem_anidb_and_scene_remotes_are_added(
             .await?;
     }
 
-    let mut ids = driver.find_all_texts(".modal .remote-id").await?;
+    let mut ids = driver
+        .find_all_texts(".modal [data-testid='remote-id']")
+        .await?;
     ids.sort();
     ensure!(
         ids == ["17617", "18603", "Sousou no Frieren", "tvdb/424536"],
@@ -959,12 +963,22 @@ pub async fn xem_anidb_and_scene_remotes_are_added(
 
     ensure!(
         driver
-            .count(".modal a.remote-link[href='https://anidb.net/anime/17617'] .logo.anidb")
+            .count(".modal a[data-testid='remote-link'][href='https://anidb.net/anime/17617'] .logo.anidb")
             .await?
             == 1
     );
-    ensure!(driver.count(".modal a.remote-link .logo.scene").await? == 0);
-    ensure!(driver.count(".modal a.remote-link .logo.xem").await? == 0);
+    ensure!(
+        driver
+            .count(".modal a[data-testid='remote-link'] .logo.scene")
+            .await?
+            == 0
+    );
+    ensure!(
+        driver
+            .count(".modal a[data-testid='remote-link'] .logo.xem")
+            .await?
+            == 0
+    );
 
     for source in ["anidb", "scene", "xem"] {
         let width = driver
@@ -2495,7 +2509,7 @@ pub async fn xem_remote_links_to_its_page(driver: &mut TestDriver, _: &mut Track
 
     driver.wait_count(&format!(".modal {page}"), 1).await?;
     driver
-        .wait_texts(".modal .remote-id", ["tvdb/424536 #6743"])
+        .wait_texts(".modal [data-testid='remote-id']", ["tvdb/424536 #6743"])
         .await
 }
 

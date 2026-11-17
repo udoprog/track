@@ -447,7 +447,7 @@ impl Component for RemoteEditor {
                                 <>
                                     <span class={classes!("logo", r.remote.remote.source().as_id())} aria-hidden="true" />
 
-                                    <span class="remote-id">
+                                    <span class="mono" data-testid="remote-id">
                                         {r.remote.remote.value().to_string()}
 
                                         if let Some(slug) = r.remote.slug.as_deref() {
@@ -467,11 +467,11 @@ impl Component for RemoteEditor {
                                         <DragHandle {index} />
 
                                         if let Some(url) = url {
-                                            <a class="remote-link" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {}", r.remote.remote.source())}>
+                                            <a class="remote-link row tight shrink" data-testid="remote-link" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {}", r.remote.remote.source())}>
                                                 {identifier}
                                             </a>
                                         } else {
-                                            <span class="remote-link">{identifier}</span>
+                                            <span class="remote-link row tight shrink" data-testid="remote-link">{identifier}</span>
                                         }
 
                                         <div class="row wrap tight push" data-testid="remote-actions" ref={r.context_anchor.clone()}>
@@ -506,7 +506,7 @@ impl Component for RemoteEditor {
 
                                                 if let Some(ref etag) = cache.etag {
                                                     <dt>{"ETag"}</dt>
-                                                    <dd class="remote-etag" title={etag.clone()}>{etag}</dd>
+                                                    <dd class="remote-etag mono" title={etag.clone()}>{etag}</dd>
                                                 }
 
                                                 if !cache.kinds.is_empty() {
@@ -532,7 +532,7 @@ impl Component for RemoteEditor {
                                                     { for cache.errors.iter().map(|e| html! {
                                                         <>
                                                             <span>{e.kind.as_label()}</span>
-                                                            <span class="remote-id">{&e.key}</span>
+                                                            <span class="mono" data-testid="remote-id">{&e.key}</span>
                                                             <span>{&e.message}</span>
                                                             <span>{e.expires_at().to_string()}</span>
                                                         </>

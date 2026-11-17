@@ -396,10 +396,6 @@ p {
 }
 
 .remote-link {
-    display: inline-flex;
-    align-items: center;
-    gap: v.$gap-xs;
-    min-width: 0;
     color: v.$text-color;
 
     >.logo {
@@ -408,7 +404,7 @@ p {
     }
 }
 
-a.remote-link:hover .remote-id {
+a.remote-link:hover .mono {
     text-decoration: underline;
 }
 
@@ -435,7 +431,6 @@ a.remote-link:hover .remote-id {
 }
 
 .remote-etag {
-    font-family: v.$monospace-font;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1968,10 +1963,6 @@ input-label-controls {
 
 .spin {
     animation: spin 1s linear infinite;
-}
-
-.remote-id {
-    font-family: v.$monospace-font;
 }
 
 // Modals share the popover surface (`.context-menu`); on phones they rise from
