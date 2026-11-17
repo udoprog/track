@@ -110,7 +110,7 @@ impl Component for Dashboard {
                     </div>
                 </div>
 
-                <div class="column">
+                <div class="plinth-stack">
                     { match view {
                         DashboardView::WatchNext => html! {
                             <WatchNext

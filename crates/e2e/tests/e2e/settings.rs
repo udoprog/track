@@ -537,7 +537,7 @@ pub async fn shows_and_hides_numberings(driver: &mut TestDriver, _: &mut Track) 
 
     let order = async |driver: &TestDriver| -> Result<Vec<String>> {
         driver
-            .find_all_attrs(".numberings>.row", "data-system")
+            .find_all_attrs(".numberings>[data-system]", "data-system")
             .await
     };
     let hidden = async |driver: &TestDriver| -> Result<Vec<String>> {

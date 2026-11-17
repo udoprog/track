@@ -201,7 +201,7 @@ impl Component for LanguageModal {
 
         html! {
             <Modal icon="language" title={props.title} on_close={link.callback(|_| Msg::Close)}>
-                <div class="row">
+                <div class="plinth-cluster plinth-nowrap plinth-loose">
                     <input autofocus={true} type="text" class="input-text fill" placeholder="Filter" aria-label="Filter languages" value={self.filter.clone()} oninput={on_filter} />
                 </div>
 
@@ -211,7 +211,7 @@ impl Component for LanguageModal {
                     // and entirely when `show_top` is disabled.
                     if self.filter.is_empty() {
                         if props.allow_default {
-                            <Button class="row clickable" title={format!("Use {}", props.placeholder)} pressed={Some(current.is_some_and(|c| c.is_default()))} onclick={link.callback(|_| Msg::Pick(api::Locale::DEFAULT))}>
+                            <Button class="clickable plinth-cluster plinth-nowrap plinth-loose" title={format!("Use {}", props.placeholder)} pressed={Some(current.is_some_and(|c| c.is_default()))} onclick={link.callback(|_| Msg::Pick(api::Locale::DEFAULT))}>
                                 <span class="fill">{props.placeholder}</span>
 
                                 if let Some(current) = current &&  current.is_default() {
@@ -232,7 +232,7 @@ impl Component for LanguageModal {
                                 let (name, flag) = locale_label(locale, "Default Language");
 
                                 html! {
-                                    <Button key={format!("top-{locale}")} class={classes!("row", "clickable", selected.then_some("active"))} title={format!("Use {name}")} pressed={Some(selected)} onclick={link.callback(move |_| Msg::Pick(locale))}>
+                                    <Button key={format!("top-{locale}")} class={classes!("clickable", "plinth-cluster", "plinth-nowrap", "plinth-loose", selected.then_some("active"))} title={format!("Use {name}")} pressed={Some(selected)} onclick={link.callback(move |_| Msg::Pick(locale))}>
                                         <span class="fill">{name}</span>
 
                                         if selected {
@@ -268,7 +268,7 @@ impl Component for LanguageModal {
                                 let (name, flag) = locale_label(locale, "Default Language");
 
                                 html! {
-                                    <Button key={locale.to_string()} class={classes!("row", "clickable", selected.then_some("active"))} title={format!("Use {name}")} pressed={Some(selected)} onclick={link.callback(move |_| Msg::Pick(locale))}>
+                                    <Button key={locale.to_string()} class={classes!("clickable", "plinth-cluster", "plinth-nowrap", "plinth-loose", selected.then_some("active"))} title={format!("Use {name}")} pressed={Some(selected)} onclick={link.callback(move |_| Msg::Pick(locale))}>
                                         <span class="fill">{name}</span>
 
                                         if selected {
@@ -294,7 +294,7 @@ impl Component for LanguageModal {
                     }
                 </div>
 
-                <div class="row desktop-align-end">
+                <div class="desktop-align-end plinth-cluster plinth-nowrap plinth-loose">
                     <PaginationButtons page={page} total_pages={total_pages} on_page={link.callback(Msg::Page)} />
                 </div>
             </Modal>

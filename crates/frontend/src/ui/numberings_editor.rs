@@ -55,14 +55,14 @@ pub(crate) fn NumberingsEditor(props: &Props) -> Html {
                     };
 
                     html! {
-                        <div class={classes!("row", "input-group", (!shown).then_some("numbering-hidden"))} data-system={pref.system.clone()}>
+                        <div class={classes!("input-group", "plinth-cluster", "plinth-nowrap", (!shown).then_some("numbering-hidden"))} data-system={pref.system.clone()}>
                             <DragHandle {index} class={dim.clone()} />
 
                             <span class={classes!("input-label", "has-text", dim.clone())}>
                                 <span class={classes!("logo", pref.system.clone())} />
                             </span>
 
-                            <span class={classes!("input-label", "has-text", "row", "wrap", "tight", "grow", "shrink", dim.clone())}>
+                            <span class={classes!("input-label", "has-text", "grow", "shrink", "plinth-cluster", "plinth-tight", dim.clone())}>
                                 <span>{label}</span>
 
                                 if let Some(description) = description(&pref.system) {

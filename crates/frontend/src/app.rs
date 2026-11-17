@@ -635,7 +635,7 @@ fn Toolbar(props: &ToolbarProps) -> Html {
 
     html! {
         <header id="toolbar" class="toolbar toolbar-padding">
-            <div class="row text-gap">
+            <div class="plinth-cluster plinth-nowrap plinth-snug">
                 <Link to={Route::Dashboard(DashboardQuery::default())} class="site-title" onclick={close_menu.clone()}>{ props.site_title.clone() }</Link>
             </div>
 

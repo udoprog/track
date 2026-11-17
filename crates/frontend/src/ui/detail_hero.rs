@@ -16,12 +16,12 @@ pub(crate) fn DetailHero(props: &Props) -> Html {
     let backdrop = props.backdrop.as_ref().map(|image| image.proxy_url());
 
     html! {
-        <header class={classes!("detail-hero", "row", "align-bottom", backdrop.is_some().then_some("has-backdrop"))}>
+        <header class={classes!("detail-hero", "plinth-cluster", "plinth-nowrap", "plinth-loose", "plinth-bottom", backdrop.is_some().then_some("has-backdrop"))}>
             if let Some(url) = backdrop {
                 <div class="detail-hero-image" style={format!("background-image: url('{url}')")} />
             }
 
-            <div class="detail-hero-text column text-gap shrink">
+            <div class="detail-hero-text shrink plinth-stack plinth-snug">
                 <h1 class="detail-title">{props.title.clone()}</h1>
 
                 if let Some(meta) = &props.meta {

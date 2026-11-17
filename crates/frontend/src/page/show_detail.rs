@@ -510,7 +510,7 @@ impl Component for ShowDetail {
                 />
 
                 <div class="toolbar">
-                    <div class="row detail-sources">
+                    <div class="detail-sources plinth-cluster">
                         {for show.remotes.iter().filter_map(|r| {
                             let url = r.remote.show_url(r.slug.as_deref())?;
                             let id = r.remote.source().as_id();
@@ -1987,7 +1987,7 @@ impl ShowDetail {
         let poster = season.poster.as_ref().or(show.poster.as_ref());
 
         html! {
-            <div class="detail-sidebar column loose">
+            <div class="detail-sidebar plinth-stack plinth-loose">
                 <Image class="poster desktop-only artwork" src={poster.cloned()} />
 
                 <nav class="season-list desktop-only desktop-column tight" aria-label="Seasons">
@@ -2183,14 +2183,14 @@ impl ShowDetail {
         });
 
         html! {
-            <div class="column loose shrink" data-testid="detail-content">
+            <div class="shrink plinth-stack plinth-loose" data-testid="detail-content">
                 { self.view_credits(ctx) }
 
                 { self.view_season_chips(ctx) }
 
                 // Keyed so a season switch replaces the column instead of
                 // patching it.
-                <div class="column" key={season.id.to_string()}>
+                <div class="plinth-stack" key={season.id.to_string()}>
                     <div class="toolbar">
                         <h2>
                             if let Some(name) = season.strings.title() {
@@ -2294,7 +2294,7 @@ impl ShowDetail {
                     {if count == 1 { "1 episode selected".to_owned() } else { format!("{count} episodes selected") }}
                 </span>
 
-                <div class="row wrap tight">
+                <div class="plinth-cluster plinth-tight">
                     <MarkTimeMenu class="primary has-text" icon="check" title="Mark the selected episodes watched" prompt="When did you watch them?" preset={aired} on_confirm={link.callback(PickMsg::BulkMark)}>
                         <span class="icon check" aria-hidden="true" />
                         <span>{"Mark watched"}</span>
@@ -2348,14 +2348,14 @@ impl ShowDetail {
             <div class={classes!("episode", (!watched.is_empty()).then_some("watched"))} id={episode.code()}>
                 <Button class={classes!("episode-pick", picked.then_some("picked"))} title={format!("Select {}", episode.code())} pressed={Some(picked)} onclick={link.callback(move |e: MouseEvent| PickMsg::TogglePick(episode_id, e.shift_key()))}>
                     <Image class="screenshot artwork" placeholder={true} placeholder_icon="photo" src={episode.screenshot.clone()} />
-                    <span class="episode-pick-mark row center" aria-hidden="true">
+                    <span class="episode-pick-mark plinth-cluster plinth-nowrap plinth-loose plinth-center" aria-hidden="true">
                         <span class="icon sm check" />
                     </span>
                 </Button>
 
-                <div class="column tight shrink">
+                <div class="shrink plinth-stack plinth-tight">
                     <div class="section-head">
-                        <div class="row tight wrap align-baseline">
+                        <div class="plinth-cluster plinth-tight plinth-baseline">
                             <a class="episode-code" href={format!("#{}", episode.code())} title="Link to this episode">{episode.code()}</a>
 
                             if let Some(name) = episode.strings.title() {
@@ -2363,7 +2363,7 @@ impl ShowDetail {
                             }
                         </div>
 
-                        <div class="row push">
+                        <div class="plinth-push-end plinth-cluster plinth-nowrap plinth-loose">
                             <div class="input-group">
                                 <MarkTimeMenu quick=true class="primary" icon="check" title="Mark watched" prompt={format!("When did you watch {}?", episode.code())} preset={preset.clone()} on_confirm={on_mark_confirm} />
                             </div>
@@ -2403,7 +2403,7 @@ impl ShowDetail {
                         </div>
                     }
 
-                    <div class="episode-meta row wrap">
+                    <div class="episode-meta plinth-cluster plinth-loose">
                         <indicator title="Air date">
                             <span class="item-inline">
                                 <span class={classes!("icon", if episode.aired().is_some() { "clock" } else { "exclamation-circle" })} />
@@ -2492,7 +2492,7 @@ impl ShowDetail {
                                             <span class="watch-when">{w.watched.timestamp.human_date_time(self.time.clone()).view()}</span>
                                             <span class="watch-age">{w.watched.timestamp.relative_to(self.time.now())}</span>
 
-                                            <div class="actions start-on-mobile" ref={w.context_anchor.clone()}>
+                                            <div class="start-on-mobile plinth-cluster plinth-nowrap plinth-tight plinth-end" ref={w.context_anchor.clone()}>
                                                 <Button icon="arrow-uturn-right" label="Move" title="Move to another episode" onclick={link.callback(move |_| WatchMsg::FixWatched(wid))} />
 
                                                 <Button icon="trash" label="Remove" title="Remove" expanded={Some(self.confirm_remove_watch == Some(wid))} haspopup="dialog" onclick={link.callback(move |_| WatchMsg::ConfirmRemoveWatch(wid))} />
@@ -2544,15 +2544,15 @@ impl ShowDetail {
         let show_id = props.show_id;
 
         html! {
-            <div class="column loose shrink" data-testid="detail-content">
+            <div class="shrink plinth-stack plinth-loose" data-testid="detail-content">
                 <div class="table">
                     { for self.orphaned.iter().map(|w| {
                         let id = w.watched.id;
                         let kind = api::WatchedKind::Episode { show: show_id, episode: api::EpisodeId::new(0) };
 
                         html! {
-                            <div class="row-split">
-                                <div class="row">
+                            <div class="plinth-cluster plinth-between plinth-loose">
+                                <div class="plinth-cluster plinth-nowrap plinth-loose">
                                     <span class="text-muted">{w.watched.code()}</span>
                                     <span>{w.watched.timestamp.human_date_time(self.time.clone())}</span>
                                 </div>

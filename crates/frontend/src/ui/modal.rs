@@ -77,7 +77,7 @@ pub(crate) fn Modal(props: &Props) -> Html {
             >
                 <div class="modal-header">
                     if let Some(ref title) = props.title {
-                        <h2 class="row text-gap modal-title" id={(*title_id).clone()}>
+                        <h2 class="modal-title plinth-cluster plinth-nowrap plinth-snug" id={(*title_id).clone()}>
                             if let Some(ref icon) = props.icon {
                                 <span class="item-inline" aria-hidden="true">
                                     <span class={classes!("icon", icon)} aria-hidden="true" />

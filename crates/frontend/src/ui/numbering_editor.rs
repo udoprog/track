@@ -690,7 +690,7 @@ impl Component for NumberingEditor {
                     { self.view_map(ctx, &ranges, &errors) }
 
                     if self.manual {
-                        <div class="numbering-side column tight shrink">
+                        <div class="numbering-side shrink plinth-stack plinth-tight">
                             <div class="numbering-ranges" ref={self.ranges.clone()}>
                                 for group in self.folds(&ranges, &errors) {
                                     if group.len() > 1 {
@@ -701,7 +701,7 @@ impl Component for NumberingEditor {
                                 }
                             </div>
 
-                            <div class="numbering-tools row wrap tight">
+                            <div class="numbering-tools plinth-cluster plinth-tight">
                                 <Button icon="plus" label="Add range" title="Add range" onclick={link.callback(|_: MouseEvent| Msg::Add)} />
                                 <Button
                                     icon="sparkles"
@@ -715,7 +715,7 @@ impl Component for NumberingEditor {
                     }
                 </div>
 
-                <div class="row wrap tight end">
+                <div class="plinth-cluster plinth-tight plinth-end">
                     <Button icon="x-mark" label="Cancel" title="Cancel" onclick={on_close.reform(|_: MouseEvent| ())} />
                     <Button icon="check" label="Save" title="Save" variant={Variant::Primary} spin={self.saving} {disabled} onclick={link.callback(|_: MouseEvent| Msg::Save)} />
                 </div>
@@ -1731,7 +1731,7 @@ impl NumberingEditor {
                         if self.asking {
                             {asking}
                         } else {
-                            <div class="numbering-tools row wrap tight">
+                            <div class="numbering-tools plinth-cluster plinth-tight">
                                 <Button icon="sparkles" label="Suggest from episode order" title={suggest_title.to_owned()} disabled={bases.is_empty()} onclick={link.callback(|_: MouseEvent| Msg::Suggest)} />
                             </div>
                         }
@@ -1880,7 +1880,7 @@ impl NumberingEditor {
         let link = ctx.link();
 
         let Some(data) = &self.data else {
-            return html! { <div class="numbering-map-pane column tight shrink" /> };
+            return html! { <div class="numbering-map-pane shrink plinth-stack plinth-tight" /> };
         };
 
         let drawn = self.drawn(ranges);
@@ -2031,7 +2031,7 @@ impl NumberingEditor {
         });
 
         html! {
-            <div class="numbering-map-pane column tight shrink">
+            <div class="numbering-map-pane shrink plinth-stack plinth-tight">
                 <div class="numbering-map-head" style={template.clone()} ref={self.map_head.clone()}>
                     for head in heads {
                         {head}
@@ -2557,7 +2557,7 @@ impl NumberingEditor {
         let open = row.open;
 
         html! {
-            <div class="row wrap tight">
+            <div class="plinth-cluster plinth-tight">
                 <div class="numbering-source">
                     <span class="logo tmdb" title="TMDB" />
                     <span class="numbering-letter">{"S"}</span>
@@ -2596,7 +2596,7 @@ impl NumberingEditor {
                     { input(Field::TargetFirst, &row.target_first, format!("Range {n} target first episode")) }
                 </div>
 
-                <Button class="push" icon="check" label="Done" title={format!("Done editing range {n}")} onclick={link.callback(|_: MouseEvent| Msg::Select(None))} />
+                <Button class="plinth-push-end" icon="check" label="Done" title={format!("Done editing range {n}")} onclick={link.callback(|_: MouseEvent| Msg::Select(None))} />
             </div>
         }
     }

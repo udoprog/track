@@ -415,7 +415,7 @@ impl Component for RemoteEditor {
                             let overriding = r.remote.sync_kinds.is_some();
 
                             let kind_toggles = (!capability.is_empty()).then(|| html! {
-                                <div class="row tight wrap" role="group" aria-label="Kinds synced from this source">
+                                <div class="plinth-cluster plinth-tight" role="group" aria-label="Kinds synced from this source">
                                     <span class="text-muted">{"Syncs"}</span>
                                     <Help section={help::REMOTES} />
 
@@ -462,19 +462,19 @@ impl Component for RemoteEditor {
                             };
 
                             html! {
-                                <div {key} class="remote column tight">
-                                    <div class="row wrap tight">
+                                <div {key} class="remote plinth-stack plinth-tight">
+                                    <div class="plinth-cluster plinth-tight">
                                         <DragHandle {index} />
 
                                         if let Some(url) = url {
-                                            <a class="remote-link row tight shrink" data-testid="remote-link" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {}", r.remote.remote.source())}>
+                                            <a class="remote-link shrink plinth-cluster plinth-nowrap plinth-tight" data-testid="remote-link" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {}", r.remote.remote.source())}>
                                                 {identifier}
                                             </a>
                                         } else {
-                                            <span class="remote-link row tight shrink" data-testid="remote-link">{identifier}</span>
+                                            <span class="remote-link shrink plinth-cluster plinth-nowrap plinth-tight" data-testid="remote-link">{identifier}</span>
                                         }
 
-                                        <div class="row wrap tight push" data-testid="remote-actions" ref={r.context_anchor.clone()}>
+                                        <div class="plinth-push-end plinth-cluster plinth-tight" data-testid="remote-actions" ref={r.context_anchor.clone()}>
                                             <Button size={Size::Small} class={classes!("input-checkbox", "has-text", enabled.then_some("checked"))} role="switch" checked={Some(enabled)} title={if enabled { "Remote enabled" } else { "Remote disabled" }} onclick={link.callback(move |_| Msg::SetEnabled(id, !enabled))}>
                                                 <span class="mark" />
                                                 <span>{if enabled { "Enabled" } else { "Disabled" }}</span>
@@ -497,7 +497,7 @@ impl Component for RemoteEditor {
                                     {kind_toggles}
 
                                     if let Some(ref cache) = r.remote.cache {
-                                        <div class="remote-cache row wrap between align-top">
+                                        <div class="remote-cache plinth-cluster plinth-loose plinth-between plinth-top">
                                             <dl>
                                                 if let Some(ref last_updated) = cache.last_updated {
                                                     <dt>{"Last updated"}</dt>

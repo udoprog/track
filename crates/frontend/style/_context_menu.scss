@@ -17,7 +17,7 @@
 
 // A popover's prompt, with the name it asks about in bold.
 .context-menu-header {
-    // Laid out by `.row.wrap.text-gap` in the markup.
+    // Laid out by `.plinth-cluster.plinth-snug` in the markup.
     > span {
         min-width: 0;
         overflow-wrap: break-word;

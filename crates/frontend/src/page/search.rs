@@ -374,13 +374,13 @@ impl Search {
                 </div>
 
                 if self.loading {
-                    <div class="row center">
+                    <div class="plinth-cluster plinth-nowrap plinth-loose plinth-center">
                         <span class="item-inline-more"><span class="icon arrow-path spin" aria-hidden="true" /></span>
                     </div>
                 } else if self.end {
                     <p class="text-muted center">{"No more results."}</p>
                 } else if self.results.len() < self.total {
-                    <div class="row center">
+                    <div class="plinth-cluster plinth-nowrap plinth-loose plinth-center">
                         <Button icon="ellipsis-horizontal" title="Load more results" label="More results" onclick={on_more} />
                     </div>
                 }
@@ -436,7 +436,7 @@ impl Search {
                     </span>
                 }
 
-                <div class="search-body column text-gap shrink">
+                <div class="search-body shrink plinth-stack plinth-snug">
                     <div class="search-heading">
                         <span class={classes!("icon", "sm", kind_icon)} role="img" aria-label={kind_label} title={kind_label} />
 
@@ -455,7 +455,7 @@ impl Search {
                         <p class="search-overview">{overview}</p>
                     }
 
-                    <div class="row tight">
+                    <div class="plinth-cluster plinth-nowrap plinth-tight">
                         { for row.sources.iter().map(|(source, url)| html! {
                             if let Some(url) = url {
                                 <a class="search-source" href={url.clone()} target="_blank" rel="noopener noreferrer" title={format!("Open on {source}")}>

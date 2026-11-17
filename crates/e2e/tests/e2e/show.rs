@@ -762,7 +762,7 @@ pub async fn season_overview_switches_language(
 ) -> Result<()> {
     open_show(driver).await?;
 
-    let season = "[data-testid='detail-content'] > .column";
+    let season = "[data-testid='detail-content'] > .plinth-stack";
     driver
         .find_one_by(&format!("{season} [title='Change displayed language']"))
         .await?

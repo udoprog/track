@@ -9,21 +9,21 @@ use super::Skeleton;
 pub(crate) fn DetailSkeleton() -> Html {
     html! {
         <>
-            <div class="column">
+            <div class="plinth-stack">
                 <Skeleton class="line" style="width: 14rem" />
 
-                <div class="row">
+                <div class="plinth-cluster plinth-nowrap plinth-loose">
                     <Skeleton style="width: 6rem" />
                     <Skeleton style="width: 6rem" />
                 </div>
             </div>
 
             <div class="detail-layout">
-                <div class="detail-sidebar column loose">
+                <div class="detail-sidebar plinth-stack plinth-loose">
                     <Skeleton class="poster desktop-only" />
                 </div>
 
-                <div class="column loose shrink" data-testid="detail-content">
+                <div class="shrink plinth-stack plinth-loose" data-testid="detail-content">
                     <Skeleton class="line" />
                     <Skeleton class="line" style="width: 90%" />
                     <Skeleton class="line" style="width: 80%" />

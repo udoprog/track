@@ -1,35 +1,22 @@
-// Layout primitives every screen composes in its markup. Reach for these
-// before writing a screen's own flex or grid rule; a screen class holds only
-// what none of them does, with a comment saying why.
+// Rows, columns, splits and actions are plinth's `.plinth-cluster` and
+// `.plinth-stack` (with their gap and alignment modifiers) and `.plinth-push-end`.
+// This keeps what plinth does not do:
 //
-// .row             children in a line, centred across, $gap apart
-//   .tight .text-gap   $gap-xs / $text-gap apart
-//   .wrap              wraps onto more lines
-//   .between .end .center   main-axis placement
-//   .align-top .align-bottom .align-baseline   aligned to the top, bottom or
-//                      text baseline instead of centred
 // .desktop-row .mobile-row  a row on wide screens only / on phones only (no
 //                  display of its own the other way: pair with `.desktop-only`
 //                  / `.mobile-only` to hide it there)
-// .column          children stacked, $gap-sm apart
-//   .tight .text-gap   $gap-xs / $text-gap apart
-//   .loose             $gap apart
-//   .center            centred across
 // .desktop-column  a column on wide screens only (`.mobile-column` on phones)
-// .row-split       a wrapping row pushed to both ends (`.reverse`)
+// .desktop-align-end  a cluster's items at its end on wide screens
+// .start-on-mobile    a cluster of actions read from the start on phones
 // .fixed           a flex child that keeps its size instead of shrinking
 // .grow            a flex child that takes the free space
 // .shrink          may be narrower than its content (a grid or flex child that
 //                  must not push its parent wider)
 // .section-title   the heading of a section of a page (an h2)
-// .actions        buttons at the end of a row (`.start-on-mobile`: at the start on
-//                  phones)
-// .push            a child of a row that takes the free space before it, so
-//                  it and what follows sit at the end
 // .page-head       a page's heading row: `.page-head-title`, then actions
-//                  (put `.push` on the actions); wraps on phones
+//                  (put `.plinth-push-end` on the actions); wraps on phones
 // .section-head    a section's heading row inside a page, card or list item:
-//                  its heading, then actions (`.push`)
+//                  its heading, then actions (`.plinth-push-end`)
 // .card            a raised surface
 //   .compact           less padding
 //   .flush             no padding, clipped to its corners (a poster on top)
@@ -49,147 +36,50 @@
 @mixin row-base {
     display: flex;
     flex-direction: row;
-    justify-items: stretch;
     align-items: center;
     gap: v.$gap;
 
-    &.text-gap {
-        gap: v.$text-gap;
-    }
-
     &.tight {
         gap: v.$gap-xs;
-    }
-
-    &.wrap {
-        flex-wrap: wrap;
-    }
-
-    &.between {
-        justify-content: space-between;
-    }
-
-    &.center {
-        justify-content: center;
-    }
-
-    &.end {
-        justify-content: flex-end;
-    }
-
-    &.align-top {
-        align-items: start;
-    }
-
-    &.align-bottom {
-        align-items: flex-end;
-    }
-
-    &.align-baseline {
-        align-items: baseline;
-    }
-
-    &.align-end {
-        justify-content: flex-end;
-    }
-
-    @include g.on-desktop {
-        &.desktop-align-end {
-            justify-content: flex-end;
-        }
     }
 }
 
 @mixin column-base {
     display: flex;
     flex-direction: column;
-    justify-items: stretch;
     gap: v.$gap-sm;
 
     &.tight {
         gap: v.$gap-xs;
     }
-
-    &.text-gap {
-        gap: v.$text-gap;
-    }
-
-    &.loose {
-        gap: v.$gap;
-    }
-
-    &.center {
-        align-items: center;
-    }
-
-    &>.align-end {
-        align-self: end;
-    }
-}
-
-.row {
-    @include row-base;
 }
 
 @include g.on-desktop {
     .desktop-row {
         @include row-base;
     }
-}
 
-.column {
-    @include column-base;
+    .desktop-column {
+        @include column-base;
+    }
+
+    .plinth-cluster.desktop-align-end {
+        justify-content: flex-end;
+    }
 }
 
 @include g.on-mobile {
     .mobile-row {
         @include row-base;
     }
-}
 
-@include g.on-desktop {
-    .desktop-column {
-        @include column-base;
-    }
-}
-
-@include g.on-mobile {
     .mobile-column {
         @include column-base;
     }
-}
 
-@mixin row-split-base {
-    @include row-base;
-
-    flex-wrap: wrap;
-    justify-content: space-between;
-    align-items: center;
-
-    &.reverse {
-        flex-direction: row-reverse;
+    .plinth-cluster.start-on-mobile {
+        justify-content: flex-start;
     }
-}
-
-.row-split {
-    @include row-split-base;
-}
-
-.actions {
-    display: flex;
-    gap: v.$gap-xs;
-    justify-content: flex-end;
-
-    // A row of actions under its text on phones reads from the start.
-    &.start-on-mobile {
-        @include g.on-mobile {
-            justify-content: flex-start;
-        }
-    }
-}
-
-.push {
-    margin-inline-start: auto;
 }
 
 .grow {

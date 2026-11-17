@@ -32,7 +32,7 @@ pub(super) fn view_range_controls(c: RangeControls<'_>) -> Html {
         <div class="page-controls">
             <span class="text-muted">{c.label}</span>
 
-            <div class="row">
+            <div class="plinth-cluster plinth-nowrap plinth-loose">
                 <Button icon="chevron-left" title={c.prev_title.to_string()} onclick={c.on_prev} />
                 <Button icon="calendar" label={c.reset_label.to_string()} title={c.reset_title.to_string()} class="chip" disabled={c.reset_disabled} onclick={c.on_reset} />
                 <Button icon="chevron-right" title={c.next_title.to_string()} onclick={c.on_next} />
@@ -55,7 +55,7 @@ pub(super) fn view_stepper(
         <div class="field">
             <label>{label.to_string()}</label>
 
-            <div class="row">
+            <div class="plinth-cluster plinth-nowrap plinth-loose">
                 <Button icon="minus" title={fewer_title.to_string()} onclick={on_fewer} disabled={count <= 1} />
                 <span class="page-size">{count}</span>
                 <Button icon="plus" title={more_title.to_string()} onclick={on_more} />

@@ -198,11 +198,11 @@ impl Component for PersonList {
                 </div>
 
                 if !self.loaded || self.list_req.is_pending() {
-                    <div class="row center">
+                    <div class="plinth-cluster plinth-nowrap plinth-loose plinth-center">
                         <span class="item-inline-more"><span class="icon arrow-path spin" aria-hidden="true" /></span>
                     </div>
                 } else if self.persons.is_empty() {
-                    <div class="row center">
+                    <div class="plinth-cluster plinth-nowrap plinth-loose plinth-center">
                         <span class="item-inline-more">{"Nothing to show."}</span>
                     </div>
                 } else {
@@ -210,7 +210,7 @@ impl Component for PersonList {
                         { for self.persons.iter().map(|p| self.view_card(p)) }
                     </div>
 
-                    <div class="row desktop-align-end">
+                    <div class="desktop-align-end plinth-cluster plinth-nowrap plinth-loose">
                         <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
                     </div>
                 }

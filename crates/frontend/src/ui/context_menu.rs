@@ -230,7 +230,7 @@ impl Component for ContextMenu {
             <div class="context-catcher" onclick={Callback::from(move |_| on_close.emit(()))}>
                 <div class="context-menu" ref={self.menu.clone()} {role} aria-label={aria_label} tabindex="-1" {onkeydown} onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
                     if let Some(prompt) = &props.prompt {
-                        <div class="context-menu-header row wrap text-gap">
+                        <div class="context-menu-header plinth-cluster plinth-snug">
                             if let Some(ref icon) = props.icon {
                                 <span class="item-inline" aria-hidden="true">
                                     <span class={classes!("icon", icon)} aria-hidden="true" />

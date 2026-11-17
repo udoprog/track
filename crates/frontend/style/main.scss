@@ -1,5 +1,7 @@
-// plinth's tokens and rules first, so the app's own refine them.
-@use '../../../../plinth/style';
+// plinth's tokens, then the rules of the parts of plinth the app uses, in
+// plinth's own order (style/_index.scss), so the app's own rules refine them.
+@use '../../../../plinth/style/tokens' as plinth-tokens;
+@use '../../../../plinth/style/layout' as plinth-layout;
 @use 'theme';
 @use 'icons';
 @use 'logos';
@@ -1486,7 +1488,7 @@ image {
     border-radius: v.$radius-lg;
     background: none;
 
-    // The mark is a `.row.center`; this places and draws it.
+    // The mark is a `.plinth-cluster.plinth-center`; this places and draws it.
     >.episode-pick-mark {
         position: absolute;
         top: v.$gap-xs;
@@ -1546,7 +1548,7 @@ image {
     font-variant-numeric: tabular-nums;
 }
 
-// Dates and watch state (a `.row.wrap`): quiet text, not links.
+// Dates and watch state (a `.plinth-cluster`): quiet text, not links.
 .episode-meta {
     font-size: v.$font-sm;
     color: v.$text-muted;
@@ -2296,6 +2298,7 @@ pagination {
 // The source logos above a page, kept on one line next to its menu.
 .detail-sources {
     flex-wrap: nowrap;
+    gap: v.$gap;
     min-width: 0;
 
     @include g.on-mobile {

@@ -150,7 +150,7 @@ impl Component for ScheduleRange {
         let last = days[days.len() - 1];
 
         html! {
-            <div class="column">
+            <div class="plinth-stack">
                 { view_range_controls(RangeControls {
                     label: format!("{} {} – {} {}", first.day(), first.month_name(), last.day(), last.month_name()),
                     prev_title: "Previous day",

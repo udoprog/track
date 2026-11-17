@@ -182,7 +182,7 @@ impl Graphics {
 
         html! {
             <Modal icon="photo" title="Graphics" {on_close}>
-                <div class="row desktop-align-end">
+                <div class="desktop-align-end plinth-cluster plinth-nowrap plinth-loose">
                     <GraphicsSourceFilter present={self.present.clone()} hidden={hidden.clone()} on_toggle={link.callback(ImageMsg::ToggleGraphicsSource)} />
                     <Button icon="sparkles" variant={Variant::Primary} title="Pick the best graphic for every kind" label="Pick best (all)" onclick={link.callback(|_| ImageMsg::PickBestImage(None))} />
                 </div>

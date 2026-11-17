@@ -202,7 +202,7 @@ impl Component for FiltersEditor {
                     {for rules}
                 }
 
-                <div class="row">
+                <div class="plinth-cluster plinth-nowrap plinth-loose">
                     {toggle}
                     <Button icon="plus" label="Add rule" title="Add rule" onclick={link.callback(|_| Msg::AddRule)} />
                 </div>
@@ -222,7 +222,7 @@ impl FiltersEditor {
 
         let summaries = rule.predicates.iter().map(|p| {
             html! {
-                <div class="row wrap">
+                <div class="plinth-cluster plinth-loose">
                     <span class="input-label has-text">{p.kind().label()}</span>
                     {self.predicate_summary(p)}
                 </div>
@@ -231,7 +231,7 @@ impl FiltersEditor {
 
         html! {
             <rule>
-                <div class="row-split">
+                <div class="plinth-cluster plinth-between plinth-loose">
                     <span class="has-text">{name.clone()}</span>
 
                     <div ref={anchor.clone()} class="input-group">
@@ -344,7 +344,7 @@ impl FiltersEditor {
 
         html! {
             <rule>
-                <div class="row-split">
+                <div class="plinth-cluster plinth-between plinth-loose">
                     <DragHandle {index} />
 
                     <input
@@ -393,7 +393,7 @@ impl FiltersEditor {
         };
 
         html! {
-            <div class="row input-group">
+            <div class="input-group plinth-cluster plinth-nowrap">
                 <select class="input-select fill" onchange={on_add}>
                     <option value="" selected={true}>{"Add predicate…"}</option>
 

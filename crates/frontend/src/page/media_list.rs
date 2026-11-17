@@ -336,11 +336,11 @@ impl Component for MediaList {
                 </div>
 
                 if self.list_req.is_pending() {
-                    <div class="row center">
+                    <div class="plinth-cluster plinth-nowrap plinth-loose plinth-center">
                         <span class="item-inline-more"><span class="icon arrow-path spin" aria-hidden="true" /></span>
                     </div>
                 } else if items.len() == 0 {
-                    <div class="row center">
+                    <div class="plinth-cluster plinth-nowrap plinth-loose plinth-center">
                         <span class="item-inline-more">{"Nothing to show."}</span>
                     </div>
                 } else {
@@ -348,7 +348,7 @@ impl Component for MediaList {
                         { for items.into_iter().map(|m| self.view_card(ctx, m)) }
                     </div>
 
-                    <div class="row desktop-align-end">
+                    <div class="desktop-align-end plinth-cluster plinth-nowrap plinth-loose">
                         <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
                     </div>
 
@@ -933,7 +933,7 @@ impl MediaList {
             <div class="selection-bar" role="region" aria-label="Selected media">
                 <span class="selection-count">{picked_label(shows, movies)}</span>
 
-                <div class="row wrap tight">
+                <div class="plinth-cluster plinth-tight">
                     if shows > 0 {
                         <div class="chips" role="group" aria-label="Mark the next episode from">
                             <Button class={classes!("chip", regular.then_some("selected"))} label="Regular" title="From the regular seasons" pressed={Some(regular)} onclick={link.callback(|_| Msg::SetScope(api::EpisodeScope::Regular))} />
@@ -1009,7 +1009,7 @@ impl MediaList {
             .callback(move |e: MouseEvent| Msg::TogglePick(key, e.shift_key()));
 
         html! {
-            <div key={format!("{kind:?}-{id}")} class={classes!("media-card", "column", "tight", "lift", picked.then_some("picked"))} {onmouseover}>
+            <div key={format!("{kind:?}-{id}")} class={classes!("media-card", "lift", "plinth-stack", "plinth-tight", picked.then_some("picked"))} {onmouseover}>
                 <Button class={classes!("media-pick", picked.then_some("picked"), (!self.picked.is_empty()).then_some("picking"))} title={format!("Select {title}")} pressed={Some(picked)} onclick={on_pick}>
                     <span class="icon sm check" aria-hidden="true" />
                 </Button>

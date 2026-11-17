@@ -185,7 +185,7 @@ impl Component for Queue {
                 if self.loaded {
                     { self.view_timeline(ctx) }
                 } else {
-                    <div class="column">
+                    <div class="plinth-stack">
                         { for (0..3).map(|_| html! { <Skeleton /> }) }
                     </div>
                 }
@@ -454,7 +454,7 @@ impl Queue {
             <div class={classes!("queue-now", state)} data-test="queue-now">
                 <span class={classes!("queue-now-badge", state)}><span class={classes!("icon", icon)} aria-hidden="true" /></span>
 
-                <div class="column text-gap shrink grow">
+                <div class="shrink grow plinth-stack plinth-snug">
                     <span class={classes!("queue-now-caption", state)}>{caption}</span>
 
                     if let Some(entry) = entry {
@@ -557,8 +557,8 @@ impl Queue {
         });
 
         html! {
-            <div class="column">
-                <div class="row-split queue-controls">
+            <div class="plinth-stack">
+                <div class="queue-controls plinth-cluster plinth-between plinth-loose">
                     <div class="chips queue-filters">
                         { chip(QueueFilter::All, "queue-list", "All") }
                         { chip(QueueFilter::Upcoming, "clock", "Upcoming") }
@@ -566,7 +566,7 @@ impl Queue {
                         { chip(QueueFilter::Failed, "x-mark", "Failed") }
                     </div>
 
-                    <div class="row">
+                    <div class="plinth-cluster plinth-nowrap plinth-loose">
                         if !following {
                             <Button icon="arrow-down-circle" label="Follow" title="Follow the running task" onclick={on_follow} />
                         }
@@ -650,7 +650,7 @@ impl Queue {
                 <span class="task-duration">{duration}</span>
                 <span class="task-time">{time}</span>
 
-                <span class="actions">
+                <span class="actions plinth-cluster plinth-nowrap plinth-tight plinth-end">
                     if entry.is_pending() && self.auth.is_admin() {
                         <div class="input-group">
                             <Button icon="forward" title="Run now" onclick={ctx.link().callback(move |_| Msg::Bump(id))} />

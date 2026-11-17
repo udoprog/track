@@ -137,7 +137,7 @@ impl Component for TranslatedText {
                 if self.open {
                     <ContextMenu icon="language" prompt="Displayed language" anchor={self.anchor.clone()} on_close={link.callback(|_| Msg::Close)}>
                         <div class="table">
-                            <Button class={classes!("row", "clickable", self.selected.is_none().then_some("active"))} title="Use the default language" pressed={Some(self.selected.is_none())} onclick={link.callback(|_| Msg::Pick(None))}>
+                            <Button class={classes!("clickable", "plinth-cluster", "plinth-nowrap", "plinth-loose", self.selected.is_none().then_some("active"))} title="Use the default language" pressed={Some(self.selected.is_none())} onclick={link.callback(|_| Msg::Pick(None))}>
                                 <span class="fill">{"Default"}</span>
 
                                 if self.selected.is_none() {
@@ -158,7 +158,7 @@ impl Component for TranslatedText {
                                 let (name, flag) = locale_label(locale, "Default Language");
 
                                 html! {
-                                    <Button key={locale.to_string()} class={classes!("row", "clickable", selected.then_some("active"))} title={format!("Show in {name}")} pressed={Some(selected)} onclick={link.callback(move |_| Msg::Pick(Some(locale)))}>
+                                    <Button key={locale.to_string()} class={classes!("clickable", "plinth-cluster", "plinth-nowrap", "plinth-loose", selected.then_some("active"))} title={format!("Show in {name}")} pressed={Some(selected)} onclick={link.callback(move |_| Msg::Pick(Some(locale)))}>
                                         <span class="fill">{name}</span>
 
                                         if selected {

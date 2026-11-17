@@ -66,7 +66,7 @@ pub(crate) fn SyncKindsEditor(props: &Props) -> Html {
                     let current = entry.kinds.intersect(capability);
 
                     html! {
-                        <div class="row input-group">
+                        <div class="input-group plinth-cluster plinth-nowrap">
                             <DragHandle {index} />
 
                             <span class="input-label has-text">

@@ -9,7 +9,7 @@
     gap: v.$gap;
 }
 
-// A month band: `.row.title.sm` give it its line and type, this keeps it as
+// A month band: `.plinth-cluster.title.sm` give it its line and type, this keeps it as
 // tall as a control so it lines up with the weeks around it.
 .calendar-month {
     min-height: v.$input-height;

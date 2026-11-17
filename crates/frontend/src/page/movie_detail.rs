@@ -900,7 +900,7 @@ impl MovieDetail {
             .map(|r| r.source);
 
         html! {
-            <div class="column">
+            <div class="plinth-stack">
                 <DetailHero
                     title={movie.strings.title().unwrap_or("Untitled Movie").to_owned()}
                     meta={movie.release_date.map(|ts| ts.date(self.time.clone()).year().to_string())}
@@ -908,7 +908,7 @@ impl MovieDetail {
                 />
 
                 <div class="toolbar">
-                    <div class="row detail-sources">
+                    <div class="detail-sources plinth-cluster">
                         {for movie.remotes.iter().filter_map(|r| {
                             let url = r.remote.movie_url()?;
                             let id = r.remote.source().as_id();
@@ -1003,13 +1003,13 @@ impl MovieDetail {
                     }
                 </div>
 
-                <div class="detail-sidebar column loose">
+                <div class="detail-sidebar plinth-stack plinth-loose">
                     <Image class="poster desktop-only artwork" src={movie.poster.clone()} />
                 </div>
 
-                <div class="column loose shrink" data-testid="detail-content">
-                    <div class="row-split">
-                        <div class="column fill">
+                <div class="shrink plinth-stack plinth-loose" data-testid="detail-content">
+                    <div class="plinth-cluster plinth-between plinth-loose">
+                        <div class="fill plinth-stack">
                             <div class="toolbar">
                                 <indicator title="Release date">
                                     if movie.pending.is_some() {
@@ -1146,7 +1146,7 @@ impl MovieDetail {
                             <span class="watch-when">{w.watched.timestamp.human_date_time(self.time.clone()).view()}</span>
                             <span class="watch-age">{w.watched.timestamp.relative_to(self.time.now())}</span>
 
-                            <div class="actions start-on-mobile">
+                            <div class="actions start-on-mobile plinth-cluster plinth-nowrap plinth-tight plinth-end">
                             <Button node_ref={w.remove_watch_anchor.clone()} icon="trash" label="Remove" title="Remove" expanded={Some(self.confirm_remove_watch == Some(wid))} haspopup="dialog" onclick={link.callback(move |_| WatchMsg::ConfirmRemoveWatch(wid))} />
 
                             if self.confirm_remove_watch == Some(wid) {

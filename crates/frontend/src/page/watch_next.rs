@@ -181,7 +181,7 @@ impl Component for WatchNext {
         let link = ctx.link();
 
         html! {
-            <div class="column">
+            <div class="plinth-stack">
                 <div class="page-controls">
                     <span class="text-muted">
                         if self.pending_loaded {
@@ -189,7 +189,7 @@ impl Component for WatchNext {
                         }
                     </span>
 
-                    <div class="row">
+                    <div class="plinth-cluster plinth-nowrap plinth-loose">
                         if total_pages > 1 {
                             <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
                         }
@@ -213,7 +213,7 @@ impl Component for WatchNext {
                             <div class="field">
                                 <label>{"Per page"}</label>
 
-                                <div class="row">
+                                <div class="plinth-cluster plinth-nowrap plinth-loose">
                                     <Button icon="minus" title="Show a row fewer" onclick={link.callback(|_| Msg::AdjustPageSize(-1))} />
                                     <span class="page-size">{page_size}</span>
                                     <Button icon="plus" title="Show a row more" onclick={link.callback(|_| Msg::AdjustPageSize(1))} />
@@ -236,7 +236,7 @@ impl Component for WatchNext {
                 }
 
                 if total_pages > 1 {
-                    <div class="row center">
+                    <div class="plinth-cluster plinth-nowrap plinth-loose plinth-center">
                         <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
                     </div>
                 }
@@ -620,11 +620,11 @@ impl WatchNext {
     /// slot while the pending list is still loading.
     fn view_pending_skeleton() -> Html {
         html! {
-            <div class="pending-item column">
+            <div class="pending-item plinth-stack">
                 <Skeleton class="poster desktop-only" />
                 <Skeleton class="banner mobile-only" />
 
-                <div class="pending-info column">
+                <div class="pending-info plinth-stack">
                     <div class="pending-content">
                         <Skeleton class="line" style="width: 80%" />
                         <Skeleton class="line" style="width: 50%" />
@@ -741,7 +741,7 @@ impl WatchNext {
             .callback(move |_| Msg::HoverBackdrop(backdrop_url.clone()));
 
         html! {
-            <div {key} class="pending-item column lift" {onmouseover}>
+            <div {key} class="pending-item lift plinth-stack" {onmouseover}>
                 <Link to={route.clone()} class="pending-picture desktop-only" decorative=true>
                     <Image class="poster artwork" src={pending.season_poster.clone().or_else(|| pending.poster.clone())} />
                 </Link>
@@ -751,7 +751,7 @@ impl WatchNext {
                     <Image class="banner" placeholder=true src={pending.season_banner.clone().or_else(|| pending.banner.clone()).or_else(|| pending.backdrop.clone()).or_else(|| pending.poster.clone())} />
                 </Link>
 
-                <div class="pending-info column">
+                <div class="pending-info plinth-stack">
                     <div class="pending-content">
                         {title}
 
@@ -762,7 +762,7 @@ impl WatchNext {
                         }
                     </div>
 
-                    <div class="row between tight">
+                    <div class="plinth-cluster plinth-nowrap plinth-tight plinth-between">
                         <div class="input-group">
                             if aired_in_past {
                                 <MarkTimeMenu quick=true class="primary" icon="check" title="Mark watched" prompt={format!("When did you watch this {}?", pending_kind.title())} preset={preset.clone()} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkWatched(kind, mark_time))} />
@@ -771,7 +771,7 @@ impl WatchNext {
                             }
                         </div>
 
-                        <div class="row">
+                        <div class="plinth-cluster plinth-nowrap plinth-loose">
                             <MarkTimeMenu title="Move pending" icon="bookmark" prompt={format!("When do you want to queue this {}?", pending_kind.title())} preset={preset.clone()} on_confirm={ctx.link().callback(move |mark_time| Msg::MarkPending(pending_kind, mark_time))}>
                                 <span class="icon bookmark" aria-hidden="true" />
                             </MarkTimeMenu>

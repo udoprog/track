@@ -168,7 +168,7 @@ impl Component for CountryPicker {
             let selected = current.contains(&code);
 
             html! {
-                <Button key={code} class={classes!("row", "clickable", selected.then_some("active"))} title={country.name} pressed={Some(selected)} onclick={link.callback(move |_| Msg::Toggle(code))}>
+                <Button key={code} class={classes!("clickable", "plinth-cluster", "plinth-nowrap", "plinth-loose", selected.then_some("active"))} title={country.name} pressed={Some(selected)} onclick={link.callback(move |_| Msg::Toggle(code))}>
                     <span class="fill">{country.name}</span>
 
                     if let Some(c) = code.to_iso().filter(|c| flags::has_flag(c.alpha2)) {
@@ -187,12 +187,12 @@ impl Component for CountryPicker {
                 {trigger}
 
                 <Modal icon="globe-alt" title="Select Countries" on_close={link.callback(|_| Msg::Close)}>
-                    <div class="row">
+                    <div class="plinth-cluster plinth-nowrap plinth-loose">
                         <input class="input-text fill" type="text" autofocus={true} placeholder="Filter" aria-label="Filter countries" value={self.filter.clone()} oninput={on_filter} />
                     </div>
 
                     <div class="table">
-                        <Button class="row clickable" title="All countries" pressed={Some(current.is_empty())} onclick={link.callback(|_| Msg::All)}>
+                        <Button class="clickable plinth-cluster plinth-nowrap plinth-loose" title="All countries" pressed={Some(current.is_empty())} onclick={link.callback(|_| Msg::All)}>
                             <span class="fill">{"All countries"}</span>
 
                             <span class="item-inline">
@@ -218,7 +218,7 @@ impl Component for CountryPicker {
                         }
                     </div>
 
-                    <div class="row desktop-align-end">
+                    <div class="desktop-align-end plinth-cluster plinth-nowrap plinth-loose">
                         <PaginationButtons page={page} total_pages={total_pages} on_page={link.callback(Msg::Page)} />
                     </div>
                 </Modal>

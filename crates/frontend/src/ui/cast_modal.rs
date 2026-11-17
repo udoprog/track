@@ -88,7 +88,7 @@ pub(crate) fn CastModal(props: &Props) -> Html {
 
     html! {
         <Modal icon="user-group" title={html! { "Cast & crew" }} class="cast-modal" on_close={props.on_close.clone()}>
-            <div class="cast-search column">
+            <div class="cast-search plinth-stack">
                 <input
                     type="search"
                     class="input-text"

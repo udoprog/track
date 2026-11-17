@@ -47,7 +47,7 @@ pub(crate) fn XemLookupEditor(props: &Props) -> Html {
         <Reorder class={classes!("form", "xem-lookup")} {on_move}>
             {
                 for sources.iter().enumerate().map(|(index, source)| html! {
-                    <div class="row input-group">
+                    <div class="input-group plinth-cluster plinth-nowrap">
                         <DragHandle {index} />
 
                         <span class="input-label has-text">

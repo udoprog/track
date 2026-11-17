@@ -22,7 +22,7 @@ pub(crate) fn ConfirmDanger(props: &Props) -> Html {
     });
 
     html! {
-        <div class="row align-end">
+        <div class="plinth-cluster plinth-nowrap plinth-loose plinth-end">
             <div class="input-group">
                 <Button icon="x-mark" title="No" class={props.btn_class.clone()} onclick={on_cancel} />
 

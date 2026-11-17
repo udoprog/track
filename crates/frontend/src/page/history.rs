@@ -178,11 +178,11 @@ impl Component for History {
                 </div>
 
                 if !self.loaded || self.list_req.is_pending() {
-                    <div class="row center">
+                    <div class="plinth-cluster plinth-nowrap plinth-loose plinth-center">
                         <span class="item-inline-more"><span class="icon arrow-path spin" aria-hidden="true" /></span>
                     </div>
                 } else if self.groups.is_empty() {
-                    <div class="row center">
+                    <div class="plinth-cluster plinth-nowrap plinth-loose plinth-center">
                         <span class="item-inline-more">{"Nothing to show."}</span>
                     </div>
                 } else {
@@ -198,7 +198,7 @@ impl Component for History {
                         }) }
                     </div>
 
-                    <div class="row desktop-align-end">
+                    <div class="desktop-align-end plinth-cluster plinth-nowrap plinth-loose">
                         <PaginationButtons {page} {total_pages} {on_page} />
                     </div>
                 }

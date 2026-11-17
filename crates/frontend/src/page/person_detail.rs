@@ -148,7 +148,7 @@ impl Component for PersonDetail {
             PersonState::Loading => return html! { <DetailSkeleton /> },
             PersonState::Missing => {
                 return html! {
-                    <div class="row center">
+                    <div class="plinth-cluster plinth-nowrap plinth-loose plinth-center">
                         <span class="item-inline-more">{"No such person"}</span>
                     </div>
                 };
@@ -158,7 +158,7 @@ impl Component for PersonDetail {
 
         html! {
             <>
-                <div class="column loose">
+                <div class="plinth-stack plinth-loose">
                     { self.view_header(ctx, person) }
                     { self.view_filmography() }
                 </div>
@@ -405,7 +405,7 @@ impl PersonDetail {
             <div class="person-detail-header" data-testid="person-header">
                 <Image class="person-detail-photo" placeholder={true} placeholder_icon="user" src={person.profile.clone()} alt={name.clone()} />
 
-                <div class="column shrink">
+                <div class="shrink plinth-stack">
                     <PageHead title={name} sub={person.department.department().map(|d| AttrValue::from(d.to_owned()))}>
                         <div class="input-group">
                             <SyncButton target={SyncTarget::Person(person.id)} text="Sync" onclick={link.callback(|_| Msg::SyncPerson)} />
@@ -425,7 +425,7 @@ impl PersonDetail {
                         </div>
                     </PageHead>
 
-                    <div class="row detail-sources">
+                    <div class="detail-sources plinth-cluster">
                         {for person.remotes.iter().filter_map(|r| {
                             let url = r.remote.person_url(r.slug.as_deref())?;
                             let id = r.remote.source().as_id();

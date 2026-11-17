@@ -180,7 +180,7 @@ impl Component for Calendar {
         let last = weeks[weeks.len() - 1].1[6];
 
         html! {
-            <div class="column">
+            <div class="plinth-stack">
                 { view_range_controls(RangeControls {
                     label: format!("{} {} – {} {}", first.day(), first.month_name(), last.day(), last.month_name()),
                     prev_title: "Previous week",
@@ -216,7 +216,7 @@ impl Component for Calendar {
                         let monday = days[0];
 
                         let band = month_band.as_ref().map(|month_band| html! {
-                            <div key={format!("calendar-month-{monday}")} class="calendar-month row title sm">
+                            <div key={format!("calendar-month-{monday}")} class="calendar-month title sm plinth-cluster plinth-nowrap plinth-loose">
                                 {month_band}
                             </div>
                         });

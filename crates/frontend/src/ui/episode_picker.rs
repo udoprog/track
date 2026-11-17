@@ -151,7 +151,7 @@ impl Component for EpisodePicker {
                     </FormRow>
                 </div>
 
-                <div class="row end">
+                <div class="plinth-cluster plinth-nowrap plinth-loose plinth-end">
                     <Button icon="x-mark" label="Cancel" title="Cancel" onclick={link.callback(|_| Msg::Cancel)} />
 
                     <Button icon="check" label="Move" title="Move the watch here" variant={Variant::Primary} disabled={!can_confirm} onclick={link.callback(|_| Msg::Confirm)} />

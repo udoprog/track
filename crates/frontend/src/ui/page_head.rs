@@ -37,7 +37,7 @@ pub(crate) fn PageHead(props: &Props) -> Html {
     }
 
     html! {
-        <div class="column tight">
+        <div class="plinth-stack plinth-tight">
             if let Some(crumb) = &props.crumb {
                 <div class="text-muted">{crumb.clone()}</div>
             }
@@ -46,7 +46,7 @@ pub(crate) fn PageHead(props: &Props) -> Html {
                 <h1 class={title_class(false)}>{props.title.clone()}</h1>
 
                 if !props.children.is_empty() {
-                    <div class="row tight push">{props.children.clone()}</div>
+                    <div class="plinth-push-end plinth-cluster plinth-nowrap plinth-tight">{props.children.clone()}</div>
                 }
             </div>
 
