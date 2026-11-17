@@ -58,17 +58,6 @@
     }
 }
 
-// Fixed height, so the dialog keeps its size while the search narrows the cast.
-.modal.cast-modal {
-    width: min(960px, calc(100vw - #{v.$gap-sm * 2}));
-    height: 85vh;
-
-    @include g.on-mobile {
-        width: 100%;
-        height: 90vh;
-    }
-}
-
 // Stays in reach while a long cast scrolls under it, covering the modal
 // content's top padding so nothing shows above it (hence the negative offsets
 // of the dialog's $gap padding).

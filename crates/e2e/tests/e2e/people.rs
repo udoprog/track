@@ -246,20 +246,20 @@ pub async fn edits_a_persons_remotes(driver: &mut TestDriver, _: &mut Track) -> 
     open_remote_editor(driver).await?;
 
     driver
-        .find_one_by(".modal input[aria-label=Identifier]")
+        .find_one_by(".plinth-dialog input[aria-label=Identifier]")
         .await?
         .send_keys("12345")
         .await?;
     driver
-        .find_one_by(".modal [title='Add identifier']")
+        .find_one_by(".plinth-dialog [title='Add identifier']")
         .await?
         .click()
         .await?;
     driver
-        .wait_texts(".modal [data-testid='remote-id']", ["12345"])
+        .wait_texts(".plinth-dialog [data-testid='remote-id']", ["12345"])
         .await?;
 
-    let switch = ".modal [data-testid='remote-actions'] [role='switch']";
+    let switch = ".plinth-dialog [data-testid='remote-actions'] [role='switch']";
     driver.find_one_by(switch).await?.click().await?;
     driver.wait_texts(switch, ["Disabled"]).await?;
 
@@ -270,12 +270,12 @@ pub async fn edits_a_persons_remotes(driver: &mut TestDriver, _: &mut Track) -> 
     driver.wait_texts(switch, ["Disabled"]).await?;
 
     driver
-        .find_one_by(".modal .remote [title='Remove identifier']")
+        .find_one_by(".plinth-dialog .remote [title='Remove identifier']")
         .await?
         .click()
         .await?;
     driver.find_one_by("[title='Yes']").await?.click().await?;
-    driver.wait_count(".modal .remote", 0).await
+    driver.wait_count(".plinth-dialog .remote", 0).await
 }
 
 async fn open_remote_editor(driver: &mut TestDriver) -> Result<()> {
@@ -285,9 +285,9 @@ async fn open_remote_editor(driver: &mut TestDriver) -> Result<()> {
         .click()
         .await?;
     driver
-        .find_one_by(".modal [title='Edit remotes']")
+        .find_one_by(".plinth-dialog [title='Edit remotes']")
         .await?
         .click()
         .await?;
-    driver.wait_texts(".modal h2", ["Remotes"]).await
+    driver.wait_texts(".plinth-dialog h2", ["Remotes"]).await
 }

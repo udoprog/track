@@ -369,7 +369,7 @@ async fn check_shared_controls(
     if admin {
         driver
             .wait_texts(
-                ".modal .form-label",
+                ".plinth-dialog .form-label",
                 [
                     "Language",
                     "Automatic sync",
@@ -384,7 +384,7 @@ async fn check_shared_controls(
     } else {
         driver
             .wait_texts(
-                ".modal .form-label",
+                ".plinth-dialog .form-label",
                 ["Language", "Specials", "Last synced"],
             )
             .await?;
@@ -402,14 +402,14 @@ async fn check_shared_controls(
         .click()
         .await?;
     driver
-        .wait_texts(".modal .text-muted", ["No releases recorded."])
+        .wait_texts(".plinth-dialog .text-muted", ["No releases recorded."])
         .await?;
     if admin {
         driver
-            .find_one_by(".modal [title='Air date rules']")
+            .find_one_by(".plinth-dialog [title='Air date rules']")
             .await?;
     } else {
-        present(".modal [title='Air date rules']").await?;
+        present(".plinth-dialog [title='Air date rules']").await?;
     }
 
     driver.webdriver().goto(movie).await?;
@@ -418,7 +418,7 @@ async fn check_shared_controls(
     if admin {
         driver
             .wait_texts(
-                ".modal .form-label",
+                ".plinth-dialog .form-label",
                 [
                     "Language",
                     "Automatic sync",
@@ -431,7 +431,7 @@ async fn check_shared_controls(
             .await?;
     } else {
         driver
-            .wait_texts(".modal .form-label", ["Language", "Last synced"])
+            .wait_texts(".plinth-dialog .form-label", ["Language", "Last synced"])
             .await?;
     }
 
@@ -440,11 +440,11 @@ async fn check_shared_controls(
     open_settings(driver).await?;
     if admin {
         driver
-            .wait_texts(".modal .form-label", ["Last synced", "Remotes"])
+            .wait_texts(".plinth-dialog .form-label", ["Last synced", "Remotes"])
             .await?;
     } else {
         driver
-            .wait_texts(".modal .form-label", ["Last synced"])
+            .wait_texts(".plinth-dialog .form-label", ["Last synced"])
             .await?;
     }
 
@@ -459,7 +459,7 @@ async fn open_settings(driver: &TestDriver) -> Result<()> {
         .await?
         .click()
         .await?;
-    driver.find_one_by(".modal").await?;
+    driver.find_one_by(".plinth-dialog").await?;
     Ok(())
 }
 

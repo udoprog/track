@@ -1,23 +1,6 @@
 @use 'grid' as g;
 @use 'vars' as v;
 
-// The help modal: sections beside the one being read, stacked on phones.
-.modal.help-modal {
-    width: min(#{v.$modal-width-lg}, calc(100vw - #{v.$gap-sm * 2}));
-    height: 85vh;
-
-    @include g.on-mobile {
-        width: 100%;
-        height: 90vh;
-    }
-
-    >.modal-content {
-        flex: 1;
-        overflow: hidden;
-        padding: 0;
-    }
-}
-
 .help {
     display: grid;
     grid-template-columns: 15rem 1fr;

@@ -76,8 +76,10 @@
     }
 }
 
-// Section titles in the text colour, not the accent of the app's headings.
+// Section titles in the text colour, not the accent of the app's headings,
+// and without the headings' gap: plinth spaces a title's icon itself.
 .plinth-section-head-title {
+    gap: 0;
     color: v.$text-primary;
 }
 

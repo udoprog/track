@@ -679,7 +679,7 @@ impl Component for NumberingEditor {
         };
 
         html! {
-            <Modal icon="adjustments-horizontal" title={html!("Episode numbering")} class="numbering-modal" on_close={on_close.clone()}>
+            <Modal icon="adjustments-horizontal" title="Episode numbering" class="numbering-modal" on_close={on_close.clone()}>
                 <div class="numbering-mode" role="group" aria-label="Numbering mode">
                     <Button class={classes!("chip", (!self.manual).then_some("selected"))} label="Automatic" title="Automatic: same as TheTVDB" pressed={Some(!self.manual)} onclick={link.callback(|_: MouseEvent| Msg::SetManual(false))} />
                     <Button class={classes!("chip", self.manual.then_some("selected"))} label="Manual ranges" title="Manual ranges" pressed={Some(self.manual)} onclick={link.callback(|_: MouseEvent| Msg::SetManual(true))} />

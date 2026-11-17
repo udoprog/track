@@ -604,13 +604,13 @@ pub async fn adds_languages_and_rules(driver: &mut TestDriver, _: &mut Track) ->
         "Add language has no label"
     );
     add_language.click().await?;
-    driver.find_one_by(".modal").await?;
+    driver.find_one_by(".plinth-dialog").await?;
     driver
-        .find_one_by(".modal-background")
+        .find_one_by(".plinth-dialog-layer")
         .await?
         .click()
         .await?;
-    driver.wait_count(".modal", 0).await?;
+    driver.wait_count(".plinth-dialog", 0).await?;
 
     open_page(driver, "Sources & dates").await?;
     let rules = driver.count("rule").await?;

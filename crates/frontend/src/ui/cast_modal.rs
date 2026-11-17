@@ -87,7 +87,7 @@ pub(crate) fn CastModal(props: &Props) -> Html {
         .collect::<Vec<_>>();
 
     html! {
-        <Modal icon="user-group" title={html! { "Cast & crew" }} class="cast-modal" on_close={props.on_close.clone()}>
+        <Modal icon="user-group" title="Cast & crew" size={plinth::DialogSize::WideTall} testid="cast-modal" on_close={props.on_close.clone()}>
             <div class="cast-search plinth-stack">
                 <input
                     type="search"

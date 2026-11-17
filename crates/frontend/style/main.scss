@@ -1,8 +1,8 @@
 // plinth's tokens, then the rules of the parts of plinth the app uses, in
 // plinth's own order (style/_index.scss), so the app's own rules refine them.
 @use 'vars' as v;
-// The app's small text, controls, phone breakpoint and buttons (filled, no
-// edge, touch height on phones), where plinth's differ.
+// The app's small text, controls, phone breakpoint, buttons (filled, no
+// edge, touch height on phones) and dialogs (centred), where plinth's differ.
 @use '../../../../plinth/style/tokens' as plinth-tokens with (
     $text-sm: v.$font-sm,
     $control-height: v.$input-height,
@@ -15,8 +15,25 @@
     $button-content-gap: v.$text-gap,
     $button-icon-offset: -(v.$text-gap),
     $button-phone-height: v.$input-height-touch,
+    $radius-lg: v.$radius-lg,
+    $glyph-size: v.$icon-size,
+    $dialog-width: 600px,
+    $dialog-width-wide: v.$modal-width-lg,
+    $dialog-min-height: 0,
+    $dialog-height-tall: 90vh,
+    $dialog-sheet-height: 90vh,
+    $dialog-centred: true,
+    $dialog-max-height: 85vh,
+    $dialog-padding: v.$gap,
+    $dialog-body-padding: v.$gap,
+    $dialog-body-gap: v.$gap,
+    $dialog-title-size: v.$font-lg,
+    $dialog-scroll-gutter: auto,
+    $dialog-sheet-edge: top,
     $button-colours: (
         secondary: (fill: var(--neutral-bg), edge: transparent, pressed-fill: var(--button-fill), pressed-edge: var(--button-edge)),
+        // plinth's close buttons: filled, their icon muted.
+        quiet: (fill: var(--neutral-bg), ink: var(--text-muted), edge: transparent),
         primary: (fill: var(--accent-bg), ink: var(--text), edge: transparent, hover-edge: var(--accent)),
         success: (fill: var(--success-bg), ink: var(--text), edge: transparent, hover-edge: var(--accent)),
         danger: (fill: var(--danger-bg), ink: var(--text), edge: transparent, hover-edge: var(--accent)),
@@ -25,6 +42,8 @@
 @use '../../../../plinth/style/layout' as plinth-layout;
 @use '../../../../plinth/style/heads' as plinth-heads;
 @use '../../../../plinth/style/buttons' as plinth-buttons;
+@use '../../../../plinth/style/icons' as plinth-icons;
+@use '../../../../plinth/style/dialog' as plinth-dialog;
 @use '../../../../plinth/style/utilities' as plinth-utilities;
 @use 'theme';
 @use 'icons';
@@ -1980,78 +1999,6 @@ input-label-controls {
 
 .spin {
     animation: spin 1s linear infinite;
-}
-
-// Modals share the popover surface (`.context-menu`); on phones they rise from
-// the bottom edge as a sheet.
-.modal {
-    display: flex;
-    flex-direction: column;
-    background: v.$bg-surface;
-    border: 1px solid v.$border-subtle;
-    border-radius: v.$radius-lg;
-    box-shadow: 0 8px 32px v.$shadow-strong;
-    width: min(600px, calc(100vw - #{v.$gap-sm * 2}));
-    max-height: 85vh;
-
-    // Focused only as a fallback when it holds no control; the box is not
-    // itself something to act on.
-    &:focus {
-        outline: none;
-    }
-
-    @include g.on-mobile {
-        width: 100%;
-        max-height: 90vh;
-        border-width: 1px 0 0;
-        border-radius: v.$radius-lg v.$radius-lg 0 0;
-    }
-
-    &-background {
-        position: fixed;
-        inset: 0;
-        background: v.$scrim;
-        z-index: 500;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-
-        @include g.on-mobile {
-            align-items: flex-end;
-        }
-    }
-
-    &-header {
-        display: flex;
-        flex-direction: row;
-        justify-content: space-between;
-        align-items: center;
-        gap: v.$gap-sm;
-        padding: v.$gap-sm v.$gap-sm 0 v.$gap;
-    }
-
-    &-title {
-        font-size: v.$font-lg;
-        color: v.$text-primary;
-        min-width: 0;
-        // Inherited by the title's icon.
-        --icon-color: #{v.$text-muted};
-    }
-
-    &-close {
-        --icon-color: #{v.$text-muted};
-    }
-
-    &-content {
-        display: flex;
-        flex-direction: column;
-        gap: v.$gap;
-        // Fills a dialog given a fixed height (the cast dialog).
-        flex: 1;
-        overflow-y: auto;
-        min-height: 0;
-        padding: v.$gap;
-    }
 }
 
 indicator {

@@ -12,14 +12,15 @@ $numbering-head: 26px;
 // from its height, leaving the rest to the map's episodes.
 $numbering-map-chrome: 120px;
 
-.modal.numbering-modal {
-    // Anchored at the top on wide screens and at full height as a phone's
-    // sheet, so the map growing as runs unfold leaves its rows in place.
+.plinth-dialog.numbering-modal {
+    // Anchored at the top on wide screens (5vh down, less the layer's own
+    // padding) and at full height as a phone's sheet, so the map growing as
+    // runs unfold leaves its rows in place.
     @include g.on-desktop {
         align-self: flex-start;
         width: min(1280px, 96vw);
         max-height: 90vh;
-        margin-top: 5vh;
+        margin-top: calc(5vh - var(--space-4));
     }
 
     @include g.on-mobile {

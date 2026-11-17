@@ -18,7 +18,7 @@ pub(crate) struct Props {
 #[function_component]
 pub(crate) fn NamesModal(props: &Props) -> Html {
     html! {
-        <Modal icon="tag" title="Other names" class="names-modal" on_close={props.on_close.clone()}>
+        <Modal icon="tag" title="Other names" testid="names-modal" on_close={props.on_close.clone()}>
             <p class="names-intro text-muted">
                 {"Other titles this show and its seasons go by, with each one's language and where it comes from."}
                 <Help section={help::NAMES} />

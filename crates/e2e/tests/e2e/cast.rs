@@ -22,7 +22,7 @@ async fn open_cast_modal(driver: &TestDriver) -> Result<()> {
 
     driver.find_one_by(".credits-toggle").await?.click().await?;
 
-    driver.find_one_by(".modal.cast-modal").await?;
+    driver.find_one_by("[data-testid=cast-modal]").await?;
     Ok(())
 }
 
@@ -32,7 +32,7 @@ pub async fn opens_the_full_cast_in_a_modal(driver: &mut TestDriver, _: &mut Tra
     open_cast_modal(driver).await?;
 
     driver
-        .wait_texts(".cast-modal .cast-character", CAST)
+        .wait_texts("[data-testid=cast-modal] .cast-character", CAST)
         .await?;
     ensure!(
         driver
@@ -52,7 +52,7 @@ pub async fn opens_the_full_cast_in_a_modal(driver: &mut TestDriver, _: &mut Tra
         .send_keys(ESCAPE)
         .await?;
 
-    driver.wait_count(".modal", 0).await
+    driver.wait_count(".plinth-dialog", 0).await
 }
 
 /// The search keeps the cast whose name or character holds every word, and
@@ -67,24 +67,29 @@ pub async fn search_filters_by_person_and_character(
 
     search.send_keys("hopper").await?;
     driver
-        .wait_texts(".cast-modal .cast-name", ["Grace Hopper"])
+        .wait_texts("[data-testid=cast-modal] .cast-name", ["Grace Hopper"])
         .await?;
 
     // Named only in Swedish, and credited for two parts.
     search.send_keys(&BACKSPACE.repeat(6)).await?;
     search.send_keys("garbo").await?;
     driver
-        .wait_texts(".cast-modal .cast-name", ["Greta Garbo", "Greta Garbo"])
+        .wait_texts(
+            "[data-testid=cast-modal] .cast-name",
+            ["Greta Garbo", "Greta Garbo"],
+        )
         .await?;
 
     search.send_keys(&BACKSPACE.repeat(5)).await?;
     search.send_keys("the narrator").await?;
     driver
-        .wait_texts(".cast-modal .cast-character", ["The Narrator"])
+        .wait_texts("[data-testid=cast-modal] .cast-character", ["The Narrator"])
         .await?;
 
     search.send_keys(" nobody").await?;
-    driver.wait_count(".cast-modal .cast-card", 0).await?;
+    driver
+        .wait_count("[data-testid=cast-modal] .cast-card", 0)
+        .await?;
     driver
         .wait_texts(
             "[data-test=cast-empty]",
@@ -93,7 +98,9 @@ pub async fn search_filters_by_person_and_character(
         .await?;
 
     search.send_keys(&BACKSPACE.repeat(19)).await?;
-    driver.wait_texts(".cast-modal .cast-character", CAST).await
+    driver
+        .wait_texts("[data-testid=cast-modal] .cast-character", CAST)
+        .await
 }
 
 /// On a phone the cast modal is a full-width sheet whose cards fit across it.
@@ -104,16 +111,16 @@ pub async fn phone_cast_modal_fits_the_screen(
     driver.set_window_size(400, 850).await?;
     open_cast_modal(driver).await?;
     driver
-        .wait_texts(".cast-modal .cast-character", CAST)
+        .wait_texts("[data-testid=cast-modal] .cast-character", CAST)
         .await?;
 
     let modal = driver
-        .find_one_by(".modal.cast-modal")
+        .find_one_by("[data-testid=cast-modal]")
         .await?
         .rect()
         .await?;
     let page = driver
-        .find_one_by(".modal-background")
+        .find_one_by(".plinth-dialog-layer")
         .await?
         .rect()
         .await?;
@@ -128,7 +135,7 @@ pub async fn phone_cast_modal_fits_the_screen(
     let sideways = driver
         .webdriver()
         .execute(
-            "const c = document.querySelector('.cast-modal .modal-content'); \
+            "const c = document.querySelector('[data-testid=cast-modal] .plinth-dialog-body'); \
              return c.scrollWidth - c.clientWidth;",
             Vec::new(),
         )
@@ -164,8 +171,10 @@ pub async fn movie_opens_the_full_cast_in_a_modal(
     driver.wait_texts(".detail-title", ["Seeded Movie"]).await?;
 
     driver.find_one_by(".credits-toggle").await?.click().await?;
-    driver.find_one_by(".modal.cast-modal").await?;
-    driver.wait_count(".cast-modal .cast-card", 9).await?;
+    driver.find_one_by("[data-testid=cast-modal]").await?;
+    driver
+        .wait_count("[data-testid=cast-modal] .cast-card", 9)
+        .await?;
     ensure!(
         driver
             .count("[data-testid=credits] > .cast-grid .cast-card")
@@ -181,9 +190,9 @@ pub async fn movie_opens_the_full_cast_in_a_modal(
     let search = driver.find_one_by("[data-test=cast-search]").await?;
     search.send_keys("compiler").await?;
     driver
-        .wait_texts(".cast-modal .cast-name", ["Frances Allen"])
+        .wait_texts("[data-testid=cast-modal] .cast-name", ["Frances Allen"])
         .await?;
 
     search.send_keys(ESCAPE).await?;
-    driver.wait_count(".modal", 0).await
+    driver.wait_count(".plinth-dialog", 0).await
 }

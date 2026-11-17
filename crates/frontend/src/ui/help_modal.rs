@@ -87,7 +87,7 @@ pub(crate) fn HelpModal(props: &Props) -> Html {
     };
 
     html! {
-        <Modal icon="question-mark-circle" title={html! { "Help" }} class="help-modal" on_close={props.on_close.clone()}>
+        <Modal icon="question-mark-circle" title="Help" size={plinth::DialogSize::WideTall} flush=true on_close={props.on_close.clone()}>
             <div class="help" data-test="help">
                 <nav class="help-nav" aria-label="Help sections">
                     <input
