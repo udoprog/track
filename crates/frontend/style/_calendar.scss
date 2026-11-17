@@ -1,36 +1,28 @@
 @use 'grid' as g;
 @use 'vars' as v;
 
-@mixin row-base {
+// Day sections and the schedule's blocks stack with the page's rhythm.
+.calendar-grid,
+.agenda {
     display: flex;
+    flex-direction: column;
+    gap: v.$gap;
+}
+
+// A month band: `.row.title.sm` give it its line and type, this keeps it as
+// tall as a control so it lines up with the weeks around it.
+.calendar-month {
     min-height: v.$input-height;
-    align-items: center;
 
     @include g.on-mobile {
         min-height: v.$input-height-touch;
     }
 }
 
-@mixin column-base {
+.calendar-week {
     display: flex;
     flex-direction: column;
     gap: v.$gap;
-}
-
-.calendar-grid {
-    @include column-base;
-}
-
-.calendar-month {
-    @include row-base;
-
-    font-size: v.$font-base;
-    font-weight: v.$bold-weight;
-    color: v.$text-color;
-}
-
-.calendar-week {
-    @include column-base;
 
     @include g.on-desktop {
         display: grid;
@@ -41,10 +33,6 @@
 
 // The Upcoming agenda, and the Schedule on phones: days in a column, each a
 // heading over what airs on it.
-.agenda {
-    @include column-base;
-}
-
 .agenda-day {
     display: flex;
     flex-direction: column;
@@ -89,24 +77,10 @@
         background: var(--neutral-bg);
     }
 
-    >.schedule-poster {
-        grid-area: poster;
-    }
-
-    >.schedule-title {
-        grid-area: title;
-        align-self: end;
-    }
-
-    >.schedule-times {
-        grid-area: times;
-        align-self: start;
-        // Line the times' text up with the title, past their hover padding.
-        margin-inline-start: -(v.$padding);
-    }
 }
 
 .schedule-poster {
+    grid-area: poster;
     display: block;
     width: 40px;
     aspect-ratio: 2 / 3;
@@ -116,6 +90,8 @@
 }
 
 .schedule-title {
+    grid-area: title;
+    align-self: end;
     color: v.$text-color;
     font-size: v.$font-sm;
     font-weight: v.$bold-weight;
@@ -127,6 +103,10 @@
 }
 
 .schedule-times {
+    grid-area: times;
+    align-self: start;
+    // Line the times' text up with the title, past their hover padding.
+    margin-inline-start: -(v.$padding);
     display: flex;
     flex-wrap: wrap;
     gap: 2px v.$gap-xs;
@@ -223,41 +203,38 @@
         &.today {
             background: color-mix(in srgb, v.$color-primary 12%, transparent);
         }
+    }
+}
 
-        // Entries stack in a narrow tile: title over times, no poster.
-        .agenda-items {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-        }
+// Compact entries stack in a narrow tile on wide screens: title over times, no
+// poster. In that column align-self is horizontal, so everything sits flush
+// left. On phones the tile is an agenda day and these change nothing.
+@include g.on-desktop {
+    .schedule-item.compact {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 2px;
+        padding: v.$padding v.$padding-md;
+        border-radius: v.$radius-sm;
+    }
 
-        .schedule-item {
-            display: flex;
-            flex-direction: column;
-            align-items: stretch;
-            gap: 2px;
-            padding: v.$padding v.$padding-md;
-            border-radius: v.$radius-sm;
-        }
+    .schedule-poster.compact {
+        display: none;
+    }
 
-        .schedule-poster {
-            display: none;
-        }
+    .schedule-title.compact {
+        align-self: stretch;
+        font-size: v.$font-xs;
+    }
 
-        // In this column align-self is horizontal: keep everything flush left.
-        .schedule-title {
-            align-self: stretch;
-            font-size: v.$font-xs;
-        }
+    .schedule-times.compact {
+        align-self: stretch;
+        margin-inline-start: 0;
+    }
 
-        .schedule-times {
-            align-self: stretch;
-            margin-inline-start: 0;
-        }
-
-        .schedule-time {
-            padding: 0;
-        }
+    .schedule-time.compact {
+        padding: 0;
     }
 }
 
@@ -273,7 +250,7 @@
     font-variant-numeric: tabular-nums;
     color: v.$text-muted;
 
-    .calendar-cell.today & {
+    &.today {
         background: var(--accent-selected);
         color: v.$text-color-selected;
     }

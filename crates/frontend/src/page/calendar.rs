@@ -11,7 +11,9 @@ use crate::error::{CustomContext, Error, Message};
 use crate::router::MediaSelection;
 use crate::ui::{Button, ContextMenu, Skeleton};
 
-use super::schedule_item::{view_day_heading, view_schedule_item};
+use super::schedule_item::{
+    RangeControls, view_day_heading, view_range_controls, view_schedule_item, view_stepper,
+};
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
@@ -179,31 +181,25 @@ impl Component for Calendar {
 
         html! {
             <div class="column">
-                <div class="page-controls">
-                    <span class="text-muted">
-                        { format!("{} {} – {} {}", first.day(), first.month_name(), last.day(), last.month_name()) }
-                    </span>
-
-                    <div class="row">
-                        <Button icon="chevron-left" title="Previous week" onclick={on_prev} />
-                        <Button icon="calendar" label="This week" title="Back to this week" class="chip" disabled={week_offset == 0 && !week_start} onclick={on_reset} />
-                        <Button icon="chevron-right" title="Next week" onclick={on_next} />
-                        <Button node_ref={self.options_anchor.clone()} icon="adjustments-horizontal" title="View options" class={classes!("chip", self.options_open.then_some("selected"))} expanded={Some(self.options_open)} haspopup="dialog" onclick={link.callback(|_| Msg::ToggleOptions)} />
-                    </div>
-                </div>
+                { view_range_controls(RangeControls {
+                    label: format!("{} {} – {} {}", first.day(), first.month_name(), last.day(), last.month_name()),
+                    prev_title: "Previous week",
+                    next_title: "Next week",
+                    reset_label: "This week",
+                    reset_title: "Back to this week",
+                    reset_disabled: week_offset == 0 && !week_start,
+                    options_anchor: &self.options_anchor,
+                    options_open: self.options_open,
+                    on_prev,
+                    on_next,
+                    on_reset,
+                    on_options: link.callback(|_| Msg::ToggleOptions),
+                }) }
 
                 if self.options_open {
                     <ContextMenu icon="adjustments-horizontal" prompt="View options" anchor={self.options_anchor.clone()} on_close={link.callback(|_| Msg::ToggleOptions)}>
                         <div class="form">
-                            <div class="field">
-                                <label>{"Weeks shown"}</label>
-
-                                <div class="row">
-                                    <Button icon="minus" title="Fewer weeks" onclick={on_fewer} disabled={week_count <= 1} />
-                                    <span class="page-size">{week_count}</span>
-                                    <Button icon="plus" title="More weeks" onclick={on_more} />
-                                </div>
-                            </div>
+                            { view_stepper("Weeks shown", "Fewer weeks", "More weeks", week_count, on_fewer, on_more) }
 
                             if can_reveal_week_start {
                                 <div class="field mobile-only">
@@ -220,7 +216,7 @@ impl Component for Calendar {
                         let monday = days[0];
 
                         let band = month_band.as_ref().map(|month_band| html! {
-                            <div key={format!("calendar-month-{monday}")} class="calendar-month">
+                            <div key={format!("calendar-month-{monday}")} class="calendar-month row title sm">
                                 {month_band}
                             </div>
                         });
@@ -248,7 +244,7 @@ impl Component for Calendar {
                                             (is_past && !show_past).then_some("desktop-only"),
                                             (known && items.is_empty()).then_some("desktop-only"),
                                         )}>
-                                            <span class="calendar-day-number desktop-only">{day.day()}</span>
+                                            <span class={classes!("calendar-day-number", "desktop-only", is_today.then_some("today"))}>{day.day()}</span>
 
                                             <div class="mobile-only">
                                                 { view_day_heading(day, today) }
@@ -258,7 +254,7 @@ impl Component for Calendar {
                                                 <Skeleton class="line" />
                                             } else if !items.is_empty() {
                                                 <div class="agenda-items">
-                                                    { for items.iter().map(|item| view_schedule_item(item, &self.time, &on_hover)) }
+                                                    { for items.iter().map(|item| view_schedule_item(item, &self.time, &on_hover, true)) }
                                                 </div>
                                             }
                                         </div>

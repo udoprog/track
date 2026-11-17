@@ -8,9 +8,11 @@ use yew::prelude::*;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::MediaSelection;
-use crate::ui::{Button, ContextMenu, Skeleton};
+use crate::ui::{ContextMenu, Skeleton};
 
-use super::schedule_item::{view_day_heading, view_schedule_item};
+use super::schedule_item::{
+    RangeControls, view_day_heading, view_range_controls, view_schedule_item, view_stepper,
+};
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
@@ -149,30 +151,24 @@ impl Component for ScheduleRange {
 
         html! {
             <div class="column">
-                <div class="page-controls">
-                    <span class="text-muted">
-                        { format!("{} {} – {} {}", first.day(), first.month_name(), last.day(), last.month_name()) }
-                    </span>
-
-                    <div class="row">
-                        <Button icon="chevron-left" title="Previous day" onclick={on_prev} />
-                        <Button icon="calendar" label="Today" title="Back to today" class="chip" disabled={offset == 0} onclick={on_reset} />
-                        <Button icon="chevron-right" title="Next day" onclick={on_next} />
-                        <Button node_ref={self.options_anchor.clone()} icon="adjustments-horizontal" title="View options" class={classes!("chip", self.options_open.then_some("selected"))} expanded={Some(self.options_open)} haspopup="dialog" onclick={link.callback(|_| Msg::ToggleOptions)} />
-                    </div>
-                </div>
+                { view_range_controls(RangeControls {
+                    label: format!("{} {} – {} {}", first.day(), first.month_name(), last.day(), last.month_name()),
+                    prev_title: "Previous day",
+                    next_title: "Next day",
+                    reset_label: "Today",
+                    reset_title: "Back to today",
+                    reset_disabled: offset == 0,
+                    options_anchor: &self.options_anchor,
+                    options_open: self.options_open,
+                    on_prev,
+                    on_next,
+                    on_reset,
+                    on_options: link.callback(|_| Msg::ToggleOptions),
+                }) }
 
                 if self.options_open {
                     <ContextMenu icon="adjustments-horizontal" prompt="View options" anchor={self.options_anchor.clone()} on_close={link.callback(|_| Msg::ToggleOptions)}>
-                        <div class="field">
-                            <label>{"Days shown"}</label>
-
-                            <div class="row">
-                                <Button icon="minus" title="Fewer days" onclick={on_fewer} disabled={days_count <= 1} />
-                                <span class="page-size">{days_count}</span>
-                                <Button icon="plus" title="More days" onclick={on_more} />
-                            </div>
-                        </div>
+                        { view_stepper("Days shown", "Fewer days", "More days", days_count as u32, on_fewer, on_more) }
                     </ContextMenu>
                 }
 
@@ -337,7 +333,7 @@ impl ScheduleRange {
                     <p class="text-muted">{"Nothing airs"}</p>
                 } else {
                     <div class="agenda-items">
-                        { for items.iter().map(|item| view_schedule_item(item, &self.time, &on_hover)) }
+                        { for items.iter().map(|item| view_schedule_item(item, &self.time, &on_hover, false)) }
                     </div>
                 }
             </section>
