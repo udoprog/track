@@ -34,6 +34,8 @@
 //   .sm                base size instead of large
 //   .clamp             one line, ellipsis when it overflows
 //
+// .dim            a quieter part of a line (a hidden numbering's name)
+//
 // Buttons take their sizes from `.button.small` (_input.scss).
 
 @use 'vars' as v;
@@ -243,4 +245,8 @@
         text-overflow: ellipsis;
         white-space: nowrap;
     }
+}
+
+.dim {
+    opacity: 0.55;
 }

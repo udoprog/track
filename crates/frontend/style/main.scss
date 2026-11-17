@@ -434,18 +434,6 @@ a.remote-link:hover .remote-id {
     text-decoration: underline;
 }
 
-.remote-kinds {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: v.$gap-xs;
-}
-
-.remote-caption {
-    color: v.$text-muted;
-    font-size: v.$font-sm;
-}
-
 .remote-cache {
     display: flex;
     flex-wrap: wrap;
@@ -717,12 +705,9 @@ a.search-title:hover {
     border-radius: v.$radius-lg;
     box-shadow: 0 8px 32px v.$shadow;
 
-    h1 {
-        margin: 0;
-        color: v.$color-title;
-        font-size: v.$font-xl;
-    }
-
+    // The crate's markup gives its fields and notices no card-specific
+    // class, so the card's narrower label column and notice colour can only
+    // be set from here.
     .auth-field {
         @include g.on-desktop {
             grid-template-columns: 140px minmax(0, 1fr);
@@ -732,6 +717,14 @@ a.search-title:hover {
     .auth-notice {
         color: v.$text-color;
     }
+}
+
+// The page's <h1> (`.auth-heading` is also the account's <h2>, which
+// `.auth-account` and `.auth-toolbar` restyle).
+h1.auth-heading {
+    margin: 0;
+    color: v.$color-title;
+    font-size: v.$font-xl;
 }
 
 .auth-title {
@@ -839,7 +832,8 @@ a.search-title:hover {
     @extend .visually-hidden;
 }
 
-// The components' buttons carry text, not icons.
+// The components' buttons carry text, not icons. They have no class of their
+// own (the crate marks only some by role), so the pages that hold them set it.
 :is(.auth-page, .auth-account, .auth-admin-users, .auth-cloudflare-settings) button {
     padding: v.$padding v.$padding * 2;
 }
@@ -890,33 +884,31 @@ a.search-title:hover {
     max-width: none;
 }
 
-.auth-admin-users {
-    .auth-toolbar {
-        display: flex;
-        align-items: center;
-        gap: v.$gap;
-        padding-bottom: v.$padding-lg;
-        border-bottom: 1px solid v.$border-subtle-transparent;
+.auth-toolbar {
+    display: flex;
+    align-items: center;
+    gap: v.$gap;
+    padding-bottom: v.$padding-lg;
+    border-bottom: 1px solid v.$border-subtle-transparent;
 
-        h2 {
-            flex: 1;
-            padding: 0;
-            border: none;
-        }
+    >.auth-heading {
+        flex: 1;
+        padding: 0;
+        border: none;
     }
+}
 
-    .auth-add-user {
-        max-width: 640px;
-    }
+.auth-add-user {
+    max-width: 640px;
+}
 
-    .auth-filter {
-        display: flex;
-        gap: v.$gap-xs;
+.auth-filter {
+    display: flex;
+    gap: v.$gap-xs;
 
-        >.auth-input {
-            flex: 1;
-            max-width: 320px;
-        }
+    >.auth-input {
+        flex: 1;
+        max-width: 320px;
     }
 }
 
@@ -941,21 +933,6 @@ a.search-title:hover {
         border-top: 1px solid v.$border-subtle-transparent;
     }
 
-    .auth-user-login {
-        white-space: nowrap;
-    }
-
-    .auth-user-email {
-        max-width: 24ch;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .auth-actions {
-        justify-content: flex-start;
-    }
-
     @include g.on-mobile {
         thead {
             display: none;
@@ -971,11 +948,28 @@ a.search-title:hover {
         td {
             padding: 0;
         }
-
-        .auth-user-email {
-            max-width: none;
-        }
     }
+}
+
+// The cells the crate classes (flat, though the table's own rules reach its
+// th/td/tr by element: those have no class).
+.auth-user-login {
+    white-space: nowrap;
+}
+
+.auth-user-email {
+    max-width: 24ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    @include g.on-mobile {
+        max-width: none;
+    }
+}
+
+.auth-user-actions .auth-actions {
+    justify-content: flex-start;
 }
 
 .auth-access,
@@ -1718,30 +1712,35 @@ image {
     display: flex;
     gap: 0;
 
+    // Wins over the controls' own radius by coming after `_input.scss` in the
+    // cascade and by its child + pseudo-class specificity, not by !important.
     >* {
-        border-radius: 0 !important;
+        border-radius: 0;
 
         &:first-child {
-            border-radius: v.$radius-sm 0 0 v.$radius-sm !important;
+            border-radius: v.$radius-sm 0 0 v.$radius-sm;
         }
 
         &:last-child {
-            border-radius: 0 v.$radius-sm v.$radius-sm 0 !important;
+            border-radius: 0 v.$radius-sm v.$radius-sm 0;
         }
 
         &:only-child {
-            border-radius: v.$radius-sm !important;
+            border-radius: v.$radius-sm;
         }
 
         // Set apart from the group, e.g. a destructive action.
         &.detached {
             margin-inline-start: v.$gap-sm;
-            border-radius: v.$radius-sm !important;
+            border-radius: v.$radius-sm;
         }
 
+        // The member before a detached one closes the group's corner: there is
+        // no previous-sibling selector, so this is the one place `:has()` is used
+        // for it (the three detached buttons all follow the group's last member).
         &:has(+ .detached) {
-            border-start-end-radius: v.$radius-sm !important;
-            border-end-end-radius: v.$radius-sm !important;
+            border-start-end-radius: v.$radius-sm;
+            border-end-end-radius: v.$radius-sm;
         }
     }
 
@@ -1852,6 +1851,8 @@ input-label-controls {
     }
 
     // One ring, laid over the border rather than a second one outside it.
+    // `:has()` because the ring belongs on the wrapper but follows the input's
+    // keyboard focus, which `:focus-within` cannot tell from a click.
     &:has(>input:focus-visible) {
         @include focus-ring;
         outline-offset: -1px;
@@ -2050,16 +2051,18 @@ input-label-controls {
         align-items: center;
         gap: v.$gap-sm;
         padding: v.$gap-sm v.$gap-sm 0 v.$gap;
+    }
 
-        h2 {
-            font-size: v.$font-lg;
-            color: v.$text-primary;
-            min-width: 0;
-        }
+    &-title {
+        font-size: v.$font-lg;
+        color: v.$text-primary;
+        min-width: 0;
+        // Inherited by the title's icon.
+        --icon-color: #{v.$text-muted};
+    }
 
-        .icon {
-            --icon-color: #{v.$text-muted};
-        }
+    &-close {
+        --icon-color: #{v.$text-muted};
     }
 
     &-content {

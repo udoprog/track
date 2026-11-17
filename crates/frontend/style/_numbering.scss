@@ -725,14 +725,10 @@ $numbering-map-chrome: 120px;
 }
 
 // The "Other numberings" setting: a row's name takes the free width, and a
-// hidden numbering's parts (`.dim`) are quieter.
+// hidden numbering's parts (`.dim`, _layout.scss) are quieter.
 .numbering-name {
     flex: 1;
     gap: v.$gap-xs;
     min-width: 0;
     flex-wrap: wrap;
-}
-
-.dim {
-    opacity: 0.55;
 }

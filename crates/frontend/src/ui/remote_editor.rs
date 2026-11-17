@@ -415,8 +415,8 @@ impl Component for RemoteEditor {
                             let overriding = r.remote.sync_kinds.is_some();
 
                             let kind_toggles = (!capability.is_empty()).then(|| html! {
-                                <div class="remote-kinds" role="group" aria-label="Kinds synced from this source">
-                                    <span class="remote-caption">{"Syncs"}</span>
+                                <div class="row tight wrap" role="group" aria-label="Kinds synced from this source">
+                                    <span class="text-muted">{"Syncs"}</span>
                                     <Help section={help::REMOTES} />
 
                                     { for capability.iter().map(|kind| {
@@ -524,10 +524,10 @@ impl Component for RemoteEditor {
                                             // entity, which is why they are surfaced here.
                                             if !cache.errors.is_empty() {
                                                 <div class="remote-errors">
-                                                    <span class="remote-caption">{"Kind"}</span>
-                                                    <span class="remote-caption">{"Request"}</span>
-                                                    <span class="remote-caption">{"Error"}</span>
-                                                    <span class="remote-caption">{"Retries"}</span>
+                                                    <span class="text-muted">{"Kind"}</span>
+                                                    <span class="text-muted">{"Request"}</span>
+                                                    <span class="text-muted">{"Error"}</span>
+                                                    <span class="text-muted">{"Retries"}</span>
 
                                                     { for cache.errors.iter().map(|e| html! {
                                                         <>

@@ -77,7 +77,7 @@ pub(crate) fn Modal(props: &Props) -> Html {
             >
                 <div class="modal-header">
                     if let Some(ref title) = props.title {
-                        <h2 class="row text-gap" id={(*title_id).clone()}>
+                        <h2 class="row text-gap modal-title" id={(*title_id).clone()}>
                             if let Some(ref icon) = props.icon {
                                 <span class="item-inline" aria-hidden="true">
                                     <span class={classes!("icon", icon)} aria-hidden="true" />
@@ -88,7 +88,7 @@ pub(crate) fn Modal(props: &Props) -> Html {
                         </h2>
                     }
 
-                    <Button icon="x-mark" title="Close" onclick={on_close.clone()} />
+                    <Button class="modal-close" icon="x-mark" title="Close" onclick={on_close.clone()} />
                 </div>
 
                 <div class="modal-content" ref={content}>
