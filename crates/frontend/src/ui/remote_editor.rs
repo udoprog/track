@@ -2,9 +2,9 @@ use web_sys::{Event, InputEvent};
 use yew::prelude::*;
 
 use crate::help;
-use crate::ui::{ContextMenu, Help};
+use crate::ui::Help;
 
-use super::{Button, ConfirmDanger, DragHandle, Modal, Reorder, Size, Variant};
+use super::{Button, Confirm, DragHandle, Modal, Reorder, Size, Variant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RemoteSourceKind {
@@ -479,12 +479,7 @@ impl Component for RemoteEditor {
                                         </div>
 
                                         if self.confirming_remove == Some(id) {
-                                            <ContextMenu prompt="Remove" label={r.remote.remote.to_string()} anchor={r.context_anchor.clone()} on_close={link.callback(|_| Msg::CancelRemove)}>
-                                                <ConfirmDanger
-                                                    on_confirm={link.callback(move |_| Msg::ConfirmRemove(id))}
-                                                    on_cancel={link.callback(|_| Msg::CancelRemove)}
-                                                />
-                                            </ContextMenu>
+                                            <Confirm prompt="Remove" label={r.remote.remote.to_string()} anchor={r.context_anchor.clone()} on_confirm={link.callback(move |_| Msg::ConfirmRemove(id))} on_cancel={link.callback(|_| Msg::CancelRemove)} />
                                         }
                                     </div>
 

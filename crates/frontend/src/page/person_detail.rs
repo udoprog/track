@@ -10,8 +10,8 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{PersonQuery, Route, Router, ShowDetailQuery};
 use crate::ui::{
-    Button, ConfirmDanger, ContextMenu, DetailSkeleton, FormRow, Image, Link, Modal, RemoteEditor,
-    RemoteSourceKind, SyncButton, TranslatedText, Variant,
+    Button, Confirm, DetailSkeleton, FormRow, Image, Link, Modal, RemoteEditor, RemoteSourceKind,
+    SyncButton, TranslatedText, Variant,
 };
 
 /// Load state for the person this page renders.
@@ -414,12 +414,7 @@ impl PersonDetail {
                                 <Button node_ref={self.remove_anchor.clone()} icon="trash" variant={Variant::Danger} class="detached" title="Delete person" expanded={Some(self.confirming_delete)} haspopup="dialog" onclick={link.callback(|_| Msg::AskDelete)} />
 
                                 if self.confirming_delete {
-                                    <ContextMenu prompt="Delete person" label={person.name.title().map(str::to_owned)} anchor={self.remove_anchor.clone()} on_close={link.callback(|_| Msg::CancelDelete)}>
-                                        <ConfirmDanger
-                                            on_confirm={link.callback(|_| Msg::DeletePerson)}
-                                            on_cancel={link.callback(|_| Msg::CancelDelete)}
-                                        />
-                                    </ContextMenu>
+                                    <Confirm prompt="Delete person" label={person.name.title().map(str::to_owned)} anchor={self.remove_anchor.clone()} on_confirm={link.callback(|_| Msg::DeletePerson)} on_cancel={link.callback(|_| Msg::CancelDelete)} />
                                 }
                             }
                         </div>

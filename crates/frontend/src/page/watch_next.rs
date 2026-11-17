@@ -12,8 +12,8 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaSelection, Route, ShowDetailQuery};
 use crate::ui::{
-    Button, ConfirmDanger, ContextMenu, DurationInput, Image, Link, MarkTimeMenu,
-    PaginationButtons, Skeleton, TimePreset, Variant,
+    Button, Confirm, ContextMenu, DurationInput, Image, Link, MarkTimeMenu, PaginationButtons,
+    Skeleton, TimePreset, Variant,
 };
 
 struct PendingState {
@@ -778,12 +778,7 @@ impl WatchNext {
                                 <Button key="skip-button" node_ref={anchor.clone()} icon="forward" title="Skip episode" expanded={Some(confirming)} haspopup="dialog" onclick={ctx.link().callback(move |_| Msg::AskSkipEpisode(show, episode))} />
 
                                 if confirming && let Some(code) = skip_code {
-                                    <ContextMenu icon="forward" prompt="Skip episode" label={code} anchor={anchor.clone()} on_close={ctx.link().callback(|_| Msg::CancelSkipEpisode)}>
-                                        <ConfirmDanger
-                                            on_confirm={ctx.link().callback(move |_| Msg::SkipEpisode(show, episode))}
-                                            on_cancel={ctx.link().callback(|_| Msg::CancelSkipEpisode)}
-                                        />
-                                    </ContextMenu>
+                                    <Confirm icon="forward" prompt="Skip episode" label={code} anchor={anchor.clone()} on_confirm={ctx.link().callback(move |_| Msg::SkipEpisode(show, episode))} on_cancel={ctx.link().callback(|_| Msg::CancelSkipEpisode)} />
                                 }
                             }
                         </div>

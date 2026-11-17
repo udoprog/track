@@ -5,7 +5,7 @@
 
 mod button;
 mod cast_modal;
-mod confirm_danger;
+mod confirm;
 mod context_menu;
 mod country_picker;
 mod detail_hero;
@@ -51,7 +51,7 @@ mod xem_lookup_editor;
 
 pub(crate) use self::button::{Button, Size, Variant};
 pub(crate) use self::cast_modal::{CastModal, cast_card};
-pub(crate) use self::confirm_danger::ConfirmDanger;
+pub(crate) use self::confirm::Confirm;
 pub(crate) use self::context_menu::ContextMenu;
 pub(crate) use self::country_picker::CountryPicker;
 pub(crate) use self::detail_hero::DetailHero;

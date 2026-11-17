@@ -2,8 +2,7 @@
 //! [`ContextMenuState`] and the body content; this component renders a
 //! full-screen click "catcher" plus a fixed popover positioned just below the
 //! trigger and clamped to the viewport, revealed only once measured to avoid a
-//! first-frame flash. Used by [`MarkTimeMenu`](crate::ui::MarkTimeMenu) and the
-//! dashboard's skip-episode confirm.
+//! first-frame flash. Used by [`MarkTimeMenu`](crate::ui::MarkTimeMenu).
 //!
 //! It holds keyboard focus while open like a modal does: focus moves to its
 //! first control, Tab stays inside, and Escape closes it and hands focus back.

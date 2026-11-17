@@ -362,6 +362,71 @@ pub async fn modals_hold_keyboard_focus(driver: &mut TestDriver, _: &mut Track) 
     Ok(())
 }
 
+/// A confirm holds the keyboard until it is answered: No has the focus, Tab
+/// stays between No and Yes, and Escape hands focus back to the button that
+/// asked, also when the confirm lines up with the row around that button.
+pub async fn confirms_hold_keyboard_focus(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
+    open_show(driver).await?;
+
+    let remove = driver.find_one_by("[title='Remove show']").await?;
+    remove.focus().await?;
+    remove.send_keys("\u{E007}").await?;
+
+    let confirm = driver.find_one_by(".plinth-confirm-popover").await?;
+    ensure!(confirm.attr("aria-label").await? == "Remove show Seeded Show");
+
+    driver
+        .wait_until("focus to move to No", async || {
+            Ok(focused_title(driver).await? == "No")
+        })
+        .await?;
+
+    driver
+        .find_one_by(".plinth-confirm-popover [title=Yes]")
+        .await?
+        .send_keys("\u{E004}")
+        .await?;
+    let wrapped = focused_title(driver).await?;
+    ensure!(wrapped == "No", "Tab from Yes went to {wrapped:?}");
+
+    driver
+        .find_one_by(".plinth-confirm-popover [title=No]")
+        .await?
+        .send_keys("\u{E00C}")
+        .await?;
+    driver.wait_count(".plinth-confirm-popover", 0).await?;
+    let back = focused_title(driver).await?;
+    ensure!(back == "Remove show", "focus went back to {back:?}");
+
+    driver
+        .find_one_by("[id='S01E01'] [title='Mark watched']")
+        .await?
+        .click()
+        .await?;
+    wait_episode_reads(driver, "S01E01", "Watched once").await?;
+    open_history(driver, "S01E01").await?;
+    let remove = driver
+        .find_one_by(".plinth-dialog .watch-row [title=Remove]")
+        .await?;
+    remove.focus().await?;
+    remove.send_keys("\u{E007}").await?;
+    driver
+        .wait_until("focus to move to No", async || {
+            Ok(focused_title(driver).await? == "No")
+        })
+        .await?;
+    driver
+        .find_one_by(".plinth-confirm-popover [title=No]")
+        .await?
+        .send_keys("\u{E00C}")
+        .await?;
+    driver.wait_count(".plinth-confirm-popover", 0).await?;
+    ensure!(driver.count(".plinth-dialog .watch-history").await? == 1);
+    let back = focused_title(driver).await?;
+    ensure!(back == "Remove", "focus went back to {back:?}");
+    Ok(())
+}
+
 /// An episode's menu works from the keyboard: Enter opens it on its first
 /// item without choosing it, the arrows move between items, and Escape closes
 /// it with focus back on the button.
@@ -646,7 +711,7 @@ pub async fn watch_history_moves_and_removes(driver: &mut TestDriver, _: &mut Tr
         .click()
         .await?;
     driver
-        .find_one_by(".context-menu [title=Yes]")
+        .find_one_by(".plinth-confirm-popover [title=Yes]")
         .await?
         .click()
         .await?;

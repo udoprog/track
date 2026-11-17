@@ -2,7 +2,8 @@
 // plinth's own order (style/_index.scss), so the app's own rules refine them.
 @use 'vars' as v;
 // The app's small text, controls, phone breakpoint, buttons (filled, no
-// edge, touch height on phones) and dialogs (centred), where plinth's differ.
+// edge, touch height on phones), dialogs (centred) and popovers (rounder,
+// wider padded, a sheet's top edge alone), where plinth's differ.
 @use '../../../../plinth/style/tokens' as plinth-tokens with (
     $text-sm: v.$font-sm,
     $control-height: v.$input-height,
@@ -30,6 +31,12 @@
     $dialog-title-size: v.$font-lg,
     $dialog-scroll-gutter: auto,
     $dialog-sheet-edge: top,
+    $popover-padding: v.$gap,
+    $popover-radius: v.$radius-lg,
+    $popover-sheet-edge: top,
+    $popover-scroll-gutter: auto,
+    $popover-sheet-height: 85vh,
+    $confirm-gap: v.$gap,
     $button-colours: (
         secondary: (fill: var(--neutral-bg), edge: transparent, pressed-fill: var(--button-fill), pressed-edge: var(--button-edge)),
         // plinth's close buttons: filled, their icon muted.
@@ -43,6 +50,8 @@
 @use '../../../../plinth/style/heads' as plinth-heads;
 @use '../../../../plinth/style/buttons' as plinth-buttons;
 @use '../../../../plinth/style/icons' as plinth-icons;
+@use '../../../../plinth/style/popover' as plinth-popover;
+@use '../../../../plinth/style/confirm' as plinth-confirm;
 @use '../../../../plinth/style/dialog' as plinth-dialog;
 @use '../../../../plinth/style/utilities' as plinth-utilities;
 @use 'theme';

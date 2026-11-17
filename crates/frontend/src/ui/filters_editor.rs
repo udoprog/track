@@ -3,7 +3,7 @@ use yew::prelude::*;
 
 use crate::flags;
 
-use super::{Button, ConfirmDanger, ContextMenu, CountryPicker, DragHandle, Reorder, Variant};
+use super::{Button, Confirm, CountryPicker, DragHandle, Reorder, Variant};
 
 /// Predicate kinds offered when editing movie release filters.
 pub(crate) const RELEASE_KINDS: &[api::PredicateKind] = &[
@@ -246,12 +246,7 @@ impl FiltersEditor {
                     </div>
 
                     if self.confirming_remove == Some(index) {
-                        <ContextMenu prompt="Remove" label={name} anchor={anchor} on_close={link.callback(|_| Msg::CancelRemove)}>
-                            <ConfirmDanger
-                                on_confirm={link.callback(move |_| Msg::ConfirmRemove(index))}
-                                on_cancel={link.callback(|_| Msg::CancelRemove)}
-                            />
-                        </ContextMenu>
+                        <Confirm prompt="Remove" label={name} anchor={anchor} on_confirm={link.callback(move |_| Msg::ConfirmRemove(index))} on_cancel={link.callback(|_| Msg::CancelRemove)} />
                     }
                 </div>
 

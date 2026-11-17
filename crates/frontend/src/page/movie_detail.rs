@@ -12,7 +12,7 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaQuery, Route, Router};
 use crate::ui::{
-    Button, CastModal, ConfirmDanger, ContextMenu, DetailHero, DetailSkeleton, Image, MarkTimeMenu,
+    Button, CastModal, Confirm, DetailHero, DetailSkeleton, Image, MarkTimeMenu,
     MediaSettingsModal, Modal, ReleaseModal, ReleaseTarget, RemoteEditor, RemoteSourceKind,
     SettingsTarget, SyncButton, TimePreset, Tracked, TranslatedText, TranslationsModal, Variant,
     cast_card,
@@ -941,12 +941,7 @@ impl MovieDetail {
                                 <Button node_ref={self.remove_anchor.clone()} icon="trash" variant={Variant::Danger} class="detached" title="Remove movie" text="Remove" expanded={Some(self.confirm_remove)} haspopup="dialog" onclick={link.callback(|_| ActionMsg::ConfirmRemove)} />
 
                                 if self.confirm_remove {
-                                    <ContextMenu prompt="Remove movie" label={movie.strings.title().map(str::to_owned)} anchor={self.remove_anchor.clone()} on_close={link.callback(|_| ActionMsg::CancelRemove)}>
-                                        <ConfirmDanger
-                                            on_confirm={link.callback(|_| ActionMsg::RemoveMovie)}
-                                            on_cancel={link.callback(|_| ActionMsg::CancelRemove)}
-                                        />
-                                    </ContextMenu>
+                                    <Confirm prompt="Remove movie" label={movie.strings.title().map(str::to_owned)} anchor={self.remove_anchor.clone()} on_confirm={link.callback(|_| ActionMsg::RemoveMovie)} on_cancel={link.callback(|_| ActionMsg::CancelRemove)} />
                                 }
                             }
                         </div>
@@ -1147,12 +1142,7 @@ impl MovieDetail {
                             <Button node_ref={w.remove_watch_anchor.clone()} icon="trash" label="Remove" title="Remove" expanded={Some(self.confirm_remove_watch == Some(wid))} haspopup="dialog" onclick={link.callback(move |_| WatchMsg::ConfirmRemoveWatch(wid))} />
 
                             if self.confirm_remove_watch == Some(wid) {
-                                <ContextMenu prompt="Remove watch at" label={w.watched.timestamp.human_date_time(self.time.clone())} anchor={w.remove_watch_anchor.clone()} on_close={link.callback(|_| WatchMsg::CancelRemoveWatch)}>
-                                    <ConfirmDanger
-                                        on_confirm={link.callback(move |_| WatchMsg::RemoveWatched(wid, kind))}
-                                        on_cancel={link.callback(|_| WatchMsg::CancelRemoveWatch)}
-                                    />
-                                </ContextMenu>
+                                <Confirm prompt="Remove watch at" label={w.watched.timestamp.human_date_time(self.time.clone())} anchor={w.remove_watch_anchor.clone()} on_confirm={link.callback(move |_| WatchMsg::RemoveWatched(wid, kind))} on_cancel={link.callback(|_| WatchMsg::CancelRemoveWatch)} />
                             }
                             </div>
                         </div>
