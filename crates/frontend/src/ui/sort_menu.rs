@@ -1,6 +1,5 @@
+use plinth::{Menu, MenuRadio, PopoverAlign};
 use yew::prelude::*;
-
-use crate::ui::{Button, ContextMenu};
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
@@ -16,7 +15,6 @@ pub(crate) struct Props {
 #[function_component]
 pub(crate) fn SortMenu(props: &Props) -> Html {
     let open = use_state(|| false);
-    let anchor = use_node_ref();
 
     let label = props
         .options
@@ -26,38 +24,24 @@ pub(crate) fn SortMenu(props: &Props) -> Html {
 
     let on_toggle = {
         let open = open.clone();
-        Callback::from(move |_| open.set(!*open))
-    };
-
-    let on_close = {
-        let open = open.clone();
-        Callback::from(move |()| open.set(false))
+        Callback::from(move |on| open.set(on))
     };
 
     html! {
-        <>
-            <Button node_ref={anchor.clone()} icon="arrows-up-down" label={label} title="Sort by" class={classes!("chip", (*open).then_some("selected"))} expanded={Some(*open)} haspopup="menu" onclick={on_toggle} />
+        <Menu text={html! { label }} icon={html! { <span class="icon arrows-up-down" /> }}
+            title="Sort by" label="Sort by" opener_class={classes!("chip", (*open).then_some("selected"))}
+            align={PopoverAlign::Start} sheet=true
+            open={Some(*open)} {on_toggle} testid="sort-menu">
+            { for props.options.iter().map(|&(value, label)| {
+                let on_change = props.on_change.clone();
 
-            if *open {
-                <ContextMenu {anchor} on_close={on_close.clone()}>
-                    <div class="menu-list" role="menu" aria-label="Sort by">
-                        { for props.options.iter().map(|&(value, label)| {
-                            let checked = value == props.current;
-                            let on_change = props.on_change.clone();
-                            let on_close = on_close.clone();
-
-                            let onclick = Callback::from(move |_| {
-                                on_close.emit(());
-                                on_change.emit(value);
-                            });
-
-                            html! {
-                                <Button role="menuitemradio" checked={Some(checked)} icon="check" class={classes!((!checked).then_some("unchecked"))} label={label} title={format!("Sort by {}", label.to_lowercase())} {onclick} />
-                            }
-                        }) }
-                    </div>
-                </ContextMenu>
-            }
-        </>
+                html! {
+                    <MenuRadio checked={value == props.current} on_pick={Callback::from(move |()| on_change.emit(value))}
+                        testid={format!("sort-{value}")}>
+                        {label}
+                    </MenuRadio>
+                }
+            }) }
+        </Menu>
     }
 }

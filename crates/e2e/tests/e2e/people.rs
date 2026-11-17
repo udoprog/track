@@ -21,7 +21,7 @@ pub async fn lists_people_by_credits(driver: &mut TestDriver, _: &mut Track) -> 
         .click()
         .await?;
     driver
-        .find_one_by("[role=menuitemradio][title='Sort by name']")
+        .find_one_by("[data-testid=sort-name]")
         .await?
         .click()
         .await?;

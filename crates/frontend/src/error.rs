@@ -175,10 +175,6 @@ pub(crate) enum Message {
     CapturingOutlinePointer,
     #[display("Releasing outline pointer")]
     ReleasingOutlinePointer,
-    #[display("Reading viewport size")]
-    ReadingViewport,
-    #[display("Positioning the time menu")]
-    PositioningMenu,
     #[display("Setting storage item")]
     SetStorageItem,
 }

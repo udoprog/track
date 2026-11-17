@@ -397,7 +397,7 @@ async fn check_shared_controls(
         .click()
         .await?;
     driver
-        .find_one_by(".menu-list [title='Air dates']")
+        .find_one_by("[data-testid=episode-releases]")
         .await?
         .click()
         .await?;

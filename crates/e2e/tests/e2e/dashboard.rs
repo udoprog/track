@@ -48,18 +48,22 @@ pub async fn marks_watched_at_a_chosen_time(driver: &mut TestDriver, _: &mut Tra
         .await?;
     more.click().await?;
 
-    let menu = driver.find_one_by(".context-menu").await?;
+    let menu = driver.find_one_by("[data-testid=context-menu]").await?;
 
     driver
         .find_one_by(By::XPath(
-            "//div[contains(@class, 'context-menu')]//button[normalize-space()='Custom']",
+            "//div[@data-testid='context-menu']//button[normalize-space()='Custom']",
         ))
         .await?
         .click()
         .await?;
 
-    let date = driver.find_one_by(".context-menu input[type=date]").await?;
-    driver.find_one_by(".context-menu input[type=time]").await?;
+    let date = driver
+        .find_one_by("[data-testid=context-menu] input[type=date]")
+        .await?;
+    driver
+        .find_one_by("[data-testid=context-menu] input[type=time]")
+        .await?;
 
     let trigger = more.rect().await?;
     let popover = menu.rect().await?;
@@ -76,7 +80,7 @@ pub async fn marks_watched_at_a_chosen_time(driver: &mut TestDriver, _: &mut Tra
         .webdriver()
         .execute(
             "for (const [sel, value] of [['input[type=date]', '2024-01-02'], ['input[type=time]', '10:15']]) {
-                 const input = document.querySelector('.context-menu ' + sel);
+                 const input = document.querySelector('[data-testid=context-menu] ' + sel);
                  input.value = value;
                  input.dispatchEvent(new Event('change', { bubbles: true }));
              }",
@@ -86,7 +90,7 @@ pub async fn marks_watched_at_a_chosen_time(driver: &mut TestDriver, _: &mut Tra
     ensure!(date.value().await? == "2024-01-02");
 
     driver
-        .find_one_by(".context-menu [title=Confirm]")
+        .find_one_by("[data-testid=context-menu] [title=Confirm]")
         .await?
         .click()
         .await?;
@@ -141,7 +145,10 @@ pub async fn keeps_view_options_in_a_menu(driver: &mut TestDriver, _: &mut Track
         .click()
         .await?;
     driver
-        .wait_texts(".context-menu label", ["Look ahead", "Per page"])
+        .wait_texts(
+            "[data-testid=context-menu] label",
+            ["Look ahead", "Per page"],
+        )
         .await
 }
 
@@ -256,7 +263,7 @@ pub async fn buttons_expose_their_state(driver: &mut TestDriver, _: &mut Track) 
     ensure!(options.attr("aria-expanded").await? == "false");
 
     options.click().await?;
-    driver.wait_count(".context-menu", 1).await?;
+    driver.wait_count("[data-testid=context-menu]", 1).await?;
 
     driver
         .wait_until("View options to report itself open", async || {

@@ -36,6 +36,18 @@
     $popover-sheet-edge: top,
     $popover-scroll-gutter: auto,
     $popover-sheet-height: 85vh,
+    $popover-max-width: 100vw,
+    $menu-width: 0px,
+    $menu-radius: v.$radius-lg,
+    $menu-padding: v.$gap-xs,
+    $menu-text: v.$font-sm,
+    $menu-item-padding: 0 v.$padding-lg 0 calc(#{v.$padding-lg} - #{v.$text-gap}),
+    $menu-scroll-gutter: auto,
+    $menu-item-gap: v.$text-gap,
+    $menu-item-radius: v.$radius,
+    $menu-item-hover-fill: color-mix(in srgb, v.$text-primary 8%, transparent),
+    $menu-item-phone-height: v.$input-height-touch,
+    $menu-item-mark-ink: currentColor,
     $confirm-gap: v.$gap,
     $button-colours: (
         secondary: (fill: var(--neutral-bg), edge: transparent, pressed-fill: var(--button-fill), pressed-edge: var(--button-edge)),
@@ -53,6 +65,7 @@
 @use '../../../../plinth/style/popover' as plinth-popover;
 @use '../../../../plinth/style/confirm' as plinth-confirm;
 @use '../../../../plinth/style/dialog' as plinth-dialog;
+@use '../../../../plinth/style/menu' as plinth-menu;
 @use '../../../../plinth/style/utilities' as plinth-utilities;
 @use 'theme';
 @use 'icons';
@@ -61,7 +74,6 @@
 @use 'calendar';
 @use 'skeleton';
 @use 'toolbar';
-@use 'context_menu';
 @use 'mark_time_menu';
 @use 'outline';
 @use 'help';
@@ -103,6 +115,11 @@ p {
 .clickable {
     cursor: pointer;
     user-select: none;
+}
+
+// What a popover's prompt asks about, in bold after it.
+.context-menu-label {
+    font-weight: v.$bold-weight;
 }
 
 // Holds the toast; takes no room of its own.

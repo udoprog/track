@@ -4,6 +4,7 @@ use std::rc::Rc;
 use auth::yew023::{AuthContext, AuthSubscription};
 use musli_web::web03::prelude::*;
 use musli_web::yew023::ContextExt;
+use plinth::{Menu, MenuItem, PopoverAlign};
 use wasm_bindgen::JsCast as _;
 use yew::prelude::*;
 
@@ -88,7 +89,6 @@ pub(crate) struct ShowDetail {
     actions_expanded: bool,
     /// The episode whose overflow menu is open, anchored to its trigger.
     episode_menu: Option<api::EpisodeId>,
-    episode_menu_anchor: NodeRef,
     season_actions_expanded: HashSet<api::SeasonNumber>,
     confirm_remove_watch: Option<api::WatchedId>,
     watched_by_episode: HashMap<api::EpisodeId, Vec<WatchedState>>,
@@ -257,7 +257,7 @@ pub(crate) enum UiMsg {
     OpenNumberingEditor(bool),
     CloseNumberingEditor,
     ToggleActionsExpanded,
-    ToggleEpisodeMenu(api::EpisodeId),
+    EpisodeMenu(api::EpisodeId, bool),
     ToggleSeasonActionsExpanded(api::SeasonNumber),
     ToggleOrphaned,
 }
@@ -393,7 +393,6 @@ impl Component for ShowDetail {
             bulk_pending: 0,
             actions_expanded: false,
             episode_menu: None,
-            episode_menu_anchor: NodeRef::default(),
             season_actions_expanded: HashSet::new(),
             confirm_remove_watch: None,
             watched_by_episode: HashMap::new(),
@@ -1752,8 +1751,13 @@ impl ShowDetail {
                 self.actions_expanded = !self.actions_expanded;
                 Ok(true)
             }
-            UiMsg::ToggleEpisodeMenu(episode_id) => {
-                self.episode_menu = (self.episode_menu != Some(episode_id)).then_some(episode_id);
+            UiMsg::EpisodeMenu(episode_id, open) => {
+                if open {
+                    self.episode_menu = Some(episode_id);
+                } else if self.episode_menu == Some(episode_id) {
+                    self.episode_menu = None;
+                }
+
                 Ok(true)
             }
             UiMsg::ToggleSeasonActionsExpanded(season) => {
@@ -2310,8 +2314,7 @@ impl ShowDetail {
 
         let menu_open = self.episode_menu == Some(episode_id);
         let picked = self.picked.contains(&episode_id);
-        let on_toggle_menu =
-            link.callback(move |_: MouseEvent| UiMsg::ToggleEpisodeMenu(episode_id));
+        let on_toggle_menu = link.callback(move |open| UiMsg::EpisodeMenu(episode_id, open));
         let syncing = self
             .active_tasks
             .task(SyncTarget::Episode(episode_id))
@@ -2359,24 +2362,20 @@ impl ShowDetail {
                                     <MarkTimeMenu icon="bookmark" title="Not next episode" prompt={format!("When do you want to queue {}?", episode.code())} preset={preset.clone()} on_confirm={on_next_episode} />
                                 }
 
-                                <Button node_ref={if menu_open { self.episode_menu_anchor.clone() } else { NodeRef::default() }} icon="ellipsis-horizontal" class={classes!(menu_open.then_some("selected"))} title="More actions" expanded={Some(menu_open)} haspopup="menu" onclick={on_toggle_menu.clone()} />
-                            </div>
-                        </div>
-
-                        if menu_open {
-                            <ContextMenu anchor={self.episode_menu_anchor.clone()} on_close={link.callback(move |()| UiMsg::ToggleEpisodeMenu(episode_id))}>
-                                <div class="menu-list" role="menu" aria-label="Episode actions">
-                                    <Button role="menuitem" icon="arrow-path" spin={syncing} label="Sync episode" title="Sync episode" onclick={link.callback(move |_| ActionMsg::SyncEpisode(episode_id))} />
-                                    <Button role="menuitem" icon="language" label="Translations" title="Translations" onclick={link.callback(move |_| UiMsg::OpenEpisodeTranslations(episode_id))} />
-                                    <Button role="menuitem" icon="calendar" label="Air dates" title="Air dates" onclick={link.callback(move |_| UiMsg::OpenEpisodeReleases(episode_id))} />
-                                    <Button role="menuitem" icon="circle-stack" label="Cache" title="Cache" onclick={link.callback(move |_| UiMsg::OpenEpisodeCache(episode_id))} />
+                                <Menu icon={html! { <span class="icon ellipsis-horizontal" /> }} title="More actions" label="Episode actions"
+                                    opener_class={classes!(menu_open.then_some("selected"))} align={PopoverAlign::Start} sheet=true
+                                    open={Some(menu_open)} on_toggle={on_toggle_menu} testid="episode-menu">
+                                    <MenuItem icon={html! { <span class={classes!("icon", "arrow-path", syncing.then_some("spin"))} /> }} onclick={link.callback(move |_| ActionMsg::SyncEpisode(episode_id))} testid="episode-sync">{"Sync episode"}</MenuItem>
+                                    <MenuItem icon={html! { <span class="icon language" /> }} onclick={link.callback(move |_| UiMsg::OpenEpisodeTranslations(episode_id))} testid="episode-translations">{"Translations"}</MenuItem>
+                                    <MenuItem icon={html! { <span class="icon calendar" /> }} onclick={link.callback(move |_| UiMsg::OpenEpisodeReleases(episode_id))} testid="episode-releases">{"Air dates"}</MenuItem>
+                                    <MenuItem icon={html! { <span class="icon circle-stack" /> }} onclick={link.callback(move |_| UiMsg::OpenEpisodeCache(episode_id))} testid="episode-cache">{"Cache"}</MenuItem>
 
                                     if let Some(on_toggle) = on_toggle_history {
-                                        <Button role="menuitem" icon="clock" label={if history_expanded { "Hide watch history" } else { "Watch history" }} title="Watch history" onclick={on_toggle} />
+                                        <MenuItem icon={html! { <span class="icon clock" /> }} onclick={on_toggle} testid="episode-history">{if history_expanded { "Hide watch history" } else { "Watch history" }}</MenuItem>
                                     }
-                                </div>
-                            </ContextMenu>
-                        }
+                                </Menu>
+                            </div>
+                        </div>
                     </div>
 
                     if !episode.numberings.is_empty() {

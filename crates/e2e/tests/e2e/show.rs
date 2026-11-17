@@ -30,7 +30,7 @@ pub async fn episode_menu_holds_the_other_actions(
 
     driver
         .wait_texts(
-            ".menu-list button",
+            "[data-testid=episode-menu] [role=menuitem]",
             ["Sync episode", "Translations", "Air dates", "Cache"],
         )
         .await
@@ -164,7 +164,7 @@ async fn open_episode_modal(driver: &TestDriver) -> Result<()> {
         .await?;
 
     driver
-        .find_one_by(".menu-list [title='Translations']")
+        .find_one_by("[data-testid=episode-translations]")
         .await?
         .click()
         .await?;
@@ -182,17 +182,16 @@ pub async fn menus_close_on_an_outside_click(driver: &mut TestDriver, _: &mut Tr
         .click()
         .await?;
 
-    // Near the catcher's top-left corner, well away from the menu.
-    let catcher = driver.find_one_by(".context-catcher").await?;
-    let page = catcher.rect().await?;
-    catcher
-        .click_by(
-            -(page.width / 2.0 - 20.0) as i64,
-            -(page.height / 2.0 - 20.0) as i64,
-        )
+    driver.find_one_by("[data-testid=episode-menu]").await?;
+
+    // A season's heading, away from the menu.
+    driver
+        .find_first("[data-testid='detail-content'] .toolbar h2")
+        .await?
+        .click()
         .await?;
 
-    driver.wait_count(".context-menu", 0).await
+    driver.wait_count("[data-testid=episode-menu]", 0).await
 }
 
 /// A modal closes from its Close button and from the dimmed page around it.
@@ -296,6 +295,18 @@ pub async fn settings_line_up_their_controls(driver: &mut TestDriver, _: &mut Tr
 }
 
 /// The title of whatever has focus.
+/// The test id of what has focus.
+pub(super) async fn focused_testid(driver: &TestDriver) -> Result<String> {
+    let ret = driver
+        .webdriver()
+        .execute(
+            "return document.activeElement.dataset.testid || '';",
+            Vec::new(),
+        )
+        .await?;
+    Ok(ret.convert::<String>()?)
+}
+
 pub(super) async fn focused_title(driver: &TestDriver) -> Result<String> {
     let ret = driver
         .webdriver()
@@ -441,7 +452,7 @@ pub async fn menus_work_from_the_keyboard(driver: &mut TestDriver, _: &mut Track
 
     driver
         .wait_until("the first item to take focus", async || {
-            Ok(focused_title(driver).await? == "Sync episode")
+            Ok(focused_testid(driver).await? == "episode-sync")
         })
         .await?;
     ensure!(
@@ -450,15 +461,15 @@ pub async fn menus_work_from_the_keyboard(driver: &mut TestDriver, _: &mut Track
     );
 
     driver
-        .find_one_by("[role='menuitem'][title='Sync episode']")
+        .find_one_by("[data-testid=episode-sync]")
         .await?
         .send_keys("\u{E015}")
         .await?;
-    let next = focused_title(driver).await?;
-    ensure!(next == "Translations", "Down moved to {next:?}");
+    let next = focused_testid(driver).await?;
+    ensure!(next == "episode-translations", "Down moved to {next:?}");
 
     driver
-        .find_one_by("[role='menuitem'][title='Translations']")
+        .find_one_by("[data-testid=episode-translations]")
         .await?
         .send_keys("\u{E00C}")
         .await?;
@@ -584,8 +595,16 @@ pub async fn phone_popovers_are_sheets(driver: &mut TestDriver, _: &mut Track) -
         .click()
         .await?;
 
-    let menu = driver.find_one_by(".context-menu").await?.rect().await?;
-    let page = driver.find_one_by(".context-catcher").await?.rect().await?;
+    let menu = driver
+        .find_one_by("[data-testid=episode-menu]")
+        .await?
+        .rect()
+        .await?;
+    let page = driver
+        .find_one_by(".plinth-menu-scrim")
+        .await?
+        .rect()
+        .await?;
 
     ensure!(
         (page.y + page.height - (menu.y + menu.height)).abs() < 1.0,
@@ -595,7 +614,7 @@ pub async fn phone_popovers_are_sheets(driver: &mut TestDriver, _: &mut Track) -
         menu.x.abs() < 1.0 && menu.width > page.width - 20.0,
         "the menu is not as wide as the screen: {menu:?} in {page:?}"
     );
-    ensure_only_top_border(driver, ".context-menu").await
+    ensure_only_top_border(driver, "[data-testid=episode-menu]").await
 }
 
 /// A sheet draws only its top edge; side borders would run down the screen
@@ -626,7 +645,7 @@ async fn open_history(driver: &TestDriver, code: &str) -> Result<()> {
         .click()
         .await?;
     driver
-        .find_one_by(".menu-list [title='Watch history']")
+        .find_one_by("[data-testid=episode-history]")
         .await?
         .click()
         .await?;
@@ -781,7 +800,7 @@ pub async fn translations_sit_beside_their_language(
     open_show(driver).await?;
 
     driver
-        .find_one_by("[title='Translations']:not(.menu-list *)")
+        .find_one_by("[title='Translations']:not(.plinth-menu *)")
         .await?
         .click()
         .await?;
@@ -817,7 +836,7 @@ pub async fn air_dates_explain_the_default_quietly(
         .click()
         .await?;
     driver
-        .find_one_by(".menu-list [title='Air dates']")
+        .find_one_by("[data-testid=episode-releases]")
         .await?
         .click()
         .await?;
@@ -849,7 +868,7 @@ pub async fn season_overview_switches_language(
         .await?;
 
     driver
-        .find_one_by(".context-menu [title='Show in Swedish']")
+        .find_one_by("[data-testid=context-menu] [title='Show in Swedish']")
         .await?
         .click()
         .await?;
@@ -1127,7 +1146,7 @@ pub async fn picked_episodes_are_marked_together(
         .click()
         .await?;
     driver
-        .find_one_by(".context-menu [title=Confirm]")
+        .find_one_by("[data-testid=context-menu] [title=Confirm]")
         .await?
         .click()
         .await?;
@@ -1162,7 +1181,7 @@ pub async fn remaining_episodes_advance_pending(
         .click()
         .await?;
     driver
-        .find_one_by(".context-menu [title=Confirm]")
+        .find_one_by("[data-testid=context-menu] [title=Confirm]")
         .await?
         .click()
         .await?;
@@ -1279,7 +1298,8 @@ pub async fn phone_action_rows_align(driver: &mut TestDriver, _: &mut Track) -> 
         .await?
         .click()
         .await?;
-    super::navigation::ensure_menu_rows_align(driver, ".menu-list > button").await?;
+    super::navigation::ensure_menu_rows_align(driver, "[data-testid=episode-menu] > button")
+        .await?;
     driver.snapshot("phone-episode-actions").await
 }
 

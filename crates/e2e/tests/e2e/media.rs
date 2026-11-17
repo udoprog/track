@@ -313,7 +313,7 @@ async fn mark_next(driver: &TestDriver) -> Result<()> {
         .click()
         .await?;
     driver
-        .find_one_by(".context-menu [title=Confirm]")
+        .find_one_by("[data-testid=context-menu] [title=Confirm]")
         .await?
         .click()
         .await
