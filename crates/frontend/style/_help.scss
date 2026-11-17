@@ -71,7 +71,7 @@ button.help-section {
 
     @include g.on-mobile {
         flex: none;
-        border-radius: 999px;
+        border-radius: v.$radius-pill;
         border-color: v.$border-subtle;
         white-space: nowrap;
     }

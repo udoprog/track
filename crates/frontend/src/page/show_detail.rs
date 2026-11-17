@@ -2354,7 +2354,7 @@ impl ShowDetail {
                 </Button>
 
                 <div class="episode-body">
-                    <div class="episode-head">
+                    <div class="section-head">
                         <div class="episode-heading">
                             <a class="episode-code" href={format!("#{}", episode.code())} title="Link to this episode">{episode.code()}</a>
 
@@ -2363,7 +2363,7 @@ impl ShowDetail {
                             }
                         </div>
 
-                        <div class="row episode-actions">
+                        <div class="row push">
                             <div class="input-group">
                                 <MarkTimeMenu quick=true class="primary" icon="check" title="Mark watched" prompt={format!("When did you watch {}?", episode.code())} preset={preset.clone()} on_confirm={on_mark_confirm} />
                             </div>

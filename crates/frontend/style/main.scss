@@ -12,6 +12,7 @@
 @use 'credits';
 @use 'person';
 @use 'numbering';
+@use 'layout';
 
 @use 'grid' as g;
 @use 'input' as i;
@@ -32,7 +33,6 @@ body {
     font-family: v.$sans-serif-font;
     font-size: v.$font-base;
     --icon-color: #{v.$text-primary};
-    --icon-color-invert: #{v.$bg-dark};
 }
 
 a {
@@ -138,163 +138,6 @@ p {
     min-width: 0;
 }
 
-@mixin row-base {
-    display: flex;
-    flex-direction: row;
-    justify-items: stretch;
-    align-items: center;
-    gap: v.$gap;
-
-    &.text-gap {
-        gap: v.$text-gap;
-    }
-
-    &.center {
-        justify-content: center;
-    }
-
-    &.end {
-        justify-content: flex-end;
-    }
-
-    &.align-top {
-        align-items: start;
-    }
-
-    &.align-end {
-        justify-content: flex-end;
-    }
-
-    @include g.on-mobile {
-        &.mobile-center {
-            justify-content: center;
-        }
-
-        &.mobile-align-top {
-            align-items: start;
-        }
-
-        &.mobile-align-end {
-            justify-content: flex-end;
-        }
-    }
-
-    @include g.on-desktop {
-        &.desktop-center {
-            justify-content: center;
-        }
-
-        &.desktop-align-top {
-            align-items: start;
-        }
-
-        &.desktop-align-end {
-            justify-content: flex-end;
-        }
-    }
-
-    &.no-gap {
-        gap: 0;
-    }
-}
-
-@mixin column-base {
-    display: flex;
-    flex-direction: column;
-    justify-items: stretch;
-    gap: v.$gap-sm;
-
-    &.center {
-        align-items: center;
-    }
-
-    @include g.on-desktop {
-        &.desktop-center {
-            align-items: center;
-        }
-    }
-
-    &.no-gap {
-        gap: 0;
-    }
-
-    &>.align-end {
-        align-self: end;
-    }
-}
-
-.row {
-    @include row-base;
-
-    &.justify-around {
-        justify-content: space-around;
-    }
-
-    &.flex-wrap {
-        flex-wrap: wrap;
-    }
-
-    @include g.on-desktop {
-        &.desktop-justify-around {
-            justify-content: space-around;
-        }
-
-        &.desktop-flex-wrap {
-            flex-wrap: wrap;
-        }
-    }
-}
-
-@include g.on-desktop {
-    .desktop-row {
-        @include row-base;
-    }
-}
-
-@include g.on-mobile {
-    .mobile-row {
-        @include row-base;
-    }
-}
-
-.column {
-    @include column-base;
-}
-
-@include g.on-mobile {
-    .mobile-column {
-        @include column-base;
-    }
-}
-
-@include g.on-desktop {
-    .desktop-column {
-        @include column-base;
-    }
-}
-
-@mixin row-split-base {
-    @include row-base;
-
-    flex-wrap: wrap;
-    justify-content: space-between;
-    align-items: center;
-
-    &.reverse {
-        flex-direction: row-reverse;
-    }
-}
-
-.row-split {
-    @include row-split-base;
-}
-
-@include g.on-desktop {
-    .desktop-row-split {
-        @include row-split-base;
-    }
-}
-
 @mixin item-inline-base($input-height, $input-height-touch) {
     display: inline-flex;
     align-items: center;
@@ -322,26 +165,6 @@ p {
 
 .item-inline {
     @include item-inline-base(v.$input-height, v.$input-height-touch);
-}
-
-.item-logo {
-    display: inline-flex;
-    align-items: center;
-    height: 100%;
-    aspect-ratio: 1 / 2;
-}
-
-.item-inline-xs {
-    display: inline-flex;
-    height: v.$input-height-xs;
-
-    @include g.on-mobile {
-        height: v.$input-height-touch-xs;
-    }
-}
-
-.item-inline-lg {
-    @include item-inline-base(v.$input-height-lg, v.$input-height-touch-lg);
 }
 
 .item-inline-more {
@@ -586,21 +409,6 @@ p {
     gap: v.$gap;
 }
 
-// A remote identifier in the Remotes editor: its source and id with its
-// actions on one line, what it syncs under that, then its cache.
-.remote {
-    display: flex;
-    flex-direction: column;
-    gap: v.$gap-xs;
-}
-
-.remote-head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: v.$gap-xs;
-}
-
 .remote-link {
     display: inline-flex;
     align-items: center;
@@ -616,13 +424,6 @@ p {
 
 a.remote-link:hover .remote-id {
     text-decoration: underline;
-}
-
-.remote-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: v.$gap-xs;
-    margin-inline-start: auto;
 }
 
 .remote-kinds {
@@ -742,14 +543,6 @@ a.remote-link:hover .remote-id {
         align-self: center;
         flex: none;
     }
-}
-
-.search-title {
-    font-weight: v.$bold-weight;
-    color: v.$text-color;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
 
 a.search-title:hover {
@@ -1264,10 +1057,6 @@ a.search-title:hover {
     font-size: v.$font-sm;
 }
 
-.settings-skeleton {
-    height: 320px;
-}
-
 // Settings as rows (`ui::FormRow`): labels share one column beside their
 // controls, and stack above them on phones.
 .form-rows {
@@ -1345,20 +1134,10 @@ a.search-title:hover {
     @include clamp-lines(2);
 }
 
-.item-title {
-    color: v.$color-title;
-    font-size: v.$font-lg;
-}
-
 .site-title {
     color: v.$color-title;
     font-size: v.$font-title;
     font-weight: v.$bold-weight;
-}
-
-.page-sub-title {
-    color: v.$color-title;
-    font-size: v.$font-lg;
 }
 
 @mixin header-base($font-size) {
@@ -1590,82 +1369,15 @@ image {
     }
 }
 
-.schedule-day {
-    margin-bottom: v.$gap;
-}
-
-.schedule-date {
-    margin: 0 0 v.$gap-sm;
-    font-size: v.$font-base;
-    color: v.$text-muted;
-    font-weight: normal;
-}
-
-.schedule-entry {
-    display: flex;
-    align-items: baseline;
-    gap: v.$gap-sm;
-    padding: v.$padding 0;
-    border-bottom: 1px solid v.$border-subtle;
-}
-
-.schedule-show {
-    font-weight: v.$bold-weight;
-    min-width: 180px;
-
-    @include g.on-mobile {
-        min-width: 0;
-    }
-}
-
-.schedule-episodes {
-    display: flex;
-    flex-wrap: wrap;
-    gap: v.$gap-sm;
-    color: v.$text-muted;
-    font-size: v.$font-sm;
-}
-
-.schedule-ep {
-    white-space: nowrap;
-}
-
 .fill {
     flex: 1;
     min-width: 0;
-}
-
-@include g.on-desktop {
-    .desktop-fill {
-        flex: 1;
-        min-width: 0;
-    }
-}
-
-@include g.on-mobile {
-    .mobile-fill {
-        flex: 1;
-        min-width: 0;
-    }
 }
 
 .center {
     display: flex;
     align-items: center;
     justify-content: center;
-}
-
-@include g.on-desktop {
-    .desktop-fill {
-        flex: 1;
-        min-width: 0;
-    }
-}
-
-.title {
-    font-size: v.$font-lg;
-    font-weight: v.$bold-weight;
-    color: v.$text-primary;
 }
 
 .status {
@@ -1880,7 +1592,7 @@ image {
         justify-content: center;
         width: 26px;
         height: 26px;
-        border-radius: 999px;
+        border-radius: v.$radius-pill;
         border: 2px solid v.$text-color;
         background: color-mix(in srgb, v.$bg-dark 55%, transparent);
         --icon-color: transparent;
@@ -1946,20 +1658,6 @@ image {
     flex-direction: column;
     gap: v.$gap-xs;
     min-width: 0;
-}
-
-// The code and name, with the actions at the end; the actions wrap under
-// the name when there is no room beside it.
-.episode-head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: v.$gap-xs v.$gap-sm;
-
-    >.episode-actions {
-        margin-inline-start: auto;
-    }
 }
 
 .episode-heading {
@@ -2152,12 +1850,6 @@ image {
     }
 }
 
-@include g.on-mobile {
-    .mobile-input-group {
-        @include input-group-base;
-    }
-}
-
 rule {
     display: flex;
     flex-direction: column;
@@ -2237,7 +1929,7 @@ input-label-controls {
     height: v.$input-height;
     padding-inline: v.$gap-sm 2px;
     border: 1px solid v.$border-input;
-    border-radius: 999px;
+    border-radius: v.$radius-pill;
     background: v.$bg-surface;
     --icon-color: #{v.$text-muted};
 
@@ -2269,7 +1961,7 @@ input-label-controls {
     >button {
         flex: none;
         height: calc(100% - 4px);
-        border-radius: 999px;
+        border-radius: v.$radius-pill;
     }
 }
 
@@ -2533,7 +2225,7 @@ pagination {
     user-select: none;
 
     >button {
-        border-radius: 999px;
+        border-radius: v.$radius-pill;
         background: transparent;
     }
 
@@ -2570,7 +2262,7 @@ pagination {
             min-width: v.$input-height;
             height: v.$input-height;
             padding: 0 v.$padding-md;
-            border-radius: 999px;
+            border-radius: v.$radius-pill;
             color: v.$text-muted;
 
             @include g.on-mobile {
@@ -2715,7 +2407,7 @@ pagination {
 
 .detail-title {
     margin: 0;
-    font-size: 32px;
+    font-size: v.$font-display;
     font-weight: 600;
     line-height: 1.15;
     color: v.$text-primary;
@@ -2792,7 +2484,7 @@ button.media-pick {
     height: 28px;
     min-width: 0;
     padding: 0;
-    border-radius: 999px;
+    border-radius: v.$radius-pill;
     border: 2px solid v.$text-color;
     background: color-mix(in srgb, v.$bg-dark 55%, transparent);
     --icon-color: transparent;
@@ -3216,7 +2908,7 @@ button.media-pick {
 
 button.chip {
     padding: 0 v.$padding-lg * 1.5;
-    border-radius: 999px;
+    border-radius: v.$radius-pill;
     border-color: v.$border-subtle;
     background: transparent;
     --icon-color: #{v.$text-muted};

@@ -35,22 +35,6 @@
     border-bottom: 1px solid v.$border-subtle-transparent;
 }
 
-.toolbar-brand {
-    font-size: v.$font-lg;
-    display: flex;
-    flex-direction: row;
-    flex: 1;
-    align-items: center;
-    gap: v.$text-gap;
-    cursor: pointer;
-
-    height: v.$input-height * 1.5;
-
-    @include g.on-mobile {
-        height: v.$input-height-touch;
-    }
-}
-
 .toolbar-dropdown {
     display: flex;
     flex-direction: row;

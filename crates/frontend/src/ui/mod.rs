@@ -49,7 +49,7 @@ mod translated_text;
 mod translations_modal;
 mod xem_lookup_editor;
 
-pub(crate) use self::button::{Button, Variant};
+pub(crate) use self::button::{Button, Size, Variant};
 pub(crate) use self::cast_modal::{CastModal, cast_card};
 pub(crate) use self::confirm_danger::ConfirmDanger;
 pub(crate) use self::context_menu::ContextMenu;

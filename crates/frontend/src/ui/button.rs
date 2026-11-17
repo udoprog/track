@@ -25,6 +25,24 @@ impl Variant {
     }
 }
 
+/// The size of a [`Button`]: [`Size::Small`] adds the `small` modifier, for
+/// actions in a dense head or list row.
+#[derive(Clone, Copy, PartialEq, Default)]
+pub(crate) enum Size {
+    #[default]
+    Normal,
+    Small,
+}
+
+impl Size {
+    fn class(self) -> Option<&'static str> {
+        match self {
+            Size::Normal => None,
+            Size::Small => Some("small"),
+        }
+    }
+}
+
 impl IntoPropValue<Variant> for &str {
     fn into_prop_value(self) -> Variant {
         match self {
@@ -55,6 +73,8 @@ pub(crate) struct Props {
     pub(crate) desktop_text: Option<AttrValue>,
     #[prop_or_default]
     pub(crate) variant: Variant,
+    #[prop_or_default]
+    pub(crate) size: Size,
     /// Extra classes for the button (e.g. `fill`, `selected`).
     #[prop_or_default]
     pub(crate) class: Classes,
@@ -98,6 +118,7 @@ pub(crate) struct Props {
 pub(crate) fn Button(props: &Props) -> Html {
     let class = classes!(
         props.variant.class(),
+        props.size.class(),
         props.text.is_some().then_some("mobile-has-text"),
         props.label.is_some().then_some("has-text"),
         props.desktop_text.is_some().then_some("desktop-has-text"),
@@ -125,4 +146,17 @@ pub(crate) fn Button(props: &Props) -> Html {
 
 fn bool_attr(value: bool) -> AttrValue {
     AttrValue::Static(if value { "true" } else { "false" })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Size, Variant};
+
+    #[test]
+    fn modifier_classes() {
+        assert_eq!(Size::Normal.class(), None);
+        assert_eq!(Size::Small.class(), Some("small"));
+        assert_eq!(Variant::Secondary.class(), None);
+        assert_eq!(Variant::Danger.class(), Some("danger"));
+    }
 }

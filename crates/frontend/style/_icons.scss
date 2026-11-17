@@ -6,10 +6,6 @@
     &.#{$name} {
         mask-image: url('/static/icons/#{$name}.svg');
         background-color: var(--icon-color);
-
-        &.invert {
-            background-color: var(--icon-color-invert);
-        }
     }
 }
 

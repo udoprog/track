@@ -865,7 +865,7 @@ pub async fn remotes_show_their_actions(driver: &mut TestDriver, _: &mut Track) 
     driver.wait_texts(".modal .remote-id", ["12345"]).await?;
 
     let switch = driver
-        .find_one_by(".modal .remote-actions [role='switch']")
+        .find_one_by(".modal [data-testid='remote-actions'] [role='switch']")
         .await?
         .text()
         .await?;

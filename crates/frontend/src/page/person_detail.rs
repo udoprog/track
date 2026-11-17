@@ -404,9 +404,9 @@ impl PersonDetail {
                 <Image class="person-detail-photo" placeholder={true} placeholder_icon="user" src={person.profile.clone()} alt={name.clone()} />
 
                 <div class="person-detail-info">
-                    <div class="row-split">
-                        <h1>{ name }</h1>
-                        <div class="input-group">
+                    <div class="page-head">
+                        <h1 class="page-head-title">{ name }</h1>
+                        <div class="input-group push">
                             <SyncButton target={SyncTarget::Person(person.id)} text="Sync" onclick={link.callback(|_| Msg::SyncPerson)} />
                             <Button icon="cog-6-tooth" title="Settings" onclick={link.callback(|_| Msg::OpenSettings)} />
                             if self.auth.is_admin() {

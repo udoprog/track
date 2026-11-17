@@ -441,9 +441,9 @@ impl Search {
                         <span class={classes!("icon", "sm", kind_icon)} role="img" aria-label={kind_label} title={kind_label} />
 
                         if let Some(to) = &row.tracked {
-                            <Link to={to.clone()} class="search-title"><>{title}</></Link>
+                            <Link to={to.clone()} class="search-title title sm clamp"><>{title}</></Link>
                         } else {
-                            <span class="search-title">{title}</span>
+                            <span class="search-title title sm clamp">{title}</span>
                         }
 
                         if let Some(year) = row.year {

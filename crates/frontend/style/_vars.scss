@@ -33,15 +33,19 @@ $shadow: var(--shadow);
 $shadow-strong: var(--shadow-strong);
 $scrim: var(--scrim);
 
+$font-display: 32px;
 $font-title: 24px;
 $font-xl: 20px;
 $font-lg: 18px;
 $font-base: 16px;
 $font-sm: 14px;
 $font-xs: 12px;
+$font-xxs: 11px;
 $radius-sm: 6px;
 $radius: 8px;
 $radius-lg: 12px;
+// Fully rounded ends, for pills and dots.
+$radius-pill: 999px;
 $padding: 4px;
 $padding-md: 6px;
 $padding-lg: 8px;

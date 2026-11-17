@@ -4,7 +4,7 @@ use yew::prelude::*;
 use crate::help;
 use crate::ui::{ContextMenu, Help};
 
-use super::{Button, ConfirmDanger, DragHandle, Modal, Reorder, Variant};
+use super::{Button, ConfirmDanger, DragHandle, Modal, Reorder, Size, Variant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RemoteSourceKind {
@@ -462,8 +462,8 @@ impl Component for RemoteEditor {
                             };
 
                             html! {
-                                <div {key} class="remote">
-                                    <div class="remote-head">
+                                <div {key} class="remote column tight">
+                                    <div class="row wrap tight">
                                         <DragHandle {index} />
 
                                         if let Some(url) = url {
@@ -474,14 +474,14 @@ impl Component for RemoteEditor {
                                             <span class="remote-link">{identifier}</span>
                                         }
 
-                                        <div class="remote-actions" ref={r.context_anchor.clone()}>
-                                            <Button class={classes!("input-checkbox", "has-text", enabled.then_some("checked"))} role="switch" checked={Some(enabled)} title={if enabled { "Remote enabled" } else { "Remote disabled" }} onclick={link.callback(move |_| Msg::SetEnabled(id, !enabled))}>
+                                        <div class="row wrap tight push" data-testid="remote-actions" ref={r.context_anchor.clone()}>
+                                            <Button size={Size::Small} class={classes!("input-checkbox", "has-text", enabled.then_some("checked"))} role="switch" checked={Some(enabled)} title={if enabled { "Remote enabled" } else { "Remote disabled" }} onclick={link.callback(move |_| Msg::SetEnabled(id, !enabled))}>
                                                 <span class="mark" />
                                                 <span>{if enabled { "Enabled" } else { "Disabled" }}</span>
                                             </Button>
 
-                                            <Button icon="pencil-square" label="Edit" title="Edit identifier" onclick={link.callback(move |_| Msg::Edit(edit_entry.clone()))} />
-                                            <Button icon="trash" label="Remove" title="Remove identifier" expanded={Some(self.confirming_remove == Some(id))} haspopup="dialog" onclick={link.callback(move |_| Msg::AskRemove(id))} />
+                                            <Button size={Size::Small} icon="pencil-square" label="Edit" title="Edit identifier" onclick={link.callback(move |_| Msg::Edit(edit_entry.clone()))} />
+                                            <Button size={Size::Small} icon="trash" label="Remove" title="Remove identifier" expanded={Some(self.confirming_remove == Some(id))} haspopup="dialog" onclick={link.callback(move |_| Msg::AskRemove(id))} />
                                         </div>
 
                                         if self.confirming_remove == Some(id) {

@@ -17,9 +17,3 @@
         display: none !important;
     }
 }
-
-.show-mobile {
-    @include on-desktop {
-        display: none !important;
-    }
-}

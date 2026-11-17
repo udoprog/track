@@ -1,0 +1,192 @@
+// Layout primitives every screen composes in its markup. Reach for these
+// before writing a screen's own flex or grid rule; a screen class holds only
+// what none of them does, with a comment saying why.
+//
+// .row             children in a line, centred across, $gap apart
+//   .tight .text-gap   $gap-xs / $text-gap apart
+//   .wrap              wraps onto more lines
+//   .between .end .center   main-axis placement
+//   .align-top         aligned to the top instead of centred
+// .column          children stacked, $gap-sm apart
+//   .tight             $gap-xs apart
+//   .center            centred across
+// .row-split       a wrapping row pushed to both ends (`.reverse`)
+// .push            a child of a row that takes the free space before it, so
+//                  it and what follows sit at the end
+// .page-head       a page's heading row: `.page-head-title`, then actions
+//                  (put `.push` on the actions); wraps on phones
+// .section-head    a section's heading row inside a page, card or list item:
+//                  its heading, then actions (`.push`)
+// .card            a raised surface
+//   .compact           less padding
+//   .flush             no padding, clipped to its corners (a poster on top)
+// .title           a title line in body text weight
+//   .sm                base size instead of large
+//   .clamp             one line, ellipsis when it overflows
+//
+// Buttons take their sizes from `.button.small` (_input.scss).
+
+@use 'vars' as v;
+@use 'grid' as g;
+
+@mixin row-base {
+    display: flex;
+    flex-direction: row;
+    justify-items: stretch;
+    align-items: center;
+    gap: v.$gap;
+
+    &.text-gap {
+        gap: v.$text-gap;
+    }
+
+    &.tight {
+        gap: v.$gap-xs;
+    }
+
+    &.wrap {
+        flex-wrap: wrap;
+    }
+
+    &.between {
+        justify-content: space-between;
+    }
+
+    &.center {
+        justify-content: center;
+    }
+
+    &.end {
+        justify-content: flex-end;
+    }
+
+    &.align-top {
+        align-items: start;
+    }
+
+    &.align-end {
+        justify-content: flex-end;
+    }
+
+    @include g.on-desktop {
+        &.desktop-align-end {
+            justify-content: flex-end;
+        }
+    }
+}
+
+@mixin column-base {
+    display: flex;
+    flex-direction: column;
+    justify-items: stretch;
+    gap: v.$gap-sm;
+
+    &.tight {
+        gap: v.$gap-xs;
+    }
+
+    &.center {
+        align-items: center;
+    }
+
+    &>.align-end {
+        align-self: end;
+    }
+}
+
+.row {
+    @include row-base;
+}
+
+@include g.on-desktop {
+    .desktop-row {
+        @include row-base;
+    }
+}
+
+.column {
+    @include column-base;
+}
+
+@include g.on-mobile {
+    .mobile-column {
+        @include column-base;
+    }
+}
+
+@mixin row-split-base {
+    @include row-base;
+
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+
+    &.reverse {
+        flex-direction: row-reverse;
+    }
+}
+
+.row-split {
+    @include row-split-base;
+}
+
+.push {
+    margin-inline-start: auto;
+}
+
+.page-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: v.$gap-xs v.$gap-sm;
+    min-width: 0;
+}
+
+.page-head-title {
+    margin: 0;
+    min-width: 0;
+    font-size: v.$font-title;
+    font-weight: v.$bold-weight;
+    overflow-wrap: anywhere;
+}
+
+.section-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: v.$gap-xs v.$gap-sm;
+    min-width: 0;
+}
+
+.card {
+    background: v.$bg-item;
+    border-radius: v.$radius;
+    padding: v.$gap;
+
+    &.compact {
+        padding: v.$padding-lg;
+    }
+
+    &.flush {
+        padding: 0;
+        overflow: hidden;
+    }
+}
+
+.title {
+    min-width: 0;
+    font-size: v.$font-lg;
+    font-weight: v.$bold-weight;
+    color: v.$text-primary;
+
+    &.sm {
+        font-size: v.$font-base;
+    }
+
+    &.clamp {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+}

@@ -141,6 +141,16 @@ button,
         flex: 1;
     }
 
+    // A dense head's or row's actions; icon-only ones stay square.
+    &.small {
+        height: v.$input-height-sm;
+        font-size: v.$font-xs;
+
+        @include is-icon-only {
+            min-width: v.$input-height-sm;
+        }
+    }
+
     // Icon-only buttons are square, so a row of them reads as one set.
     @include g.on-desktop {
         &:not(.desktop-has-text, .has-text) {
