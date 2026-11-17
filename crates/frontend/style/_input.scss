@@ -42,6 +42,10 @@
     }
 }
 
+%has-text {
+    @include has-text;
+}
+
 @mixin button-color($name) {
     background-color: var(--#{$name}-bg);
 
@@ -70,7 +74,7 @@
 
     @if not $editable {
         padding: v.$padding;
-        @include has-text;
+        @extend %has-text;
     }
 
     @include g.on-mobile {
@@ -94,10 +98,14 @@
     user-select: none;
 }
 
+%input-base {
+    @include input-base;
+}
+
 // The app's own buttons, and what plinth's (`.plinth-button`, configured in
 // main.scss) take from them: the icon colour, and `fill` and `selected`.
 button {
-    @include input-base;
+    @extend %input-base;
 
     --icon-color: #{v.$text-color};
     color: v.$text-color;
@@ -199,8 +207,12 @@ button {
     }
 }
 
-.input-text {
+%field {
     @include field;
+}
+
+.input-text {
+    @extend %field;
 
     &.selected {
         --icon-color: #{v.$text-color-selected};
@@ -212,7 +224,7 @@ button {
 
 // The chevron is drawn from two gradients so it takes the theme's colour.
 .input-select {
-    @include field;
+    @extend %field;
 
     appearance: none;
     cursor: pointer;
@@ -233,7 +245,7 @@ button {
 }
 
 .input-number {
-    @include field;
+    @extend %field;
 
     appearance: textfield;
     font-variant-numeric: tabular-nums;
@@ -250,7 +262,7 @@ button {
 }
 
 .input-checkbox {
-    @include input-base;
+    @extend %input-base;
     cursor: pointer;
 
     // Sized like the icons beside it, not to the height of the toggle.

@@ -97,7 +97,7 @@
     border-radius: v.$radius;
     border: none;
 
-    @include i.has-text;
+    @extend %has-text;
 
     &:hover {
         background: v.$bg-dark;

@@ -68,6 +68,34 @@
     $skeleton-line-height: v.$input-height-sm,
     $skeleton-line-inset: 0,
     $skeleton-phone-height: v.$input-height-touch,
+    // Defined by the theme (_theme.scss).
+    $danger: false,
+    $success: false,
+    $warning: false,
+    $on-accent: false,
+    $scrim: false,
+    $field-bg: false,
+    $field-border: false,
+    $card-border-width: false,
+    // The parts of plinth's partials track never renders.
+    $omit: (
+        "buttons.busy", "buttons.fold", "buttons.ghost", "buttons.touch",
+        "confirm.inline",
+        "heads.crumbs", "heads.label", "heads.list", "heads.trail",
+        "layout.card-compact", "layout.card-dense", "layout.card-link", "layout.flush",
+        "layout.gap-hair", "layout.gap-medium", "layout.gap-none", "layout.gap-wide",
+        "layout.grow", "layout.lines", "layout.pages", "layout.plain-list", "layout.toolbar",
+        "menu.context", "menu.current", "menu.danger", "menu.detail", "menu.heading", "menu.note",
+        "menu.row-actions", "menu.separator", "menu.split-button", "menu.tight", "menu.widths",
+        "pager.edges",
+        "popover.match-anchor",
+        "skeleton.group", "skeleton.loadable", "skeleton.row", "skeleton.short", "skeleton.spinner",
+        "tokens.actions", "tokens.card-grid", "tokens.color-select", "tokens.drop", "tokens.fields",
+        "tokens.filter-picker", "tokens.media", "tokens.panel", "tokens.picker", "tokens.seam",
+        "tokens.table", "tokens.toast", "tokens.toggles", "tokens.tooltip",
+        "utilities.clamp", "utilities.focus-ring", "utilities.numeric", "utilities.phone-only",
+        "utilities.scroll-area", "utilities.truncate",
+    ),
     $button-colours: (
         secondary: (fill: var(--neutral-bg), edge: transparent, pressed-fill: var(--button-fill), pressed-edge: var(--button-edge)),
         // plinth's close buttons: filled, their icon muted.
@@ -861,7 +889,7 @@ h1.auth-heading {
 }
 
 .auth-input {
-    @include i.field;
+    @extend %field;
 }
 
 .auth-select {
@@ -1176,7 +1204,7 @@ h1.auth-heading {
     font-weight: v.$bold-weight;
 }
 
-@mixin header-base($font-size) {
+@mixin header-base {
     display: flex;
     align-items: center;
     gap: v.$gap-sm;
@@ -1184,7 +1212,6 @@ h1.auth-heading {
     color: v.$color-title;
     margin: 0;
     padding: 0;
-    font-size: $font-size;
     font-weight: v.$bold-weight;
 
     &.center {
@@ -1208,28 +1235,24 @@ h1.auth-heading {
     @include focus-ring;
 }
 
+h1, h2, h3, h4, h5, h6 {
+    @include header-base;
+}
+
 h1 {
-    @include header-base(v.$font-title);
+    font-size: v.$font-title;
 }
 
 h2 {
-    @include header-base(v.$font-xl);
+    font-size: v.$font-xl;
 }
 
 h3 {
-    @include header-base(v.$font-lg);
+    font-size: v.$font-lg;
 }
 
-h4 {
-    @include header-base(v.$font-base);
-}
-
-h5 {
-    @include header-base(v.$font-base);
-}
-
-h6 {
-    @include header-base(v.$font-base);
+h4, h5, h6 {
+    font-size: v.$font-base;
 }
 
 .text-muted {
