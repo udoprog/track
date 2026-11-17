@@ -10,8 +10,8 @@ use crate::help;
 use crate::router::{Route, SettingsPage};
 use crate::ui::{
     AIR_DATE_KINDS, AIR_DATE_SOURCES, Button, DurationInput, FiltersEditor, FormRow,
-    LanguagePicker, Link, NumberingsEditor, RELEASE_KINDS, RELEASE_SOURCES, SecretInput,
-    SyncKindsEditor, SyncLanguagesEditor, XemLookupEditor,
+    LanguagePicker, Link, NumberingsEditor, RELEASE_KINDS, RELEASE_SOURCES, SyncKindsEditor,
+    SyncLanguagesEditor, XemLookupEditor,
 };
 
 fn tz_is_valid(name: &str) -> bool {
@@ -419,34 +419,31 @@ impl Component for Settings {
                             <div class={plinth::form_rows(true)}>
                                 <FormRow stack=true label="TheTVDB API key">
                                     { system("", html! {
-                                        <SecretInput
-                                            id="tvdb-api-key"
-                                            placeholder="Enter TVDB API key"
-                                            value={self.config.tvdb_api_key.clone()}
-                                            on_change={link.callback(Msg::TvdbKeyChanged)}
-                                        />
+                                        <plinth::SecretInput id="tvdb-api-key" label="TheTVDB API key" placeholder="Enter TVDB API key"
+                                            value={AttrValue::from(self.config.tvdb_api_key.clone())}
+                                            on_input={link.callback(Msg::TvdbKeyChanged)}
+                                            commit=true titles=true show_label="Reveal"
+                                            copy_label="Copy to clipboard" />
                                     }) }
                                 </FormRow>
 
                                 <FormRow stack=true label="TheTVDB subscriber PIN" hint="Optional.">
                                     { system("", html! {
-                                        <SecretInput
-                                            id="tvdb-pin"
-                                            placeholder="Enter TVDB subscriber PIN"
-                                            value={self.config.tvdb_pin.clone().unwrap_or_default()}
-                                            on_change={link.callback(Msg::TvdbPinChanged)}
-                                        />
+                                        <plinth::SecretInput id="tvdb-pin" label="TheTVDB subscriber PIN" placeholder="Enter TVDB subscriber PIN"
+                                            value={AttrValue::from(self.config.tvdb_pin.clone().unwrap_or_default())}
+                                            on_input={link.callback(Msg::TvdbPinChanged)}
+                                            commit=true titles=true show_label="Reveal"
+                                            copy_label="Copy to clipboard" />
                                     }) }
                                 </FormRow>
 
                                 <FormRow stack=true label="TheMovieDB API key">
                                     { system("", html! {
-                                        <SecretInput
-                                            id="tmdb-api-key"
-                                            placeholder="Enter TMDB API key"
-                                            value={self.config.tmdb_api_key.clone()}
-                                            on_change={link.callback(Msg::TmdbKeyChanged)}
-                                        />
+                                        <plinth::SecretInput id="tmdb-api-key" label="TheMovieDB API key" placeholder="Enter TMDB API key"
+                                            value={AttrValue::from(self.config.tmdb_api_key.clone())}
+                                            on_input={link.callback(Msg::TmdbKeyChanged)}
+                                            commit=true titles=true show_label="Reveal"
+                                            copy_label="Copy to clipboard" />
                                     }) }
                                 </FormRow>
                             </div>

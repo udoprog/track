@@ -80,6 +80,14 @@
     $error-box-cause-font: inherit,
     $error-box-cause-text: v.$font-sm,
     $error-box-text-end: 0,
+    // Text fields: the edge strengthens on hover and turns accent while
+    // focused, the ring over it; small text, a touch target high on phones.
+    $input-hover-edge: var(--field-border-hover),
+    $input-focus-edge: v.$color-primary,
+    $input-ring-offset: -1px,
+    $input-padding-inline: v.$padding-lg + 2px,
+    $input-text: v.$font-sm,
+    $input-phone-height: v.$input-height-touch,
     // Settings' label column; hints in the text's own line height.
     $field-label-width: 200px,
     $field-message-line: normal,
@@ -99,6 +107,7 @@
         "fields.busy", "fields.check", "fields.disabled", "fields.error", "fields.field",
         "fields.fieldset", "fields.help", "fields.required",
         "heads.crumbs", "heads.label", "heads.list", "heads.trail",
+        "inputs.group", "inputs.input", "inputs.mark", "inputs.textarea",
         "layout.card-compact", "layout.card-dense", "layout.card-link", "layout.flush",
         "layout.gap-hair", "layout.gap-medium", "layout.gap-none", "layout.gap-wide",
         "layout.grow", "layout.lines", "layout.pages", "layout.plain-list", "layout.toolbar",
@@ -128,6 +137,7 @@
 @use '../../../../plinth/style/buttons' as plinth-buttons;
 @use '../../../../plinth/style/fields' as plinth-fields;
 @use '../../../../plinth/style/icons' as plinth-icons;
+@use '../../../../plinth/style/inputs' as plinth-inputs;
 @use '../../../../plinth/style/notices' as plinth-notices;
 @use '../../../../plinth/style/skeleton' as plinth-skeleton;
 @use '../../../../plinth/style/popover' as plinth-popover;

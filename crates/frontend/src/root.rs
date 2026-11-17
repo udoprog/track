@@ -41,7 +41,7 @@ fn icon_set() -> IconSet {
         (Glyph::Search, "magnifying-glass"),
         (Glyph::Eye, "eye"),
         (Glyph::EyeOff, "eye-slash"),
-        (Glyph::Copy, "document-duplicate"),
+        (Glyph::Copy, "clipboard"),
     ];
 
     GLYPHS
