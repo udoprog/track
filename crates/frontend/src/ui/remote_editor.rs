@@ -4,7 +4,9 @@ use yew::prelude::*;
 use crate::help;
 use crate::ui::Help;
 
-use super::{Button, Confirm, DragHandle, Modal, Reorder, Size, Variant};
+use plinth::{Reorder, ReorderHandle, ReorderItem};
+
+use super::{Button, Confirm, Modal, Size, Variant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RemoteSourceKind {
@@ -387,8 +389,8 @@ impl Component for RemoteEditor {
                         <div class="text-muted">{"No remotes"}</div>
                     </div>
                 } else {
-                    <Reorder class="table" on_move={link.callback(|(from, to)| Msg::Move(from, to))}>
-                        { for self.remotes.iter().enumerate().map(|(index, r)| {
+                    <Reorder class="table" on_move={link.callback(|(from, to)| Msg::Move(from, to))} quick_keys=true titles=true>
+                        { for self.remotes.iter().map(|r| {
                             let key = r.remote.remote.to_string();
 
                             let edit_entry = r.remote.clone();
@@ -458,10 +460,10 @@ impl Component for RemoteEditor {
                                 </>
                             };
 
-                            html! {
-                                <div {key} class="remote plinth-stack plinth-tight">
+                            html_nested! {
+                                <ReorderItem id={key} name={r.remote.remote.to_string()} class="remote plinth-stack plinth-tight">
                                     <div class="plinth-cluster plinth-tight">
-                                        <DragHandle {index} />
+                                        <ReorderHandle />
 
                                         if let Some(url) = url {
                                             <a class="remote-link plinth-cluster plinth-nowrap plinth-tight" data-testid="remote-link" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {}", r.remote.remote.source())}>
@@ -530,7 +532,7 @@ impl Component for RemoteEditor {
                                             }
                                         </div>
                                     }
-                                </div>
+                                </ReorderItem>
                             }
                         }) }
                     </Reorder>

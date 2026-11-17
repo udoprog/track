@@ -3,7 +3,9 @@ use yew::prelude::*;
 
 use crate::flags;
 
-use super::{Button, Confirm, CountryPicker, DragHandle, Reorder, Variant};
+use plinth::{Reorder, ReorderHandle, ReorderItem};
+
+use super::{Button, Confirm, CountryPicker, Variant};
 
 /// Predicate kinds offered when editing movie release filters.
 pub(crate) const RELEASE_KINDS: &[api::PredicateKind] = &[
@@ -69,6 +71,7 @@ pub(crate) enum Msg {
     AskRemove(usize),
     CancelRemove,
     ConfirmRemove(usize),
+    Move(usize, usize),
 }
 
 /// Editor for the [`api::FilterRules`] shared by release and air-date filters.
@@ -84,12 +87,23 @@ pub(crate) struct FiltersEditor {
     confirming_remove: Option<usize>,
     /// One anchor per rule, positioning that rule's removal popover.
     anchors: Vec<NodeRef>,
+    /// One id per rule, which follows it when it is moved, so a moved row
+    /// keeps its element (and focus).
+    ids: Vec<u32>,
+    next_id: u32,
 }
 
 impl FiltersEditor {
     fn sync_anchors(&mut self, len: usize) {
         if self.anchors.len() != len {
             self.anchors.resize_with(len, NodeRef::default);
+        }
+
+        self.ids.truncate(len);
+
+        while self.ids.len() < len {
+            self.ids.push(self.next_id);
+            self.next_id += 1;
         }
     }
 }
@@ -105,6 +119,8 @@ impl Component for FiltersEditor {
             mode: Mode::View,
             confirming_remove: None,
             anchors: (0..len).map(|_| NodeRef::default()).collect(),
+            ids: (0..len as u32).collect(),
+            next_id: len as u32,
         }
     }
 
@@ -156,6 +172,13 @@ impl Component for FiltersEditor {
                 self.confirming_remove = None;
                 true
             }
+            Msg::Move(from, to) => {
+                let mut next = ctx.props().rules.clone();
+                plinth::move_item(&mut next, from, to);
+                plinth::move_item(&mut self.ids, from, to);
+                ctx.props().on_change.emit(next);
+                false
+            }
         }
     }
 
@@ -167,10 +190,7 @@ impl Component for FiltersEditor {
             .rules
             .iter()
             .enumerate()
-            .map(|(index, rule)| match self.mode {
-                Mode::View => self.view_summary(ctx, index, rule),
-                Mode::Edit => self.view_rule(props, index, rule),
-            });
+            .map(|(index, rule)| self.view_summary(ctx, index, rule));
 
         let toggle = match self.mode {
             Mode::View => html! {
@@ -181,22 +201,15 @@ impl Component for FiltersEditor {
             },
         };
 
-        let on_move = {
-            let rules = props.rules.clone();
-
-            props.on_change.reform(move |(from, to): (usize, usize)| {
-                let mut next = rules.clone();
-                let rule = next.remove(from);
-                next.insert(to, rule);
-                next
-            })
-        };
-
         html! {
             <div class="form">
                 if let Mode::Edit = self.mode {
-                    <Reorder class="form" {on_move}>
-                        {for rules}
+                    <Reorder class="form" on_move={link.callback(|(from, to)| Msg::Move(from, to))} quick_keys=true titles=true>
+                        {for props.rules.iter().enumerate().map(|(index, rule)| html_nested! {
+                            <ReorderItem id={self.ids.get(index).copied().unwrap_or_default().to_string()} name={rule_label(rule, index)}>
+                                { self.view_rule(props, index, rule) }
+                            </ReorderItem>
+                        })}
                     </Reorder>
                 } else {
                     {for rules}
@@ -340,7 +353,7 @@ impl FiltersEditor {
         html! {
             <rule>
                 <div class="plinth-cluster plinth-between plinth-loose">
-                    <DragHandle {index} />
+                    <ReorderHandle />
 
                     <input
                         class={classes!(plinth::class::INPUT, "fill")}

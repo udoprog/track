@@ -1,7 +1,9 @@
 use web_sys::MouseEvent;
 use yew::prelude::*;
 
-use super::{Button, DragHandle, Reorder};
+use plinth::{Reorder, ReorderHandle, ReorderItem};
+
+use super::Button;
 
 /// Sources that can contribute syncable data, with the kinds they support fixed
 /// by [`api::RemoteSource::default_sync_kinds`].
@@ -58,16 +60,16 @@ pub(crate) fn SyncKindsEditor(props: &Props) -> Html {
     };
 
     html! {
-        <Reorder class="form" {on_move}>
+        <Reorder class="form" {on_move} quick_keys=true titles=true>
             {
                 for entries.iter().enumerate().map(|(index, entry)| {
                     let source = entry.source;
                     let capability = source.default_sync_kinds();
                     let current = entry.kinds.intersect(capability);
 
-                    html! {
-                        <div class="input-group plinth-cluster plinth-nowrap">
-                            <DragHandle {index} />
+                    html_nested! {
+                        <ReorderItem id={source.as_id()} name={source.as_label()} class="input-group plinth-cluster plinth-nowrap">
+                            <ReorderHandle />
 
                             <span class="input-label has-text">
                                 <span class={classes!("logo", source.as_id())} />
@@ -91,7 +93,7 @@ pub(crate) fn SyncKindsEditor(props: &Props) -> Html {
                                     <Button role="switch" checked={Some(on)} title={kind.as_label()} onclick={on_toggle} label={kind.as_label()} />
                                 }
                             }) }
-                        </div>
+                        </ReorderItem>
                     }
                 })
             }

@@ -1,6 +1,6 @@
 use yew::prelude::*;
 
-use super::{DragHandle, Reorder};
+use plinth::{Reorder, ReorderHandle, ReorderItem};
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
@@ -44,18 +44,18 @@ pub(crate) fn XemLookupEditor(props: &Props) -> Html {
     };
 
     html! {
-        <Reorder class={classes!("form", "xem-lookup")} {on_move}>
+        <Reorder class={classes!("form", "xem-lookup")} {on_move} quick_keys=true titles=true>
             {
-                for sources.iter().enumerate().map(|(index, source)| html! {
-                    <div class="input-group plinth-cluster plinth-nowrap">
-                        <DragHandle {index} />
+                for sources.iter().map(|source| html_nested! {
+                    <ReorderItem id={source.as_id()} name={source.as_label()} class="input-group plinth-cluster plinth-nowrap">
+                        <ReorderHandle />
 
                         <span class="input-label has-text">
                             <span class={classes!("logo", source.as_id())} />
                         </span>
 
                         <span class="input-label has-text">{format!("{} id", source.as_label())}</span>
-                    </div>
+                    </ReorderItem>
                 })
             }
         </Reorder>

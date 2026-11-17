@@ -440,7 +440,10 @@ pub async fn reorders_sync_sources(driver: &mut TestDriver, _: &mut Track) -> Re
 
     let order = async |driver: &TestDriver| -> Result<Vec<String>> {
         driver
-            .find_all_attrs(".reorder:not(.xem-lookup, .numberings) .logo", "class")
+            .find_all_attrs(
+                ".plinth-reorder:not(.xem-lookup, .numberings) .logo",
+                "class",
+            )
             .await
     };
 
@@ -451,9 +454,15 @@ pub async fn reorders_sync_sources(driver: &mut TestDriver, _: &mut Track) -> Re
     );
 
     // From the first handle to the lower half of the second row.
-    let first = driver.find_nth(".reorder .drag-handle", 0).await?;
+    let first = driver
+        .find_nth(".plinth-reorder .plinth-drag-handle", 0)
+        .await?;
     let from = first.rect().await?;
-    let to = driver.find_nth(".reorder > *", 1).await?.rect().await?;
+    let to = driver
+        .find_nth(".plinth-reorder > .plinth-reorder-row", 1)
+        .await?
+        .rect()
+        .await?;
     let dy = (to.y + to.height * 0.75) - (from.y + from.height / 2.0);
 
     first.drag_by(0, dy as i64).await?;
@@ -470,7 +479,7 @@ pub async fn reorders_sync_sources(driver: &mut TestDriver, _: &mut Track) -> Re
 
     driver.reload().await?;
     driver
-        .find_one_by(".reorder:not(.xem-lookup, .numberings)")
+        .find_one_by(".plinth-reorder:not(.xem-lookup, .numberings)")
         .await?;
 
     driver
@@ -480,7 +489,10 @@ pub async fn reorders_sync_sources(driver: &mut TestDriver, _: &mut Track) -> Re
         .await?;
 
     driver
-        .press_key_on(".reorder .drag-handle[data-index='2']", "ArrowUp")
+        .press_key_on(
+            ".plinth-reorder:not(.xem-lookup, .numberings) > :nth-child(3) .plinth-drag-handle",
+            "ArrowUp",
+        )
         .await?;
 
     let keyed = vec![dragged[0].clone(), dragged[2].clone(), dragged[1].clone()];
@@ -512,7 +524,7 @@ pub async fn reorders_xem_lookup(driver: &mut TestDriver, _: &mut Track) -> Resu
         .await?;
 
     driver
-        .press_key_on(".xem-lookup .drag-handle[data-index='1']", "ArrowUp")
+        .press_key_on(".xem-lookup > :nth-child(2) .plinth-drag-handle", "ArrowUp")
         .await?;
 
     driver
@@ -540,12 +552,12 @@ pub async fn shows_and_hides_numberings(driver: &mut TestDriver, _: &mut Track) 
 
     let order = async |driver: &TestDriver| -> Result<Vec<String>> {
         driver
-            .find_all_attrs(".numberings>[data-system]", "data-system")
+            .find_all_attrs(".numberings [data-system]", "data-system")
             .await
     };
     let hidden = async |driver: &TestDriver| -> Result<Vec<String>> {
         driver
-            .find_all_attrs(".numberings>.numbering-hidden", "data-system")
+            .find_all_attrs(".numberings>.numbering-hidden [data-system]", "data-system")
             .await
     };
 
@@ -563,7 +575,7 @@ pub async fn shows_and_hides_numberings(driver: &mut TestDriver, _: &mut Track) 
         .await?;
 
     driver
-        .find_one_by(".numberings>[data-system=scene] button[aria-pressed]")
+        .find_one_by(".numberings>:has([data-system=scene]) button[aria-pressed]")
         .await?
         .click()
         .await?;
@@ -574,7 +586,7 @@ pub async fn shows_and_hides_numberings(driver: &mut TestDriver, _: &mut Track) 
         .await?;
 
     driver
-        .press_key_on(".numberings .drag-handle[data-index='2']", "ArrowUp")
+        .press_key_on(".numberings > :nth-child(3) .plinth-drag-handle", "ArrowUp")
         .await?;
     driver
         .wait_until("AniDB to move up", async || {

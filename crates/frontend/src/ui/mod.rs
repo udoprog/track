@@ -36,7 +36,6 @@ mod outline;
 mod pager;
 mod release_modal;
 mod remote_editor;
-mod reorder;
 mod sort_menu;
 mod sync_button;
 mod sync_kinds_editor;
@@ -80,7 +79,6 @@ pub(crate) use self::outline::{Outline, OutlineControl, OutlineEntry, OutlineHan
 pub(crate) use self::pager::Pager;
 pub(crate) use self::release_modal::{ReleaseModal, ReleaseTarget};
 pub(crate) use self::remote_editor::{RemoteEditor, RemoteSourceKind};
-pub(crate) use self::reorder::{DragHandle, Reorder};
 pub(crate) use self::sort_menu::SortMenu;
 pub(crate) use self::sync_button::SyncButton;
 pub(crate) use self::sync_kinds_editor::SyncKindsEditor;

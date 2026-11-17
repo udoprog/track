@@ -1,6 +1,8 @@
 use yew::prelude::*;
 
-use super::{Button, DragHandle, Reorder};
+use plinth::{Reorder, ReorderHandle, ReorderItem};
+
+use super::Button;
 
 #[derive(Properties, PartialEq)]
 pub(crate) struct Props {
@@ -37,7 +39,7 @@ pub(crate) fn NumberingsEditor(props: &Props) -> Html {
     };
 
     html! {
-        <Reorder class={classes!("form", "numberings")} {on_move}>
+        <Reorder class={classes!("form", "numberings")} {on_move} quick_keys=true titles=true>
             {
                 for prefs.iter().enumerate().map(|(index, pref)| {
                     let label = api::xem_system_label(&pref.system);
@@ -54,12 +56,12 @@ pub(crate) fn NumberingsEditor(props: &Props) -> Html {
                         })
                     };
 
-                    html! {
-                        <div class={classes!("input-group", "plinth-cluster", "plinth-nowrap", (!shown).then_some("numbering-hidden"))} data-system={pref.system.clone()}>
-                            <DragHandle {index} class={dim.clone()} />
+                    html_nested! {
+                        <ReorderItem id={pref.system.clone()} name={label.to_owned()} class={classes!("input-group", "plinth-cluster", "plinth-nowrap", (!shown).then_some("numbering-hidden"))}>
+                            <ReorderHandle class={dim.clone()} />
 
                             <span class={classes!("input-label", "has-text", dim.clone())}>
-                                <span class={classes!("logo", pref.system.clone())} />
+                                <span class={classes!("logo", pref.system.clone())} data-system={pref.system.clone()} />
                             </span>
 
                             <span class={classes!("input-label", "has-text", "grow", "plinth-cluster", "plinth-tight", dim.clone())}>
@@ -77,7 +79,7 @@ pub(crate) fn NumberingsEditor(props: &Props) -> Html {
                                 pressed={Some(shown)}
                                 onclick={on_toggle}
                             />
-                        </div>
+                        </ReorderItem>
                     }
                 })
             }

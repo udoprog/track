@@ -62,6 +62,11 @@
     $pager-current-ink: v.$text-color-selected,
     $pager-step-ink: v.$text-color,
     $pager-phone-height: v.$input-height-touch,
+    // Drag handles as high as a control, a touch target on phones.
+    $drag-handle-size: v.$input-height,
+    $drag-handle-phone-size: v.$input-height-touch,
+    $drag-handle-radius: v.$radius-sm,
+    $drag-handle-hover-fill: color-mix(in srgb, v.$text-primary 8%, transparent),
     $skeleton-fill: v.$bg-dark-transparent,
     $skeleton-edge: v.$border-subtle-transparent,
     $skeleton-radius: 0,
@@ -146,6 +151,7 @@
 @use '../../../../plinth/style/skeleton' as plinth-skeleton;
 @use '../../../../plinth/style/popover' as plinth-popover;
 @use '../../../../plinth/style/pager' as plinth-pager;
+@use '../../../../plinth/style/reorder' as plinth-reorder;
 @use '../../../../plinth/style/confirm' as plinth-confirm;
 @use '../../../../plinth/style/dialog' as plinth-dialog;
 @use '../../../../plinth/style/menu' as plinth-menu;
@@ -2065,49 +2071,6 @@ date {
     from {
         opacity: 0;
         transform: translate(-50%, 8px);
-    }
-}
-
-// Drag-and-drop reordering (see ui/reorder.rs): the grip a row is dragged by,
-// the row being dragged, and the line where it would land.
-.drag-handle {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    width: v.$input-height;
-    height: v.$input-height;
-    border-radius: v.$radius-sm;
-    color: v.$text-muted;
-    --icon-color: #{v.$text-muted};
-    cursor: grab;
-    // Pointer drags on the grip move the row instead of scrolling the page.
-    touch-action: none;
-    user-select: none;
-
-    &:hover,
-    &:focus-visible {
-        --icon-color: #{v.$text-primary};
-        background: color-mix(in srgb, v.$text-primary 8%, transparent);
-    }
-
-    @include g.on-mobile {
-        width: v.$input-height-touch;
-        height: v.$input-height-touch;
-    }
-}
-
-.reorder {
-    >.dragging {
-        opacity: 0.5;
-    }
-
-    >.drop-before {
-        box-shadow: 0 -3px 0 v.$color-primary;
-    }
-
-    >.drop-after {
-        box-shadow: 0 3px 0 v.$color-primary;
     }
 }
 

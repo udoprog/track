@@ -37,11 +37,13 @@ button {
     font-family: v.$sans-serif-font;
     user-select: none;
 
-    &:not(.disabled):not(:disabled) {
+    // Not plinth's drag handles, which grab and keep their edge (:where, so
+    // this weighs what it did without them).
+    &:not(.disabled):not(:disabled):where(:not(.plinth-drag-handle)) {
         cursor: pointer;
     }
 
-    &:hover:not(.disabled):not(:disabled) {
+    &:hover:not(.disabled):not(:disabled):where(:not(.plinth-drag-handle)) {
         border-color: v.$color-primary;
     }
 
