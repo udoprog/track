@@ -454,7 +454,7 @@ impl Queue {
             <div class={classes!("queue-now", state)} data-test="queue-now">
                 <span class={classes!("queue-now-badge", state)}><span class={classes!("icon", icon)} aria-hidden="true" /></span>
 
-                <div class="queue-now-text">
+                <div class="column text-gap shrink grow">
                     <span class={classes!("queue-now-caption", state)}>{caption}</span>
 
                     if let Some(entry) = entry {
@@ -650,7 +650,7 @@ impl Queue {
                 <span class="task-duration">{duration}</span>
                 <span class="task-time">{time}</span>
 
-                <span class="task-actions">
+                <span class="actions">
                     if entry.is_pending() && self.auth.is_admin() {
                         <div class="input-group">
                             <Button icon="forward" title="Run now" onclick={ctx.link().callback(move |_| Msg::Bump(id))} />

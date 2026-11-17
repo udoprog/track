@@ -436,7 +436,7 @@ impl Search {
                     </span>
                 }
 
-                <div class="search-body">
+                <div class="search-body column text-gap shrink">
                     <div class="search-heading">
                         <span class={classes!("icon", "sm", kind_icon)} role="img" aria-label={kind_label} title={kind_label} />
 

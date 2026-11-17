@@ -1146,7 +1146,7 @@ impl MovieDetail {
                             <span class="watch-when">{w.watched.timestamp.human_date_time(self.time.clone()).view()}</span>
                             <span class="watch-age">{w.watched.timestamp.relative_to(self.time.now())}</span>
 
-                            <div class="watch-actions">
+                            <div class="actions start-on-mobile">
                             <Button node_ref={w.remove_watch_anchor.clone()} icon="trash" label="Remove" title="Remove" expanded={Some(self.confirm_remove_watch == Some(wid))} haspopup="dialog" onclick={link.callback(move |_| WatchMsg::ConfirmRemoveWatch(wid))} />
 
                             if self.confirm_remove_watch == Some(wid) {

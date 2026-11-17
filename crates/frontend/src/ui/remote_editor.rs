@@ -497,7 +497,7 @@ impl Component for RemoteEditor {
                                     {kind_toggles}
 
                                     if let Some(ref cache) = r.remote.cache {
-                                        <div class="remote-cache">
+                                        <div class="remote-cache row wrap between align-top">
                                             <dl>
                                                 if let Some(ref last_updated) = cache.last_updated {
                                                     <dt>{"Last updated"}</dt>

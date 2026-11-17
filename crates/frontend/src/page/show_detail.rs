@@ -2492,7 +2492,7 @@ impl ShowDetail {
                                             <span class="watch-when">{w.watched.timestamp.human_date_time(self.time.clone()).view()}</span>
                                             <span class="watch-age">{w.watched.timestamp.relative_to(self.time.now())}</span>
 
-                                            <div class="watch-actions" ref={w.context_anchor.clone()}>
+                                            <div class="actions start-on-mobile" ref={w.context_anchor.clone()}>
                                                 <Button icon="arrow-uturn-right" label="Move" title="Move to another episode" onclick={link.callback(move |_| WatchMsg::FixWatched(wid))} />
 
                                                 <Button icon="trash" label="Remove" title="Remove" expanded={Some(self.confirm_remove_watch == Some(wid))} haspopup="dialog" onclick={link.callback(move |_| WatchMsg::ConfirmRemoveWatch(wid))} />

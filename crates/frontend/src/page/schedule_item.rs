@@ -84,12 +84,12 @@ pub(super) fn view_day_heading(day: api::Date, today: api::Date) -> Html {
     );
 
     html! {
-        <h3 class={classes!("agenda-day-title", (day == today).then_some("today"))}>
+        <h3 class={"agenda-day-title"}>
             if let Some(relative) = relative {
-                <span>{relative}</span>
+                <span class={(day == today).then_some("accent")}>{relative}</span>
                 <span class="text-muted">{date}</span>
             } else {
-                <span>{date}</span>
+                <span class={(day == today).then_some("accent")}>{date}</span>
             }
         </h3>
     }
