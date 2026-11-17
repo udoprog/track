@@ -2359,8 +2359,8 @@ impl NumberingEditor {
                     let onclick = link.callback(move |_: MouseEvent| Msg::Unfold(pick.clone(), season, first, last));
 
                     rows.push(html! {
-                        <button type="button" class={classes!("numbering-ep", plinth::class::NUMERIC, "numbering-fold-row", cell.classes.clone())} data-season={season.to_string()} data-first={first.to_string()} data-last={last.to_string()} aria-label={code} aria-expanded="false" {title} {onclick}>
-                            <span>
+                        <button type="button" class={classes!("numbering-ep", "numbering-fold-row", cell.classes.clone())} data-season={season.to_string()} data-first={first.to_string()} data-last={last.to_string()} aria-label={code} aria-expanded="false" {title} {onclick}>
+                            <span class="plinth-numeric">
                                 <span>{format!("E{first}–E{last}")}</span>
                                 <span class="numbering-fold-count">{format!("· {n}")}</span>
                             </span>
@@ -2376,8 +2376,8 @@ impl NumberingEditor {
                 let text = if cell.tail { format!("E{e}…") } else { format!("E{e}") };
 
                 rows.push(html! {
-                    <button type="button" class={classes!("numbering-ep", plinth::class::NUMERIC, cell.classes.clone())} data-season={season.to_string()} data-first={e.to_string()} data-last={e.to_string()} aria-label={format!("{label} S{season} E{e}")} title={cell.title.clone()} disabled={!self.manual} {onclick}>
-                        <span>{text}</span>
+                    <button type="button" class={classes!("numbering-ep", cell.classes.clone())} data-season={season.to_string()} data-first={e.to_string()} data-last={e.to_string()} aria-label={format!("{label} S{season} E{e}")} title={cell.title.clone()} disabled={!self.manual} {onclick}>
+                        <span class="plinth-numeric">{text}</span>
                     </button>
                 });
 

@@ -2044,7 +2044,7 @@ impl ShowDetail {
             <>
                 <span class="season-name plinth-truncate">{name.clone()}</span>
 
-                <span class="season-count" title="Episodes watched">
+                <span class="season-count plinth-numeric" title="Episodes watched">
                     if finished {
                         <span class="icon sm check" aria-hidden="true" />
                     }
