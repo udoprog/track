@@ -1,20 +1,23 @@
 [build]
 target = "crates/frontend/index.html"
 
-# The generated Sass lists are written by the pre_build hooks below; ignore them so
-# rewriting them doesn't retrigger the watcher into a rebuild loop.
+# The generated Sass lists and the stylesheet are written by the pre_build hook below;
+# ignore them so rewriting them does not retrigger the watcher into a rebuild loop.
 [watch]
 ignore = [
     "crates/frontend/style/_flags_generated.scss",
     "crates/frontend/style/_icons_generated.scss",
+    "crates/frontend/style/main.css",
 ]
 
-# Regenerate the flag/icon Sass name lists from the vendored SVGs before compiling
-# styles, so they stay in sync with `tools vendor` without hand-maintenance.
+# Regenerate the flag/icon Sass name lists from the vendored SVGs, so they stay in sync
+# with `tools vendor` without hand-maintenance, then compile the stylesheet with trug
+# (sockel's Sass comes from `pkg:sockel`); index.html links the result. One hook,
+# since trunk runs a stage's hooks at the same time.
 [[hooks]]
 stage = "pre_build"
-command = "cargo"
-command_arguments = ["run", "-p", "tools", "--", "scss"]
+command = "sh"
+command_arguments = ["-c", "cargo run -p tools -- scss && trug css crates/frontend/style/main.scss -o crates/frontend/style/main.css --manifest-path crates/frontend/Cargo.toml"]
 
 [[proxy]]
 rewrite = "/ws"

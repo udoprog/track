@@ -4,7 +4,7 @@
 // The app's small text, controls, phone breakpoint, buttons (filled, no
 // edge, touch height on phones), dialogs (centred) and popovers (rounder,
 // wider padded, a sheet's top edge alone), where sockel's differ.
-@use '../../../../sockel/style/tokens' as sockel-tokens with (
+@use 'pkg:sockel/tokens' as sockel-tokens with (
     $text-sm: v.$font-sm,
     $control-height: v.$input-height,
     $control-height-small: v.$input-height-sm,
@@ -143,21 +143,21 @@
         danger: (fill: var(--danger-bg), ink: var(--text), edge: transparent, hover-edge: var(--accent)),
     )
 );
-@use '../../../../sockel/style/layout' as sockel-layout;
-@use '../../../../sockel/style/heads' as sockel-heads;
-@use '../../../../sockel/style/buttons' as sockel-buttons;
-@use '../../../../sockel/style/fields' as sockel-fields;
-@use '../../../../sockel/style/icons' as sockel-icons;
-@use '../../../../sockel/style/inputs' as sockel-inputs;
-@use '../../../../sockel/style/notices' as sockel-notices;
-@use '../../../../sockel/style/skeleton' as sockel-skeleton;
-@use '../../../../sockel/style/popover' as sockel-popover;
-@use '../../../../sockel/style/pager' as sockel-pager;
-@use '../../../../sockel/style/reorder' as sockel-reorder;
-@use '../../../../sockel/style/confirm' as sockel-confirm;
-@use '../../../../sockel/style/dialog' as sockel-dialog;
-@use '../../../../sockel/style/menu' as sockel-menu;
-@use '../../../../sockel/style/utilities' as sockel-utilities;
+@use 'pkg:sockel/layout' as sockel-layout;
+@use 'pkg:sockel/heads' as sockel-heads;
+@use 'pkg:sockel/buttons' as sockel-buttons;
+@use 'pkg:sockel/fields' as sockel-fields;
+@use 'pkg:sockel/icons' as sockel-icons;
+@use 'pkg:sockel/inputs' as sockel-inputs;
+@use 'pkg:sockel/notices' as sockel-notices;
+@use 'pkg:sockel/skeleton' as sockel-skeleton;
+@use 'pkg:sockel/popover' as sockel-popover;
+@use 'pkg:sockel/pager' as sockel-pager;
+@use 'pkg:sockel/reorder' as sockel-reorder;
+@use 'pkg:sockel/confirm' as sockel-confirm;
+@use 'pkg:sockel/dialog' as sockel-dialog;
+@use 'pkg:sockel/menu' as sockel-menu;
+@use 'pkg:sockel/utilities' as sockel-utilities;
 @use 'theme';
 @use 'icons';
 @use 'logos';
