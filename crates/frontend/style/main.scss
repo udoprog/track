@@ -102,12 +102,12 @@
     $card-border-width: false,
     // The parts of plinth's partials track never renders.
     $omit: (
-        "buttons.busy", "buttons.fold", "buttons.ghost", "buttons.touch",
+        "buttons.busy", "buttons.fold", "buttons.touch",
         "confirm.inline",
         "fields.busy", "fields.check", "fields.disabled", "fields.error", "fields.field",
         "fields.fieldset", "fields.help", "fields.required",
         "heads.crumbs", "heads.label", "heads.list", "heads.trail",
-        "inputs.group", "inputs.input", "inputs.mark", "inputs.textarea",
+        "inputs.group", "inputs.mark", "inputs.textarea",
         "layout.card-compact", "layout.card-dense", "layout.card-link", "layout.flush",
         "layout.gap-hair", "layout.gap-medium", "layout.gap-none", "layout.gap-wide",
         "layout.grow", "layout.lines", "layout.pages", "layout.plain-list", "layout.toolbar",
@@ -125,6 +125,8 @@
     ),
     $button-colours: (
         secondary: (fill: var(--neutral-bg), edge: transparent, pressed-fill: var(--button-fill), pressed-edge: var(--button-edge)),
+        // Switches (ui::Button with `checked`): a field's ground and edge.
+        ghost: (fill: v.$bg-surface, ink: var(--text), edge: v.$border-input, hover-edge: var(--accent)),
         // plinth's close buttons: filled, their icon muted.
         quiet: (fill: var(--neutral-bg), ink: var(--text-muted), edge: transparent),
         primary: (fill: var(--accent-bg), ink: var(--text), edge: transparent, hover-edge: var(--accent)),
@@ -883,11 +885,11 @@ h1.auth-heading {
 }
 
 .auth-input {
-    @extend %field;
+    @extend .plinth-input;
 }
 
 .auth-select {
-    @extend .input-select;
+    @extend .plinth-input, .plinth-native-select;
 }
 
 .auth-muted,
@@ -1751,10 +1753,13 @@ image {
             border-end-end-radius: v.$radius-sm;
         }
     }
+}
 
-    &.align-end {
-        justify-content: flex-end;
-    }
+// A value shown in a field's box, read-only, as wide as its text.
+.input-value {
+    @extend .plinth-input-box;
+    width: auto;
+    user-select: text;
 }
 
 .input-group {
@@ -2752,13 +2757,6 @@ button.chip {
                 display: none;
             }
         }
-    }
-}
-
-// Last, so it wins over the display of whatever it is put on.
-.off-phone {
-    @include g.on-mobile {
-        display: none;
     }
 }
 

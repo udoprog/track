@@ -112,16 +112,15 @@ pub(crate) struct Props {
 /// a `label` shown at every width or a `text` shown on mobile only.
 #[function_component]
 pub(crate) fn Button(props: &Props) -> Html {
-    // A switch without an icon shows its on/off mark (`input-checkbox`).
+    // A switch without an icon shows whether it is on: a check or a cross.
     let icon = if !props.icon.is_empty() {
         Some(
             html! { <span class={classes!("icon", props.icon.clone(), props.spin.then_some("spin"))} /> },
         )
     } else {
-        props
-            .checked
-            .is_some()
-            .then(|| html! { <span class="mark" /> })
+        props.checked.map(
+            |on| html! { <span class={classes!("icon", if on { "check" } else { "x-mark" })} /> },
+        )
     };
     let router = use_context::<Router>();
     let href = props
@@ -147,7 +146,7 @@ pub(crate) fn Button(props: &Props) -> Html {
 
     // A button of the app's own making, its content composed by the caller
     // (a picture, a logo, a count), keeps the app's `button` look.
-    if props.icon.is_empty() && label.is_none() {
+    if props.icon.is_empty() && label.is_none() && props.checked.is_none() {
         let variant = match props.variant {
             Variant::Secondary => None,
             Variant::Primary => Some(plinth::class::PRIMARY),
@@ -164,8 +163,15 @@ pub(crate) fn Button(props: &Props) -> Html {
         };
     }
 
+    // A plain switch is drawn as a field: plinth's ghost, given the field's
+    // ground and edge in main.scss.
+    let variant = match (props.variant, props.checked) {
+        (Variant::Secondary, Some(_)) => ButtonVariant::Ghost,
+        (variant, _) => ButtonVariant::from(variant),
+    };
+
     html! {
-        <plinth::Button variant={ButtonVariant::from(props.variant)} {size} {icon}
+        <plinth::Button {variant} {size} {icon}
             fold_wide={props.label.is_none() && props.text.is_some()}
             class={props.class.clone()} title={props.title.clone()} node_ref={props.node_ref.clone()}
             {href} disabled={props.disabled} {onclick}

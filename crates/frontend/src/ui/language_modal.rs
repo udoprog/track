@@ -204,7 +204,7 @@ impl Component for LanguageModal {
         html! {
             <Modal icon="language" title={props.title} on_close={link.callback(|_| Msg::Close)}>
                 <div class="plinth-cluster plinth-nowrap plinth-loose">
-                    <input autofocus={true} type="text" class="input-text fill" placeholder="Filter" aria-label="Filter languages" value={self.filter.clone()} oninput={on_filter} />
+                    <input autofocus={true} type="text" class={classes!(plinth::class::INPUT, "fill")} placeholder="Filter" aria-label="Filter languages" value={self.filter.clone()} oninput={on_filter} />
                 </div>
 
                 <div class="table">

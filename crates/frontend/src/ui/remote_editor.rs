@@ -424,7 +424,7 @@ impl Component for RemoteEditor {
                                         let next = effective.with(kind, !on);
 
                                         html! {
-                                            <Button class={classes!("input-checkbox", "has-text", on.then_some("checked"))} role="switch" checked={Some(on)} title={kind.as_label()} onclick={link.callback(move |_| Msg::SetSyncKinds(id, Some(next)))} label={kind.as_label()} />
+                                            <Button role="switch" checked={Some(on)} title={kind.as_label()} onclick={link.callback(move |_| Msg::SetSyncKinds(id, Some(next)))} label={kind.as_label()} />
                                         }
                                     }) }
 
@@ -472,7 +472,7 @@ impl Component for RemoteEditor {
                                         }
 
                                         <div class="plinth-push-end plinth-cluster plinth-tight" data-testid="remote-actions" ref={r.context_anchor.clone()}>
-                                            <Button size={Size::Small} class={classes!("input-checkbox", "has-text", enabled.then_some("checked"))} role="switch" checked={Some(enabled)} title={if enabled { "Remote enabled" } else { "Remote disabled" }} onclick={link.callback(move |_| Msg::SetEnabled(id, !enabled))} label={if enabled { "Enabled" } else { "Disabled" }} />
+                                            <Button size={Size::Small} role="switch" checked={Some(enabled)} title={if enabled { "Remote enabled" } else { "Remote disabled" }} onclick={link.callback(move |_| Msg::SetEnabled(id, !enabled))} label={if enabled { "Enabled" } else { "Disabled" }} />
 
                                             <Button size={Size::Small} icon="pencil-square" label="Edit" title="Edit identifier" onclick={link.callback(move |_| Msg::Edit(edit_entry.clone()))} />
                                             <Button size={Size::Small} icon="trash" label="Remove" title="Remove identifier" expanded={Some(self.confirming_remove == Some(id))} haspopup="dialog" onclick={link.callback(move |_| Msg::AskRemove(id))} />
@@ -539,13 +539,13 @@ impl Component for RemoteEditor {
                 <div class="form">
                     <div class={classes!("field", self.error.is_some().then_some("error"))}>
                         <div class="input-group fill">
-                            <select ref={self.source_ref.clone()} class="input-select" onchange={on_source} title="Source">
+                            <select ref={self.source_ref.clone()} class={classes!(plinth::class::INPUT, plinth::class::NATIVE_SELECT)} onchange={on_source} title="Source">
                                 { for addable_sources(props.kind).map(|source| html! {
                                     <option value={source.as_id()} selected={self.source == source}>{source.as_label()}</option>
                                 }) }
                             </select>
 
-                            <input class="input-text fill" type="text" placeholder={placeholder(self.source)} aria-label="Identifier" value={self.value.clone()} oninput={on_value} />
+                            <input class={classes!(plinth::class::INPUT, "fill")} type="text" placeholder={placeholder(self.source)} aria-label="Identifier" value={self.value.clone()} oninput={on_value} />
 
                             <Button icon="link" label="Slug" title={if self.show_slug { "Showing slug" } else { "Hiding slug" }} class={classes!(self.show_slug.then_some("selected"))} pressed={Some(self.show_slug)} onclick={link.callback(|_| Msg::ToggleSlug)} />
 
@@ -559,7 +559,7 @@ impl Component for RemoteEditor {
                         if self.show_slug {
                             <div class="input-group fill">
                                 <span class="input-label has-text" title="Slug">{"/"}</span>
-                                <input class="input-text fill" type="text" placeholder="slug" value={self.slug.clone()} oninput={on_slug} />
+                                <input class={classes!(plinth::class::INPUT, "fill")} type="text" placeholder="slug" value={self.slug.clone()} oninput={on_slug} />
 
                                 if !self.slug.is_empty() {
                                     <Button icon="backspace" title="Clear slug" onclick={link.callback(|_| Msg::ClearSlug)} />

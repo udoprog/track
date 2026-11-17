@@ -276,7 +276,7 @@ impl FiltersEditor {
             api::FilterPredicate::Countries(v) => {
                 if v.is_empty() {
                     html! {
-                        <span class="input-text has-text">
+                        <span class="input-value">
                             <span class="icon globe-alt" aria-hidden="true" />
                             <span>{"All countries"}</span>
                         </span>
@@ -343,7 +343,7 @@ impl FiltersEditor {
                     <DragHandle {index} />
 
                     <input
-                        class="input-text fill"
+                        class={classes!(plinth::class::INPUT, "fill")}
                         type="text"
                         placeholder={format!("Rule {}", index + 1)}
                         value={rule.name.clone()}
@@ -389,7 +389,7 @@ impl FiltersEditor {
 
         html! {
             <div class="input-group plinth-cluster plinth-nowrap">
-                <select class="input-select fill" onchange={on_add}>
+                <select class={classes!(plinth::class::INPUT, plinth::class::NATIVE_SELECT, "fill")} onchange={on_add}>
                     <option value="" selected={true}>{"Add predicate…"}</option>
 
                     {for available.iter().enumerate().map(|(i, kind)| html! {
@@ -465,7 +465,7 @@ impl FiltersEditor {
                         };
 
                         html! {
-                            <Button class={classes!("input-checkbox", "has-text", checked.then_some("checked"))} role="switch" checked={Some(checked)} title={source.as_label()} onclick={on_toggle}>
+                            <Button role="switch" checked={Some(checked)} title={source.as_label()} onclick={on_toggle}>
                                 <span class={classes!("logo", source.as_id())} />
                             </Button>
                         }
@@ -496,7 +496,7 @@ impl FiltersEditor {
                         };
 
                         html! {
-                            <Button class={classes!("input-checkbox", "has-text", checked.then_some("checked"))} role="switch" checked={Some(checked)} title={rt.as_str()} onclick={on_toggle} label={rt.as_str()} />
+                            <Button role="switch" checked={Some(checked)} title={rt.as_str()} onclick={on_toggle} label={rt.as_str()} />
                         }
                     })}
                 </>
@@ -547,7 +547,7 @@ impl FiltersEditor {
                 };
 
                 html! {
-                    <input class="input-text fill" type="text" placeholder="Networks (comma separated)" value={selected.join(", ")} onchange={on_change} />
+                    <input class={classes!(plinth::class::INPUT, "fill")} type="text" placeholder="Networks (comma separated)" value={selected.join(", ")} onchange={on_change} />
                 }
             }
         }

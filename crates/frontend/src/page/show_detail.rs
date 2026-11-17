@@ -1992,7 +1992,7 @@ impl ShowDetail {
             <div class="detail-sidebar plinth-stack plinth-loose">
                 <Image class="poster desktop-only artwork" src={poster.cloned()} />
 
-                <nav class="season-list desktop-only desktop-column tight" aria-label="Seasons">
+                <nav class="season-list desktop-only plinth-stack plinth-tight" aria-label="Seasons">
                     { for self.seasons.iter().map(|s| self.view_season(ctx, s)) }
                 </nav>
             </div>
@@ -2097,7 +2097,7 @@ impl ShowDetail {
         let current = self.selected().map(|s| s.id);
 
         html! {
-            <nav class="season-chips mobile-only mobile-row tight" aria-label="Seasons" ref={self.season_chips.clone()}>
+            <nav class="season-chips mobile-only plinth-cluster plinth-nowrap plinth-tight" aria-label="Seasons" ref={self.season_chips.clone()}>
                 { for self.seasons.iter().map(|s| {
                     let season = s.season;
                     let is_current = current == Some(s.id);

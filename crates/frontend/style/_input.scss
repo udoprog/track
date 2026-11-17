@@ -1,49 +1,14 @@
-
 @use 'vars' as v;
 @use 'grid' as g;
 
-@mixin has-text {
-    &.has-text {
-        &>.icon:first-child, &>.mark:first-child {
-            margin-inline-start: -0.25em;
-        }
+// Text in a button or a toolbar item: wider padding, a leading icon set
+// into it.
+@mixin has-text-padding {
+    padding: v.$padding v.$padding * 2;
+
+    >.icon:first-child {
+        margin-inline-start: -0.25em;
     }
-
-    &.has-text {
-        padding: v.$padding v.$padding * 2;
-    }
-
-    @include g.on-mobile {
-        &.mobile-has-text {
-            padding: v.$padding v.$padding * 2;
-
-            &>.icon:first-child, &>.mark:first-child {
-                margin-inline-start: -0.25em;
-            }
-        }
-
-        &:not(.plinth-button, .mobile-has-text, .has-text) {
-            justify-content: center;
-        }
-    }
-
-    @include g.on-desktop {
-        &.desktop-has-text {
-            padding: v.$padding v.$padding * 2;
-
-            &>.icon:first-child, &>.mark:first-child {
-                margin-inline-start: -0.25em;
-            }
-        }
-
-        &:not(.plinth-button, .desktop-has-text, .has-text) {
-            justify-content: center;
-        }
-    }
-}
-
-%has-text {
-    @include has-text;
 }
 
 @mixin button-color($name) {
@@ -54,71 +19,35 @@
     }
 }
 
-@mixin input-base($hover: true, $has-border: true, $editable: false) {
+// The app's own buttons (and watchword's), and what plinth's (`.plinth-button`,
+// configured in main.scss) take from them: the icon colour, and `selected`.
+button {
     display: flex;
-    flex-direction: row;
     gap: v.$text-gap;
     align-items: center;
-
-    background: v.$bg-surface;
-    color: v.$text-primary;
-    font-size: v.$font-sm;
-    font-family: v.$sans-serif-font;
-
     height: v.$input-height;
     min-width: 0;
-
-    @if $editable {
-        padding: v.$padding v.$padding * 2;
-    }
-
-    @if not $editable {
-        padding: v.$padding;
-        @extend %has-text;
-    }
-
-    @include g.on-mobile {
-        height: v.$input-height-touch;
-    }
-
+    padding: v.$padding;
+    border: 1px solid transparent;
     border-radius: v.$radius;
-
-    @if $has-border {
-        border-width: 1px;
-        border-style: solid;
-        border-color: v.$border-input;
-    }
-
-    @if $hover {
-        &:hover:not(.disabled):not(:disabled) {
-            border-color: v.$color-primary;
-        }
-    }
-
-    user-select: none;
-}
-
-%input-base {
-    @include input-base;
-}
-
-// The app's own buttons, and what plinth's (`.plinth-button`, configured in
-// main.scss) take from them: the icon colour, and `fill` and `selected`.
-button {
-    @extend %input-base;
-
+    background: var(--neutral-bg);
     --icon-color: #{v.$text-color};
     color: v.$text-color;
-
-    border-style: solid;
-    border-width: 1px;
-    border-color: transparent;
+    font-size: v.$font-sm;
+    font-family: v.$sans-serif-font;
+    user-select: none;
 
     &:not(.disabled):not(:disabled) {
         cursor: pointer;
     }
 
-    @include button-color(neutral);
+    &:hover:not(.disabled):not(:disabled) {
+        border-color: v.$color-primary;
+    }
+
+    &.selected {
+        background-color: var(--neutral-selected);
+    }
 
     &.plinth-primary {
         @include button-color(accent);
@@ -132,21 +61,19 @@ button {
         @include button-color(danger);
     }
 
-    &.fill {
-        flex: 1;
-    }
-
     // The app's own icon-only buttons are square, so a row of them reads as
     // one set.
     @include g.on-desktop {
-        &:not(.plinth-button, .has-text) {
+        &:not(.plinth-button) {
             justify-content: center;
             min-width: v.$input-height;
         }
     }
 
     @include g.on-mobile {
-        &:not(.plinth-button, .mobile-has-text, .has-text) {
+        height: v.$input-height-touch;
+
+        &:not(.plinth-button, .mobile-has-text) {
             justify-content: center;
             min-width: v.$input-height-touch;
         }
@@ -165,90 +92,29 @@ button {
 
 // A word joined to a field in an `.input-group`, such as a unit.
 .input-label {
-    @include input-base($hover: false, $has-border: false);
-
+    display: flex;
+    gap: v.$text-gap;
+    align-items: center;
+    height: v.$input-height;
+    min-width: 0;
+    @include has-text-padding;
+    border-radius: v.$radius;
+    background: var(--field-bg);
     color: v.$text-muted;
-    background-color: var(--field-bg);
-}
+    font-size: v.$font-sm;
+    font-family: v.$sans-serif-font;
+    user-select: none;
 
-// Text, number and select fields: a faint fill and outline mixed from the
-// text colour, so they read on any surface, that strengthen on hover and turn
-// accent while focused.
-@mixin field {
-    @include input-base($hover: false, $editable: true);
-
-    background-color: var(--field-bg);
-    border-color: var(--field-border);
-    padding-inline: v.$padding-lg + 2px;
-    user-select: text;
-
-    &::placeholder {
-        color: v.$text-muted;
-        opacity: 1;
-    }
-
-    &:hover:not(:disabled) {
-        border-color: var(--field-border-hover);
-    }
-
-    &:focus {
-        border-color: v.$color-primary;
-    }
-
-    // Fields already mark focus with their border: the ring goes over it
-    // instead of drawing a second ring outside.
-    &:focus-visible {
-        outline-offset: -1px;
-    }
-
-    &:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-    }
-}
-
-%field {
-    @include field;
-}
-
-.input-text {
-    @extend %field;
-
-    &.selected {
-        --icon-color: #{v.$text-color-selected};
-        color: v.$text-color-selected;
-        background-color: var(--accent-selected);
-        border-color: var(--accent-selected);
-    }
-}
-
-// The chevron is drawn from two gradients so it takes the theme's colour.
-.input-select {
-    @extend %field;
-
-    appearance: none;
-    cursor: pointer;
-    padding-inline-end: v.$padding-lg * 3.5;
-    background-image:
-        linear-gradient(45deg, transparent 50%, v.$text-muted 50%),
-        linear-gradient(135deg, v.$text-muted 50%, transparent 50%);
-    background-position:
-        calc(100% - 16px) 55%,
-        calc(100% - 11px) 55%;
-    background-size: 5px 5px;
-    background-repeat: no-repeat;
-
-    >option {
-        background-color: v.$bg-surface;
-        color: v.$text-color;
+    @include g.on-mobile {
+        height: v.$input-height-touch;
     }
 }
 
 .input-number {
-    @extend %field;
-
     appearance: textfield;
     font-variant-numeric: tabular-nums;
+    // As wide as the browser draws a number field, not plinth's field width.
+    width: auto;
 
     &::-webkit-inner-spin-button,
     &::-webkit-outer-spin-button {
@@ -258,34 +124,5 @@ button {
 
     @include g.on-desktop {
         width: 96px;
-    }
-}
-
-.input-checkbox {
-    @extend %input-base;
-    cursor: pointer;
-
-    // Sized like the icons beside it, not to the height of the toggle.
-    .mark {
-        height: v.$icon-size;
-        aspect-ratio: 1;
-        flex-shrink: 0;
-        mask-size: contain;
-        mask-repeat: no-repeat;
-        mask-position: center;
-
-        @include g.on-mobile {
-            height: v.$icon-size-touch;
-        }
-    }
-
-    &.checked .mark {
-        mask-image: url('/static/icons/check.svg');
-        background-color: v.$text-primary;
-    }
-
-    &:not(.checked) .mark {
-        mask-image: url('/static/icons/x-mark.svg');
-        background-color: v.$text-primary;
     }
 }

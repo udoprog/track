@@ -92,7 +92,7 @@ pub(crate) fn HelpModal(props: &Props) -> Html {
                 <nav class="help-nav" aria-label="Help sections">
                     <input
                         type="search"
-                        class="input-text"
+                        class={plinth::class::INPUT}
                         placeholder="Search help…"
                         aria-label="Search help"
                         data-test="help-search"

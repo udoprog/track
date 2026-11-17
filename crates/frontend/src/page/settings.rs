@@ -203,7 +203,7 @@ impl Component for Settings {
 
                 <div class={classes!("settings-layout", admin.then_some("has-nav"))}>
                 if admin {
-                    <nav class={classes!("settings-nav", (!index).then_some("off-phone"))} aria-label="Settings pages">
+                    <nav class={classes!("settings-nav", (!index).then_some("desktop-only"))} aria-label="Settings pages">
                         { for SettingsPage::ALL.into_iter().map(|page| html! {
                             <Link to={Route::Settings(Some(page))} title={page.title()} class={classes!("settings-nav-item", (page == current).then_some("active"))} current={page == current}>
                                 <span>{ page.title() }</span>
@@ -214,7 +214,7 @@ impl Component for Settings {
                     </nav>
                 }
 
-                <div class={classes!("settings", index.then_some("off-phone"))}>
+                <div class={classes!("settings", index.then_some("desktop-only"))}>
                     if admin {
                         <Link to={Route::Settings(None)} title="All settings" class="settings-back"><span>{"All settings"}</span></Link>
                     }
@@ -226,7 +226,7 @@ impl Component for Settings {
                         <div class={plinth::form_rows(true)}>
                             <FormRow stack=true label="Theme">
                                 { mine("", html! {
-                                    <select class="input-select" data-test="theme" title="Theme" onchange={on_theme} value={theme_val}>
+                                    <select class={classes!(plinth::class::INPUT, plinth::class::NATIVE_SELECT)} data-test="theme" title="Theme" onchange={on_theme} value={theme_val}>
                                         <option value="dark" selected={self.preferences.theme == api::ThemeType::Dark}>{"Dark"}</option>
                                         <option value="light" selected={self.preferences.theme == api::ThemeType::Light}>{"Light"}</option>
                                         <option value="system" selected={self.preferences.theme == api::ThemeType::System}>{"System"}</option>
@@ -236,7 +236,7 @@ impl Component for Settings {
 
                             <FormRow stack=true label="Time zone" hint="Leave empty to use the browser's time zone.">
                                 { mine("", html! {
-                                    <input class="input-text fill" type="text" title="Time zone" placeholder="Browser time zone" value={self.preferences.timezone.clone()} onchange={on_timezone} onkeydown={on_timezone_key} list="tz-datalist" autocomplete="off" />
+                                    <input class={classes!(plinth::class::INPUT, "fill")} type="text" title="Time zone" placeholder="Browser time zone" value={self.preferences.timezone.clone()} onchange={on_timezone} onkeydown={on_timezone_key} list="tz-datalist" autocomplete="off" />
                                 }) }
 
                                 <datalist id="tz-datalist">
@@ -254,7 +254,7 @@ impl Component for Settings {
                                 { mine("", html! {
                                     <input
                                         type="number"
-                                        class="input-number"
+                                        class={classes!(plinth::class::INPUT, "input-number")}
                                         title="Up next per page"
                                         min="1"
                                         max="100"
@@ -277,7 +277,7 @@ impl Component for Settings {
 
                             <FormRow stack=true label="Specials in What's Next">
                                 { mine("", html! {
-                                    <Button class={classes!("input-checkbox", "has-text", specials.then_some("checked"))} role="switch" checked={Some(specials)} title="Specials for Watch Next" onclick={on_include_specials_change} label={if specials { "Included" } else { "Skipped" }} />
+                                    <Button role="switch" checked={Some(specials)} title="Specials for Watch Next" onclick={on_include_specials_change} label={if specials { "Included" } else { "Skipped" }} />
                                 }) }
                             </FormRow>
                         </div>
@@ -307,7 +307,7 @@ impl Component for Settings {
                             <div class={plinth::form_rows(true)}>
                                 <FormRow stack=true label="Page title">
                                     { system("", html! {
-                                        <input class="input-text fill" type="text" title="Page title" placeholder="Track" value={self.config.page_title.clone()} onchange={on_page_title} autocomplete="off" />
+                                        <input class={classes!(plinth::class::INPUT, "fill")} type="text" title="Page title" placeholder="Track" value={self.config.page_title.clone()} onchange={on_page_title} autocomplete="off" />
                                     }) }
                                 </FormRow>
                             </div>
@@ -321,7 +321,7 @@ impl Component for Settings {
                             <div class={plinth::form_rows(true)}>
                                 <FormRow stack=true label="Automatic sync" help={help::REMOTES}>
                                     { system("", html! {
-                                        <Button class={classes!("input-checkbox", "has-text", auto_sync.then_some("checked"))} role="switch" checked={Some(auto_sync)} title="Automatic sync" onclick={on_auto_sync_toggle} label={if auto_sync { "Enabled" } else { "Disabled" }} />
+                                        <Button role="switch" checked={Some(auto_sync)} title="Automatic sync" onclick={on_auto_sync_toggle} label={if auto_sync { "Enabled" } else { "Disabled" }} />
                                     }) }
                                 </FormRow>
 
@@ -330,7 +330,7 @@ impl Component for Settings {
                                         <div class="input-group">
                                             <input
                                                 type="number"
-                                                class="input-number"
+                                                class={classes!(plinth::class::INPUT, "input-number")}
                                                 title="Sync every"
                                                 min="1"
                                                 max="168"

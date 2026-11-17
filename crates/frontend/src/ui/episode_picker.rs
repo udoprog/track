@@ -121,7 +121,7 @@ impl Component for EpisodePicker {
             <div class="episode-picker">
                 <div class={plinth::form_rows(false)}>
                     <FormRow label="Season">
-                        <select class="input-select" title="Season" onchange={on_season_change}>
+                        <select class={classes!(plinth::class::INPUT, plinth::class::NATIVE_SELECT)} title="Season" onchange={on_season_change}>
                             { for self.seasons.iter().map(|s| {
                                 let value = s.season.ordinal().to_string();
                                 let selected = self.season == Some(s.season);
@@ -136,7 +136,7 @@ impl Component for EpisodePicker {
                     </FormRow>
 
                     <FormRow label="Episode">
-                        <select class="input-select" title="Episode" onchange={on_episode_change} disabled={self.episodes.is_empty()}>
+                        <select class={classes!(plinth::class::INPUT, plinth::class::NATIVE_SELECT)} title="Episode" onchange={on_episode_change} disabled={self.episodes.is_empty()}>
                             { for self.episodes.iter().map(|e| {
                                 let value = e.episode.to_string();
                                 let selected = self.episode == Some(e.episode);

@@ -4,10 +4,7 @@
 // and `.plinth-card`.
 // This keeps what plinth does not do:
 //
-// .desktop-row .mobile-row  a row on wide screens only / on phones only (no
-//                  display of its own the other way: pair with `.desktop-only`
-//                  / `.mobile-only` to hide it there)
-// .desktop-column  a column on wide screens only (`.mobile-column` on phones)
+// .desktop-row .mobile-column  a row on wide screens that is a column on phones
 // .desktop-align-end  a cluster's items at its end on wide screens
 // .start-on-mobile    a cluster of actions read from the start on phones
 // .fixed           a flex child that keeps its size instead of shrinking
@@ -21,8 +18,6 @@
 // .accent         the primary colour (today's date)
 // .mono           the monospace face (an identifier)
 // .dim            a quieter part of a line (a hidden numbering's name)
-//
-// Buttons take their sizes from `.button.small` (_input.scss).
 
 @use 'vars' as v;
 @use 'grid' as g;
@@ -32,29 +27,17 @@
     flex-direction: row;
     align-items: center;
     gap: v.$gap;
-
-    &.tight {
-        gap: v.$gap-xs;
-    }
 }
 
 @mixin column-base {
     display: flex;
     flex-direction: column;
     gap: v.$gap-sm;
-
-    &.tight {
-        gap: v.$gap-xs;
-    }
 }
 
 @include g.on-desktop {
     .desktop-row {
         @include row-base;
-    }
-
-    .desktop-column {
-        @include column-base;
     }
 
     .plinth-cluster.desktop-align-end {
@@ -63,10 +46,6 @@
 }
 
 @include g.on-mobile {
-    .mobile-row {
-        @include row-base;
-    }
-
     .mobile-column {
         @include column-base;
     }

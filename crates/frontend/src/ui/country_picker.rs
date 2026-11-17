@@ -190,7 +190,7 @@ impl Component for CountryPicker {
 
                 <Modal icon="globe-alt" title="Select Countries" on_close={link.callback(|_| Msg::Close)}>
                     <div class="plinth-cluster plinth-nowrap plinth-loose">
-                        <input class="input-text fill" type="text" autofocus={true} placeholder="Filter" aria-label="Filter countries" value={self.filter.clone()} oninput={on_filter} />
+                        <input class={classes!(plinth::class::INPUT, "fill")} type="text" autofocus={true} placeholder="Filter" aria-label="Filter countries" value={self.filter.clone()} oninput={on_filter} />
                     </div>
 
                     <div class="table">

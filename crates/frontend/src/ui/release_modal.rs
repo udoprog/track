@@ -429,7 +429,7 @@ impl ReleaseModal {
         html! {
             <div class={plinth::form_rows(false)}>
                 <FormRow {label} hint={(!is_custom).then_some(hint)}>
-                    <select class="input-select" title={label} onchange={on_toggle}>
+                    <select class={classes!(plinth::class::INPUT, plinth::class::NATIVE_SELECT)} title={label} onchange={on_toggle}>
                         <option value="default" selected={!is_custom}>{"Global default"}</option>
                         <option value="custom" selected={is_custom}>{custom_label}</option>
                     </select>

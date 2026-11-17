@@ -176,17 +176,17 @@ impl EpisodeCacheModal {
                             <div class="input-group">
                                 if let Some(ref etag) = cache.etag {
                                     <span class="input-label has-text">{"ETag"}</span>
-                                    <span class="input-text has-text fill">{etag}</span>
+                                    <span class="input-value fill">{etag}</span>
                                 }
 
                                 if let Some(ref last_updated) = cache.last_updated {
                                     <span class="input-label has-text">{"Last Updated"}</span>
-                                    <span class="input-text has-text fill">{last_updated}</span>
+                                    <span class="input-value fill">{last_updated}</span>
                                 }
 
                                 if !cache.kinds.is_empty() {
                                     <span class="input-label has-text">{"Kinds"}</span>
-                                    {for cache.kinds.iter().map(|k| html!(<span class="input-text has-text">{k.as_label()}</span>))}
+                                    {for cache.kinds.iter().map(|k| html!(<span class="input-value">{k.as_label()}</span>))}
                                 }
                             </div>
 
@@ -196,10 +196,10 @@ impl EpisodeCacheModal {
                                 { for cache.errors.iter().map(|e| html! {
                                     <div class="input-group">
                                         <span class="input-label has-text">{e.kind.as_label()}</span>
-                                        <span class="input-text has-text">{&e.key}</span>
-                                        <span class="input-text has-text fill">{&e.message}</span>
+                                        <span class="input-value">{&e.key}</span>
+                                        <span class="input-value fill">{&e.message}</span>
                                         <span class="input-label has-text">{"Retries"}</span>
-                                        <span class="input-text has-text">{e.expires_at().to_string()}</span>
+                                        <span class="input-value">{e.expires_at().to_string()}</span>
                                     </div>
                                 }) }
                             }

@@ -27,7 +27,7 @@ pub(crate) fn GraphicsSourceFilter(props: &Props) -> Html {
                 let on_toggle = props.on_toggle.reform(move |_| source);
 
                 html! {
-                    <Button class={classes!("input-checkbox", "has-text", checked.then_some("checked"))} role="switch" checked={Some(checked)} title={source.to_string()} onclick={on_toggle}>
+                    <Button role="switch" checked={Some(checked)} title={source.to_string()} onclick={on_toggle}>
                         <span class={classes!("logo", source.as_str())} />
                     </Button>
                 }

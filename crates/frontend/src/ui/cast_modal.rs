@@ -91,7 +91,7 @@ pub(crate) fn CastModal(props: &Props) -> Html {
             <div class="cast-search plinth-stack">
                 <input
                     type="search"
-                    class="input-text"
+                    class={plinth::class::INPUT}
                     placeholder="Search by name or character…"
                     aria-label="Search cast"
                     data-test="cast-search"

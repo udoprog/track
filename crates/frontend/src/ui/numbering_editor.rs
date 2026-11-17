@@ -2011,7 +2011,7 @@ impl NumberingEditor {
                 <span class="numbering-map-source" title={label.clone()}>
                     <span class={classes!("logo", c.side.logo().to_owned())} aria-hidden="true" />
                     <span class="numbering-map-label plinth-visually-hidden">{label.clone()}</span>
-                    <select class="input-select numbering-map-in-view" aria-label={format!("{label} season in view")} title={format!("{label} season in view: pick one to jump to it")} {onchange}>
+                    <select class={classes!(plinth::class::INPUT, plinth::class::NATIVE_SELECT, "numbering-map-in-view")} aria-label={format!("{label} season in view")} title={format!("{label} season in view: pick one to jump to it")} {onchange}>
                         if current.is_none() {
                             <option value="" selected=true hidden=true>{"–"}</option>
                         }
@@ -2544,7 +2544,7 @@ impl NumberingEditor {
             });
 
             html! {
-                <input class="input-number numbering-number" type="text" inputmode="numeric" value={value.to_owned()} aria-label={title.clone()} {title} {oninput} />
+                <input class={classes!(plinth::class::INPUT, "input-number", "numbering-number")} type="text" inputmode="numeric" value={value.to_owned()} aria-label={title.clone()} {title} {oninput} />
             }
         };
 
@@ -2566,7 +2566,7 @@ impl NumberingEditor {
                     { input(Field::First, &row.first, format!("Range {n} first episode")) }
                     <span class="numbering-letter">{"–"}</span>
                     if row.open {
-                        <input class="input-number numbering-number" type="text" value="" placeholder="…" disabled=true aria-label={format!("Range {n} last episode")} title="Open: runs on through the season" />
+                        <input class={classes!(plinth::class::INPUT, "input-number", "numbering-number")} type="text" value="" placeholder="…" disabled=true aria-label={format!("Range {n} last episode")} title="Open: runs on through the season" />
                     } else {
                         { input(Field::Last, &row.last, format!("Range {n} last episode")) }
                     }
@@ -2581,7 +2581,7 @@ impl NumberingEditor {
                 </div>
 
                 <div class="numbering-target">
-                    <select class="input-select" title={format!("Range {n} numbering")} onchange={on_system}>
+                    <select class={classes!(plinth::class::INPUT, plinth::class::NATIVE_SELECT)} title={format!("Range {n} numbering")} onchange={on_system}>
                         if !known {
                             <option value={row.system.clone()} selected=true>{row.system.clone()}</option>
                         }

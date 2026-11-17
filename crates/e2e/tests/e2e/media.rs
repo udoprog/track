@@ -85,8 +85,8 @@ pub async fn toggle_marks_are_icon_sized(driver: &mut TestDriver, _: &mut Track)
         .click()
         .await?;
 
-    driver.find_first(".input-checkbox .mark").await?;
-    let marks = driver.find_all(By::Css(".input-checkbox .mark")).await?;
+    driver.find_first("[role=switch] .icon").await?;
+    let marks = driver.find_all(By::Css("[role=switch] .icon")).await?;
 
     for mark in marks {
         let rect = mark.rect().await?;

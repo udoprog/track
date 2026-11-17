@@ -89,9 +89,9 @@ impl Component for DurationInput {
 
         html! {
             <>
-                <input type="number" class="input-number fill" min="0" step="any" value={self.amount.clone()} onchange={on_amount} />
+                <input type="number" class={classes!(plinth::class::INPUT, "input-number", "fill")} min="0" step="any" value={self.amount.clone()} onchange={on_amount} />
 
-                <select class="input-select" onchange={on_unit} value={self.unit.as_str()}>
+                <select class={classes!(plinth::class::INPUT, plinth::class::NATIVE_SELECT)} onchange={on_unit} value={self.unit.as_str()}>
                     { for api::DurationUnit::ALL.into_iter().map(|unit| html! {
                         <option value={unit.as_str()} selected={unit == self.unit}>{unit.plural()}</option>
                     }) }

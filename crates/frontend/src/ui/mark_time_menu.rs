@@ -331,12 +331,12 @@ impl MarkTimeMenu {
             <div class="mark-time-fields">
                 <label>
                     <span>{"Date"}</span>
-                    <input type="date" class="input-text" value={date} onchange={on_date} />
+                    <input type="date" class={plinth::class::INPUT} value={date} onchange={on_date} />
                 </label>
 
                 <label>
                     <span>{"Time"}</span>
-                    <input type="time" class="input-text" value={clock} onchange={on_clock} />
+                    <input type="time" class={plinth::class::INPUT} value={clock} onchange={on_clock} />
                 </label>
             </div>
         }
