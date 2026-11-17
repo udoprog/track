@@ -46,8 +46,11 @@
         justify-self: center;
         grid-column: 1 / -1;
 
-        // Rows of a menu: each item's icon and label start at its edge.
-        >* {
+        // Rows of a menu: each item's icon and label start at its edge, in a
+        // wrapper's buttons too; an icon alone (a split button's chevron)
+        // stays centred.
+        >*:not(.sockel-icon),
+        .sockel-button:not(.sockel-icon) {
             justify-content: flex-start;
         }
     }
