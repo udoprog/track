@@ -1404,10 +1404,6 @@ image {
 }
 
 .detail-sidebar {
-    display: flex;
-    flex-direction: column;
-    gap: v.$gap;
-
     @include g.on-desktop {
         width: v.$sidebar-width;
         height: 100%;
@@ -1526,13 +1522,6 @@ image {
     }
 }
 
-.detail-content {
-    display: flex;
-    flex-direction: column;
-    gap: v.$gap;
-    min-width: 0;
-}
-
 .episodes {
     display: flex;
     flex-direction: column;
@@ -1637,13 +1626,6 @@ image {
 .selection-count {
     font-weight: v.$bold-weight;
     font-variant-numeric: tabular-nums;
-}
-
-.episode-body {
-    display: flex;
-    flex-direction: column;
-    gap: v.$gap-xs;
-    min-width: 0;
 }
 
 .episode-heading {
@@ -2385,10 +2367,6 @@ pagination {
 
 .detail-hero-text {
     position: relative;
-    display: flex;
-    flex-direction: column;
-    gap: v.$text-gap;
-    min-width: 0;
 }
 
 .detail-title {

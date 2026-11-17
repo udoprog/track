@@ -21,7 +21,7 @@ pub(crate) fn DetailHero(props: &Props) -> Html {
                 <div class="detail-hero-image" style={format!("background-image: url('{url}')")} />
             }
 
-            <div class="detail-hero-text">
+            <div class="detail-hero-text column text-gap shrink">
                 <h1 class="detail-title">{props.title.clone()}</h1>
 
                 if let Some(meta) = &props.meta {

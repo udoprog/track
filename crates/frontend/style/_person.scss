@@ -13,30 +13,29 @@
     flex-direction: column;
     gap: v.$gap-xs;
     min-width: 0;
+}
 
-    .person-info {
-        display: flex;
-        flex-direction: column;
-        padding: 0 2px;
-        gap: 2px;
-    }
+.person-info {
+    display: flex;
+    flex-direction: column;
+    padding: 0 2px;
+    gap: 2px;
+}
 
-    .person-photo {
-        aspect-ratio: 2 / 3;
-        background: v.$bg-surface;
-    }
+.person-photo {
+    aspect-ratio: 2 / 3;
+    background: v.$bg-surface;
+}
 
-    .person-name {
-        font-weight: v.$bold-weight;
-        font-size: v.$font-sm;
-        color: v.$text-primary;
-    }
+.person-name {
+    font-weight: v.$bold-weight;
+    font-size: v.$font-sm;
+    color: v.$text-primary;
+}
 
-    .person-department,
-    .person-credits {
-        font-size: v.$font-xs;
-    }
-
+.person-department,
+.person-credits {
+    font-size: v.$font-xs;
 }
 
 .person-detail-header {
@@ -99,19 +98,12 @@
 
 .filmography {
     margin-top: v.$gap;
+}
 
-    // Every part in a title, kept to two lines; the title attribute has them
-    // all.
-    .person-roles {
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-    }
-
-    h2 {
-        font-size: v.$font-xl;
-        margin: 0 0 v.$gap-sm;
-        color: v.$text-primary;
-    }
+// Every part in a title, kept to two lines; the title attribute has them all.
+.person-roles {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }

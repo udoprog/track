@@ -1819,7 +1819,7 @@ impl ShowDetail {
 
         html! {
             <section class="credits">
-                <h2>{"Cast & crew"}</h2>
+                <h2 class="section-title">{"Cast & crew"}</h2>
 
                 if !shown.is_empty() {
                     <div class="cast-grid">
@@ -1987,7 +1987,7 @@ impl ShowDetail {
         let poster = season.poster.as_ref().or(show.poster.as_ref());
 
         html! {
-            <div class="detail-sidebar">
+            <div class="detail-sidebar column loose">
                 <Image class="poster desktop-only artwork" src={poster.cloned()} />
 
                 <nav class="season-list desktop-only" aria-label="Seasons">
@@ -2183,7 +2183,7 @@ impl ShowDetail {
         });
 
         html! {
-            <div class="detail-content">
+            <div class="column loose shrink" data-testid="detail-content">
                 { self.view_credits(ctx) }
 
                 { self.view_season_chips(ctx) }
@@ -2353,7 +2353,7 @@ impl ShowDetail {
                     </span>
                 </Button>
 
-                <div class="episode-body">
+                <div class="column tight shrink">
                     <div class="section-head">
                         <div class="episode-heading">
                             <a class="episode-code" href={format!("#{}", episode.code())} title="Link to this episode">{episode.code()}</a>
@@ -2544,7 +2544,7 @@ impl ShowDetail {
         let show_id = props.show_id;
 
         html! {
-            <div class="detail-content">
+            <div class="column loose shrink" data-testid="detail-content">
                 <div class="table">
                     { for self.orphaned.iter().map(|w| {
                         let id = w.watched.id;

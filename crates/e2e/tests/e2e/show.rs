@@ -468,7 +468,7 @@ pub async fn seasons_list_beside_the_episodes(
         )
         .await?;
     driver
-        .wait_texts(".detail-content .toolbar h2", ["Season 2"])
+        .wait_texts("[data-testid='detail-content'] .toolbar h2", ["Season 2"])
         .await
 }
 
@@ -494,7 +494,7 @@ pub async fn phones_pick_seasons_from_chips(driver: &mut TestDriver, _: &mut Tra
         .await?;
 
     driver
-        .wait_texts(".detail-content .toolbar h2", ["Specials"])
+        .wait_texts("[data-testid='detail-content'] .toolbar h2", ["Specials"])
         .await
 }
 
@@ -762,7 +762,7 @@ pub async fn season_overview_switches_language(
 ) -> Result<()> {
     open_show(driver).await?;
 
-    let season = ".detail-content > .column";
+    let season = "[data-testid='detail-content'] > .column";
     driver
         .find_one_by(&format!("{season} [title='Change displayed language']"))
         .await?
@@ -1125,7 +1125,7 @@ pub async fn picked_episodes_clear(driver: &mut TestDriver, _: &mut Track) -> Re
         .click()
         .await?;
     driver
-        .wait_texts(".detail-content .toolbar h2", ["Season 2"])
+        .wait_texts("[data-testid='detail-content'] .toolbar h2", ["Season 2"])
         .await?;
     ensure!(
         driver.count(".selection-bar").await? == 0,
@@ -1155,7 +1155,7 @@ pub async fn season_names_appear_on_switching(
         .click()
         .await?;
     driver
-        .wait_texts(".detail-content .toolbar h2", ["Season 2"])
+        .wait_texts("[data-testid='detail-content'] .toolbar h2", ["Season 2"])
         .await?;
     driver.find_one_by("#S02E02").await?;
     Ok(())
@@ -1174,7 +1174,7 @@ pub async fn phone_action_rows_align(driver: &mut TestDriver, _: &mut Track) -> 
     }
     for selector in [
         "#page > .toolbar .toolbar-dropdown > button",
-        ".detail-content .toolbar-dropdown > :is(button, a)",
+        "[data-testid='detail-content'] .toolbar-dropdown > :is(button, a)",
     ] {
         super::navigation::ensure_menu_rows_align(driver, selector).await?;
     }

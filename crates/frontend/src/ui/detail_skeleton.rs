@@ -19,11 +19,11 @@ pub(crate) fn DetailSkeleton() -> Html {
             </div>
 
             <div class="detail-layout">
-                <div class="detail-sidebar">
+                <div class="detail-sidebar column loose">
                     <Skeleton class="poster desktop-only" />
                 </div>
 
-                <div class="detail-content">
+                <div class="column loose shrink" data-testid="detail-content">
                     <Skeleton class="line" />
                     <Skeleton class="line" style="width: 90%" />
                     <Skeleton class="line" style="width: 80%" />

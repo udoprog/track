@@ -8,9 +8,13 @@
 //   .between .end .center   main-axis placement
 //   .align-top         aligned to the top instead of centred
 // .column          children stacked, $gap-sm apart
-//   .tight             $gap-xs apart
+//   .tight .text-gap   $gap-xs / $text-gap apart
+//   .loose             $gap apart
 //   .center            centred across
 // .row-split       a wrapping row pushed to both ends (`.reverse`)
+// .shrink          may be narrower than its content (a grid or flex child that
+//                  must not push its parent wider)
+// .section-title   the heading of a section of a page (an h2)
 // .push            a child of a row that takes the free space before it, so
 //                  it and what follows sit at the end
 // .page-head       a page's heading row: `.page-head-title`, then actions
@@ -85,6 +89,14 @@
         gap: v.$gap-xs;
     }
 
+    &.text-gap {
+        gap: v.$text-gap;
+    }
+
+    &.loose {
+        gap: v.$gap;
+    }
+
     &.center {
         align-items: center;
     }
@@ -132,6 +144,16 @@
 
 .push {
     margin-inline-start: auto;
+}
+
+.shrink {
+    min-width: 0;
+}
+
+.section-title {
+    margin: 0 0 v.$gap-sm;
+    font-size: v.$font-xl;
+    color: v.$text-primary;
 }
 
 .page-head {

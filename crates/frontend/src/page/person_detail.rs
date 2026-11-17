@@ -508,7 +508,7 @@ impl PersonDetail {
 
         html! {
             <section class="filmography">
-                <h2>{"Known for"}</h2>
+                <h2 class="section-title">{"Known for"}</h2>
 
                 <div class="person-grid">
                     { for titles.iter().map(|(c, roles)| self.view_credit(c, roles)) }

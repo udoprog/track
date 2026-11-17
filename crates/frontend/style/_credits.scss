@@ -3,12 +3,6 @@
 
 .credits {
     margin-top: v.$gap;
-
-    h2 {
-        font-size: v.$font-xl;
-        margin: 0 0 v.$gap-sm;
-        color: v.$text-primary;
-    }
 }
 
 .cast-grid {
@@ -26,29 +20,29 @@
     display: flex;
     color: v.$text-color;
     flex-direction: column;
+}
 
-    .cast-info {
-        display: flex;
-        flex-direction: column;
-        padding: v.$padding-md;
-        gap: v.$padding-md;
-    }
+.cast-info {
+    display: flex;
+    flex-direction: column;
+    padding: v.$padding-md;
+    gap: v.$padding-md;
+}
 
-    .cast-photo {
-        aspect-ratio: 2 / 3;
-        background: v.$bg-surface;
-    }
+.cast-photo {
+    aspect-ratio: 2 / 3;
+    background: v.$bg-surface;
+}
 
-    .cast-name {
-        font-weight: v.$bold-weight;
-        font-size: v.$font-sm;
-        color: v.$text-primary;
-    }
+.cast-name {
+    font-weight: v.$bold-weight;
+    font-size: v.$font-sm;
+    color: v.$text-primary;
+}
 
-    .cast-character {
-        font-size: v.$font-xs;
-        color: v.$text-muted;
-    }
+.cast-character {
+    font-size: v.$font-xs;
+    color: v.$text-muted;
 }
 
 .credits-toggle {

@@ -838,7 +838,7 @@ impl MovieDetail {
 
         html! {
             <section class="credits">
-                <h2>{"Cast & crew"}</h2>
+                <h2 class="section-title">{"Cast & crew"}</h2>
 
                 if !shown.is_empty() {
                     <div class="cast-grid">
@@ -1003,11 +1003,11 @@ impl MovieDetail {
                     }
                 </div>
 
-                <div class="detail-sidebar">
+                <div class="detail-sidebar column loose">
                     <Image class="poster desktop-only artwork" src={movie.poster.clone()} />
                 </div>
 
-                <div class="detail-content">
+                <div class="column loose shrink" data-testid="detail-content">
                     <div class="row-split">
                         <div class="column fill">
                             <div class="toolbar">
