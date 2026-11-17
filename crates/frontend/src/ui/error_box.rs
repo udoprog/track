@@ -14,13 +14,14 @@ pub(crate) struct Props {
 pub(crate) fn ErrorBox(props: &Props) -> Html {
     let mut sources = props.error.sources();
     let message = sources.next().map(|e| e.to_string()).unwrap_or_default();
-    let causes = sources.map(|e| e.to_string()).collect::<Vec<_>>();
-    let cause = (!causes.is_empty()).then(|| AttrValue::from(causes.join(": ")));
+    let causes = sources
+        .map(|e| AttrValue::from(e.to_string()))
+        .collect::<Vec<_>>();
 
     html! {
         <plinth::ErrorBox
             icon={html! { <span class="icon exclamation-triangle danger" /> }}
-            {cause}
+            {causes}
             ondismiss={props.onclearerror.reform(|_| ())}
             dismiss_label="Dismiss error">
             {message}

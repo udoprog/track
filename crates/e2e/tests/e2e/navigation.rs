@@ -301,6 +301,9 @@ pub async fn errors_show_as_a_card(driver: &mut TestDriver, track: &mut Track) -
     driver
         .find_one_by("#error .plinth-error-box-message")
         .await?;
+    driver
+        .find_one_by("#error .plinth-error-box-causes li")
+        .await?;
 
     driver
         .find_one_by("#error [title='Dismiss error']")

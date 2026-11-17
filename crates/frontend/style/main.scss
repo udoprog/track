@@ -69,7 +69,8 @@
     $skeleton-line-inset: 0,
     $skeleton-phone-height: v.$input-height-touch,
     // A raised card: the surface, a soft danger edge and a deep shadow, the
-    // message in medium weight over its causes.
+    // message in medium weight over its causes, a line each, nothing under
+    // them.
     $error-box-padding: v.$gap-sm v.$gap-sm v.$gap-sm v.$gap,
     $error-box-gap: v.$gap-sm,
     $error-box-fill: v.$bg-surface,
@@ -78,6 +79,7 @@
     $error-box-message-weight: v.$bold-weight,
     $error-box-cause-font: inherit,
     $error-box-cause-text: v.$font-sm,
+    $error-box-text-end: 0,
     // Settings' label column; hints in the text's own line height.
     $field-label-width: 200px,
     $field-message-line: normal,
