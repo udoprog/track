@@ -427,7 +427,7 @@ impl ReleaseModal {
         let on_change = link.callback(Msg::EditFilters);
 
         html! {
-            <div class="form-rows">
+            <div class={plinth::form_rows(false)}>
                 <FormRow {label} hint={(!is_custom).then_some(hint)}>
                     <select class="input-select" title={label} onchange={on_toggle}>
                         <option value="default" selected={!is_custom}>{"Global default"}</option>

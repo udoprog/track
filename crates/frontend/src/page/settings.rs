@@ -223,7 +223,7 @@ impl Component for Settings {
                     <section>
                         <h2>{"Appearance"}</h2>
 
-                        <div class="form-rows wide-labels">
+                        <div class={plinth::form_rows(true)}>
                             <FormRow stack=true label="Theme">
                                 { mine("", html! {
                                     <select class="input-select" data-test="theme" title="Theme" onchange={on_theme} value={theme_val}>
@@ -286,7 +286,7 @@ impl Component for Settings {
                     <section>
                         <h2>{"Language"}</h2>
 
-                        <div class="form-rows wide-labels">
+                        <div class={plinth::form_rows(true)}>
                             <FormRow stack=true label="Language" hint="The language you see shows and movies in.">
                                 { mine("", html! {
                                     <LanguagePicker
@@ -304,7 +304,7 @@ impl Component for Settings {
                         <section>
                             <h2>{"Site"}</h2>
 
-                            <div class="form-rows wide-labels">
+                            <div class={plinth::form_rows(true)}>
                                 <FormRow stack=true label="Page title">
                                     { system("", html! {
                                         <input class="input-text fill" type="text" title="Page title" placeholder="Track" value={self.config.page_title.clone()} onchange={on_page_title} autocomplete="off" />
@@ -318,7 +318,7 @@ impl Component for Settings {
                         <section>
                             <h2>{"Sync"}</h2>
 
-                            <div class="form-rows wide-labels">
+                            <div class={plinth::form_rows(true)}>
                                 <FormRow stack=true label="Automatic sync" help={help::REMOTES}>
                                     { system("", html! {
                                         <Button class={classes!("input-checkbox", "has-text", auto_sync.then_some("checked"))} role="switch" checked={Some(auto_sync)} title="Automatic sync" onclick={on_auto_sync_toggle} label={if auto_sync { "Enabled" } else { "Disabled" }} />
@@ -359,7 +359,7 @@ impl Component for Settings {
                         <section>
                             <h2>{"Sources & dates"}</h2>
 
-                            <div class="form-rows wide-labels">
+                            <div class={plinth::form_rows(true)}>
                                 <FormRow stack=true label="Sync sources" help={help::REMOTES} hint="What each source contributes by default, in priority order (top wins). Base covers titles, overviews and episodes; air dates merge in this order; graphics come from every source. Shows and movies can override this per remote.">
                                     { system("tall", html! {
                                         <SyncKindsEditor
@@ -416,7 +416,7 @@ impl Component for Settings {
                         <section>
                             <h2>{"API keys"}</h2>
 
-                            <div class="form-rows wide-labels">
+                            <div class={plinth::form_rows(true)}>
                                 <FormRow stack=true label="TheTVDB API key">
                                     { system("", html! {
                                         <SecretInput

@@ -256,7 +256,7 @@ pub async fn settings_line_up_their_controls(driver: &mut TestDriver, _: &mut Tr
 
     driver
         .wait_texts(
-            ".plinth-dialog .form-label",
+            ".plinth-dialog .plinth-form-label",
             [
                 "Language",
                 "Automatic sync",
@@ -271,7 +271,7 @@ pub async fn settings_line_up_their_controls(driver: &mut TestDriver, _: &mut Tr
 
     // Each row is a group named by its label.
     let row = driver
-        .find_first(".plinth-dialog .form-row[role=group]")
+        .find_first(".plinth-dialog .plinth-form-row[role=group]")
         .await?;
     let label = driver
         .find_one_by(&format!("#{}", row.attr("aria-labelledby").await?))
@@ -281,7 +281,7 @@ pub async fn settings_line_up_their_controls(driver: &mut TestDriver, _: &mut Tr
     let mut lefts = Vec::new();
 
     for control in driver
-        .find_all(By::Css(".plinth-dialog .form-control"))
+        .find_all(By::Css(".plinth-dialog .plinth-form-control"))
         .await?
     {
         lefts.push(control.rect().await?.x);
@@ -842,9 +842,11 @@ pub async fn air_dates_explain_the_default_quietly(
         .await?;
 
     driver
-        .wait_texts(".plinth-dialog .form-label", ["Air date rules"])
+        .wait_texts(".plinth-dialog .plinth-form-label", ["Air date rules"])
         .await?;
-    driver.find_one_by(".plinth-dialog .form-row .hint").await?;
+    driver
+        .find_one_by(".plinth-dialog .plinth-form-row .plinth-field-hint")
+        .await?;
     ensure!(
         driver.count(".plinth-dialog .exclamation-triangle").await? == 0,
         "the default still carries a warning sign"

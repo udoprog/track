@@ -369,7 +369,7 @@ async fn check_shared_controls(
     if admin {
         driver
             .wait_texts(
-                ".plinth-dialog .form-label",
+                ".plinth-dialog .plinth-form-label",
                 [
                     "Language",
                     "Automatic sync",
@@ -384,7 +384,7 @@ async fn check_shared_controls(
     } else {
         driver
             .wait_texts(
-                ".plinth-dialog .form-label",
+                ".plinth-dialog .plinth-form-label",
                 ["Language", "Specials", "Last synced"],
             )
             .await?;
@@ -418,7 +418,7 @@ async fn check_shared_controls(
     if admin {
         driver
             .wait_texts(
-                ".plinth-dialog .form-label",
+                ".plinth-dialog .plinth-form-label",
                 [
                     "Language",
                     "Automatic sync",
@@ -431,7 +431,10 @@ async fn check_shared_controls(
             .await?;
     } else {
         driver
-            .wait_texts(".plinth-dialog .form-label", ["Language", "Last synced"])
+            .wait_texts(
+                ".plinth-dialog .plinth-form-label",
+                ["Language", "Last synced"],
+            )
             .await?;
     }
 
@@ -440,11 +443,14 @@ async fn check_shared_controls(
     open_settings(driver).await?;
     if admin {
         driver
-            .wait_texts(".plinth-dialog .form-label", ["Last synced", "Remotes"])
+            .wait_texts(
+                ".plinth-dialog .plinth-form-label",
+                ["Last synced", "Remotes"],
+            )
             .await?;
     } else {
         driver
-            .wait_texts(".plinth-dialog .form-label", ["Last synced"])
+            .wait_texts(".plinth-dialog .plinth-form-label", ["Last synced"])
             .await?;
     }
 

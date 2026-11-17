@@ -119,7 +119,7 @@ impl Component for EpisodePicker {
 
         html! {
             <div class="episode-picker">
-                <div class="form-rows">
+                <div class={plinth::form_rows(false)}>
                     <FormRow label="Season">
                         <select class="input-select" title="Season" onchange={on_season_change}>
                             { for self.seasons.iter().map(|s| {

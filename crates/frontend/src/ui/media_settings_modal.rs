@@ -642,7 +642,7 @@ impl MediaSettingsModal {
         let on_edit_remotes = ctx.props().on_edit_remotes.reform(|_: MouseEvent| ());
 
         html! {
-            <div class="form-rows">
+            <div class={plinth::form_rows(false)}>
                 <FormRow label="Language">
                     <LanguagePicker
                         current={language}

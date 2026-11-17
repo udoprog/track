@@ -448,7 +448,7 @@ impl PersonDetail {
 
         html! {
             <Modal icon="cog-6-tooth" title="Settings" on_close={link.callback(|_| Msg::CloseSettings)}>
-                <div class="form-rows">
+                <div class={plinth::form_rows(false)}>
                     <FormRow label="Last synced">
                         if let Some(ts) = last_synced {
                             <span title="Last synced at">{ts}</span>

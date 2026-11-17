@@ -1,5 +1,6 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use plinth::FieldInputs;
 use yew::prelude::*;
 
 use crate::ui::Help;
@@ -22,35 +23,25 @@ pub(crate) struct Props {
     pub(crate) children: Children,
 }
 
-/// One setting in a `.form-rows` grid: its label beside the control, with an
-/// optional hint under the control. The labels of a grid share one column, and
-/// on phones each label sits above its control. The row is a group named by
-/// its label, so the control inside is announced with it.
+/// One setting in a `plinth::form_rows` grid: plinth's FormRow as a group
+/// named by its label, its controls in a wrapping line or a column.
 #[function_component]
 pub(crate) fn FormRow(props: &Props) -> Html {
     let id = use_memo((), |_| {
-        format!("form-label-{}", NEXT_ID.fetch_add(1, Ordering::Relaxed))
+        format!("form-row-{}", NEXT_ID.fetch_add(1, Ordering::Relaxed))
     });
 
+    let help = props.help.map(|section| html! { <Help {section} /> });
+
+    let inputs = if props.stack {
+        FieldInputs::Stack
+    } else {
+        FieldInputs::Row
+    };
+
     html! {
-        <div class="form-row" role="group" aria-labelledby={(*id).clone()}>
-            <span class="form-label" id={(*id).clone()}>
-                {props.label.clone()}
-
-                if let Some(section) = props.help {
-                    <Help {section} />
-                }
-            </span>
-
-            <div class="form-control">
-                <div class={classes!("form-inputs", props.stack.then_some("stack"))}>
-                    { for props.children.iter() }
-                </div>
-
-                if let Some(hint) = &props.hint {
-                    <span class="hint">{hint.clone()}</span>
-                }
-            </div>
-        </div>
+        <plinth::FormRow id={(*id).clone()} label={html! { {props.label.clone()} }} {help} hint={props.hint.clone().map(|hint| html! { {hint} })} group=true {inputs}>
+            { for props.children.iter() }
+        </plinth::FormRow>
     }
 }

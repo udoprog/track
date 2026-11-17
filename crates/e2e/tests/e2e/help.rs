@@ -132,7 +132,7 @@ pub async fn inline_help_opens_its_section(driver: &mut TestDriver, _: &mut Trac
     super::settings::open_page(driver, "Sources & dates").await?;
 
     driver
-        .find_first(".form-label button.help-mark")
+        .find_first(".plinth-form-label button.help-mark")
         .await?
         .click()
         .await?;

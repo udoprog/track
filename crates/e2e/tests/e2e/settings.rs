@@ -264,7 +264,10 @@ pub async fn settings_are_labelled_rows(driver: &mut TestDriver, _: &mut Track) 
         // From the column's edge, which a page tall enough to scroll moves.
         let column = driver.find_one_by(".settings").await?.rect().await?.x;
 
-        for control in driver.find_all(By::Css(".settings .form-control")).await? {
+        for control in driver
+            .find_all(By::Css(".settings .plinth-form-control"))
+            .await?
+        {
             lefts.push(control.rect().await?.x - column);
         }
     }
