@@ -62,7 +62,7 @@ pub(crate) fn NumberingsEditor(props: &Props) -> Html {
                                 <span class={classes!("logo", pref.system.clone())} />
                             </span>
 
-                            <span class={classes!("input-label", "has-text", "grow", "shrink", "plinth-cluster", "plinth-tight", dim.clone())}>
+                            <span class={classes!("input-label", "has-text", "grow", "plinth-cluster", "plinth-tight", dim.clone())}>
                                 <span>{label}</span>
 
                                 if let Some(description) = description(&pref.system) {

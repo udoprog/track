@@ -186,9 +186,9 @@ impl Component for History {
                         <span class="item-inline-more">{"Nothing to show."}</span>
                     </div>
                 } else {
-                    <div class="agenda history">
+                    <div class="agenda history plinth-stack plinth-loose">
                         { for days.iter().map(|(day, groups)| html! {
-                            <section key={day.to_string()} class="agenda-day">
+                            <section key={day.to_string()} class="agenda-day plinth-stack plinth-tight">
                                 { view_day_heading(*day, today) }
 
                                 <div class="agenda-items">
@@ -360,7 +360,7 @@ impl History {
 
             html! {
                 <>
-                    <span class="schedule-time">
+                    <span class="schedule-time plinth-numeric">
                         <span>{span}</span>
                         <span class="badge">{range}</span>
                     </span>
@@ -418,17 +418,17 @@ impl History {
                 );
 
                 html! {
-                    <Link {to} class="schedule-time history-watch" title={format!("Open {code}")}>
+                    <Link {to} class="schedule-time history-watch plinth-numeric" title={format!("Open {code}")}>
                         <span>{when}</span>
                         <span class="badge">{code.to_string()}</span>
                         if let Some(title) = &episode.title {
-                            <span class="history-episode-title">{title.clone()}</span>
+                            <span class="history-episode-title plinth-truncate">{title.clone()}</span>
                         }
                     </Link>
                 }
             }
             _ => html! {
-                <span class="schedule-time history-watch">
+                <span class="schedule-time history-watch plinth-numeric">
                     <span>{when}</span>
                     <span class="badge">{"Movie"}</span>
                 </span>

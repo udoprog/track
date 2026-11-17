@@ -1002,7 +1002,7 @@ impl MovieDetail {
                     <Image class="poster desktop-only artwork" src={movie.poster.clone()} />
                 </div>
 
-                <div class="shrink plinth-stack plinth-loose" data-testid="detail-content">
+                <div class="plinth-stack plinth-loose" data-testid="detail-content">
                     <div class="plinth-cluster plinth-between plinth-loose">
                         <div class="fill plinth-stack">
                             <div class="toolbar">
@@ -1135,7 +1135,7 @@ impl MovieDetail {
 
                     html! {
                         <div class="watch-row">
-                            <span class="watch-when">{w.watched.timestamp.human_date_time(self.time.clone()).view()}</span>
+                            <span class="watch-when plinth-numeric">{w.watched.timestamp.human_date_time(self.time.clone()).view()}</span>
                             <span class="watch-age">{w.watched.timestamp.relative_to(self.time.now())}</span>
 
                             <div class="actions start-on-mobile plinth-cluster plinth-nowrap plinth-tight plinth-end">

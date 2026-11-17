@@ -2042,7 +2042,7 @@ impl ShowDetail {
 
         let body = html! {
             <>
-                <span class="season-name">{name.clone()}</span>
+                <span class="season-name plinth-truncate">{name.clone()}</span>
 
                 <span class="season-count" title="Episodes watched">
                     if finished {
@@ -2054,7 +2054,7 @@ impl ShowDetail {
                     }
                 </span>
 
-                <span class="season-year">
+                <span class="season-year plinth-numeric">
                     if let Some(ts) = s.air_date {
                         {ts.date(self.time.clone()).year().to_string()}
                     }
@@ -2112,7 +2112,7 @@ impl ShowDetail {
                             if finished {
                                 <span class="icon sm check" aria-hidden="true" />
                             } else if s.total_count > 0 {
-                                <span class="chip-count">{format!("{watched}/{}", s.total_count)}</span>
+                                <span class="chip-count plinth-numeric">{format!("{watched}/{}", s.total_count)}</span>
                             }
                         </Button>
                     }
@@ -2185,7 +2185,7 @@ impl ShowDetail {
         });
 
         html! {
-            <div class="shrink plinth-stack plinth-loose" data-testid="detail-content">
+            <div class="plinth-stack plinth-loose" data-testid="detail-content">
                 { self.view_credits(ctx) }
 
                 { self.view_season_chips(ctx) }
@@ -2281,7 +2281,7 @@ impl ShowDetail {
 
         html! {
             <div class="selection-bar" role="region" aria-label="Selected episodes">
-                <span class="selection-count">
+                <span class="selection-count plinth-numeric">
                     {if count == 1 { "1 episode selected".to_owned() } else { format!("{count} episodes selected") }}
                 </span>
 
@@ -2340,10 +2340,10 @@ impl ShowDetail {
                     </span>
                 </Button>
 
-                <div class="shrink plinth-stack plinth-tight">
+                <div class="plinth-stack plinth-tight">
                     <div class="plinth-section-head">
                         <div class="plinth-cluster plinth-tight plinth-baseline">
-                            <a class="episode-code" href={format!("#{}", episode.code())} title="Link to this episode">{episode.code()}</a>
+                            <a class="episode-code plinth-numeric" href={format!("#{}", episode.code())} title="Link to this episode">{episode.code()}</a>
 
                             if let Some(name) = episode.strings.title() {
                                 <h4 class="title sm">{name}</h4>
@@ -2470,7 +2470,7 @@ impl ShowDetail {
 
                                     html! {
                                         <div class="watch-row">
-                                            <span class="watch-when">{w.watched.timestamp.human_date_time(self.time.clone()).view()}</span>
+                                            <span class="watch-when plinth-numeric">{w.watched.timestamp.human_date_time(self.time.clone()).view()}</span>
                                             <span class="watch-age">{w.watched.timestamp.relative_to(self.time.now())}</span>
 
                                             <div class="start-on-mobile plinth-cluster plinth-nowrap plinth-tight plinth-end" ref={w.context_anchor.clone()}>
@@ -2520,7 +2520,7 @@ impl ShowDetail {
         let show_id = props.show_id;
 
         html! {
-            <div class="shrink plinth-stack plinth-loose" data-testid="detail-content">
+            <div class="plinth-stack plinth-loose" data-testid="detail-content">
                 <div class="table">
                     { for self.orphaned.iter().map(|w| {
                         let id = w.watched.id;
@@ -2584,7 +2584,7 @@ fn view_numbering(n: &api::AltNumbering) -> Html {
     };
 
     html! {
-        <span class="numbering-chip" {title}>
+        <span class="numbering-chip plinth-numeric" {title}>
             <span class={classes!("logo", n.system.clone())} aria-hidden="true" />
             <span class="numbering-chip-code">{code}</span>
         </span>

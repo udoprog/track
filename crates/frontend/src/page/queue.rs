@@ -456,23 +456,23 @@ impl Queue {
             <div class={classes!("queue-now", state)} data-test="queue-now">
                 <span class={classes!("queue-now-badge", state)}><span class={classes!("icon", icon)} aria-hidden="true" /></span>
 
-                <div class="shrink grow plinth-stack plinth-snug">
+                <div class="grow plinth-stack plinth-snug">
                     <span class={classes!("queue-now-caption", state)}>{caption}</span>
 
                     if let Some(entry) = entry {
-                        <span class="queue-now-title">
+                        <span class="queue-now-title plinth-truncate">
                             <span class="badge">{kind_label(&entry.kind)}</span>
                             { view_task_title(&entry.kind, task_route(&entry.kind), None, None) }
                         </span>
                     } else {
-                        <span class="queue-now-title">{"All caught up"}</span>
+                        <span class="queue-now-title plinth-truncate">{"All caught up"}</span>
                     }
 
                     if let Some(progress) = progress {
                         <span class="queue-now-step">
                             <span class="queue-now-step-label">{step_label(progress)}</span>
                             if let Some(count) = count_label(progress) {
-                                <span class="queue-now-step-count">{count}</span>
+                                <span class="queue-now-step-count plinth-numeric">{count}</span>
                             }
                         </span>
                     }
@@ -537,7 +537,7 @@ impl Queue {
 
             html! {
                 <Button {icon} {label} title={format!("Show {} tasks", label.to_lowercase())} class={classes!("chip", (filter == f).then_some("selected"))} pressed={Some(filter == f)} {onclick}>
-                    <span class="chip-count">{self.count(f)}</span>
+                    <span class="chip-count plinth-numeric">{self.count(f)}</span>
                 </Button>
             }
         };
@@ -561,7 +561,7 @@ impl Queue {
         html! {
             <div class="plinth-stack">
                 <div class="queue-controls plinth-cluster plinth-between plinth-loose">
-                    <div class="chips queue-filters">
+                    <div class="chips queue-filters plinth-cluster">
                         { chip(QueueFilter::All, "queue-list", "All") }
                         { chip(QueueFilter::Upcoming, "clock", "Upcoming") }
                         { chip(QueueFilter::Done, "check", "Done") }
@@ -649,7 +649,7 @@ impl Queue {
 
                 { view_task_cells(&entry.kind, route, error, progress) }
 
-                <span class="task-duration">{duration}</span>
+                <span class="task-duration plinth-numeric">{duration}</span>
                 <span class="task-time">{time}</span>
 
                 <span class="actions plinth-cluster plinth-nowrap plinth-tight plinth-end">
@@ -813,9 +813,9 @@ fn view_task_title(
 
     html! {
         if let Some(to) = route {
-            <Link {to} class="task-title">{body}</Link>
+            <Link {to} class="task-title plinth-truncate">{body}</Link>
         } else {
-            <span class="task-title">{body}</span>
+            <span class="task-title plinth-truncate">{body}</span>
         }
     }
 }

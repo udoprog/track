@@ -139,7 +139,6 @@ $numbering-map-chrome: 120px;
         calc(100% - 10px) 55%,
         calc(100% - 5px) 55%;
     font-size: v.$font-xs;
-    font-variant-numeric: tabular-nums;
 }
 
 .numbering-map-scroll {
@@ -163,12 +162,9 @@ $numbering-map-chrome: 120px;
 
 .numbering-map-season {
     height: $numbering-head;
-    overflow: hidden;
     font-size: v.$font-xs;
     font-weight: v.$bold-weight;
     line-height: $numbering-head;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
 
 .numbering-bands {
@@ -241,7 +237,6 @@ $numbering-map-chrome: 120px;
         border-radius: v.$radius-sm;
         background: var(--neutral-bg);
         font-size: v.$font-xxs;
-        font-variant-numeric: tabular-nums;
     }
 
     &[class*='tone-']>span {
@@ -454,7 +449,6 @@ $numbering-map-chrome: 120px;
 
     >span {
         font-size: v.$font-sm;
-        font-variant-numeric: tabular-nums;
         white-space: nowrap;
     }
 }
@@ -530,10 +524,6 @@ $numbering-map-chrome: 120px;
 
 .numbering-source .logo {
     height: v.$input-height-sm;
-}
-
-.numbering-open {
-    white-space: nowrap;
 }
 
 .numbering-letter {
@@ -663,7 +653,6 @@ $numbering-map-chrome: 120px;
     background: var(--neutral-bg);
     font-size: v.$font-xs;
     font-weight: v.$bold-weight;
-    font-variant-numeric: tabular-nums;
 
     >.logo {
         height: 16px;

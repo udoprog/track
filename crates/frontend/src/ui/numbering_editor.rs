@@ -690,7 +690,7 @@ impl Component for NumberingEditor {
                     { self.view_map(ctx, &ranges, &errors) }
 
                     if self.manual {
-                        <div class="numbering-side shrink plinth-stack plinth-tight">
+                        <div class="numbering-side plinth-stack plinth-tight">
                             <div class="numbering-ranges" ref={self.ranges.clone()}>
                                 for group in self.folds(&ranges, &errors) {
                                     if group.len() > 1 {
@@ -1880,7 +1880,7 @@ impl NumberingEditor {
         let link = ctx.link();
 
         let Some(data) = &self.data else {
-            return html! { <div class="numbering-map-pane shrink plinth-stack plinth-tight" /> };
+            return html! { <div class="numbering-map-pane plinth-stack plinth-tight" /> };
         };
 
         let drawn = self.drawn(ranges);
@@ -2011,7 +2011,7 @@ impl NumberingEditor {
                 <span class="numbering-map-source" title={label.clone()}>
                     <span class={classes!("logo", c.side.logo().to_owned())} aria-hidden="true" />
                     <span class="numbering-map-label plinth-visually-hidden">{label.clone()}</span>
-                    <select class={classes!(plinth::class::INPUT, plinth::class::NATIVE_SELECT, "numbering-map-in-view")} aria-label={format!("{label} season in view")} title={format!("{label} season in view: pick one to jump to it")} {onchange}>
+                    <select class={classes!(plinth::class::INPUT, plinth::class::NATIVE_SELECT, "numbering-map-in-view", plinth::class::NUMERIC)} aria-label={format!("{label} season in view")} title={format!("{label} season in view: pick one to jump to it")} {onchange}>
                         if current.is_none() {
                             <option value="" selected=true hidden=true>{"–"}</option>
                         }
@@ -2031,7 +2031,7 @@ impl NumberingEditor {
         });
 
         html! {
-            <div class="numbering-map-pane shrink plinth-stack plinth-tight">
+            <div class="numbering-map-pane plinth-stack plinth-tight">
                 <div class="numbering-map-head" style={template.clone()} ref={self.map_head.clone()}>
                     for head in heads {
                         {head}
@@ -2359,7 +2359,7 @@ impl NumberingEditor {
                     let onclick = link.callback(move |_: MouseEvent| Msg::Unfold(pick.clone(), season, first, last));
 
                     rows.push(html! {
-                        <button type="button" class={classes!("numbering-ep", "numbering-fold-row", cell.classes.clone())} data-season={season.to_string()} data-first={first.to_string()} data-last={last.to_string()} aria-label={code} aria-expanded="false" {title} {onclick}>
+                        <button type="button" class={classes!("numbering-ep", plinth::class::NUMERIC, "numbering-fold-row", cell.classes.clone())} data-season={season.to_string()} data-first={first.to_string()} data-last={last.to_string()} aria-label={code} aria-expanded="false" {title} {onclick}>
                             <span>
                                 <span>{format!("E{first}–E{last}")}</span>
                                 <span class="numbering-fold-count">{format!("· {n}")}</span>
@@ -2376,7 +2376,7 @@ impl NumberingEditor {
                 let text = if cell.tail { format!("E{e}…") } else { format!("E{e}") };
 
                 rows.push(html! {
-                    <button type="button" class={classes!("numbering-ep", cell.classes.clone())} data-season={season.to_string()} data-first={e.to_string()} data-last={e.to_string()} aria-label={format!("{label} S{season} E{e}")} title={cell.title.clone()} disabled={!self.manual} {onclick}>
+                    <button type="button" class={classes!("numbering-ep", plinth::class::NUMERIC, cell.classes.clone())} data-season={season.to_string()} data-first={e.to_string()} data-last={e.to_string()} aria-label={format!("{label} S{season} E{e}")} title={cell.title.clone()} disabled={!self.manual} {onclick}>
                         <span>{text}</span>
                     </button>
                 });
@@ -2386,7 +2386,7 @@ impl NumberingEditor {
 
             html! {
                 <>
-                    <div class="numbering-map-season" title={format!("{label} {name}: {} episodes", s.known)}>
+                    <div class="numbering-map-season plinth-truncate" title={format!("{label} {name}: {} episodes", s.known)}>
                         {heading}<span class="text-muted">{format!(" · {}", s.known)}</span>
                     </div>
                     for row in rows {
@@ -2476,7 +2476,7 @@ impl NumberingEditor {
         // in columns from row to row.
         let cells = |season: u32, first: u32, last: Option<u32>| {
             html! {
-                <span class="numbering-span">
+                <span class="numbering-span plinth-numeric">
                     <span class="numbering-season">{format!("S{season}")}</span>{" "}
                     <span class="numbering-first">{format!("E{first}")}</span>
                     <span class="numbering-last">{last.map(|l| format!("–E{l}")).unwrap_or_else(|| "–".to_owned())}</span>
@@ -2544,7 +2544,7 @@ impl NumberingEditor {
             });
 
             html! {
-                <input class={classes!(plinth::class::INPUT, "input-number", "numbering-number")} type="text" inputmode="numeric" value={value.to_owned()} aria-label={title.clone()} {title} {oninput} />
+                <input class={classes!(plinth::class::INPUT, "input-number", plinth::class::NUMERIC, "numbering-number")} type="text" inputmode="numeric" value={value.to_owned()} aria-label={title.clone()} {title} {oninput} />
             }
         };
 
@@ -2566,7 +2566,7 @@ impl NumberingEditor {
                     { input(Field::First, &row.first, format!("Range {n} first episode")) }
                     <span class="numbering-letter">{"–"}</span>
                     if row.open {
-                        <input class={classes!(plinth::class::INPUT, "input-number", "numbering-number")} type="text" value="" placeholder="…" disabled=true aria-label={format!("Range {n} last episode")} title="Open: runs on through the season" />
+                        <input class={classes!(plinth::class::INPUT, "input-number", plinth::class::NUMERIC, "numbering-number")} type="text" value="" placeholder="…" disabled=true aria-label={format!("Range {n} last episode")} title="Open: runs on through the season" />
                     } else {
                         { input(Field::Last, &row.last, format!("Range {n} last episode")) }
                     }

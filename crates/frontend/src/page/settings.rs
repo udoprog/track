@@ -254,7 +254,7 @@ impl Component for Settings {
                                 { mine("", html! {
                                     <input
                                         type="number"
-                                        class={classes!(plinth::class::INPUT, "input-number")}
+                                        class={classes!(plinth::class::INPUT, "input-number", plinth::class::NUMERIC)}
                                         title="Up next per page"
                                         min="1"
                                         max="100"
@@ -330,7 +330,7 @@ impl Component for Settings {
                                         <div class="input-group">
                                             <input
                                                 type="number"
-                                                class={classes!(plinth::class::INPUT, "input-number")}
+                                                class={classes!(plinth::class::INPUT, "input-number", plinth::class::NUMERIC)}
                                                 title="Sync every"
                                                 min="1"
                                                 max="168"

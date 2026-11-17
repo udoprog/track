@@ -163,7 +163,7 @@ impl Component for Search {
                         <Button icon="arrow-right" title="Search" variant={Variant::Primary} onclick={on_submit} />
                     </div>
 
-                    <div class="chips">
+                    <div class="chips plinth-cluster">
                         <MediaKindToggle
                             selection={self.selection}
                             on_change={link.callback(Msg::SelectionChanged)}
@@ -435,18 +435,18 @@ impl Search {
                     </span>
                 }
 
-                <div class="search-body shrink plinth-stack plinth-snug">
+                <div class="search-body plinth-stack plinth-snug">
                     <div class="search-heading">
                         <span class={classes!("icon", "sm", kind_icon)} role="img" aria-label={kind_label} title={kind_label} />
 
                         if let Some(to) = &row.tracked {
-                            <Link to={to.clone()} class="search-title title sm clamp"><>{title}</></Link>
+                            <Link to={to.clone()} class="search-title title sm plinth-truncate"><>{title}</></Link>
                         } else {
-                            <span class="search-title title sm clamp">{title}</span>
+                            <span class="search-title title sm plinth-truncate">{title}</span>
                         }
 
                         if let Some(year) = row.year {
-                            <span class="search-year">{year.to_string()}</span>
+                            <span class="search-year plinth-numeric">{year.to_string()}</span>
                         }
                     </div>
 

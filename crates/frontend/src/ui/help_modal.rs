@@ -100,7 +100,7 @@ pub(crate) fn HelpModal(props: &Props) -> Html {
                         {oninput}
                     />
 
-                    <div class="help-sections">
+                    <div class="help-sections plinth-stack plinth-tight">
                         { for found.iter().map(|section| {
                             let selected = shown.is_some_and(|s| s.id == section.id);
 

@@ -182,7 +182,7 @@ impl Component for PersonList {
                         }
                     </div>
 
-                    <div class="chips">
+                    <div class="chips plinth-cluster">
                         <SortMenu
                             options={SORTS}
                             current={match self.sort { PersonSort::Name => "name", PersonSort::Credits => "credits" }}

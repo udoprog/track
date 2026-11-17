@@ -104,7 +104,7 @@ impl Component for Dashboard {
                         { tab(DashboardView::History, "clock", "History") }
                     </nav>
 
-                    <div class="chips">
+                    <div class="chips plinth-cluster">
                         <MediaKindToggle selection={selection} on_change={link.callback(Msg::SetSelection)} />
                         <Help section={help::WATCHING} />
                     </div>

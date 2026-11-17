@@ -1,14 +1,6 @@
 @use 'grid' as g;
 @use 'vars' as v;
 
-// Day sections and the schedule's blocks stack with the page's rhythm.
-.calendar-grid,
-.agenda {
-    display: flex;
-    flex-direction: column;
-    gap: v.$gap;
-}
-
 // A month band: `.plinth-cluster.title.sm` give it its line and type, this keeps it as
 // tall as a control so it lines up with the weeks around it.
 .calendar-month {
@@ -33,12 +25,6 @@
 
 // The Upcoming agenda, and the Schedule on phones: days in a column, each a
 // heading over what airs on it.
-.agenda-day {
-    display: flex;
-    flex-direction: column;
-    gap: v.$gap-xs;
-}
-
 .agenda-day-title {
     gap: v.$gap-xs;
     min-height: 0;
@@ -115,7 +101,6 @@
     padding: 2px v.$padding;
     border-radius: v.$radius-sm;
     font-size: v.$font-xs;
-    font-variant-numeric: tabular-nums;
     color: v.$text-muted;
 
     &:hover {
@@ -137,7 +122,6 @@
 }
 
 .history-toggle {
-    min-height: 0;
     padding: 2px v.$padding;
     font-size: v.$font-xs;
     color: v.$text-muted;
@@ -157,13 +141,6 @@
 .history-watch {
     max-width: 100%;
     min-width: 0;
-}
-
-.history-episode-title {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
 
 // The Schedule on wide screens: weekday names once, then a week per row of
@@ -243,7 +220,6 @@
     border-radius: 50%;
     font-size: v.$font-sm;
     font-weight: v.$bold-weight;
-    font-variant-numeric: tabular-nums;
     color: v.$text-muted;
 
     &.today {

@@ -9,11 +9,8 @@
 // .start-on-mobile    a cluster of actions read from the start on phones
 // .fixed           a flex child that keeps its size instead of shrinking
 // .grow            a flex child that takes the free space
-// .shrink          may be narrower than its content (a grid or flex child that
-//                  must not push its parent wider)
 // .title           a title line in body text weight
 //   .sm                base size instead of large
-//   .clamp             one line, ellipsis when it overflows
 //
 // .accent         the primary colour (today's date)
 // .mono           the monospace face (an identifier)
@@ -70,10 +67,6 @@
     flex: none;
 }
 
-.shrink {
-    min-width: 0;
-}
-
 .title {
     min-width: 0;
     // On a heading element: not the control height `h1`-`h6` default to.
@@ -84,12 +77,6 @@
 
     &.sm {
         font-size: v.$font-base;
-    }
-
-    &.clamp {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
     }
 }
 

@@ -499,9 +499,9 @@ impl ReleaseModal {
                         <span />
                     }
 
-                    <span class="release-label">{label.clone()}</span>
+                    <span class="release-label plinth-truncate">{label.clone()}</span>
 
-                    <span class="release-date">
+                    <span class="release-date plinth-numeric">
                         if let Some(earliest) = earliest {
                             {earliest.timestamp.human_date_time(self.time.clone())}
                         }
@@ -526,7 +526,7 @@ impl ReleaseModal {
 
                 <span />
 
-                <span class="release-date">{r.timestamp.human_date_time(self.time.clone())}</span>
+                <span class="release-date plinth-numeric">{r.timestamp.human_date_time(self.time.clone())}</span>
             </div>
         }
     }

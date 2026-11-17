@@ -57,7 +57,7 @@ pub(super) fn view_stepper(
 
             <div class="plinth-cluster plinth-nowrap plinth-loose">
                 <Button icon="minus" title={fewer_title.to_string()} onclick={on_fewer} disabled={count <= 1} />
-                <span class="page-size">{count}</span>
+                <span class="page-size plinth-numeric">{count}</span>
                 <Button icon="plus" title={more_title.to_string()} onclick={on_more} />
             </div>
         </div>
@@ -150,7 +150,7 @@ pub(super) fn view_schedule_item(
                     let to = Route::ShowDetail(show_id, ShowDetailQuery { season: code.season, episode: Some(code), orphaned: false });
 
                     html! {
-                        <Link key={code.to_string()} {to} class={classes!("schedule-time", compact.then_some("compact"))} title={format!("Open {code}")}>
+                        <Link key={code.to_string()} {to} class={classes!("schedule-time", plinth::class::NUMERIC, compact.then_some("compact"))} title={format!("Open {code}")}>
                             <span>{ep.aired.time_of_day(time.clone())}</span>
                             <span class="badge">{code.to_string()}</span>
                         </Link>
@@ -159,7 +159,7 @@ pub(super) fn view_schedule_item(
             }
         }
         api::ScheduleItem::Movie(movie) => html! {
-            <span class={classes!("schedule-time", compact.then_some("compact"))}>
+            <span class={classes!("schedule-time", plinth::class::NUMERIC, compact.then_some("compact"))}>
                 <span>{movie.released.time_of_day(time.clone())}</span>
                 <span class="badge">{"Movie"}</span>
             </span>

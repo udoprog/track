@@ -102,7 +102,7 @@
     $card-border-width: false,
     // The parts of plinth's partials track never renders.
     $omit: (
-        "buttons.busy", "buttons.fold", "buttons.touch",
+        "buttons.bare", "buttons.busy", "buttons.fold", "buttons.touch",
         "confirm.inline",
         "fields.busy", "fields.check", "fields.disabled", "fields.error", "fields.field",
         "fields.fieldset", "fields.help", "fields.required",
@@ -120,8 +120,8 @@
         "tokens.actions", "tokens.card-grid", "tokens.color-select", "tokens.drop",
         "tokens.filter-picker", "tokens.media", "tokens.panel", "tokens.picker", "tokens.seam",
         "tokens.table", "tokens.toast", "tokens.toggles", "tokens.tooltip",
-        "utilities.clamp", "utilities.focus-ring", "utilities.numeric", "utilities.phone-only",
-        "utilities.scroll-area", "utilities.truncate",
+        "utilities.clamp", "utilities.focus-ring", "utilities.phone-only",
+        "utilities.scroll-area",
     ),
     $button-colours: (
         secondary: (fill: var(--neutral-bg), edge: transparent, pressed-fill: var(--button-fill), pressed-edge: var(--button-edge)),
@@ -355,15 +355,8 @@ p {
         color: v.$text-muted;
     }
 
-    >.release-label {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
     >.release-date {
         justify-self: end;
-        font-variant-numeric: tabular-nums;
 
         * {
             color: inherit;
@@ -374,10 +367,6 @@ p {
 // Translations of a title or overview: the language in one column and the
 // text beside it, stacked on phones.
 .translations {
-    display: flex;
-    flex-direction: column;
-    gap: v.$gap;
-
     h3 {
         color: v.$text-color;
         font-size: v.$font-lg;
@@ -474,8 +463,6 @@ p {
 }
 
 .watch-when {
-    font-variant-numeric: tabular-nums;
-
     * {
         color: inherit;
     }
@@ -495,12 +482,6 @@ p {
 }
 
 // Choosing an episode: labelled season and episode fields over the actions.
-.episode-picker {
-    display: flex;
-    flex-direction: column;
-    gap: v.$gap;
-}
-
 .remote-link {
     color: v.$text-color;
 
@@ -534,12 +515,6 @@ a.remote-link:hover .mono {
         margin: 0;
         min-width: 0;
     }
-}
-
-.remote-etag {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 }
 
 .remote-errors {
@@ -618,7 +593,6 @@ a.search-title:hover {
     flex: none;
     color: v.$text-muted;
     font-size: v.$font-sm;
-    font-variant-numeric: tabular-nums;
 }
 
 .search-overview {
@@ -1032,10 +1006,8 @@ h1.auth-heading {
 }
 
 .auth-user-email {
+    @extend .plinth-truncate;
     max-width: 24ch;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
 
     @include g.on-mobile {
         max-width: none;
@@ -1224,7 +1196,6 @@ h4, h5, h6 {
 // A What's Next card. On wide screens the poster is the card; on phones a
 // soft panel holds the banner and text.
 .pending-item {
-    min-width: 0;
     position: relative;
 
     image.banner {
@@ -1314,7 +1285,6 @@ image {
 
 .pending-info {
     flex: 1;
-    min-width: 0;
 }
 
 .pending-content {
@@ -1444,16 +1414,12 @@ image {
 
     >.season-name {
         grid-area: name;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
     }
 
     >.season-count,
     >.season-year {
         color: v.$text-muted;
         font-weight: normal;
-        font-variant-numeric: tabular-nums;
         text-align: end;
     }
 
@@ -1587,7 +1553,6 @@ image {
 
 .selection-count {
     font-weight: v.$bold-weight;
-    font-variant-numeric: tabular-nums;
 }
 
 // Dates and watch state (a `.plinth-cluster`): quiet text, not links.
@@ -1650,7 +1615,6 @@ image {
     flex: none;
     font-size: v.$font-sm;
     font-weight: v.$bold-weight;
-    font-variant-numeric: tabular-nums;
     color: v.$text-muted;
     text-decoration: none;
 
@@ -1822,7 +1786,6 @@ input-label-controls {
         margin-inline-start: auto;
         color: v.$text-muted;
         font-size: v.$font-sm;
-        font-variant-numeric: tabular-nums;
         white-space: nowrap;
     }
 
@@ -2204,7 +2167,6 @@ date {
 .detail-sources {
     flex-wrap: nowrap;
     gap: v.$gap;
-    min-width: 0;
 
     @include g.on-mobile {
         gap: v.$gap-xs;
@@ -2228,7 +2190,6 @@ date {
 
 .media-card {
     position: relative;
-    min-width: 0;
 
     &.picked .media-poster {
         outline: 3px solid v.$color-primary;
@@ -2337,12 +2298,8 @@ button.media-pick {
     display: flex;
     align-items: center;
     gap: v.$text-gap;
-    min-width: 0;
     font-size: v.$font-xs;
     color: v.$text-muted;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 // The Queue page: a fixed status card for the running or next task, then one
@@ -2406,11 +2363,7 @@ button.media-pick {
     display: flex;
     align-items: center;
     gap: v.$padding-md;
-    min-width: 0;
     font-weight: v.$bold-weight;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 // What the running task is doing: its step, and its count on the right.
@@ -2430,7 +2383,6 @@ button.media-pick {
 
 .queue-now-step-count {
     margin-left: auto;
-    font-variant-numeric: tabular-nums;
 }
 
 // A thin bar filled to how far through its step a running task is, or
@@ -2473,16 +2425,14 @@ button.media-pick {
 }
 
 .queue-filters {
-    // Phones keep the chips on one line and scroll it rather than wrap.
+    // On phones the chips wrap (plinth-cluster) and the row scrolls when a
+    // single chip is wider than it.
     @include g.on-mobile {
-        flex-wrap: nowrap;
         overflow-x: auto;
         scrollbar-width: none;
     }
 
     >button.chip {
-        white-space: nowrap;
-
         @include g.on-mobile {
             padding: 0 v.$padding-lg * 1.25;
 
@@ -2496,7 +2446,6 @@ button.media-pick {
 // A chip's count, quieter than its label.
 .chip-count {
     margin-inline-start: v.$text-gap;
-    font-variant-numeric: tabular-nums;
     color: v.$text-muted;
     font-weight: normal;
 }
@@ -2615,7 +2564,6 @@ button.media-pick {
 }
 
 .task-duration {
-    font-variant-numeric: tabular-nums;
     text-align: right;
 }
 
@@ -2623,10 +2571,6 @@ button.media-pick {
     display: flex;
     color: v.$text-color;
     gap: v.$text-gap;
-    min-width: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 .task-error {
@@ -2661,17 +2605,9 @@ button.media-pick {
 .page-size {
     min-width: 3ch;
     text-align: center;
-    font-variant-numeric: tabular-nums;
 }
 
 // Filter chips: rounded toggles, tinted while on.
-.chips {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: v.$gap-xs;
-}
-
 button.chip {
     padding: 0 v.$padding-lg * 1.5;
     border-radius: v.$radius-pill;
@@ -2727,7 +2663,6 @@ button.chip {
     display: flex;
 
     >button.tab {
-        white-space: nowrap;
         border: none;
         border-radius: 0;
         background: transparent;
@@ -2750,7 +2685,6 @@ button.chip {
         // A tab's label is centred and may run into its padding, not cut.
         @include g.on-mobile {
             flex: 1;
-            justify-content: center;
             padding-inline: 0;
 
             .plinth-button-icon {

@@ -405,7 +405,7 @@ impl PersonDetail {
             <div class="person-detail-header" data-testid="person-header">
                 <Image class="person-detail-photo" placeholder={true} placeholder_icon="user" src={person.profile.clone()} alt={name.clone()} />
 
-                <div class="shrink plinth-stack">
+                <div class="plinth-stack">
                     <plinth::PageHead title={html! {name}} subtitle={person.department.department().map(|d| html! {d.to_owned()})}>
                         <div class="input-group">
                             <SyncButton target={SyncTarget::Person(person.id)} text="Sync" onclick={link.callback(|_| Msg::SyncPerson)} />

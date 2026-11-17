@@ -118,7 +118,7 @@ impl Component for EpisodePicker {
         let can_confirm = self.season.is_some() && self.episode.is_some();
 
         html! {
-            <div class="episode-picker">
+            <div class="episode-picker plinth-stack plinth-loose">
                 <div class={plinth::form_rows(false)}>
                     <FormRow label="Season">
                         <select class={classes!(plinth::class::INPUT, plinth::class::NATIVE_SELECT)} title="Season" onchange={on_season_change}>

@@ -23,7 +23,7 @@ pub(crate) fn DetailSkeleton() -> Html {
                     <Skeleton shape={SkeletonShape::Image(Ratio::Poster)} class="desktop-only" />
                 </div>
 
-                <div class="shrink plinth-stack plinth-loose" data-testid="detail-content">
+                <div class="plinth-stack plinth-loose" data-testid="detail-content">
                     <Skeleton shape={SkeletonShape::Line} />
                     <Skeleton shape={SkeletonShape::Line} width="90%" />
                     <Skeleton shape={SkeletonShape::Line} width="80%" />

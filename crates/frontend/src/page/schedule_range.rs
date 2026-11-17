@@ -174,7 +174,7 @@ impl Component for ScheduleRange {
                     </ContextMenu>
                 }
 
-                <div class="agenda">
+                <div class="agenda plinth-stack plinth-loose">
                     { for days.iter().map(|&day| self.view_day(ctx, day, today)) }
                 </div>
             </div>
@@ -326,7 +326,7 @@ impl ScheduleRange {
         let on_hover = link.callback(Msg::Hover);
 
         html! {
-            <section key={day.to_string()} class="agenda-day">
+            <section key={day.to_string()} class="agenda-day plinth-stack plinth-tight">
                 { view_day_heading(day, today) }
 
                 if !self.loaded.is_some_and(|(first, last)| first <= day && day <= last) {

@@ -213,7 +213,7 @@ impl Component for Calendar {
                     </ContextMenu>
                 }
 
-                <div class="calendar-grid">
+                <div class="calendar-grid plinth-stack plinth-loose">
                     { for weeks.iter().enumerate().flat_map(|(index, (month_band, days))| {
                         let monday = days[0];
 
@@ -246,7 +246,7 @@ impl Component for Calendar {
                                             (is_past && !show_past).then_some("desktop-only"),
                                             (known && items.is_empty()).then_some("desktop-only"),
                                         )}>
-                                            <span class={classes!("calendar-day-number", "desktop-only", is_today.then_some("today"))}>{day.day()}</span>
+                                            <span class={classes!("calendar-day-number", plinth::class::NUMERIC, "desktop-only", is_today.then_some("today"))}>{day.day()}</span>
 
                                             <div class="mobile-only">
                                                 { view_day_heading(day, today) }

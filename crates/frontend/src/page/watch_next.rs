@@ -216,7 +216,7 @@ impl Component for WatchNext {
 
                                 <div class="plinth-cluster plinth-nowrap plinth-loose">
                                     <Button icon="minus" title="Show a row fewer" onclick={link.callback(|_| Msg::AdjustPageSize(-1))} />
-                                    <span class="page-size">{page_size}</span>
+                                    <span class="page-size plinth-numeric">{page_size}</span>
                                     <Button icon="plus" title="Show a row more" onclick={link.callback(|_| Msg::AdjustPageSize(1))} />
                                 </div>
                             </div>

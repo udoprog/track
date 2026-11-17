@@ -30,10 +30,6 @@
 }
 
 .help-sections {
-    display: flex;
-    flex-direction: column;
-    gap: v.$gap-xs;
-
     @include g.on-mobile {
         flex-direction: row;
         overflow-x: auto;
@@ -56,7 +52,6 @@ button.help-section {
         flex: none;
         border-radius: v.$radius-pill;
         border-color: v.$border-subtle;
-        white-space: nowrap;
     }
 
     &.selected {

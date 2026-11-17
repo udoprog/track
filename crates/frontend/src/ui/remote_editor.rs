@@ -464,11 +464,11 @@ impl Component for RemoteEditor {
                                         <DragHandle {index} />
 
                                         if let Some(url) = url {
-                                            <a class="remote-link shrink plinth-cluster plinth-nowrap plinth-tight" data-testid="remote-link" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {}", r.remote.remote.source())}>
+                                            <a class="remote-link plinth-cluster plinth-nowrap plinth-tight" data-testid="remote-link" href={url} target="_blank" rel="noopener noreferrer" title={format!("Open on {}", r.remote.remote.source())}>
                                                 {identifier}
                                             </a>
                                         } else {
-                                            <span class="remote-link shrink plinth-cluster plinth-nowrap plinth-tight" data-testid="remote-link">{identifier}</span>
+                                            <span class="remote-link plinth-cluster plinth-nowrap plinth-tight" data-testid="remote-link">{identifier}</span>
                                         }
 
                                         <div class="plinth-push-end plinth-cluster plinth-tight" data-testid="remote-actions" ref={r.context_anchor.clone()}>
@@ -495,7 +495,7 @@ impl Component for RemoteEditor {
 
                                                 if let Some(ref etag) = cache.etag {
                                                     <dt>{"ETag"}</dt>
-                                                    <dd class="remote-etag mono" title={etag.clone()}>{etag}</dd>
+                                                    <dd class="remote-etag mono plinth-truncate" title={etag.clone()}>{etag}</dd>
                                                 }
 
                                                 if !cache.kinds.is_empty() {
