@@ -13,11 +13,11 @@ VALUES (1002, 1701734144, 1, 'Future Show');
 INSERT INTO seasons (id, show_id, season, air_date)
 VALUES (2101, 1002, 1, 1700000000000);
 
--- Tomorrow at this hour, and an hour later.
+-- Tomorrow at 09:00 and 10:00 local time, so both fall on the same day.
 INSERT INTO episodes (id, show_id, season, episode, aired)
 VALUES
-    (3401, 1002, 1, 1, (CAST(strftime('%s', 'now') AS INTEGER) + 86400) * 1000),
-    (3402, 1002, 1, 2, (CAST(strftime('%s', 'now') AS INTEGER) + 90000) * 1000);
+    (3401, 1002, 1, 1, CAST(strftime('%s', 'now', 'localtime', 'start of day', '+1 day', '+9 hours', 'utc') AS INTEGER) * 1000),
+    (3402, 1002, 1, 2, CAST(strftime('%s', 'now', 'localtime', 'start of day', '+1 day', '+10 hours', 'utc') AS INTEGER) * 1000);
 
 INSERT INTO episode_strings (episode_id, language, kind, text)
 VALUES
