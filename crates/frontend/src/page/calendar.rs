@@ -9,7 +9,9 @@ use yew::prelude::*;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::MediaSelection;
-use crate::ui::{Button, ContextMenu, Skeleton};
+use plinth::{Skeleton, SkeletonShape};
+
+use crate::ui::{Button, ContextMenu};
 
 use super::schedule_item::{
     RangeControls, view_day_heading, view_range_controls, view_schedule_item, view_stepper,
@@ -251,7 +253,7 @@ impl Component for Calendar {
                                             </div>
 
                                             if !known {
-                                                <Skeleton class="line" />
+                                                <Skeleton shape={SkeletonShape::Line} />
                                             } else if !items.is_empty() {
                                                 <div class="agenda-items">
                                                     { for items.iter().map(|item| view_schedule_item(item, &self.time, &on_hover, true)) }

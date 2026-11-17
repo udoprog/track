@@ -8,7 +8,9 @@ use yew::prelude::*;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::MediaSelection;
-use crate::ui::{ContextMenu, Skeleton};
+use plinth::{Skeleton, SkeletonShape};
+
+use crate::ui::ContextMenu;
 
 use super::schedule_item::{
     RangeControls, view_day_heading, view_range_controls, view_schedule_item, view_stepper,
@@ -328,7 +330,7 @@ impl ScheduleRange {
                 { view_day_heading(day, today) }
 
                 if !self.loaded.is_some_and(|(first, last)| first <= day && day <= last) {
-                    <Skeleton class="line" />
+                    <Skeleton shape={SkeletonShape::Line} />
                 } else if items.is_empty() {
                     <p class="text-muted">{"Nothing airs"}</p>
                 } else {

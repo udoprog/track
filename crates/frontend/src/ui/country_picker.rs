@@ -1,9 +1,11 @@
 use web_sys::InputEvent;
 use yew::prelude::*;
 
+use crate::ui::Pager;
+
 use crate::flags;
 
-use super::{Button, Modal, PaginationButtons};
+use super::{Button, Modal};
 
 const COUNTRY_PAGE_SIZE: usize = 8;
 
@@ -219,7 +221,7 @@ impl Component for CountryPicker {
                     </div>
 
                     <div class="desktop-align-end plinth-cluster plinth-nowrap plinth-loose">
-                        <PaginationButtons page={page} total_pages={total_pages} on_page={link.callback(Msg::Page)} />
+                        <Pager {page} pages={total_pages} on_page={link.callback(Msg::Page)} />
                     </div>
                 </Modal>
             </>

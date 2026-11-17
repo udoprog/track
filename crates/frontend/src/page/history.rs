@@ -9,7 +9,7 @@ use yew::prelude::*;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaSelection, Route, ShowDetailQuery};
-use crate::ui::{Button, Image, Link, PaginationButtons};
+use crate::ui::{Button, Image, Link, Pager};
 
 use super::schedule_item::view_day_heading;
 
@@ -173,7 +173,7 @@ impl Component for History {
                     </div>
 
                     if self.loaded {
-                        <PaginationButtons {page} {total_pages} on_page={on_page.clone()} />
+                        <Pager {page} pages={total_pages} on_page={on_page.clone()} />
                     }
                 </div>
 
@@ -199,7 +199,7 @@ impl Component for History {
                     </div>
 
                     <div class="desktop-align-end plinth-cluster plinth-nowrap plinth-loose">
-                        <PaginationButtons {page} {total_pages} {on_page} />
+                        <Pager {page} pages={total_pages} {on_page} />
                     </div>
                 }
             </>

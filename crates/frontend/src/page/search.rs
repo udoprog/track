@@ -7,7 +7,9 @@ use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::help;
 use crate::router::{MediaSelection, Route, Router, SearchQuery, ShowDetailQuery};
-use crate::ui::{Button, Help, Image, Link, MediaKindToggle, SEARCH, Skeleton, Variant};
+use plinth::Skeleton;
+
+use crate::ui::{Button, Help, Image, Link, MediaKindToggle, SEARCH, Variant};
 
 pub(crate) struct Search {
     channel: ws::Channel,

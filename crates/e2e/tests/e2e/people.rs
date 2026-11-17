@@ -50,7 +50,7 @@ pub async fn shows_nothing_while_loading(driver: &mut TestDriver, _: &mut Track)
         "people show before they load"
     );
     ensure!(
-        driver.count("#page pagination").await? == 0,
+        driver.count("#page .plinth-pager").await? == 0,
         "pages show before the people load"
     );
 
@@ -78,12 +78,12 @@ pub async fn pages_and_filters_people(driver: &mut TestDriver, _: &mut Track) ->
         )
         .await?;
     ensure!(
-        driver.count("#page pagination [title='Page 3']").await? == 0,
+        driver.count("#page .plinth-pager [title='Page 3']").await? == 0,
         "a page past the next one is offered"
     );
 
     driver
-        .find_first("#page pagination [title='Page 2']")
+        .find_first("#page .plinth-pager [title='Page 2']")
         .await?
         .click()
         .await?;
@@ -95,7 +95,7 @@ pub async fn pages_and_filters_people(driver: &mut TestDriver, _: &mut Track) ->
         )
         .await?;
     ensure!(
-        driver.count("#page pagination [title='Page 3']").await? == 0,
+        driver.count("#page .plinth-pager [title='Page 3']").await? == 0,
         "a page past the last one is offered"
     );
 
@@ -116,7 +116,7 @@ pub async fn pages_and_filters_people(driver: &mut TestDriver, _: &mut Track) ->
         )
         .await?;
     ensure!(
-        driver.count("#page pagination [title='Page 2']").await? == 0,
+        driver.count("#page .plinth-pager [title='Page 2']").await? == 0,
         "one page of matches offers a second"
     );
 

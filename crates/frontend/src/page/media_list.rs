@@ -14,9 +14,7 @@ use crate::router::{
     MediaQuery, MediaSelection, NextFilter, Route, Router, ShowDetailQuery, SortField,
     TrackedFilter,
 };
-use crate::ui::{
-    Button, Image, Link, MarkTimeMenu, MediaKindToggle, PaginationButtons, SortMenu, TimePreset,
-};
+use crate::ui::{Button, Image, Link, MarkTimeMenu, MediaKindToggle, Pager, SortMenu, TimePreset};
 
 /// The fields the list can be sorted by, as `(value, label)`.
 const SORTS: &[(&str, &str)] = &[
@@ -331,7 +329,7 @@ impl Component for MediaList {
 
                     <span class="list-count">{format!("{total} titles")}</span>
 
-                    <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
+                    <Pager {page} pages={total_pages} on_page={link.callback(Msg::SetPage)} />
                 </div>
 
                 if self.list_req.is_pending() {
@@ -348,7 +346,7 @@ impl Component for MediaList {
                     </div>
 
                     <div class="desktop-align-end plinth-cluster plinth-nowrap plinth-loose">
-                        <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
+                        <Pager {page} pages={total_pages} on_page={link.callback(Msg::SetPage)} />
                     </div>
 
                     if !self.picked.is_empty() {

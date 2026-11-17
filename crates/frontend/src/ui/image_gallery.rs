@@ -1,6 +1,8 @@
 use yew::prelude::*;
 
-use super::{Button, Image, PaginationButtons, Variant};
+use crate::ui::Pager;
+
+use super::{Button, Image, Variant};
 
 /// How many images of a kind fit a page of the gallery.
 fn page_size(kind: api::ImageKind) -> usize {
@@ -79,7 +81,7 @@ pub(crate) fn ImageGallery(props: &Props) -> Html {
             </div>
 
             <div class="desktop-align-end plinth-cluster plinth-nowrap plinth-loose">
-                <PaginationButtons page={this_page} {total_pages} on_page={on_page} />
+                <Pager page={this_page} pages={total_pages} on_page={on_page} />
             </div>
 
             if props.items.is_empty() {

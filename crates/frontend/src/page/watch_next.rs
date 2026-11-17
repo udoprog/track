@@ -7,13 +7,14 @@ use musli_web::yew023::ContextExt;
 use yew::prelude::*;
 
 use api::{TimeInfo, Timed};
+use plinth::{Ratio, Skeleton, SkeletonShape};
 
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{MediaSelection, Route, ShowDetailQuery};
 use crate::ui::{
-    Button, Confirm, ContextMenu, DurationInput, Image, Link, MarkTimeMenu, PaginationButtons,
-    Skeleton, TimePreset, Variant,
+    Button, Confirm, ContextMenu, DurationInput, Image, Link, MarkTimeMenu, Pager, TimePreset,
+    Variant,
 };
 
 struct PendingState {
@@ -191,7 +192,7 @@ impl Component for WatchNext {
 
                     <div class="plinth-cluster plinth-nowrap plinth-loose">
                         if total_pages > 1 {
-                            <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
+                            <Pager {page} pages={total_pages} on_page={link.callback(Msg::SetPage)} />
                         }
 
                         <Button node_ref={self.options_anchor.clone()} icon="adjustments-horizontal" title="View options" class={classes!("chip", self.options_open.then_some("selected"))} expanded={Some(self.options_open)} haspopup="dialog" onclick={link.callback(|_| Msg::ToggleOptions)} />
@@ -237,7 +238,7 @@ impl Component for WatchNext {
 
                 if total_pages > 1 {
                     <div class="plinth-cluster plinth-nowrap plinth-loose plinth-center">
-                        <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
+                        <Pager {page} pages={total_pages} on_page={link.callback(Msg::SetPage)} />
                     </div>
                 }
             </div>
@@ -621,13 +622,13 @@ impl WatchNext {
     fn view_pending_skeleton() -> Html {
         html! {
             <div class="pending-item plinth-stack">
-                <Skeleton class="poster desktop-only" />
-                <Skeleton class="banner mobile-only" />
+                <Skeleton shape={SkeletonShape::Image(Ratio::Poster)} class="desktop-only" />
+                <Skeleton shape={SkeletonShape::Image(Ratio::Banner)} class="mobile-only" />
 
                 <div class="pending-info plinth-stack">
                     <div class="pending-content">
-                        <Skeleton class="line" style="width: 80%" />
-                        <Skeleton class="line" style="width: 50%" />
+                        <Skeleton shape={SkeletonShape::Line} width="80%" />
+                        <Skeleton shape={SkeletonShape::Line} width="50%" />
                     </div>
                 </div>
             </div>

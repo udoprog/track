@@ -96,12 +96,12 @@ pub async fn folds_episodes_watched_back_to_back(
 pub async fn pages_and_filters_the_history(driver: &mut TestDriver, _: &mut Track) -> Result<()> {
     open(driver).await?;
     ensure!(
-        driver.count("#page pagination [title='Page 3']").await? == 0,
+        driver.count("#page .plinth-pager [title='Page 3']").await? == 0,
         "a page past the next one is offered"
     );
 
     driver
-        .find_first("#page pagination [title='Page 2']")
+        .find_first("#page .plinth-pager [title='Page 2']")
         .await?
         .click()
         .await?;

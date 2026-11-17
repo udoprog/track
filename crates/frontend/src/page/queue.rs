@@ -8,7 +8,9 @@ use yew::prelude::*;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{QueueFilter, QueueQuery, Route, Router, ShowDetailQuery};
-use crate::ui::{Button, Link, PaginationButtons, Skeleton, Variant};
+use plinth::Skeleton;
+
+use crate::ui::{Button, Link, Pager, Variant};
 
 const PAGE_SIZE: usize = 20;
 /// Completed tasks kept, matching the server's history.
@@ -572,7 +574,7 @@ impl Queue {
                         }
 
                         if total_pages > 1 {
-                            <PaginationButtons {page} {total_pages} {on_page} />
+                            <Pager {page} pages={total_pages} {on_page} />
                         }
                     </div>
                 </div>

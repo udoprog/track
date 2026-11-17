@@ -90,7 +90,7 @@ pub async fn spinner_opens_the_task_in_the_queue(
 ) -> Result<()> {
     sync_all(driver).await?;
     driver
-        .find_one_by("pagination .page:not(.current)")
+        .find_one_by(".plinth-pager [title^='Page ']:not([aria-current])")
         .await?
         .click()
         .await?;

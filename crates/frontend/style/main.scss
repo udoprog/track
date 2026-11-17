@@ -49,6 +49,25 @@
     $menu-item-phone-height: v.$input-height-touch,
     $menu-item-mark-ink: currentColor,
     $confirm-gap: v.$gap,
+    // Edged and square, a line as high as a small control, a block a touch
+    // control high on phones.
+    // Pill page buttons in muted ink, the current page filled.
+    $pager-gap: 2px,
+    $pager-button-radius: v.$radius-pill,
+    $pager-button-ink: v.$text-muted,
+    $pager-button-text: v.$font-sm,
+    $pager-button-hover-fill: var(--neutral-bg),
+    $pager-button-hover-ink: v.$text-color,
+    $pager-current-fill: var(--accent-selected),
+    $pager-current-ink: v.$text-color-selected,
+    $pager-step-ink: v.$text-color,
+    $pager-phone-height: v.$input-height-touch,
+    $skeleton-fill: v.$bg-dark-transparent,
+    $skeleton-edge: v.$border-subtle-transparent,
+    $skeleton-radius: 0,
+    $skeleton-line-height: v.$input-height-sm,
+    $skeleton-line-inset: 0,
+    $skeleton-phone-height: v.$input-height-touch,
     $button-colours: (
         secondary: (fill: var(--neutral-bg), edge: transparent, pressed-fill: var(--button-fill), pressed-edge: var(--button-edge)),
         // plinth's close buttons: filled, their icon muted.
@@ -62,7 +81,9 @@
 @use '../../../../plinth/style/heads' as plinth-heads;
 @use '../../../../plinth/style/buttons' as plinth-buttons;
 @use '../../../../plinth/style/icons' as plinth-icons;
+@use '../../../../plinth/style/skeleton' as plinth-skeleton;
 @use '../../../../plinth/style/popover' as plinth-popover;
+@use '../../../../plinth/style/pager' as plinth-pager;
 @use '../../../../plinth/style/confirm' as plinth-confirm;
 @use '../../../../plinth/style/dialog' as plinth-dialog;
 @use '../../../../plinth/style/menu' as plinth-menu;
@@ -72,7 +93,6 @@
 @use 'logos';
 @use 'flags';
 @use 'calendar';
-@use 'skeleton';
 @use 'toolbar';
 @use 'mark_time_menu';
 @use 'outline';
@@ -508,6 +528,10 @@ a.remote-link:hover .mono {
 // Search results: compact rows of a small poster, the title with its kind
 // and year, two lines of overview and the sources, with the action on the
 // right (under the text on phones).
+.plinth-skeleton.tall {
+    --skeleton-height: #{v.$input-height-xl * 2};
+}
+
 .search-skeleton {
     height: v.$skeleton-result;
     margin-block: v.$gap-xs;
@@ -1839,11 +1863,11 @@ input-label-controls {
         white-space: nowrap;
     }
 
-    >.list-count+pagination {
+    >.list-count+.plinth-pager {
         margin-inline-start: 0;
     }
 
-    >pagination {
+    >.plinth-pager {
         margin-inline-start: auto;
     }
 
@@ -2080,74 +2104,6 @@ date {
     color: v.$color-primary;
 }
 
-// Compact page buttons: rounded, with the current page filled.
-pagination {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: center;
-    gap: 2px;
-    user-select: none;
-
-    >.plinth-button {
-        border-radius: v.$radius-pill;
-        background: transparent;
-    }
-
-    >pages {
-        display: flex;
-        gap: 2px;
-        font-size: v.$font-sm;
-        font-variant-numeric: tabular-nums;
-        justify-content: center;
-
-        >ellipsis {
-            color: v.$text-muted;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-
-            min-width: 3ch;
-            height: v.$input-height;
-
-            @include g.on-mobile {
-                height: v.$input-height-touch;
-            }
-        }
-
-        >.page {
-            cursor: pointer;
-            background: transparent;
-            border: none;
-
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-
-            min-width: v.$input-height;
-            height: v.$input-height;
-            padding: 0 v.$padding-md;
-            border-radius: v.$radius-pill;
-            color: v.$text-muted;
-
-            @include g.on-mobile {
-                min-width: v.$input-height-touch;
-                height: v.$input-height-touch;
-            }
-
-            &:hover {
-                background-color: var(--neutral-bg);
-                color: v.$text-color;
-            }
-
-            &.current {
-                font-weight: v.$bold-weight;
-                background-color: var(--accent-selected);
-                color: v.$text-color-selected;
-            }
-        }
-    }
-}
 // A transient notice at the bottom of the viewport, such as the offer to undo
 // marking something watched.
 .toast {

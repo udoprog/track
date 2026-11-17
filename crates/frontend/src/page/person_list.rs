@@ -6,7 +6,7 @@ use yew::prelude::*;
 use crate::background::Background;
 use crate::error::{CustomContext, Error, Message};
 use crate::router::{PersonQuery, PersonSort, Route, Router};
-use crate::ui::{Button, Image, Link, PaginationButtons, SortMenu};
+use crate::ui::{Button, Image, Link, Pager, SortMenu};
 
 /// The fields the list can be sorted by, as `(value, label)`.
 const SORTS: &[(&str, &str)] = &[("name", "Name"), ("credits", "Credits")];
@@ -193,7 +193,7 @@ impl Component for PersonList {
                     </div>
 
                     if self.loaded {
-                        <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
+                        <Pager {page} pages={total_pages} on_page={link.callback(Msg::SetPage)} />
                     }
                 </div>
 
@@ -211,7 +211,7 @@ impl Component for PersonList {
                     </div>
 
                     <div class="desktop-align-end plinth-cluster plinth-nowrap plinth-loose">
-                        <PaginationButtons {page} {total_pages} on_page={link.callback(Msg::SetPage)} />
+                        <Pager {page} pages={total_pages} on_page={link.callback(Msg::SetPage)} />
                     </div>
                 }
             </>

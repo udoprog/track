@@ -1,6 +1,7 @@
 use auth::yew023::AdminCloudflare;
 use musli_web::web03::prelude::*;
 use musli_web::yew023::ContextExt;
+use plinth::Skeleton;
 use yew::prelude::*;
 
 use crate::background::Background;
@@ -9,7 +10,7 @@ use crate::help;
 use crate::router::{Route, SettingsPage};
 use crate::ui::{
     AIR_DATE_KINDS, AIR_DATE_SOURCES, Button, DurationInput, FiltersEditor, FormRow,
-    LanguagePicker, Link, NumberingsEditor, RELEASE_KINDS, RELEASE_SOURCES, SecretInput, Skeleton,
+    LanguagePicker, Link, NumberingsEditor, RELEASE_KINDS, RELEASE_SOURCES, SecretInput,
     SyncKindsEditor, SyncLanguagesEditor, XemLookupEditor,
 };
 

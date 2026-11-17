@@ -3,9 +3,11 @@ use std::borrow::Cow;
 use web_sys::InputEvent;
 use yew::prelude::*;
 
+use crate::ui::Pager;
+
 use crate::flags;
 
-use super::{Button, Modal, PaginationButtons};
+use super::{Button, Modal};
 
 /// App-wide context: the most-used custom locales, ordered most-used first,
 /// recomputed periodically by the backend. Surfaced as quick picks in every
@@ -295,7 +297,7 @@ impl Component for LanguageModal {
                 </div>
 
                 <div class="desktop-align-end plinth-cluster plinth-nowrap plinth-loose">
-                    <PaginationButtons page={page} total_pages={total_pages} on_page={link.callback(Msg::Page)} />
+                    <Pager {page} pages={total_pages} on_page={link.callback(Msg::Page)} />
                 </div>
             </Modal>
         }
