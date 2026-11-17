@@ -188,18 +188,6 @@ p {
     }
 }
 
-.desktop-only {
-    @include g.on-mobile {
-        display: none;
-    }
-}
-
-.mobile-only {
-    @include g.on-desktop {
-        display: none;
-    }
-}
-
 .form {
     display: flex;
     flex-direction: column;

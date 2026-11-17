@@ -15,10 +15,6 @@
     }
 }
 
-.icon-4x3 {
-    aspect-ratio: 4 / 3 !important;
-}
-
 .icon {
     display: inline-block;
     vertical-align: middle;
@@ -49,6 +45,10 @@
 
     &.sm {
         height: v.$icon-size-sm;
+    }
+
+    &.icon-4x3 {
+        aspect-ratio: 4 / 3;
     }
 
     mask-size: contain;

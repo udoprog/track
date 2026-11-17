@@ -17,19 +17,15 @@
 
 // A popover's prompt, with the name it asks about in bold.
 .context-menu-header {
-    display: flex;
-    flex-wrap: wrap;
-    gap: v.$text-gap;
-    align-items: center;
-
+    // Laid out by `.row.wrap.text-gap` in the markup.
     > span {
         min-width: 0;
         overflow-wrap: break-word;
     }
+}
 
-    .focus {
-        font-weight: v.$bold-weight;
-    }
+.context-menu-label {
+    font-weight: v.$bold-weight;
 }
 
 // A vertical list of labelled actions inside a `ContextMenu`.

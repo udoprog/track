@@ -52,7 +52,7 @@
 // The narrow trigger beside a quick mark button that opens the picker.
 .mark-time-more {
     // Set apart from the instant mark beside it, so they read as two targets.
-    border-inline-start: 1px solid color-mix(in srgb, v.$text-on-accent 25%, transparent) !important;
+    box-shadow: inset 1px 0 0 color-mix(in srgb, v.$text-on-accent 25%, transparent);
 }
 
 // The instant the selection resolves to, read as a preview rather than links.
