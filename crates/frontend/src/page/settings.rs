@@ -200,9 +200,9 @@ impl Component for Settings {
             <>
                 <PageHead hidden=true title="Settings" />
 
-                <div class={classes!("settings-layout", admin.then_some("has-nav"), index.then_some("settings-index"))}>
+                <div class={classes!("settings-layout", admin.then_some("has-nav"))}>
                 if admin {
-                    <nav class="settings-nav" aria-label="Settings pages">
+                    <nav class={classes!("settings-nav", (!index).then_some("off-phone"))} aria-label="Settings pages">
                         { for SettingsPage::ALL.into_iter().map(|page| html! {
                             <Link to={Route::Settings(Some(page))} title={page.title()} class={classes!("settings-nav-item", (page == current).then_some("active"))} current={page == current}>
                                 <span>{ page.title() }</span>
@@ -213,7 +213,7 @@ impl Component for Settings {
                     </nav>
                 }
 
-                <div class="settings">
+                <div class={classes!("settings", index.then_some("off-phone"))}>
                     if admin {
                         <Link to={Route::Settings(None)} title="All settings" class="settings-back"><span>{"All settings"}</span></Link>
                     }
@@ -222,8 +222,8 @@ impl Component for Settings {
                     <section>
                         <h2>{"Appearance"}</h2>
 
-                        <div class="form-rows">
-                            <FormRow label="Theme">
+                        <div class="form-rows wide-labels">
+                            <FormRow stack=true label="Theme">
                                 { mine("", html! {
                                     <select class="input-select" data-test="theme" title="Theme" onchange={on_theme} value={theme_val}>
                                         <option value="dark" selected={self.preferences.theme == api::ThemeType::Dark}>{"Dark"}</option>
@@ -233,7 +233,7 @@ impl Component for Settings {
                                 }) }
                             </FormRow>
 
-                            <FormRow label="Time zone" hint="Leave empty to use the browser's time zone.">
+                            <FormRow stack=true label="Time zone" hint="Leave empty to use the browser's time zone.">
                                 { mine("", html! {
                                     <input class="input-text fill" type="text" title="Time zone" placeholder="Browser time zone" value={self.preferences.timezone.clone()} onchange={on_timezone} onkeydown={on_timezone_key} list="tz-datalist" autocomplete="off" />
                                 }) }
@@ -249,7 +249,7 @@ impl Component for Settings {
                                 }
                             </FormRow>
 
-                            <FormRow label="Up next per page" hint="How many cards What's Next shows on a page.">
+                            <FormRow stack=true label="Up next per page" hint="How many cards What's Next shows on a page.">
                                 { mine("", html! {
                                     <input
                                         type="number"
@@ -263,7 +263,7 @@ impl Component for Settings {
                                 }) }
                             </FormRow>
 
-                            <FormRow label="Up next look-ahead" hint="How far ahead What's Next shows episodes that have not aired yet.">
+                            <FormRow stack=true label="Up next look-ahead" hint="How far ahead What's Next shows episodes that have not aired yet.">
                                 { mine("", html! {
                                     <div class="input-group">
                                         <DurationInput
@@ -274,7 +274,7 @@ impl Component for Settings {
                                 }) }
                             </FormRow>
 
-                            <FormRow label="Specials in What's Next">
+                            <FormRow stack=true label="Specials in What's Next">
                                 { mine("", html! {
                                     <Button class={classes!("input-checkbox", "has-text", specials.then_some("checked"))} role="switch" checked={Some(specials)} title="Specials for Watch Next" onclick={on_include_specials_change}>
                                         <span class="mark" />
@@ -288,8 +288,8 @@ impl Component for Settings {
                     <section>
                         <h2>{"Language"}</h2>
 
-                        <div class="form-rows">
-                            <FormRow label="Language" hint="The language you see shows and movies in.">
+                        <div class="form-rows wide-labels">
+                            <FormRow stack=true label="Language" hint="The language you see shows and movies in.">
                                 { mine("", html! {
                                     <LanguagePicker
                                         current={self.preferences.language}
@@ -306,8 +306,8 @@ impl Component for Settings {
                         <section>
                             <h2>{"Site"}</h2>
 
-                            <div class="form-rows">
-                                <FormRow label="Page title">
+                            <div class="form-rows wide-labels">
+                                <FormRow stack=true label="Page title">
                                     { system("", html! {
                                         <input class="input-text fill" type="text" title="Page title" placeholder="Track" value={self.config.page_title.clone()} onchange={on_page_title} autocomplete="off" />
                                     }) }
@@ -320,8 +320,8 @@ impl Component for Settings {
                         <section>
                             <h2>{"Sync"}</h2>
 
-                            <div class="form-rows">
-                                <FormRow label="Automatic sync" help={help::REMOTES}>
+                            <div class="form-rows wide-labels">
+                                <FormRow stack=true label="Automatic sync" help={help::REMOTES}>
                                     { system("", html! {
                                         <Button class={classes!("input-checkbox", "has-text", auto_sync.then_some("checked"))} role="switch" checked={Some(auto_sync)} title="Automatic sync" onclick={on_auto_sync_toggle}>
                                             <span class="mark" />
@@ -330,7 +330,7 @@ impl Component for Settings {
                                     }) }
                                 </FormRow>
 
-                                <FormRow label="Sync every">
+                                <FormRow stack=true label="Sync every">
                                     { system("", html! {
                                         <div class="input-group">
                                             <input
@@ -348,7 +348,7 @@ impl Component for Settings {
                                     }) }
                                 </FormRow>
 
-                                <FormRow label="Sync languages" hint="Translations to fetch; titles can be searched and filtered in these languages. Default also fetches each language users view a show or movie in.">
+                                <FormRow stack=true label="Sync languages" hint="Translations to fetch; titles can be searched and filtered in these languages. Default also fetches each language users view a show or movie in.">
                                     { system("tall", html! {
                                         <SyncLanguagesEditor
                                             languages={self.config.sync_languages.clone()}
@@ -364,8 +364,8 @@ impl Component for Settings {
                         <section>
                             <h2>{"Sources & dates"}</h2>
 
-                            <div class="form-rows">
-                                <FormRow label="Sync sources" help={help::REMOTES} hint="What each source contributes by default, in priority order (top wins). Base covers titles, overviews and episodes; air dates merge in this order; graphics come from every source. Shows and movies can override this per remote.">
+                            <div class="form-rows wide-labels">
+                                <FormRow stack=true label="Sync sources" help={help::REMOTES} hint="What each source contributes by default, in priority order (top wins). Base covers titles, overviews and episodes; air dates merge in this order; graphics come from every source. Shows and movies can override this per remote.">
                                     { system("tall", html! {
                                         <SyncKindsEditor
                                             kinds={self.config.sync_kinds.clone()}
@@ -374,7 +374,7 @@ impl Component for Settings {
                                     }) }
                                 </FormRow>
 
-                                <FormRow label="Find XEM through" help={help::NUMBERINGS} hint="Which of a show's remotes look its XEM entry up, top first. The first one XEM maps becomes the show's XEM remote.">
+                                <FormRow stack=true label="Find XEM through" help={help::NUMBERINGS} hint="Which of a show's remotes look its XEM entry up, top first. The first one XEM maps becomes the show's XEM remote.">
                                     { system("tall", html! {
                                         <XemLookupEditor
                                             sources={self.config.xem_lookup.clone()}
@@ -383,7 +383,7 @@ impl Component for Settings {
                                     }) }
                                 </FormRow>
 
-                                <FormRow label="Other numberings" help={help::NUMBERINGS} hint="Shown on each episode in this order. A numbering that matches the episode's own code is left out, so episodes that line up show nothing extra.">
+                                <FormRow stack=true label="Other numberings" help={help::NUMBERINGS} hint="Shown on each episode in this order. A numbering that matches the episode's own code is left out, so episodes that line up show nothing extra.">
                                     { system("tall", html! {
                                         <NumberingsEditor
                                             prefs={self.config.numberings.clone()}
@@ -392,7 +392,7 @@ impl Component for Settings {
                                     }) }
                                 </FormRow>
 
-                                <FormRow label="Release dates" hint="Which release dates count. A date matching any rule is considered, in the rules' order.">
+                                <FormRow stack=true label="Release dates" hint="Which release dates count. A date matching any rule is considered, in the rules' order.">
                                     { system("tall", html! {
                                         <FiltersEditor
                                             rules={self.config.release_filters.clone()}
@@ -403,7 +403,7 @@ impl Component for Settings {
                                     }) }
                                 </FormRow>
 
-                                <FormRow label="Air dates" hint="Which air dates count. A date matching any rule is considered, in the rules' order.">
+                                <FormRow stack=true label="Air dates" hint="Which air dates count. A date matching any rule is considered, in the rules' order.">
                                     { system("tall", html! {
                                         <FiltersEditor
                                             rules={self.config.air_date_filters.clone()}
@@ -421,8 +421,8 @@ impl Component for Settings {
                         <section>
                             <h2>{"API keys"}</h2>
 
-                            <div class="form-rows">
-                                <FormRow label="TheTVDB API key">
+                            <div class="form-rows wide-labels">
+                                <FormRow stack=true label="TheTVDB API key">
                                     { system("", html! {
                                         <SecretInput
                                             id="tvdb-api-key"
@@ -433,7 +433,7 @@ impl Component for Settings {
                                     }) }
                                 </FormRow>
 
-                                <FormRow label="TheTVDB subscriber PIN" hint="Optional.">
+                                <FormRow stack=true label="TheTVDB subscriber PIN" hint="Optional.">
                                     { system("", html! {
                                         <SecretInput
                                             id="tvdb-pin"
@@ -444,7 +444,7 @@ impl Component for Settings {
                                     }) }
                                 </FormRow>
 
-                                <FormRow label="TheMovieDB API key">
+                                <FormRow stack=true label="TheMovieDB API key">
                                     { system("", html! {
                                         <SecretInput
                                             id="tmdb-api-key"

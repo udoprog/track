@@ -15,13 +15,15 @@ const DROP_AFTER: &str = "drop-after";
 pub(crate) struct HandleProps {
     /// The index of the row this handle moves.
     pub(crate) index: usize,
+    #[prop_or_default]
+    pub(crate) class: Classes,
 }
 
 /// The grip a row is dragged by.
 #[function_component]
 pub(crate) fn DragHandle(props: &HandleProps) -> Html {
     html! {
-        <span class="drag-handle" data-index={props.index.to_string()} tabindex="0" role="button" title="Drag to reorder" aria-label="Drag to reorder">
+        <span class={classes!("drag-handle", props.class.clone())} data-index={props.index.to_string()} tabindex="0" role="button" title="Drag to reorder" aria-label="Drag to reorder">
             <span class="icon bars-2" aria-hidden="true" />
         </span>
     }

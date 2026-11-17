@@ -15,6 +15,10 @@ pub(crate) struct Props {
     /// the label.
     #[prop_or_default]
     pub(crate) help: Option<&'static str>,
+    /// Stack the inputs in a column instead of a wrapping line, for lists and
+    /// editors that take the width.
+    #[prop_or_default]
+    pub(crate) stack: bool,
     pub(crate) children: Children,
 }
 
@@ -39,7 +43,7 @@ pub(crate) fn FormRow(props: &Props) -> Html {
             </span>
 
             <div class="form-control">
-                <div class="form-inputs">
+                <div class={classes!("form-inputs", props.stack.then_some("stack"))}>
                     { for props.children.iter() }
                 </div>
 

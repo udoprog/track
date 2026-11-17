@@ -42,6 +42,8 @@ pub(crate) fn NumberingsEditor(props: &Props) -> Html {
                 for prefs.iter().enumerate().map(|(index, pref)| {
                     let label = api::xem_system_label(&pref.system);
                     let shown = pref.shown;
+                    // A hidden numbering's row is quieter.
+                    let dim = classes!((!shown).then_some("dim"));
 
                     let on_toggle = {
                         let prefs = prefs.clone();
@@ -54,13 +56,13 @@ pub(crate) fn NumberingsEditor(props: &Props) -> Html {
 
                     html! {
                         <div class={classes!("row", "input-group", (!shown).then_some("numbering-hidden"))} data-system={pref.system.clone()}>
-                            <DragHandle {index} />
+                            <DragHandle {index} class={dim.clone()} />
 
-                            <span class="input-label has-text">
+                            <span class={classes!("input-label", "has-text", dim.clone())}>
                                 <span class={classes!("logo", pref.system.clone())} />
                             </span>
 
-                            <span class="input-label has-text numbering-name">
+                            <span class={classes!("input-label", "has-text", "numbering-name", dim.clone())}>
                                 <span>{label}</span>
 
                                 if let Some(description) = description(&pref.system) {

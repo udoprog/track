@@ -59,7 +59,7 @@ pub(crate) fn NamesModal(props: &Props) -> Html {
 
 fn view_names(names: &[api::AltName]) -> Html {
     html! {
-        <div class="translation-rows">
+        <div class="translation-rows beside">
             { for names.iter().map(view_name) }
         </div>
     }

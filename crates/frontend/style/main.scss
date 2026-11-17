@@ -297,9 +297,12 @@ p {
     column-gap: v.$gap;
     row-gap: v.$gap-sm;
 
+    // Stacked on phones unless `.beside` keeps the languages beside the text.
     @include g.on-mobile {
-        grid-template-columns: minmax(0, 1fr);
-        row-gap: v.$gap;
+        &:not(.beside) {
+            grid-template-columns: minmax(0, 1fr);
+            row-gap: v.$gap;
+        }
     }
 }
 
@@ -318,6 +321,11 @@ p {
     color: v.$text-muted;
     font-size: v.$font-sm;
     white-space: nowrap;
+
+    // A source that gives no language, or a name that names none.
+    &.unknown {
+        font-style: italic;
+    }
 
     // A flag sized like an icon, not like a touch target.
     >.item-inline {
@@ -601,25 +609,6 @@ a.search-title:hover {
         border-bottom: 1px solid v.$border-subtle-transparent;
     }
 
-    // One label width for every section, so all controls start on one line.
-    .form-rows {
-        @include g.on-desktop {
-            grid-template-columns: 200px minmax(0, 1fr);
-        }
-    }
-
-    // Lists and editors take the width; single controls keep their own.
-    .form-inputs {
-        flex-direction: column;
-        align-items: stretch;
-
-        >select,
-        >button,
-        >.input-number,
-        >.input-group {
-            align-self: flex-start;
-        }
-    }
 }
 
 // Administrators get the settings as pages: a list of them beside the page
@@ -632,13 +621,6 @@ a.search-title:hover {
     @include g.on-desktop {
         grid-template-columns: 180px minmax(0, 1fr);
         align-items: start;
-    }
-
-    @include g.on-mobile {
-        &.settings-index .settings,
-        &:not(.settings-index) .settings-nav {
-            display: none;
-        }
     }
 }
 
@@ -1055,6 +1037,13 @@ a.search-title:hover {
     column-gap: v.$gap;
     row-gap: v.$gap-sm;
 
+    // One label width for every section, so all controls start on one line.
+    &.wide-labels {
+        @include g.on-desktop {
+            grid-template-columns: 200px minmax(0, 1fr);
+        }
+    }
+
     @include g.on-mobile {
         grid-template-columns: minmax(0, 1fr);
     }
@@ -1095,6 +1084,19 @@ a.search-title:hover {
     align-items: center;
     gap: v.$gap-xs;
     min-height: v.$input-height;
+
+    // Lists and editors take the width; single controls keep their own.
+    &.stack {
+        flex-direction: column;
+        align-items: stretch;
+
+        >select,
+        >button,
+        >.input-number,
+        >.input-group {
+            align-self: flex-start;
+        }
+    }
 }
 
 // Content under a row that needs the whole width, such as a rule editor.
@@ -2886,5 +2888,12 @@ button.chip {
                 display: none;
             }
         }
+    }
+}
+
+// Last, so it wins over the display of whatever it is put on.
+.off-phone {
+    @include g.on-mobile {
+        display: none;
     }
 }

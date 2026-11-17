@@ -190,6 +190,11 @@ $numbering-map-chrome: 120px;
     stroke-width: 1.5;
     cursor: pointer;
 
+    // Shown without being editable.
+    &.static {
+        cursor: default;
+    }
+
     &:hover,
     &.selected {
         fill-opacity: 0.65;
@@ -219,10 +224,6 @@ $numbering-map-chrome: 120px;
     position: absolute;
     width: 0;
     height: 0;
-}
-
-.read-only .numbering-band {
-    cursor: default;
 }
 
 // An episode in the map; the inner span is its box.
@@ -641,25 +642,11 @@ $numbering-map-chrome: 120px;
     }
 }
 
-// The Other names modal (ui/names_modal.rs) keeps its languages beside the
-// names on phones.
-.names-modal .translation-rows {
-    @include g.on-mobile {
-        grid-template-columns: max-content minmax(0, 1fr);
-        row-gap: v.$gap-sm;
-    }
-}
-
 // A name's source, after the name.
 .alt-name-origin.logo {
     height: 16px;
     margin-inline-start: v.$padding-md;
     vertical-align: text-bottom;
-}
-
-// A name whose source gives no language, or one that names none.
-.names-modal .translation-language.unknown {
-    font-style: italic;
 }
 
 // The Other names modal's intro line, with its help mark beside the text.
@@ -737,16 +724,15 @@ $numbering-map-chrome: 120px;
     }
 }
 
-// The "Other numberings" setting: a hidden numbering's row is quieter.
-.numberings {
-    .numbering-name {
-        flex: 1;
-        gap: v.$gap-xs;
-        min-width: 0;
-        flex-wrap: wrap;
-    }
+// The "Other numberings" setting: a row's name takes the free width, and a
+// hidden numbering's parts (`.dim`) are quieter.
+.numbering-name {
+    flex: 1;
+    gap: v.$gap-xs;
+    min-width: 0;
+    flex-wrap: wrap;
+}
 
-    >.numbering-hidden>:not(button) {
-        opacity: 0.55;
-    }
+.dim {
+    opacity: 0.55;
 }

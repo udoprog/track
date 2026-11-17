@@ -2031,7 +2031,7 @@ impl NumberingEditor {
         });
 
         html! {
-            <div class={classes!("numbering-map-pane", (!self.manual).then_some("read-only"))}>
+            <div class={"numbering-map-pane"}>
                 <div class="numbering-map-head" style={template.clone()} ref={self.map_head.clone()}>
                     for head in heads {
                         {head}
@@ -2145,6 +2145,7 @@ impl NumberingEditor {
 
                 let class = classes!(
                     "numbering-band",
+                    (!self.manual).then_some("static"),
                     format!("tone-{}", i % TONES),
                     (self.manual && self.selected == Some(i)).then_some("selected"),
                     (self.manual && errors.iter().any(|(e, _)| *e == i)).then_some("invalid"),
@@ -2182,6 +2183,7 @@ impl NumberingEditor {
                 let class = classes!(
                     "numbering-band",
                     "open-end",
+                    (!self.manual).then_some("static"),
                     format!("tone-{}", i % TONES),
                     (self.manual && self.selected == Some(i)).then_some("selected"),
                     (self.manual && errors.iter().any(|(e, _)| *e == i)).then_some("invalid"),
