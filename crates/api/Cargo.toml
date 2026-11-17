@@ -10,13 +10,13 @@ rand = ["dep:rand"]
 yew = ["dep:yew", "dep:implicit-clone", "koine/yew023"]
 
 [dependencies]
-auth = { package = "watchword", version = "0.3", features = ["musli02"] }
+auth = { package = "watchword", version = "0.6", features = ["musli02"] }
 koine = { version = "0.3", features = ["musli02", "serde"] }
 
 base64 = "0.23.1"
 jiff = "0.2.37"
 musli-core = { version = "0.2.0", default-features = false, features = ["alloc", "std"] }
-musli-web = { version = "0.5.0", features = ["api"] }
+musli-web = { version = "0.6.0", features = ["api"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 rand = { version = "0.10.3", optional = true }

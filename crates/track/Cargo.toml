@@ -16,7 +16,7 @@ required-features = ["import"]
 
 [dependencies]
 api = { path = "../api", features = ["rand", "sqll"] }
-auth = { package = "watchword", version = "0.3", features = ["axum08", "cloudflare", "musliweb05", "sqll015"] }
+auth = { package = "watchword", version = "0.6", features = ["axum08", "cloudflare", "musliweb06", "sqll015"] }
 
 anyhow = "1.0.104"
 axum = "0.8.9"
@@ -24,7 +24,7 @@ bytes = "1.12.1"
 clap = { version = "4.6.7", features = ["derive", "env"] }
 lru = "0.19.0"
 mime_guess = { version = "2.0.5", default-features = false, optional = true }
-musli-web = { version = "0.5.0", default-features = false, features = ["axum08"] }
+musli-web = { version = "0.6.0", default-features = false, features = ["axum08"] }
 parking_lot = "0.13.0"
 reqwest = { version = "0.13.5", default-features = false, features = ["query", "rustls", "stream"] }
 serde = { version = "1.0.229", features = ["derive"] }
@@ -45,4 +45,4 @@ leaky-bucket = "1.1.2"
 rand = { version = "0.10.3", default-features = false }
 
 [dev-dependencies]
-auth = { package = "watchword", version = "0.3", features = ["test-util"] }
+auth = { package = "watchword", version = "0.6", features = ["test-util"] }
