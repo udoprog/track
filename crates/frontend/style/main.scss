@@ -1283,6 +1283,7 @@ image {
 
     &.screenshot {
         aspect-ratio: 16 / 9;
+        background: v.$bg-surface;
     }
 
     &.poster {
@@ -1394,20 +1395,13 @@ image {
     }
 }
 
-// The seasons beside the episodes on wide screens. It stays in view below the
+// The seasons beside the episodes on wide screens (a `.desktop-column`). It stays in view below the
 // app bar while the episodes scroll, and scrolls itself if it is too long.
 .season-list {
     position: sticky;
     top: v.$toolbar-height + v.$gap;
     max-height: calc(100vh - #{v.$toolbar-height + v.$gap * 2});
     overflow-y: auto;
-    flex-direction: column;
-    gap: 2px;
-
-    // Only here, so `.desktop-only` still hides it on phones.
-    @include g.on-desktop {
-        display: flex;
-    }
 }
 
 // One season: name, watched count and year on a line, over a bar showing how
@@ -1487,23 +1481,12 @@ image {
     }
 }
 
-// The seasons on phones: one row of chips over the episodes, scrolling
+// The seasons on phones (a `.mobile-row`): one row of chips over the episodes, scrolling
 // sideways when there are many.
 .season-chips {
-    gap: v.$gap-xs;
-
-    // Only here, so `.mobile-only` still hides it on wide screens.
-    @include g.on-mobile {
-        display: flex;
-    }
-
     overflow-x: auto;
     padding-block: v.$padding;
     scrollbar-width: none;
-
-    >button.chip {
-        flex: none;
-    }
 }
 
 .episodes {
@@ -1541,20 +1524,11 @@ image {
     border-radius: v.$radius-lg;
     background: none;
 
-    .screenshot {
-        display: block;
-        width: 100%;
-        aspect-ratio: 16 / 9;
-        background: v.$bg-surface;
-    }
-
+    // The mark is a `.row.center`; this places and draws it.
     >.episode-pick-mark {
         position: absolute;
         top: v.$gap-xs;
         left: v.$gap-xs;
-        display: flex;
-        align-items: center;
-        justify-content: center;
         width: 26px;
         height: 26px;
         border-radius: v.$radius-pill;
@@ -1571,10 +1545,8 @@ image {
     }
 
     &.picked {
-        .screenshot {
-            outline: 3px solid v.$color-primary;
-            outline-offset: -3px;
-        }
+        outline: 3px solid v.$color-primary;
+        outline-offset: -3px;
 
         >.episode-pick-mark {
             opacity: 1;
@@ -1612,24 +1584,8 @@ image {
     font-variant-numeric: tabular-nums;
 }
 
-.episode-heading {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 0 v.$gap-xs;
-    min-width: 0;
-
-    >h4 {
-        min-height: 0;
-        color: v.$text-color;
-    }
-}
-
-// Dates and watch state: quiet text, not links.
+// Dates and watch state (a `.row.wrap`): quiet text, not links.
 .episode-meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0 v.$gap;
     font-size: v.$font-sm;
     color: v.$text-muted;
     --icon-color: #{v.$text-muted};
@@ -2108,6 +2064,8 @@ input-label-controls {
         display: flex;
         flex-direction: column;
         gap: v.$gap;
+        // Fills a dialog given a fixed height (the cast dialog).
+        flex: 1;
         overflow-y: auto;
         min-height: 0;
         padding: v.$gap;
@@ -2318,8 +2276,6 @@ pagination {
 // the bottom of a faded backdrop.
 .detail-hero {
     position: relative;
-    display: flex;
-    align-items: flex-end;
     min-height: 72px;
     border-radius: v.$radius;
     overflow: hidden;

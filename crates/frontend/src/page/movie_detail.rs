@@ -837,7 +837,7 @@ impl MovieDetail {
             .unwrap_or_default();
 
         html! {
-            <section class="credits">
+            <section data-testid="credits">
                 <h2 class="section-title">{"Cast & crew"}</h2>
 
                 if !shown.is_empty() {

@@ -6,12 +6,18 @@
 //   .tight .text-gap   $gap-xs / $text-gap apart
 //   .wrap              wraps onto more lines
 //   .between .end .center   main-axis placement
-//   .align-top         aligned to the top instead of centred
+//   .align-top .align-bottom .align-baseline   aligned to the top, bottom or
+//                      text baseline instead of centred
+// .desktop-row .mobile-row  a row on wide screens only / on phones only (no
+//                  display of its own the other way: pair with `.desktop-only`
+//                  / `.mobile-only` to hide it there)
 // .column          children stacked, $gap-sm apart
 //   .tight .text-gap   $gap-xs / $text-gap apart
 //   .loose             $gap apart
 //   .center            centred across
+// .desktop-column  a column on wide screens only (`.mobile-column` on phones)
 // .row-split       a wrapping row pushed to both ends (`.reverse`)
+// .fixed           a flex child that keeps its size instead of shrinking
 // .shrink          may be narrower than its content (a grid or flex child that
 //                  must not push its parent wider)
 // .section-title   the heading of a section of a page (an h2)
@@ -68,6 +74,14 @@
         align-items: start;
     }
 
+    &.align-bottom {
+        align-items: flex-end;
+    }
+
+    &.align-baseline {
+        align-items: baseline;
+    }
+
     &.align-end {
         justify-content: flex-end;
     }
@@ -121,6 +135,18 @@
 }
 
 @include g.on-mobile {
+    .mobile-row {
+        @include row-base;
+    }
+}
+
+@include g.on-desktop {
+    .desktop-column {
+        @include column-base;
+    }
+}
+
+@include g.on-mobile {
     .mobile-column {
         @include column-base;
     }
@@ -144,6 +170,10 @@
 
 .push {
     margin-inline-start: auto;
+}
+
+.fixed {
+    flex: none;
 }
 
 .shrink {
@@ -198,6 +228,8 @@
 
 .title {
     min-width: 0;
+    // On a heading element: not the control height `h1`-`h6` default to.
+    min-height: 0;
     font-size: v.$font-lg;
     font-weight: v.$bold-weight;
     color: v.$text-primary;

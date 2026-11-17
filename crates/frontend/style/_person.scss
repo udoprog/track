@@ -38,66 +38,47 @@
     font-size: v.$font-xs;
 }
 
+// A person's heading: the photo beside the name, actions and links, with the
+// biography under them, and under the photo too on phones.
 .person-detail-header {
-    display: flex;
+    display: grid;
+    grid-template-columns: min(180px, 40%) minmax(0, 1fr);
     // The photo keeps its aspect instead of stretching down a long biography.
-    align-items: flex-start;
+    grid-template-rows: auto 1fr;
+    align-items: start;
     gap: v.$gap;
 
-    .person-detail-photo {
-        flex: 0 0 auto;
-        width: 180px;
-        max-width: 40%;
-        aspect-ratio: 2 / 3;
-        background: v.$bg-surface;
-        border-radius: v.$radius;
-        overflow: hidden;
-    }
-
-    .person-detail-info {
-        flex: 1 1 auto;
-        min-width: 0;
-        display: flex;
-        flex-direction: column;
-        gap: v.$gap;
-    }
-
-    // Phones: the photo beside the name, actions and links, with the
-    // biography below across the full width.
     @include g.on-mobile {
-        display: grid;
         grid-template-columns: 120px minmax(0, 1fr);
-        align-items: start;
-        column-gap: v.$gap;
-        row-gap: v.$gap-xs;
-
-        .person-detail-photo {
-            grid-row: span 3;
-            width: 100%;
-            max-width: none;
-        }
-
-        .person-detail-info {
-            display: contents;
-        }
-
-        .person-biography {
-            grid-column: 1 / -1;
-        }
-    }
-
-    .person-biography {
-        color: v.$text-color;
-        line-height: 1.5;
-        white-space: pre-wrap;
-
-        // Contain the floated .language-toggle so it never overflows the section.
-        display: flow-root;
+        grid-template-rows: auto;
+        gap: v.$gap-xs v.$gap;
     }
 }
 
-.filmography {
-    margin-top: v.$gap;
+.person-detail-photo {
+    grid-row: span 2;
+    aspect-ratio: 2 / 3;
+    background: v.$bg-surface;
+    border-radius: v.$radius;
+    overflow: hidden;
+
+    @include g.on-mobile {
+        grid-row: auto;
+    }
+}
+
+.person-biography {
+    grid-column: 2;
+    color: v.$text-color;
+    line-height: 1.5;
+    white-space: pre-wrap;
+
+    // Contain the floated .language-toggle so it never overflows the section.
+    display: flow-root;
+
+    @include g.on-mobile {
+        grid-column: 1 / -1;
+    }
 }
 
 // Every part in a title, kept to two lines; the title attribute has them all.

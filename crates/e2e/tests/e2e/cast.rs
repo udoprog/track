@@ -35,7 +35,10 @@ pub async fn opens_the_full_cast_in_a_modal(driver: &mut TestDriver, _: &mut Tra
         .wait_texts(".cast-modal .cast-character", CAST)
         .await?;
     ensure!(
-        driver.count(".credits > .cast-grid .cast-card").await? == 6,
+        driver
+            .count("[data-testid=credits] > .cast-grid .cast-card")
+            .await?
+            == 6,
         "the page's cast grid grew past its cap"
     );
     ensure!(
@@ -164,7 +167,10 @@ pub async fn movie_opens_the_full_cast_in_a_modal(
     driver.find_one_by(".modal.cast-modal").await?;
     driver.wait_count(".cast-modal .cast-card", 9).await?;
     ensure!(
-        driver.count(".credits > .cast-grid .cast-card").await? == 8,
+        driver
+            .count("[data-testid=credits] > .cast-grid .cast-card")
+            .await?
+            == 8,
         "the page's cast grid grew past its cap"
     );
     ensure!(

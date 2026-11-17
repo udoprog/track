@@ -205,14 +205,14 @@ impl Component for Outline {
         let props = ctx.props();
 
         html! {
-            <div id="outline"
+            <div
                 ref={self.outline.clone()}
-                class={classes!((!props.entries.is_empty()).then_some("visible"))}
+                class={classes!("outline", (!props.entries.is_empty()).then_some("visible"))}
                 onpointerdown={link.callback(Msg::PointerDown)}
                 onpointermove={link.callback(Msg::PointerMove)}
                 onpointerup={link.callback(Msg::PointerUp)}
                 onwheel={link.callback(Msg::Wheel)}>
-                <div id="outline-mark" ref={self.mark.clone()} />
+                <div class="outline-mark" ref={self.mark.clone()} />
                 { for self.marks.iter().enumerate().map(|(i, mark)| {
                     let hidden = self.hidden.get(i).copied().unwrap_or(false);
 

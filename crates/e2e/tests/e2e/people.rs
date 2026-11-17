@@ -222,11 +222,11 @@ pub async fn known_for_lists_each_title_once(driver: &mut TestDriver, _: &mut Tr
     driver.find_nth(".person-card", 0).await?.click().await?;
 
     driver
-        .wait_texts(".filmography .person-name", ["Seeded Show"])
+        .wait_texts("[data-testid=filmography] .person-name", ["Seeded Show"])
         .await?;
     driver
         .wait_texts(
-            ".filmography .person-department",
+            "[data-testid=filmography] .person-department",
             ["The Duchess, The Narrator"],
         )
         .await
@@ -241,7 +241,7 @@ pub async fn edits_a_persons_remotes(driver: &mut TestDriver, _: &mut Track) -> 
         .click()
         .await?;
     driver.find_nth(".person-card", 0).await?.click().await?;
-    driver.find_one_by(".person-detail-info h1").await?;
+    driver.find_one_by("[data-testid=person-header] h1").await?;
 
     open_remote_editor(driver).await?;
 
@@ -263,7 +263,7 @@ pub async fn edits_a_persons_remotes(driver: &mut TestDriver, _: &mut Track) -> 
 
     let url = driver.webdriver().current_url().await?;
     driver.webdriver().goto(url.as_str()).await?;
-    driver.find_one_by(".person-detail-info h1").await?;
+    driver.find_one_by("[data-testid=person-header] h1").await?;
     open_remote_editor(driver).await?;
     driver.wait_texts(switch, ["Disabled"]).await?;
 

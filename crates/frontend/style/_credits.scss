@@ -1,25 +1,24 @@
 @use 'grid' as g;
 @use 'vars' as v;
 
-.credits {
-    margin-top: v.$gap;
-}
-
 .cast-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
     gap: v.$gap-sm;
-
-    // Separate the preferred-crew grid from the cast grid that follows it.
-    & + .cast-grid {
-        margin-top: v.$gap;
-    }
 }
 
 .cast-card {
     display: flex;
     color: v.$text-color;
     flex-direction: column;
+    --cast-photo-bg: #{v.$bg-surface};
+
+    // On a dialog's surface: one step above it, as the page's cards are above
+    // the page.
+    &.raised {
+        background: v.$bg-panel;
+        --cast-photo-bg: #{v.$bg-panel};
+    }
 }
 
 .cast-info {
@@ -31,7 +30,7 @@
 
 .cast-photo {
     aspect-ratio: 2 / 3;
-    background: v.$bg-surface;
+    background: var(--cast-photo-bg);
 }
 
 .cast-name {
@@ -69,27 +68,16 @@
         width: 100%;
         height: 90vh;
     }
+}
 
-    .modal-content {
-        flex: 1;
-    }
-
-    // Stays in reach while a long cast scrolls under it, covering the
-    // content's top padding so nothing shows above it.
-    .cast-search {
-        position: sticky;
-        top: calc(-1 * #{v.$gap});
-        z-index: 1;
-        display: flex;
-        flex-direction: column;
-        margin-top: calc(-1 * #{v.$gap});
-        padding-top: v.$gap;
-        background: v.$bg-surface;
-    }
-
-    // One step above the modal, as the page's cards are above the page.
-    .cast-card,
-    .cast-photo {
-        background: v.$bg-panel;
-    }
+// Stays in reach while a long cast scrolls under it, covering the modal
+// content's top padding so nothing shows above it (hence the negative offsets
+// of the dialog's $gap padding).
+.cast-search {
+    position: sticky;
+    top: calc(-1 * #{v.$gap});
+    z-index: 1;
+    margin-top: calc(-1 * #{v.$gap});
+    padding-top: v.$gap;
+    background: v.$bg-surface;
 }

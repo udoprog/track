@@ -1818,7 +1818,7 @@ impl ShowDetail {
             .unwrap_or_default();
 
         html! {
-            <section class="credits">
+            <section data-testid="credits">
                 <h2 class="section-title">{"Cast & crew"}</h2>
 
                 if !shown.is_empty() {
@@ -1990,7 +1990,7 @@ impl ShowDetail {
             <div class="detail-sidebar column loose">
                 <Image class="poster desktop-only artwork" src={poster.cloned()} />
 
-                <nav class="season-list desktop-only" aria-label="Seasons">
+                <nav class="season-list desktop-only desktop-column tight" aria-label="Seasons">
                     { for self.seasons.iter().map(|s| self.view_season(ctx, s)) }
                 </nav>
             </div>
@@ -2095,7 +2095,7 @@ impl ShowDetail {
         let current = self.selected().map(|s| s.id);
 
         html! {
-            <nav class="season-chips mobile-only" aria-label="Seasons" ref={self.season_chips.clone()}>
+            <nav class="season-chips mobile-only mobile-row tight" aria-label="Seasons" ref={self.season_chips.clone()}>
                 { for self.seasons.iter().map(|s| {
                     let season = s.season;
                     let is_current = current == Some(s.id);
@@ -2104,7 +2104,7 @@ impl ShowDetail {
                     let name = season_name(s);
 
                     html! {
-                        <Button class={classes!("chip", is_current.then_some("selected"))} title={format!("Show {name}")} current={is_current} onclick={ctx.link().callback(move |_| UiMsg::SelectSeason(season))}>
+                        <Button class={classes!("chip", "fixed", is_current.then_some("selected"))} title={format!("Show {name}")} current={is_current} onclick={ctx.link().callback(move |_| UiMsg::SelectSeason(season))}>
                             <span>{name}</span>
 
                             if finished {
@@ -2348,18 +2348,18 @@ impl ShowDetail {
             <div class={classes!("episode", (!watched.is_empty()).then_some("watched"))} id={episode.code()}>
                 <Button class={classes!("episode-pick", picked.then_some("picked"))} title={format!("Select {}", episode.code())} pressed={Some(picked)} onclick={link.callback(move |e: MouseEvent| PickMsg::TogglePick(episode_id, e.shift_key()))}>
                     <Image class="screenshot artwork" placeholder={true} placeholder_icon="photo" src={episode.screenshot.clone()} />
-                    <span class="episode-pick-mark" aria-hidden="true">
+                    <span class="episode-pick-mark row center" aria-hidden="true">
                         <span class="icon sm check" />
                     </span>
                 </Button>
 
                 <div class="column tight shrink">
                     <div class="section-head">
-                        <div class="episode-heading">
+                        <div class="row tight wrap align-baseline">
                             <a class="episode-code" href={format!("#{}", episode.code())} title="Link to this episode">{episode.code()}</a>
 
                             if let Some(name) = episode.strings.title() {
-                                <h4>{name}</h4>
+                                <h4 class="title sm">{name}</h4>
                             }
                         </div>
 
@@ -2403,7 +2403,7 @@ impl ShowDetail {
                         </div>
                     }
 
-                    <div class="episode-meta">
+                    <div class="episode-meta row wrap">
                         <indicator title="Air date">
                             <span class="item-inline">
                                 <span class={classes!("icon", if episode.aired().is_some() { "clock" } else { "exclamation-circle" })} />

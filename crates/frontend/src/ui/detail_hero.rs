@@ -16,7 +16,7 @@ pub(crate) fn DetailHero(props: &Props) -> Html {
     let backdrop = props.backdrop.as_ref().map(|image| image.proxy_url());
 
     html! {
-        <header class={classes!("detail-hero", backdrop.is_some().then_some("has-backdrop"))}>
+        <header class={classes!("detail-hero", "row", "align-bottom", backdrop.is_some().then_some("has-backdrop"))}>
             if let Some(url) = backdrop {
                 <div class="detail-hero-image" style={format!("background-image: url('{url}')")} />
             }

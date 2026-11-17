@@ -26,11 +26,16 @@ pub(crate) fn credit_subtitle(credit: &api::Credit) -> Option<&str> {
 /// A clickable credit card - photo, name and subtitle - that navigates to the
 /// person's page.
 pub(crate) fn cast_card(credit: &api::Credit) -> Html {
+    cast_card_on(credit, false)
+}
+
+/// A credit card for a dialog's surface when `raised`.
+pub(crate) fn cast_card_on(credit: &api::Credit, raised: bool) -> Html {
     let name = credit.name.title_or_any().unwrap_or("Unknown").to_owned();
     let subtitle = credit_subtitle(credit).map(str::to_owned);
 
     html! {
-        <Link to={Route::PersonDetail(credit.person_id)} class="cast-card card flush">
+        <Link to={Route::PersonDetail(credit.person_id)} class={classes!("cast-card", "card", "flush", raised.then_some("raised"))}>
             <Image class="cast-photo" placeholder={true} placeholder_icon="user" src={credit.profile.clone()} alt={name.clone()} />
 
             <div class="cast-info">
@@ -83,7 +88,7 @@ pub(crate) fn CastModal(props: &Props) -> Html {
 
     html! {
         <Modal icon="user-group" title={html! { "Cast & crew" }} class="cast-modal" on_close={props.on_close.clone()}>
-            <div class="cast-search">
+            <div class="cast-search column">
                 <input
                     type="search"
                     class="input-text"
@@ -99,7 +104,7 @@ pub(crate) fn CastModal(props: &Props) -> Html {
                 <p class="text-muted" data-test="cast-empty">{format!("No cast matches “{}”.", query.trim())}</p>
             } else {
                 <div class="cast-grid">
-                    { for found.iter().map(|c| cast_card(c)) }
+                    { for found.iter().map(|c| cast_card_on(c, true)) }
                 </div>
             }
         </Modal>

@@ -158,8 +158,10 @@ impl Component for PersonDetail {
 
         html! {
             <>
-                { self.view_header(ctx, person) }
-                { self.view_filmography() }
+                <div class="column loose">
+                    { self.view_header(ctx, person) }
+                    { self.view_filmography() }
+                </div>
 
                 if self.settings {
                     { self.view_settings(ctx, person) }
@@ -400,10 +402,10 @@ impl PersonDetail {
         let name = person.name.title().unwrap_or("Unknown").to_owned();
 
         html! {
-            <div class="person-detail-header">
+            <div class="person-detail-header" data-testid="person-header">
                 <Image class="person-detail-photo" placeholder={true} placeholder_icon="user" src={person.profile.clone()} alt={name.clone()} />
 
-                <div class="person-detail-info">
+                <div class="column shrink">
                     <PageHead title={name} sub={person.department.department().map(|d| AttrValue::from(d.to_owned()))}>
                         <div class="input-group">
                             <SyncButton target={SyncTarget::Person(person.id)} text="Sync" onclick={link.callback(|_| Msg::SyncPerson)} />
@@ -435,9 +437,9 @@ impl PersonDetail {
                             })
                         })}
                     </div>
-
-                    <TranslatedText strings={person.biography.clone()} class="person-biography" />
                 </div>
+
+                <TranslatedText strings={person.biography.clone()} class="person-biography" />
             </div>
         }
     }
@@ -507,7 +509,7 @@ impl PersonDetail {
         }
 
         html! {
-            <section class="filmography">
+            <section data-testid="filmography">
                 <h2 class="section-title">{"Known for"}</h2>
 
                 <div class="person-grid">
