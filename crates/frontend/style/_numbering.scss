@@ -84,14 +84,6 @@ $numbering-map-chrome: 120px;
     }
 }
 
-.numbering-map-pane,
-.numbering-side {
-    display: flex;
-    flex-direction: column;
-    gap: v.$gap-xs;
-    min-width: 0;
-}
-
 // The map stays in view while the ranges scroll the modal: beside them on wide
 // screens, above them on phones. A negative top lets it cover the modal
 // content's padding, so nothing shows above it.
@@ -519,16 +511,9 @@ $numbering-map-chrome: 120px;
     background: var(--tone);
 }
 
-.numbering-fields {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: v.$gap-xs;
-
-    .input-number {
-        width: 3.5em;
-        text-align: end;
-    }
+.numbering-number {
+    width: 3.5em;
+    text-align: end;
 }
 
 .numbering-source,
@@ -553,10 +538,6 @@ $numbering-map-chrome: 120px;
 .numbering-letter {
     color: v.$text-muted;
     font-size: v.$font-xs;
-}
-
-.numbering-done {
-    margin-inline-start: auto;
 }
 
 .numbering-errors {
@@ -603,12 +584,6 @@ $numbering-map-chrome: 120px;
 
 .numbering-basis-cancel {
     align-self: flex-start;
-}
-
-.numbering-tools {
-    display: flex;
-    flex-wrap: wrap;
-    gap: v.$gap-xs;
 }
 
 .numbering-warning {
@@ -722,13 +697,4 @@ $numbering-map-chrome: 120px;
     >.numbering-divider-season {
         font-weight: v.$bold-weight;
     }
-}
-
-// The "Other numberings" setting: a row's name takes the free width, and a
-// hidden numbering's parts (`.dim`, _layout.scss) are quieter.
-.numbering-name {
-    flex: 1;
-    gap: v.$gap-xs;
-    min-width: 0;
-    flex-wrap: wrap;
 }
