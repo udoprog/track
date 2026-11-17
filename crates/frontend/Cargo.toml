@@ -13,7 +13,7 @@ koine = "0.3"
 
 derive_more = { version = "2.1.1", features = ["display"] }
 gloo = "0.13.0"
-jiff-tzdb = "0.1.8"
+jiff-tzdb = "1.0"
 musli-web = { version = "0.6.0", default-features = false, features = ["web03", "yew023"] }
 phrasebook = { version = "0.2", features = ["browser", "yew023"] }
 serde = { version = "1.0.229", features = ["derive"] }

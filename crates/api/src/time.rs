@@ -171,7 +171,7 @@ impl Timestamp {
     #[inline]
     pub fn date_and_time(&self, time: TimeInfo) -> String {
         self.0
-            .to_zoned(time.tz.0)
+            .to_zoned_datetime(time.tz.0)
             .strftime("%Y-%m-%d %H:%M %Z")
             .to_string()
     }
@@ -218,21 +218,21 @@ impl Timestamp {
 
     #[inline]
     pub fn date(&self, time: TimeInfo) -> Date {
-        Date(self.0.to_zoned(time.tz.0).date())
+        Date(self.0.to_zoned_datetime(time.tz.0).date())
     }
 
     /// Format just the local time of day (`"HH:MM"`, 24-hour) in the given timezone.
     #[inline]
     pub fn time_of_day(&self, time: TimeInfo) -> TimeOfDay {
         TimeOfDay {
-            zoned: self.0.to_zoned(time.tz.0),
+            zoned: self.0.to_zoned_datetime(time.tz.0),
         }
     }
 
     /// The local `(hour, minute)` of this timestamp in the given timezone.
     #[inline]
     pub fn hour_minute(&self, time: TimeInfo) -> (u8, u8) {
-        let zoned = self.0.to_zoned(time.tz.0);
+        let zoned = self.0.to_zoned_datetime(time.tz.0);
         (zoned.hour() as u8, zoned.minute() as u8)
     }
 }
@@ -505,7 +505,7 @@ impl From<HumanDateTime> for AttrValue {
 /// A local time of day in a given timezone, used for display.
 #[derive(Clone)]
 pub struct TimeOfDay {
-    zoned: jiff::Zoned,
+    zoned: jiff::ZonedDateTime,
 }
 
 impl TimeOfDay {
@@ -654,14 +654,14 @@ impl Date {
         let zoned = self
             .0
             .at(hour as i8, minute as i8, 0, 0)
-            .to_zoned(tz.0)
+            .to_zoned_datetime(tz.0)
             .map_err(InnerDateError::ToUtc)?;
 
         Ok(Timestamp(zoned.timestamp()))
     }
 
     pub fn today() -> Self {
-        Self(jiff::Zoned::now().date())
+        Self(jiff::ZonedDateTime::now().date())
     }
 
     pub fn inner(self) -> JiffDate {

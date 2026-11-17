@@ -1606,7 +1606,7 @@ async fn schedule_groups_by_local_day_and_respects_window() -> Result<()> {
         Timestamp::from_jiff(
             s.parse::<jiff::civil::DateTime>()
                 .unwrap()
-                .to_zoned(jiff::tz::TimeZone::get("Asia/Tokyo").unwrap())
+                .to_zoned_datetime(jiff::tz::TimeZone::get("Asia/Tokyo").unwrap())
                 .unwrap()
                 .timestamp(),
         )
