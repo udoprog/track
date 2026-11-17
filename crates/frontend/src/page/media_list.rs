@@ -344,7 +344,7 @@ impl Component for MediaList {
                         <span class="item-inline-more">{"Nothing to show."}</span>
                     </div>
                 } else {
-                    <div class={classes!("media-grid", (!self.picked.is_empty()).then_some("picking"))}>
+                    <div class="media-grid">
                         { for items.into_iter().map(|m| self.view_card(ctx, m)) }
                     </div>
 
@@ -1009,8 +1009,8 @@ impl MediaList {
             .callback(move |e: MouseEvent| Msg::TogglePick(key, e.shift_key()));
 
         html! {
-            <div key={format!("{kind:?}-{id}")} class={classes!("media-card", "lift", picked.then_some("picked"))} {onmouseover}>
-                <Button class={classes!("media-pick", picked.then_some("picked"))} title={format!("Select {title}")} pressed={Some(picked)} onclick={on_pick}>
+            <div key={format!("{kind:?}-{id}")} class={classes!("media-card", "column", "tight", "lift", picked.then_some("picked"))} {onmouseover}>
+                <Button class={classes!("media-pick", picked.then_some("picked"), (!self.picked.is_empty()).then_some("picking"))} title={format!("Select {title}")} pressed={Some(picked)} onclick={on_pick}>
                     <span class="icon sm check" aria-hidden="true" />
                 </Button>
 

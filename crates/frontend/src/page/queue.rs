@@ -452,10 +452,10 @@ impl Queue {
 
         html! {
             <div class={classes!("queue-now", state)} data-test="queue-now">
-                <span class="queue-now-badge"><span class={classes!("icon", icon)} aria-hidden="true" /></span>
+                <span class={classes!("queue-now-badge", state)}><span class={classes!("icon", icon)} aria-hidden="true" /></span>
 
                 <div class="queue-now-text">
-                    <span class="queue-now-caption">{caption}</span>
+                    <span class={classes!("queue-now-caption", state)}>{caption}</span>
 
                     if let Some(entry) = entry {
                         <span class="queue-now-title">

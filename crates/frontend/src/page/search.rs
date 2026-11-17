@@ -345,7 +345,7 @@ impl Search {
         if self.results.is_empty() {
             return if self.loading {
                 html! {
-                    <div class="search-results" aria-busy="true">
+                    <div aria-busy="true">
                         { for (0..3).map(|_| html! { <Skeleton class="search-skeleton" /> }) }
                     </div>
                 }
@@ -369,7 +369,7 @@ impl Search {
                     <span class="text-muted">{results_count(self.total)}</span>
                 </div>
 
-                <div class="search-results">
+                <div>
                     { for rows.iter().map(|row| self.view_row(ctx, row)) }
                 </div>
 
@@ -455,7 +455,7 @@ impl Search {
                         <p class="search-overview">{overview}</p>
                     }
 
-                    <div class="search-sources">
+                    <div class="row tight">
                         { for row.sources.iter().map(|(source, url)| html! {
                             if let Some(url) = url {
                                 <a class="search-source" href={url.clone()} target="_blank" rel="noopener noreferrer" title={format!("Open on {source}")}>

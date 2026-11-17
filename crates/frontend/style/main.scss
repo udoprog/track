@@ -482,11 +482,6 @@ a.remote-link:hover .remote-id {
 // Search results: compact rows of a small poster, the title with its kind
 // and year, two lines of overview and the sources, with the action on the
 // right (under the text on phones).
-.search-results {
-    display: flex;
-    flex-direction: column;
-}
-
 .search-skeleton {
     height: 96px;
     margin-block: v.$gap-xs;
@@ -564,11 +559,6 @@ a.search-title:hover {
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
-}
-
-.search-sources {
-    display: flex;
-    gap: v.$gap-xs;
 }
 
 .search-source {
@@ -1228,9 +1218,6 @@ h6 {
 // A What's Next card. On wide screens the poster is the card; on phones a
 // soft panel holds the banner and text.
 .pending-item {
-    display: flex;
-    flex-direction: column;
-    gap: v.$gap-sm;
     min-width: 0;
     position: relative;
 
@@ -1319,9 +1306,6 @@ image {
 }
 
 .pending-info {
-    display: flex;
-    flex-direction: column;
-    gap: v.$gap-sm;
     flex: 1;
     min-width: 0;
 }
@@ -2413,9 +2397,6 @@ pagination {
 
 .media-card {
     position: relative;
-    display: flex;
-    flex-direction: column;
-    gap: v.$gap-xs;
     min-width: 0;
 
     &.picked .media-poster {
@@ -2460,8 +2441,10 @@ button.media-pick {
         height: 36px;
     }
 
+    // Hovering the card is a state of the card, which CSS can only reach
+    // from outside; every other case is a modifier on the button.
     .media-card:hover>&,
-    .media-grid.picking &,
+    &.picking,
     &:focus-visible {
         opacity: 1;
     }
@@ -2568,12 +2551,12 @@ button.media-pick {
     background: var(--neutral-bg);
     --icon-color: #{v.$text-muted};
 
-    .queue-now.running & {
+    &.running {
         background: color-mix(in srgb, v.$color-primary 20%, transparent);
         --icon-color: #{v.$color-primary};
     }
 
-    .queue-now.idle & {
+    &.idle {
         background: color-mix(in srgb, v.$color-success 18%, transparent);
         --icon-color: #{v.$color-success};
     }
@@ -2591,7 +2574,7 @@ button.media-pick {
     font-size: v.$font-xs;
     color: v.$text-muted;
 
-    .queue-now.running & {
+    &.running {
         color: v.$color-primary;
     }
 }

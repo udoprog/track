@@ -620,11 +620,11 @@ impl WatchNext {
     /// slot while the pending list is still loading.
     fn view_pending_skeleton() -> Html {
         html! {
-            <div class="pending-item">
+            <div class="pending-item column">
                 <Skeleton class="poster desktop-only" />
                 <Skeleton class="banner mobile-only" />
 
-                <div class="pending-info">
+                <div class="pending-info column">
                     <div class="pending-content">
                         <Skeleton class="line" style="width: 80%" />
                         <Skeleton class="line" style="width: 50%" />
@@ -741,7 +741,7 @@ impl WatchNext {
             .callback(move |_| Msg::HoverBackdrop(backdrop_url.clone()));
 
         html! {
-            <div {key} class="pending-item lift" {onmouseover}>
+            <div {key} class="pending-item column lift" {onmouseover}>
                 <Link to={route.clone()} class="pending-picture desktop-only" decorative=true>
                     <Image class="poster artwork" src={pending.season_poster.clone().or_else(|| pending.poster.clone())} />
                 </Link>
@@ -751,7 +751,7 @@ impl WatchNext {
                     <Image class="banner" placeholder=true src={pending.season_banner.clone().or_else(|| pending.banner.clone()).or_else(|| pending.backdrop.clone()).or_else(|| pending.poster.clone())} />
                 </Link>
 
-                <div class="pending-info">
+                <div class="pending-info column">
                     <div class="pending-content">
                         {title}
 
