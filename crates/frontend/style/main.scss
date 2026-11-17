@@ -4,7 +4,10 @@
 // The app's small text, controls, phone breakpoint, buttons (filled, no
 // edge, touch height on phones), dialogs (centred) and popovers (rounder,
 // wider padded, a sheet's top edge alone), where sockel's differ.
+@use 'pkg:sockel/features' as sockel-features;
 @use 'pkg:sockel/tokens' as sockel-tokens with (
+    // Leaves out the parts of sockel's features track does not enable.
+    $features: sockel-features.$features,
     $text-sm: v.$font-sm,
     $control-height: v.$input-height,
     $control-height-small: v.$input-height-sm,
@@ -107,7 +110,7 @@
     $field-bg: false,
     $field-border: false,
     $card-border-width: false,
-    // The parts of sockel's partials track never renders.
+    // The parts of sockel's enabled features track never renders.
     $omit: (
         "buttons.bare", "buttons.busy", "buttons.fold", "buttons.touch",
         "confirm.inline",
@@ -125,10 +128,8 @@
         "notices.empty-state", "notices.notice",
         "pager.edges", "pager.states", "pager.summary",
         "popover.match-anchor",
-        "skeleton.group", "skeleton.loadable", "skeleton.row", "skeleton.short", "skeleton.spinner",
-        "tokens.actions", "tokens.card-grid", "tokens.color-select", "tokens.drop",
-        "tokens.filter-picker", "tokens.media", "tokens.panel", "tokens.picker", "tokens.seam",
-        "tokens.table", "tokens.toast", "tokens.toggles", "tokens.tooltip",
+        "skeleton.group", "skeleton.row", "skeleton.short", "skeleton.spinner",
+        "tokens.actions", "tokens.media", "tokens.tooltip",
         "utilities.clamp", "utilities.focus-ring", "utilities.phone-only",
         "utilities.scroll-area",
     ),
