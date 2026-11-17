@@ -25,6 +25,31 @@ $numbering-map-chrome: 120px;
     @include g.on-mobile {
         height: 90vh;
     }
+
+    // A colour per range, cycling.
+    .tone-0 {
+        --tone: var(--accent-selected);
+    }
+
+    .tone-1 {
+        --tone: color-mix(in srgb, var(--accent-selected) 45%, #8a4fd0);
+    }
+
+    .tone-2 {
+        --tone: color-mix(in srgb, var(--accent-selected) 45%, #2f9b8f);
+    }
+
+    .tone-3 {
+        --tone: color-mix(in srgb, var(--accent-selected) 45%, #b5793a);
+    }
+
+    .tone-4 {
+        --tone: color-mix(in srgb, var(--accent-selected) 45%, #c4476e);
+    }
+
+    .tone-5 {
+        --tone: color-mix(in srgb, var(--accent-selected) 45%, #6f9a2a);
+    }
 }
 
 .numbering-mode {
@@ -223,6 +248,11 @@ $numbering-map-chrome: 120px;
         background: var(--neutral-bg);
         font-size: v.$font-xxs;
         font-variant-numeric: tabular-nums;
+    }
+
+    &[class*='tone-']>span {
+        background: var(--tone);
+        color: var(--on-accent);
     }
 
     // A show's episode no range covers, and a target episode no range reaches.

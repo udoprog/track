@@ -141,13 +141,16 @@ button,
         flex: 1;
     }
 
-    // A dense head's or row's actions; icon-only ones stay square.
+    // A dense head's or row's actions; icon-only ones stay square. Phones
+    // keep the touch height.
     &.small {
-        height: v.$input-height-sm;
-        font-size: v.$font-xs;
+        @include g.on-desktop {
+            height: v.$input-height-sm;
+            font-size: v.$font-xs;
 
-        @include is-icon-only {
-            min-width: v.$input-height-sm;
+            @include is-icon-only {
+                min-width: v.$input-height-sm;
+            }
         }
     }
 

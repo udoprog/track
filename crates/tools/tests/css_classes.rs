@@ -11,13 +11,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Classes rendered without being spelled out in `crates/frontend/src`. An
-/// entry ending in `-` allows every class with that prefix.
-const ALLOW: &[&str] = &[
-    // watchword's `auth::yew023` components render the sign-in, account,
-    // users and Cloudflare Access markup with these.
-    "auth-", // `.logo` modifiers chosen by a source id at runtime (`source.as_id()`).
-    "trakt", "xem",
-];
+/// entry ending in `-` allows every class with that prefix: `auth-` for
+/// watchword's sign-in, account, users and Cloudflare Access markup, `trakt`
+/// and `xem` for `.logo` modifiers chosen by `source.as_id()`, and `tone-`
+/// for the numbering editor's `format!("tone-{}", ..)` range colours.
+const ALLOW: &[&str] = &["auth-", "trakt", "xem", "tone-"];
 
 fn allowed(class: &str) -> bool {
     ALLOW.iter().any(|a| match a.strip_suffix('-') {
